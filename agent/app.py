@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 import queue
 import os
+import sys
 import subprocess
 import shutil
 import re
@@ -1660,6 +1661,79 @@ def load_cache():
 
     return result
 
+
+
+@app.get("/api/models/select-folder")
+def select_model_folder():
+    if sys.platform != "darwin":
+        raise HTTPException(
+            status_code=501,
+            detail="Die Ordnerauswahl wird derzeit nur unter macOS unterstützt.",
+        )
+
+    script = """
+    try
+        set selectedFolder to choose folder with prompt "MLX-Modellordner auswählen"
+        return POSIX path of selectedFolder
+    on error number -128
+        return ""
+    end try
+    """
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Ordnerauswahl wurde nicht abgeschlossen.",
+        ) from exc
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=result.stderr.strip() or "Ordnerauswahl fehlgeschlagen.",
+        )
+
+    path = result.stdout.strip()
+
+    if not path:
+        return {"cancelled": True, "path": None}
+
+    folder = Path(path).expanduser().resolve()
+
+    if not folder.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="Der ausgewählte Pfad ist kein Ordner.",
+        )
+
+    model_markers = (
+        "config.json",
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+    )
+
+    detected = [
+        name
+        for name in model_markers
+        if (folder / name).exists()
+    ]
+
+    has_safetensors = any(folder.glob("*.safetensors"))
+
+    return {
+        "cancelled": False,
+        "path": str(folder),
+        "looks_like_model": bool(detected or has_safetensors),
+        "detected": detected,
+    }
 
 
 @app.post("/api/models/add")

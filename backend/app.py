@@ -913,6 +913,30 @@ def mlx_thinking(state: str):
     )
 
 
+@app.get("/api/mlx/models/select-folder")
+def mlx_select_model_folder():
+    req = urllib.request.Request(
+        f"{AGENT_URL}/api/models/select-folder",
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=310) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            data = json.loads(body)
+            detail = data.get("detail", body)
+        except Exception:
+            detail = body
+
+        raise HTTPException(
+            status_code=exc.code,
+            detail=detail or "Ordnerauswahl fehlgeschlagen.",
+        )
+
+
 @app.post("/api/mlx/models/add")
 def mlx_add_model(request: AddModelRequest):
     payload = json.dumps({

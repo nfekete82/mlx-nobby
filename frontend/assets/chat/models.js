@@ -744,7 +744,37 @@
 
     function openAddDialog() {
         const form = node('div', 'model-console-form');
-        form.innerHTML = '<label>Alias<input id="modelAddAlias" autocomplete="off" placeholder="z. B. qwen38"></label><div id="modelAddAliasError" class="model-console-field-error"></div><label>Hugging-Face Repository oder lokaler Modellpfad<input id="modelAddRepo" autocomplete="off" placeholder="mlx-community/Modell oder /Users/…"></label><div id="modelAddRepoError" class="model-console-field-error"></div><label>Quantisierung<select id="modelAddQuantization"><option value="">Automatisch erkennen</option><option value="2-bit">2-bit</option><option value="4-bit">4-bit</option><option value="6-bit">6-bit</option><option value="8-bit">8-bit</option></select></label><p class="settings-hint">Remote-Modelle werden nach dem Hinzufügen als Background Job heruntergeladen.</p>';
+        form.innerHTML = '<label>Alias<input id="modelAddAlias" autocomplete="off" placeholder="z. B. qwen38"></label><div id="modelAddAliasError" class="model-console-field-error"></div><label>Hugging-Face Repository oder lokaler Modellpfad<div style="display:flex;gap:8px;align-items:center"><input id="modelAddRepo" style="flex:1" autocomplete="off" placeholder="mlx-community/Modell oder /Users/…"><button id="modelSelectFolder" class="model-console-button" type="button">Auswählen…</button></div></label><div id="modelAddRepoError" class="model-console-field-error"></div><label>Quantisierung<select id="modelAddQuantization"><option value="">Automatisch erkennen</option><option value="2-bit">2-bit</option><option value="4-bit">4-bit</option><option value="6-bit">6-bit</option><option value="8-bit">8-bit</option></select></label><p class="settings-hint">Remote-Modelle werden nach dem Hinzufügen als Background Job heruntergeladen.</p>';
+
+        const selectFolder = form.querySelector('#modelSelectFolder');
+
+        selectFolder?.addEventListener('click', async () => {
+            const repoInput = document.getElementById('modelAddRepo');
+            const repoError = document.getElementById('modelAddRepoError');
+
+            selectFolder.disabled = true;
+            selectFolder.textContent = 'Öffne …';
+            repoError.textContent = '';
+
+            try {
+                const result = await requestJson('/api/mlx/models/select-folder');
+
+                if (!result.cancelled && result.path) {
+                    repoInput.value = result.path;
+
+                    if (!result.looks_like_model) {
+                        repoError.textContent = 'Hinweis: Im ausgewählten Ordner wurden keine typischen MLX-Modell-Dateien erkannt.';
+                    }
+
+                    repoInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            } catch (error) {
+                repoError.textContent = cleanTechnicalError(error);
+            } finally {
+                selectFolder.disabled = false;
+                selectFolder.textContent = 'Auswählen…';
+            }
+        });
         const cancel = actionButton('Abbrechen', 'close-dialog');
         const submit = actionButton('Modell hinzufügen', 'submit-model', { primary: true });
         openDialog({ eyebrow: 'Modelle', title: 'Modell hinzufügen', body: form, actions: [cancel, submit] });
