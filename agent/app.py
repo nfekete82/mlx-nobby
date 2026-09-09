@@ -11772,7 +11772,24 @@ def run_agent_v2(
                         enriched = dict(item)
                         enriched["attempts"] = attempts
 
-                        if attempts >= 3:
+                        verification_exhausted = attempts >= 3
+
+                        if agent_name == "research":
+                            research_circuit_broken = any(
+                                isinstance(observation, dict)
+                                and observation.get("action")
+                                == "web_search_circuit_breaker"
+                                and observation.get("status") == "rejected"
+                                for observation in observations
+                            )
+
+                            if research_circuit_broken:
+                                verification_exhausted = True
+                                enriched["verification_exhausted_by"] = (
+                                    "web_search_circuit_breaker"
+                                )
+
+                        if verification_exhausted:
                             exhausted.append(enriched)
                         else:
                             still_open.append(enriched)
