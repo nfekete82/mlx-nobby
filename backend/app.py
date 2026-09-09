@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import os
+import re
 
 
 
@@ -1035,6 +1036,23 @@ def mlx_jobs():
         f"{AGENT_URL}/api/jobs",
         timeout=10,
     )
+
+
+@app.post('/api/mlx/jobs/cleanup')
+def mlx_cleanup_downloads(request: dict):
+    return agent_json_request('POST', '/api/jobs/cleanup', payload=request, timeout=30)
+
+
+@app.post('/api/mlx/batch/cleanup')
+def mlx_cleanup_batch(request: dict):
+    return agent_json_request('POST', '/api/batch/cleanup', payload=request, timeout=30)
+
+
+@app.delete('/api/mlx/models/{alias}/local')
+def mlx_delete_local_model(alias: str):
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', alias):
+        raise HTTPException(400, 'Ungültiger Modellalias')
+    return agent_json_request('DELETE', '/api/models/' + urllib.parse.quote(alias, safe='') + '/local', timeout=300)
 
 
 @app.get("/api/mlx/jobs/{job_id}")

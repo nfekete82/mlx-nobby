@@ -1,4 +1,6 @@
 from pathlib import Path
+from functools import wraps
+from typing import Literal
 import json
 import queue
 import os
@@ -14,6 +16,7 @@ import urllib.request
 from agent import knowledge
 from agent import code_workspaces
 from agent import image_api
+from agent import model_cleanup
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -26,6 +29,7 @@ CONFIG = Path.home() / ".config/mlx-server/config"
 MODELS = Path.home() / ".config/mlx-server/models"
 MLX = Path.home() / "bin/mlx"
 JOBS_FILE = Path.home() / ".config/mlx-server/jobs.json"
+LOCAL_MODELS_ROOT = Path.home() / "Models"
 IMAGE_SERVICE_URL = os.environ.get("IMAGE_SERVICE_URL", "http://127.0.0.1:8030").rstrip("/")
 IMAGE_DIRECTORY = Path.home() / ".config/mlx-web/images"
 IMAGE_ID_PATTERN = re.compile(r"^\d{10}-[0-9a-f]{12}$")
@@ -35,6 +39,21 @@ class AddModelRequest(BaseModel):
     alias: str
     repo: str
     quantization: str | None = None
+
+
+class HistoryCleanupRequest(BaseModel):
+    scope: Literal['completed', 'failed', 'all']
+
+
+def history_statuses(scope):
+    scopes = {
+        'completed': {'completed'},
+        'failed': {'failed'},
+        'all': {'completed', 'failed', 'cancelled', 'interrupted'},
+    }
+    if scope not in scopes:
+        raise HTTPException(400, "Ungültiger Bereinigungsbereich")
+    return scopes[scope]
 
 
 class ChatSessionRequest(BaseModel):
@@ -54,6 +73,20 @@ JOBS = {}
 JOBS_LOCK = threading.Lock()
 CHATS_LOCK = threading.Lock()
 MODEL_RUNTIME_LOCK = threading.RLock()
+JOB_PERSISTENCE_LOCK = threading.Lock()
+
+
+def locked_model_change(function):
+    """Serialize registry changes/download creation with destructive model actions."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if not MODEL_RUNTIME_LOCK.acquire(blocking=False):
+            raise HTTPException(409, "Eine andere Runtime-Aktion läuft bereits.")
+        try:
+            return function(*args, **kwargs)
+        finally:
+            MODEL_RUNTIME_LOCK.release()
+    return wrapped
 
 BATCH_WORKERS = {}
 BATCH_WORKERS_LOCK = threading.Lock()
@@ -319,27 +352,33 @@ def normalize_job(raw_job, fallback_id=None):
 
 def save_jobs():
     """Persist a consistent job snapshot without risking a partial JSON file."""
-    with JOBS_LOCK:
-        jobs = list(JOBS.values())
+    # All writers serialize snapshot + replace, so an older snapshot cannot resurrect history.
+    with JOB_PERSISTENCE_LOCK, JOBS_LOCK:
+        try:
+            write_jobs_snapshot(list(JOBS.values()))
+        except Exception as exc:
+            print(f"Job-Persistenz konnte nicht gespeichert werden: {exc}")
 
+
+def write_jobs_snapshot(jobs):
     payload = {
         "version": 1,
         "saved_at": time.time(),
         "jobs": jobs,
     }
 
+    JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary_file = JOBS_FILE.with_name(
+        f".{JOBS_FILE.name}.{uuid.uuid4().hex}.tmp"
+    )
     try:
-        JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        temporary_file = JOBS_FILE.with_name(
-            f".{JOBS_FILE.name}.{uuid.uuid4().hex}.tmp"
-        )
         temporary_file.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         os.replace(temporary_file, JOBS_FILE)
-    except Exception as exc:
-        print(f"Job-Persistenz konnte nicht gespeichert werden: {exc}")
+    finally:
+        temporary_file.unlink(missing_ok=True)
 
 
 def recover_job_state(job):
@@ -527,6 +566,7 @@ def run_background_job(job_id, command, target):
 
 
 
+@locked_model_change
 def create_hf_subfolder_job(alias, repo, quantization):
     quantization = (quantization or "").strip()
 
@@ -667,6 +707,7 @@ def run_hf_subfolder_job(job_id, repo, quantization, local_root):
         save_jobs()
 
 
+@locked_model_change
 def create_background_job(command, target=None):
     if command not in {
         "download",
@@ -1737,6 +1778,7 @@ def select_model_folder():
 
 
 @app.post("/api/models/add")
+@locked_model_change
 def add_model(request: AddModelRequest):
     alias = request.alias.strip()
     repo = request.repo.strip()
@@ -1858,7 +1900,7 @@ DEFAULT_MODEL_ROLES = {
 }
 
 
-def load_model_roles():
+def load_model_roles(strict=False):
     """Load persistent model-role preferences."""
     try:
         if MODEL_ROLES_FILE.is_file():
@@ -1869,7 +1911,11 @@ def load_model_roles():
             )
         else:
             data = {}
-    except Exception:
+        if not isinstance(data, dict):
+            raise ValueError('Ungültige Modellrollen')
+    except Exception as exc:
+        if strict:
+            raise HTTPException(409, 'Modellrollen nicht sicher lesbar; Löschung blockiert.') from exc
         data = {}
 
     return {
@@ -2019,6 +2065,7 @@ def get_model_roles():
 
 
 @app.put("/api/model-roles/{role}")
+@locked_model_change
 def set_model_role(role: str, request: dict):
     if role not in MODEL_ROLE_NAMES:
         raise HTTPException(
@@ -2118,6 +2165,7 @@ def cache():
 
 
 @app.delete("/api/models/{alias}")
+@locked_model_change
 def remove_model_alias(alias: str):
     config = load_config()
     current_model = config.get("MODEL")
@@ -2164,6 +2212,94 @@ def remove_model_alias(alias: str):
         "repo": selected["repo"],
         "stdout": result.stdout.strip(),
     }
+
+
+def remove_deleted_model_alias(alias):
+    remove_model_alias(alias)
+    if any(item['alias'] == alias for item in load_models()):
+        raise HTTPException(500, 'MLX-Manager hat den Alias nicht entfernt; Modelldateien bleiben erhalten.')
+
+
+def restore_deleted_model_alias(alias, repo):
+    existing = next((item for item in load_models() if item['alias'] == alias), None)
+    if existing:
+        if existing['repo'] == repo:
+            return
+        raise HTTPException(409, "Alias wurde zwischenzeitlich verändert: " + alias)
+    result = subprocess.run([str(MLX), 'model', 'add', alias, repo],
+                            capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        raise HTTPException(500, "Restdaten erhalten, Alias konnte nicht wiederhergestellt werden: " + alias)
+
+
+@app.delete('/api/models/{alias}/local')
+@locked_model_change
+def delete_local_model(alias: str):
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', alias):
+        raise HTTPException(400, "Ungültiger Modellalias")
+    library = load_models()
+    selected = next((item for item in library if item['alias'] == alias), None)
+    if selected is None:
+        raise HTTPException(404, "Unbekanntes Modell-Alias: " + alias)
+    running, job = has_running_job_for_model(alias)
+    if running:
+        raise HTTPException(409, f"Modell wird von Download {job['id']} verwendet.")
+    config = load_config()
+    if not config.get('MODEL'):
+        raise HTTPException(409, 'Aktive Modellkonfiguration nicht sicher bestimmbar; Löschung blockiert.')
+    protected = [config.get('MODEL'), ROUTER_MODEL]
+    # A download can retain its destination after its alias was changed/removed.
+    with JOBS_LOCK:
+        protected.extend(job.get('local_path') for job in JOBS.values()
+                         if job.get('status') in {'queued', 'running', 'detached'}
+                         or recorded_process_alive(job))
+    args = mlx_server_args()
+    runtime_models = []
+    for index, arg in enumerate(args):
+        if arg == '--model' and index + 1 < len(args):
+            runtime_models.append(args[index + 1])
+        elif arg.startswith('--model='):
+            runtime_models.append(arg.split('=', 1)[1])
+    if find_server_pid(int(config.get('PORT', 8000))) and not any(runtime_models):
+        raise HTTPException(409, 'Laufende Runtime nicht sicher prüfbar; Löschung blockiert.')
+    protected.extend(runtime_models)
+    try:
+        return model_cleanup.delete_local_model(
+            alias, library, LOCAL_MODELS_ROOT, protected, load_model_roles(strict=True),
+            remove_deleted_model_alias, restore_deleted_model_alias,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(504, "MLX-Manager hat nicht rechtzeitig geantwortet; Alias und Modellpfad prüfen.") from exc
+
+
+@app.post('/api/jobs/cleanup')
+def cleanup_download_history(request: HistoryCleanupRequest):
+    statuses = history_statuses(request.scope)
+    with JOB_PERSISTENCE_LOCK, JOBS_LOCK:
+        removable = {key for key, job in JOBS.items()
+                     if job.get('status') in statuses and not recorded_process_alive(job)}
+        remaining = {key: job for key, job in JOBS.items() if key not in removable}
+        try:
+            if removable:
+                write_jobs_snapshot(list(remaining.values()))
+        except OSError as exc:
+            raise HTTPException(500, "Download-Historie konnte nicht gespeichert werden.") from exc
+        for key in removable:
+            del JOBS[key]
+    return {'ok': True, 'removed': len(removable), 'remaining': len(remaining)}
+
+
+def recorded_process_alive(job):
+    pid = job.get('pid')
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # Permission/inspection failures must never authorize cleanup.
 
 
 
@@ -3010,7 +3146,15 @@ def delete_note_folder(folder_id: str):
 
 BATCH_DIRECTORY = Path.home() / ".config/mlx-web/batch"
 BATCH_JOBS_FILE = BATCH_DIRECTORY / "jobs.json"
-BATCH_LOCK = threading.Lock()
+BATCH_LOCK = threading.RLock()
+
+
+def locked_batch_start(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        with BATCH_LOCK:
+            return function(*args, **kwargs)
+    return wrapped
 
 
 class BatchTransformRequest(BaseModel):
@@ -3209,6 +3353,25 @@ def get_batch_jobs():
     return {
         "jobs": items
     }
+
+
+@app.post('/api/batch/cleanup')
+def cleanup_batch_history(request: HistoryCleanupRequest):
+    statuses = history_statuses(request.scope)
+    with BATCH_LOCK, BATCH_WORKERS_LOCK:
+        # Strict parsing: never overwrite a corrupt/unreadable store with an empty one.
+        try:
+            jobs = json.loads(BATCH_JOBS_FILE.read_text(encoding='utf-8')) if BATCH_JOBS_FILE.exists() else {}
+            if not isinstance(jobs, dict) or not all(isinstance(job, dict) for job in jobs.values()):
+                raise ValueError('Ungültiger Job-Store')
+            remaining = {key: job for key, job in jobs.items()
+                         if job.get('status') not in statuses or key in BATCH_WORKERS}
+            removed = len(jobs) - len(remaining)
+            if removed:
+                save_batch_jobs(remaining)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(500, "Job-Historie konnte nicht sicher gelesen oder gespeichert werden.") from exc
+    return {'ok': True, 'removed': removed, 'remaining': len(remaining)}
 
 
 @app.post("/api/batch")
@@ -8365,6 +8528,7 @@ def run_file_analysis_job(job_id):
         unregister_batch_worker(job_id)
 
 
+@locked_batch_start
 def start_file_analysis_job(job_id):
     thread = threading.Thread(target=run_file_analysis_job, args=(job_id,), daemon=True, name=f"file-analysis-{job_id}")
     register_batch_worker(job_id, thread)
@@ -9379,6 +9543,7 @@ Keine Markdown-Codeblöcke.
 
 
 @app.post("/api/batch/{job_id}/start")
+@locked_batch_start
 def start_batch_job(job_id: str):
     with BATCH_LOCK:
         jobs = load_batch_jobs()

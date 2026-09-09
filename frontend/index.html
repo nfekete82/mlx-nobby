@@ -11,11 +11,14 @@
         }
     </script>
     <style>
-        .embedded-control body { background:#111620; min-height:0; overflow:hidden; }
+        .embedded-control body { background:#111620; min-height:0; overflow:auto; }
         .embedded-control body > .sticky { display:none; }
         .embedded-control body > .max-w-6xl { max-width:none; margin:0; padding:0; }
         .embedded-control body > .max-w-6xl > .flex.items-center.justify-between.mb-8 { display:none; }
         .embedded-control #extraViews { padding-top:0; }
+        .history-cleanup-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+        .history-cleanup [role="status"] { display:block; margin-top:6px; color:#94a3b8; font-size:12px; }
+        .history-cleanup [role="status"]:empty { display:none; }
     </style>
 </head>
 
@@ -333,6 +336,10 @@
             </div>
         </div>
 
+        <div class="mb-5">
+            <h3 class="text-sm text-slate-400 mb-2">Download-Historie</h3>
+            <div id="downloadHistoryCleanup" class="history-cleanup"></div>
+        </div>
         <div id="models" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             Modelle werden geladen…
         </div>
@@ -724,6 +731,7 @@
                 </button>
             </div>
 
+            <div id="batchHistoryCleanup" class="history-cleanup mb-4"></div>
             <div
                 id="batchJobs"
                 class="space-y-3"
@@ -739,13 +747,14 @@
 </div>
 
 <script src="/assets/common.js"></script>
+<script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
 <script src="/assets/control/system.js"></script>
 <script src="/assets/control/logs.js"></script>
 <script src="/assets/control/models.js"></script>
 <script src="/assets/control/cache.js"></script>
-<script src="/assets/control/jobs.js"></script>
-<script src="/assets/control/batch.js?v=1788512859"></script>
-<script src="/assets/control-center.js?v=1788513061"></script>
+<script src="/assets/control/jobs.js?v=20260909-cleanup"></script>
+<script src="/assets/control/batch.js?v=20260909-cleanup"></script>
+<script src="/assets/control-center.js?v=20260909-cleanup"></script>
 
 </body>
 </html>

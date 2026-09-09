@@ -246,20 +246,21 @@ document.getElementById(
 ).addEventListener(
     'click',
     () => {
-        window.MLXChatSettings.open('generation');
+        window.MLXChatSettings.open('general');
     }
 );
 
 document.getElementById('sidebarSettingsButton').addEventListener('click', () => {
-    window.MLXChatSettings.open('generation');
+    window.MLXChatSettings.open('general');
 });
 
-document.getElementById('sidebarJobsButton').addEventListener('click', () => {
-    const panel = document.getElementById('jobsPanel');
+function loadJobsPanel() {
     const content = document.getElementById('jobsPanelContent');
-    panel.hidden = false;
     content.textContent = 'Lade Vorgänge…';
-    fetch('/api/mlx/batch').then(response => response.json()).then(data => {
+    return fetch('/api/mlx/batch').then(response => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+    }).then(data => {
         const jobs = (data.jobs || []).slice(0, 8);
         content.innerHTML = jobs.length ? jobs.map(job => {
             const active = ['queued', 'running', 'paused'].includes(job.status);
@@ -267,6 +268,14 @@ document.getElementById('sidebarJobsButton').addEventListener('click', () => {
             return '<div class="jobs-panel-item"><strong>' + (job.output_name || job.original_name || job.input_name || 'Datei') + '</strong><span>' + (job.operation || 'Dateioperation') + ' · ' + progress + '</span></div>';
         }).join('') : 'Keine aktiven Dateioperationen.';
     }).catch(() => { content.textContent = 'Vorgänge sind momentan nicht verfügbar.'; });
+}
+
+window.MLXHistoryCleanup?.mount(document.getElementById('jobsPanelCleanup'), {
+    kind: 'batch', onComplete: loadJobsPanel,
+});
+document.getElementById('sidebarJobsButton').addEventListener('click', () => {
+    document.getElementById('jobsPanel').hidden = false;
+    loadJobsPanel();
 });
 document.getElementById('jobsPanelClose').addEventListener('click', () => { document.getElementById('jobsPanel').hidden = true; });
 
@@ -424,51 +433,170 @@ railSettings?.addEventListener(
 
 (function () {
     const settings = document.getElementById('settings');
-    const adminTabs = new Set(['system', 'logs']);
-    const controlView = { system: 'system', logs: 'logs' };
+    const mainTabs = new Set([
+        'general',
+        'models-system',
+        'knowledge',
+        'appearance',
+    ]);
+    const systemTabs = new Set([
+        'models',
+        'generation',
+        'runtime',
+        'storage',
+        'server',
+        'logs',
+    ]);
+    const systemPane = {
+        models: 'models',
+        generation: 'generation',
+        runtime: 'models',
+        storage: 'models',
+        server: 'system',
+        logs: 'logs',
+    };
+    const legacySystemTab = {
+        models: 'models',
+        generation: 'generation',
+        runtime: 'runtime',
+        storage: 'storage',
+        speicher: 'storage',
+        system: 'server',
+        server: 'server',
+        logs: 'logs',
+    };
+    let activeMainTab = 'general';
+    let activeSystemTab = 'models';
 
     function pane(tab) {
         return settings.querySelector('[data-settings-pane="' + tab + '"]');
     }
 
-    function select(tab) {
-        if (!pane(tab)) tab = 'general';
-        settings.querySelectorAll('[data-settings-pane]').forEach(item => { item.hidden = item.dataset.settingsPane !== tab; });
-        settings.querySelectorAll('[data-settings-tab]').forEach(item => item.classList.toggle('active', item.dataset.settingsTab === tab));
-        if (adminTabs.has(tab)) {
-            const target = pane(tab);
-            if (!target.querySelector('iframe')) {
-                const frame = document.createElement('iframe');
-                frame.className = 'settings-admin-frame';
-                frame.title = 'MLX Verwaltung: ' + tab;
-                frame.src = '/control?embedded=1#' + controlView[tab];
-                target.appendChild(frame);
-            }
-        }
-        if (tab === 'models') {
+    function setSelected(button, selected) {
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-selected', selected ? 'true' : 'false');
+    }
+
+    function updateLocation() {
+        const path = activeMainTab === 'models-system'
+            ? '/settings/models-system/' + activeSystemTab
+            : '/settings/' + activeMainTab;
+        history.replaceState(null, '', path);
+    }
+
+    function ensureAdminFrame(tab) {
+        if (!['server', 'logs'].includes(tab)) return;
+        const target = pane(systemPane[tab])
+            ?.querySelector('[data-control-view="' + tab + '"]');
+        if (!target || target.querySelector('iframe')) return;
+
+        const frame = document.createElement('iframe');
+        frame.className = 'settings-admin-frame';
+        frame.title = tab === 'server'
+            ? 'MLX Server- und Systemverwaltung'
+            : 'MLX Logs';
+        frame.src = '/control?embedded=1#' + tab;
+        target.appendChild(frame);
+    }
+
+    function showPane(name) {
+        settings.querySelectorAll('[data-settings-pane]').forEach(item => {
+            item.hidden = item.dataset.settingsPane !== name;
+        });
+    }
+
+    function selectSystem(tab, updateHistory = true) {
+        if (!systemTabs.has(tab)) tab = 'models';
+        activeMainTab = 'models-system';
+        activeSystemTab = tab;
+
+        showPane(systemPane[tab]);
+        settings.querySelector('.settings-subtabs').hidden = false;
+        settings.querySelectorAll('[data-settings-tab]').forEach(button => {
+            setSelected(button, button.dataset.settingsTab === 'models-system');
+        });
+        settings.querySelectorAll('[data-settings-system-tab]').forEach(button => {
+            setSelected(button, button.dataset.settingsSystemTab === tab);
+        });
+
+        if (['models', 'runtime', 'storage'].includes(tab)) {
+            window.MLXModelConsole?.setTab(tab);
             window.MLXModelConsole?.open();
-            loadModelRoles();
-            window.MLXImageSettings?.load();
+            if (tab === 'models') {
+                loadModelRoles();
+                window.MLXImageSettings?.load();
+            }
         } else {
             window.MLXModelConsole?.close();
         }
 
-        if (tab === 'knowledge') {
-            fetch('/api/mlx/knowledge/status').then(response => response.json()).then(data => {
-                const target = document.getElementById('knowledgeStatus');
-                target.textContent = (data.mode === 'hybrid' ? 'Hybrid Retrieval aktiv' : 'FTS fallback aktiv') + ' · ' + (data.documents || 0) + ' Dateien · ' + (data.chunks || 0) + ' Chunks';
-            }).catch(() => {});
-        }
-        if (tab === 'workspaces') loadWorkspaces();
-        history.replaceState(null, '', tab === 'general' ? '/chat' : '/settings/' + tab);
+        ensureAdminFrame(tab);
+        if (updateHistory) updateLocation();
     }
 
-    function open(tab) { settings.classList.add('open'); select(tab); }
-    function close() { settings.classList.remove('open'); window.MLXModelConsole?.close(); if (location.pathname.startsWith('/settings')) history.replaceState(null, '', '/chat'); }
-    settings.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => select(button.dataset.settingsTab)));
+    function selectMain(tab, updateHistory = true) {
+        if (!mainTabs.has(tab)) tab = 'general';
+        if (tab === 'models-system') {
+            selectSystem(activeSystemTab, updateHistory);
+            return;
+        }
+
+        activeMainTab = tab;
+        showPane(tab);
+        settings.querySelector('.settings-subtabs').hidden = true;
+        settings.querySelectorAll('[data-settings-tab]').forEach(button => {
+            setSelected(button, button.dataset.settingsTab === tab);
+        });
+        window.MLXModelConsole?.close();
+        if (tab === 'knowledge') window.MLXKnowledge?.loadStatus?.();
+        if (updateHistory) updateLocation();
+    }
+
+    function select(tab) {
+        if (mainTabs.has(tab)) selectMain(tab);
+        else if (legacySystemTab[tab]) selectSystem(legacySystemTab[tab]);
+        else selectMain('general');
+    }
+
+    function open(tab = 'general') {
+        settings.classList.add('open');
+        select(tab);
+    }
+
+    function close() {
+        settings.classList.remove('open');
+        window.MLXModelConsole?.close();
+        if (location.pathname.startsWith('/settings')) {
+            history.replaceState(null, '', '/chat');
+        }
+    }
+
+    settings.querySelectorAll('[data-settings-tab]').forEach(button => {
+        button.addEventListener('click', () => selectMain(button.dataset.settingsTab));
+    });
+    settings.querySelectorAll('[data-settings-system-tab]').forEach(button => {
+        button.addEventListener('click', () => selectSystem(button.dataset.settingsSystemTab));
+    });
     document.getElementById('settingsClose').addEventListener('click', close);
-    window.MLXChatSettings = { open, close, select };
-    if (location.pathname.startsWith('/settings')) open(location.pathname.split('/').pop() || 'general');
+    window.MLXChatSettings = { open, close, select, selectSystem };
+
+    if (location.pathname.startsWith('/settings')) {
+        const parts = location.pathname
+            .replace(/^\/settings\/?/, '')
+            .split('/')
+            .filter(Boolean)
+            .map(part => decodeURIComponent(part).toLowerCase());
+        const first = parts[0] || 'general';
+
+        settings.classList.add('open');
+        if (first === 'models-system') {
+            selectSystem(legacySystemTab[parts[1]] || 'models');
+        } else if (legacySystemTab[first]) {
+            selectSystem(legacySystemTab[parts[1]] || legacySystemTab[first]);
+        } else {
+            selectMain(first);
+        }
+    }
 })();
 
 

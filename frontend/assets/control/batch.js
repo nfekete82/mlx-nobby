@@ -704,6 +704,11 @@
             loadJobs
         );
 
+        window.MLXHistoryCleanup?.mount(document.getElementById('batchHistoryCleanup'), {
+            kind: 'batch', onComplete: loadJobs,
+            buttonClass: 'text-red-300 bg-slate-800 hover:bg-red-950 rounded-lg px-3 py-2 text-xs disabled:opacity-40',
+        });
+
         loadJobs();
 
         setInterval(

@@ -15,7 +15,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260906-scroll-follow">
+<link rel="stylesheet" href="/assets/chat.css?v=20260909-cleanup">
     <link rel="icon" type="image/svg+xml" href="/assets/mlx-nobby.svg">
 </head>
 
@@ -183,6 +183,7 @@
 
     <section id="jobsPanel" class="jobs-panel" hidden aria-label="Dateien und Jobs">
         <div class="jobs-panel-header"><strong>Dateien / Jobs</strong><button id="jobsPanelClose" class="icon-btn" type="button">×</button></div>
+        <div id="jobsPanelCleanup" class="history-cleanup"></div>
         <div id="jobsPanelContent" class="settings-hint">Lade Vorgänge…</div>
     </section>
 
@@ -306,22 +307,69 @@
     class="settings"
 >
 
-    <div class="settings-shell-header"><h3>MLX Nobby Einstellungen</h3><button id="settingsClose" class="icon-btn" type="button">×</button></div>
-    <div class="settings-tabs" role="tablist">
-        <button data-settings-tab="general" class="active">Allgemein</button>
-        <button data-settings-tab="models">Modelle</button>
-        <button data-settings-tab="generation">Generation</button>
-        <button data-settings-tab="appearance">Darstellung</button>
-        <button data-settings-tab="knowledge">Wissensbasis</button>
-        <button data-settings-tab="system">System</button>
-        <button data-settings-tab="logs">Logs</button>
+    <div class="settings-shell-header">
+        <div>
+            <span class="settings-eyebrow">Konfiguration</span>
+            <h3>MLX Nobby Einstellungen</h3>
+        </div>
+        <button id="settingsClose" class="icon-btn" type="button" aria-label="Einstellungen schließen">×</button>
     </div>
+    <nav class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
+        <button type="button" data-settings-tab="general" class="active" aria-selected="true">Allgemein</button>
+        <button type="button" data-settings-tab="models-system" aria-selected="false">Modelle &amp; System</button>
+        <button type="button" data-settings-tab="knowledge" aria-selected="false">Wissensbasis</button>
+        <button type="button" data-settings-tab="appearance" aria-selected="false">Darstellung</button>
+    </nav>
+    <nav class="settings-subtabs" role="tablist" aria-label="Modelle und System" hidden>
+        <button type="button" data-settings-system-tab="models" data-model-console-tab="models" class="active" aria-selected="true">Modelle</button>
+        <button type="button" data-settings-system-tab="generation" aria-selected="false">Generation</button>
+        <button type="button" data-settings-system-tab="runtime" data-model-console-tab="runtime" aria-selected="false">Runtime</button>
+        <button type="button" data-settings-system-tab="storage" data-model-console-tab="storage" aria-selected="false">Speicher</button>
+        <button type="button" data-settings-system-tab="server" aria-selected="false">Server</button>
+        <button type="button" data-settings-system-tab="logs" aria-selected="false">Logs</button>
+    </nav>
     <div class="settings-pane" data-settings-pane="general">
-        <h4 class="settings-group-title">MLX Nobby</h4>
-        <div class="settings-hint">Lokaler AI Workspace. Dateien und ihre Verarbeitung gehören direkt zum Chat.</div>
+        <div class="settings-page-intro">
+            <h4>Allgemein</h4>
+            <p>Globale Einstellungen für Chat-Verhalten und lokale Datensicherung.</p>
+        </div>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Chat-Verhalten</h4>
+            <div class="field">
+                <label for="showMetrics">Antwort-Statistiken</label>
+                <select id="showMetrics">
+                    <option value="off">Aus</option>
+                    <option value="compact" selected>Kompakt</option>
+                    <option value="full">Vollständig</option>
+                </select>
+            </div>
+            <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> Auto-Scroll während Streaming</label>
+            <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> Runtime-/Thinking-Infos anzeigen</label>
+        </section>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Export &amp; Import</h4>
+            <div class="settings-hint">Chats lokal sichern oder ein vorhandenes JSON-Backup einlesen.</div>
+            <div class="settings-export-row">
+                <button id="exportChatJson" class="message-action-btn" type="button">Aktueller Chat JSON</button>
+                <button id="exportChatMarkdown" class="message-action-btn" type="button">Aktueller Chat Markdown</button>
+            </div>
+            <div class="settings-export-row">
+                <button id="exportAllChats" class="message-action-btn" type="button">Alle Chats sichern</button>
+                <button id="importChatsButton" class="message-action-btn" type="button">Backup importieren</button>
+            </div>
+            <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
+        </section>
     </div>
     <div class="settings-pane" data-settings-pane="appearance" hidden>
 
+        <div class="settings-page-intro">
+            <h4>Darstellung</h4>
+            <p>Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.</p>
+        </div>
+
+        <section class="settings-card">
         <h4 class="settings-group-title">Chat</h4>
 
         <div class="field">
@@ -343,8 +391,9 @@
         <div class="settings-hint">
             Ändert die Schriftgröße der Chat-Nachrichten.
         </div>
+        </section>
 
-
+        <section class="settings-card">
         <h4 class="settings-group-title">Eigene Nachrichten</h4>
 
         <div class="field">
@@ -380,33 +429,17 @@
         <div class="appearance-bubble-preview">
             So sieht deine Nachricht aus.
         </div>
-
-
-        <h4 class="settings-group-title">Antworten</h4>
-
-        <div class="field">
-            <label for="showMetrics">Antwort-Statistiken</label>
-
-            <select id="showMetrics">
-                <option value="off">Aus</option>
-                <option value="compact" selected>Kompakt</option>
-                <option value="full">Vollständig</option>
-            </select>
-        </div>
-
-        <label class="settings-toggle">
-            <input id="autoScroll" type="checkbox" checked>
-            Auto-Scroll während Streaming
-        </label>
-
-        <label class="settings-toggle">
-            <input id="showRuntimeThinking" type="checkbox" checked>
-            Runtime-/Thinking-Infos anzeigen
-        </label>
-
+        </section>
     </div>
     <div class="settings-pane" data-settings-pane="generation" hidden>
 
+    <div class="settings-page-intro">
+        <h4>Generation</h4>
+        <p>Parameter des aktuellen Chats und Vorgaben für neue Unterhaltungen.</p>
+    </div>
+
+    <section class="settings-card">
+    <h4 class="settings-group-title">Aktueller Chat</h4>
     <div class="settings-row">
 
         <div class="field">
@@ -457,12 +490,16 @@
             placeholder="Optionaler System-Prompt…"
         ></textarea>
     </div>
+    </section>
 
+    <section class="settings-card">
     <h4 class="settings-group-title">Kontext</h4>
 
     <label class="settings-toggle"><input id="autoCompact" type="checkbox" checked> Auto-Compact aktivieren</label>
     <div class="settings-hint">Compact ab 80.000 Zeichen · Max Context 120.000 Zeichen</div>
+    </section>
 
+    <section class="settings-card">
     <h4 class="settings-group-title">Neue Chats</h4>
 
     <div class="field">
@@ -481,44 +518,27 @@
         <div class="field"><label>Standard-Max-Tokens</label><input id="defaultMaxTokens" type="number" min="1" max="32000" value="3000"></div>
     </div>
 
-    <h4 class="settings-group-title">Runtime</h4>
+    <h4 class="settings-group-title">Thinking</h4>
     <label class="settings-toggle"><input id="thinkingPreferred" type="checkbox"> Thinking beim Start bevorzugen</label>
     <div class="settings-hint">Wird nur als Präferenz gespeichert; ein Chatwechsel startet MLX nicht neu.</div>
-
-    <h4 class="settings-group-title">Export & Import</h4>
-    <div class="settings-export-row">
-        <button id="exportChatJson" class="message-action-btn">Aktueller Chat JSON</button>
-        <button id="exportChatMarkdown" class="message-action-btn">Aktueller Chat Markdown</button>
-    </div>
-    <div class="settings-export-row">
-        <button id="exportAllChats" class="message-action-btn">Alle Chats sichern</button>
-        <button id="importChatsButton" class="message-action-btn">Backup importieren</button>
-    </div>
-    <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
+    </section>
     </div>
     <div class="settings-pane model-console-pane" data-settings-pane="models" hidden>
         <section id="modelConsole" class="model-console" aria-labelledby="modelConsoleTitle">
             <header class="model-console-header">
                 <div>
-                    <h4 id="modelConsoleTitle">Model Runtime Console</h4>
-                    <p>Lokale Modelle, MLX Runtime und Speicher an einem Ort.</p>
+                    <h4 id="modelConsoleTitle">Modelle</h4>
+                    <p>Installierte Modelle, Downloads und Modellrollen zentral verwalten.</p>
                 </div>
                 <button id="modelConsoleAdd" class="model-console-button primary" type="button">+ Modell hinzufügen</button>
             </header>
-
-            <nav class="model-console-tabs" aria-label="Model Runtime Console">
-                <button type="button" data-model-console-tab="models" class="active" aria-selected="true">Modelle</button>
-                <button type="button" data-model-console-tab="runtime" aria-selected="false">Runtime</button>
-                <button type="button" data-model-console-tab="storage" aria-selected="false">Speicher</button>
-                <button type="button" data-model-console-tab="downloads" aria-selected="false">Downloads</button>
-            </nav>
 
             <div id="modelConsoleStatus" class="model-console-live" role="status" aria-live="polite"></div>
             <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
 
             <div id="modelConsoleAssignments" class="model-console-secondary">
                 <details>
-                    <summary>Aufgabenzuordnung</summary>
+                    <summary>Modellrollen</summary>
                     <p class="settings-hint">„Automatisch“ verwendet das aktive LLM. Eine Zuordnung startet kein Modell neu.</p>
                     <div id="modelRolesStatus" class="settings-hint">Modellrollen werden geladen…</div>
                     <div class="model-role-list">
@@ -539,9 +559,65 @@
             </div>
         </section>
     </div>
-    <div class="settings-pane" data-settings-pane="knowledge" hidden><h4 class="settings-group-title">Wissensbasis</h4><div id="knowledgeStatus" class="settings-hint">Wird geladen…</div></div>
-    <div class="settings-pane settings-admin-pane" data-settings-pane="system" hidden></div>
-    <div class="settings-pane settings-admin-pane" data-settings-pane="logs" hidden></div>
+    <div class="settings-pane" data-settings-pane="knowledge" hidden>
+        <div class="settings-page-intro">
+            <h4>Wissensbasis</h4>
+            <p>Lokale Dokumente für RAG und semantische Suche verwalten und testen.</p>
+        </div>
+
+        <div id="knowledgeStatus" class="knowledge-status" aria-live="polite">Wird geladen…</div>
+
+        <div class="knowledge-actions-grid">
+            <section class="settings-card">
+                <h4 class="settings-group-title">Quelle hinzufügen</h4>
+                <div class="field">
+                    <label for="knowledgePath">Datei oder Ordner</label>
+                    <input id="knowledgePath" type="text" placeholder="/Users/.../Dokumente" spellcheck="false">
+                </div>
+                <div class="field">
+                    <label for="knowledgeName">Name (optional)</label>
+                    <input id="knowledgeName" type="text" placeholder="z. B. MLX Dokumentation">
+                </div>
+                <div class="settings-action-row">
+                    <button id="knowledgeIndex" class="settings-button primary" type="button">Indexieren</button>
+                    <span id="knowledgeIndexResult" class="settings-hint" role="status"></span>
+                </div>
+            </section>
+
+            <section class="settings-card">
+                <h4 class="settings-group-title">Retrieval testen</h4>
+                <div class="field">
+                    <label for="knowledgeQuery">Testabfrage</label>
+                    <input id="knowledgeQuery" type="text" placeholder="Was soll in der Wissensbasis gefunden werden?">
+                </div>
+                <button id="knowledgeSearch" class="settings-button" type="button">Suchen</button>
+                <div id="knowledgeResults" class="knowledge-results"></div>
+            </section>
+        </div>
+    </div>
+    <div class="settings-pane settings-admin-pane" data-settings-pane="system" hidden>
+        <div class="settings-page-intro settings-admin-intro">
+            <h4>Server</h4>
+            <p>Lokale Dienste und die vorhandene Systemverwaltung im Überblick.</p>
+        </div>
+        <div class="settings-service-grid" aria-label="Lokale Dienstarchitektur">
+            <div><strong>MLX Server</strong><span>Native Inferenz · Port 8000</span></div>
+            <div><strong>Agent</strong><span>macOS-Bridge · Port 8010</span></div>
+            <div><strong>Router</strong><span>Im Agent integriert</span></div>
+            <div><strong>Speech</strong><span>Lokaler Dienst · Port 8050</span></div>
+            <div><strong>Embeddings</strong><span>Lokaler Dienst · Port 8020</span></div>
+            <div><strong>Images</strong><span>Lokaler Dienst · Port 8030</span></div>
+            <div><strong>Docker / Webserver</strong><span>Web-App · Port 8090</span></div>
+        </div>
+        <div class="settings-admin-frame-wrap" data-control-view="server"></div>
+    </div>
+    <div class="settings-pane settings-admin-pane" data-settings-pane="logs" hidden>
+        <div class="settings-page-intro settings-admin-intro">
+            <h4>Logs</h4>
+            <p>Vorhandene Log-Ansicht für Runtime, Agent und Hintergrundjobs.</p>
+        </div>
+        <div class="settings-admin-frame-wrap" data-control-view="logs"></div>
+    </div>
 
 </div>
 
@@ -785,7 +861,8 @@
 <script src="/assets/chat/runtime.js?v=20260906-vision-fix"></script>
 <script src="/assets/chat/appearance.js"></script>
 <script src="/assets/chat/generation.js?v=20260906-vision-fix"></script>
-<script src="/assets/chat/models.js?v=20260906-runtime-console"></script>
+<script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
+<script src="/assets/chat/models.js?v=20260906-runtime-console&amp;settings=20260909-cleanup"></script>
 <div
     id="notesPanel"
     style="
@@ -893,10 +970,11 @@
     </button>
 </div>
 
+<script src="/assets/chat/knowledge.js?v=20260909-settings"></script>
 <script src="/assets/chat/notes.js?v=1788548196"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
-<script src="/assets/chat.js?v=20260906-runtime-console"></script>
+<script src="/assets/chat.js?v=20260909-cleanup"></script>
 
 </body>
 </html>

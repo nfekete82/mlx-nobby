@@ -13,6 +13,7 @@
     const state = {
         activeTab: 'models',
         runtimeAction: null,
+        deletingModel: false,
         selectedModel: null,
         modal: null,
         error: null,
@@ -325,7 +326,7 @@
         row.appendChild(main);
 
         const actions = node('div', 'model-console-row-actions');
-        const globallyBusy = Boolean(state.runtimeAction);
+        const globallyBusy = Boolean(state.runtimeAction) || state.deletingModel;
         if (!active) {
             const ready = availability.state === 'ready';
             actions.appendChild(actionButton('▶ Laden', 'load-model', {
@@ -344,6 +345,14 @@
         if (!active) menuPanel.appendChild(actionButton('Modell laden', 'load-model', { alias: model.alias, disabled: globallyBusy || availability.state !== 'ready' }));
         if (availability.state === 'error') menuPanel.appendChild(actionButton('Download fortsetzen', 'retry-download', { target: model.alias }));
         menuPanel.appendChild(actionButton('Aus Konfiguration entfernen', 'remove-model', { alias: model.alias, danger: true, disabled: active || globallyBusy }));
+        if (model.local && model.available !== false) {
+            const protectedModel = model.active || activeModel()?.repo === model.repo;
+            actions.appendChild(actionButton('Löschen', 'delete-local-model', {
+                alias: model.alias, danger: true,
+                disabled: protectedModel || globallyBusy || isJobRunning(jobForModel(model)),
+                title: protectedModel ? 'Aktives Modell ist geschützt – auch bei gestoppter Runtime.' : 'Lokale Modelldateien und Alias löschen',
+            }));
+        }
         menu.appendChild(menuPanel);
         actions.appendChild(menu);
         row.appendChild(actions);
@@ -367,6 +376,7 @@
             section.appendChild(list);
         }
         fragment.appendChild(section);
+        fragment.appendChild(renderDownloads());
         return fragment;
     }
 
@@ -408,6 +418,38 @@
             definitionRow('Uptime', formatUptime(mlx.uptime_seconds)),
         ].filter(Boolean).forEach(item => details.appendChild(item));
         section.appendChild(details);
+
+        const availableModels = state.aliases.models.filter(item =>
+            modelAvailability(item).state === 'ready'
+        );
+        const switcher = node('div', 'model-console-control-row');
+        const switcherInfo = node('div');
+        switcherInfo.append(
+            node('strong', '', 'Aktives Modell'),
+            node('p', '', 'Wechselt das Modell über den vorhandenen Runtime-Manager.')
+        );
+        const switcherControls = node('div', 'model-console-switcher');
+        const modelSelect = node('select');
+        modelSelect.setAttribute('aria-label', 'Runtime-Modell auswählen');
+        availableModels.forEach(item => {
+            const option = node('option', '', item.alias);
+            option.value = item.alias;
+            if (item.alias === model?.alias) option.selected = true;
+            modelSelect.appendChild(option);
+        });
+        const switchButton = actionButton('Modell wechseln', 'switch-selected-model', {
+            disabled: !availableModels.length || Boolean(state.runtimeAction),
+        });
+        modelSelect.addEventListener('change', () => {
+            switchButton.disabled = !modelSelect.value
+                || modelSelect.value === activeModel()?.alias
+                || Boolean(state.runtimeAction);
+        });
+        switchButton.disabled = switchButton.disabled
+            || modelSelect.value === model?.alias;
+        switcherControls.append(modelSelect, switchButton);
+        switcher.append(switcherInfo, switcherControls);
+        section.appendChild(switcher);
 
         const thinking = node('div', 'model-console-control-row');
         const thinkingInfo = node('div');
@@ -457,7 +499,13 @@
     function renderStorage() {
         const fragment = document.createDocumentFragment();
         const summary = node('section', 'model-console-storage-summary');
-        summary.append(metric('Cache-Größe', state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'), metric('Cache-Einträge', String(state.cache.count ?? state.cache.models.length)));
+        const systemMemory = state.system?.system || {};
+        summary.append(
+            metric('Unified Memory', systemMemory.total_gb != null ? systemMemory.total_gb + ' GB' : '–'),
+            metric('RAM frei', systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–'),
+            metric('Cache-Größe', state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
+            metric('Cache-Einträge', String(state.cache.count ?? state.cache.models.length))
+        );
         if (state.cache.path) {
             const path = node('div', 'model-console-cache-path');
             path.append(node('span', '', 'Hugging-Face-Cache'), node('code', '', state.cache.path), actionButton('Kopieren', 'copy-value'));
@@ -509,6 +557,15 @@
             node('h5', '', 'Downloads & Jobs'),
             node('span', '', String(state.jobs.length))
         );
+        const cleanup = node('div', 'history-cleanup');
+        window.MLXHistoryCleanup?.mount(cleanup, {
+            kind: 'downloads',
+            onComplete: async data => {
+                toast(data.removed + ' Download-Einträge entfernt');
+                await load({ force: true });
+            },
+        });
+        head.appendChild(cleanup);
         section.appendChild(head);
 
         if (!state.jobs.length) {
@@ -648,6 +705,19 @@
 
     function render() {
         if (!root || !content) return;
+        const title = document.getElementById('modelConsoleTitle');
+        const description = root.querySelector('.model-console-header p');
+        const addButton = document.getElementById('modelConsoleAdd');
+        const headings = {
+            models: ['Modelle', 'Installierte Modelle, Downloads und Modellrollen zentral verwalten.'],
+            runtime: ['Runtime', 'Aktives Modell, Backend und Laufzeitstatus verwalten.'],
+            storage: ['Speicher', 'Lokale Modellpfade und Hugging-Face-Cache im Überblick.'],
+            downloads: ['Downloads', 'Download-Jobs der Model Console.'],
+        };
+        const heading = headings[state.activeTab] || headings.models;
+        if (title) title.textContent = heading[0];
+        if (description) description.textContent = heading[1];
+        if (addButton) addButton.hidden = state.activeTab !== 'models';
         content.innerHTML = '';
         const errorBanner = renderErrorBanner();
         if (errorBanner) content.appendChild(errorBanner);
@@ -876,7 +946,7 @@
     }
 
     function canBeginRuntimeAction() {
-        return !state.runtimeAction && !window.MLXChatRuntime?.isSwitching?.();
+        return !state.runtimeAction && !state.deletingModel && !window.MLXChatRuntime?.isSwitching?.();
     }
 
     async function performRuntimeAction(type, model = null) {
@@ -971,6 +1041,29 @@
         }
     }
 
+    async function deleteLocalModel(alias) {
+        if (!canBeginRuntimeAction()) return;
+        state.deletingModel = true;
+        const confirm = dialogActions.querySelector('[data-action="confirm-delete-local-model"]');
+        if (confirm) confirm.disabled = true;
+        window.MLXChatRuntime?.setExternalRuntimeBusy?.(true);
+        render();
+        try {
+            await requestJson('/api/mlx/models/' + encodeURIComponent(alias) + '/local', { method: 'DELETE' });
+            closeDialog();
+            toast(alias + ': lokale Dateien und Alias gelöscht');
+        } catch (error) {
+            closeDialog();
+            toast('Modell konnte nicht gelöscht werden', 'error', cleanTechnicalError(error));
+        } finally {
+            state.deletingModel = false;
+            window.MLXChatRuntime?.setExternalRuntimeBusy?.(false);
+            await load({ force: true });
+            await window.loadModelRoles?.();
+            window.MLXChatRuntime?.refreshModelState?.().catch(() => {});
+        }
+    }
+
     async function deleteCache(target) {
         try {
             await requestJson('/api/mlx/cache/' + encodeURIComponent(target), { method: 'DELETE' });
@@ -1029,6 +1122,11 @@
         if (action === 'add-model') return openAddDialog();
         if (action === 'model-details' && model) return showModelDetails(model);
         if (action === 'load-model' && model) return performRuntimeAction('switch', model);
+        if (action === 'switch-selected-model') {
+            const selectedAlias = root.querySelector('.model-console-switcher select')?.value;
+            const selectedModel = state.aliases.models.find(item => item.alias === selectedAlias);
+            if (selectedModel) return performRuntimeAction('switch', selectedModel);
+        }
         if (action === 'restart-runtime') return performRuntimeAction('restart');
         if (action === 'stop-runtime') return performRuntimeAction('stop');
         if (action === 'start-runtime') return performRuntimeAction('start');
@@ -1042,6 +1140,13 @@
         if (action === 'retry-download') return retryDownload(button.dataset.target);
         if (action === 'remove-model' && model) return confirmAction(displayName(model) + ' entfernen?', 'Der Alias „' + model.alias + '“ wird aus der Konfiguration entfernt. Heruntergeladene Modelldateien bleiben erhalten.', 'Aus Konfiguration entfernen', 'confirm-remove-model', { alias: model.alias });
         if (action === 'confirm-remove-model') return removeModel(button.dataset.alias);
+        if (action === 'delete-local-model' && model?.local) return confirmAction(
+            displayName(model) + ' löschen?',
+            'Lokale Dateien von „' + model.alias + '“ dauerhaft löschen?\n' + model.repo +
+            '\nDer Alias wird ebenfalls entfernt. Aktive Modelle, Rollen-Zuordnungen und laufende Downloads verhindern die Löschung.',
+            'Modell dauerhaft löschen', 'confirm-delete-local-model', { alias: model.alias }
+        );
+        if (action === 'confirm-delete-local-model') return deleteLocalModel(button.dataset.alias);
         if (action === 'delete-cache') return confirmAction('Cache-Eintrag löschen?', 'Der lokale Cache für „' + button.dataset.target + '“ wird dauerhaft gelöscht. Der Konfigurations-Alias bleibt erhalten.', 'Cache löschen', 'confirm-delete-cache', { target: button.dataset.target });
         if (action === 'confirm-delete-cache') return deleteCache(button.dataset.target);
         if (action === 'submit-model') return submitModel();

@@ -136,6 +136,7 @@ function currentAppView() {
         'models',
         'downloads',
         'batch',
+        'server',
         'system',
         'logs'
     ]);
@@ -164,9 +165,9 @@ function showAppView() {
         .forEach(
             element => {
 
-                const visible =
-                    element.dataset.appView ===
-                    view;
+                const visible = view === 'server'
+                    ? ['dashboard', 'system'].includes(element.dataset.appView)
+                    : element.dataset.appView === view;
 
                 element.classList.toggle(
                     'hidden',
@@ -204,7 +205,7 @@ function showAppView() {
      * wenn der jeweilige View aktiv ist.
      */
     if (
-        view === 'system' &&
+        (view === 'system' || view === 'server') &&
         typeof MLXSystem !== 'undefined' &&
         typeof MLXSystem.loadSystemView === 'function'
     ) {
