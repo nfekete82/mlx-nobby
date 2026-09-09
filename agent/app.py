@@ -5049,10 +5049,20 @@ def tool_search_web(request):
         request.prompt
     )
 
-    return searxng_search_results(
+    result = searxng_search_results(
         query,
         limit=8,
     )
+
+    results = result.get("results")
+
+    if isinstance(results, list):
+        result["results"] = rerank_technical_web_results(
+            query,
+            results,
+        )
+
+    return result
 
 
 def tool_fetch_url(request):
@@ -11833,7 +11843,7 @@ def run_agent_v2(
                     observations,
                 )
 
-            elif mode == "coding":
+            elif mode in {"coding", "research"}:
                 final_answer = agent_v2_final_answer(
                     goal,
                     observations,
@@ -12173,6 +12183,87 @@ def run_agent_v2(
         files = decision.get("files")
 
         # -------------------------------------------------
+        # Research Search-Loop-Guard
+        # -------------------------------------------------
+        # Research soll nicht sein gesamtes Schrittbudget mit immer neuen
+        # Suchvarianten verbrauchen, wenn bereits konkrete Treffer vorliegen.
+        # Nach drei ausgeführten Websuchen wird eine weitere Suche blockiert.
+        # Der Planner muss dann vorhandene Treffer mit fetch_url verifizieren
+        # oder mit transparenter Einschränkung abschließen.
+        if (
+            mode == "research"
+            and action in {"web_search", "search_web"}
+        ):
+            completed_searches = [
+                item
+                for item in observations
+                if isinstance(item, dict)
+                and item.get("status") == "completed"
+                and item.get("action") in {"web_search", "search_web"}
+            ]
+
+            successful_fetches = [
+                item
+                for item in observations
+                if isinstance(item, dict)
+                and item.get("status") == "completed"
+                and item.get("action") == "fetch_url"
+                and isinstance(item.get("result"), dict)
+                and item.get("result", {}).get("ok") is True
+            ]
+
+            if len(completed_searches) >= 3 and not successful_fetches:
+                candidate_urls = []
+
+                for search_item in reversed(completed_searches):
+                    search_result = search_item.get("result")
+                    if not isinstance(search_result, dict):
+                        continue
+
+                    for result_item in search_result.get("results") or []:
+                        if not isinstance(result_item, dict):
+                            continue
+
+                        url = str(result_item.get("url") or "").strip()
+                        if (
+                            url
+                            and re.match(
+                                r"^https?://",
+                                url,
+                                flags=re.IGNORECASE,
+                            )
+                            and url not in candidate_urls
+                        ):
+                            candidate_urls.append(url)
+
+                        if len(candidate_urls) >= 5:
+                            break
+
+                    if len(candidate_urls) >= 5:
+                        break
+
+                observations.append({
+                    "step": step,
+                    "action": "research_search_loop_guard",
+                    "status": "rejected",
+                    "reason": (
+                        "Bereits drei Websuchen ohne erfolgreich geladene "
+                        "Quelle ausgeführt. Führe keine weitere Suchvariation "
+                        "aus. Lade stattdessen einen vorhandenen Treffer mit "
+                        "fetch_url oder schließe transparent ab, falls keine "
+                        "brauchbare Quelle vorhanden ist."
+                    ),
+                    "candidate_urls": candidate_urls,
+                })
+
+                publish(
+                    "running",
+                    observations[-1],
+                )
+
+                continue
+
+        # -------------------------------------------------
         # Orchestrator Query-Härtung
         # -------------------------------------------------
         if (
@@ -12270,9 +12361,9 @@ def run_agent_v2(
                     continue
 
         # -------------------------------------------------
-        # Orchestrator Fetch-URL-Allowlist
+        # Research / Orchestrator Fetch-URL-Allowlist
         # -------------------------------------------------
-        if mode == "orchestrator" and action == "fetch_url":
+        if mode in {"orchestrator", "research"} and action == "fetch_url":
 
             def normalize_fetch_url(value):
                 value = str(value or "").strip()
@@ -12402,7 +12493,7 @@ def run_agent_v2(
                     "action": "fetch_url_allowlist_guard",
                     "status": "rejected",
                     "reason": (
-                        "fetch_url darf im Orchestrator nur eine zuvor "
+                        "fetch_url darf in Research/Orchestrator nur eine zuvor "
                         "gefundene URL oder einen echten Unterpfad dieser "
                         "Quelle öffnen. Andere Hosts oder benachbarte "
                         "Repository-/Pfadbereiche bleiben gesperrt."
