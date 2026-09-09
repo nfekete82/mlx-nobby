@@ -5642,6 +5642,66 @@ def knowledge_add(request: KnowledgeSourceRequest):
 def knowledge_search(request: KnowledgeSearchRequest): return knowledge.search(request.query, request.scope)
 
 
+
+def _semantic_agent_route_allowed(
+    routing,
+    prompt,
+    file_context=None,
+    conversation_context=None,
+):
+    intent = str(routing.get("intent") or "")
+    confidence = float(routing.get("confidence") or 0.0)
+    requires_tools = routing.get("requires_tools") is True
+    value = str(prompt or "").strip().lower()
+
+    if intent not in SEMANTIC_ROUTER_AGENT_INTENTS:
+        return True
+
+    if not requires_tools:
+        return False
+
+    deterministic = _deterministic_chat_action(
+        prompt,
+        file_context,
+        conversation_context,
+    )
+
+    if deterministic == intent:
+        return True
+
+    if intent == "diagnostic_agent":
+        return (
+            confidence >= 0.90
+            and _looks_like_local_diagnostic(
+                prompt,
+                conversation_context,
+            )
+        )
+
+    if intent == "coding_agent":
+        return (
+            confidence >= 0.90
+            and _looks_like_coding_action(
+                prompt,
+                conversation_context,
+            )
+        )
+
+    if intent == "research_agent":
+        explicit_research = bool(re.search(
+            r"\b(?:recherchier|recherche|durchsuch|"
+            r"vergleiche?\s+(?:aktuell|neu|mehrere)|"
+            r"aktuelle?\s+(?:quellen|informationen|news|änderungen|aenderungen))\w*\b",
+            value,
+        ))
+        return confidence >= 0.90 and explicit_research
+
+    if intent == "orchestrator":
+        return deterministic == "orchestrator"
+
+    return False
+
+
 @app.post("/api/chat/actions")
 def run_chat_action(request: ChatActionRequest):
     routing = classify_chat_action_details(
@@ -5651,6 +5711,25 @@ def run_chat_action(request: ChatActionRequest):
     )
 
     action = routing["intent"]
+
+    if (
+        action in SEMANTIC_ROUTER_AGENT_INTENTS
+        and not _semantic_agent_route_allowed(
+            routing,
+            request.prompt,
+            request.file_context,
+            request.conversation_context,
+        )
+    ):
+        routing = dict(routing)
+        routing["original_intent"] = action
+        routing["intent"] = "normal_chat"
+        routing["agent_gate"] = "rejected"
+        routing["agent_gate_reason"] = (
+            "Semantischer Agent-Intent war nicht eindeutig genug."
+        )
+        action = "normal_chat"
+
     if action.startswith("file_"):
         return chat_tool_result(action, "requires_file_route", {"message": "Bestehende Datei-Pipeline verwenden"})
     if action == "normal_chat":
