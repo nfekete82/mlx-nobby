@@ -2202,51 +2202,39 @@ def model_command(alias: str):
 
 
 def run_model_command(alias: str):
-    models = load_models()
+    """
+    HTTP-facing adapter for the shared MLX runtime switcher.
 
-    known_aliases = {
-        item["alias"]
-        for item in models
-    }
-
-    if alias not in known_aliases:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unbekanntes Modell-Alias: {alias}",
-        )
-
+    The switch is only reported as successful after the requested model
+    is configured and the MLX API is responding.
+    """
     try:
-        result = subprocess.run(
-            [str(MLX), "model", alias],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        return switch_model_runtime(alias)
+    except RuntimeError as exc:
+        message = str(exc)
 
-    except subprocess.TimeoutExpired:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Modellwechsel Timeout: {alias}",
-        )
+        if message.startswith("Unbekanntes Modell-Alias:"):
+            raise HTTPException(
+                status_code=404,
+                detail=message,
+            ) from exc
 
-    if result.returncode != 0:
+        if message.startswith("Modellwechsel Timeout:"):
+            raise HTTPException(
+                status_code=504,
+                detail=message,
+            ) from exc
+
+        if "wurde nicht innerhalb von" in message:
+            raise HTTPException(
+                status_code=504,
+                detail=message,
+            ) from exc
+
         raise HTTPException(
             status_code=500,
-            detail={
-                "alias": alias,
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
-                "returncode": result.returncode,
-            },
-        )
-
-    return {
-        "ok": True,
-        "alias": alias,
-        "stdout": result.stdout.strip(),
-        "stderr": result.stderr.strip(),
-    }
-
+            detail=message,
+        ) from exc
 
 
 @app.post("/api/download/{target:path}")
