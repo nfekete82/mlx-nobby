@@ -150,6 +150,24 @@
         return (state.cache.models || []).find(item => item.repo === model.repo) || null;
     }
 
+    function duplicateInfoForLocalModel(model) {
+        for (const item of state.cache.models || []) {
+            const matches = Array.isArray(item.local_matches) ? item.local_matches : [];
+            const match = matches.find(entry =>
+                entry.path === model.repo ||
+                (entry.alias && entry.alias === model.alias)
+            );
+            if (!match) continue;
+
+            return {
+                cache: item,
+                exact: Boolean(item.duplicate && match.match === 'exact'),
+                possible: Boolean(item.possible_duplicate && match.match === 'name')
+            };
+        }
+        return null;
+    }
+
     function jobForModel(model) {
         return state.jobs.find(job => job.target === model.alias || job.target === model.repo) || null;
     }
@@ -487,10 +505,17 @@
         const row = node('article', 'model-console-storage-row');
         const info = node('div', 'model-console-row-main');
         info.append(node('strong', '', displayName(item)), node('span', 'model-console-storage-repo', item.repo));
-        if (!item.complete) info.appendChild(node('span', 'model-console-availability error', 'Unvollständig · ' + item.incomplete_files + ' Dateien'));
+        if (!item.complete) {
+            info.appendChild(node('span', 'model-console-availability error', 'Unvollständig · ' + item.incomplete_files + ' Dateien'));
+        } else if (item.duplicate) {
+            const extra = item.duplicate_size || formatBytes(item.duplicate_size_bytes);
+            info.appendChild(node('span', 'model-console-availability error', 'Doppelt vorhanden' + (extra ? ' · zusätzlich ca. ' + extra : '')));
+        } else if (item.possible_duplicate) {
+            info.appendChild(node('span', 'model-console-availability error', 'Mögliche Dublette · lokalen Modellpfad prüfen'));
+        }
         const right = node('div', 'model-console-storage-actions');
         right.appendChild(node('strong', '', item.size || formatBytes(item.size_bytes) || '–'));
-        if (!item.active) right.appendChild(actionButton('Cache löschen', 'delete-cache', { target: item.alias || item.repo, danger: true }));
+        if (!item.active) right.appendChild(actionButton('HF-Dateien löschen', 'delete-cache', { target: item.alias || item.repo, danger: true }));
         else right.appendChild(badge('Aktives Modell', 'active'));
         row.append(info, right);
         return row;
@@ -503,12 +528,12 @@
         summary.append(
             metric('Unified Memory', systemMemory.total_gb != null ? systemMemory.total_gb + ' GB' : '–'),
             metric('RAM frei', systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–'),
-            metric('Cache-Größe', state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
-            metric('Cache-Einträge', String(state.cache.count ?? state.cache.models.length))
+            metric('HF-Speicher', state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
+            metric('HF-Modelle', String(state.cache.count ?? state.cache.models.length))
         );
         if (state.cache.path) {
             const path = node('div', 'model-console-cache-path');
-            path.append(node('span', '', 'Hugging-Face-Cache'), node('code', '', state.cache.path), actionButton('Kopieren', 'copy-value'));
+            path.append(node('span', '', 'Hugging-Face-Speicher'), node('code', '', state.cache.path), actionButton('Kopieren', 'copy-value'));
             path.lastChild.dataset.value = state.cache.path;
             summary.appendChild(path);
         }
@@ -524,8 +549,15 @@
                 const row = node('article', 'model-console-storage-row');
                 const info = node('div', 'model-console-row-main');
                 info.append(node('strong', '', displayName(model)), node('span', 'model-console-storage-repo', model.repo));
+                const duplicateInfo = duplicateInfoForLocalModel(model);
+                if (duplicateInfo?.exact) {
+                    const extra = duplicateInfo.cache.duplicate_size || formatBytes(duplicateInfo.cache.duplicate_size_bytes);
+                    info.appendChild(node('span', 'model-console-availability error', 'Doppelt vorhanden' + (extra ? ' · zusätzlich ca. ' + extra : '')));
+                } else if (duplicateInfo?.possible) {
+                    info.appendChild(node('span', 'model-console-availability error', 'Mögliche Dublette mit Hugging Face · bitte prüfen'));
+                }
                 const right = node('div', 'model-console-storage-actions');
-                right.appendChild(badge(model.active ? 'Aktives Modell' : 'Lokaler Pfad', model.active ? 'active' : ''));
+                right.appendChild(badge(model.active ? 'Aktives Modell' : 'Lokal unter ~/Models', model.active ? 'active' : ''));
                 row.append(info, right);
                 localList.appendChild(row);
             });
@@ -533,16 +565,35 @@
             fragment.appendChild(localSection);
         }
         const section = node('section', 'model-console-section');
+
+        const visibleCacheModels = (state.cache.models || []).filter(item =>
+            Number(item.size_bytes || 0) >= 1024 * 1024 ||
+            !item.complete
+        );
+
         const head = node('div', 'model-console-section-heading');
-        head.append(node('h5', '', 'Lokaler Modell-Cache'), node('span', '', String(state.cache.models.length)));
+        head.append(
+            node('h5', '', 'Lokal verfügbare Hugging-Face-Modelle'),
+            node('span', '', String(visibleCacheModels.length))
+        );
         section.appendChild(head);
-        if (!state.cache.models.length) {
-            section.appendChild(node('div', 'model-console-empty', 'Kein Hugging-Face-Cache gefunden.'));
+
+        if (!visibleCacheModels.length) {
+            section.appendChild(
+                node(
+                    'div',
+                    'model-console-empty',
+                    'Keine lokal verfügbaren Hugging-Face-Modelle gefunden.'
+                )
+            );
         } else {
             const list = node('div', 'model-console-list');
-            state.cache.models.forEach(item => list.appendChild(renderStorageRow(item)));
+            visibleCacheModels.forEach(item =>
+                list.appendChild(renderStorageRow(item))
+            );
             section.appendChild(list);
         }
+
         fragment.appendChild(section);
         return fragment;
     }
@@ -711,7 +762,7 @@
         const headings = {
             models: ['Modelle', 'Installierte Modelle, Downloads und Modellrollen zentral verwalten.'],
             runtime: ['Runtime', 'Aktives Modell, Backend und Laufzeitstatus verwalten.'],
-            storage: ['Speicher', 'Lokale Modellpfade und Hugging-Face-Cache im Überblick.'],
+            storage: ['Speicher', 'Lokal verfügbare Modelle und ihr Speicherverbrauch im Überblick.'],
             downloads: ['Downloads', 'Download-Jobs der Model Console.'],
         };
         const heading = headings[state.activeTab] || headings.models;
@@ -1147,7 +1198,7 @@
             'Modell dauerhaft löschen', 'confirm-delete-local-model', { alias: model.alias }
         );
         if (action === 'confirm-delete-local-model') return deleteLocalModel(button.dataset.alias);
-        if (action === 'delete-cache') return confirmAction('Cache-Eintrag löschen?', 'Der lokale Cache für „' + button.dataset.target + '“ wird dauerhaft gelöscht. Der Konfigurations-Alias bleibt erhalten.', 'Cache löschen', 'confirm-delete-cache', { target: button.dataset.target });
+        if (action === 'delete-cache') return confirmAction('Hugging-Face-Dateien löschen?', 'Die lokal gespeicherten Hugging-Face-Dateien für „' + button.dataset.target + '“ werden dauerhaft gelöscht. Falls keine zweite lokale Kopie existiert, muss das Modell später erneut heruntergeladen werden. Der Konfigurations-Alias bleibt erhalten.', 'HF-Dateien löschen', 'confirm-delete-cache', { target: button.dataset.target });
         if (action === 'confirm-delete-cache') return deleteCache(button.dataset.target);
         if (action === 'submit-model') return submitModel();
         if (action === 'copy-value') return copyValue(button.dataset.value || '');

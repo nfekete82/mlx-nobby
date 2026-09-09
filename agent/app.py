@@ -1645,14 +1645,51 @@ def directory_size(path):
 def load_cache():
     base = Path.home() / ".cache/huggingface/hub"
     models = load_models()
-
     alias_by_repo = {
         item["repo"]: item["alias"]
         for item in models
     }
 
-    result = []
+    local_models = []
+    with JOBS_LOCK:
+        jobs_snapshot = [dict(job) for job in JOBS.values()]
 
+    for model in models:
+        if not model.get("local"):
+            continue
+
+        raw_path = str(model.get("repo") or "").strip()
+        if not raw_path:
+            continue
+
+        try:
+            model_path = Path(raw_path).expanduser().resolve()
+            root = LOCAL_MODELS_ROOT.expanduser().resolve()
+            relative = model_path.relative_to(root)
+        except (OSError, ValueError):
+            continue
+
+        exact_repos = set()
+        for job in jobs_snapshot:
+            local_path = str(job.get("local_path") or "").strip()
+            source_repo = str(job.get("repo") or "").strip()
+            if not local_path or not source_repo:
+                continue
+            try:
+                if Path(local_path).expanduser().resolve() == model_path:
+                    exact_repos.add(source_repo)
+            except OSError:
+                continue
+
+        local_models.append({
+            "alias": model.get("alias"),
+            "path": str(model_path),
+            "root_name": relative.parts[0] if relative.parts else model_path.name,
+            "exact_repos": exact_repos,
+            "size_bytes": directory_size(model_path) if model_path.exists() else 0,
+        })
+
+    result = []
     if not base.exists():
         return result
 
@@ -1661,32 +1698,53 @@ def load_cache():
             continue
 
         repo = directory.name.removeprefix("models--").replace("--", "/")
+        incomplete_candidates = list(directory.rglob("*.incomplete"))
 
-        incomplete_candidates = list(
-            directory.rglob("*.incomplete")
-        )
-
-        # Hugging Face kann alte *.incomplete-Artefakte behalten,
-        # obwohl der zugehörige Blob inzwischen vollständig existiert.
-        # Solche Dateien dürfen ein Modell nicht als unvollständig markieren.
         incomplete = []
-
         for file in incomplete_candidates:
             base_hash = file.name.split(".", 1)[0]
             completed_blob = file.parent / base_hash
-
             if not completed_blob.exists():
                 incomplete.append(file)
 
         size_bytes = directory_size(directory)
-
         incomplete_bytes = 0
-
         for file in incomplete:
             try:
                 incomplete_bytes += file.stat().st_size
             except OSError:
                 pass
+
+        complete = len(incomplete) == 0
+        repo_name = repo.split("/")[-1]
+
+        exact_matches = []
+        possible_matches = []
+
+        if complete and size_bytes >= 10 * 1024 * 1024:
+            for local in local_models:
+                match = {
+                    "alias": local["alias"],
+                    "path": local["path"],
+                    "size_bytes": local["size_bytes"],
+                    "size": human_size(local["size_bytes"]),
+                }
+
+                if repo in local["exact_repos"]:
+                    match["match"] = "exact"
+                    exact_matches.append(match)
+                elif local["root_name"] == repo_name:
+                    match["match"] = "name"
+                    possible_matches.append(match)
+
+        matches = exact_matches or possible_matches
+        duplicate = bool(exact_matches)
+        possible_duplicate = not duplicate and bool(possible_matches)
+
+        duplicate_size_bytes = 0
+        if duplicate and exact_matches:
+            local_size = max(item["size_bytes"] for item in exact_matches)
+            duplicate_size_bytes = min(size_bytes, local_size) if local_size else size_bytes
 
         result.append({
             "repo": repo,
@@ -1694,14 +1752,18 @@ def load_cache():
             "path": str(directory),
             "size_bytes": size_bytes,
             "size": human_size(size_bytes),
-            "complete": len(incomplete) == 0,
+            "complete": complete,
             "incomplete_files": len(incomplete),
             "incomplete_bytes": incomplete_bytes,
             "incomplete_size": human_size(incomplete_bytes),
+            "duplicate": duplicate,
+            "possible_duplicate": possible_duplicate,
+            "duplicate_size_bytes": duplicate_size_bytes,
+            "duplicate_size": human_size(duplicate_size_bytes),
+            "local_matches": matches,
         })
 
     return result
-
 
 
 @app.get("/api/models/select-folder")
