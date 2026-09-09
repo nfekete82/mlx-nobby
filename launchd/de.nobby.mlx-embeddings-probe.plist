@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.nobby.mlx-embeddings-probe</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/norbertfekete/mlx-web/embedding-venv/bin/python</string>
+    <string>/Users/norbertfekete/mlx-web/scripts/embedding_mlx_probe.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/norbertfekete/mlx-web</string>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/norbertfekete/mlx-web/embedding-probe.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/norbertfekete/mlx-web/embedding-probe-error.log</string>
+</dict>
+</plist>

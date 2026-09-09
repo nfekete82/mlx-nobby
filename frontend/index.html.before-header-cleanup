@@ -1,0 +1,1683 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MLX Control Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<div class="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+
+        <div class="flex items-center gap-6 min-w-0">
+
+            <a
+                href="#dashboard"
+                class="flex items-center gap-3 shrink-0"
+            >
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center font-black text-xs shadow-lg">
+                    MLX
+                </div>
+
+                <div class="hidden sm:block">
+                    <div class="font-bold leading-tight">
+                        MLX
+                    </div>
+
+                    <div class="text-[10px] text-slate-500">
+                        Local AI
+                    </div>
+                </div>
+            </a>
+
+            <nav
+                id="mainNavigation"
+                class="hidden md:flex items-center gap-1"
+            >
+
+                <a
+                    href="#dashboard"
+                    data-view="dashboard"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Dashboard
+                </a>
+
+                <a
+                    href="#models"
+                    data-view="models"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Models
+                </a>
+
+                <a
+                    href="#downloads"
+                    data-view="downloads"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Downloads
+                </a>
+
+                <a
+                    href="#system"
+                    data-view="system"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    System
+                </a>
+
+                <a
+                    href="#logs"
+                    data-view="logs"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Logs
+                </a>
+
+            </nav>
+
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+
+            <a
+                href="/chat"
+                class="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
+            >
+                Chat →
+            </a>
+
+            <div
+                id="globalStatusBadge"
+                class="hidden lg:block px-3 py-2 rounded-full bg-slate-900 border border-slate-800 text-slate-400 text-xs font-semibold"
+            >
+                ● …
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<div class="max-w-6xl mx-auto px-6 py-10">
+
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <div class="flex items-center gap-3">
+
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center font-black text-sm shadow-lg">
+                    MLX
+                </div>
+
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">
+                        MLX Control Center
+                    </h1>
+
+                    <p class="text-slate-400 text-sm mt-0.5">
+                        Local AI Runtime
+                    </p>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+
+            <div id="statusBadge"
+                 class="px-4 py-2 rounded-full bg-slate-800 text-slate-300 text-sm font-semibold">
+                Status wird geladen…
+            </div>
+
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+            <div class="mb-6">
+                <div class="text-sm text-slate-400 mb-2">Aktuelles Modell</div>
+                <div id="model" class="text-xl font-semibold break-all">–</div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">PID</div>
+                    <div id="pid" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">Port</div>
+                    <div id="port" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">RAM</div>
+                    <div id="memory" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">Thinking</div>
+
+                    <div class="flex items-center justify-between mt-2">
+                        <div id="thinking" class="text-xl font-semibold">–</div>
+
+                        <button
+                            id="thinkingToggle"
+                            class="relative inline-flex h-7 w-12 items-center rounded-full bg-slate-700 transition disabled:opacity-40"
+                        >
+                            <span
+                                id="thinkingKnob"
+                                class="inline-block h-5 w-5 transform rounded-full bg-white transition translate-x-1"
+                            ></span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+            <div class="text-sm text-slate-400 mb-4">Server</div>
+            <div id="serverState" class="text-2xl font-bold">–</div>
+
+            <div class="grid grid-cols-2 gap-3 mt-6">
+
+                <button
+                    data-command="start"
+                    class="server-btn bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ▶ Start
+                </button>
+
+                <button
+                    data-command="stop"
+                    class="server-btn bg-red-700 hover:bg-red-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ■ Stop
+                </button>
+
+                <button
+                    data-command="restart"
+                    class="server-btn bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ↻ Restart
+                </button>
+
+                <button
+                    data-command="reset"
+                    class="server-btn bg-amber-700 hover:bg-amber-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    Reset
+                </button>
+
+            </div>
+
+            <div id="actionStatus"
+                 class="text-sm text-slate-400 mt-5 min-h-[24px]">
+            </div>
+
+            <div id="lastUpdate"
+                 class="text-xs text-slate-500 mt-3">
+                –
+            </div>
+
+        </div>
+    </div>
+
+    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="mb-5">
+            <h2 class="text-lg font-semibold">Neues Modell</h2>
+            <p class="text-sm text-slate-400">
+                Alias anlegen und Hugging-Face-Modell herunterladen
+            </p>
+        </div>
+
+        <form id="addModelForm"
+              class="grid grid-cols-1 lg:grid-cols-[220px_1fr_auto] gap-4 items-end">
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Alias
+                </label>
+
+                <input
+                    id="addModelAlias"
+                    type="text"
+                    placeholder="z. B. qwen-coder"
+                    autocomplete="off"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
+                >
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Hugging Face Repository
+                </label>
+
+                <input
+                    id="addModelRepo"
+                    type="text"
+                    placeholder="mlx-community/..."
+                    autocomplete="off"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 font-mono text-sm"
+                >
+            </div>
+
+            <button
+                id="addModelButton"
+                type="submit"
+                class="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-5 py-3 font-semibold whitespace-nowrap"
+            >
+                + Hinzufügen & herunterladen
+            </button>
+
+        </form>
+
+        <div id="addModelStatus"
+             class="text-sm text-slate-400 mt-4 min-h-[22px]">
+        </div>
+
+    </div>
+
+
+    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="flex items-center justify-between mb-5">
+            <div>
+                <h2 class="text-lg font-semibold">Modelle</h2>
+                <p class="text-sm text-slate-400">
+                    Konfigurierte MLX-Aliase
+                </p>
+            </div>
+        </div>
+
+        <div
+            id="models"
+            class="grid grid-cols-1 lg:grid-cols-2 gap-4"
+        >
+            Modelle werden geladen…
+        </div>
+
+    </div>
+    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="flex items-center justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-lg font-semibold">Lokaler Cache</h2>
+                <p class="text-sm text-slate-400">
+                    Hugging-Face-Modelle auf diesem Mac
+                </p>
+            </div>
+
+            <div id="cacheSummary"
+                 class="text-sm text-slate-400">
+                Wird geladen…
+            </div>
+        </div>
+
+        <div id="cacheModels"
+             class="space-y-3">
+            Cache wird geladen…
+        </div>
+
+    </div>
+
+    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="flex items-center justify-between mb-5">
+            <div>
+                <h2 class="text-lg font-semibold">Downloads & Jobs</h2>
+                <p class="text-sm text-slate-400">
+                    Laufende und abgeschlossene Hintergrundaufgaben
+                </p>
+            </div>
+
+            <div id="jobsSummary"
+                 class="text-sm text-slate-400">
+                Wird geladen…
+            </div>
+        </div>
+
+        <div id="jobsContainer"
+             class="space-y-4">
+            Jobs werden geladen…
+        </div>
+
+    </div>
+
+</div>
+
+<div
+    id="extraViews"
+    class="max-w-6xl mx-auto px-6 pb-10"
+>
+
+    <section
+        id="systemViewPlaceholder"
+        data-app-view="system"
+        class="hidden"
+    >
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8">
+
+            <h2 class="text-xl font-semibold">
+                System
+            </h2>
+
+            <p class="text-slate-400 mt-2">
+                Systemmonitor wird im nächsten Schritt eingebaut.
+            </p>
+
+        </div>
+    </section>
+
+
+    <section
+        id="logsViewPlaceholder"
+        data-app-view="logs"
+        class="hidden"
+    >
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8">
+
+            <h2 class="text-xl font-semibold">
+                Logs
+            </h2>
+
+            <p class="text-slate-400 mt-2">
+                Live-Logs werden im nächsten Schritt eingebaut.
+            </p>
+
+        </div>
+    </section>
+
+</div>
+
+<script>
+
+function findSectionByHeading(title) {
+    const headings =
+        Array.from(
+            document.querySelectorAll('h2')
+        );
+
+    const heading =
+        headings.find(
+            item =>
+                item.textContent.trim() === title
+        );
+
+    if (!heading) {
+        return null;
+    }
+
+    let element = heading;
+
+    while (
+        element &&
+        element.parentElement
+    ) {
+        element =
+            element.parentElement;
+
+        if (
+            element.classList &&
+            element.classList.contains('mt-6')
+        ) {
+            return element;
+        }
+    }
+
+    return heading.parentElement;
+}
+
+
+function setupAppViews() {
+
+    /*
+     * Bestehende Bereiche identifizieren.
+     * Kein HTML muss dafür zerstört werden.
+     */
+
+    const addModel =
+        findSectionByHeading(
+            'Neues Modell'
+        );
+
+    const models =
+        findSectionByHeading(
+            'Modelle'
+        );
+
+    const cache =
+        findSectionByHeading(
+            'Lokaler Cache'
+        );
+
+    const downloads =
+        findSectionByHeading(
+            'Downloads & Jobs'
+        );
+
+
+    if (addModel) {
+        addModel.dataset.appView =
+            'models';
+    }
+
+    if (models) {
+        models.dataset.appView =
+            'models';
+    }
+
+    if (cache) {
+        cache.dataset.appView =
+            'models';
+    }
+
+    if (downloads) {
+        downloads.dataset.appView =
+            'downloads';
+    }
+
+
+    /*
+     * Alles vor "Neues Modell" gehört zum Dashboard.
+     */
+
+    if (addModel) {
+
+        let element =
+            addModel.previousElementSibling;
+
+        while (element) {
+
+            if (
+                element.tagName !== 'SCRIPT' &&
+                element.id !== 'extraViews'
+            ) {
+                element.dataset.appView =
+                    'dashboard';
+            }
+
+            element =
+                element.previousElementSibling;
+        }
+    }
+
+
+    showAppView();
+}
+
+
+function currentAppView() {
+
+    const hash =
+        location.hash
+            .replace('#', '')
+            .trim();
+
+    const allowed = new Set([
+        'dashboard',
+        'models',
+        'downloads',
+        'system',
+        'logs'
+    ]);
+
+    if (
+        !hash ||
+        !allowed.has(hash)
+    ) {
+        return 'dashboard';
+    }
+
+    return hash;
+}
+
+
+function showAppView() {
+
+    const view =
+        currentAppView();
+
+
+    document
+        .querySelectorAll(
+            '[data-app-view]'
+        )
+        .forEach(
+            element => {
+
+                const visible =
+                    element.dataset.appView ===
+                    view;
+
+                element.classList.toggle(
+                    'hidden',
+                    !visible
+                );
+            }
+        );
+
+
+    document
+        .querySelectorAll(
+            '.nav-item'
+        )
+        .forEach(
+            item => {
+
+                const active =
+                    item.dataset.view ===
+                    view;
+
+                if (active) {
+                    item.className =
+                        'nav-item px-3 py-2 rounded-lg text-sm font-medium bg-blue-700 text-white';
+
+                } else {
+                    item.className =
+                        'nav-item px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-900';
+                }
+            }
+        );
+}
+
+
+window.addEventListener(
+    'hashchange',
+    showAppView
+);
+
+
+
+let busy = false;
+let currentThinking = false;
+
+function setButtonsDisabled(disabled) {
+    document.querySelectorAll('.server-btn').forEach(button => {
+        button.disabled = disabled;
+    });
+
+    document.getElementById('thinkingToggle').disabled = disabled;
+}
+
+function renderThinking(enabled) {
+    currentThinking = enabled;
+
+    const text = document.getElementById('thinking');
+    const toggle = document.getElementById('thinkingToggle');
+    const knob = document.getElementById('thinkingKnob');
+
+    text.textContent = enabled ? 'ON' : 'OFF';
+
+    if (enabled) {
+        text.className = 'text-xl font-semibold text-emerald-400';
+        toggle.className =
+            'relative inline-flex h-7 w-12 items-center rounded-full bg-emerald-600 transition disabled:opacity-40';
+        knob.className =
+            'inline-block h-5 w-5 transform rounded-full bg-white transition translate-x-6';
+    } else {
+        text.className = 'text-xl font-semibold text-slate-300';
+        toggle.className =
+            'relative inline-flex h-7 w-12 items-center rounded-full bg-slate-700 transition disabled:opacity-40';
+        knob.className =
+            'inline-block h-5 w-5 transform rounded-full bg-white transition translate-x-1';
+    }
+}
+
+async function loadStatus() {
+    try {
+        const response = await fetch('/api/mlx/status');
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+
+        document.getElementById('model').textContent = data.model ?? '–';
+        document.getElementById('pid').textContent = data.pid ?? '–';
+        document.getElementById('port').textContent = data.port ?? '–';
+
+        document.getElementById('memory').textContent =
+            data.memory_mb
+                ? (data.memory_mb / 1024).toFixed(2) + ' GB'
+                : '–';
+
+        renderThinking(!!data.thinking);
+
+        const badge = document.getElementById('statusBadge');
+        const globalBadge = document.getElementById('globalStatusBadge');
+        const state = document.getElementById('serverState');
+
+        if (data.online) {
+            badge.textContent = '● ONLINE';
+
+            if (globalBadge) {
+                globalBadge.textContent =
+                    '● ONLINE';
+
+                globalBadge.className =
+                    'hidden lg:block px-3 py-2 rounded-full bg-emerald-950 border border-emerald-900 text-emerald-400 text-xs font-semibold';
+            }
+            badge.className =
+                'px-4 py-2 rounded-full bg-emerald-950 text-emerald-400 text-sm font-semibold';
+
+            state.textContent = 'MLX läuft';
+            state.className = 'text-2xl font-bold text-emerald-400';
+
+        } else {
+            badge.textContent = '● OFFLINE';
+            badge.className =
+                'px-4 py-2 rounded-full bg-red-950 text-red-400 text-sm font-semibold';
+
+            state.textContent = 'MLX gestoppt';
+            state.className = 'text-2xl font-bold text-red-400';
+        }
+
+        document.getElementById('lastUpdate').textContent =
+            'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+
+    } catch (error) {
+        document.getElementById('statusBadge').textContent = '● AGENT FEHLER';
+        document.getElementById('serverState').textContent = 'Nicht erreichbar';
+    }
+}
+
+
+async function loadModels() {
+    const container = document.getElementById('models');
+
+    try {
+        const response = await fetch('/api/mlx/aliases');
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+
+        container.innerHTML = '';
+
+        for (const model of data.models ?? []) {
+
+            const card = document.createElement('div');
+
+            card.className =
+                'bg-slate-950 border ' +
+                (model.active
+                    ? 'border-emerald-700'
+                    : 'border-slate-800') +
+                ' rounded-2xl p-5';
+
+            const top = document.createElement('div');
+            top.className =
+                'flex items-start justify-between gap-4';
+
+            const info = document.createElement('div');
+            info.className = 'min-w-0';
+
+            const alias = document.createElement('div');
+            alias.className =
+                'text-lg font-semibold';
+
+            alias.textContent = model.alias;
+
+            const repo = document.createElement('div');
+            repo.className =
+                'text-xs text-slate-500 font-mono break-all mt-2';
+
+            repo.textContent = model.repo;
+
+            info.appendChild(alias);
+            info.appendChild(repo);
+
+            top.appendChild(info);
+
+            if (model.active) {
+
+                const badge = document.createElement('div');
+
+                badge.className =
+                    'shrink-0 px-3 py-1 rounded-full bg-emerald-950 text-emerald-400 text-xs font-semibold';
+
+                badge.textContent = '● AKTIV';
+
+                top.appendChild(badge);
+
+            } else {
+
+                const actions = document.createElement('div');
+                actions.className =
+                    'shrink-0 flex items-center gap-2';
+
+                const button = document.createElement('button');
+
+                button.className =
+                    'model-btn bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-4 py-2 text-sm font-semibold';
+
+                button.textContent = 'Starten';
+
+                button.addEventListener('click', () => {
+                    switchModel(model.alias);
+                });
+
+                const removeButton = document.createElement('button');
+
+                removeButton.className =
+                    'remove-model-btn bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-red-300 disabled:opacity-40 rounded-xl px-3 py-2 text-sm font-semibold';
+
+                removeButton.textContent = 'Alias entfernen';
+
+                removeButton.addEventListener('click', () => {
+                    removeModelAlias(
+                        model.alias,
+                        model.repo
+                    );
+                });
+
+                actions.appendChild(button);
+                actions.appendChild(removeButton);
+
+                top.appendChild(actions);
+            }
+
+            card.appendChild(top);
+            container.appendChild(card);
+        }
+
+        if (!data.models || data.models.length === 0) {
+            container.textContent =
+                'Keine Modell-Aliase konfiguriert.';
+        }
+
+    } catch (error) {
+        container.textContent =
+            'Modelle konnten nicht geladen werden.';
+    }
+}
+
+
+async function addModel(alias, repo) {
+    const button =
+        document.getElementById('addModelButton');
+
+    const status =
+        document.getElementById('addModelStatus');
+
+    if (busy) return;
+
+    alias = alias.trim();
+    repo = repo.trim();
+
+    if (!alias) {
+        status.textContent = 'Bitte einen Alias eingeben.';
+        status.className =
+            'text-sm text-amber-400 mt-4 min-h-[22px]';
+        return;
+    }
+
+    if (!repo) {
+        status.textContent =
+            'Bitte ein Hugging-Face-Repository eingeben.';
+
+        status.className =
+            'text-sm text-amber-400 mt-4 min-h-[22px]';
+        return;
+    }
+
+    busy = true;
+    button.disabled = true;
+    setButtonsDisabled(true);
+
+    status.textContent =
+        'Modell wird angelegt und Download gestartet…';
+
+    status.className =
+        'text-sm text-blue-400 mt-4 min-h-[22px]';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/models/add',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    alias: alias,
+                    repo: repo
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ ' + alias +
+            ' hinzugefügt · Downloadjob ' +
+            data.job.id;
+
+        status.className =
+            'text-sm text-emerald-400 mt-4 min-h-[22px]';
+
+        document.getElementById('addModelAlias').value = '';
+        document.getElementById('addModelRepo').value = '';
+
+        await loadModels();
+        await loadJobs();
+        await loadCache();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+        status.className =
+            'text-sm text-red-400 mt-4 min-h-[22px]';
+
+    } finally {
+        busy = false;
+        button.disabled = false;
+        setButtonsDisabled(false);
+    }
+}
+
+
+
+async function removeModelAlias(alias, repo) {
+    if (busy) return;
+
+    const confirmed = confirm(
+        'Alias "' + alias + '" entfernen?\n\n' +
+        repo +
+        '\n\nDer lokale Modell-Cache bleibt erhalten.'
+    );
+
+    if (!confirmed) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    document.querySelectorAll('.model-btn, .remove-model-btn').forEach(button => {
+        button.disabled = true;
+    });
+
+    const status =
+        document.getElementById('actionStatus');
+
+    status.textContent =
+        'Alias ' + alias + ' wird entfernt…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/models/' + encodeURIComponent(alias),
+            {
+                method: 'DELETE'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ Alias ' + alias + ' entfernt';
+
+        await loadModels();
+        await loadCache();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+
+        document.querySelectorAll('.model-btn, .remove-model-btn').forEach(button => {
+            button.disabled = false;
+        });
+    }
+}
+
+
+
+async function switchModel(alias) {
+    if (busy) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    document.querySelectorAll('.model-btn').forEach(button => {
+        button.disabled = true;
+    });
+
+    const status =
+        document.getElementById('actionStatus');
+
+    status.textContent =
+        'Modell ' + alias + ' wird gestartet…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/model/' + encodeURIComponent(alias),
+            {
+                method: 'POST'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ Modell ' + alias + ' aktiv';
+
+        await loadStatus();
+        await loadModels();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+
+        document.querySelectorAll('.model-btn').forEach(button => {
+            button.disabled = false;
+        });
+    }
+}
+
+
+
+async function loadCache() {
+    const container = document.getElementById('cacheModels');
+    const summary = document.getElementById('cacheSummary');
+
+    try {
+        const response = await fetch('/api/mlx/cache');
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+
+        summary.textContent =
+            data.count + ' Einträge · ' +
+            data.complete + ' vollständig · ' +
+            data.incomplete + ' unvollständig';
+
+        container.innerHTML = '';
+
+        for (const model of data.models ?? []) {
+
+            const row = document.createElement('div');
+
+            row.className =
+                'bg-slate-950 border ' +
+                (model.complete
+                    ? 'border-slate-800'
+                    : 'border-amber-700') +
+                ' rounded-xl p-4';
+
+            const top = document.createElement('div');
+            top.className =
+                'flex flex-col md:flex-row md:items-start md:justify-between gap-3';
+
+            const info = document.createElement('div');
+            info.className = 'min-w-0';
+
+            const title = document.createElement('div');
+            title.className =
+                'font-mono text-sm break-all text-slate-200';
+
+            title.textContent = model.repo;
+
+            info.appendChild(title);
+
+            if (model.alias) {
+                const alias = document.createElement('div');
+
+                alias.className =
+                    'text-xs text-blue-400 mt-1';
+
+                alias.textContent =
+                    'Alias: ' + model.alias;
+
+                info.appendChild(alias);
+            }
+
+            const right = document.createElement('div');
+            right.className =
+                'shrink-0 flex items-center gap-3';
+
+            const size = document.createElement('div');
+            size.className =
+                'text-sm font-semibold text-slate-300';
+
+            size.textContent = model.size;
+
+            const badge = document.createElement('div');
+
+            if (model.complete) {
+                badge.className =
+                    'px-3 py-1 rounded-full bg-emerald-950 text-emerald-400 text-xs font-semibold';
+
+                badge.textContent = '✓ LOKAL';
+
+            } else {
+                badge.className =
+                    'px-3 py-1 rounded-full bg-amber-950 text-amber-400 text-xs font-semibold';
+
+                badge.textContent = '⚠ UNVOLLSTÄNDIG';
+            }
+
+            right.appendChild(size);
+            right.appendChild(badge);
+
+            top.appendChild(info);
+            top.appendChild(right);
+
+            row.appendChild(top);
+
+            const cacheActions = document.createElement('div');
+            cacheActions.className =
+                'mt-4 flex flex-wrap items-center gap-3';
+
+            const deleteCacheButton = document.createElement('button');
+
+            deleteCacheButton.className =
+                'delete-cache-btn bg-slate-800 hover:bg-red-900 ' +
+                'text-slate-300 hover:text-red-300 disabled:opacity-40 ' +
+                'disabled:hover:bg-slate-800 disabled:hover:text-slate-300 ' +
+                'rounded-xl px-4 py-2 text-sm font-semibold';
+
+            if (model.active) {
+                deleteCacheButton.textContent = 'Aktives Modell';
+                deleteCacheButton.disabled = true;
+                deleteCacheButton.title =
+                    'Der Cache des aktiven Modells kann nicht gelöscht werden.';
+            } else {
+                deleteCacheButton.textContent = 'Cache löschen';
+
+                deleteCacheButton.addEventListener('click', () => {
+                    deleteModelCache(
+                        model.alias || model.repo,
+                        model.repo,
+                        model.size
+                    );
+                });
+            }
+
+            cacheActions.appendChild(deleteCacheButton);
+
+            if (!model.active) {
+                const redownloadButton = document.createElement('button');
+
+                redownloadButton.className =
+                    'redownload-btn bg-blue-900 hover:bg-blue-800 ' +
+                    'text-blue-300 disabled:opacity-40 rounded-xl ' +
+                    'px-4 py-2 text-sm font-semibold';
+
+                redownloadButton.textContent = 'Neu herunterladen';
+
+                redownloadButton.addEventListener('click', () => {
+                    redownloadModel(
+                        model.alias || model.repo,
+                        model.repo,
+                        model.size
+                    );
+                });
+
+                cacheActions.appendChild(redownloadButton);
+            }
+
+            row.appendChild(cacheActions);
+
+            if (!model.complete) {
+
+                const warning = document.createElement('div');
+
+                warning.className =
+                    'mt-3 text-xs text-amber-400';
+
+                warning.textContent =
+                    model.incomplete_files +
+                    ' unvollständige Dateien · ' +
+                    model.incomplete_size;
+
+                row.appendChild(warning);
+
+                const actions = document.createElement('div');
+                actions.className =
+                    'mt-4 flex items-center gap-3';
+
+                const retryButton = document.createElement('button');
+
+                retryButton.className =
+                    'retry-btn bg-amber-700 hover:bg-amber-600 ' +
+                    'disabled:opacity-40 rounded-xl px-4 py-2 ' +
+                    'text-sm font-semibold';
+
+                retryButton.textContent = '↻ Fortsetzen';
+
+                retryButton.addEventListener('click', () => {
+                    retryDownload(
+                        model.alias || model.repo
+                    );
+                });
+
+                actions.appendChild(retryButton);
+                row.appendChild(actions);
+            }
+
+            container.appendChild(row);
+        }
+
+        if (!data.models || data.models.length === 0) {
+            container.textContent =
+                'Kein Hugging-Face-Cache gefunden.';
+        }
+
+    } catch (error) {
+        summary.textContent = 'Fehler';
+        container.textContent =
+            'Cache konnte nicht geladen werden.';
+    }
+}
+
+
+
+async function loadJobs() {
+    const container = document.getElementById('jobsContainer');
+    const summary = document.getElementById('jobsSummary');
+
+    try {
+        const response = await fetch('/api/mlx/jobs');
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+        const jobs = data.jobs ?? [];
+
+        summary.textContent =
+            jobs.length + (jobs.length === 1 ? ' Job' : ' Jobs');
+
+        container.innerHTML = '';
+
+        if (jobs.length === 0) {
+            container.textContent = 'Keine Jobs vorhanden.';
+            return;
+        }
+
+        for (const job of jobs) {
+
+            const card = document.createElement('div');
+
+            let border = 'border-slate-800';
+            let badgeClass = 'bg-slate-800 text-slate-300';
+            let badgeText = job.status;
+
+            if (job.status === 'running') {
+                border = 'border-blue-700';
+                badgeClass = 'bg-blue-950 text-blue-400';
+                badgeText = '⟳ LÄUFT';
+            }
+
+            if (job.status === 'completed') {
+                border = 'border-emerald-700';
+                badgeClass = 'bg-emerald-950 text-emerald-400';
+                badgeText = '✓ FERTIG';
+            }
+
+            if (job.status === 'failed') {
+                border = 'border-red-700';
+                badgeClass = 'bg-red-950 text-red-400';
+                badgeText = '✕ FEHLER';
+            }
+
+            card.className =
+                'bg-slate-950 border ' + border +
+                ' rounded-2xl p-5';
+
+            const head = document.createElement('div');
+            head.className =
+                'flex flex-col md:flex-row md:items-start md:justify-between gap-3';
+
+            const info = document.createElement('div');
+
+            const title = document.createElement('div');
+            title.className = 'font-semibold';
+
+            title.textContent =
+                job.command + ' · ' + (job.target ?? '–');
+
+            const meta = document.createElement('div');
+            meta.className =
+                'text-xs text-slate-500 mt-1';
+
+            meta.textContent =
+                'Job-ID: ' + job.id +
+                (job.pid ? ' · PID: ' + job.pid : '');
+
+            info.appendChild(title);
+            info.appendChild(meta);
+
+            const badge = document.createElement('div');
+            badge.className =
+                'shrink-0 px-3 py-1 rounded-full text-xs font-semibold ' +
+                badgeClass;
+
+            badge.textContent = badgeText;
+
+            head.appendChild(info);
+            head.appendChild(badge);
+
+            card.appendChild(head);
+
+            if (job.status === 'running') {
+
+                const progressWrap = document.createElement('div');
+
+                progressWrap.className =
+                    'mt-4 h-2 bg-slate-800 rounded-full overflow-hidden';
+
+                const progress = document.createElement('div');
+
+                progress.className =
+                    'h-full w-2/3 bg-blue-500 rounded-full animate-pulse';
+
+                progressWrap.appendChild(progress);
+                card.appendChild(progressWrap);
+
+                const progressText = document.createElement('div');
+
+                progressText.className =
+                    'mt-2 text-xs text-blue-400';
+
+                progressText.textContent =
+                    'Download läuft im Hintergrund…';
+
+                card.appendChild(progressText);
+            }
+
+            if (job.output && job.output.length > 0) {
+                const log = document.createElement('pre');
+
+                log.className =
+                    'mt-4 bg-black/40 border border-slate-800 rounded-xl p-4 ' +
+                    'text-xs text-slate-400 overflow-x-auto max-h-56 overflow-y-auto whitespace-pre-wrap';
+
+                log.textContent =
+                    job.output.slice(-30).join('\n');
+
+                card.appendChild(log);
+            }
+
+            if (job.error) {
+                const error = document.createElement('div');
+
+                error.className =
+                    'mt-3 text-sm text-red-400';
+
+                error.textContent = job.error;
+
+                card.appendChild(error);
+            }
+
+            container.appendChild(card);
+        }
+
+    } catch (error) {
+        summary.textContent = 'Fehler';
+        container.textContent =
+            'Jobs konnten nicht geladen werden.';
+    }
+}
+
+
+
+async function redownloadModel(target, repo, size) {
+    if (busy) return;
+
+    const confirmed = confirm(
+        'Modell wirklich neu herunterladen?\n\n' +
+        repo +
+        '\nAktuelle Cache-Größe: ' + size +
+        '\n\nDer vorhandene Cache wird verworfen und neu geladen.'
+    );
+
+    if (!confirmed) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    document.querySelectorAll(
+        '.redownload-btn, .delete-cache-btn, .retry-btn, .model-btn, .remove-model-btn'
+    ).forEach(button => {
+        button.disabled = true;
+    });
+
+    const status =
+        document.getElementById('actionStatus');
+
+    status.textContent =
+        'Redownload für ' + target + ' wird gestartet…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/jobs/redownload/' + encodeURIComponent(target),
+            {
+                method: 'POST'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ Redownload gestartet · Job ' + data.id;
+
+        await loadJobs();
+        await loadCache();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+
+        document.querySelectorAll(
+            '.redownload-btn, .delete-cache-btn, .retry-btn, .model-btn, .remove-model-btn'
+        ).forEach(button => {
+            button.disabled = false;
+        });
+    }
+}
+
+
+
+async function deleteModelCache(target, repo, size) {
+    if (busy) return;
+
+    const confirmed = confirm(
+        'Lokalen Cache wirklich löschen?\n\n' +
+        repo +
+        '\nGröße: ' + size +
+        '\n\nDer Alias bleibt erhalten.'
+    );
+
+    if (!confirmed) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    document.querySelectorAll(
+        '.delete-cache-btn, .retry-btn, .model-btn, .remove-model-btn'
+    ).forEach(button => {
+        button.disabled = true;
+    });
+
+    const status =
+        document.getElementById('actionStatus');
+
+    status.textContent =
+        'Cache von ' + target + ' wird gelöscht…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/cache/' + encodeURIComponent(target),
+            {
+                method: 'DELETE'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ Cache gelöscht · Alias bleibt erhalten';
+
+        await loadCache();
+        await loadModels();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+
+        document.querySelectorAll(
+            '.delete-cache-btn, .retry-btn, .model-btn, .remove-model-btn'
+        ).forEach(button => {
+            button.disabled = false;
+        });
+    }
+}
+
+
+
+async function retryDownload(target) {
+    if (busy) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    document.querySelectorAll('.retry-btn').forEach(button => {
+        button.disabled = true;
+    });
+
+    const status =
+        document.getElementById('actionStatus');
+
+    status.textContent =
+        'Download ' + target + ' wird fortgesetzt…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/jobs/retry/' + encodeURIComponent(target),
+            {
+                method: 'POST'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data.detail === 'string'
+                    ? data.detail
+                    : JSON.stringify(data.detail)
+            );
+        }
+
+        status.textContent =
+            '✓ Downloadjob gestartet · ' + data.id;
+
+        await loadJobs();
+        await loadCache();
+
+    } catch (error) {
+        status.textContent =
+            'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+
+        document.querySelectorAll('.retry-btn').forEach(button => {
+            button.disabled = false;
+        });
+    }
+}
+
+
+
+async function serverCommand(command) {
+    if (busy) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    const status = document.getElementById('actionStatus');
+    status.textContent = command + ' läuft…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/server/' + command,
+            { method: 'POST' }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(JSON.stringify(data.detail));
+        }
+
+        status.textContent = '✓ ' + command + ' erfolgreich';
+
+        await loadStatus();
+        await loadModels();
+
+    } catch (error) {
+        status.textContent = 'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+    }
+}
+
+async function toggleThinking() {
+    if (busy) return;
+
+    busy = true;
+    setButtonsDisabled(true);
+
+    const target = currentThinking ? 'off' : 'on';
+    const status = document.getElementById('actionStatus');
+
+    status.textContent =
+        'Thinking wird ' + (target === 'on' ? 'aktiviert' : 'deaktiviert') + '…';
+
+    try {
+        const response = await fetch(
+            '/api/mlx/thinking/' + target,
+            { method: 'POST' }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(JSON.stringify(data.detail));
+        }
+
+        status.textContent =
+            '✓ Thinking ' + (target === 'on' ? 'aktiviert' : 'deaktiviert');
+
+        await loadStatus();
+        await loadModels();
+
+    } catch (error) {
+        status.textContent = 'Fehler: ' + error.message;
+
+    } finally {
+        busy = false;
+        setButtonsDisabled(false);
+    }
+}
+
+document.getElementById('addModelForm').addEventListener(
+    'submit',
+    event => {
+        event.preventDefault();
+
+        addModel(
+            document.getElementById('addModelAlias').value,
+            document.getElementById('addModelRepo').value
+        );
+    }
+);
+
+
+
+document.querySelectorAll('.server-btn').forEach(button => {
+    button.addEventListener('click', () => {
+        serverCommand(button.dataset.command);
+    });
+});
+
+document.getElementById('thinkingToggle').addEventListener(
+    'click',
+    toggleThinking
+);
+
+setupAppViews();
+
+loadStatus();
+loadModels();
+loadCache();
+loadJobs();
+
+setInterval(() => {
+    if (!busy) {
+        loadStatus();
+        loadJobs();
+        loadCache();
+    }
+}, 3000);
+
+</script>
+
+</body>
+</html>

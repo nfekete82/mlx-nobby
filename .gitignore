@@ -1,0 +1,106 @@
+# ==========================================
+# NobbyMLX - local/private/runtime files
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+*-venv/
+*venv*/
+agent-venv/
+embedding-venv/
+image-venv/
+image-venv-python313-backup-*/
+speech-venv/
+
+# Runtime
+*.log
+*.pid
+*.sock
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*credentials*
+*secret*
+
+# Local databases
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Model/data caches
+.cache/
+cache/
+models/
+Models/
+huggingface/
+.huggingface/
+
+# Generated/local user data
+uploads/
+downloads/
+generated/
+outputs/
+tmp/
+temp/
+
+# Local/private notes and knowledge data
+notes/
+private/
+knowledge/
+knowledge_base/
+rag-data/
+rag_data/
+
+# Backups created during development
+*.bak
+*.backup*
+*.orig
+*~
+backup-*/
+backups/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc runtime/test artifacts
+agent-e2e-test.txt
+test-controlled.txt
+test-batch.transformed.sql
+
+# Additional timestamped/labelled development backups
+*.bak-*
+*.backup-*
+*.structural-refactor.bak
+*.common-refactor.bak
+*.global-chat-settings.bak
+*.system-prompt-presets.bak
+*.session-export-import.bak
+*.model-switching.bak
+*.orchestration-refactor.bak
+*.chat-persistence.bak
+*.per-chat-generation-params.bak
+*.runtime-info-popover.bak
