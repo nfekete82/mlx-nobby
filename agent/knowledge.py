@@ -123,24 +123,154 @@ def status():
     con=_db(); sources=[dict(r) for r in con.execute("SELECT source_id,name,root_path,last_indexed_at,enabled FROM knowledge_sources ORDER BY name")]; docs=con.execute("SELECT count(*) FROM knowledge_documents").fetchone()[0]; chunks=con.execute("SELECT count(*) FROM knowledge_chunks").fetchone()[0]; con.close()
     return {"sources":sources,"documents":docs,"chunks":chunks,"embedding":embedding_health(),"mode":"hybrid" if embedding_health() else "fts_fallback"}
 
+def _fts_query(query):
+    terms = re.findall(r"\w+", str(query or ""), flags=re.UNICODE)
+    terms = [term for term in terms if len(term) >= 2]
+
+    if not terms:
+        return ""
+
+    quoted = [
+        f'"{term.replace(chr(34), chr(34) * 2)}"'
+        for term in terms
+    ]
+
+    return " OR ".join(quoted)
+
+
 def search(query, scope=None, limit=6):
-    con=_db(); tokens=" ".join(re.findall(r"[\w.-]+",query)); params=[tokens]; where=""; 
-    if scope: where=" AND s.name LIKE ?"; params.append("%"+scope+"%")
-    fts=con.execute("SELECT c.chunk_id,c.content,c.start_line,c.end_line,c.symbol,d.relative_path,s.name FROM knowledge_fts f JOIN knowledge_chunks c ON c.chunk_id=f.chunk_id JOIN knowledge_documents d ON d.document_id=c.document_id JOIN knowledge_sources s ON s.source_id=d.source_id WHERE knowledge_fts MATCH ?"+where+" ORDER BY bm25(knowledge_fts) LIMIT 12",params).fetchall()
-    mode="fts_fallback"; ranked={r["chunk_id"]:(i+1,r) for i,r in enumerate(fts)}
-    health=embedding_health()
+    con = _db()
+    fts_query = _fts_query(query)
+
+    fts = []
+    if fts_query:
+        try:
+            params = [fts_query]
+            where = ""
+
+            if scope:
+                where = " AND s.name LIKE ?"
+                params.append("%" + scope + "%")
+
+            fts = con.execute(
+                "SELECT "
+                "c.chunk_id,c.content,c.start_line,c.end_line,c.symbol,"
+                "d.relative_path,s.name "
+                "FROM knowledge_fts f "
+                "JOIN knowledge_chunks c ON c.chunk_id=f.chunk_id "
+                "JOIN knowledge_documents d ON d.document_id=c.document_id "
+                "JOIN knowledge_sources s ON s.source_id=d.source_id "
+                "WHERE knowledge_fts MATCH ?"
+                + where +
+                " ORDER BY bm25(knowledge_fts) LIMIT 12",
+                params,
+            ).fetchall()
+        except sqlite3.OperationalError:
+            fts = []
+
+    mode = "fts_fallback"
+    ranked = {
+        r["chunk_id"]: (i + 1, r)
+        for i, r in enumerate(fts)
+    }
+
+    health = embedding_health()
+    sims = []
+    similarity_by_id = {}
+
     if health:
         try:
-            q=_request("/embedding",{"text":query})["vectors"][0]; rows=con.execute("SELECT c.chunk_id,c.content,c.start_line,c.end_line,c.symbol,d.relative_path,s.name,e.vector FROM knowledge_embeddings e JOIN knowledge_chunks c ON c.chunk_id=e.chunk_id JOIN knowledge_documents d ON d.document_id=c.document_id JOIN knowledge_sources s ON s.source_id=d.source_id"+ (" WHERE s.name LIKE ?" if scope else ""),(["%"+scope+"%"] if scope else [])).fetchall(); sims=sorted(((sum(a*b for a,b in zip(q,_unpack(r["vector"]))),r) for r in rows),reverse=True,key=lambda x:x[0])[:12]
-            for i,(_,r) in enumerate(sims): ranked[r["chunk_id"]]=(ranked.get(r["chunk_id"],(999,r))[0],r) if r["chunk_id"] in ranked else (999,r)
-            scores={};
-            for i,r in enumerate(fts): scores[r["chunk_id"]]=scores.get(r["chunk_id"],0)+1/(60+i+1)
-            for i,(_,r) in enumerate(sims): scores[r["chunk_id"]]=scores.get(r["chunk_id"],0)+1/(60+i+1)
-            ordered=sorted((ranked[k][1] for k in scores),key=lambda r:scores[r["chunk_id"]],reverse=True); mode="hybrid"
-        except Exception: ordered=list(fts)
-    else: ordered=list(fts)
-    results=[{"source":r["name"],"path":r["relative_path"],"start_line":r["start_line"],"end_line":r["end_line"],"symbol":r["symbol"],"snippet":r["content"][:700]} for r in ordered[:limit]]; con.close()
-    return {"mode":mode,"query":query,"scope":scope,"results":results}
+            q = _request(
+                "/embedding",
+                {"text": query},
+            )["vectors"][0]
+
+            rows = con.execute(
+                "SELECT "
+                "c.chunk_id,c.content,c.start_line,c.end_line,c.symbol,"
+                "d.relative_path,s.name,e.vector "
+                "FROM knowledge_embeddings e "
+                "JOIN knowledge_chunks c ON c.chunk_id=e.chunk_id "
+                "JOIN knowledge_documents d ON d.document_id=c.document_id "
+                "JOIN knowledge_sources s ON s.source_id=d.source_id"
+                + (" WHERE s.name LIKE ?" if scope else ""),
+                (["%" + scope + "%"] if scope else []),
+            ).fetchall()
+
+            sims = sorted(
+                (
+                    (
+                        sum(
+                            a * b
+                            for a, b in zip(
+                                q,
+                                _unpack(r["vector"]),
+                            )
+                        ),
+                        r,
+                    )
+                    for r in rows
+                ),
+                reverse=True,
+                key=lambda x: x[0],
+            )[:12]
+
+            for similarity, r in sims:
+                similarity_by_id[r["chunk_id"]] = float(similarity)
+
+            scores = {}
+
+            for i, r in enumerate(fts):
+                scores[r["chunk_id"]] = (
+                    scores.get(r["chunk_id"], 0)
+                    + 1 / (60 + i + 1)
+                )
+
+            for i, (_, r) in enumerate(sims):
+                scores[r["chunk_id"]] = (
+                    scores.get(r["chunk_id"], 0)
+                    + 1 / (60 + i + 1)
+                )
+                ranked.setdefault(
+                    r["chunk_id"],
+                    (999, r),
+                )
+
+            ordered = sorted(
+                (ranked[k][1] for k in scores),
+                key=lambda r: scores[r["chunk_id"]],
+                reverse=True,
+            )
+
+            mode = "hybrid" if fts else "vector"
+
+        except Exception:
+            ordered = list(fts)
+
+    else:
+        ordered = list(fts)
+
+    results = [
+        {
+            "source": r["name"],
+            "path": r["relative_path"],
+            "start_line": r["start_line"],
+            "end_line": r["end_line"],
+            "symbol": r["symbol"],
+            "snippet": r["content"][:700],
+            "similarity": similarity_by_id.get(r["chunk_id"]),
+        }
+        for r in ordered[:limit]
+    ]
+
+    con.close()
+
+    return {
+        "mode": mode,
+        "query": query,
+        "scope": scope,
+        "results": results,
+    }
 
 
 # ============================================================

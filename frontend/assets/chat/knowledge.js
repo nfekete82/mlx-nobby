@@ -126,6 +126,55 @@
         }
     }
 
+    async function selectKnowledgeFolder() {
+        const pathInput = $('knowledgePath');
+        const nameInput = $('knowledgeName');
+        const result = $('knowledgeIndexResult');
+        const button = $('knowledgeSelectFolder');
+
+        if (!pathInput || !button) return;
+
+        button.disabled = true;
+
+        if (result) {
+            result.textContent = 'Ordnerauswahl geöffnet …';
+        }
+
+        try {
+            const data = await request(
+                '/api/mlx/knowledge/select-folder'
+            );
+
+            if (data.cancelled) {
+                if (result) result.textContent = '';
+                return;
+            }
+
+            if (data.path) {
+                pathInput.value = data.path;
+            }
+
+            if (
+                nameInput &&
+                !nameInput.value.trim() &&
+                data.name
+            ) {
+                nameInput.value = data.name;
+            }
+
+            if (result) {
+                result.textContent = '✓ Ordner ausgewählt';
+            }
+        } catch (error) {
+            if (result) {
+                result.textContent =
+                    'Auswahl fehlgeschlagen: ' + error.message;
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
     async function indexSource() {
         const path = $('knowledgePath')?.value.trim();
         const name = $('knowledgeName')?.value.trim();
@@ -252,6 +301,9 @@
     }
 
     function init() {
+        $('knowledgeSelectFolder')
+            ?.addEventListener('click', selectKnowledgeFolder);
+
         $('knowledgeIndex')
             ?.addEventListener('click', indexSource);
 

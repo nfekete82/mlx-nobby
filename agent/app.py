@@ -3807,6 +3807,10 @@ MLX_CAPABILITY_MODEL = {
         "description": "Komplexe mehrstufige Aufgaben über mehrere lokale Fähigkeiten hinweg planen und ausführen",
         "access": "READ automatisch; Änderungen nur über bestehende Approval-Workflows",
     },
+    "knowledge_search": {
+        "description": "Lokale Wissensbasis nach bereits indexiertem eigenem Wissen, Dokumentation und Fakten durchsuchen",
+        "access": "READ/local knowledge",
+    },
     "web_search": {
         "description": "Eine schnelle aktuelle Websuche durchführen",
         "access": "READ/Research",
@@ -3933,8 +3937,19 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         return "knowledge_add"
     if any(word in value for word in ("wie viele dateien", "knowledge status", "status der wissensbasis")):
         return "knowledge_status"
-    if any(word in value for word in ("wissensbasis", "knowledge", "suche in meiner", "wo wird ")):
-        return "code_search" if code_workspaces.list_workspaces() else "knowledge_search"
+    if any(
+        marker in value
+        for marker in (
+            "wissensbasis",
+            "knowledge base",
+            "knowledge-base",
+            "lokales wissen",
+            "lokale wissensbasis",
+            "suche in meiner wissensbasis",
+            "suche in der wissensbasis",
+        )
+    ):
+        return "knowledge_search"
     if file_context and any(word in value for word in ("anonymis", "entfern", "bereinig", "ersetz", "änder", "aender", "transformier")):
         return "file_transform"
     if file_context and any(word in value for word in ("fass", "zusammenfass")):
@@ -3946,30 +3961,31 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     if file_context and any(word in value for word in ("prüf", "pruef", "struktur", "felder", "datensätz", "datensaetz", "zeitraum", "was ist")):
         return "file_inspect"
     model_list_request = any(
-        word in value
-        for word in (
-            "welches modell",
-            "modelle",
-            "modell läuft",
-            "modell laeuft",
+        phrase in value
+        for phrase in (
+            "welches modell läuft",
+            "welches modell laeuft",
+            "welches modell ist aktiv",
+            "welches modell ist geladen",
+            "welche modelle sind installiert",
+            "welche modelle installiert",
+            "welche modelle sind verfügbar",
+            "welche modelle sind verfuegbar",
+            "welche modelle sind vorhanden",
+            "welche modelle sind geladen",
+            "zeig mir die modelle",
+            "zeige mir die modelle",
+            "liste die modelle",
+            "modellliste",
+            "modellstatus",
+            "aktives modell",
+            "aktive modell",
         )
     )
-    local_code_model_context = any(
-        word in value
-        for word in (
-            "code",
-            "quellcode",
-            "workspace",
-            "repository",
-            "repo",
-            "projekt",
-            "datei",
-            "konfiguriert",
-            "konfiguration",
-        )
-    )
-    if model_list_request and not local_code_model_context:
+
+    if model_list_request:
         return "model_list"
+
     if any(word in value for word in ("thinking an", "thinking ein", "thinking on")):
         return "thinking_on"
     if any(word in value for word in ("thinking aus", "thinking off")):
@@ -4496,6 +4512,16 @@ Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
 - Eine Erklärung, wie der Nutzer selbst etwas prüfen kann, gehört zu normal_chat.
 - Eine gewünschte Änderung im eigenen Projekt gehört zum coding_agent.
 - Eine Wissensfrage über Programmierung gehört zu normal_chat.
+- knowledge_search ist für Fragen über Informationen gedacht, die in der lokalen
+  Wissensbasis von MLX Nobby indexiert sein können.
+- Fragen über die eigene NobbyMLX-Architektur, lokale Dokumentation,
+  Konfiguration oder zuvor indexiertes Wissen gehören zu knowledge_search.
+- Fragen nach lokalen NobbyMLX-Diensten, deren Ports, verwendeten Modellen,
+  Router, Embeddings, Speech- oder Image-Diensten gehören zu knowledge_search,
+  solange keine aktuelle Systemdiagnose oder Statusprüfung verlangt wird.
+- Verwende knowledge_search NICHT für allgemeines Weltwissen.
+- Verwende web_search statt knowledge_search, wenn ausdrücklich aktuelle oder
+  externe Informationen aus dem Internet benötigt werden.
 - Medizinische, persönliche oder zwischenmenschliche Fragen gehören zu
   normal_chat. Das Wort "diagnostiziert" ist keine technische Systemdiagnose.
 - Zeichenfolgen innerhalb längerer Wörter sind keine Absichtssignale. Zum
@@ -6028,6 +6054,66 @@ def code_revert(patch_id: str):
     try: return code_workspaces.revert(patch_id)
     except ValueError as exc: raise code_http_error(exc)
 
+
+@app.get("/api/knowledge/select-folder")
+def knowledge_select_folder():
+    if sys.platform != "darwin":
+        raise HTTPException(
+            status_code=501,
+            detail="Die Ordnerauswahl wird derzeit nur unter macOS unterstützt.",
+        )
+
+    script = """
+    try
+        set selectedFolder to choose folder with prompt "Wissensquelle auswählen"
+        return POSIX path of selectedFolder
+    on error number -128
+        return ""
+    end try
+    """
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Ordnerauswahl wurde nicht abgeschlossen.",
+        ) from exc
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=result.stderr.strip() or "Ordnerauswahl fehlgeschlagen.",
+        )
+
+    path = result.stdout.strip()
+
+    if not path:
+        return {
+            "cancelled": True,
+            "path": None,
+        }
+
+    folder = Path(path).expanduser().resolve()
+
+    if not folder.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="Der ausgewählte Pfad ist kein Ordner.",
+        )
+
+    return {
+        "cancelled": False,
+        "path": str(folder),
+        "name": folder.name,
+    }
+
+
 @app.get("/api/knowledge/status")
 def knowledge_status(): return knowledge.status()
 
@@ -6098,6 +6184,30 @@ def _semantic_agent_route_allowed(
         return deterministic == "orchestrator"
 
     return False
+
+
+@app.post("/api/chat/route")
+def route_chat_action(request: ChatActionRequest):
+    direct = _direct_chat_action(
+        request.prompt,
+        request.file_context,
+        request.conversation_context,
+    )
+
+    if direct is not None:
+        return {
+            "intent": direct,
+            "confidence": 1.0,
+            "requires_tools": direct != "normal_chat",
+            "reason": "Eindeutige deterministische Route",
+            "method": "deterministic_direct",
+        }
+
+    return classify_chat_action_details(
+        request.prompt,
+        request.file_context,
+        request.conversation_context,
+    )
 
 
 @app.post("/api/chat/actions")

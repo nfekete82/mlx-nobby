@@ -4980,3 +4980,25 @@ body > * {
         align-items: flex-start;
     }
 }
+
+.knowledge-path-picker {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.knowledge-path-picker input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.knowledge-path-picker .settings-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .knowledge-path-picker {
+        flex-direction: column;
+    }
+}

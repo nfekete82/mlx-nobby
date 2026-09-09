@@ -1447,6 +1447,26 @@ const imageFiles =
                 return;
             }
 
+            if (
+                toolResult.tool === 'knowledge_search' &&
+                toolResult.status === 'completed'
+            ) {
+                if (pendingImageMessage) {
+                    const pendingIndex =
+                        session.messages.indexOf(pendingImageMessage);
+
+                    if (pendingIndex >= 0) {
+                        session.messages.splice(pendingIndex, 1);
+                    }
+                }
+
+                await generateAssistant(
+                    session
+                );
+
+                return;
+            }
+
             if (toolResult.tool !== 'normal_chat') {
                 if (pendingImageMessage) {
                     const pendingIndex = session.messages.indexOf(pendingImageMessage);
