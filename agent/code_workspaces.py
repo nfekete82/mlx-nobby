@@ -284,8 +284,155 @@ def list_files(workspace_id,query=None,limit=200):
         "files":results,
     }
 
-def search(workspace_id,query):
-    item=_workspace(workspace_id); result=knowledge.search(query,item['name']); result['workspace_id']=workspace_id; return result
+def search(workspace_id, query, limit=100):
+    item = _workspace(workspace_id)
+    root = _root(item)
+
+    query = str(query or "").strip()
+    if not query:
+        raise ValueError("SEARCH_QUERY_REQUIRED")
+
+    query_lower = query.lower()
+    terms = [
+        term
+        for term in re.split(r"\s+", query_lower)
+        if term
+    ]
+
+    symbol_terms = [
+        term
+        for term in terms
+        if re.fullmatch(r"[a-z_][a-z0-9_]*", term)
+    ]
+
+    multi_symbol_query = (
+        len(terms) > 1
+        and len(symbol_terms) == len(terms)
+    )
+
+    text_suffixes = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".php",
+        ".html", ".css", ".json", ".md", ".txt",
+        ".yaml", ".yml", ".sh", ".sql",
+    }
+
+    results = []
+
+    for base, dirs, names in os.walk(root):
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in IGNORE
+        ]
+
+        for name in names:
+            path = Path(base) / name
+
+            try:
+                safe = _safe(item, path)
+            except ValueError:
+                continue
+
+            if safe.suffix.lower() not in text_suffixes:
+                continue
+
+            try:
+                if safe.stat().st_size > 2 * 1024 * 1024:
+                    continue
+
+                text = safe.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except (OSError, UnicodeError):
+                continue
+
+            rel = _rel(item, safe)
+            rel_lower = rel.lower()
+
+            for line_number, line in enumerate(
+                text.splitlines(),
+                start=1,
+            ):
+                line_lower = line.lower()
+
+                exact_match = query_lower in line_lower
+
+                if multi_symbol_query:
+                    matched_symbols = [
+                        term
+                        for term in symbol_terms
+                        if term in line_lower
+                    ]
+                    term_match = bool(matched_symbols)
+                else:
+                    matched_symbols = []
+                    term_match = (
+                        terms
+                        and all(term in line_lower for term in terms)
+                    )
+
+                path_match = query_lower in rel_lower
+
+                if not (
+                    exact_match
+                    or term_match
+                    or path_match
+                ):
+                    continue
+
+                results.append({
+                    "path": rel,
+                    "line": line_number,
+                    "snippet": line.strip()[:500],
+                    "match": (
+                        "exact"
+                        if exact_match
+                        else "symbol"
+                        if multi_symbol_query and term_match
+                        else "terms"
+                        if term_match
+                        else "path"
+                    ),
+                    "matched_terms": (
+                        matched_symbols
+                        if multi_symbol_query and term_match
+                        else None
+                    ),
+                })
+
+                if len(results) >= int(limit):
+                    return {
+                        "workspace_id": workspace_id,
+                        "query": query,
+                        "results": results,
+                        "count": len(results),
+                        "truncated": True,
+                    }
+
+                if path_match and not (
+                    exact_match or term_match
+                ):
+                    break
+
+    results.sort(
+        key=lambda item: (
+            0 if item["match"] == "exact" else
+            1 if item["match"] == "symbol" else
+            2 if item["match"] == "terms" else
+            3,
+            item["path"],
+            item["line"],
+        )
+    )
+
+    return {
+        "workspace_id": workspace_id,
+        "query": query,
+        "results": results,
+        "count": len(results),
+        "truncated": False,
+    }
 def _write_patch(patch):
     PATCHES.mkdir(parents=True, exist_ok=True)
     _patch_path(patch["patch_id"]).write_text(

@@ -9603,7 +9603,15 @@ def normalize_agent_conversation_context(context):
 def compact_agent_observations(observations):
     """Keep iterative planning useful without reloading whole projects."""
     compact=[]
+    internal_actions = {
+        "code_read_search_anchor",
+        "code_read_pagination",
+    }
+
     for observation in observations:
+        if observation.get("action") in internal_actions:
+            continue
+
         entry=dict(observation)
         result=entry.get("result")
         if not isinstance(result, dict):
@@ -9772,6 +9780,40 @@ Bei Coding-Aufträgen gilt zwingend:
     benötigte Bilder, Fonts, PDFs oder Archive transparent.
 18. Nach freigegebenem code_apply wird die vorhandene verify_change-Prüfung
     ausgeführt; melde Erfolg nur bei verified=true.
+
+19. EVIDENCE-GRUNDREGEL: Behaupte einen Defekt, eine Schwäche, ein fehlendes
+    Sicherheitsmerkmal oder ein Robustheitsproblem nur dann als Tatsache,
+    wenn es durch tatsächlich gelesenen Code direkt belegt ist.
+
+20. Wenn eine Schlussfolgerung von einem Caller, Helper, einer Konfiguration,
+    einem externen Kommando oder anderem noch nicht gelesenen Code abhängt,
+    untersuche diese Evidence zuerst mit code_search/code_read. Falls sie
+    innerhalb des Auftrags nicht verifiziert werden kann, kennzeichne die
+    Aussage ausdrücklich als unbestätigt oder mögliche Fragestellung.
+
+21. Schließe niemals allein aus dem Fehlen einer Funktionalität im aktuell
+    gelesenen Ausschnitt, dass diese Funktionalität im Gesamtsystem fehlt.
+
+22. Trenne in Analyse und finaler Antwort strikt zwischen:
+    - direkt beobachteten Fakten,
+    - daraus abgeleiteten Schlussfolgerungen,
+    - unbestätigten Risiken,
+    - optionalen Empfehlungen.
+
+23. Generische Best Practices sind keine nachgewiesenen Defekte. Empfehle
+    Logging, Rollback, Backoff, Health-Checks, Prozessüberwachung,
+    Idempotenz, zusätzliche Validierung oder ähnliche Maßnahmen nur dann
+    als konkrete Verbesserung, wenn die gelesene Evidence einen relevanten
+    Schwachpunkt dafür zeigt.
+
+24. Bevor du fehlendes Locking, fehlende Validierung, fehlende
+    Fehlerbehandlung, fehlende Health-Checks, fehlenden Rollback,
+    fehlende Prozessüberwachung oder fehlende Idempotenz behauptest,
+    suche gezielt nach relevanten Callern, Helpern und Kontrollpfaden.
+
+25. Widersprich niemals bereits gelesener Evidence. Wenn neue Evidence eine
+    frühere Annahme widerlegt, verwirf die Annahme und verwende ausschließlich
+    den verifizierten Stand in der finalen Antwort.
 """.strip()
     elif mode == "orchestrator":
         role_context = """
@@ -10097,7 +10139,7 @@ Bei allgemeinen Systemdiagnosen:
                 ),
             },
         ],
-        max_tokens=12000 if coding_mode else 1000,
+        max_tokens=1600 if coding_mode else 1000,
         temperature=0.05,
     )
 
@@ -11791,6 +11833,12 @@ def run_agent_v2(
                     observations,
                 )
 
+            elif mode == "coding":
+                final_answer = agent_v2_final_answer(
+                    goal,
+                    observations,
+                )
+
             else:
                 final_answer = str(
                     decision.get("answer", "")
@@ -12082,6 +12130,19 @@ def run_agent_v2(
                     "error": str(exc),
                 })
 
+            publish("running", observations[-1])
+            continue
+
+        if not action:
+            observations.append({
+                "step": step,
+                "action": "planner_invalid_action",
+                "status": "rejected",
+                "reason": (
+                    "Planner hat keine gültige action geliefert. "
+                    "Wähle ein verfügbares Tool oder final."
+                ),
+            })
             publish("running", observations[-1])
             continue
 
@@ -12382,6 +12443,163 @@ def run_agent_v2(
                 )
 
                 continue
+
+        # -------------------------------------------------
+        # Deterministisches code_search -> code_read Targeting
+        # -------------------------------------------------
+        # Wenn das Modell nach einem erfolgreichen code_search nur den
+        # nackten Dateipfad lesen will, nutzen wir einen exakten Treffer
+        # aus der letzten passenden Suche als Zeilenanker.
+        #
+        # Dadurch wird aus:
+        #   code_search -> agent/app.py:6325
+        #   code_read   -> agent/app.py
+        #
+        # direkt ein gezielter Read um die Fundstelle, statt bei Zeile 1
+        # zu beginnen und anschließend linear zu paginieren.
+        if action == "code_read" and query:
+            requested_query = str(query).strip()
+
+            if not re.search(r":\d+(?:-\d+)?$", requested_query):
+                anchored_line = None
+
+                for item in reversed(observations):
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("status") != "completed":
+                        continue
+                    if item.get("action") != "code_search":
+                        continue
+
+                    result = item.get("result")
+                    if not isinstance(result, dict):
+                        continue
+
+                    results = result.get("results")
+                    if not isinstance(results, list):
+                        continue
+
+                    matching_hits = [
+                        hit
+                        for hit in results
+                        if isinstance(hit, dict)
+                        and str(hit.get("path") or "").strip() == requested_query
+                        and str(hit.get("match") or "").strip()
+                        in {"exact", "symbol"}
+                    ]
+
+                    definition_hits = [
+                        hit
+                        for hit in matching_hits
+                        if re.match(
+                            r"^(?:async\s+)?(?:def|class)\s+",
+                            str(hit.get("snippet") or "").strip(),
+                        )
+                    ]
+
+                    candidate_hits = definition_hits or matching_hits
+
+                    for hit in candidate_hits:
+                        try:
+                            line = int(hit.get("line"))
+                        except (TypeError, ValueError):
+                            continue
+
+                        if line > 0:
+                            anchored_line = line
+                            break
+
+                    if anchored_line is not None:
+                        break
+
+                if anchored_line is not None:
+                    anchor_start = max(1, anchored_line - 60)
+                    anchor_end = anchored_line + 120
+                    query = (
+                        f"{requested_query}:"
+                        f"{anchor_start}-{anchor_end}"
+                    )
+
+                    observations.append({
+                        "step": step,
+                        "action": "code_read_search_anchor",
+                        "status": "completed",
+                        "reason": (
+                            "Nackter code_read wurde automatisch auf einen "
+                            "exakten Treffer aus der vorherigen code_search "
+                            "zentriert."
+                        ),
+                        "original_query": requested_query,
+                        "anchor_line": anchored_line,
+                        "query": query,
+                    })
+
+                    publish(
+                        "running",
+                        observations[-1],
+                    )
+
+        # -------------------------------------------------
+        # Deterministische code_read-Pagination
+        # -------------------------------------------------
+        # Lokale Modelle vergessen gelegentlich, beim Weiterlesen
+        # einen neuen Zeilenbereich anzugeben und fordern stattdessen
+        # denselben nackten Dateipfad erneut an.
+        #
+        # Wenn genau dieser Pfad bereits erfolgreich gelesen wurde,
+        # setzen wir automatisch hinter dem zuletzt gelesenen Bereich
+        # fort. Dadurch funktioniert progressives Lesen auch dann
+        # zuverlässig, wenn das Modell die Prompt-Regel missachtet.
+        if action == "code_read" and query:
+            requested_query = str(query).strip()
+
+            if not re.search(r":\d+(?:-\d+)?$", requested_query):
+                previous_reads = [
+                    item
+                    for item in observations
+                    if isinstance(item, dict)
+                    and item.get("status") == "completed"
+                    and item.get("action") == "code_read"
+                    and isinstance(item.get("result"), dict)
+                    and str(
+                        item.get("result", {}).get("path") or ""
+                    ).strip() == requested_query
+                ]
+
+                if previous_reads:
+                    last_read = previous_reads[-1]
+                    last_result = last_read.get("result") or {}
+
+                    try:
+                        last_end = int(last_result.get("end_line"))
+                    except (TypeError, ValueError):
+                        last_end = 0
+
+                    if last_end > 0:
+                        next_start = last_end + 1
+                        next_end = next_start + 240
+                        query = (
+                            f"{requested_query}:"
+                            f"{next_start}-{next_end}"
+                        )
+
+                        observations.append({
+                            "step": step,
+                            "action": "code_read_pagination",
+                            "status": "completed",
+                            "reason": (
+                                "Identischer code_read ohne Zeilenbereich "
+                                "wurde automatisch auf den nächsten "
+                                "Dateibereich fortgesetzt."
+                            ),
+                            "original_query": requested_query,
+                            "query": query,
+                        })
+
+                        publish(
+                            "running",
+                            observations[-1],
+                        )
 
         # -------------------------------------------------
         # Repeat- / Loop-Guard für Agent-Tool-Aufrufe
