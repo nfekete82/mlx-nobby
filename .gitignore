@@ -104,3 +104,7 @@ test-batch.transformed.sql
 *.chat-persistence.bak
 *.per-chat-generation-params.bak
 *.runtime-info-popover.bak
+
+# Pre-refactor/manual snapshots
+*.before-*
+*.pre-*
