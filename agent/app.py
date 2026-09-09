@@ -885,23 +885,37 @@ def load_config():
     return config
 
 
-def find_server_pid():
-    result = subprocess.run(
-        ["pgrep", "-f", "mlx_lm.server"],
-        capture_output=True,
-        text=True,
-    )
+def find_server_pid(port: int = 8000):
+    """
+    Return the PID of the process listening on the configured MLX port.
+
+    Works for both mlx_lm.server and mlx_vlm server runtimes.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "lsof",
+                "-nP",
+                f"-iTCP:{int(port)}",
+                "-sTCP:LISTEN",
+                "-t",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
 
     if result.returncode != 0:
         return None
 
-    pids = [
-        int(pid)
-        for pid in result.stdout.splitlines()
-        if pid.strip().isdigit()
-    ]
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            return int(line)
 
-    return pids[0] if pids else None
+    return None
 
 
 def system_memory_info():
@@ -1517,7 +1531,7 @@ def status():
     port = int(config.get("PORT", "8000"))
     thinking = config.get("THINKING", "false").lower() == "true"
 
-    pid = find_server_pid()
+    pid = find_server_pid(port)
     online = mlx_api_online(port)
 
     return {
