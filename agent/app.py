@@ -1586,6 +1586,179 @@ def status():
     }
 
 
+
+def _service_health(name, url, port, detail_getter=None):
+    started = time.perf_counter()
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.loads(
+                response.read().decode("utf-8")
+            )
+
+        latency_ms = round(
+            (time.perf_counter() - started) * 1000
+        )
+
+        detail = None
+
+        if detail_getter:
+            try:
+                detail = detail_getter(payload)
+            except Exception:
+                detail = None
+
+        return {
+            "name": name,
+            "online": True,
+            "port": port,
+            "latency_ms": latency_ms,
+            "detail": detail,
+            "status": payload.get("status"),
+        }
+
+    except Exception as exc:
+        latency_ms = round(
+            (time.perf_counter() - started) * 1000
+        )
+
+        return {
+            "name": name,
+            "online": False,
+            "port": port,
+            "latency_ms": latency_ms,
+            "detail": None,
+            "error": str(exc),
+        }
+
+
+def _service_model_name(value):
+    if not value:
+        return None
+
+    parts = str(value).rstrip("/").split("/")
+
+    if parts[-1].lower() in {
+        "4-bit",
+        "6-bit",
+        "8-bit",
+        "4bit",
+        "6bit",
+        "8bit",
+    } and len(parts) >= 2:
+        return parts[-2]
+
+    return parts[-1]
+
+
+@app.get("/api/services/health")
+def services_health():
+    config = load_config()
+    runtime_port = int(
+        config.get("PORT", "8000")
+    )
+
+    runtime_started = time.perf_counter()
+    runtime_pid = find_server_pid(runtime_port)
+    runtime_online = mlx_api_online(runtime_port)
+
+    services = [
+        {
+            "name": "MLX Runtime",
+            "online": runtime_online,
+            "port": runtime_port,
+            "latency_ms": round(
+                (time.perf_counter() - runtime_started) * 1000
+            ),
+            "detail": _service_model_name(
+                config.get("MODEL")
+            ),
+            "pid": runtime_pid,
+            "memory_mb": process_memory_mb(runtime_pid),
+        }
+    ]
+
+    services.append(
+        _service_health(
+            "Agent",
+            "http://127.0.0.1:8010/api/status",
+            8010,
+            lambda data: _service_model_name(
+                data.get("model")
+            ),
+        )
+    )
+
+    services.append(
+        _service_health(
+            "Router",
+            f"{ROUTER_URL}/health",
+            8040,
+            lambda data: _service_model_name(
+                data.get("loaded_model")
+            ),
+        )
+    )
+
+    services.append(
+        _service_health(
+            "Speech",
+            "http://127.0.0.1:8050/health",
+            8050,
+            lambda data: _service_model_name(
+                data.get("model")
+            ),
+        )
+    )
+
+    services.append(
+        _service_health(
+            "Embeddings",
+            "http://127.0.0.1:8020/health",
+            8020,
+            lambda data: " · ".join(
+                str(item)
+                for item in (
+                    _service_model_name(
+                        data.get("model")
+                    ),
+                    data.get("backend"),
+                    data.get("device"),
+                )
+                if item
+            ),
+        )
+    )
+
+    services.append(
+        _service_health(
+            "Images",
+            f"{IMAGE_SERVICE_URL}/health",
+            8030,
+            lambda data: " · ".join(
+                str(item)
+                for item in (
+                    data.get("backend"),
+                    data.get("running_model")
+                    or data.get("default_model"),
+                )
+                if item
+            ),
+        )
+    )
+
+    return {
+        "ok": True,
+        "services": services,
+    }
+
+
 @app.post("/api/server/{command}")
 def server_command(command: str):
     acquired = MODEL_RUNTIME_LOCK.acquire(blocking=False)

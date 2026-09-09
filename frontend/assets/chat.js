@@ -1196,3 +1196,288 @@ input.focus();
         }
     });
 })();
+
+(() => {
+    const SERVICE_HEALTH_REFRESH_MS = 10000;
+    let serviceHealthBusy = false;
+
+    function serviceHealthElements() {
+        return {
+            grid: document.getElementById('serviceHealthGrid'),
+            updated: document.getElementById('serviceHealthUpdated'),
+            refresh: document.getElementById('serviceHealthRefresh'),
+        };
+    }
+
+    function createTextElement(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        element.textContent = text;
+        return element;
+    }
+
+    function serviceDetail(service) {
+        if (!service.online) {
+            return 'Dienst nicht erreichbar';
+        }
+
+        return service.detail || 'Bereit';
+    }
+
+    function serviceMeta(service) {
+        const parts = [];
+
+        parts.push(service.online ? 'Online' : 'Offline');
+
+        if (service.port) {
+            parts.push(`Port ${service.port}`);
+        }
+
+        if (Number.isFinite(Number(service.latency_ms))) {
+            parts.push(`${Math.round(Number(service.latency_ms))} ms`);
+        }
+
+        return parts.join(' · ');
+    }
+
+    function serviceExtra(service) {
+        const parts = [];
+
+        if (service.pid) {
+            parts.push(`PID ${service.pid}`);
+        }
+
+        if (Number.isFinite(Number(service.memory_mb)) && Number(service.memory_mb) > 0) {
+            parts.push(`${Number(service.memory_mb).toFixed(0)} MB RAM`);
+        }
+
+        return parts.join(' · ');
+    }
+
+    function createServiceCard(service) {
+        const card = document.createElement('div');
+        card.className = 'settings-service-card';
+        card.dataset.online = service.online ? 'true' : 'false';
+
+        const top = document.createElement('div');
+        top.className = 'settings-service-card-top';
+
+        const title = createTextElement(
+            'strong',
+            'settings-service-name',
+            service.name || 'Dienst'
+        );
+
+        const status = document.createElement('span');
+        status.className = 'settings-service-status';
+
+        const dot = document.createElement('span');
+        dot.className = 'settings-service-status-dot';
+        dot.setAttribute('aria-hidden', 'true');
+
+        const statusText = createTextElement(
+            'span',
+            'settings-service-status-text',
+            service.online ? 'Online' : 'Offline'
+        );
+
+        status.append(dot, statusText);
+        top.append(title, status);
+
+        const detail = createTextElement(
+            'span',
+            'settings-service-detail',
+            serviceDetail(service)
+        );
+
+        const meta = createTextElement(
+            'span',
+            'settings-service-meta',
+            serviceMeta(service)
+        );
+
+        card.append(top, detail, meta);
+
+        const extra = serviceExtra(service);
+
+        if (extra) {
+            card.append(
+                createTextElement(
+                    'span',
+                    'settings-service-extra',
+                    extra
+                )
+            );
+        }
+
+        return card;
+    }
+
+    function renderServiceHealth(services) {
+        const { grid } = serviceHealthElements();
+        if (!grid) return;
+
+        grid.replaceChildren();
+
+        services.forEach(service => {
+            grid.appendChild(createServiceCard(service));
+        });
+    }
+
+    function renderServiceHealthError(message) {
+        const { grid } = serviceHealthElements();
+        if (!grid) return;
+
+        const error = document.createElement('div');
+        error.className = 'settings-service-error';
+
+        error.append(
+            createTextElement(
+                'strong',
+                '',
+                'Dienststatus konnte nicht geladen werden'
+            ),
+            createTextElement(
+                'span',
+                '',
+                message || 'Unbekannter Fehler'
+            )
+        );
+
+        grid.replaceChildren(error);
+    }
+
+    async function fetchJsonWithLatency(url) {
+        const started = performance.now();
+
+        try {
+            const response = await fetch(url, {
+                cache: 'no-store',
+                headers: {
+                    Accept: 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const payload = await response.json();
+
+            return {
+                payload,
+                latency_ms: Math.round(performance.now() - started),
+            };
+        } catch (error) {
+            error.latency_ms = Math.round(performance.now() - started);
+            throw error;
+        }
+    }
+
+    async function loadServiceHealth() {
+        const { grid, updated, refresh } = serviceHealthElements();
+
+        if (!grid || serviceHealthBusy) return;
+
+        serviceHealthBusy = true;
+
+        if (refresh) {
+            refresh.disabled = true;
+        }
+
+        try {
+            const [nativeResult, webResult] = await Promise.allSettled([
+                fetchJsonWithLatency('/api/mlx/services/health'),
+                fetchJsonWithLatency('/api/health'),
+            ]);
+
+            let services = [];
+
+            if (
+                nativeResult.status === 'fulfilled' &&
+                Array.isArray(nativeResult.value.payload.services)
+            ) {
+                services = nativeResult.value.payload.services.slice();
+            } else {
+                services.push({
+                    name: 'Lokale Dienste',
+                    online: false,
+                    detail: 'Agent nicht erreichbar',
+                });
+            }
+
+            if (webResult.status === 'fulfilled') {
+                services.push({
+                    name: 'Web / Docker',
+                    online: Boolean(webResult.value.payload.ok),
+                    port: Number(window.location.port) || 8090,
+                    latency_ms: webResult.value.latency_ms,
+                    detail: 'NobbyMLX Web-App',
+                });
+            } else {
+                services.push({
+                    name: 'Web / Docker',
+                    online: false,
+                    port: Number(window.location.port) || 8090,
+                    latency_ms: webResult.reason?.latency_ms,
+                    detail: null,
+                });
+            }
+
+            renderServiceHealth(services);
+
+            if (updated) {
+                updated.textContent =
+                    `Zuletzt geprüft ${new Date().toLocaleTimeString('de-DE')}`;
+            }
+        } catch (error) {
+            renderServiceHealthError(error?.message);
+
+            if (updated) {
+                updated.textContent = 'Status nicht verfügbar';
+            }
+        } finally {
+            serviceHealthBusy = false;
+
+            if (refresh) {
+                refresh.disabled = false;
+            }
+        }
+    }
+
+    function initServiceHealth() {
+        const { grid, refresh } = serviceHealthElements();
+
+        if (!grid) return;
+
+        refresh?.addEventListener('click', loadServiceHealth);
+
+        document
+            .querySelector('[data-settings-system-tab="server"]')
+            ?.addEventListener('click', () => {
+                window.setTimeout(loadServiceHealth, 50);
+            });
+
+        loadServiceHealth();
+
+        window.setInterval(() => {
+            const pane = document.querySelector(
+                '[data-settings-pane="system"]'
+            );
+
+            if (pane && !pane.hidden) {
+                loadServiceHealth();
+            }
+        }, SERVICE_HEALTH_REFRESH_MS);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener(
+            'DOMContentLoaded',
+            initServiceHealth,
+            { once: true }
+        );
+    } else {
+        initServiceHealth();
+    }
+})();

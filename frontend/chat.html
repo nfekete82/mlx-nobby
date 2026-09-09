@@ -600,22 +600,30 @@
             <h4>Server</h4>
             <p>Lokale Dienste und die vorhandene Systemverwaltung im Überblick.</p>
         </div>
-        <div class="settings-service-grid" aria-label="Lokale Dienstarchitektur">
-            <div><strong>MLX Server</strong><span>Native Inferenz · Port 8000</span></div>
-            <div><strong>Agent</strong><span>macOS-Bridge · Port 8010</span></div>
-            <div><strong>Router</strong><span>Im Agent integriert</span></div>
-            <div><strong>Speech</strong><span>Lokaler Dienst · Port 8050</span></div>
-            <div><strong>Embeddings</strong><span>Lokaler Dienst · Port 8020</span></div>
-            <div><strong>Images</strong><span>Lokaler Dienst · Port 8030</span></div>
-            <div><strong>Docker / Webserver</strong><span>Web-App · Port 8090</span></div>
+        <div class="settings-service-toolbar">
+            <div>
+                <strong>Live-Status</strong>
+                <span id="serviceHealthUpdated">Status wird geladen …</span>
+            </div>
+            <button id="serviceHealthRefresh" class="settings-button" type="button">
+                Aktualisieren
+            </button>
         </div>
+
+        <div
+            id="serviceHealthGrid"
+            class="settings-service-grid"
+            aria-label="Status der lokalen Dienste"
+            aria-live="polite"
+        >
+            <div class="settings-service-loading">
+                Dienste werden geprüft …
+            </div>
+        </div>
+
         <div class="settings-admin-frame-wrap" data-control-view="server"></div>
     </div>
     <div class="settings-pane settings-admin-pane" data-settings-pane="logs" hidden>
-        <div class="settings-page-intro settings-admin-intro">
-            <h4>Logs</h4>
-            <p>Vorhandene Log-Ansicht für Runtime, Agent und Hintergrundjobs.</p>
-        </div>
         <div class="settings-admin-frame-wrap" data-control-view="logs"></div>
     </div>
 

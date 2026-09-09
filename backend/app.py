@@ -851,6 +851,14 @@ def mlx_status():
     return get_json(f"{AGENT_URL}/api/status")
 
 
+@app.get("/api/mlx/services/health")
+def mlx_services_health():
+    return get_json(
+        f"{AGENT_URL}/api/services/health",
+        timeout=5,
+    )
+
+
 @app.get("/api/mlx/chats")
 def mlx_chats():
     return agent_json_request(

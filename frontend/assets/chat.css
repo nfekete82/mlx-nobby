@@ -4871,3 +4871,112 @@ body > * {
 .message-attachment-chip {
     gap: 14px;
 }
+
+[data-settings-pane="logs"] .settings-admin-frame-wrap {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
+.settings-service-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.settings-service-toolbar > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.settings-service-toolbar > div > strong {
+    font-size: 14px;
+}
+
+.settings-service-toolbar > div > span {
+    font-size: 12px;
+    opacity: 0.65;
+}
+
+.settings-service-card {
+    min-width: 0;
+}
+
+.settings-service-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+}
+
+.settings-service-name {
+    min-width: 0;
+}
+
+.settings-service-status {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    font-size: 11px !important;
+    font-weight: 600;
+}
+
+.settings-service-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.settings-service-card[data-online="false"] .settings-service-status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.settings-service-detail {
+    display: block !important;
+    width: 100%;
+    margin-top: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-service-meta,
+.settings-service-extra {
+    display: block !important;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 11px !important;
+    opacity: 0.62;
+}
+
+.settings-service-loading,
+.settings-service-error {
+    grid-column: 1 / -1;
+}
+
+.settings-service-error {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.settings-service-error span {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+    .settings-service-toolbar {
+        align-items: flex-start;
+    }
+}
