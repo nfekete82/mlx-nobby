@@ -170,3 +170,7 @@ id_dsa
 
 # Local SQL test artifacts
 test-batch.sql
+
+# Internal development notes
+AGENTS.md
+FRONTEND_REFACTOR_PLAN.md

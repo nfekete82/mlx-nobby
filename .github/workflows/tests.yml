@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements/test.txt
+
+      - name: Python tests
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: JavaScript syntax
+        run: |
+          node --check frontend/assets/chat.js
+          node --check frontend/assets/chat/runtime.js
+          node --check frontend/assets/chat/generation.js
+          node --check frontend/assets/chat/rendering.js
+          node --check frontend/assets/chat/profile.js
+
+      - name: JavaScript tests
+        run: |
+          node tests/test_model_console.mjs
+          node tests/test_chat_scroll.mjs
+          node tests/test_history_cleanup.mjs
+
+      - name: Shell syntax
+        run: |
+          bash -n scripts/install.sh
+          bash -n scripts/mlx
+          bash -n scripts/doctor.sh
+          bash -n scripts/install-launchd.sh
+          bash -n scripts/mlx-server-start
+
+      - name: Docker Compose validation
+        run: |
+          docker compose config >/dev/null

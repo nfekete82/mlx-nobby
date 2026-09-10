@@ -134,13 +134,47 @@ APIs, configuration and architecture may still change.
 
 MIT License
 
+## Quick Start
+
+Requirements:
+
+- macOS on Apple Silicon
+- Python 3
+- Docker
+- FFmpeg
+- Homebrew recommended
+
+Clone the repository and run:
+
+    ./scripts/install.sh
+
+Then open:
+
+    http://127.0.0.1:8090
+
+Useful commands:
+
+    mlx status
+    mlx services
+    mlx doctor
+    mlx restart
+    mlx restart-all
+
 ## MLX Manager
 
 MLX Nobby includes the command-line manager in:
 
 `scripts/mlx`
 
-Install it locally with:
+Recommended installation:
+
+    ./scripts/install.sh
+
+Safe bootstrap without touching LaunchAgents or Docker:
+
+    ./scripts/install.sh --no-launchd --no-docker
+
+Manual MLX Manager installation:
 
     mkdir -p ~/bin
     cp scripts/mlx ~/bin/mlx
