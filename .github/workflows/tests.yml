@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  macos-tests:
     runs-on: macos-15
 
     steps:
@@ -48,6 +48,13 @@ jobs:
           bash -n scripts/install-launchd.sh
           bash -n scripts/mlx-server-start
 
-      - name: Docker Compose validation
+  docker-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose
         run: |
           docker compose config >/dev/null
