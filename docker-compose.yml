@@ -3,9 +3,10 @@ services:
     build: .
     container_name: mlx-web
     ports:
-      - "8090:8000"
+      - "${MLX_WEB_PORT:-8090}:8000"
     environment:
-      MLX_URL: "http://host.docker.internal:8000"
-      AGENT_URL: "http://host.docker.internal:8010"
-      SPEECH_URL: "http://host.docker.internal:8050"
+      MLX_URL: "${MLX_URL:-http://host.docker.internal:8000}"
+      AGENT_URL: "${AGENT_URL:-http://host.docker.internal:8010}"
+      SPEECH_URL: "${SPEECH_URL:-http://host.docker.internal:8050}"
+      IMAGE_URL: "${IMAGE_URL:-http://host.docker.internal:8030}"
     restart: unless-stopped
