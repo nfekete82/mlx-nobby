@@ -148,8 +148,10 @@ def search(query, scope=None, limit=6):
             params = [fts_query]
             where = ""
 
+            where = " AND s.enabled=1"
+
             if scope:
-                where = " AND s.name LIKE ?"
+                where += " AND s.name LIKE ?"
                 params.append("%" + scope + "%")
 
             fts = con.execute(
@@ -192,8 +194,9 @@ def search(query, scope=None, limit=6):
                 "FROM knowledge_embeddings e "
                 "JOIN knowledge_chunks c ON c.chunk_id=e.chunk_id "
                 "JOIN knowledge_documents d ON d.document_id=c.document_id "
-                "JOIN knowledge_sources s ON s.source_id=d.source_id"
-                + (" WHERE s.name LIKE ?" if scope else ""),
+                "JOIN knowledge_sources s ON s.source_id=d.source_id "
+                "WHERE s.enabled=1"
+                + (" AND s.name LIKE ?" if scope else ""),
                 (["%" + scope + "%"] if scope else []),
             ).fetchall()
 
@@ -745,4 +748,107 @@ def search_uploaded_document(
         "document_id": document_id,
         "query": query,
         "results": results,
+    }
+
+def get_source(source_id):
+    source_id = str(source_id or "").strip()
+    if not source_id:
+        raise ValueError("source_id fehlt")
+
+    con = _db()
+    row = con.execute(
+        """
+        SELECT source_id,name,root_path,created_at,updated_at,
+               last_indexed_at,enabled
+        FROM knowledge_sources
+        WHERE source_id=?
+        """,
+        (source_id,),
+    ).fetchone()
+    con.close()
+
+    if not row:
+        raise ValueError("Wissensquelle nicht gefunden")
+
+    return dict(row)
+
+
+def set_source_enabled(source_id, enabled):
+    source = get_source(source_id)
+
+    con = _db()
+    con.execute(
+        """
+        UPDATE knowledge_sources
+        SET enabled=?,updated_at=?
+        WHERE source_id=?
+        """,
+        (
+            1 if enabled else 0,
+            time.time(),
+            source_id,
+        ),
+    )
+    con.commit()
+    con.close()
+
+    source["enabled"] = 1 if enabled else 0
+    return source
+
+
+def reindex_source(source_id):
+    source = get_source(source_id)
+
+    result = index_source(
+        source["root_path"],
+        source["name"],
+        True,
+    )
+
+    if not source["enabled"]:
+        set_source_enabled(source_id, False)
+
+    return result
+
+
+def delete_source(source_id):
+    source = get_source(source_id)
+
+    con = _db()
+
+    chunk_rows = con.execute(
+        """
+        SELECT c.chunk_id
+        FROM knowledge_chunks c
+        JOIN knowledge_documents d
+          ON d.document_id=c.document_id
+        WHERE d.source_id=?
+        """,
+        (source_id,),
+    ).fetchall()
+
+    chunk_ids = [
+        row["chunk_id"]
+        for row in chunk_rows
+    ]
+
+    if chunk_ids:
+        con.executemany(
+            "DELETE FROM knowledge_fts WHERE chunk_id=?",
+            [(chunk_id,) for chunk_id in chunk_ids],
+        )
+
+    con.execute(
+        "DELETE FROM knowledge_sources WHERE source_id=?",
+        (source_id,),
+    )
+
+    con.commit()
+    con.close()
+
+    return {
+        "deleted": True,
+        "source_id": source_id,
+        "name": source["name"],
+        "root_path": source["root_path"],
     }

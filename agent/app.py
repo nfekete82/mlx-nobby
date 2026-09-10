@@ -6123,7 +6123,40 @@ def knowledge_add(request: KnowledgeSourceRequest):
     except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
 
 @app.post("/api/knowledge/search")
-def knowledge_search(request: KnowledgeSearchRequest): return knowledge.search(request.query, request.scope)
+def knowledge_search(request: KnowledgeSearchRequest):
+    return knowledge.search(request.query, request.scope)
+
+
+@app.post("/api/knowledge/sources/{source_id}/enable")
+def knowledge_source_enable(source_id: str):
+    try:
+        return knowledge.set_source_enabled(source_id, True)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/knowledge/sources/{source_id}/disable")
+def knowledge_source_disable(source_id: str):
+    try:
+        return knowledge.set_source_enabled(source_id, False)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/knowledge/sources/{source_id}/reindex")
+def knowledge_source_reindex(source_id: str):
+    try:
+        return knowledge.reindex_source(source_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/knowledge/sources/{source_id}")
+def knowledge_source_delete(source_id: str):
+    try:
+        return knowledge.delete_source(source_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 

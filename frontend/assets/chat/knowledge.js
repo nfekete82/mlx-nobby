@@ -98,14 +98,83 @@
                             <span>${sources.length} indexiert</span>
                         </div>
                         <div class="knowledge-source-list">
-                            ${sources.map(source => `
-                                <div class="knowledge-source">
-                                    <strong>${escapeHtml(source.name || 'Quelle')}</strong>
-                                    <div class="settings-hint">
-                                        ${escapeHtml(source.root_path || '')}
-                                    </div>
-                                </div>
-                            `).join('')}
+                            ${sources.map(source => {
+                                    const enabled =
+                                        Number(source.enabled) === 1;
+
+                                    const sourceId =
+                                        escapeHtml(source.source_id || '');
+
+                                    const indexedAt =
+                                        source.last_indexed_at
+                                            ? new Date(
+                                                Number(source.last_indexed_at) * 1000
+                                            ).toLocaleString('de-DE')
+                                            : 'Noch nicht indexiert';
+
+                                    return `
+                                        <div
+                                            class="knowledge-source"
+                                            data-knowledge-source="${sourceId}"
+                                        >
+                                            <div class="knowledge-source-main">
+                                                <div class="knowledge-source-title">
+                                                    <span
+                                                        class="knowledge-source-state ${enabled ? 'ready' : 'inactive'}"
+                                                    >
+                                                        ${enabled ? '●' : '○'}
+                                                    </span>
+
+                                                    <strong>
+                                                        ${escapeHtml(source.name || 'Quelle')}
+                                                    </strong>
+
+                                                    <span class="settings-hint">
+                                                        ${enabled ? 'Aktiv' : 'Deaktiviert'}
+                                                    </span>
+                                                </div>
+
+                                                <div class="settings-hint knowledge-source-path">
+                                                    ${escapeHtml(source.root_path || '')}
+                                                </div>
+
+                                                <div class="settings-hint">
+                                                    Zuletzt indexiert:
+                                                    ${escapeHtml(indexedAt)}
+                                                </div>
+                                            </div>
+
+                                            <div class="knowledge-source-actions">
+                                                <button
+                                                    class="settings-button"
+                                                    type="button"
+                                                    data-knowledge-action="reindex"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    Reindexieren
+                                                </button>
+
+                                                <button
+                                                    class="settings-button"
+                                                    type="button"
+                                                    data-knowledge-action="${enabled ? 'disable' : 'enable'}"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    ${enabled ? 'Deaktivieren' : 'Aktivieren'}
+                                                </button>
+
+                                                <button
+                                                    class="settings-button danger"
+                                                    type="button"
+                                                    data-knowledge-action="delete"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    Löschen
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
                         </div>
                     </section>
                 `
@@ -125,6 +194,73 @@
                 'Wissensbasis nicht erreichbar: ' + error.message;
         }
     }
+
+    async function manageSource(action, sourceId, button) {
+        if (!action || !sourceId) return;
+
+        if (
+            action === 'delete' &&
+            !window.confirm(
+                'Diese Wissensquelle wirklich löschen?\n\n' +
+                'Der Index dieser Quelle wird dauerhaft entfernt. ' +
+                'Die Originaldateien auf dem Mac bleiben unverändert.'
+            )
+        ) {
+            return;
+        }
+
+        const labels = {
+            enable: 'Aktiviere…',
+            disable: 'Deaktiviere…',
+            reindex: 'Indexiere…',
+            delete: 'Lösche…'
+        };
+
+        const originalText = button?.textContent || '';
+
+        if (button) {
+            button.disabled = true;
+            button.textContent =
+                labels[action] || 'Bitte warten…';
+        }
+
+        try {
+            const encodedId =
+                encodeURIComponent(sourceId);
+
+            const method =
+                action === 'delete'
+                    ? 'DELETE'
+                    : 'POST';
+
+            const suffix =
+                action === 'delete'
+                    ? ''
+                    : '/' + action;
+
+            await request(
+                '/api/mlx/knowledge/sources/' +
+                encodedId +
+                suffix,
+                {
+                    method
+                }
+            );
+
+            await loadStatus();
+        } catch (error) {
+            window.alert(
+                'Wissensquelle konnte nicht bearbeitet werden: ' +
+                error.message
+            );
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    }
+
 
     async function selectKnowledgeFolder() {
         const pathInput = $('knowledgePath');
@@ -268,6 +404,7 @@
                     '';
 
                 const text =
+                    item.snippet ||
                     item.text ||
                     item.content ||
                     item.chunk ||
@@ -303,6 +440,21 @@
     function init() {
         $('knowledgeSelectFolder')
             ?.addEventListener('click', selectKnowledgeFolder);
+
+        $('knowledgeStatus')
+            ?.addEventListener('click', event => {
+                const button = event.target.closest(
+                    '[data-knowledge-action][data-source-id]'
+                );
+
+                if (!button) return;
+
+                manageSource(
+                    button.dataset.knowledgeAction,
+                    button.dataset.sourceId,
+                    button
+                );
+            });
 
         $('knowledgeIndex')
             ?.addEventListener('click', indexSource);

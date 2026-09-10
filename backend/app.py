@@ -1531,6 +1531,52 @@ def mlx_knowledge_sources(request: dict):
 def mlx_knowledge_search(request: dict):
     return agent_json_request("POST", "/api/knowledge/search", payload=request, timeout=30)
 
+
+@app.post("/api/mlx/knowledge/sources/{source_id}/enable")
+def mlx_knowledge_source_enable(source_id: str):
+    return agent_json_request(
+        "POST",
+        "/api/knowledge/sources/" +
+        urllib.parse.quote(source_id, safe="") +
+        "/enable",
+        payload={},
+        timeout=30,
+    )
+
+
+@app.post("/api/mlx/knowledge/sources/{source_id}/disable")
+def mlx_knowledge_source_disable(source_id: str):
+    return agent_json_request(
+        "POST",
+        "/api/knowledge/sources/" +
+        urllib.parse.quote(source_id, safe="") +
+        "/disable",
+        payload={},
+        timeout=30,
+    )
+
+
+@app.post("/api/mlx/knowledge/sources/{source_id}/reindex")
+def mlx_knowledge_source_reindex(source_id: str):
+    return agent_json_request(
+        "POST",
+        "/api/knowledge/sources/" +
+        urllib.parse.quote(source_id, safe="") +
+        "/reindex",
+        payload={},
+        timeout=900,
+    )
+
+
+@app.delete("/api/mlx/knowledge/sources/{source_id}")
+def mlx_knowledge_source_delete(source_id: str):
+    return agent_json_request(
+        "DELETE",
+        "/api/knowledge/sources/" +
+        urllib.parse.quote(source_id, safe=""),
+        timeout=30,
+    )
+
 @app.get('/api/mlx/code/workspaces')
 def mlx_code_workspaces(): return agent_json_request('GET','/api/code/workspaces')
 @app.post('/api/mlx/code/workspaces')
