@@ -4522,7 +4522,13 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         )
     )
 
-    if live_information_request:
+    if (
+        live_information_request
+        and not _looks_like_local_diagnostic(
+            prompt,
+            conversation_context,
+        )
+    ):
         return "web_search"
 
     return None
