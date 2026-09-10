@@ -1200,7 +1200,7 @@ function renderMessages(options = {}) {
                     document.createElement('div');
                 sourcesHeader.className =
                     'message-rag-sources-header';
-                sourcesHeader.textContent = 'Quellen';
+                sourcesHeader.textContent = 'Wissensquellen';
 
                 const sourcesList =
                     document.createElement('div');
