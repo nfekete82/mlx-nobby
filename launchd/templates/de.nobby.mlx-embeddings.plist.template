@@ -6,7 +6,7 @@
   <string>de.nobby.mlx-embeddings</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/norbertfekete/mlx-web/embedding-venv/bin/python</string>
+    <string>__PROJECT_DIR__/embedding-venv/bin/python</string>
     <string>-m</string>
     <string>uvicorn</string>
     <string>embedding_service:app</string>
@@ -16,11 +16,11 @@
     <string>8020</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/norbertfekete/mlx-web</string>
+  <string>__PROJECT_DIR__</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/norbertfekete/mlx-web/embedding-venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>__PROJECT_DIR__/embedding-venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -31,8 +31,8 @@
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>
-  <string>/Users/norbertfekete/mlx-web/embedding.log</string>
+  <string>__PROJECT_DIR__/embedding.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/norbertfekete/mlx-web/embedding-error.log</string>
+  <string>__PROJECT_DIR__/embedding-error.log</string>
 </dict>
 </plist>

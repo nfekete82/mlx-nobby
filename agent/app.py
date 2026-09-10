@@ -7176,7 +7176,10 @@ def ensure_model_for_role(role: str):
 
 
 
-ROUTER_MODEL = "/Users/norbertfekete/Models/router/Qwen3.5-0.8B-MLX-4bit"
+ROUTER_MODEL = os.environ.get(
+    "MLX_ROUTER_MODEL_PATH",
+    str(Path.home() / "Models/router/Qwen3.5-0.8B-MLX-4bit"),
+)
 ROUTER_URL = "http://127.0.0.1:8040"
 
 

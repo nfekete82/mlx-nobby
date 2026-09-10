@@ -6,16 +6,16 @@
   <string>de.nobby.mlx-embeddings-probe</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/norbertfekete/mlx-web/embedding-venv/bin/python</string>
-    <string>/Users/norbertfekete/mlx-web/scripts/embedding_mlx_probe.py</string>
+    <string>__PROJECT_DIR__/embedding-venv/bin/python</string>
+    <string>__PROJECT_DIR__/scripts/embedding_mlx_probe.py</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/norbertfekete/mlx-web</string>
+  <string>__PROJECT_DIR__</string>
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/Users/norbertfekete/mlx-web/embedding-probe.log</string>
+  <string>__PROJECT_DIR__/embedding-probe.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/norbertfekete/mlx-web/embedding-probe-error.log</string>
+  <string>__PROJECT_DIR__/embedding-probe-error.log</string>
 </dict>
 </plist>

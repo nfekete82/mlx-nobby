@@ -22,7 +22,12 @@ sys.modules.setdefault("huggingface_hub.utils._errors", _hub_errors_compat)
 from mlx_embeddings.utils import generate, load
 
 MODEL_ID = "mlx-community/bge-m3-mlx-4bit"
-MODEL_PATH = Path(os.environ.get("MLX_EMBEDDING_MODEL_PATH", "/Users/norbertfekete/Models/bge-m3-mlx-4bit"))
+MODEL_PATH = Path(
+    os.environ.get(
+        "MLX_EMBEDDING_MODEL_PATH",
+        str(Path.home() / "Models/bge-m3-mlx-4bit"),
+    )
+)
 DIMENSIONS = 1024
 MAX_LENGTH = int(os.environ.get("MLX_EMBEDDING_MAX_LENGTH", "8192"))
 MAX_BATCH_SIZE = int(os.environ.get("MLX_EMBEDDING_BATCH_SIZE", "8"))
