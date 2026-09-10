@@ -179,6 +179,7 @@ return;
         role: 'assistant',
         content: '',
         reasoning: '',
+        sources: [],
         thinking_seconds: null,
         response_pending: true,
         metrics: {
@@ -285,6 +286,40 @@ try {
                         'event: done'
                     )
                 ) {
+                    continue;
+                }
+
+                if (
+                    event.startsWith(
+                        'event: sources'
+                    )
+                ) {
+                    const dataLine =
+                        event
+                            .split('\n')
+                            .find(
+                                line =>
+                                    line.startsWith(
+                                        'data:'
+                                    )
+                            );
+
+                    if (dataLine) {
+                        const sourceData =
+                            JSON.parse(
+                                dataLine.slice(5)
+                            );
+
+                        assistantMessage.sources =
+                            Array.isArray(
+                                sourceData.sources
+                            )
+                                ? sourceData.sources
+                                : [];
+
+                        MLXChatSessions.saveSessions();
+                    }
+
                     continue;
                 }
 

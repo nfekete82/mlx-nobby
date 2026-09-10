@@ -768,6 +768,22 @@ def mlx_chat_stream(request: ChatRequest):
                     }
                 )
 
+        local_knowledge_hint = bool(
+            re.search(
+                r"\b(?:nobbymlx|embedding(?:-dienst)?|semantischer\s+router|"
+                r"knowledge(?:-basis)?|wissensbasis|port|dienst|service|"
+                r"mlx[- ]?server|router[- ]?modell)\b",
+                last_user_prompt,
+                re.IGNORECASE,
+            )
+        )
+
+        routing_context = (
+            []
+            if local_knowledge_hint
+            else conversation_context
+        )
+
         try:
             routing = agent_json_request(
                 "POST",
@@ -775,7 +791,7 @@ def mlx_chat_stream(request: ChatRequest):
                 payload={
                     "prompt": last_user_prompt,
                     "file_context": None,
-                    "conversation_context": conversation_context,
+                    "conversation_context": routing_context,
                 },
                 timeout=30,
             )
@@ -799,6 +815,7 @@ def mlx_chat_stream(request: ChatRequest):
             results = knowledge_result.get("results") or []
 
             context_parts = []
+            rag_sources = []
 
             for index, item in enumerate(results[:4], start=1):
                 if not isinstance(item, dict):
@@ -825,6 +842,29 @@ def mlx_chat_stream(request: ChatRequest):
                 context_parts.append(
                     f"[Quelle {index}: {source}]\n{snippet[:4500]}"
                 )
+
+                document = str(
+                    item.get("document")
+                    or item.get("path")
+                    or item.get("file_name")
+                    or ""
+                ).strip()
+
+                source_entry = {
+                    "source": source,
+                    "document": document,
+                }
+
+                similarity = item.get("similarity")
+                if isinstance(similarity, (int, float)):
+                    source_entry["similarity"] = similarity
+
+                if not any(
+                    existing.get("source") == source_entry["source"]
+                    and existing.get("document") == source_entry["document"]
+                    for existing in rag_sources
+                ):
+                    rag_sources.append(source_entry)
 
             if context_parts:
                 rag_context = (
@@ -867,6 +907,9 @@ def mlx_chat_stream(request: ChatRequest):
                         },
                     )
 
+    if "rag_sources" not in locals():
+        rag_sources = []
+
     payload = {
         "messages": messages,
         "temperature": temperature,
@@ -884,6 +927,16 @@ def mlx_chat_stream(request: ChatRequest):
     )
 
     def generate():
+        if rag_sources:
+            source_event = json.dumps(
+                {"sources": rag_sources},
+                ensure_ascii=False,
+            )
+            yield (
+                "event: sources\n"
+                f"data: {source_event}\n\n"
+            )
+
         try:
             with urllib.request.urlopen(
                 upstream_request,

@@ -1189,6 +1189,76 @@ function renderMessages(options = {}) {
 
             content.appendChild(answer);
 
+            if (
+                Array.isArray(message.sources) &&
+                message.sources.length > 0
+            ) {
+                const sources = document.createElement('div');
+                sources.className = 'message-rag-sources';
+
+                const sourcesHeader =
+                    document.createElement('div');
+                sourcesHeader.className =
+                    'message-rag-sources-header';
+                sourcesHeader.textContent = 'Quellen';
+
+                const sourcesList =
+                    document.createElement('div');
+                sourcesList.className =
+                    'message-rag-sources-list';
+
+                message.sources.forEach(source => {
+                    if (!source || typeof source !== 'object') {
+                        return;
+                    }
+
+                    const sourceName =
+                        String(
+                            source.source ||
+                            'Lokale Wissensbasis'
+                        ).trim();
+
+                    const documentPath =
+                        String(
+                            source.document || ''
+                        ).trim();
+
+                    const fileName =
+                        documentPath
+                            .split(/[\\/]/)
+                            .pop();
+
+                    const item =
+                        document.createElement('div');
+                    item.className =
+                        'message-rag-source';
+
+                    const icon =
+                        document.createElement('span');
+                    icon.className =
+                        'message-rag-source-icon';
+                    icon.textContent = '▣';
+
+                    const label =
+                        document.createElement('span');
+
+                    label.textContent =
+                        fileName
+                            ? sourceName + ' · ' + fileName
+                            : sourceName;
+
+                    item.appendChild(icon);
+                    item.appendChild(label);
+                    sourcesList.appendChild(item);
+                });
+
+                if (sourcesList.childElementCount > 0) {
+                    sources.appendChild(sourcesHeader);
+                    sources.appendChild(sourcesList);
+                    content.appendChild(sources);
+                }
+            }
+
             const batchCard = renderBatchCard(message);
             if (batchCard) content.appendChild(batchCard);
 
