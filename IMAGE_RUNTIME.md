@@ -1,4 +1,4 @@
-# MLX Nobby Image-Runtime
+# MLX nobby Image-Runtime
 
 The image path is intentionally separate from the LLM model registry:
 

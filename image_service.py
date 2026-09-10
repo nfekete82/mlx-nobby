@@ -34,7 +34,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="MLX Nobby Images", lifespan=lifespan)
+app = FastAPI(title="MLX nobby Images", lifespan=lifespan)
 
 
 @contextmanager

@@ -15,7 +15,7 @@ MODEL_NAME = os.environ.get(
 
 FFMPEG = os.environ.get("FFMPEG_PATH", "/opt/homebrew/bin/ffmpeg")
 
-app = FastAPI(title="MLX Nobby Speech")
+app = FastAPI(title="MLX nobby Speech")
 
 _model = None
 _model_lock = threading.Lock()

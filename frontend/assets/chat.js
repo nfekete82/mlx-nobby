@@ -370,7 +370,7 @@ sidebarCollapseButton?.addEventListener(
 restoreSidebarState();
 
 
-/* MLX Nobby Mini Sidebar Rail */
+/* MLX nobby Mini Sidebar Rail */
 
 const railExpand =
     document.getElementById('railExpand');
@@ -1414,7 +1414,7 @@ input.focus();
                     online: Boolean(webResult.value.payload.ok),
                     port: Number(window.location.port) || 8090,
                     latency_ms: webResult.value.latency_ms,
-                    detail: 'NobbyMLX Web-App',
+                    detail: 'MLX nobby Web-App',
                 });
             } else {
                 services.push({

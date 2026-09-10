@@ -1015,7 +1015,7 @@ function renderMessages(options = {}) {
     ) {
         messagesInner.innerHTML = `
             <div class="empty">
-                <div class="empty-logo"><img src="/assets/mlx-nobby.svg" alt="MLX Nobby"></div>
+                <div class="empty-logo"><img src="/assets/mlx-nobby.svg" alt="MLX nobby"></div>
                 <h1>Bereit für deine nächste geniale Idee?</h1>
                 <p>
                     <span>Frag, diktier, lade hoch – Nobby ist am Start. 😎</span>
@@ -1175,7 +1175,7 @@ function renderMessages(options = {}) {
 
                 waitingDot.setAttribute(
                     'aria-label',
-                    'MLX Nobby denkt'
+                    'MLX nobby denkt'
                 );
 
                 content.appendChild(waitingDot);

@@ -346,7 +346,7 @@
 
             await loadStatus();
 
-            console.log('[NobbyMLX Knowledge]', data);
+            console.log('[MLX nobby Knowledge]', data);
         } catch (error) {
             if (result) {
                 result.textContent =

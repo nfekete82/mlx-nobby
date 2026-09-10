@@ -6,7 +6,7 @@ PYTHON="${MLX_RUNTIME_PYTHON:-${PROJECT_DIR}/runtime-venv/bin/python}"
 
 if [ ! -x "$PYTHON" ]; then
     echo "MLX Runtime Python fehlt oder ist nicht ausführbar: $PYTHON" >&2
-    echo "Installiere zuerst die NobbyMLX Runtime." >&2
+    echo "Installiere zuerst die MLX nobby Runtime." >&2
     exit 1
 fi
 

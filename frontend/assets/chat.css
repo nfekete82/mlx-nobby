@@ -1945,7 +1945,7 @@ button {
 
 
 /* ==========================================================
-   MLX Nobby Notes Tree / Drag & Drop
+   MLX nobby Notes Tree / Drag & Drop
    ========================================================== */
 
 #notesList {
@@ -3875,7 +3875,7 @@ button {
 .image-model-card button { white-space: normal; overflow-wrap: anywhere; }
 
 
-/* MLX Nobby – wartende Antwort */
+/* MLX nobby – wartende Antwort */
 
 .assistant-thinking-dot {
     display: inline-block;
@@ -3903,7 +3903,7 @@ button {
 }
 
 
-/* MLX Nobby – Hinweis */
+/* MLX nobby – Hinweis */
 
 .composer-disclaimer {
     width: 100%;
@@ -3925,7 +3925,7 @@ button {
 
 
 /* ==========================================================
-   MLX Nobby – einklappbare Desktop-Sidebar
+   MLX nobby – einklappbare Desktop-Sidebar
    ========================================================== */
 
 .sidebar {
@@ -4038,7 +4038,7 @@ button {
 
 
 /* ==========================================================
-   MLX Nobby Mini Sidebar Rail
+   MLX nobby Mini Sidebar Rail
    ========================================================== */
 
 .sidebar-rail {
@@ -4203,7 +4203,7 @@ button {
     }
 }
 
-/* MLX Nobby · Scroll to bottom */
+/* MLX nobby · Scroll to bottom */
 .scroll-bottom-button {
     position: absolute;
     left: 50%;
@@ -4277,7 +4277,7 @@ button {
     }
 }
 
-/* MLX Nobby · Batch Fortschritt */
+/* MLX nobby · Batch Fortschritt */
 .batch-progress-wrap {
     margin-top: 12px;
 }
@@ -4317,7 +4317,7 @@ button {
 }
 
 /* =========================================================
-   MLX Nobby – dezenter Binary / Matrix Hintergrund
+   MLX nobby – dezenter Binary / Matrix Hintergrund
    ========================================================= */
 
 body {
@@ -4619,7 +4619,7 @@ body > * {
 }
 
 
-/* MLX Nobby Begrüßungslogo */
+/* MLX nobby Begrüßungslogo */
 .empty-logo img {
     display: block;
     width: 64px;
@@ -4627,7 +4627,7 @@ body > * {
 }
 
 
-/* MLX Nobby Logo */
+/* MLX nobby Logo */
 .rail-logo-img,
 .brand-logo-img {
     display: block;

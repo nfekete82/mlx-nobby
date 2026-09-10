@@ -4508,11 +4508,11 @@ def semantic_intent_classifier(
     except ValueError:
         active_workspace=None
     system_prompt=f"""
-Du bist ausschließlich der semantische Intent-Classifier von MLX Nobby.
+Du bist ausschließlich der semantische Intent-Classifier von MLX nobby.
 Du beantwortest die Nutzerfrage NICHT. Du entscheidest nur, welcher bereits
 vorhandene lokale Pfad die Anfrage bearbeiten soll.
 
-MLX Nobby ist kein generischer Cloud-Chatbot. Es besitzt diese Fähigkeiten:
+MLX nobby ist kein generischer Cloud-Chatbot. Es besitzt diese Fähigkeiten:
 {capability_model_text()}
 
 Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
@@ -4521,10 +4521,10 @@ Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
 - Eine gewünschte Änderung im eigenen Projekt gehört zum coding_agent.
 - Eine Wissensfrage über Programmierung gehört zu normal_chat.
 - knowledge_search ist für Fragen über Informationen gedacht, die in der lokalen
-  Wissensbasis von MLX Nobby indexiert sein können.
-- Fragen über die eigene NobbyMLX-Architektur, lokale Dokumentation,
+  Wissensbasis von MLX nobby indexiert sein können.
+- Fragen über die eigene MLX nobby-Architektur, lokale Dokumentation,
   Konfiguration oder zuvor indexiertes Wissen gehören zu knowledge_search.
-- Fragen nach lokalen NobbyMLX-Diensten, deren Ports, verwendeten Modellen,
+- Fragen nach lokalen MLX nobby-Diensten, deren Ports, verwendeten Modellen,
   Router, Embeddings, Speech- oder Image-Diensten gehören zu knowledge_search,
   solange keine aktuelle Systemdiagnose oder Statusprüfung verlangt wird.
 - Verwende knowledge_search NICHT für allgemeines Weltwissen.
@@ -10564,7 +10564,7 @@ Bei Coding-Aufträgen gilt zwingend:
 """.strip()
     elif mode == "orchestrator":
         role_context = """
-Du bist der autonome lokale NobbyMLX-Orchestrator.
+Du bist der autonome lokale MLX nobby-Orchestrator.
 
 WICHTIG:
 - "orchestrator" ist dein Betriebsmodus und KEIN Tool.

@@ -1,4 +1,4 @@
-"""Persistent local user profile for NobbyMLX."""
+"""Persistent local user profile for MLX nobby."""
 
 from __future__ import annotations
 

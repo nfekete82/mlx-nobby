@@ -118,7 +118,7 @@
             ) {
 
                 console.warn(
-                    '[MLX Nobby] Local chat cache full. ' +
+                    '[MLX nobby] Local chat cache full. ' +
                     'Server persistence remains active.',
                     error
                 );
@@ -132,7 +132,7 @@
             }
 
             console.error(
-                '[MLX Nobby] Failed to cache sessions:',
+                '[MLX nobby] Failed to cache sessions:',
                 error
             );
 

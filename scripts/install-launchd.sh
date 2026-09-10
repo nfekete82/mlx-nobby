@@ -14,7 +14,7 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${TARGET_DIR}"
 
 if [ ! -x "${RUNTIME_PYTHON}" ]; then
-    echo "Fehler: NobbyMLX Runtime fehlt: ${RUNTIME_PYTHON}" >&2
+    echo "Fehler: MLX nobby Runtime fehlt: ${RUNTIME_PYTHON}" >&2
     echo "Installiere zuerst runtime-venv." >&2
     exit 1
 fi

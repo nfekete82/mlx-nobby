@@ -227,7 +227,7 @@
                 error.name === "PermissionDeniedError"
             ) {
                 alert(
-                    "Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube MLX Nobby den Zugriff auf das Mikrofon."
+                    "Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube MLX nobby den Zugriff auf das Mikrofon."
                 );
                 return;
             }
