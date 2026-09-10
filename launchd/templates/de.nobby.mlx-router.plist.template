@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.nobby.mlx-router</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__RUNTIME_PYTHON__</string>
+        <string>-m</string>
+        <string>mlx_vlm</string>
+        <string>server</string>
+        <string>--model</string>
+        <string>__ROUTER_MODEL__</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8040</string>
+        <string>--max-num-seqs</string>
+        <string>2</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__CONFIG_DIR__/router.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__CONFIG_DIR__/router-error.log</string>
+</dict>
+</plist>

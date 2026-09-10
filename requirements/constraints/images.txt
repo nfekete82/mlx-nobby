@@ -1,0 +1,7 @@
+# DiffusionKit 0.5.1 is a legacy provider: retain its tested MLX/Torch/
+# Transformers API combination in its own Python 3.11 venv.
+# Incidental HTTP, scientific and utility packages are resolved transitively.
+# See docs/DEPENDENCIES.md, including the Core ML conversion warnings.
+mlx==0.17.3
+torch==2.14.0
+transformers==5.16.1

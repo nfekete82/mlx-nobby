@@ -1,0 +1,11 @@
+services:
+  mlx-web:
+    build: .
+    container_name: mlx-web
+    ports:
+      - "127.0.0.1:${MLX_WEB_PORT:-8090}:8000"
+    environment:
+      AGENT_URL: "${AGENT_URL:-http://host.docker.internal:8010}"
+      MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-250}"
+      MLX_ALLOWED_HOSTS: "localhost,127.0.0.1,::1"
+    restart: unless-stopped

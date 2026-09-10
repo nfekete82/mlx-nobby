@@ -1,0 +1,107 @@
+#!/bin/bash
+
+CONFIG="$HOME/.config/mlx-server/config"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="${MLX_RUNTIME_PYTHON:-${PROJECT_DIR}/runtime-venv/bin/python}"
+
+if [ ! -x "$PYTHON" ]; then
+    echo "MLX Runtime Python fehlt oder ist nicht ausführbar: $PYTHON" >&2
+    echo "Installiere zuerst die MLX nobby Runtime." >&2
+    exit 1
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    echo "Konfiguration fehlt: $CONFIG"
+    exit 1
+fi
+
+source "$CONFIG"
+
+detect_backend() {
+    local model="$1"
+
+    # Lokale Modelle automatisch über config.json erkennen
+    if [ -d "$model" ] && [ -f "$model/config.json" ]; then
+
+        "$PYTHON" - "$model/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+except Exception:
+    print("lm")
+    raise SystemExit
+
+architectures = cfg.get("architectures") or []
+model_type = str(cfg.get("model_type", "")).lower()
+vision_config = cfg.get("vision_config")
+
+text = " ".join(map(str, architectures)).lower()
+
+is_vlm = (
+    vision_config is not None
+    or "vision" in text
+    or "conditionalgeneration" in text
+    or "_vl" in text
+    or "-vl" in text
+    or "_vl" in model_type
+    or "-vl" in model_type
+)
+
+print("vlm" if is_vlm else "lm")
+PY
+        return
+    fi
+
+    # Bisherige Hugging-Face-Modelle bleiben LM.
+    echo "lm"
+}
+
+BACKEND="$(detect_backend "$MODEL")"
+
+echo
+echo "============================================================"
+echo "MLX Server Start"
+echo "============================================================"
+echo "Modell:   $MODEL"
+echo "Backend:  $BACKEND"
+echo "Port:     $PORT"
+echo "Thinking: $THINKING"
+echo "============================================================"
+echo
+
+if [ "$BACKEND" = "vlm" ]; then
+
+    ARGS=(
+        -m mlx_vlm server
+        --model "$MODEL"
+        --host 127.0.0.1
+        --port "$PORT"
+        --prefill-step-size 512
+        --max-num-seqs 2
+    )
+
+    if [ "$THINKING" = "true" ]; then
+        ARGS+=(--enable-thinking)
+    fi
+
+    echo "Starte mlx_vlm..."
+    exec "$PYTHON" "${ARGS[@]}"
+
+else
+
+    ARGS=(
+        -m mlx_lm.server
+        --model "$MODEL"
+        --host 127.0.0.1
+        --port "$PORT"
+        --prefill-step-size 512
+    )
+
+    echo "Starte mlx_lm..."
+    exec "$PYTHON" "${ARGS[@]}"
+fi

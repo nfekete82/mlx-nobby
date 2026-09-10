@@ -1,0 +1,1679 @@
+#!/bin/bash
+
+# ============================================================
+# MLX Manager
+# macOS / Apple Silicon / mlx_lm.server
+# ============================================================
+
+CONFIG="$HOME/.config/mlx-server/config"
+MODELS_FILE="$HOME/.config/mlx-server/models"
+PLIST="$HOME/Library/LaunchAgents/de.nobby.mlx-server.plist"
+CHAT_SCRIPT="$HOME/bin/mlx-chat.py"
+
+DOMAIN="gui/$(id -u)"
+LABEL="de.nobby.mlx-server"
+
+START_TIMEOUT=90
+ASK_TIMEOUT=300
+
+# Warnschwellen
+RAM_WARN_GB=28
+RAM_CRITICAL_GB=34
+
+FREE_RAM_WARN_PERCENT=25
+FREE_RAM_CRITICAL_PERCENT=12
+
+SWAP_WARN_GB=8
+SWAP_CRITICAL_GB=12
+
+
+# ============================================================
+# Terminal-Farben
+# ============================================================
+
+if [ -t 1 ]; then
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    RED='\033[1;31m'
+    GREEN='\033[1;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[1;36m'
+    GRAY='\033[0;90m'
+    RESET='\033[0m'
+else
+    BOLD=''
+    DIM=''
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    GRAY=''
+    RESET=''
+fi
+
+
+# ============================================================
+# Hilfsfunktionen
+# ============================================================
+
+die() {
+    printf "${RED}Fehler:${RESET} %s\n" "$*" >&2
+    exit 1
+}
+
+
+load_config() {
+    [ -f "$CONFIG" ] || die "Konfiguration fehlt: $CONFIG"
+
+    # shellcheck disable=SC1090
+    source "$CONFIG"
+
+    : "${PORT:=8000}"
+    : "${THINKING:=false}"
+}
+
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+
+launchagent_loaded() {
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1
+}
+
+
+api_ready() {
+    curl -fsS \
+        --connect-timeout 1 \
+        --max-time 2 \
+        "http://127.0.0.1:$PORT/v1/models" \
+        >/dev/null 2>&1
+}
+
+
+get_mlx_pid() {
+    pgrep -f "mlx_lm\.server.*--port[[:space:]]+$PORT" 2>/dev/null | head -1
+}
+
+
+get_mlx_rss_kb() {
+    local pid
+    pid="$(get_mlx_pid)"
+
+    [ -n "$pid" ] || return 1
+
+    ps -o rss= -p "$pid" 2>/dev/null | awk '{$1=$1; print}'
+}
+
+
+kb_to_gb() {
+    local value="${1/,/.}"
+
+    LC_ALL=C awk -v kb="$value" 'BEGIN {
+        printf "%.2f", (kb + 0) / 1024 / 1024
+    }'
+}
+
+
+mb_to_gb() {
+    local value="${1/,/.}"
+
+    LC_ALL=C awk -v mb="$value" 'BEGIN {
+        printf "%.2f", (mb + 0) / 1024
+    }'
+}
+
+
+float_ge() {
+    local a="${1/,/.}"
+    local b="${2/,/.}"
+
+    LC_ALL=C awk -v a="$a" -v b="$b" 'BEGIN {
+        exit !((a + 0) >= (b + 0))
+    }'
+}
+
+
+float_le() {
+    local a="${1/,/.}"
+    local b="${2/,/.}"
+
+    LC_ALL=C awk -v a="$a" -v b="$b" 'BEGIN {
+        exit !((a + 0) <= (b + 0))
+    }'
+}
+
+
+get_swap_values() {
+    local raw
+
+    raw="$(LC_ALL=C sysctl vm.swapusage 2>/dev/null)"
+
+    SWAP_TOTAL_MB="$(
+        sed -E 's/.*total = ([0-9.]+)M.*/\1/' <<< "$raw"
+    )"
+
+    SWAP_USED_MB="$(
+        sed -E 's/.*used = ([0-9.]+)M.*/\1/' <<< "$raw"
+    )"
+
+    SWAP_FREE_MB="$(
+        sed -E 's/.*free = ([0-9.]+)M.*/\1/' <<< "$raw"
+    )"
+
+    [ -n "$SWAP_TOTAL_MB" ] || SWAP_TOTAL_MB=0
+    [ -n "$SWAP_USED_MB" ] || SWAP_USED_MB=0
+    [ -n "$SWAP_FREE_MB" ] || SWAP_FREE_MB=0
+}
+
+
+get_memory_free_percent() {
+    LC_ALL=C memory_pressure 2>/dev/null |
+        awk -F': ' '
+            /System-wide memory free percentage/ {
+                gsub("%","",$2)
+                print $2
+                exit
+            }
+        '
+}
+
+
+resolve_model() {
+    local name="$1"
+    local match=""
+
+    if [ -f "$MODELS_FILE" ]; then
+        match="$(
+            awk -F= -v alias="$name" '
+                $1 == alias {
+                    print substr($0, index($0, "=") + 1)
+                    exit
+                }
+            ' "$MODELS_FILE"
+        )"
+    fi
+
+    if [ -n "$match" ]; then
+        echo "$match"
+    else
+        echo "$name"
+    fi
+}
+
+
+find_alias_for_repo() {
+    local repo="$1"
+
+    [ -f "$MODELS_FILE" ] || return 0
+
+    awk -F= -v repo="$repo" '
+        $2 == repo {
+            print $1
+            exit
+        }
+    ' "$MODELS_FILE"
+}
+
+
+wait_for_api() {
+    local timeout="${1:-$START_TIMEOUT}"
+    local elapsed=0
+
+    printf "Warte auf MLX API"
+
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if api_ready; then
+            echo
+            printf "${GREEN}✓ MLX ist bereit${RESET} nach %d Sekunden.\n" "$elapsed"
+            return 0
+        fi
+
+        printf "."
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    echo
+    printf "${YELLOW}⚠ MLX wurde gestartet, API ist nach %d Sekunden noch nicht bereit.${RESET}\n" "$timeout"
+    return 1
+}
+
+
+# ============================================================
+# Speicherbewertung
+# ============================================================
+
+memory_state() {
+    local rss_gb="$1"
+    local free_percent="$2"
+    local swap_used_gb="$3"
+
+    # Kritisch:
+    # Hoher MLX-RAM UND wenig freier RAM
+    if float_ge "$rss_gb" "$RAM_CRITICAL_GB" &&
+       float_le "$free_percent" "$FREE_RAM_CRITICAL_PERCENT"; then
+        echo "CRITICAL"
+        return
+    fi
+
+    # Kritisch:
+    # Sehr hoher Swap UND sehr wenig freier RAM
+    if float_ge "$swap_used_gb" "$SWAP_CRITICAL_GB" &&
+       float_le "$free_percent" "$FREE_RAM_CRITICAL_PERCENT"; then
+        echo "CRITICAL"
+        return
+    fi
+
+    # Warnung:
+    # Erhöhter MLX-RAM UND wenig freier RAM
+    if float_ge "$rss_gb" "$RAM_WARN_GB" &&
+       float_le "$free_percent" "$FREE_RAM_WARN_PERCENT"; then
+        echo "WARN"
+        return
+    fi
+
+    # Warnung:
+    # Hoher Swap UND wenig freier RAM
+    if float_ge "$swap_used_gb" "$SWAP_WARN_GB" &&
+       float_le "$free_percent" "$FREE_RAM_WARN_PERCENT"; then
+        echo "WARN"
+        return
+    fi
+
+    echo "OK"
+}
+
+
+# ============================================================
+# Server
+# ============================================================
+
+start() {
+    load_config
+
+    if launchagent_loaded; then
+        if api_ready; then
+            printf "${GREEN}MLX läuft bereits ✓${RESET}\n"
+        else
+            printf "${YELLOW}MLX LaunchAgent läuft, API ist aber noch nicht bereit.${RESET}\n"
+            wait_for_api
+        fi
+
+        return
+    fi
+
+    [ -f "$PLIST" ] || die "LaunchAgent fehlt: $PLIST"
+
+    echo "MLX wird gestartet..."
+
+    if ! launchctl bootstrap "$DOMAIN" "$PLIST"; then
+        printf "${RED}MLX konnte nicht gestartet werden.${RESET}\n"
+        return 1
+    fi
+
+    wait_for_api
+}
+
+
+stop() {
+    load_config
+
+    if ! launchagent_loaded; then
+        echo "MLX ist bereits gestoppt."
+        return
+    fi
+
+    echo "MLX wird gestoppt..."
+
+    if launchctl bootout "$DOMAIN" "$PLIST" >/dev/null 2>&1; then
+        local tries=0
+
+        while [ "$tries" -lt 20 ]; do
+            if [ -z "$(get_mlx_pid)" ]; then
+                printf "${GREEN}✓ MLX gestoppt.${RESET}\n"
+                return
+            fi
+
+            sleep 0.5
+            tries=$((tries + 1))
+        done
+
+        printf "${YELLOW}⚠ LaunchAgent beendet, MLX-Prozess läuft möglicherweise noch.${RESET}\n"
+    else
+        printf "${RED}MLX konnte nicht sauber gestoppt werden.${RESET}\n"
+        return 1
+    fi
+}
+
+
+restart() {
+    echo
+    printf "${BOLD}${CYAN}MLX Neustart${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+
+    stop
+    sleep 2
+    start
+}
+
+
+reset() {
+    echo
+    printf "${BOLD}${CYAN}MLX Speicher-Reset${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+
+    echo "Server wird neu gestartet."
+    echo "RAM-basierter KV-/Prompt-Cache wird verworfen."
+    echo
+
+    stop
+    sleep 2
+    start
+}
+
+
+# ============================================================
+# Speicheranzeige
+# ============================================================
+
+memory() {
+    load_config
+
+    local pid
+    local rss_kb
+    local rss_gb="0"
+    local free_percent
+    local swap_used_gb
+    local swap_total_gb
+    local state
+
+    pid="$(get_mlx_pid)"
+    free_percent="$(get_memory_free_percent)"
+
+    [ -n "$free_percent" ] || free_percent=0
+
+    get_swap_values
+
+    swap_used_gb="$(mb_to_gb "$SWAP_USED_MB")"
+    swap_total_gb="$(mb_to_gb "$SWAP_TOTAL_MB")"
+
+    if [ -n "$pid" ]; then
+        rss_kb="$(get_mlx_rss_kb)"
+        rss_gb="$(kb_to_gb "${rss_kb:-0}")"
+    fi
+
+    state="$(memory_state "$rss_gb" "$free_percent" "$swap_used_gb")"
+
+    echo
+    printf "${BOLD}${CYAN}MLX Speicher${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+
+    if [ -n "$pid" ]; then
+        printf "%-14s %s\n" "PID:" "$pid"
+        printf "%-14s %s GB\n" "MLX RAM:" "$rss_gb"
+    else
+        printf "%-14s %s\n" "MLX RAM:" "Server gestoppt"
+    fi
+
+    printf "%-14s %s %%\n" "System frei:" "$free_percent"
+    printf "%-14s %s / %s GB\n" \
+        "Swap:" \
+        "$swap_used_gb" \
+        "$swap_total_gb"
+
+    echo
+
+    case "$state" in
+        CRITICAL)
+            printf "${RED}${BOLD}⚠ Kritischer Speicherverbrauch${RESET}\n"
+            echo "Empfehlung:"
+            printf "  ${CYAN}mlx reset${RESET}\n"
+            ;;
+
+        WARN)
+            printf "${YELLOW}⚠ Erhöhter Speicherverbrauch${RESET}\n"
+            echo "Bei langsamen Antworten:"
+            printf "  ${CYAN}mlx reset${RESET}\n"
+            ;;
+
+        *)
+            printf "${GREEN}✓ Speicherzustand unauffällig${RESET}\n"
+            ;;
+    esac
+
+    echo
+}
+
+
+# ============================================================
+# Status
+# ============================================================
+
+status() {
+    load_config
+
+    local pid
+    local rss_kb
+    local rss_gb="0"
+    local free_percent
+    local swap_used_gb
+    local swap_total_gb
+    local state
+
+    pid="$(get_mlx_pid)"
+    free_percent="$(get_memory_free_percent)"
+
+    [ -n "$free_percent" ] || free_percent=0
+
+    get_swap_values
+
+    swap_used_gb="$(mb_to_gb "$SWAP_USED_MB")"
+    swap_total_gb="$(mb_to_gb "$SWAP_TOTAL_MB")"
+
+    if [ -n "$pid" ]; then
+        rss_kb="$(get_mlx_rss_kb)"
+        rss_gb="$(kb_to_gb "${rss_kb:-0}")"
+    fi
+
+    state="$(memory_state "$rss_gb" "$free_percent" "$swap_used_gb")"
+
+    echo
+    printf "${BOLD}${CYAN}MLX Status${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────────────────────────${RESET}\n"
+
+    printf "%-12s %s\n" "Modell:" "$MODEL"
+    printf "%-12s %s\n" "Thinking:" "$THINKING"
+    printf "%-12s %s\n" "Port:" "$PORT"
+
+    if launchagent_loaded; then
+        if api_ready; then
+            printf "%-12s ${GREEN}läuft ✓${RESET}\n" "Status:"
+        else
+            printf "%-12s ${YELLOW}startet / API nicht bereit${RESET}\n" "Status:"
+        fi
+    else
+        printf "%-12s gestoppt\n" "Status:"
+    fi
+
+    echo
+    printf "${GRAY}────────────────────────────────────────────────────────────${RESET}\n"
+
+    if [ -n "$pid" ]; then
+        printf "%-12s %s\n" "PID:" "$pid"
+        printf "%-12s %s GB\n" "MLX RAM:" "$rss_gb"
+    else
+        printf "%-12s -\n" "MLX RAM:"
+    fi
+
+    printf "%-12s %s %%\n" "RAM frei:" "$free_percent"
+
+    printf "%-12s %s / %s GB\n" \
+        "Swap:" \
+        "$swap_used_gb" \
+        "$swap_total_gb"
+
+    echo
+
+    case "$state" in
+        CRITICAL)
+            printf "${RED}${BOLD}⚠ Speicher kritisch – mlx reset empfohlen${RESET}\n"
+            ;;
+
+        WARN)
+            printf "${YELLOW}⚠ Speicherverbrauch erhöht${RESET}\n"
+            ;;
+
+        *)
+            printf "${GREEN}✓ Speicherzustand unauffällig${RESET}\n"
+            ;;
+    esac
+
+    echo
+}
+
+
+# ============================================================
+# Server Argumente
+# ============================================================
+
+serverargs() {
+    load_config
+
+    local pid
+    pid="$(get_mlx_pid)"
+
+    if [ -z "$pid" ]; then
+        echo "MLX läuft nicht."
+        return 1
+    fi
+
+    echo
+    printf "${BOLD}${CYAN}MLX Server-Prozess${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+
+    ps -ww -p "$pid" -o pid,ppid,etime,command
+
+    echo
+}
+
+
+# ============================================================
+# Diagnose
+# ============================================================
+
+doctor() {
+    load_config
+
+    echo
+    printf "${BOLD}${CYAN}MLX Doctor${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+
+    local errors=0
+
+    check_command() {
+        local cmd="$1"
+
+        if command_exists "$cmd"; then
+            printf "${GREEN}✓${RESET} %-20s\n" "$cmd"
+        else
+            printf "${RED}✗${RESET} %-20s fehlt\n" "$cmd"
+            errors=$((errors + 1))
+        fi
+    }
+
+    check_command launchctl
+    check_command curl
+    check_command jq
+    check_command python3
+    check_command mlx_lm.server
+
+    echo
+
+    if [ -f "$CONFIG" ]; then
+        printf "${GREEN}✓${RESET} Config\n"
+    else
+        printf "${RED}✗${RESET} Config fehlt: %s\n" "$CONFIG"
+        errors=$((errors + 1))
+    fi
+
+    if [ -f "$PLIST" ]; then
+        printf "${GREEN}✓${RESET} LaunchAgent\n"
+
+        if plutil -lint "$PLIST" >/dev/null 2>&1; then
+            printf "${GREEN}✓${RESET} LaunchAgent Syntax\n"
+        else
+            printf "${RED}✗${RESET} LaunchAgent Syntax fehlerhaft\n"
+            errors=$((errors + 1))
+        fi
+    else
+        printf "${RED}✗${RESET} LaunchAgent fehlt\n"
+        errors=$((errors + 1))
+    fi
+
+    if [ -f "$CHAT_SCRIPT" ]; then
+        printf "${GREEN}✓${RESET} mlx-chat.py\n"
+    else
+        printf "${YELLOW}⚠${RESET} mlx-chat.py fehlt: %s\n" "$CHAT_SCRIPT"
+    fi
+
+    echo
+
+    if api_ready; then
+        printf "${GREEN}✓${RESET} MLX API erreichbar\n"
+    else
+        printf "${YELLOW}⚠${RESET} MLX API nicht erreichbar\n"
+    fi
+
+    echo
+
+    if [ "$errors" -eq 0 ]; then
+        printf "${GREEN}${BOLD}Keine kritischen Probleme gefunden.${RESET}\n"
+    else
+        printf "${RED}${BOLD}%d Problem(e) gefunden.${RESET}\n" "$errors"
+    fi
+
+    echo
+}
+
+
+# ============================================================
+# Modelle
+# ============================================================
+
+models() {
+    echo
+    printf "${BOLD}${CYAN}Bekannte Modell-Aliase${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────────────────────────${RESET}\n"
+
+    if [ ! -s "$MODELS_FILE" ]; then
+        echo "Keine Aliase vorhanden."
+        echo
+        return
+    fi
+
+    while IFS='=' read -r alias repo; do
+        [ -z "$alias" ] && continue
+        [[ "$alias" == \#* ]] && continue
+
+        printf "${CYAN}%-15s${RESET} -> %s\n" "$alias" "$repo"
+    done < "$MODELS_FILE"
+
+    echo
+}
+
+
+model() {
+    load_config
+
+    case "$1" in
+        "")
+            echo "$MODEL"
+            ;;
+
+        add)
+            if [ -z "$2" ] || [ -z "$3" ]; then
+                echo "Verwendung:"
+                echo "  mlx model add <alias> <huggingface-repo>"
+                return 1
+            fi
+
+            mkdir -p "$(dirname "$MODELS_FILE")"
+            touch "$MODELS_FILE"
+
+            local alias="$2"
+            local repo="$3"
+            local tmp="${MODELS_FILE}.tmp"
+
+            awk -F= \
+                -v alias="$alias" \
+                -v repo="$repo" '
+                BEGIN {
+                    found=0
+                }
+
+                $1 == alias {
+                    print alias "=" repo
+                    found=1
+                    next
+                }
+
+                {
+                    print
+                }
+
+                END {
+                    if (!found)
+                        print alias "=" repo
+                }
+            ' "$MODELS_FILE" > "$tmp"
+
+            mv "$tmp" "$MODELS_FILE"
+
+            printf "${GREEN}✓ Alias gespeichert:${RESET} %s -> %s\n" \
+                "$alias" "$repo"
+            ;;
+
+        remove)
+            if [ -z "$2" ]; then
+                echo "Verwendung:"
+                echo "  mlx model remove <alias>"
+                return 1
+            fi
+
+            local alias="$2"
+            local tmp="${MODELS_FILE}.tmp"
+
+            if awk -F= -v alias="$alias" '
+                $1 == alias {
+                    found=1
+                }
+
+                END {
+                    exit !found
+                }
+            ' "$MODELS_FILE" 2>/dev/null; then
+
+                awk -F= -v alias="$alias" '
+                    $1 != alias
+                ' "$MODELS_FILE" > "$tmp"
+
+                mv "$tmp" "$MODELS_FILE"
+
+                printf "${GREEN}✓ Alias entfernt:${RESET} %s\n" "$alias"
+            else
+                echo "Alias nicht gefunden: $alias"
+            fi
+            ;;
+
+        *)
+            local new_model
+            new_model="$(resolve_model "$1")"
+
+            if grep -q '^MODEL=' "$CONFIG"; then
+                sed -i '' \
+                    "s|^MODEL=.*|MODEL=\"$new_model\"|" \
+                    "$CONFIG"
+            else
+                printf '\nMODEL="%s"\n' "$new_model" >> "$CONFIG"
+            fi
+
+            echo "Neues Modell:"
+            echo "  $new_model"
+            echo
+            echo "MLX wird neu gestartet..."
+
+            restart
+            ;;
+    esac
+}
+
+
+# ============================================================
+# Thinking
+# ============================================================
+
+thinking() {
+    load_config
+
+    case "$1" in
+        on)
+            if grep -q '^THINKING=' "$CONFIG"; then
+                sed -i '' \
+                    's/^THINKING=.*/THINKING="true"/' \
+                    "$CONFIG"
+            else
+                printf '\nTHINKING="true"\n' >> "$CONFIG"
+            fi
+
+            echo "Thinking: EIN"
+            restart
+            ;;
+
+        off)
+            if grep -q '^THINKING=' "$CONFIG"; then
+                sed -i '' \
+                    's/^THINKING=.*/THINKING="false"/' \
+                    "$CONFIG"
+            else
+                printf '\nTHINKING="false"\n' >> "$CONFIG"
+            fi
+
+            echo "Thinking: AUS"
+            restart
+            ;;
+
+        status|"")
+            echo "Thinking: $THINKING"
+            ;;
+
+        *)
+            echo "Verwendung:"
+            echo "  mlx thinking on"
+            echo "  mlx thinking off"
+            echo "  mlx thinking status"
+            return 1
+            ;;
+    esac
+}
+
+
+# ============================================================
+# Hugging Face Cache
+# ============================================================
+
+cache_dir_for_repo() {
+    local repo="$1"
+
+    echo "$HOME/.cache/huggingface/hub/models--${repo//\//--}"
+}
+
+
+hf_downloader() {
+    if command_exists hf; then
+        echo "hf"
+    elif command_exists huggingface-cli; then
+        echo "huggingface-cli"
+    else
+        return 1
+    fi
+}
+
+
+download_model() {
+    local input="$1"
+
+    if [ -z "$input" ]; then
+        echo "Verwendung:"
+        echo "  mlx download <alias|huggingface-repo>"
+        return 1
+    fi
+
+    local repo
+    local downloader
+
+    repo="$(resolve_model "$input")"
+
+    if ! downloader="$(hf_downloader)"; then
+        echo "Hugging-Face CLI fehlt."
+        echo
+        echo "Installieren mit:"
+        echo "  python3 -m pip install -U huggingface_hub"
+        return 1
+    fi
+
+    echo
+    printf "${BOLD}${CYAN}MLX Download${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────────────────────────${RESET}\n"
+    printf "Modell: ${BOLD}%s${RESET}\n\n" "$repo"
+
+    "$downloader" download "$repo"
+}
+
+
+retry_model() {
+    local input="$1"
+
+    if [ -n "$input" ]; then
+        download_model "$input"
+        return $?
+    fi
+
+    local base="$HOME/.cache/huggingface/hub"
+    local found=0
+    local dir
+    local repo
+
+    if [ ! -d "$base" ]; then
+        echo "Kein Hugging-Face-Cache vorhanden."
+        return
+    fi
+
+    while IFS= read -r dir; do
+        [ -z "$dir" ] && continue
+
+        if find "$dir" \
+            -type f \
+            -name '*.incomplete' \
+            -print -quit 2>/dev/null |
+            grep -q .; then
+
+            found=1
+
+            repo="$(
+                basename "$dir" |
+                sed 's/^models--//' |
+                sed 's/--/\//g'
+            )"
+
+            echo
+            printf "${YELLOW}⟳ Setze Download fort:${RESET} %s\n" "$repo"
+
+            download_model "$repo" || return $?
+        fi
+    done < <(
+        find "$base" \
+            -maxdepth 1 \
+            -type d \
+            -name 'models--*' \
+            2>/dev/null |
+        sort
+    )
+
+    if [ "$found" -eq 0 ]; then
+        printf "${GREEN}Keine unvollständigen Downloads gefunden. ✓${RESET}\n"
+    fi
+}
+
+
+remove_cached_model() {
+    local input="$1"
+    local force="$2"
+
+    if [ -z "$input" ]; then
+        echo "Verwendung:"
+        echo "  mlx remove <alias|huggingface-repo> [--yes]"
+        return 1
+    fi
+
+    local repo
+    local dir
+
+    repo="$(resolve_model "$input")"
+    dir="$(cache_dir_for_repo "$repo")"
+
+    if [ ! -d "$dir" ]; then
+        echo "Nicht im Cache gefunden:"
+        echo "  $repo"
+        return 1
+    fi
+
+    echo
+    printf "${RED}${BOLD}Cache löschen${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+    echo "Modell: $repo"
+    echo "Pfad:   $dir"
+    echo
+
+    if [ "$force" != "--yes" ] &&
+       [ "$force" != "-y" ]; then
+
+        printf "Wirklich löschen? [y/N] "
+        read -r answer
+
+        case "$answer" in
+            y|Y|yes|YES|j|J|ja|JA)
+                ;;
+            *)
+                echo "Abgebrochen."
+                return
+                ;;
+        esac
+    fi
+
+    rm -rf -- "$dir"
+
+    printf "${GREEN}✓ Cache gelöscht:${RESET} %s\n" "$repo"
+}
+
+
+redownload_model() {
+    local input="$1"
+
+    if [ -z "$input" ]; then
+        echo "Verwendung:"
+        echo "  mlx redownload <alias|huggingface-repo>"
+        return 1
+    fi
+
+    local repo
+    local dir
+
+    repo="$(resolve_model "$input")"
+    dir="$(cache_dir_for_repo "$repo")"
+
+    echo
+    printf "${YELLOW}${BOLD}Komplett neu herunterladen${RESET}\n"
+    printf "${GRAY}────────────────────────────────────────${RESET}\n"
+    echo "Modell: $repo"
+
+    if [ -d "$dir" ]; then
+        echo
+        printf "Vorhandenen Cache wirklich löschen und neu laden? [y/N] "
+        read -r answer
+
+        case "$answer" in
+            y|Y|yes|YES|j|J|ja|JA)
+                rm -rf -- "$dir"
+                printf "${GREEN}✓ Alter Cache gelöscht.${RESET}\n"
+                ;;
+
+            *)
+                echo "Abgebrochen."
+                echo
+                echo "Für normales Fortsetzen:"
+                echo "  mlx retry $input"
+                return
+                ;;
+        esac
+    fi
+
+    download_model "$repo"
+}
+
+
+cache() {
+    local base="$HOME/.cache/huggingface/hub"
+
+    echo
+    printf "${BOLD}${CYAN}╭──────────────────────────────────────────────────────────────────────╮${RESET}\n"
+    printf "${BOLD}${CYAN}│  MLX MODEL CACHE                                                     │${RESET}\n"
+    printf "${BOLD}${CYAN}╰──────────────────────────────────────────────────────────────────────╯${RESET}\n"
+
+    if [ ! -d "$base" ]; then
+        echo
+        echo "  Kein Hugging-Face-Cache vorhanden."
+        echo
+        return
+    fi
+
+    local count=0
+    local complete_count=0
+    local incomplete_count=0
+
+    while IFS= read -r dir; do
+        [ -z "$dir" ] && continue
+
+        local name
+        local size
+        local incomplete_files
+        local incomplete_size
+        local alias_name
+        local hint
+
+        name="$(
+            basename "$dir" |
+            sed 's/^models--//' |
+            sed 's/--/\//g'
+        )"
+
+        size="$(
+            du -sh "$dir" 2>/dev/null |
+            awk '{print $1}'
+        )"
+
+        alias_name="$(find_alias_for_repo "$name")"
+
+        if [ -n "$alias_name" ]; then
+            hint="$alias_name"
+        else
+            hint="$name"
+        fi
+
+        incomplete_files="$(
+            find "$dir" \
+                -type f \
+                -name '*.incomplete' \
+                -print -quit \
+                2>/dev/null
+        )"
+
+        echo
+
+        if [ -n "$incomplete_files" ]; then
+            incomplete_size="$(
+                find "$dir" \
+                    -type f \
+                    -name '*.incomplete' \
+                    -exec du -ch {} + \
+                    2>/dev/null |
+                tail -1 |
+                awk '{print $1}'
+            )"
+
+            printf "  ${YELLOW}⟳${RESET}  ${BOLD}%s${RESET}\n" "$name"
+            printf "     %-8s ${YELLOW}Download unvollständig${RESET}\n" "${size:-?}"
+            printf "     Offen:   %-8s ${DIM}→ mlx retry %s${RESET}\n" \
+                "${incomplete_size:-?}" \
+                "$hint"
+
+            incomplete_count=$((incomplete_count + 1))
+        else
+            printf "  ${GREEN}✓${RESET}  ${BOLD}%s${RESET}\n" "$name"
+            printf "     %-8s ${GREEN}Lokal${RESET}\n" "${size:-?}"
+
+            complete_count=$((complete_count + 1))
+        fi
+
+        if [ -n "$alias_name" ]; then
+            printf "     Alias:   ${CYAN}%s${RESET}\n" "$alias_name"
+        fi
+
+        count=$((count + 1))
+    done < <(
+        find "$base" \
+            -maxdepth 1 \
+            -type d \
+            -name 'models--*' \
+            2>/dev/null |
+        sort
+    )
+
+    echo
+    printf "${GRAY}────────────────────────────────────────────────────────────────────────${RESET}\n"
+
+    printf "  ${BOLD}%d Modelle${RESET}   │   ${GREEN}%d vollständig${RESET}   │   " \
+        "$count" \
+        "$complete_count"
+
+    if [ "$incomplete_count" -gt 0 ]; then
+        printf "${YELLOW}%d unvollständig${RESET}\n" \
+            "$incomplete_count"
+
+        printf "  ${DIM}Alle fortsetzen: mlx retry${RESET}\n"
+    else
+        printf "${GREEN}keine offenen Downloads ✓${RESET}\n"
+    fi
+
+    echo
+}
+
+
+# ============================================================
+# Einmalige Frage
+# ============================================================
+
+ask() {
+    load_config
+
+    if [ -z "$*" ]; then
+        echo 'Verwendung: mlx ask "Deine Frage"'
+        return 1
+    fi
+
+    if ! api_ready; then
+        printf "${RED}MLX-Server ist nicht erreichbar.${RESET}\n"
+        echo
+        echo "Starten mit:"
+        echo "  mlx start"
+        return 1
+    fi
+
+    local prompt="$*"
+    local response
+    local rc
+
+    response="$(
+        curl -sS \
+            --connect-timeout 5 \
+            --max-time "$ASK_TIMEOUT" \
+            "http://127.0.0.1:$PORT/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -d "$(
+                jq -n \
+                    --arg model "$MODEL" \
+                    --arg prompt "$prompt" \
+                    '{
+                        model:$model,
+                        messages:[
+                            {
+                                role:"user",
+                                content:$prompt
+                            }
+                        ],
+                        temperature:0.7,
+                        max_tokens:2000
+                    }'
+            )"
+    )"
+
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        echo
+
+        case "$rc" in
+            28)
+                printf "${RED}✗ MLX antwortet seit %d Sekunden nicht.${RESET}\n" \
+                    "$ASK_TIMEOUT"
+                ;;
+
+            7)
+                printf "${RED}✗ Verbindung zu MLX fehlgeschlagen.${RESET}\n"
+                ;;
+
+            *)
+                printf "${RED}✗ MLX Anfrage fehlgeschlagen (curl Fehler %d).${RESET}\n" \
+                    "$rc"
+                ;;
+        esac
+
+        echo
+        memory
+
+        echo "Tipp:"
+        printf "  ${CYAN}mlx reset${RESET}\n"
+
+        return "$rc"
+    fi
+
+    jq -r '
+        .choices[0].message.content
+        // .choices[0].message.reasoning
+        // .error.message
+        // "Keine Antwort."
+    ' <<< "$response"
+}
+
+
+# ============================================================
+# Chat
+# ============================================================
+
+chat() {
+    load_config
+
+    if [ ! -f "$CHAT_SCRIPT" ]; then
+        printf "${RED}Chat-Script fehlt:${RESET}\n"
+        echo "  $CHAT_SCRIPT"
+        return 1
+    fi
+
+    if ! api_ready; then
+        printf "${RED}MLX-Server ist nicht erreichbar.${RESET}\n"
+        echo
+        echo "Starten mit:"
+        echo "  mlx start"
+        return 1
+    fi
+
+    python3 "$CHAT_SCRIPT"
+}
+
+
+# ============================================================
+# Hilfe
+# ============================================================
+
+
+
+# MLX-NOBBY-SERVICE-MANAGER
+# ============================================================
+# Native MLX-Nobby services
+# ============================================================
+
+mlx_service_domain() {
+    echo "gui/$(id -u)"
+}
+
+
+mlx_service_label() {
+    case "$1" in
+        server)
+            echo "de.nobby.mlx-server"
+            ;;
+        agent)
+            echo "de.nobby.mlx-agent"
+            ;;
+        router)
+            echo "de.nobby.mlx-router"
+            ;;
+        embeddings)
+            echo "de.nobby.mlx-embeddings"
+            ;;
+        speech)
+            echo "de.nobby.mlx-speech"
+            ;;
+        images)
+            echo "de.nobby.mlx-images"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+mlx_service_port() {
+    case "$1" in
+        server)     echo "8000" ;;
+        agent)      echo "8010" ;;
+        embeddings) echo "8020" ;;
+        images)     echo "8030" ;;
+        router)     echo "8040" ;;
+        speech)     echo "8050" ;;
+        *)          return 1 ;;
+    esac
+}
+
+
+mlx_service_plist() {
+    local label
+
+    label="$(mlx_service_label "$1")" || return 1
+
+    echo "$HOME/Library/LaunchAgents/${label}.plist"
+}
+
+
+mlx_service_loaded() {
+    local label
+    local domain
+
+    label="$(mlx_service_label "$1")" || return 1
+    domain="$(mlx_service_domain)"
+
+    launchctl print "$domain/$label" >/dev/null 2>&1
+}
+
+
+mlx_service_pid() {
+    local port
+
+    port="$(mlx_service_port "$1")" || return 1
+
+    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1
+}
+
+
+mlx_service_status_one() {
+    local service="$1"
+    local label
+    local port
+    local pid
+    local loaded
+
+    label="$(mlx_service_label "$service")" || return 1
+    port="$(mlx_service_port "$service")" || return 1
+    pid="$(mlx_service_pid "$service")"
+
+    if mlx_service_loaded "$service"; then
+        loaded="loaded"
+    else
+        loaded="not loaded"
+    fi
+
+    if [ -n "$pid" ]; then
+        printf "  %-11s ✓ läuft      Port %-5s PID %-7s (%s)\n" \
+            "$service" "$port" "$pid" "$loaded"
+    else
+        printf "  %-11s ✗ gestoppt   Port %-5s %-11s (%s)\n" \
+            "$service" "$port" "" "$loaded"
+    fi
+}
+
+
+services_status() {
+    echo
+    echo "MLX Services"
+    echo "────────────────────────────────────────────────────────────"
+
+    mlx_service_status_one server
+    mlx_service_status_one agent
+    mlx_service_status_one router
+    mlx_service_status_one embeddings
+    mlx_service_status_one speech
+    mlx_service_status_one images
+
+    echo "────────────────────────────────────────────────────────────"
+    echo
+}
+
+
+mlx_service_restart() {
+    local service="$1"
+    local label
+    local domain
+
+    label="$(mlx_service_label "$service")" || {
+        echo "Unbekannter Dienst: $service"
+        return 1
+    }
+
+    domain="$(mlx_service_domain)"
+
+    if ! mlx_service_loaded "$service"; then
+        local plist
+
+        plist="$(mlx_service_plist "$service")"
+
+        if [ ! -f "$plist" ]; then
+            echo "LaunchAgent fehlt: $plist"
+            return 1
+        fi
+
+        echo "$service wird geladen..."
+
+        launchctl bootstrap "$domain" "$plist" || return 1
+    else
+        echo "$service wird neu gestartet..."
+
+        launchctl kickstart -k "$domain/$label" || return 1
+    fi
+
+    return 0
+}
+
+
+agent_command() {
+    local action="${1:-status}"
+
+    case "$action" in
+        status)
+            mlx_service_status_one agent
+            ;;
+
+        restart)
+            mlx_service_restart agent
+            sleep 1
+            mlx_service_status_one agent
+            ;;
+
+        *)
+            echo "Verwendung:"
+            echo "  mlx agent status"
+            echo "  mlx agent restart"
+            return 1
+            ;;
+    esac
+}
+
+
+services_command() {
+    local action="${1:-status}"
+
+    case "$action" in
+        status)
+            services_status
+            ;;
+
+        *)
+            echo "Verwendung:"
+            echo "  mlx services"
+            echo "  mlx services status"
+            return 1
+            ;;
+    esac
+}
+
+
+restart_all() {
+    echo
+    echo "MLX Nobby – alle Dienste neu starten"
+    echo "────────────────────────────────────────────────────────────"
+
+    echo
+    echo "[1/6] MLX Server"
+    restart || return 1
+
+    echo
+    echo "[2/6] Agent"
+    mlx_service_restart agent || return 1
+
+    echo
+    echo "[3/6] Router"
+    mlx_service_restart router || return 1
+
+    echo
+    echo "[4/6] Embeddings"
+    mlx_service_restart embeddings || return 1
+
+    echo
+    echo "[5/6] Speech"
+    mlx_service_restart speech || return 1
+
+    echo
+    echo "[6/6] Images"
+    mlx_service_restart images || return 1
+
+    sleep 2
+
+    echo
+    services_status
+
+    echo "✓ Alle MLX-Nobby-Dienste wurden neu gestartet."
+}
+
+
+help() {
+cat <<'HELP'
+
+MLX Manager
+===========
+
+Server:
+  mlx start
+  mlx stop
+  mlx restart
+  mlx restart-all
+  mlx services
+  mlx agent status
+  mlx agent restart
+  mlx reset
+  mlx status
+  mlx memory
+  mlx serverargs
+  mlx doctor
+
+Chat:
+  mlx chat
+  mlx ask "Frage"
+
+Modelle:
+  mlx model
+  mlx models
+  mlx model <alias>
+  mlx model <huggingface-repo>
+  mlx model add <alias> <repo>
+  mlx model remove <alias>
+
+Downloads / Cache:
+  mlx cache
+  mlx download <alias|repo>
+  mlx retry [alias|repo]
+  mlx redownload <alias|repo>
+  mlx remove <alias|repo> [--yes]
+
+Thinking:
+  mlx thinking on
+  mlx thinking off
+  mlx thinking status
+
+Diagnose:
+  mlx status
+      Serverstatus + RAM + Swap
+
+  mlx memory
+      Detaillierter Speicherstatus
+
+  mlx serverargs
+      Tatsächlich laufende mlx_lm.server Argumente
+
+  mlx doctor
+      Installation und Konfiguration prüfen
+
+  mlx reset
+      Server neu starten und RAM/KV-Cache verwerfen
+
+Hilfe:
+  mlx
+  mlx help
+  mlx --help
+  mlx -h
+
+HELP
+}
+
+
+# ============================================================
+# Main
+# ============================================================
+
+load_config
+
+case "$1" in
+    restart-all)
+        restart_all
+        ;;
+
+    services)
+        shift
+        services_command "$@"
+        ;;
+
+    agent)
+        shift
+        agent_command "$@"
+        ;;
+
+    start)
+        start
+        ;;
+
+    stop)
+        stop
+        ;;
+
+    restart)
+        restart
+        ;;
+
+    reset)
+        reset
+        ;;
+
+    status)
+        status
+        ;;
+
+    memory)
+        memory
+        ;;
+
+    serverargs)
+        serverargs
+        ;;
+
+    doctor)
+        doctor
+        ;;
+
+    chat)
+        chat
+        ;;
+
+    ask)
+        shift
+        ask "$@"
+        ;;
+
+    models)
+        models
+        ;;
+
+    cache)
+        cache
+        ;;
+
+    download)
+        shift
+        download_model "$@"
+        ;;
+
+    retry)
+        shift
+        retry_model "$@"
+        ;;
+
+    redownload)
+        shift
+        redownload_model "$@"
+        ;;
+
+    remove)
+        shift
+        remove_cached_model "$@"
+        ;;
+
+    model)
+        shift
+        model "$@"
+        ;;
+
+    thinking)
+        shift
+        thinking "$@"
+        ;;
+
+    help|--help|-h|"")
+        help
+        ;;
+
+    *)
+        printf "${RED}Unbekannter Befehl:${RESET} %s\n" "$1"
+        echo
+        help
+        exit 1
+        ;;
+esac

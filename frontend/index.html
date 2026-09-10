@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MLX Nobby · Control Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (new URLSearchParams(location.search).get('embedded') === '1') {
+            document.documentElement.classList.add('embedded-control');
+        }
+    </script>
+    <style>
+        .embedded-control body { background:#111620; min-height:0; overflow:auto; }
+        .embedded-control body > .sticky { display:none; }
+        .embedded-control body > .max-w-6xl { max-width:none; margin:0; padding:0; }
+        .embedded-control body > .max-w-6xl > .flex.items-center.justify-between.mb-8 { display:none; }
+        .embedded-control #extraViews { padding-top:0; }
+        .history-cleanup-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+        .history-cleanup [role="status"] { display:block; margin-top:6px; color:#94a3b8; font-size:12px; }
+        .history-cleanup [role="status"]:empty { display:none; }
+    </style>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+<div class="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+
+        <div class="flex items-center gap-6 min-w-0">
+
+            <a
+                href="#dashboard"
+                class="flex items-center gap-3 shrink-0"
+            >
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center font-black text-xs shadow-lg">
+                    MLX
+                </div>
+
+                <div class="hidden sm:block">
+                    <div class="font-bold leading-tight">
+                        MLX
+                    </div>
+
+                    <div class="text-[10px] text-slate-500">
+                        Local AI
+                    </div>
+                </div>
+            </a>
+
+            <nav
+                id="mainNavigation"
+                class="hidden md:flex items-center gap-1"
+            >
+
+                <a
+                    href="#dashboard"
+                    data-view="dashboard"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Dashboard
+                </a>
+
+                <a
+                    href="#models"
+                    data-view="models"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Models
+                </a>
+
+                <a
+                    href="#batch"
+                    data-view="batch"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Batch
+                </a>
+
+                <a
+                    href="#system"
+                    data-view="system"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    System
+                </a>
+
+                <a
+                    href="#logs"
+                    data-view="logs"
+                    class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
+                >
+                    Logs
+                </a>
+
+            </nav>
+
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+
+            <a
+                href="/chat"
+                class="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-600 text-white text-sm font-semibold"
+            >
+                Chat →
+            </a>
+
+            <div
+                id="globalStatusBadge"
+                class="hidden lg:block px-3 py-2 rounded-full bg-slate-900 border border-slate-800 text-slate-400 text-xs font-semibold"
+            >
+                ● …
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<div class="max-w-6xl mx-auto px-6 py-10">
+
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">
+                    Dashboard
+                </h1>
+
+                <p class="text-slate-400 text-sm mt-1">
+                    MLX runtime overview
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+
+            <div
+                id="statusBadge"
+                class="hidden"
+            >
+                Loading status…
+            </div>
+
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" data-app-view="dashboard">
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+            <div class="mb-6">
+                <div class="text-sm text-slate-400 mb-2">Current model</div>
+                <div id="model" class="text-xl font-semibold break-all">–</div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">PID</div>
+                    <div id="pid" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">Port</div>
+                    <div id="port" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">RAM</div>
+                    <div id="memory" class="text-xl font-semibold mt-1">–</div>
+                </div>
+
+                <div class="bg-slate-950 rounded-xl p-4">
+                    <div class="text-xs uppercase text-slate-500">Thinking</div>
+
+                    <div class="flex items-center justify-between mt-2">
+                        <div id="thinking" class="text-xl font-semibold">–</div>
+
+                        <button
+                            id="thinkingToggle"
+                            class="relative inline-flex h-7 w-12 items-center rounded-full bg-slate-700 transition disabled:opacity-40"
+                        >
+                            <span
+                                id="thinkingKnob"
+                                class="inline-block h-5 w-5 transform rounded-full bg-white transition translate-x-1"
+                            ></span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+            <div class="text-sm text-slate-400 mb-4">Server</div>
+            <div id="serverState" class="text-2xl font-bold">–</div>
+
+            <div class="grid grid-cols-2 gap-3 mt-6">
+
+                <button
+                    data-command="start"
+                    class="server-btn bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ▶ Start
+                </button>
+
+                <button
+                    data-command="stop"
+                    class="server-btn bg-red-700 hover:bg-red-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ■ Stop
+                </button>
+
+                <button
+                    data-command="restart"
+                    class="server-btn bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    ↻ Restart
+                </button>
+
+                <button
+                    data-command="reset"
+                    class="server-btn bg-amber-700 hover:bg-amber-600 disabled:opacity-40 rounded-xl px-4 py-3 font-semibold">
+                    Reset
+                </button>
+
+            </div>
+
+            <div id="actionStatus"
+                 class="text-sm text-slate-400 mt-5 min-h-[24px]">
+            </div>
+
+            <div id="lastUpdate"
+                 class="text-xs text-slate-500 mt-3">
+                –
+            </div>
+
+        </div>
+    </div>
+
+    <section id="modelLibrary" data-app-view="models" class="mt-8">
+
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">Models</h1>
+        <p class="text-slate-400 text-sm mt-1">
+            Manage models, downloads, and local storage
+        </p>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="mb-5">
+            <h2 class="text-lg font-semibold">Add model</h2>
+            <p class="text-sm text-slate-400">
+                Download a Hugging Face model and register it as an MLX alias
+            </p>
+        </div>
+
+        <form id="addModelForm"
+              class="grid grid-cols-1 lg:grid-cols-[180px_1fr_180px_auto] gap-4 items-end">
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Alias
+                </label>
+
+                <input
+                    id="addModelAlias"
+                    type="text"
+                    placeholder="e.g. qwen-coder"
+                    autocomplete="off"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
+                >
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Hugging Face Repository
+                </label>
+
+                <input
+                    id="addModelRepo"
+                    type="text"
+                    placeholder="mlx-community/..."
+                    autocomplete="off"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 font-mono text-sm"
+                >
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Quantization
+                </label>
+
+                <select
+                    id="addModelQuant"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
+                >
+                    <option value="">Automatic</option>
+                    <option value="2-bit">2-bit</option>
+                    <option value="4-bit">4-bit</option>
+                    <option value="6-bit">6-bit</option>
+                    <option value="8-bit">8-bit</option>
+                </select>
+            </div>
+
+            <button
+                id="addModelButton"
+                type="submit"
+                class="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-5 py-3 font-semibold whitespace-nowrap"
+            >
+                + Add and download
+            </button>
+
+        </form>
+
+        <div id="addModelStatus"
+             class="text-sm text-slate-400 mt-4 min-h-[22px]">
+        </div>
+
+    </div>
+
+
+    <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+            <div>
+                <h2 class="text-lg font-semibold">My models</h2>
+                <p class="text-sm text-slate-400">
+                    Aliases, local storage, download status, and runtime
+                </p>
+            </div>
+            <div id="modelLibrarySummary" class="text-sm text-slate-400">
+                Loading…
+            </div>
+        </div>
+
+        <div class="mb-5">
+            <h3 class="text-sm text-slate-400 mb-2">Download history</h3>
+            <div id="downloadHistoryCleanup" class="history-cleanup"></div>
+        </div>
+        <div id="models" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            Loading models…
+        </div>
+
+        <!-- Compatibility anchors for existing controllers; no longer shown separately. -->
+        <div class="hidden" aria-hidden="true">
+            <span id="cacheSummary"></span>
+            <div id="cacheModels"></div>
+            <span id="jobsSummary"></span>
+            <div id="jobsContainer"></div>
+        </div>
+
+    </div>
+
+    </section>
+
+</div>
+
+<div
+    id="extraViews"
+    class="max-w-6xl mx-auto px-6 pb-10"
+>
+
+    <section
+        id="systemViewPlaceholder"
+        data-app-view="system"
+        class="hidden"
+    >
+
+        <div class="mb-6">
+            <h1 class="text-2xl font-bold">System</h1>
+            <p class="text-slate-400 text-sm mt-1">
+                macOS & MLX Runtime
+            </p>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="text-xs uppercase text-slate-500">
+                    Total RAM
+                </div>
+                <div id="sysRamTotal" class="text-2xl font-semibold mt-2">–</div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="text-xs uppercase text-slate-500">
+                    Free RAM
+                </div>
+                <div id="sysRamFree" class="text-2xl font-semibold mt-2">–</div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="text-xs uppercase text-slate-500">
+                    Swap
+                </div>
+                <div id="sysSwap" class="text-2xl font-semibold mt-2">–</div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                <div class="text-xs uppercase text-slate-500">
+                    MLX RAM
+                </div>
+                <div id="sysMlxRam" class="text-2xl font-semibold mt-2">–</div>
+            </div>
+
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+                <h2 class="text-lg font-semibold mb-5">
+                    Runtime
+                </h2>
+
+                <div class="grid grid-cols-2 gap-4">
+
+                    <div class="bg-slate-950 rounded-xl p-4">
+                        <div class="text-xs uppercase text-slate-500">PID</div>
+                        <div id="sysPid" class="text-xl font-semibold mt-1">–</div>
+                    </div>
+
+                    <div class="bg-slate-950 rounded-xl p-4">
+                        <div class="text-xs uppercase text-slate-500">Port</div>
+                        <div id="sysPort" class="text-xl font-semibold mt-1">–</div>
+                    </div>
+
+                    <div class="bg-slate-950 rounded-xl p-4">
+                        <div class="text-xs uppercase text-slate-500">Uptime</div>
+                        <div id="sysUptime" class="text-xl font-semibold mt-1">–</div>
+                    </div>
+
+                    <div class="bg-slate-950 rounded-xl p-4">
+                        <div class="text-xs uppercase text-slate-500">Thinking</div>
+                        <div id="sysThinking" class="text-xl font-semibold mt-1">–</div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+                <h2 class="text-lg font-semibold mb-4">
+                    Current model
+                </h2>
+
+                <div
+                    id="sysModel"
+                    class="font-mono text-sm break-all text-slate-300 bg-slate-950 rounded-xl p-4"
+                >
+                    –
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="mt-6 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+            <div class="flex items-center justify-between gap-4 mb-4">
+
+                <div>
+                    <h2 class="text-lg font-semibold">
+                        Server arguments
+                    </h2>
+
+                    <p class="text-sm text-slate-400 mt-1">
+                        Arguments used by the running mlx_lm.server process
+                    </p>
+                </div>
+
+                <div id="sysUpdated" class="text-xs text-slate-500">
+                    –
+                </div>
+
+            </div>
+
+            <pre
+                id="sysArgs"
+                class="bg-black/50 border border-slate-800 rounded-xl p-4 text-xs text-slate-400 overflow-x-auto whitespace-pre-wrap"
+            >–</pre>
+
+        </div>
+
+    </section>
+
+
+    <section
+    id="logsViewPlaceholder"
+    data-app-view="logs"
+    class="hidden"
+>
+
+    <div class="mb-6 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+
+        <div>
+            <h1 class="text-2xl font-bold">
+                Logs
+            </h1>
+
+            <p class="text-slate-400 text-sm mt-1">
+                MLX runtime, agent, and background jobs
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+
+            <input
+                id="logSearch"
+                type="search"
+                placeholder="Search logs…"
+                class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm outline-none focus:border-blue-600 min-w-[230px]"
+            >
+
+            <label class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400">
+                <input id="logsAutoRefresh" type="checkbox" checked>
+                Auto-Refresh
+            </label>
+
+            <label class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400">
+                <input id="logsAutoScroll" type="checkbox" checked>
+                Auto-Scroll
+            </label>
+
+            <button
+                id="logsPause"
+                class="bg-slate-800 hover:bg-slate-700 rounded-xl px-4 py-2 text-sm font-semibold"
+            >
+                Pause
+            </button>
+
+            <button
+                id="logsRefresh"
+                class="bg-blue-700 hover:bg-blue-600 rounded-xl px-4 py-2 text-sm font-semibold"
+            >
+                Refresh
+            </button>
+
+        </div>
+
+    </div>
+
+    <div
+        id="logsTabs"
+        class="flex flex-wrap gap-2 mb-4"
+    ></div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+
+        <div class="flex items-center justify-between gap-4 px-4 py-3 border-b border-slate-800">
+
+            <div class="min-w-0">
+
+                <div
+                    id="activeLogTitle"
+                    class="font-semibold text-sm"
+                >
+                    Logs
+                </div>
+
+                <div
+                    id="activeLogFile"
+                    class="text-xs text-slate-500 font-mono truncate mt-1"
+                >
+                    –
+                </div>
+
+            </div>
+
+            <div class="flex items-center gap-2">
+
+                <span
+                    id="logsUpdated"
+                    class="text-xs text-slate-500"
+                >
+                    –
+                </span>
+
+                <button
+                    id="copyLogs"
+                    class="bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 text-xs font-semibold"
+                >
+                    Copy
+                </button>
+
+            </div>
+
+        </div>
+
+        <pre
+            id="logsOutput"
+            class="m-0 p-5 bg-black/50 text-xs leading-5 text-slate-300 font-mono overflow-auto whitespace-pre-wrap"
+            style="height:62vh;"
+        >Loading logs…</pre>
+
+    </div>
+
+</section>
+
+
+<section
+    id="batch-transform"
+    class="mt-8"
+>
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+        <div class="flex items-center justify-between gap-4 mb-5">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-100">
+                    Batch Transform
+                </h2>
+
+                <p class="text-sm text-slate-400 mt-1">
+                    Process large files statelessly in chunks with the active MLX model.
+                </p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Input file
+                </label>
+
+                <div class="flex gap-2">
+                    <input
+                        id="batchFileInput"
+                        type="file"
+                        class="hidden"
+                        accept=".txt,.sql,.csv,.json,.md,.log,.xml,.yml,.yaml"
+                    >
+
+                    <button
+                        id="batchFileButton"
+                        type="button"
+                        class="shrink-0 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition"
+                    >
+                        Choose file
+                    </button>
+
+                    <input
+                        id="batchInputPath"
+                        type="text"
+                        readonly
+                        placeholder="No file uploaded"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-slate-400 font-mono outline-none"
+                    >
+                </div>
+
+                <div
+                    id="batchUploadStatus"
+                    class="text-xs text-slate-500 mt-2 min-h-[18px]"
+                ></div>
+            </div>
+
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    File type
+                </label>
+
+                <select
+                    id="batchFileType"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
+                >
+                    <option value="auto">Automatic</option>
+                    <option value="text">Text</option>
+                    <option value="sql">SQL</option>
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="mt-5">
+            <label class="block text-sm text-slate-400 mb-2">
+                Transformation instruction
+            </label>
+
+            <textarea
+                id="batchInstruction"
+                rows="6"
+                placeholder="Example: Replace personal data with neutral placeholders. Change nothing else."
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 resize-y"
+            ></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-[220px_auto] gap-4 mt-5 items-end">
+            <div>
+                <label class="block text-sm text-slate-400 mb-2">
+                    Chunk size
+                </label>
+
+                <select
+                    id="batchChunkTokens"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
+                >
+                    <option value="2000">2.000 Tokens</option>
+                    <option value="4000">4.000 Tokens</option>
+                    <option value="6000" selected>6.000 Tokens</option>
+                    <option value="8000">8.000 Tokens</option>
+                    <option value="12000">12.000 Tokens</option>
+                </select>
+            </div>
+
+            <div>
+                <button
+                    id="batchCreateButton"
+                    type="button"
+                    class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition"
+                >
+                    Start batch
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-8">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-base font-semibold text-slate-200">
+                    Jobs
+                </h3>
+
+                <button
+                    id="batchRefreshButton"
+                    type="button"
+                    class="text-sm text-blue-400 hover:text-blue-300"
+                >
+                    Refresh
+                </button>
+            </div>
+
+            <div id="batchHistoryCleanup" class="history-cleanup mb-4"></div>
+            <div
+                id="batchJobs"
+                class="space-y-3"
+            >
+                <div class="text-sm text-slate-500">
+                    No jobs loaded.
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+</div>
+
+<script src="/assets/common.js"></script>
+<script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
+<script src="/assets/control/system.js"></script>
+<script src="/assets/control/logs.js"></script>
+<script src="/assets/control/models.js"></script>
+<script src="/assets/control/cache.js"></script>
+<script src="/assets/control/jobs.js?v=20260909-cleanup"></script>
+<script src="/assets/control/batch.js?v=20260909-cleanup"></script>
+<script src="/assets/control-center.js?v=20260909-cleanup"></script>
+
+</body>
+</html>

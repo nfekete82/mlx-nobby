@@ -1,0 +1,3 @@
+# Optional standalone native CLI; separate from legacy DiffusionKit.
+# Published PyPI release exposing the CLI commands used by image_providers.py.
+mflux==0.19.1

@@ -1,0 +1,4 @@
+# Tested inference/tokenizer APIs for mlx-audio 0.5.1; see docs/DEPENDENCIES.md.
+# The [stt] extra itself supplies sentencepiece and zstandard.
+mlx==0.32.2
+transformers==5.16.1

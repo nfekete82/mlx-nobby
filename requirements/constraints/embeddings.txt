@@ -1,0 +1,4 @@
+# mlx-embeddings imports mlx_vlm.utils and the Transformers tokenizer API.
+# Keep these tested API versions together; see docs/DEPENDENCIES.md.
+mlx-vlm==0.7.0
+transformers==5.17.0
