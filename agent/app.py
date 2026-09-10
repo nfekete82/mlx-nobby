@@ -4679,7 +4679,9 @@ def _looks_like_coding_action(prompt, conversation_context=None):
         )
     )
     followup_change=bool(re.search(
-        r"\b(?:mach|ändere|aendere|entferne|lösche|loesche|füge|fuege)\b",
+        r"\b(?:mach|mache|ändere|aendere|entferne|lösche|loesche|"
+        r"füge|fuege|einfügen|einfuegen|ergänze|ergaenze|erweitere|"
+        r"baue|bau|implementiere|implementier|ändere|aendere)\b",
         value,
     ))
     return (explicit_target and change_intent) or (
@@ -4756,6 +4758,16 @@ def classify_chat_action_details(
         }
 
     requires_tools=semantic.get("requires_tools")
+
+    if (
+        intent == "coding_agent"
+        and requires_tools is False
+        and _looks_like_coding_action(
+            prompt,
+            conversation_context,
+        )
+    ):
+        requires_tools = True
     if not isinstance(requires_tools, bool):
         requires_tools=intent != "normal_chat"
 
@@ -10845,7 +10857,7 @@ Bei allgemeinen Systemdiagnosen:
                 ),
             },
         ],
-        max_tokens=1600 if coding_mode else 1000,
+        max_tokens=12000 if coding_mode else 1000,
         temperature=0.05,
     )
 
@@ -10890,7 +10902,7 @@ Bei allgemeinen Systemdiagnosen:
                     ),
                 },
             ],
-            max_tokens=1600,
+            max_tokens=12000 if coding_mode else 1600,
             temperature=0.0,
         )
 
