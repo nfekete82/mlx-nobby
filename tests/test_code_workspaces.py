@@ -92,14 +92,14 @@ class CodeWorkspaceTests(unittest.TestCase):
         patch = code_workspaces.create_patch(
             workspace["workspace_id"],
             "Create file",
-            [{"path": "src/new.php", "proposed_content": "<?php\necho 'new';\n"}],
+            [{"path": "src/new.txt", "proposed_content": "new\n"}],
         )
 
         file_diff = patch["files"][0]
         self.assertEqual(file_diff["operation"], "CREATE")
         self.assertIn("--- /dev/null", file_diff["diff"])
-        self.assertIn("+++ proposed/src/new.php", file_diff["diff"])
-        self.assertFalse((self.workspace_one / "src/new.php").exists())
+        self.assertIn("+++ proposed/src/new.txt", file_diff["diff"])
+        self.assertFalse((self.workspace_one / "src/new.txt").exists())
         test_result = code_workspaces.test(patch["patch_id"])
         self.assertTrue(test_result["passed"])
         self.assertNotEqual(test_result["results"][0]["status"], "failed")
