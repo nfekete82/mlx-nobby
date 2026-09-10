@@ -4,7 +4,7 @@ Contributions are welcome.
 
 ## Development environment
 
-MLX Nobby targets macOS on Apple Silicon.
+MLX nobby targets macOS on Apple Silicon.
 
 Recommended tools:
 

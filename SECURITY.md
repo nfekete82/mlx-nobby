@@ -1,6 +1,6 @@
 # Security Policy
 
-MLX Nobby is designed primarily for local use on macOS.
+MLX nobby is designed primarily for local use on macOS.
 
 ## Local-only services
 
@@ -39,7 +39,7 @@ appropriate authentication, TLS, and network-isolation layer.
 Model downloads can contact Hugging Face, research actions can contact the
 configured SearXNG service and selected web pages, and the current web pages
 load several static assets from public CDNs. Review these connections before
-using MLX Nobby with sensitive material or in an offline environment.
+using MLX nobby with sensitive material or in an offline environment.
 
 ## Reporting a vulnerability
 

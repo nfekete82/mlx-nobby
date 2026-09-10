@@ -1,4 +1,4 @@
-# MLX Nobby
+# MLX nobby
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
@@ -7,7 +7,7 @@
 ![Release](https://img.shields.io/badge/release-v1.0.0-informational)
 
 
-**MLX Nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
+**MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
 
 Run LLMs and AI services locally on your Mac with MLX and Metal acceleration while keeping models, conversations, documents, embeddings, and generated content under your control.
 
@@ -32,15 +32,15 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ### Start screen
 
-![MLX Nobby start screen](docs/screenshots/startscreen.png)
+![MLX nobby start screen](docs/screenshots/startscreen.png)
 
 ### Local AI chat
 
-![MLX Nobby chat interface](docs/screenshots/chat.png)
+![MLX nobby chat interface](docs/screenshots/chat.png)
 
 ### Model management
 
-![MLX Nobby model management](docs/screenshots/models.png)
+![MLX nobby model management](docs/screenshots/models.png)
 
 ## Architecture
 
@@ -243,7 +243,7 @@ Model inference, saved chats, notes, knowledge indexes, generated images, and
 service logs are designed to remain on the local machine. The services bind to
 loopback by default and the web port is published on localhost.
 
-MLX Nobby is not completely offline by default:
+MLX nobby is not completely offline by default:
 
 - Model download and cache actions can contact Hugging Face.
 - Research actions can query the configured SearXNG instance and fetch selected
@@ -300,7 +300,7 @@ runtime data from pull requests.
 
 ## Project status
 
-MLX Nobby is under active development. Configuration and APIs may change, and
+MLX nobby is under active development. Configuration and APIs may change, and
 the image stack includes a deliberately isolated legacy dependency. The project
 has not been presented here as production-ready or independently security
 audited.
