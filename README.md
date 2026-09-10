@@ -133,3 +133,32 @@ APIs, configuration and architecture may still change.
 ## License
 
 MIT License
+
+## MLX Manager
+
+MLX Nobby includes the command-line manager in:
+
+`scripts/mlx`
+
+Install it locally with:
+
+    mkdir -p ~/bin
+    cp scripts/mlx ~/bin/mlx
+    chmod +x ~/bin/mlx
+
+Useful commands:
+
+    mlx start
+    mlx stop
+    mlx restart
+    mlx restart-all
+    mlx status
+    mlx services
+    mlx agent status
+    mlx agent restart
+    mlx memory
+    mlx serverargs
+    mlx doctor
+
+The manager uses `~/.config/mlx-server/config`,
+`~/.config/mlx-server/models` and the native macOS LaunchAgents.

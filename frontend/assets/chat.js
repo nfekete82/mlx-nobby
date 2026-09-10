@@ -1483,3 +1483,567 @@ input.focus();
         initServiceHealth();
     }
 })();
+
+
+// MLX-NOBBY-COMPOSER-SINGLELINE
+(function initSingleLineComposer() {
+
+    function syncComposerMeta() {
+
+        const workspace =
+            document.getElementById('activeWorkspaceBadge');
+
+        const workspaceValue =
+            document.getElementById('composerWorkspaceValue');
+
+
+        if (workspace && workspaceValue) {
+
+            let text =
+                (workspace.textContent || '')
+                    .replace(/^📁\s*/, '')
+                    .trim();
+
+            workspaceValue.textContent =
+                text || 'Kein Workspace';
+
+            workspaceValue.title =
+                workspace.title || text || '';
+        }
+
+
+        const contextText =
+            document.getElementById('contextText');
+
+        const composerContextText =
+            document.getElementById('composerContextText');
+
+
+        if (contextText && composerContextText) {
+
+            const text =
+                (contextText.textContent || '').trim();
+
+            composerContextText.textContent =
+                text || '0 Tokens · 0 %';
+        }
+
+
+        const contextFill =
+            document.getElementById('contextFill');
+
+        const composerContextFill =
+            document.getElementById('composerContextFill');
+
+
+        if (contextFill && composerContextFill) {
+
+            composerContextFill.style.width =
+                contextFill.style.width || '0%';
+
+            const computed =
+                window.getComputedStyle(contextFill);
+
+            composerContextFill.style.backgroundColor =
+                computed.backgroundColor;
+        }
+    }
+
+
+    function updateComposerMode() {
+
+        const composer =
+            document.querySelector('.composer');
+
+        const input =
+            document.getElementById('input');
+
+
+        if (!composer || !input) {
+            return;
+        }
+
+
+        /*
+         * 52px = normale Single-Line-Höhe.
+         *
+         * scrollHeight steigt zuverlässig, sobald Text wrappt
+         * oder Enter verwendet wird.
+         */
+        const multiline =
+            input.value.includes('\n')
+            || input.scrollHeight > 58;
+
+
+        composer.classList.toggle(
+            'composer-multiline',
+            multiline
+        );
+    }
+
+
+    function observe(element) {
+
+        if (!element) {
+            return;
+        }
+
+
+        const observer =
+            new MutationObserver(syncComposerMeta);
+
+
+        observer.observe(
+            element,
+            {
+                subtree: true,
+                childList: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: [
+                    'style',
+                    'title',
+                    'hidden'
+                ]
+            }
+        );
+    }
+
+
+    function init() {
+
+        const input =
+            document.getElementById('input');
+
+        const plusButton =
+            document.getElementById('composerPlusButton');
+
+
+        if (input) {
+
+            input.addEventListener(
+                'input',
+                () => {
+                    requestAnimationFrame(
+                        updateComposerMode
+                    );
+                }
+            );
+
+
+            /*
+             * Falls die vorhandene Autosize-Logik die Höhe
+             * verändert, reagieren wir ebenfalls darauf.
+             */
+            if ('ResizeObserver' in window) {
+
+                const resizeObserver =
+                    new ResizeObserver(
+                        updateComposerMode
+                    );
+
+                resizeObserver.observe(input);
+            }
+        }
+
+
+        if (plusButton) {
+
+            plusButton.addEventListener(
+                'click',
+                () => {
+                    requestAnimationFrame(
+                        syncComposerMeta
+                    );
+                }
+            );
+        }
+
+
+        observe(
+            document.getElementById(
+                'activeWorkspaceBadge'
+            )
+        );
+
+        observe(
+            document.getElementById(
+                'contextText'
+            )
+        );
+
+        observe(
+            document.getElementById(
+                'contextFill'
+            )
+        );
+
+
+        updateComposerMode();
+        syncComposerMeta();
+    }
+
+
+    if (document.readyState === 'loading') {
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            init,
+            { once: true }
+        );
+
+    } else {
+
+        init();
+    }
+
+})();
+
+
+// MLX-NOBBY-CENTERED-START
+(function initCenteredChatStart() {
+
+    let lastEmptyState = null;
+
+
+    function getSession() {
+
+        try {
+
+            if (
+                window.MLXChatSessions &&
+                typeof MLXChatSessions.currentSession === 'function'
+            ) {
+                return MLXChatSessions.currentSession();
+            }
+
+        } catch (error) {
+            console.debug(
+                'Centered start: session not ready',
+                error
+            );
+        }
+
+        return null;
+    }
+
+
+    function updateCenteredChatState() {
+
+        const session = getSession();
+
+        if (!session) {
+            return;
+        }
+
+
+        const messages =
+            Array.isArray(session.messages)
+                ? session.messages
+                : [];
+
+
+        const empty =
+            messages.length === 0;
+
+
+        if (empty === lastEmptyState) {
+            return;
+        }
+
+
+        lastEmptyState = empty;
+
+
+        document.body.classList.toggle(
+            'mlx-empty-chat',
+            empty
+        );
+
+
+        document.body.classList.toggle(
+            'mlx-chat-started',
+            !empty
+        );
+    }
+
+
+    /*
+     * renderMessages verändert messagesInner jedes Mal,
+     * wenn ein Chat geladen, geleert oder erweitert wird.
+     *
+     * Damit reagieren wir auch auf:
+     *
+     * - Neuer Chat
+     * - bestehenden Chat öffnen
+     * - erste Nachricht senden
+     * - Chat leeren
+     */
+
+    function observeMessages() {
+
+        const messagesInner =
+            document.getElementById('messagesInner');
+
+
+        if (!messagesInner) {
+            return;
+        }
+
+
+        const observer =
+            new MutationObserver(() => {
+
+                requestAnimationFrame(
+                    updateCenteredChatState
+                );
+
+            });
+
+
+        observer.observe(
+            messagesInner,
+            {
+                childList: true,
+                subtree: true
+            }
+        );
+    }
+
+
+    function init() {
+
+        observeMessages();
+
+        updateCenteredChatState();
+
+
+        /*
+         * Zusätzliche Events, damit die Umschaltung schon beim
+         * ersten Submit passiert und nicht erst sichtbar später.
+         */
+
+        const input =
+            document.getElementById('input');
+
+
+        if (input) {
+
+            input.addEventListener(
+                'keydown',
+                event => {
+
+                    if (
+                        event.key === 'Enter' &&
+                        !event.shiftKey
+                    ) {
+
+                        requestAnimationFrame(
+                            updateCenteredChatState
+                        );
+                    }
+
+                }
+            );
+
+        }
+
+
+        const sendButton =
+            document.getElementById('sendButton');
+
+
+        if (sendButton) {
+
+            sendButton.addEventListener(
+                'click',
+                () => {
+
+                    requestAnimationFrame(
+                        updateCenteredChatState
+                    );
+
+                }
+            );
+
+        }
+
+
+        /*
+         * Sicherheitsnetz für Session-Wechsel.
+         *
+         * Kein Dauer-Polling: nur wenn das Fenster wieder
+         * aktiv wird.
+         */
+
+        window.addEventListener(
+            'focus',
+            updateCenteredChatState
+        );
+
+    }
+
+
+    if (document.readyState === 'loading') {
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            init,
+            { once: true }
+        );
+
+    } else {
+
+        init();
+    }
+
+})();
+
+
+// MLX-NOBBY-STARTSCREEN-POLISH
+(function initStartscreenPolish() {
+
+    function currentSession() {
+        try {
+            return window.MLXChatSessions?.currentSession?.() || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+
+    function hasMessages() {
+        const session = currentSession();
+
+        return Boolean(
+            session &&
+            Array.isArray(session.messages) &&
+            session.messages.length
+        );
+    }
+
+
+    function applyState(forceStarted = false) {
+
+        const started =
+            forceStarted || hasMessages();
+
+        document.body.classList.toggle(
+            'mlx-chat-started',
+            started
+        );
+
+        document.body.classList.toggle(
+            'mlx-empty-chat',
+            !started
+        );
+
+        /*
+         * Erst JETZT darf die UI sichtbar werden.
+         * Damit gibt es beim Reload keinen falschen
+         * Zwischenzustand mehr.
+         */
+        document.body.classList.remove(
+            'mlx-ui-booting'
+        );
+    }
+
+
+    function init() {
+
+        applyState();
+
+
+        const messagesInner =
+            document.getElementById('messagesInner');
+
+
+        if (messagesInner) {
+
+            new MutationObserver(() => {
+
+                requestAnimationFrame(() => {
+                    applyState();
+                });
+
+            }).observe(
+                messagesInner,
+                {
+                    childList: true,
+                    subtree: true
+                }
+            );
+
+        }
+
+
+        /*
+         * Sofort beim Abschicken nach unten wechseln.
+         * Dadurch wartet die Animation nicht erst darauf,
+         * dass renderMessages() fertig ist.
+         */
+
+        const formInput =
+            document.getElementById('input');
+
+        if (formInput) {
+
+            formInput.addEventListener(
+                'keydown',
+                event => {
+
+                    if (
+                        event.key === 'Enter' &&
+                        !event.shiftKey &&
+                        !event.isComposing &&
+                        formInput.value.trim()
+                    ) {
+                        applyState(true);
+                    }
+
+                }
+            );
+
+        }
+
+
+        const send =
+            document.getElementById('sendButton');
+
+        if (send) {
+
+            send.addEventListener(
+                'click',
+                () => {
+
+                    if (
+                        document
+                            .getElementById('input')
+                            ?.value
+                            ?.trim()
+                    ) {
+                        applyState(true);
+                    }
+
+                }
+            );
+
+        }
+
+    }
+
+
+    if (document.readyState === 'loading') {
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            init,
+            { once: true }
+        );
+
+    } else {
+
+        init();
+    }
+
+})();

@@ -2,7 +2,7 @@
 
 MLX läuft nativ auf macOS/Apple Silicon. Nur die Web-App läuft in Docker/OrbStack.
 Der macOS-Agent bleibt die Bridge zum Host; die bestehende Runtime wird weiterhin
-über `~/bin/mlx` und `~/.config/mlx-server/config` verwaltet.
+über `~/bin/mlx` und `~/.config/mlx-server/config` verwaltet. Die mitgelieferte Manager-Version liegt unter `scripts/mlx`.
 
 ## Getrennte Umgebungen und Python-Versionen
 

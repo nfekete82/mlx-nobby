@@ -19,7 +19,7 @@
     <link rel="icon" type="image/svg+xml" href="/assets/mlx-nobby.svg">
 </head>
 
-<body>
+<body class="mlx-ui-booting">
 
 <div class="app">
 
@@ -754,7 +754,7 @@
 
         <div class="composer-bottom">
 
-            <div style="display:flex;align-items:center;gap:6px">
+            <div class="composer-left">
 
                 <div class="composer-plus-wrap">
                     <button
@@ -834,7 +834,58 @@
                                 <small>Coding-Workspace auswählen</small>
                             </span>
                         </button>
-                    </div>
+
+                        <!-- MLX-NOBBY-COMPOSER-META-START -->
+                        <div class="composer-plus-divider"></div>
+
+                        <div class="composer-plus-meta">
+
+                            <button
+                                class="composer-plus-meta-workspace"
+                                type="button"
+                                data-plus-action="workspace"
+                                role="menuitem"
+                                title="Workspace wechseln"
+                            >
+                                <span class="composer-plus-meta-icon">
+                                    <svg width="19" height="19" viewBox="0 0 24 24"
+                                         fill="none"
+                                         stroke="currentColor"
+                                         stroke-width="1.8"
+                                         stroke-linecap="round"
+                                         stroke-linejoin="round">
+                                        <path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                    </svg>
+                                </span>
+
+                                <span class="composer-plus-meta-copy">
+                                    <small>Aktiver Workspace</small>
+                                    <strong id="composerWorkspaceValue">
+                                        Kein Workspace
+                                    </strong>
+                                </span>
+                            </button>
+
+                            <div class="composer-plus-context">
+                                <div class="composer-plus-context-head">
+                                    <span>Kontext</span>
+                                    <strong id="composerContextText">
+                                        0 Tokens · 0 %
+                                    </strong>
+                                </div>
+
+                                <div class="composer-plus-context-track">
+                                    <div
+                                        id="composerContextFill"
+                                        class="composer-plus-context-fill"
+                                    ></div>
+                                </div>
+                            </div>
+
+                        </div>
+                        <!-- MLX-NOBBY-COMPOSER-META-END -->
+
+</div>
                 </div>
 
                 <button
@@ -870,7 +921,6 @@
                 <span
                     id="activeWorkspaceBadge"
                     class="active-workspace-badge"
-                    hidden
                 ></span>
 
                 <span
@@ -880,13 +930,6 @@
                     aria-live="polite"
                 ></span>
 
-                <input
-                    id="fileInput"
-                    type="file"
-                    multiple
-                    hidden
-                    accept="image/jpeg,image/png,image/webp,image/gif,.txt,.md,.json,.php,.js,.ts,.html,.css,.py,.sh,.sql,.xml,.yml,.yaml,.ini,.conf,.log,.csv"
-                >
 
                 <div class="context">
 

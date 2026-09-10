@@ -5392,3 +5392,892 @@ body > * {
         justify-content: flex-end;
     }
 }
+
+
+/* MLX-NOBBY-COMPOSER-SINGLELINE */
+
+/*
+ * ----------------------------------------------------------
+ * Single-Line:
+ *
+ *   + | nobby fragen...                         mic  send
+ *
+ * Mehrzeilig:
+ *
+ *   längerer Text
+ *   wächst nach oben
+ *
+ *   +                                         mic  send
+ * ----------------------------------------------------------
+ */
+
+.composer {
+    position: relative;
+    overflow: visible;
+    min-height: 52px;
+}
+
+
+/* ----------------------------------------------------------
+   Texteingabe
+   ---------------------------------------------------------- */
+
+.input {
+    display: block;
+
+    width: 100%;
+    min-height: 52px;
+    max-height: 230px;
+
+    box-sizing: border-box;
+
+    resize: none;
+
+    /*
+     * Single-Line:
+     * links Platz für + und Trennlinie,
+     * rechts Platz für Mic + Senden.
+     */
+    padding:
+        14px
+        104px
+        14px
+        53px;
+
+    line-height: 24px;
+
+    transition:
+        padding .12s ease;
+}
+
+
+/*
+ * Sobald die Eingabe mehrzeilig wird, beginnt Text
+ * wieder normal links oben.
+ *
+ * Unten bleiben 49px für die Toolbar reserviert.
+ */
+.composer.composer-multiline .input {
+    padding:
+        13px
+        16px
+        49px
+        16px;
+}
+
+
+/* ----------------------------------------------------------
+   Toolbar liegt IN der Eingabefläche
+   ---------------------------------------------------------- */
+
+.composer-bottom {
+    position: absolute;
+
+    left: 8px;
+    right: 8px;
+    bottom: 7px;
+
+    z-index: 25;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    height: 36px;
+    min-height: 36px;
+
+    padding: 0;
+
+    gap: 8px;
+
+    pointer-events: none;
+}
+
+
+/*
+ * Buttons innerhalb der absolut positionierten Toolbar
+ * bleiben natürlich anklickbar.
+ */
+.composer-bottom button,
+.composer-bottom input,
+.composer-bottom .composer-plus-wrap,
+.composer-bottom .composer-actions {
+    pointer-events: auto;
+}
+
+
+/* ----------------------------------------------------------
+   Linke Seite
+   ---------------------------------------------------------- */
+
+.composer-left {
+    display: flex;
+    align-items: center;
+
+    flex: 0 0 auto;
+
+    min-width: 34px;
+
+    gap: 0;
+}
+
+
+.composer-plus-wrap {
+    position: relative;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex: 0 0 auto;
+}
+
+
+.composer-plus-button {
+    width: 34px;
+    height: 34px;
+
+    padding: 0;
+
+    border-radius: 999px;
+}
+
+
+/*
+ * Dünne vertikale Linie wie im Beispielbild.
+ * Nur im einzeiligen Zustand.
+ */
+.composer:not(.composer-multiline)
+.composer-plus-wrap::after {
+    content: "";
+
+    position: absolute;
+
+    right: -4px;
+    top: 7px;
+
+    width: 1px;
+    height: 20px;
+
+    background: rgba(255, 255, 255, .20);
+
+    pointer-events: none;
+}
+
+
+/*
+ * Mehrzeilig brauchen wir die Linie nicht mehr.
+ */
+.composer.composer-multiline
+.composer-plus-wrap::after {
+    display: none;
+}
+
+
+/* ----------------------------------------------------------
+   Alte permanente Workspace/Token-Anzeigen verschwinden
+   aus der Toolbar.
+   Die Elemente bleiben im DOM und werden weiterhin von
+   der vorhandenen Runtime aktualisiert.
+   ---------------------------------------------------------- */
+
+#activeWorkspaceBadge,
+#workspaceFeedback,
+.composer-bottom .context {
+    display: none !important;
+}
+
+
+/* ----------------------------------------------------------
+   Rechte Seite
+   ---------------------------------------------------------- */
+
+.composer-actions {
+    display: flex;
+    align-items: center;
+
+    gap: 5px;
+
+    flex: 0 0 auto;
+
+    margin-left: auto;
+}
+
+
+/* ----------------------------------------------------------
+   + Popup
+   ---------------------------------------------------------- */
+
+.composer-plus-menu {
+    position: absolute;
+
+    left: 0;
+    bottom: calc(100% + 11px);
+
+    z-index: 150;
+
+    width: 300px;
+
+    padding: 7px;
+
+    border: 1px solid #343b47;
+    border-radius: 15px;
+
+    background: #202020;
+
+    box-shadow:
+        0 18px 50px rgba(0, 0, 0, .42),
+        0 2px 8px rgba(0, 0, 0, .25);
+}
+
+
+.composer-plus-menu[hidden] {
+    display: none;
+}
+
+
+.composer-plus-divider {
+    height: 1px;
+
+    margin: 6px 5px;
+
+    background: rgba(255, 255, 255, .09);
+}
+
+
+.composer-plus-meta {
+    padding: 3px;
+}
+
+
+.composer-plus-meta-workspace {
+    width: 100%;
+
+    display: flex;
+    align-items: center;
+
+    gap: 12px;
+
+    padding: 10px 8px;
+
+    border: 0;
+    border-radius: 10px;
+
+    background: transparent;
+    color: #f1f3f5;
+
+    text-align: left;
+
+    cursor: pointer;
+}
+
+
+.composer-plus-meta-workspace:hover,
+.composer-plus-meta-workspace:focus-visible {
+    background: #303030;
+
+    outline: none;
+}
+
+
+.composer-plus-meta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex: 0 0 26px;
+
+    color: #aeb7c4;
+}
+
+
+.composer-plus-meta-copy {
+    display: flex;
+    flex-direction: column;
+
+    min-width: 0;
+
+    gap: 2px;
+}
+
+
+.composer-plus-meta-copy small {
+    color: #9098a5;
+
+    font-size: 10px;
+    font-weight: 500;
+}
+
+
+.composer-plus-meta-copy strong {
+    overflow: hidden;
+
+    max-width: 215px;
+
+    color: #f3f4f6;
+
+    font-size: 12px;
+    font-weight: 600;
+
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+.composer-plus-context {
+    padding:
+        9px
+        9px
+        10px;
+}
+
+
+.composer-plus-context-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 10px;
+
+    margin-bottom: 7px;
+
+    color: #8f98a6;
+
+    font-size: 10px;
+}
+
+
+.composer-plus-context-head strong {
+    color: #c3cad4;
+
+    font-size: 10px;
+    font-weight: 550;
+}
+
+
+.composer-plus-context-track {
+    width: 100%;
+    height: 4px;
+
+    overflow: hidden;
+
+    border-radius: 999px;
+
+    background: #343942;
+}
+
+
+.composer-plus-context-fill {
+    width: 0%;
+    height: 100%;
+
+    border-radius: inherit;
+
+    background: #4f8cff;
+
+    transition:
+        width .2s ease,
+        background .2s ease;
+}
+
+
+/* ----------------------------------------------------------
+   Anhänge:
+   Wenn Attachment-Chips erscheinen, bleiben sie oberhalb
+   der unteren Toolbar.
+   ---------------------------------------------------------- */
+
+.composer:has(.attachment-bar.visible)
+.attachment-bar {
+    margin-bottom: 43px;
+}
+
+
+/* ----------------------------------------------------------
+   Kleine Fenster
+   ---------------------------------------------------------- */
+
+@media (max-width: 620px) {
+
+    .input {
+        padding-right: 96px;
+    }
+
+    .composer-plus-menu {
+        width: min(
+            300px,
+            calc(100vw - 34px)
+        );
+    }
+}
+
+
+/* MLX-NOBBY-CENTERED-START */
+
+/*
+ * ==========================================================
+ * STARTANSICHT
+ *
+ * Leerer Chat:
+ *
+ *       Schön, dich zu sehen, nobby.
+ *
+ *       [ + | nobby fragen...              mic send ]
+ *
+ *
+ * Sobald Nachrichten vorhanden sind:
+ * Composer wieder normal unten.
+ * ==========================================================
+ */
+
+
+/* ----------------------------------------------------------
+   Sanfte Bewegung zwischen Start- und Chatmodus
+   ---------------------------------------------------------- */
+
+.composer-wrap {
+    transition:
+        top .28s ease,
+        bottom .28s ease,
+        transform .28s ease,
+        padding .28s ease;
+}
+
+
+/* ----------------------------------------------------------
+   LEERER CHAT
+   ---------------------------------------------------------- */
+
+body.mlx-empty-chat .composer-wrap {
+
+    /*
+     * Nicht mehr am unteren Fensterrand befestigen.
+     * Stattdessen vertikal mittig.
+     */
+
+    top: 50%;
+    bottom: auto;
+
+    /*
+     * Etwas unterhalb der exakten Mitte, damit oberhalb
+     * Platz für die Begrüßung bleibt.
+     */
+
+    transform: translateY(12px);
+
+    padding:
+        0
+        24px
+        0;
+
+    /*
+     * Im Startzustand brauchen wir keinen unteren
+     * Verlauf zum Seitenhintergrund.
+     */
+
+    background: transparent;
+}
+
+
+/*
+ * Composer in der Startansicht etwas kompakter.
+ * Die 900px-Maximalbreite bleibt erhalten.
+ */
+
+body.mlx-empty-chat .composer {
+    width: min(900px, 100%);
+}
+
+
+/* ----------------------------------------------------------
+   Begrüßung
+   ---------------------------------------------------------- */
+
+/*
+ * Deine vorhandene .empty-Anzeige sitzt innerhalb von
+ * messagesInner.
+ *
+ * Im Startzustand positionieren wir sie passend oberhalb
+ * des mittigen Composers.
+ */
+
+body.mlx-empty-chat .messages {
+    overflow: hidden;
+}
+
+
+body.mlx-empty-chat .messages-inner {
+    position: relative;
+
+    height: 100%;
+    min-height: 100%;
+
+    padding:
+        0
+        0
+        0;
+}
+
+
+body.mlx-empty-chat .empty {
+
+    position: absolute;
+
+    left: 0;
+    right: 0;
+
+    /*
+     * Die Begrüßung liegt knapp oberhalb des Composers.
+     */
+
+    top: 50%;
+
+    min-height: 0;
+
+    transform: translateY(-105px);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    text-align: center;
+}
+
+
+/*
+ * Falls die bestehende Empty-Ansicht Logo/Untertext enthält,
+ * konzentrieren wir die Startseite auf die Begrüßung.
+ *
+ * Das h1 bleibt sichtbar.
+ */
+
+body.mlx-empty-chat .empty-logo {
+    display: none;
+}
+
+
+body.mlx-empty-chat .empty h1 {
+    margin: 0;
+
+    font-size: clamp(24px, 2.2vw, 32px);
+    font-weight: 650;
+    letter-spacing: -.025em;
+}
+
+
+body.mlx-empty-chat .empty p {
+    display: none;
+}
+
+
+/*
+ * Disclaimer im Startmodus direkt unter dem Composer.
+ */
+
+body.mlx-empty-chat .composer-disclaimer {
+    position: absolute;
+
+    top: calc(100% + 10px);
+    left: 50%;
+
+    width: max-content;
+    max-width: calc(100vw - 40px);
+
+    transform: translateX(-50%);
+
+    margin: 0;
+
+    text-align: center;
+}
+
+
+/* ----------------------------------------------------------
+   NORMALER CHAT
+   ---------------------------------------------------------- */
+
+body.mlx-chat-started .composer-wrap {
+    top: auto;
+    bottom: 0;
+
+    transform: none;
+}
+
+
+/*
+ * Sobald der Chat läuft, wieder normale Message-Abstände.
+ */
+
+body.mlx-chat-started .messages-inner {
+    padding:
+        35px
+        0
+        170px;
+}
+
+
+/* ----------------------------------------------------------
+   Responsive
+   ---------------------------------------------------------- */
+
+@media (max-width: 900px) {
+
+    body.mlx-empty-chat .composer-wrap {
+        left: 0;
+
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+}
+
+
+@media (max-height: 650px) {
+
+    /*
+     * Auf niedrigen Displays etwas höher,
+     * damit Tastatur/Browserleisten nicht stören.
+     */
+
+    body.mlx-empty-chat .composer-wrap {
+        top: 46%;
+    }
+
+    body.mlx-empty-chat .empty {
+        top: 46%;
+    }
+
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+
+    .composer-wrap {
+        transition: none;
+    }
+
+}
+
+
+/* MLX-NOBBY-NO-EMPTY-FLASH */
+
+/*
+ * Das alte Empty-State-Logo und der Untertext werden nicht
+ * mehr verwendet. Dadurch können sie beim Hard-Reload auch
+ * nicht kurz aufblitzen.
+ */
+
+.empty-logo,
+.empty p {
+    display: none !important;
+}
+
+
+/*
+ * Vor Initialisierung der Chat-State-Logik verhindern wir
+ * einen sichtbaren Positionssprung des Composers.
+ */
+
+body:not(.mlx-empty-chat):not(.mlx-chat-started) .composer-wrap {
+    visibility: hidden;
+}
+
+
+/*
+ * Sobald der Zustand feststeht, normal anzeigen.
+ */
+
+body.mlx-empty-chat .composer-wrap,
+body.mlx-chat-started .composer-wrap {
+    visibility: visible;
+}
+
+
+/* MLX-NOBBY-STARTSCREEN-POLISH */
+
+/* ----------------------------------------------------------
+   Boot-Phase: nichts darf kurz an der falschen Stelle stehen.
+   ---------------------------------------------------------- */
+
+body.mlx-ui-booting .empty,
+body.mlx-ui-booting .composer-wrap {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
+
+/* ----------------------------------------------------------
+   Startscreen
+   ---------------------------------------------------------- */
+
+body.mlx-empty-chat .messages {
+    overflow: hidden;
+}
+
+body.mlx-empty-chat .messages-inner {
+    position: relative;
+    width: min(900px, calc(100% - 48px));
+    height: 100%;
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 0;
+}
+
+body.mlx-empty-chat .empty {
+    position: absolute;
+
+    left: 0;
+    right: 0;
+    top: 50%;
+
+    min-height: 0;
+
+    transform: translateY(-92px);
+
+    opacity: 1;
+    visibility: visible;
+
+    transition:
+        opacity .22s ease,
+        transform .28s ease;
+}
+
+body.mlx-empty-chat .empty-logo,
+body.mlx-empty-chat .empty p {
+    display: none !important;
+}
+
+body.mlx-empty-chat .empty h1 {
+    margin: 0;
+
+    font-size: clamp(25px, 2.3vw, 32px);
+    font-weight: 620;
+    letter-spacing: -.028em;
+    line-height: 1.15;
+}
+
+
+/* ----------------------------------------------------------
+   Composer im Startscreen
+   ---------------------------------------------------------- */
+
+body.mlx-empty-chat .composer-wrap {
+    top: 50%;
+    bottom: auto;
+
+    transform: translateY(-8px);
+
+    padding:
+        0
+        24px;
+
+    background: transparent;
+
+    opacity: 1;
+    visibility: visible;
+
+    transition:
+        top .32s cubic-bezier(.2,.7,.2,1),
+        bottom .32s cubic-bezier(.2,.7,.2,1),
+        transform .32s cubic-bezier(.2,.7,.2,1),
+        opacity .20s ease;
+}
+
+body.mlx-empty-chat .composer-disclaimer {
+    position: absolute;
+
+    top: calc(100% + 11px);
+    left: 50%;
+
+    width: max-content;
+    max-width: calc(100vw - 40px);
+
+    margin: 0;
+
+    transform: translateX(-50%);
+
+    text-align: center;
+}
+
+
+/* ----------------------------------------------------------
+   Sobald Chat gestartet ist
+   ---------------------------------------------------------- */
+
+body.mlx-chat-started .composer-wrap {
+    top: auto;
+    bottom: 0;
+
+    transform: translateY(0);
+
+    opacity: 1;
+    visibility: visible;
+}
+
+body.mlx-chat-started .messages-inner {
+    padding: 35px 0 170px;
+}
+
+
+/* Begrüßung verschwindet ohne harten Sprung */
+body.mlx-chat-started .empty {
+    opacity: 0;
+    transform: translateY(-110px);
+    pointer-events: none;
+}
+
+
+/* ----------------------------------------------------------
+   Etwas subtilerer Composer im leeren Zustand
+   ---------------------------------------------------------- */
+
+body.mlx-empty-chat .composer {
+    box-shadow:
+        0 12px 42px rgba(0, 0, 0, .28);
+}
+
+
+/* ----------------------------------------------------------
+   Responsive
+   ---------------------------------------------------------- */
+
+@media (max-width: 900px) {
+
+    body.mlx-empty-chat .composer-wrap {
+        left: 0;
+
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    body.mlx-empty-chat .messages-inner {
+        width: calc(100% - 36px);
+    }
+
+}
+
+@media (max-height: 700px) {
+
+    body.mlx-empty-chat .empty {
+        top: 46%;
+    }
+
+    body.mlx-empty-chat .composer-wrap {
+        top: 46%;
+    }
+
+}
+
+
+/* ----------------------------------------------------------
+   Animationen respektieren
+   ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+
+    body.mlx-empty-chat .empty,
+    body.mlx-empty-chat .composer-wrap,
+    body.mlx-chat-started .composer-wrap {
+        transition: none;
+    }
+
+}
