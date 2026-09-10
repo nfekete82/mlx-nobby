@@ -1,3 +1,16 @@
+function profileT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [varName, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${varName}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (() => {
     const $ = id => document.getElementById(id);
 
@@ -72,7 +85,7 @@
         const value = document.createElement('textarea');
         value.rows = 4;
         value.placeholder =
-            'Information eingeben. Auch längere Texte sind möglich.';
+            profileT('profile.value_placeholder', 'Enter information. Longer text is supported.');
         value.value = item.value || '';
 
         valueField.append(valueCaption, value);
@@ -98,7 +111,7 @@
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'settings-button danger';
-        remove.textContent = 'Entfernen';
+        remove.textContent = profileT('profile.remove', 'Remove');
 
         const done = document.createElement('button');
         done.type = 'button';
@@ -130,10 +143,10 @@
             const valueText = value.value.trim();
 
             summaryLabel.textContent =
-                labelText || 'Neue Information';
+                labelText || profileT('profile.new_information', 'New information');
 
             summaryValue.textContent =
-                valueText || 'Noch keine Information eingetragen';
+                valueText || profileT('profile.no_information', 'No information entered yet');
 
             card.classList.toggle(
                 'is-empty',
@@ -206,7 +219,7 @@
         const status = $('profileSaveStatus');
 
         if (status) {
-            status.textContent = 'Profil wird geladen…';
+            status.textContent = profileT('profile.loading', 'Loading profile…');
         }
 
         try {
@@ -271,8 +284,11 @@
         } catch (error) {
             if (status) {
                 status.textContent =
-                    'Speichern fehlgeschlagen: ' +
-                    error.message;
+                    profileT(
+                    'profile.save_failed',
+                    'Save failed: {message}',
+                    { message: error.message }
+                );
             }
         } finally {
             if (button) button.disabled = false;

@@ -1,3 +1,19 @@
+function notesT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(
+        key,
+        fallback
+    ) ?? fallback;
+
+    for (const [name, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${name}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (function () {
 
     let notes = [];
@@ -156,7 +172,7 @@
         }
 
         saveButton.textContent =
-            'Notiz speichern';
+            notesT('notes.save_note', 'Save note');
 
         const cancel =
             document.getElementById(
@@ -181,7 +197,7 @@
         }
 
         saveButton.textContent =
-            'Änderungen speichern';
+            notesT('notes.save_changes', 'Save changes');
 
         const cancel =
             document.getElementById(
@@ -259,9 +275,11 @@
     async function deleteNote(note) {
         if (
             !confirm(
-                'Notiz "' +
-                note.name +
-                '" wirklich löschen?'
+                notesT(
+                'notes.confirm_delete_note',
+                'Really delete note "{name}"?',
+                { name: note.name }
+            )
             )
         ) {
             return;
@@ -322,8 +340,8 @@
     ) {
         const name = prompt(
             parentId
-                ? 'Name des Unterordners:'
-                : 'Name des neuen Ordners:'
+                ? notesT('notes.new_subfolder_name', 'Name of the subfolder:')
+                : notesT('notes.new_folder_name', 'Name of the new folder:')
         );
 
         if (name === null) {
@@ -354,7 +372,7 @@
 
     async function renameFolder(folder) {
         const name = prompt(
-            'Neuer Ordnername:',
+            notesT('notes.rename_folder', 'New folder name:'),
             folder.name
         );
 
@@ -386,10 +404,11 @@
     async function deleteFolder(folder) {
         if (
             !confirm(
-                'Ordner "' +
-                folder.name +
-                '" löschen?\n\n' +
-                'Die Notizen werden nicht gelöscht.'
+                notesT(
+                'notes.confirm_delete_folder',
+                'Delete folder "{name}"?\n\nThe notes will not be deleted.',
+                { name: folder.name }
+            )
             )
         ) {
             return;
@@ -449,9 +468,10 @@
             console.error(error);
 
             alert(
-                'Ordner konnte nicht verschoben werden.\n\n' +
-                'Ein Ordner kann nicht in sich selbst ' +
-                'oder einen seiner Unterordner verschoben werden.'
+                notesT(
+                'notes.folder_move_failed',
+                'Folder could not be moved.\n\nA folder cannot be moved into itself or one of its subfolders.'
+            )
             );
         }
     }
@@ -783,12 +803,12 @@
 
         const menuItems = [
             {
-                label: 'In Chat einfügen',
+                label: notesT('notes.insert_chat', 'Insert into chat'),
                 action: () =>
                     insertIntoChat(note)
             },
             {
-                label: 'Bearbeiten',
+                label: notesT('notes.edit', 'Edit'),
                 action: () =>
                     editNote(note)
             },
@@ -796,7 +816,7 @@
                 separator: true
             },
             {
-                label: 'Löschen',
+                label: notesT('notes.delete', 'Delete'),
                 danger: true,
                 action: () =>
                     deleteNote(note)
@@ -850,7 +870,7 @@
             'note-action-primary';
 
         insertButton.textContent =
-            'Einfügen';
+            notesT('notes.insert', 'Insert');
 
         insertButton.addEventListener(
             'click',
@@ -990,7 +1010,7 @@
 
         const menuItems = [
             {
-                label: 'Neue Notiz',
+                label: notesT('notes.new_note', 'New note'),
                 action: () =>
                     newNoteInFolder(
                         folder.id
@@ -1012,7 +1032,7 @@
                     renameFolder(folder)
             },
             {
-                label: 'Löschen',
+                label: notesT('notes.delete', 'Delete'),
                 danger: true,
                 action: () =>
                     deleteFolder(folder)
@@ -1089,7 +1109,7 @@
                     'note-folder-empty';
 
                 empty.textContent =
-                    'Hier ablegen oder neue Notiz erstellen';
+                    notesT('notes.empty_folder', 'Drop here or create a new note');
 
                 body.appendChild(empty);
             }
@@ -1111,8 +1131,15 @@
 
         root.innerHTML =
             '<span>⌂</span>' +
-            '<strong>Ohne Ordner</strong>' +
-            '<small>Hierher ziehen, um aus einem Ordner zu entfernen</small>';
+            '<strong>' +
+            notesT('notes.no_folder', 'No folder') +
+            '</strong>' +
+            '<small>' +
+            notesT(
+                'notes.drop_remove_folder',
+                'Drop here to remove from folder'
+            ) +
+            '</small>';
 
         root.addEventListener(
             'dragover',
@@ -1150,7 +1177,7 @@
 
         rootNewNote.type = 'button';
         rootNewNote.textContent =
-            '+ Notiz';
+            notesT('notes.add_note', '+ Note');
 
         rootNewNote.addEventListener(
             'click',
@@ -1162,7 +1189,7 @@
 
         rootNewFolder.type = 'button';
         rootNewFolder.textContent =
-            '+ Ordner';
+            notesT('notes.add_folder', '+ Folder');
 
         rootNewFolder.addEventListener(
             'click',
@@ -1220,7 +1247,7 @@
                 'note-empty-state';
 
             empty.textContent =
-                'Noch keine Notizen vorhanden.';
+                notesT('notes.no_notes', 'No notes yet.');
 
             list.appendChild(empty);
         }
@@ -1242,7 +1269,7 @@
 
         rootOption.value = '';
         rootOption.textContent =
-            'Ohne Ordner';
+            notesT('notes.no_folder', 'No folder');
 
         folderSelect.appendChild(
             rootOption
@@ -1353,7 +1380,7 @@
                 'note-edit-cancel';
 
             cancel.textContent =
-                'Bearbeiten abbrechen';
+                notesT('notes.cancel_edit', 'Cancel editing');
 
             cancel.style.display =
                 'none';
@@ -1384,7 +1411,7 @@
             console.error(error);
 
             alert(
-                'Notizen konnten nicht geladen werden.'
+                notesT('notes.load_failed', 'Notes could not be loaded.')
             );
         }
     }

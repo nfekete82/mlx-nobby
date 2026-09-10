@@ -31,8 +31,8 @@
                 id="railExpand"
                 class="rail-logo"
                 type="button"
-                aria-label="Seitenleiste öffnen"
-                title="Seitenleiste öffnen"
+                aria-label="Seitenleiste öffnen" data-i18n-aria-label="ui.open_sidebar"
+                title="Seitenleiste öffnen" data-i18n-title="ui.open_sidebar"
             >
                 <img src="/assets/mlx-nobby.svg" alt="" class="rail-logo-img">
             </button>
@@ -41,8 +41,8 @@
                 id="railNewChat"
                 class="rail-button"
                 type="button"
-                aria-label="Neuer Chat"
-                title="Neuer Chat"
+                aria-label="Neuer Chat" data-i18n-aria-label="ui.new_chat"
+                title="Neuer Chat" data-i18n-title="ui.new_chat"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 20h9"></path>
@@ -66,8 +66,8 @@
                 id="railJobs"
                 class="rail-button"
                 type="button"
-                aria-label="Dateien und Jobs"
-                title="Dateien & Jobs"
+                aria-label="Dateien und Jobs" data-i18n-aria-label="ui.jobs_plain"
+                title="Dateien & Jobs" data-i18n-title="ui.jobs"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>
@@ -80,8 +80,8 @@
                 id="railSettings"
                 class="rail-button"
                 type="button"
-                aria-label="Einstellungen"
-                title="Einstellungen"
+                aria-label="Einstellungen" data-i18n-aria-label="ui.settings"
+                title="Einstellungen" data-i18n-title="ui.settings"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -97,8 +97,8 @@
                 id="sidebarCollapseButton"
                 class="sidebar-collapse-button"
                 type="button"
-                aria-label="Seitenleiste schließen"
-                title="Seitenleiste schließen"
+                aria-label="Seitenleiste schließen" data-i18n-aria-label="ui.close_sidebar"
+                title="Seitenleiste schließen" data-i18n-title="ui.close_sidebar"
             >
                 <svg
                     width="18"
@@ -137,7 +137,7 @@
                     </div>
 <div
     id="headerClock"
-    aria-label="Aktuelles Datum und Uhrzeit"
+    aria-label="Aktuelles Datum und Uhrzeit" data-i18n-aria-label="ui.current_datetime"
     style="
         margin-top: 4px;
         white-space: nowrap;
@@ -162,7 +162,7 @@
             id="newChat"
             class="new-chat"
         >
-            ＋ Neuer Chat
+            ＋ <span data-i18n="ui.new_chat">Neuer Chat</span>
         </button>
 
         <div
@@ -170,21 +170,21 @@
             class="chat-list"
         ></div>
 
-        <button id="sidebarJobsButton" class="sidebar-action" type="button">Dateien &amp; Jobs</button>
+        <button id="sidebarJobsButton" class="sidebar-action" type="button" data-i18n="ui.jobs">Dateien &amp; Jobs</button>
 
         <div class="sidebar-bottom">
 
-            <button id="sidebarSettingsButton" class="sidebar-action" type="button">⚙ Einstellungen</button>
+            <button id="sidebarSettingsButton" class="sidebar-action" type="button">⚙ <span data-i18n="ui.settings">Einstellungen</span></button>
             <div class="sidebar-runtime">MLX nobby · Local Runtime</div>
 
         </div>
 
     </aside>
 
-    <section id="jobsPanel" class="jobs-panel" hidden aria-label="Dateien und Jobs">
-        <div class="jobs-panel-header"><strong>Dateien / Jobs</strong><button id="jobsPanelClose" class="icon-btn" type="button">×</button></div>
+    <section id="jobsPanel" class="jobs-panel" hidden aria-label="Dateien und Jobs" data-i18n-aria-label="ui.jobs_plain">
+        <div class="jobs-panel-header"><strong data-i18n="ui.files_jobs_title">Dateien / Jobs</strong><button id="jobsPanelClose" class="icon-btn" type="button">×</button></div>
         <div id="jobsPanelCleanup" class="history-cleanup"></div>
-        <div id="jobsPanelContent" class="settings-hint">Lade Vorgänge…</div>
+        <div id="jobsPanelContent" class="settings-hint" data-i18n="ui.jobs_loading">Lade Vorgänge…</div>
     </section>
 
 
@@ -240,7 +240,7 @@
                     id="modelList"
                     class="model-list"
                 ></div>
-                <a class="model-manage-link" href="/settings/models">Modelle verwalten …</a>
+                <a class="model-manage-link" href="/settings/models" data-i18n="ui.manage_models">Modelle verwalten …</a>
             </div>
 
             <div
@@ -256,7 +256,7 @@
 
             <div class="top-actions">
 
-                <button id="sidebarToggle" class="icon-btn sidebar-toggle" aria-label="Chat-Navigation öffnen">☰</button>
+                <button id="sidebarToggle" class="icon-btn sidebar-toggle" aria-label="Chat-Navigation öffnen" data-i18n-aria-label="ui.open_chat_navigation">☰</button>
 
                 <button
                     id="runtimeInfoButton"
@@ -271,9 +271,7 @@
                 <button
                     id="clearButton"
                     class="icon-btn"
-                >
-                    Chat leeren
-                </button>
+                 data-i18n="ui.clear_chat">Chat leeren</button>
 
                 <button
                     id="settingsButton"
@@ -309,36 +307,36 @@
 
     <div class="settings-shell-header">
         <div>
-            <span class="settings-eyebrow">Konfiguration</span>
-            <h3>MLX nobby Einstellungen</h3>
+            <span class="settings-eyebrow" data-i18n="ui.configuration">Konfiguration</span>
+            <h3 data-i18n="ui.settings_title">MLX nobby Einstellungen</h3>
         </div>
-        <button id="settingsClose" class="icon-btn" type="button" aria-label="Einstellungen schließen">×</button>
+        <button id="settingsClose" class="icon-btn" type="button" aria-label="Einstellungen schließen" data-i18n-aria-label="ui.close_settings">×</button>
     </div>
-    <nav class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
-        <button type="button" data-settings-tab="general" class="active" aria-selected="true">Allgemein</button>
-        <button type="button" data-settings-tab="models-system" aria-selected="false">Modelle &amp; System</button>
-        <button type="button" data-settings-tab="knowledge" aria-selected="false">Wissensbasis</button>
-        <button type="button" data-settings-tab="profile" aria-selected="false">Persönliches Profil</button>
-        <button type="button" data-settings-tab="appearance" aria-selected="false">Darstellung</button>
+    <nav class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche" data-i18n-aria-label="ui.settings_sections">
+        <button type="button" data-settings-tab="general" class="active" aria-selected="true" data-i18n="ui.general">Allgemein</button>
+        <button type="button" data-settings-tab="models-system" aria-selected="false" data-i18n="ui.models_system">Modelle &amp; System</button>
+        <button type="button" data-settings-tab="knowledge" aria-selected="false" data-i18n="ui.knowledge_base">Wissensbasis</button>
+        <button type="button" data-settings-tab="profile" aria-selected="false" data-i18n="ui.personal_profile">Persönliches Profil</button>
+        <button type="button" data-settings-tab="appearance" aria-selected="false" data-i18n="ui.appearance">Darstellung</button>
     </nav>
-    <nav class="settings-subtabs" role="tablist" aria-label="Modelle und System" hidden>
-        <button type="button" data-settings-system-tab="models" data-model-console-tab="models" class="active" aria-selected="true">Modelle</button>
-        <button type="button" data-settings-system-tab="generation" aria-selected="false">Generation</button>
-        <button type="button" data-settings-system-tab="runtime" data-model-console-tab="runtime" aria-selected="false">Runtime</button>
-        <button type="button" data-settings-system-tab="storage" data-model-console-tab="storage" aria-selected="false">Speicher</button>
+    <nav class="settings-subtabs" role="tablist" aria-label="Modelle und System" data-i18n-aria-label="ui.models_system_label" hidden>
+        <button type="button" data-settings-system-tab="models" data-model-console-tab="models" class="active" aria-selected="true" data-i18n="ui.models">Modelle</button>
+        <button type="button" data-settings-system-tab="generation" aria-selected="false" data-i18n="ui.generation">Generation</button>
+        <button type="button" data-settings-system-tab="runtime" data-model-console-tab="runtime" aria-selected="false" data-i18n="ui.runtime">Runtime</button>
+        <button type="button" data-settings-system-tab="storage" data-model-console-tab="storage" aria-selected="false" data-i18n="ui.storage">Speicher</button>
         <button type="button" data-settings-system-tab="server" aria-selected="false">Server</button>
         <button type="button" data-settings-system-tab="logs" aria-selected="false">Logs</button>
     </nav>
     <div class="settings-pane" data-settings-pane="general">
         <div class="settings-page-intro">
-            <h4>Allgemein</h4>
-            <p>Globale Einstellungen für Chat-Verhalten und lokale Datensicherung.</p>
+            <h4 data-i18n="ui.general">Allgemein</h4>
+            <p data-i18n="ui.global_settings_description">Globale Einstellungen für Chat-Verhalten und lokale Datensicherung.</p>
         </div>
 
         <section class="settings-card">
-            <h4 class="settings-group-title">Chat-Verhalten</h4>
+            <h4 class="settings-group-title" data-i18n="ui.chat_behavior">Chat-Verhalten</h4>
             <div class="field">
-                <label for="showMetrics">Antwort-Statistiken</label>
+                <label for="showMetrics" data-i18n="ui.response_statistics">Antwort-Statistiken</label>
                 <select id="showMetrics">
                     <option value="off">Aus</option>
                     <option value="compact" selected>Kompakt</option>
@@ -351,13 +349,13 @@
 
         <section class="settings-card">
             <h4 class="settings-group-title">Export &amp; Import</h4>
-            <div class="settings-hint">Chats lokal sichern oder ein vorhandenes JSON-Backup einlesen.</div>
+            <div class="settings-hint" data-i18n="ui.backup_description">Chats lokal sichern oder ein vorhandenes JSON-Backup einlesen.</div>
             <div class="settings-export-row">
-                <button id="exportChatJson" class="message-action-btn" type="button">Aktueller Chat JSON</button>
-                <button id="exportChatMarkdown" class="message-action-btn" type="button">Aktueller Chat Markdown</button>
+                <button id="exportChatJson" class="message-action-btn" type="button" data-i18n="ui.current_chat_json">Aktueller Chat JSON</button>
+                <button id="exportChatMarkdown" class="message-action-btn" type="button" data-i18n="ui.current_chat_markdown">Aktueller Chat Markdown</button>
             </div>
             <div class="settings-export-row">
-                <button id="exportAllChats" class="message-action-btn" type="button">Alle Chats sichern</button>
+                <button id="exportAllChats" class="message-action-btn" type="button" data-i18n="ui.backup_all_chats">Alle Chats sichern</button>
                 <button id="importChatsButton" class="message-action-btn" type="button">Backup importieren</button>
             </div>
             <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
@@ -365,15 +363,15 @@
     </div>
     <div class="settings-pane" data-settings-pane="profile" hidden>
         <div class="settings-page-intro">
-            <h4>Persönliches Profil</h4>
-            <p>Persönliche Informationen, die MLX nobby bei passenden Antworten berücksichtigen kann.</p>
+            <h4 data-i18n="profile.title">Persönliches Profil</h4>
+            <p data-i18n="profile.description">Persönliche Informationen, die MLX nobby bei passenden Antworten berücksichtigen kann.</p>
         </div>
 
         <section class="settings-card">
-            <h4 class="settings-group-title">Persönlicher Kontext</h4>
+            <h4 class="settings-group-title" data-i18n="profile.context">Persönlicher Kontext</h4>
             <label class="settings-toggle">
                 <input id="profileEnabled" type="checkbox" checked>
-                Persönliches Profil bei Antworten berücksichtigen
+                <span data-i18n="profile.enabled">Persönliches Profil bei Antworten berücksichtigen</span>
             </label>
             <p class="settings-hint">
                 Profilinformationen werden lokal gespeichert und nur verwendet, wenn sie für die aktuelle Frage relevant sind.
@@ -381,11 +379,11 @@
         </section>
 
         <section class="settings-card">
-            <h4 class="settings-group-title">Antwortpräferenzen</h4>
+            <h4 class="settings-group-title" data-i18n="profile.preferences">Antwortpräferenzen</h4>
 
             <div class="field">
                 <label for="profileResponsePreferences">
-                    Wie soll MLX nobby antworten?
+                    <span data-i18n="profile.preferences_question">Wie soll MLX nobby antworten?</span>
                 </label>
                 <textarea
                     id="profileResponsePreferences"
@@ -403,11 +401,11 @@
         <section class="settings-card">
             <div class="knowledge-section-heading">
                 <div>
-                    <h4 class="settings-group-title">Weitere Informationen</h4>
-                    <p class="settings-hint">Füge beliebige zusätzliche Informationen hinzu.</p>
+                    <h4 class="settings-group-title" data-i18n="profile.additional">Weitere Informationen</h4>
+                    <p class="settings-hint" data-i18n="profile.additional_hint">Füge beliebige zusätzliche Informationen hinzu.</p>
                 </div>
                 <button id="profileAddField" class="settings-button" type="button">
-                    + Information hinzufügen
+                    <span data-i18n="profile.add_information">+ Information hinzufügen</span>
                 </button>
             </div>
 
@@ -417,7 +415,7 @@
         <section class="settings-card">
             <div class="settings-action-row">
                 <button id="profileSave" class="settings-button primary" type="button">
-                    Profil speichern
+                    <span data-i18n="profile.save_profile">Profil speichern</span>
                 </button>
                 <span id="profileSaveStatus" class="settings-hint" role="status"></span>
             </div>
@@ -427,12 +425,39 @@
     <div class="settings-pane" data-settings-pane="appearance" hidden>
 
         <div class="settings-page-intro">
-            <h4>Darstellung</h4>
-            <p>Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.</p>
+            <h4 data-i18n="appearance.title">Darstellung</h4>
+            <p data-i18n="appearance.description">Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.</p>
         </div>
 
         <section class="settings-card">
-        <h4 class="settings-group-title">Chat</h4>
+            <h4 class="settings-group-title" data-i18n="language.title">Sprache</h4>
+
+            <div class="field">
+                <label
+                    for="interfaceLanguage"
+                    data-i18n="language.label"
+                >Oberflächensprache</label>
+
+                <select id="interfaceLanguage">
+                    <option
+                        value="de"
+                        data-i18n="language.german"
+                    >Deutsch</option>
+                    <option
+                        value="en"
+                        data-i18n="language.english"
+                    >English</option>
+                </select>
+            </div>
+
+            <p
+                class="settings-hint"
+                data-i18n="language.hint"
+             data-i18n="ui.language_description">Ändert die Sprache der Benutzeroberfläche.</p>
+        </section>
+
+        <section class="settings-card">
+        <h4 class="settings-group-title" data-i18n="ui.chat">Chat</h4>
 
         <div class="field">
             <label for="chatFontSize">
@@ -450,23 +475,21 @@
             >
         </div>
 
-        <div class="settings-hint">
-            Ändert die Schriftgröße der Chat-Nachrichten.
-        </div>
+        <div class="settings-hint" data-i18n="ui.font_size_description">Ändert die Schriftgröße der Chat-Nachrichten.</div>
         </section>
 
         <section class="settings-card">
         <h4 class="settings-group-title">Eigene Nachrichten</h4>
 
         <div class="field">
-            <label>Farbe der Chat-Blase</label>
+            <label data-i18n="ui.chat_bubble_color">Farbe der Chat-Blase</label>
 
             <div class="appearance-color-row">
                 <input
                     id="userBubbleColor"
                     type="color"
                     value="#2f6fea"
-                    aria-label="Farbe auswählen"
+                    aria-label="Farbe auswählen" data-i18n-aria-label="ui.choose_color"
                 >
 
                 <input
@@ -497,11 +520,11 @@
 
     <div class="settings-page-intro">
         <h4>Generation</h4>
-        <p>Parameter des aktuellen Chats und Vorgaben für neue Unterhaltungen.</p>
+        <p data-i18n="ui.chat_parameters_description">Parameter des aktuellen Chats und Vorgaben für neue Unterhaltungen.</p>
     </div>
 
     <section class="settings-card">
-    <h4 class="settings-group-title">Aktueller Chat</h4>
+    <h4 class="settings-group-title" data-i18n="ui.current_chat">Aktueller Chat</h4>
     <div class="settings-row">
 
         <div class="field">
@@ -535,7 +558,7 @@
         <label>System-Prompt-Preset</label>
 
         <select id="systemPromptPreset">
-            <option value="general">Allgemein</option>
+            <option value="general" data-i18n="ui.general">Allgemein</option>
             <option value="coding">Coding</option>
             <option value="analysis">Analyse</option>
             <option value="roleplay">Roleplay</option>
@@ -555,19 +578,19 @@
     </section>
 
     <section class="settings-card">
-    <h4 class="settings-group-title">Kontext</h4>
+    <h4 class="settings-group-title" data-i18n="ui.context">Kontext</h4>
 
     <label class="settings-toggle"><input id="autoCompact" type="checkbox" checked> Auto-Compact aktivieren</label>
     <div class="settings-hint">Compact ab 80.000 Zeichen · Max Context 120.000 Zeichen</div>
     </section>
 
     <section class="settings-card">
-    <h4 class="settings-group-title">Neue Chats</h4>
+    <h4 class="settings-group-title" data-i18n="ui.new_chats">Neue Chats</h4>
 
     <div class="field">
         <label>Standard-Preset</label>
         <select id="defaultPreset">
-            <option value="general">Allgemein</option>
+            <option value="general" data-i18n="ui.general">Allgemein</option>
             <option value="coding">Coding</option>
             <option value="analysis">Analyse</option>
             <option value="roleplay">Roleplay</option>
@@ -582,17 +605,17 @@
 
     <h4 class="settings-group-title">Thinking</h4>
     <label class="settings-toggle"><input id="thinkingPreferred" type="checkbox"> Thinking beim Start bevorzugen</label>
-    <div class="settings-hint">Wird nur als Präferenz gespeichert; ein Chatwechsel startet MLX nicht neu.</div>
+    <div class="settings-hint" data-i18n="ui.preference_no_restart">Wird nur als Präferenz gespeichert; ein Chatwechsel startet MLX nicht neu.</div>
     </section>
     </div>
     <div class="settings-pane model-console-pane" data-settings-pane="models" hidden>
         <section id="modelConsole" class="model-console" aria-labelledby="modelConsoleTitle">
             <header class="model-console-header">
                 <div>
-                    <h4 id="modelConsoleTitle">Modelle</h4>
-                    <p>Installierte Modelle, Downloads und Modellrollen zentral verwalten.</p>
+                    <h4 id="modelConsoleTitle" data-i18n="ui.models">Modelle</h4>
+                    <p data-i18n="ui.model_console_description">Installierte Modelle, Downloads und Modellrollen zentral verwalten.</p>
                 </div>
-                <button id="modelConsoleAdd" class="model-console-button primary" type="button">+ Modell hinzufügen</button>
+                <button id="modelConsoleAdd" class="model-console-button primary" type="button" data-i18n="ui.add_model">+ Modell hinzufügen</button>
             </header>
 
             <div id="modelConsoleStatus" class="model-console-live" role="status" aria-live="polite"></div>
@@ -600,22 +623,22 @@
 
             <div id="modelConsoleAssignments" class="model-console-secondary">
                 <details>
-                    <summary>Modellrollen</summary>
-                    <p class="settings-hint">„Automatisch“ verwendet das aktive LLM. Eine Zuordnung startet kein Modell neu.</p>
-                    <div id="modelRolesStatus" class="settings-hint">Modellrollen werden geladen…</div>
+                    <summary data-i18n="ui.model_roles">Modellrollen</summary>
+                    <p class="settings-hint" data-i18n="ui.model_roles_hint">„Automatisch“ verwendet das aktive LLM. Eine Zuordnung startet kein Modell neu.</p>
+                    <div id="modelRolesStatus" class="settings-hint" data-i18n="ui.loading_model_roles">Modellrollen werden geladen…</div>
                     <div class="model-role-list">
-                        <div class="model-role-item"><div class="model-role-info"><strong>Chat</strong><span>Standard-Unterhaltungen</span></div><select data-model-role="chat"></select></div>
+                        <div class="model-role-item"><div class="model-role-info"><strong>Chat</strong><span data-i18n="ui.standard_conversations">Standard-Unterhaltungen</span></div><select data-model-role="chat"></select></div>
                         <div class="model-role-item"><div class="model-role-info"><strong>Agent</strong><span>Planung, Tools und Systemaufgaben</span></div><select data-model-role="agent"></select></div>
-                        <div class="model-role-item"><div class="model-role-info"><strong>Coding</strong><span>Programmierung und Codeanalyse</span></div><select data-model-role="coding"></select></div>
-                        <div class="model-role-item"><div class="model-role-info"><strong>Vision</strong><span>Bildanalyse und multimodale Aufgaben</span></div><select data-model-role="vision"></select></div>
-                        <div class="model-role-item"><div class="model-role-info"><strong>Embeddings</strong><span>Wissensbasis und semantische Suche</span></div><select data-model-role="embedding"></select></div>
-                        <div class="model-role-item"><div class="model-role-info"><strong>Bildgenerierung</strong><span>Lokale Bildgenerierung</span></div><select id="imageRole" aria-label="Modell für Bildgenerierung"></select></div>
+                        <div class="model-role-item"><div class="model-role-info"><strong>Coding</strong><span data-i18n="ui.coding_description">Programmierung und Codeanalyse</span></div><select data-model-role="coding"></select></div>
+                        <div class="model-role-item"><div class="model-role-info"><strong>Vision</strong><span data-i18n="ui.vision_description">Bildanalyse und multimodale Aufgaben</span></div><select data-model-role="vision"></select></div>
+                        <div class="model-role-item"><div class="model-role-info"><strong>Embeddings</strong><span data-i18n="ui.embeddings_description">Wissensbasis und semantische Suche</span></div><select data-model-role="embedding"></select></div>
+                        <div class="model-role-item"><div class="model-role-info"><strong data-i18n="ui.image_generation">Bildgenerierung</strong><span data-i18n="ui.local_image_generation">Lokale Bildgenerierung</span></div><select id="imageRole" aria-label="Modell für Bildgenerierung" data-i18n-aria-label="ui.image_model"></select></div>
                     </div>
                 </details>
                 <details>
-                    <summary>Bildgenerierungsmodelle</summary>
+                    <summary data-i18n="ui.image_generation_models">Bildgenerierungsmodelle</summary>
                     <div id="imageModelsStatus" class="settings-hint" role="status"></div>
-                    <p class="settings-hint">Modelle werden nach jedem Auftrag entladen. Fehlende Gewichte und LoRAs werden nicht automatisch heruntergeladen.</p>
+                    <p class="settings-hint" data-i18n="ui.image_models_hint">Modelle werden nach jedem Auftrag entladen. Fehlende Gewichte und LoRAs werden nicht automatisch heruntergeladen.</p>
                     <div id="imageModelList" class="image-model-list"></div>
                 </details>
             </div>
@@ -623,17 +646,17 @@
     </div>
     <div class="settings-pane" data-settings-pane="knowledge" hidden>
         <div class="settings-page-intro">
-            <h4>Wissensbasis</h4>
-            <p>Lokale Dokumente für RAG und semantische Suche verwalten und testen.</p>
+            <h4 data-i18n="ui.knowledge_base">Wissensbasis</h4>
+            <p data-i18n="ui.knowledge_base_description">Lokale Dokumente für RAG und semantische Suche verwalten und testen.</p>
         </div>
 
-        <div id="knowledgeStatus" class="knowledge-status" aria-live="polite">Wird geladen…</div>
+        <div id="knowledgeStatus" class="knowledge-status" aria-live="polite" data-i18n="ui.loading">Wird geladen…</div>
 
         <div class="knowledge-actions-grid">
             <section class="settings-card">
-                <h4 class="settings-group-title">Quelle hinzufügen</h4>
+                <h4 class="settings-group-title" data-i18n="ui.add_source">Quelle hinzufügen</h4>
                 <div class="field">
-                    <label for="knowledgePath">Datei oder Ordner</label>
+                    <label for="knowledgePath" data-i18n="ui.file_or_folder">Datei oder Ordner</label>
                     <div class="knowledge-path-picker">
                         <input id="knowledgePath" type="text" placeholder="~/Documents" spellcheck="false">
                         <button id="knowledgeSelectFolder" class="settings-button" type="button">
@@ -670,7 +693,7 @@
         <div class="settings-service-toolbar">
             <div>
                 <strong>Live-Status</strong>
-                <span id="serviceHealthUpdated">Status wird geladen …</span>
+                <span id="serviceHealthUpdated" data-i18n="ui.status_loading">Status wird geladen …</span>
             </div>
             <button id="serviceHealthRefresh" class="settings-button" type="button">
                 Aktualisieren
@@ -698,7 +721,7 @@
 
 <dialog id="modelConsoleDialog" class="model-console-dialog" aria-labelledby="modelConsoleDialogTitle">
     <form method="dialog" class="model-console-dialog-shell">
-        <header><div><div class="model-console-eyebrow" id="modelConsoleDialogEyebrow"></div><h3 id="modelConsoleDialogTitle"></h3></div><button class="model-console-icon-button" value="cancel" aria-label="Dialog schließen">×</button></header>
+        <header><div><div class="model-console-eyebrow" id="modelConsoleDialogEyebrow"></div><h3 id="modelConsoleDialogTitle"></h3></div><button class="model-console-icon-button" value="cancel" aria-label="Dialog schließen" data-i18n-aria-label="ui.close_dialog">×</button></header>
         <div id="modelConsoleDialogBody" class="model-console-dialog-body"></div>
         <footer id="modelConsoleDialogActions" class="model-console-dialog-actions"></footer>
     </form>
@@ -709,7 +732,7 @@
 
 <div class="composer-wrap">
 
-    <div class="composer-disclaimer">
+    <div class="composer-disclaimer" data-i18n="ui.disclaimer_full">
         MLX nobby kann Fehler machen. Überprüfe wichtige Informationen.
     </div>
 
@@ -725,7 +748,7 @@
         <textarea
             id="input"
             class="input"
-            placeholder="nobby fragen…"
+            placeholder="nobby fragen…" data-i18n-placeholder="ui.ask_nobby_placeholder"
             rows="1"
         ></textarea>
 
@@ -743,10 +766,10 @@
                         id="composerPlusButton"
                         class="composer-plus-button"
                         type="button"
-                        aria-label="Mehr hinzufügen"
+                        aria-label="Mehr hinzufügen" data-i18n-aria-label="ui.add_more"
                         aria-haspopup="menu"
                         aria-expanded="false"
-                        title="Hinzufügen"
+                        title="Hinzufügen" data-i18n-title="ui.add"
                     >
                         +
                     </button>
@@ -774,8 +797,8 @@
                                 </svg>
                             </span>
                             <span class="composer-plus-copy">
-                                <strong>Notizen</strong>
-                                <small>Notizen öffnen und verwalten</small>
+                                <strong data-i18n="ui.notes">Notizen</strong>
+                                <small data-i18n="ui.open_manage_notes">Notizen öffnen und verwalten</small>
                             </span>
                         </button>
 
@@ -793,8 +816,8 @@
                                 </svg>
                             </span>
                             <span class="composer-plus-copy">
-                                <strong>Datei hinzufügen</strong>
-                                <small>Datei oder Bild anhängen</small>
+                                <strong data-i18n="ui.add_file">Datei hinzufügen</strong>
+                                <small data-i18n="ui.attach_file_image">Datei oder Bild anhängen</small>
                             </span>
                         </button>
 
@@ -812,8 +835,8 @@
                                 </svg>
                             </span>
                             <span class="composer-plus-copy">
-                                <strong>Ordner öffnen</strong>
-                                <small>Coding-Workspace auswählen</small>
+                                <strong data-i18n="ui.open_folder">Ordner öffnen</strong>
+                                <small data-i18n="ui.coding_workspace">Coding-Workspace auswählen</small>
                             </span>
                         </button>
 
@@ -850,7 +873,7 @@
 
                             <div class="composer-plus-context">
                                 <div class="composer-plus-context-head">
-                                    <span>Kontext</span>
+                                    <span data-i18n="ui.context">Kontext</span>
                                     <strong id="composerContextText">
                                         0 Tokens · 0 %
                                     </strong>
@@ -874,7 +897,7 @@
                     id="notesButton"
                     class="attach-button notes-button composer-action-proxy"
                     type="button"
-                    aria-label="Notizen"
+                    aria-label="Notizen" data-i18n-aria-label="ui.notes"
                     tabindex="-1"
                 ></button>
 
@@ -974,6 +997,7 @@
 <script src="/assets/common.js"></script>
 <script src="/assets/chat/sessions.js"></script>
 <script src="/assets/chat/attachments.js?v=1788542000"></script>
+<script src="/assets/chat/i18n.js"></script>
 <script src="/assets/chat/rendering.js?v=20260906-scroll-follow"></script>
 <script src="/assets/chat/compact.js"></script>
 <script src="/assets/chat/runtime.js?v=20260906-vision-fix"></script>
@@ -1005,7 +1029,7 @@
         justify-content:space-between;
         margin-bottom:14px;
     ">
-        <strong style="font-size:16px;">Notizen</strong>
+        <strong style="font-size:16px;" data-i18n="ui.notes">Notizen</strong>
 
         <button
             id="notesClose"
@@ -1040,7 +1064,7 @@
     <input
         id="noteName"
         type="text"
-        placeholder="Name der Notiz"
+        placeholder="Name der Notiz" data-i18n-placeholder="ui.note_name"
         style="
             width:100%;
             box-sizing:border-box;
@@ -1094,6 +1118,5 @@
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20260909-cleanup"></script>
-
 </body>
 </html>

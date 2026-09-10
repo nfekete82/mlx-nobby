@@ -1,3 +1,16 @@
+function attachmentT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [name, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${name}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (function () {
     let attachments = [];
 
@@ -124,7 +137,7 @@
                 name.innerHTML =
                     '<span class="attachment-processing-dot"></span>' +
                     file.name +
-                    ' · PDF wird verarbeitet & indexiert …';
+                    attachmentT('attachments.pdf_processing', ' · PDF is being processed and indexed …');
                 chip.classList.add('processing');
             } else {
                 let suffix =
@@ -141,9 +154,9 @@
                     file.rag_status
                 ) {
                     if (file.rag_status === 'ready') {
-                        suffix += ' · ✓ RAG bereit';
+                        suffix += attachmentT('attachments.rag_ready', ' · ✓ RAG ready');
                     } else if (file.rag_status === 'error') {
-                        suffix += ' · ⚠ RAG Fehler';
+                        suffix += attachmentT('attachments.rag_error', ' · ⚠ RAG error');
                     } else if (
                         file.rag_status === 'indexing' &&
                         file.rag_chunks_total > 0
@@ -160,7 +173,7 @@
                         file.rag_status === 'queued' ||
                         file.rag_status === 'indexing'
                     ) {
-                        suffix += ' · RAG wird vorbereitet …';
+                        suffix += attachmentT('attachments.rag_preparing', ' · Preparing RAG …');
                     }
                 }
 
@@ -272,8 +285,11 @@
 
             if (!ALLOWED_EXTENSIONS.has(ext)) {
                 alert(
-                    'Dateityp nicht unterstützt: ' +
-                    file.name
+                    attachmentT(
+                    'attachments.unsupported_type',
+                    'Unsupported file type: {name}',
+                    { name: file.name }
+                )
                 );
 
                 continue;
@@ -288,13 +304,16 @@
 
             if (file.size > sizeLimit) {
                 alert(
-                    file.name +
-                    ' ist größer als ' +
-                    (
-                        isImage
-                            ? (MAX_IMAGE_SIZE / 1024 / 1024) + ' MB.'
-                            : (MAX_FILE_SIZE / 1024 / 1024) + ' MB.'
-                    )
+                    attachmentT(
+                    'attachments.too_large',
+                    '{name} is larger than {size} MB.',
+                    {
+                        name: file.name,
+                        size: isImage
+                            ? (MAX_IMAGE_SIZE / 1024 / 1024)
+                            : (MAX_FILE_SIZE / 1024 / 1024)
+                    }
+                )
                 );
 
                 continue;
@@ -495,7 +514,7 @@
                         '\n\n' +
                         (
                             error.message ||
-                            'Unbekannter Fehler'
+                            attachmentT('attachments.unknown_error', 'Unknown error')
                         )
                     );
                 } finally {
@@ -514,7 +533,10 @@
                     dataUrl = await fileToDataUrl(file);
                 } catch {
                     alert(
-                        'Bild konnte nicht gelesen werden: ' +
+                        attachmentT(
+                    'ui.image_read_failed_prefix',
+                    'Image could not be read:'
+                ) + ' ' +
                         file.name
                     );
 
@@ -539,7 +561,11 @@
                 try {
                     content = await file.text();
                 } catch {
-                    alert('Datei konnte nicht gelesen werden: ' + file.name);
+                    alert(attachmentT(
+                    'attachments.file_read_failed',
+                    'File could not be read: {name}',
+                    { name: file.name }
+                ));
                     continue;
                 }
             }
@@ -577,12 +603,12 @@
         }
 
         parts.push(
-            'Zusätzliche Dateien des Benutzers:'
+            attachmentT('attachments.user_files', 'Additional user files:')
         );
 
         for (const file of textFiles) {
             parts.push(
-                '\n--- DATEI: ' +
+                '\n--- FILE: ' +
                 file.name +
                 ' ---\n'
             );

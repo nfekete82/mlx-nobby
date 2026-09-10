@@ -1,3 +1,16 @@
+function chatT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [name, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${name}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 
 const chatState = {
     sessions: [],
@@ -92,7 +105,7 @@ function startEditMessage(index, article) {
         'message-action-btn edit-save';
 
     save.textContent =
-        'Speichern & neu generieren';
+        chatT('ui.save_regenerate', 'Save & regenerate');
 
     const cancel =
         document.createElement('button');
@@ -171,11 +184,11 @@ async function saveEditedMessage(index, value) {
     ) {
         const fileContext =
             message.content.includes(
-                'Zusätzliche Dateien des Benutzers:'
+                chatT('ui.user_files', 'Additional user files:')
             )
                 ? message.content.substring(
                     message.content.indexOf(
-                        'Zusätzliche Dateien des Benutzers:'
+                        chatT('ui.user_files', 'Additional user files:')
                     )
                 )
                 : '';
@@ -265,9 +278,9 @@ function loadJobsPanel() {
         content.innerHTML = jobs.length ? jobs.map(job => {
             const active = ['queued', 'running', 'paused'].includes(job.status);
             const progress = job.total_chunks ? Math.round((job.processed_chunks || 0) / job.total_chunks * 100) + ' %' : (active ? 'Verarbeitung läuft' : 'Fertig');
-            return '<div class="jobs-panel-item"><strong>' + (job.output_name || job.original_name || job.input_name || 'Datei') + '</strong><span>' + (job.operation || 'Dateioperation') + ' · ' + progress + '</span></div>';
-        }).join('') : 'Keine aktiven Dateioperationen.';
-    }).catch(() => { content.textContent = 'Vorgänge sind momentan nicht verfügbar.'; });
+            return '<div class="jobs-panel-item"><strong>' + (job.output_name || job.original_name || job.input_name || chatT('ui.file', 'File')) + '</strong><span>' + (job.operation || chatT('ui.file_operation', 'File operation')) + ' · ' + progress + '</span></div>';
+        }).join('') : chatT('ui.no_active_file_jobs', 'No active file operations.');
+    }).catch(() => { content.textContent = chatT('ui.jobs_unavailable', 'Jobs are currently unavailable.'); });
 }
 
 window.MLXHistoryCleanup?.mount(document.getElementById('jobsPanelCleanup'), {
@@ -306,15 +319,15 @@ function setDesktopSidebarCollapsed(collapsed) {
     sidebarToggle.setAttribute(
         'aria-label',
         collapsed
-            ? 'Seitenleiste öffnen'
-            : 'Seitenleiste schließen'
+            ? chatT('ui.open_sidebar', 'Open sidebar')
+            : chatT('ui.close_sidebar', 'Close sidebar')
     );
 
     sidebarToggle.setAttribute(
         'title',
         collapsed
-            ? 'Seitenleiste öffnen'
-            : 'Seitenleiste schließen'
+            ? chatT('ui.open_sidebar', 'Open sidebar')
+            : chatT('ui.close_sidebar', 'Close sidebar')
     );
 }
 
@@ -611,7 +624,7 @@ async function loadModelRoles() {
 
     if (!status || !selects.length) return;
 
-    status.textContent = 'Modellrollen werden geladen…';
+    status.textContent = chatT('ui.loading_model_roles', 'Loading model roles…');
 
     try {
         const [rolesResponse, aliasesResponse] =
@@ -622,13 +635,21 @@ async function loadModelRoles() {
 
         if (!rolesResponse.ok) {
             throw new Error(
-                'Modellrollen HTTP ' + rolesResponse.status
+                chatT(
+                'ui.model_roles_http_error',
+                'Model roles HTTP {status}',
+                { status: rolesResponse.status }
+            )
             );
         }
 
         if (!aliasesResponse.ok) {
             throw new Error(
-                'Modelle HTTP ' + aliasesResponse.status
+                chatT(
+                'ui.models_http_error',
+                'Models HTTP {status}',
+                { status: aliasesResponse.status }
+            )
             );
         }
 
@@ -685,12 +706,18 @@ async function loadModelRoles() {
             }
         }
 
-        status.textContent =
-            models.length +
-            ' Modelle verfügbar · Rollen werden nur gespeichert';
+        status.textContent = chatT(
+            'ui.models_available_roles_only',
+            '{count} models available · roles are only saved',
+            { count: models.length }
+        );
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            chatT(
+            'ui.error',
+            'Error: {message}',
+            { message: error.message }
+        );
     }
 }
 
@@ -748,7 +775,11 @@ async function saveModelRole(select) {
     } catch (error) {
         if (status) {
             status.textContent =
-                'Fehler: ' + error.message;
+                chatT(
+            'ui.error',
+            'Error: {message}',
+            { message: error.message }
+        );
         }
 
         await loadModelRoles();
@@ -769,11 +800,11 @@ document
 
 
 const WORKSPACE_ERRORS = {
-    WORKSPACE_NOT_FOUND: 'Der ausgewählte Ordner existiert nicht mehr.',
-    WORKSPACE_ROOT_UNAVAILABLE: 'Der aktive Workspace ist nicht mehr verfügbar.',
-    WORKSPACE_PERMISSION_DENIED: 'Keine Berechtigung für diesen Ordner.',
-    FOLDER_PICKER_UNAVAILABLE: 'Der macOS-Ordnerdialog ist nicht verfügbar.',
-    FOLDER_PICKER_FAILED: 'Der Ordnerdialog konnte nicht geöffnet werden.',
+    WORKSPACE_NOT_FOUND: chatT('ui.workspace_missing', 'The selected folder no longer exists.'),
+    WORKSPACE_ROOT_UNAVAILABLE: chatT('ui.workspace_root_unavailable', 'The active workspace is no longer available.'),
+    WORKSPACE_PERMISSION_DENIED: chatT('ui.workspace_permission_denied', 'No permission for this folder.'),
+    FOLDER_PICKER_UNAVAILABLE: chatT('ui.folder_picker_unavailable', 'The macOS folder picker is unavailable.'),
+    FOLDER_PICKER_FAILED: chatT('ui.folder_picker_failed', 'The folder picker could not be opened.'),
     WORKSPACE_CHANGED: 'Der aktive Workspace wurde zwischenzeitlich gewechselt.'
 };
 
@@ -857,7 +888,7 @@ async function loadWorkspaces() {
 
         target.replaceChildren();
         if (!spaces.length) {
-            target.textContent = 'Noch keine Code-Workspaces.';
+            target.textContent = chatT('ui.no_workspaces', 'No code workspaces yet.');
             return;
         }
 
@@ -872,18 +903,18 @@ async function loadWorkspaces() {
             const actions = document.createElement('span');
 
             if (!space.active) {
-                actions.appendChild(workspaceActionButton('Aktivieren', '/activate', space.workspace_id));
+                actions.appendChild(workspaceActionButton(chatT('ui.enable', 'Enable'), '/activate', space.workspace_id));
                 actions.append(' ');
             }
-            actions.appendChild(workspaceActionButton('Neu indexieren', '/refresh', space.workspace_id));
+            actions.appendChild(workspaceActionButton(chatT('ui.workspace_reindex', 'Reindex'), '/refresh', space.workspace_id));
             actions.append(' ');
-            actions.appendChild(workspaceActionButton('Entfernen', '', space.workspace_id));
+            actions.appendChild(workspaceActionButton(chatT('ui.workspace_remove', 'Remove'), '', space.workspace_id));
             item.append(name, path, actions);
             target.appendChild(item);
         });
     } catch (error) {
         renderActiveWorkspace(null);
-        if (target) target.textContent = 'Code-Workspaces sind momentan nicht verfügbar.';
+        if (target) target.textContent = chatT('ui.workspaces_unavailable', 'Code workspaces are currently unavailable.');
         showWorkspaceFeedback(workspaceErrorMessage(error));
     }
 }
@@ -1005,7 +1036,7 @@ document.getElementById('importChatsFile').addEventListener(
 
         try {
             if (file.size > 20 * 1024 * 1024) {
-                throw new Error('Die Backup-Datei ist größer als 20 MB');
+                throw new Error(chatT('ui.backup_too_large', 'The backup file is larger than 20 MB'));
             }
 
             const imported = MLXChatSessions.importBackup(
@@ -1223,7 +1254,7 @@ input.focus();
             return 'Dienst nicht erreichbar';
         }
 
-        return service.detail || 'Bereit';
+        return service.detail || chatT('ui.ready', 'Ready');
     }
 
     function serviceMeta(service) {
@@ -1342,7 +1373,7 @@ input.focus();
             createTextElement(
                 'span',
                 '',
-                message || 'Unbekannter Fehler'
+                message || chatT('ui.unknown_error', 'Unknown error')
             )
         );
 
@@ -2047,3 +2078,8 @@ input.focus();
     }
 
 })();
+
+// Initialize interface translations.
+document.addEventListener('DOMContentLoaded', () => {
+    window.MLXI18n?.init();
+});

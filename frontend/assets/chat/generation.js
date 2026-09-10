@@ -1,3 +1,21 @@
+'use strict';
+
+function gt(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(
+        'generation.' + key,
+        fallback
+    ) ?? fallback;
+
+    for (const [name, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            '{' + name + '}',
+            String(replacement)
+        );
+    }
+
+    return value;
+}
+
 (function () {
     let getGenerating;
     let setGenerating;
@@ -39,7 +57,7 @@ function imageAttachments(message) {
 async function imageArtifactDataUrl(artifact) {
     if (!artifact?.image_id) {
         throw new Error(
-            'Bild-Artifact enthält keine image_id'
+            'Image artifact does not contain an image_id'
         );
     }
 
@@ -50,7 +68,7 @@ async function imageArtifactDataUrl(artifact) {
 
     if (!response.ok) {
         throw new Error(
-            'Bild konnte nicht für die Analyse geladen werden: ' +
+            'Image could not be loaded for analysis: ' +
             response.status
         );
     }
@@ -66,7 +84,7 @@ async function imageArtifactDataUrl(artifact) {
         reader.onerror = () =>
             reject(
                 new Error(
-                    'Bild konnte nicht gelesen werden'
+                    'Image could not be read'
                 )
             );
 
@@ -435,8 +453,11 @@ try {
             error.name !== 'AbortError'
         ) {
             assistantMessage.content +=
-                '\n\n**Fehler:** ' +
-                error.message;
+                '\n\n' + gt(
+                'error_markdown',
+                '**Error:** {message}',
+                { message: error.message }
+            );
         }
 
         MLXChatSessions.saveSessions();
@@ -680,12 +701,15 @@ async function runAgent(
             pending_action: null
         };
 
-        assistantMessage.content =
-            'Agent-Fehler: ' +
-            (
-                error?.message ||
-                String(error)
-            );
+        assistantMessage.content = gt(
+            'agent_error',
+            'Agent error: {message}',
+            {
+                message:
+                    error?.message ||
+                    String(error)
+            }
+        );
 
     } finally {
         if (progressTimer) {
@@ -898,8 +922,10 @@ const imageFiles =
         !await MLXChatRuntime.ensureVisionSupport()
     ) {
         alert(
-            'Das aktive Modell unterstützt keine Bildanalyse. ' +
-            'Bitte zuerst ein VLM-/Vision-Modell auswählen.'
+            gt(
+            'vision_not_supported',
+            'The active model does not support image analysis. Please select a VLM/vision model first.'
+        )
         );
 
         return;
@@ -949,7 +975,7 @@ const imageFiles =
 
     if (usingPriorDocument) {
         console.log(
-            '[MLX PDF] Gesprächsdokument wiederverwendet:',
+            '[MLX PDF] Reusing conversation document:',
             documentFiles[0].name,
             documentFiles[0].document_id
         );
@@ -990,7 +1016,7 @@ const imageFiles =
                     ' ---';
 
                 console.log(
-                    '[MLX PDF] exakter Page-Lookup:',
+                    '[MLX PDF] Exact page lookup:',
                     document.name,
                     requestedPage
                 );
@@ -1029,21 +1055,23 @@ const imageFiles =
                             ' ---';
 
                         console.log(
-                            '[MLX PDF] persistenter Page-Lookup:',
+                            '[MLX PDF] Persistent page lookup:',
                             pageData.name || document.name,
                             requestedPage,
                             pageData.chunks
                         );
                     } else {
                         documentPageContext =
-                            '\n\nHinweis: Seite ' +
-                            requestedPage +
-                            ' enthält keinen lesbaren Text.';
+                            '\n\n' + gt(
+                            'page_no_text',
+                            'Note: Page {page} contains no readable text.',
+                            { page: requestedPage }
+                        );
                     }
 
                 } catch (error) {
                     console.error(
-                        '[MLX PDF] Persistenter Page-Lookup fehlgeschlagen',
+                        '[MLX PDF] Persistent page lookup failed',
                         error
                     );
 
@@ -1123,7 +1151,7 @@ const imageFiles =
                     }
                 } catch (error) {
                     console.error(
-                        '[MLX PDF RAG] Suche fehlgeschlagen',
+                        '[MLX PDF RAG] Search failed',
                         error
                     );
                 }
@@ -1140,7 +1168,7 @@ const imageFiles =
         prompt ||
         (
             imageFiles.length
-                ? 'Beschreibe dieses Bild ausführlich.'
+                ? 'Describe this image in detail.'
                 : ''
         );
 
@@ -1162,8 +1190,10 @@ const imageFiles =
     ) {
         if (!await MLXChatRuntime.ensureVisionSupport()) {
             alert(
-                'Das aktive Modell unterstützt keine Bildanalyse. ' +
-                'Bitte zuerst ein VLM-/Vision-Modell auswählen.'
+                gt(
+                'vision_not_supported',
+                'The active model does not support image analysis. Please select a VLM/vision model first.'
+            )
             );
             return;
         }
@@ -1190,18 +1220,20 @@ const imageFiles =
             });
 
             console.log(
-                '[MLX Vision] aktives Bild-Artifact:',
+                '[MLX Vision] Active image artifact:',
                 activeImageArtifact.artifact_id
             );
         } catch (error) {
             console.error(
-                '[MLX Vision] Bild konnte nicht geladen werden',
+                '[MLX Vision] Image could not be loaded',
                 error
             );
 
             alert(
-                'Das zuletzt erzeugte Bild konnte nicht ' +
-                'für die Analyse geladen werden.'
+                gt(
+                'generated_image_load_failed',
+                'The most recently generated image could not be loaded for analysis.'
+            )
             );
 
             return;
@@ -1288,7 +1320,7 @@ const imageFiles =
         const imageRequest = explicitImageCreationRequest;
         let pendingImageMessage = null;
         if (imageRequest) {
-            pendingImageMessage = { role: 'assistant', content: 'Bild wird lokal mit dem ausgewählten Bildmodell erzeugt …', image_generation_pending: true };
+            pendingImageMessage = { role: 'assistant', content: gt('image_generating', 'Generating the image locally with the selected image model …'), image_generation_pending: true };
             session.messages.push(pendingImageMessage);
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderAll({
@@ -1345,12 +1377,12 @@ const imageFiles =
                     role: 'assistant',
                     content:
                         toolResult.tool === 'research_agent'
-                            ? 'Recherche läuft …'
+                            ? gt('research_running', 'Research in progress …')
                             : toolResult.tool === 'coding_agent'
-                                ? 'Code wird untersucht …'
+                                ? gt('coding_running', 'Analyzing code …')
                                 : toolResult.tool === 'orchestrator'
-                                    ? 'Orchestrierung läuft …'
-                                    : 'System wird untersucht …',
+                                    ? gt('orchestration_running', 'Orchestration in progress …')
+                                    : gt('system_running', 'Analyzing system …'),
                     agent_run: {
                         status: 'running',
                         goal: prompt,
@@ -1457,19 +1489,19 @@ const imageFiles =
                     messageContent +
                     '\n\n' +
                     '--- LIVE-WEBSUCHE ---\n' +
-                    'Die folgenden Informationen stammen aus einer aktuellen Websuche. ' +
-                    'Für einige Treffer wurde zusätzlich der tatsächliche Webseiteninhalt geladen. ' +
-                    'Bevorzuge den geladenen Seiteninhalt gegenüber dem Such-Snippet. ' +
-                    'Ignoriere Navigation, Cookie-Hinweise, Menüs, Footer und sonstigen Seitenschrott. ' +
-                    'Behaupte nichts als aktuell, was nicht durch diese Quellen gestützt wird. ' +
-                    'Nenne am Ende die tatsächlich verwendeten Quellen als klickbare URLs. ' +
-                    'Wenn die Quellen nicht ausreichen oder widersprüchlich sind, sage das ausdrücklich.\n\n' +
+                    'The following information comes from a current web search. ' +
+                    'For some results, the actual webpage content was loaded as well. ' +
+                    'Prefer the loaded webpage content over the search snippet. ' +
+                    'Ignore navigation, cookie notices, menus, footers, and other irrelevant page content. ' +
+                    'Do not claim that something is current unless it is supported by these sources. ' +
+                    'At the end, list the sources actually used as clickable URLs. ' +
+                    'If the sources are insufficient or contradictory, state that explicitly.\n\n' +
                     searchContext;
 
                 console.log(
                     '[MLX Web] SearXNG:',
                     results.length,
-                    'Ergebnisse für',
+                    'results for',
                     toolResult.data?.query
                 );
 
@@ -1509,7 +1541,7 @@ const imageFiles =
                 }
                 session.messages.push({
                     role: 'assistant',
-                    content: toolResult.status === 'completed' ? toolSummary(toolResult) : 'Aktion konnte nicht ausgeführt werden.',
+                    content: toolResult.status === 'completed' ? toolSummary(toolResult) : gt('action_failed', 'The action could not be completed.'),
                     tool_result: toolResult
                 });
                 MLXChatSessions.saveSessions();
@@ -1523,7 +1555,7 @@ const imageFiles =
                 const pendingIndex = session.messages.indexOf(pendingImageMessage);
                 if (pendingIndex >= 0) session.messages.splice(pendingIndex, 1);
             }
-            session.messages.push({ role: 'assistant', content: '**Tool-Fehler:** ' + error.message });
+            session.messages.push({ role: 'assistant', content: gt('tool_error', '**Tool error:** {message}', { message: error.message }) });
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderAll({
                 contentUpdated: true
@@ -1564,7 +1596,7 @@ const imageFiles =
 
                 session.messages.push({
                     role: 'assistant',
-                    content: routed.intent === 'transform' ? 'Datei wird verarbeitet …' : 'Datei wird analysiert …',
+                    content: routed.intent === 'transform' ? gt('file_processing', 'Processing file …') : gt('file_analyzing', 'Analyzing file …'),
                     batch_job: routed.job,
                     batch_filename: item.attachment.name,
                     chain_next: routed.intent === 'transform' && /\b(?:und danach|anschließend|anschliessend).*(?:fass|zusammenfass)|(?:fass|zusammenfass).*\b(?:danach|anschließend|anschliessend)/i.test(prompt)
@@ -1578,7 +1610,7 @@ const imageFiles =
             });
             return;
         } catch (error) {
-            session.messages.push({ role: 'assistant', content: '**Batch-Fehler:** ' + error.message });
+            session.messages.push({ role: 'assistant', content: gt('batch_error', '**Batch error:** {message}', { message: error.message }) });
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderAll({
                 contentUpdated: true
@@ -1596,30 +1628,98 @@ function toolSummary(result) {
     const data = result.data || {};
     if (result.tool === 'model_list') {
         const items = data.models || [];
-        return items.length ? 'Installierte Modelle: ' + items.map(item => item.alias + (item.active ? ' (aktiv)' : '')).join(', ') : 'Keine Modelle gefunden.';
+        return items.length
+            ? gt(
+                'installed_models',
+                'Installed models: {models}',
+                {
+                    models: items
+                        .map(item =>
+                            item.alias +
+                            (item.active ? ' (active)' : '')
+                        )
+                        .join(', ')
+                }
+            )
+            : gt('no_models', 'No models found.');
     }
     if (result.tool === 'system_status') {
         const status = data.status || {};
-        return 'MLX ist ' + (status.online ? 'online' : 'offline') + '. Modell: ' + (status.model || 'keins') + '. RAM: ' + (status.memory_mb ?? '–') + ' MB.';
+        return 'MLX ist ' + (status.online ? 'online' : 'offline') + '. Model: ' + (status.model || 'keins') + '. RAM: ' + (status.memory_mb ?? '–') + ' MB.';
     }
     if (result.tool === 'batch_status') {
         const jobs = data.jobs || [];
         const active = jobs.filter(job => ['queued', 'running', 'paused'].includes(job.status));
-        return active.length ? active.length + ' Datei-Job(s) aktiv.' : 'Derzeit sind keine Datei-Jobs aktiv.';
+        return active.length
+            ? gt(
+                'file_jobs_active',
+                '{count} file job(s) active.',
+                { count: active.length }
+            )
+            : gt(
+                'no_file_jobs',
+                'There are currently no active file jobs.'
+            );
     }
-    if (result.tool === 'logs_query') return 'Die letzten relevanten Logs wurden geprüft.';
+    if (result.tool === 'logs_query') {
+        return gt(
+            'logs_checked',
+            'The latest relevant logs were checked.'
+        );
+    }
     if (result.tool === 'pii_audit') {
         const total = Object.values(data).reduce((sum, value) => sum + Number(value || 0), 0);
-        return total ? 'PII-Audit: ' + total + ' offensichtliche Treffer. Dies ist keine vollständige Garantie.' : 'PII-Audit: keine offensichtlichen Treffer. Dies ist keine vollständige Garantie.';
+        return total
+            ? gt(
+                'pii_hits',
+                'PII audit: {count} obvious match(es). This is not a complete guarantee.',
+                { count: total }
+            )
+            : gt(
+                'pii_no_hits',
+                'PII audit: no obvious matches. This is not a complete guarantee.'
+            );
     }
-    if (result.tool === 'model_switch') return 'Modellwechsel wurde gestartet.';
+    if (result.tool === 'model_switch') {
+        return gt(
+            'model_switch_started',
+            'Model switch has been started.'
+        );
+    }
     if (result.tool === 'thinking_on' || result.tool === 'thinking_off') return 'Thinking wurde ' + (result.tool === 'thinking_on' ? 'aktiviert.' : 'deaktiviert.');
-    if (result.tool === 'model_restart') return 'MLX-Server wird neu gestartet.';
-    if (result.tool === 'image_generate') return 'Bild wurde lokal mit ' + (result.artifacts?.[0]?.model || 'dem ausgewählten Bildmodell') + ' erzeugt.';
-    if (result.tool === 'web_search') return 'Live-Websuche über SearXNG abgeschlossen.';
+    if (result.tool === 'model_restart') {
+        return gt(
+            'server_restarting',
+            'MLX server is restarting.'
+        );
+    }
+    if (result.tool === 'image_generate') {
+        return gt(
+            'image_generated',
+            'Image generated locally with {model}.',
+            {
+                model:
+                    result.artifacts?.[0]?.model ||
+                    gt(
+                        'selected_image_model',
+                        'the selected image model'
+                    )
+            }
+        );
+    }
+    if (result.tool === 'web_search') {
+        return gt(
+            'web_search_completed',
+            'Live web search via SearXNG completed.'
+        );
+    }
     if (result.tool === 'knowledge_search') {
         const results = data.results || [];
-        if (!results.length) return 'Keine passende Quelle in der Wissensbasis gefunden (' + (data.mode || 'fts_fallback') + ').';
+        if (!results.length) return gt(
+            'knowledge_no_source',
+            'No matching source found in the knowledge base ({mode}).',
+            { mode: data.mode || 'fts_fallback' }
+        );
         return '**Wissensbasis · ' + (data.mode === 'hybrid' ? 'Hybrid' : 'FTS fallback') + '**\n\n' + results.map(item =>
             '- `' + item.path + ':' + item.start_line + '-' + item.end_line + '`' + (item.symbol ? ' — ' + item.symbol : '') + '\n  ' + item.snippet.replace(/\n/g, ' ').slice(0, 260)
         ).join('\n');
@@ -1683,14 +1783,14 @@ function watchBatchJob(session, jobId) {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_path: job.output_path,
-                            instruction: 'Fasse die erzeugte Datei zusammen.',
+                            instruction: 'Summarize the generated file.',
                             file_type: message.file_artifact.extension === 'md' ? 'text' : message.file_artifact.extension,
                             attachment_id: message.file_artifact.file_id
                         })
                     });
                     if (chainResponse.ok) {
                         const routed = await chainResponse.json();
-                        session.messages.push({ role: 'assistant', content: 'Erzeugte Datei wird zusammengefasst …', batch_job: routed.job, batch_filename: message.file_artifact.name });
+                        session.messages.push({ role: 'assistant', content: gt('generated_file_summarizing', 'Summarizing generated file …'), batch_job: routed.job, batch_filename: message.file_artifact.name });
                         watchBatchJob(session, routed.job.id);
                     }
                 }

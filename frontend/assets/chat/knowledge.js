@@ -1,3 +1,16 @@
+function knowledgeT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [name, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${name}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (() => {
     const $ = id => document.getElementById(id);
 
@@ -33,7 +46,7 @@
         const target = $('knowledgeStatus');
         if (!target) return;
 
-        target.textContent = 'Wird geladen…';
+        target.textContent = knowledgeT('knowledge.loading', 'Loading…');
 
         try {
             const data = await request('/api/mlx/knowledge/status');
@@ -61,15 +74,15 @@
                         <span>Retrieval</span>
                         <strong>${escapeHtml(mode)}</strong>
                         <small class="${embeddingReady ? 'ready' : 'inactive'}">
-                            ${embeddingReady ? '● Aktiv' : '○ Nicht bereit'}
+                            ${embeddingReady ? knowledgeT('knowledge.active', '● Active') : knowledgeT('knowledge.not_ready', '○ Not ready')}
                         </small>
                     </div>
                     <div class="knowledge-metric">
-                        <span>Quellen</span>
+                        <span>${knowledgeT('knowledge.sources', 'Sources')}</span>
                         <strong>${sources.length}</strong>
                     </div>
                     <div class="knowledge-metric">
-                        <span>Dokumente</span>
+                        <span>${knowledgeT('knowledge.documents', 'Documents')}</span>
                         <strong>${documents}</strong>
                     </div>
                     <div class="knowledge-metric">
@@ -81,10 +94,16 @@
 
             const embeddingInfo = `
                 <div class="knowledge-embedding">
-                    <span>Embedding-Modell</span>
-                    <strong>${escapeHtml(embedding.model || 'Unbekannt')}</strong>
+                    <span>${knowledgeT('knowledge.embedding_model', 'Embedding model')}</span>
+                    <strong>${escapeHtml(embedding.model || knowledgeT('knowledge.unknown', 'Unknown'))}</strong>
                     <div class="settings-hint">
-                        ${embedding.dimensions ? ' · ' + escapeHtml(embedding.dimensions) + ' Dimensionen' : ''}
+                        ${embedding.dimensions
+            ? ' · ' + knowledgeT(
+                'knowledge.dimensions',
+                '{count} dimensions',
+                { count: escapeHtml(embedding.dimensions) }
+            )
+            : ''}
                         ${embedding.backend ? ' · ' + escapeHtml(embedding.backend) : ''}
                     </div>
                 </div>
@@ -94,8 +113,12 @@
                 ? `
                     <section class="knowledge-sources">
                         <div class="knowledge-section-heading">
-                            <strong>Quellen</strong>
-                            <span>${sources.length} indexiert</span>
+                            <strong>${knowledgeT('knowledge.sources', 'Sources')}</strong>
+                            <span>${knowledgeT(
+        'knowledge.indexed_count',
+        '{count} indexed',
+        { count: sources.length }
+    )}</span>
                         </div>
                         <div class="knowledge-source-list">
                             ${sources.map(source => {
@@ -110,7 +133,7 @@
                                             ? new Date(
                                                 Number(source.last_indexed_at) * 1000
                                             ).toLocaleString('de-DE')
-                                            : 'Noch nicht indexiert';
+                                            : knowledgeT('knowledge.not_indexed', 'Not indexed yet');
 
                                     return `
                                         <div
@@ -126,11 +149,11 @@
                                                     </span>
 
                                                     <strong>
-                                                        ${escapeHtml(source.name || 'Quelle')}
+                                                        ${escapeHtml(source.name || knowledgeT('knowledge.source', 'Source'))}
                                                     </strong>
 
                                                     <span class="settings-hint">
-                                                        ${enabled ? 'Aktiv' : 'Deaktiviert'}
+                                                        ${enabled ? knowledgeT('knowledge.active_label', 'Active') : knowledgeT('knowledge.inactive_label', 'Disabled')}
                                                     </span>
                                                 </div>
 
@@ -139,7 +162,7 @@
                                                 </div>
 
                                                 <div class="settings-hint">
-                                                    Zuletzt indexiert:
+                                                    ${knowledgeT('knowledge.last_indexed', 'Last indexed:')}
                                                     ${escapeHtml(indexedAt)}
                                                 </div>
                                             </div>
@@ -160,7 +183,7 @@
                                                     data-knowledge-action="${enabled ? 'disable' : 'enable'}"
                                                     data-source-id="${sourceId}"
                                                 >
-                                                    ${enabled ? 'Deaktivieren' : 'Aktivieren'}
+                                                    ${enabled ? knowledgeT('knowledge.disable', 'Disable') : knowledgeT('knowledge.enable', 'Enable')}
                                                 </button>
 
                                                 <button
@@ -180,7 +203,10 @@
                 `
                 : `
                     <div class="knowledge-empty">
-                        Noch keine Quellen indexiert.
+                        ${knowledgeT(
+                            'knowledge.no_sources',
+                            'No sources indexed yet.'
+                        )}
                     </div>
                 `;
 
@@ -201,19 +227,20 @@
         if (
             action === 'delete' &&
             !window.confirm(
-                'Diese Wissensquelle wirklich löschen?\n\n' +
-                'Der Index dieser Quelle wird dauerhaft entfernt. ' +
-                'Die Originaldateien auf dem Mac bleiben unverändert.'
+                knowledgeT(
+                'knowledge.delete_confirm',
+                'Really delete this knowledge source?\n\nThe index for this source will be permanently removed. The original files on the Mac will remain unchanged.'
+            )
             )
         ) {
             return;
         }
 
         const labels = {
-            enable: 'Aktiviere…',
-            disable: 'Deaktiviere…',
-            reindex: 'Indexiere…',
-            delete: 'Lösche…'
+            enable: knowledgeT('knowledge.enabling', 'Enabling…'),
+            disable: knowledgeT('knowledge.disabling', 'Disabling…'),
+            reindex: knowledgeT('knowledge.reindexing', 'Reindexing…'),
+            delete: knowledgeT('knowledge.deleting', 'Deleting…')
         };
 
         const originalText = button?.textContent || '';
@@ -273,7 +300,7 @@
         button.disabled = true;
 
         if (result) {
-            result.textContent = 'Ordnerauswahl geöffnet …';
+            result.textContent = knowledgeT('knowledge.folder_opened', 'Folder picker opened …');
         }
 
         try {
@@ -299,7 +326,7 @@
             }
 
             if (result) {
-                result.textContent = '✓ Ordner ausgewählt';
+                result.textContent = knowledgeT('knowledge.folder_selected', '✓ Folder selected');
             }
         } catch (error) {
             if (result) {
@@ -321,7 +348,7 @@
             return;
         }
 
-        if (result) result.textContent = 'Indexiere…';
+        if (result) result.textContent = knowledgeT('knowledge.reindexing', 'Reindexing…');
 
         try {
             const data = await request(
@@ -341,7 +368,7 @@
 
             if (result) {
                 result.textContent =
-                    '✓ Quelle erfolgreich indexiert';
+                    knowledgeT('knowledge.source_indexed', '✓ Source indexed successfully');
             }
 
             await loadStatus();
@@ -350,7 +377,11 @@
         } catch (error) {
             if (result) {
                 result.textContent =
-                    'Fehler: ' + error.message;
+                    knowledgeT(
+                    'knowledge.error',
+                    'Error: {message}',
+                    { message: error.message }
+                );
             }
         }
     }
@@ -396,7 +427,7 @@
                     item.source ||
                     item.path ||
                     item.name ||
-                    'Quelle';
+                    knowledgeT('knowledge.source', 'Source');
 
                 const score =
                     item.score ??

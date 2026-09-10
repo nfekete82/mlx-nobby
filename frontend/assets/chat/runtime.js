@@ -1,4 +1,21 @@
 (function () {
+
+    function rut(key, fallback = '', variables = {}) {
+        let value = window.MLXI18n?.t(
+            `runtime_ui.${key}`,
+            fallback
+        ) ?? fallback;
+
+        Object.entries(variables).forEach(([name, replacement]) => {
+            value = value.replaceAll(
+                `{${name}}`,
+                String(replacement ?? '')
+            );
+        });
+
+        return value;
+    }
+
     const SETTINGS_KEY = 'mlx-web-chat-settings-v1';
     const DEFAULT_TEMPERATURE = 0.7;
     const DEFAULT_MAX_TOKENS = 3000;
@@ -17,26 +34,26 @@
 
     const SYSTEM_PROMPT_PRESETS = {
         general: {
-            label: 'Allgemein',
-            prompt: 'Du bist ein hilfreicher, präziser Assistent.',
+            label: 'General',
+            prompt: 'You are a helpful and precise assistant.',
             temperature: 0.7,
             max_tokens: 3000
         },
         coding: {
             label: 'Coding',
-            prompt: 'Du bist ein erfahrener Softwareentwickler. Antworte technisch präzise, bevorzuge robuste und wartbare Lösungen und erkläre wichtige Entscheidungen knapp.',
+            prompt: 'You are an experienced software developer. Respond with technical precision, prefer robust and maintainable solutions, and explain important decisions concisely.',
             temperature: 0.2,
             max_tokens: 5000
         },
         analysis: {
-            label: 'Analyse',
-            prompt: 'Analysiere Probleme strukturiert und kritisch. Trenne Fakten, Annahmen und Schlussfolgerungen sauber.',
+            label: 'Analysis',
+            prompt: 'Analyze problems in a structured and critical way. Clearly separate facts, assumptions, and conclusions.',
             temperature: 0.3,
             max_tokens: 5000
         },
         roleplay: {
             label: 'Roleplay',
-            prompt: 'Bleibe konsistent in Rolle, Ton und Kontext. Vermeide unnötige Meta-Kommentare.',
+            prompt: 'Stay consistent in role, tone, and context. Avoid unnecessary meta commentary.',
             temperature: 0.9,
             max_tokens: 4000
         },
@@ -404,10 +421,10 @@ function initScrollBehavior() {
     scrollBottomButton.className =
         'scroll-bottom-button';
     scrollBottomButton.type = 'button';
-    scrollBottomButton.title = 'Neue Nachrichten';
+    scrollBottomButton.title = rut('new_messages', 'New messages');
     scrollBottomButton.setAttribute(
         'aria-label',
-        'Zu neuen Nachrichten springen'
+        rut('jump_new', 'Jump to new messages')
     );
     scrollBottomButton.setAttribute(
         'aria-hidden',
@@ -500,7 +517,7 @@ function modelAliasFor(status) {
         ) ||
         modelAliases.find(item => item.active);
 
-    return active?.alias || status.model || 'Kein Modell';
+    return active?.alias || status.model || rut('no_model', 'No model');
 }
 
 
@@ -759,7 +776,7 @@ function renderRuntimeInfo(status, systemData) {
     const repo = document.createElement('div');
 
     repo.className = 'runtime-info-repo';
-    repo.textContent = status.model || 'Kein Modell';
+    repo.textContent = status.model || rut('no_model', 'No model');
     runtime.appendChild(repo);
 
     appendRuntimeRow(
@@ -814,7 +831,7 @@ function renderRuntimeInfo(status, systemData) {
     const metricsSection = document.createElement('div');
 
     metricsSection.className = 'runtime-info-section';
-    appendRuntimeHeading(metricsSection, 'Letzte Antwort');
+    appendRuntimeHeading(metricsSection, rut('last_response', 'Last response'));
 
     const session = MLXChatSessions.currentSession();
     const message = [...(session?.messages || [])]
@@ -826,7 +843,7 @@ function renderRuntimeInfo(status, systemData) {
         appendRuntimeRow(
             metricsSection,
             'Metriken',
-            'Noch keine Antwortmetriken verfügbar'
+            rut('no_metrics', 'No response metrics available yet')
         );
 
     } else {
@@ -911,7 +928,7 @@ function openRuntimePopover() {
     closeModelPopover();
     runtimePopover.hidden = false;
     runtimeInfoButton.setAttribute('aria-expanded', 'true');
-    runtimeInfoContent.textContent = 'Runtime wird geladen…';
+    runtimeInfoContent.textContent = rut('runtime_loading', 'Loading runtime…');
 
     refreshRuntimeInfo();
 
@@ -994,7 +1011,7 @@ async function openModelPopover() {
     closeRuntimePopover();
     modelPopover.hidden = false;
     modelTitle.setAttribute('aria-expanded', 'true');
-    modelSwitchStatus.textContent = 'Modelle werden geladen…';
+    modelSwitchStatus.textContent = rut('models_loading', 'Loading models…');
     modelList.innerHTML = '';
 
     try {
@@ -1007,7 +1024,11 @@ async function openModelPopover() {
 
     } catch (error) {
         modelSwitchStatus.textContent =
-            'Fehler: ' + error.message;
+            rut(
+                'error_with_message',
+                'Error: {message}',
+                { message: error.message }
+            );
     }
 }
 
@@ -1034,20 +1055,22 @@ async function waitForModel(alias) {
             setModelStatus(
                 status.online
                     ? 'Warte auf ' + alias + '…'
-                    : 'MLX startet neu…'
+                    : rut('mlx_restarting', 'MLX is restarting…')
             );
 
         } catch {
-            setModelStatus('MLX startet neu…');
+            setModelStatus(rut('mlx_restarting', 'MLX is restarting…'));
         }
 
         await wait(1000);
     }
 
     throw new Error(
-        'MLX wurde nicht rechtzeitig mit ' +
-        alias +
-        ' bereit'
+        rut(
+            'mlx_alias_not_ready',
+            'MLX did not become ready with {alias} in time',
+            { alias }
+        )
     );
 }
 
@@ -1064,11 +1087,11 @@ async function waitForThinking(enabled) {
             }
         } catch {}
 
-        setModelStatus('MLX startet neu…');
+        setModelStatus(rut('mlx_restarting', 'MLX is restarting…'));
         await wait(1000);
     }
 
-    throw new Error('Thinking-Wechsel wurde nicht rechtzeitig bereit');
+    throw new Error(rut('thinking_timeout', 'Thinking switch did not become ready in time'));
 }
 
 
@@ -1077,19 +1100,19 @@ async function toggleThinking(enabled) {
 
     if (isGenerating()) {
         runtimeInfoContent.textContent =
-            'Thinking-Wechsel erst nach der laufenden Antwort';
+            rut('thinking_after_response', 'Thinking can only be switched after the current response');
         return;
     }
 
     switchingThinking = true;
     updateSendButton();
     runtimeInfoContent.textContent = enabled
-        ? 'Thinking wird aktiviert…'
-        : 'Thinking wird deaktiviert…';
+        ? rut('thinking_on', 'Enabling Thinking…')
+        : rut('thinking_off', 'Disabling Thinking…');
     setModelStatus(
         enabled
-            ? 'Thinking wird aktiviert…'
-            : 'Thinking wird deaktiviert…'
+            ? rut('thinking_on', 'Enabling Thinking…')
+            : rut('thinking_off', 'Disabling Thinking…')
     );
 
     try {
@@ -1107,18 +1130,26 @@ async function toggleThinking(enabled) {
             );
         }
 
-        setModelStatus('MLX startet neu…');
+        setModelStatus(rut('mlx_restarting', 'MLX is restarting…'));
         const status = await waitForThinking(enabled);
 
         renderStatus(status);
         setModelStatus(
-            'Thinking ' + (enabled ? 'ON' : 'OFF') + ' · bereit'
+            'Thinking ' + (enabled ? 'ON' : 'OFF') + rut('ready_suffix', ' · ready')
         );
 
     } catch (error) {
         runtimeInfoContent.textContent =
-            'Fehler: ' + error.message;
-        setModelStatus('Fehler: ' + error.message);
+            rut(
+                'error_with_message',
+                'Error: {message}',
+                { message: error.message }
+            );
+        setModelStatus(rut(
+                'error_with_message',
+                'Error: {message}',
+                { message: error.message }
+            ));
 
     } finally {
         switchingThinking = false;
@@ -1136,7 +1167,7 @@ async function switchModel(alias) {
 
     if (isGenerating()) {
         setModelStatus(
-            'Modellwechsel erst nach der laufenden Antwort'
+            rut('switch_after_response', 'Model switch available after the current response')
         );
         return;
     }
@@ -1147,7 +1178,11 @@ async function switchModel(alias) {
         }
 
         if (!modelAliases.some(model => model.alias === alias)) {
-            throw new Error('Unbekanntes Modell-Alias: ' + alias);
+            throw new Error(rut(
+            'unknown_alias_with_name',
+            'Unknown model alias: {alias}',
+            { alias }
+        ));
         }
 
         switchingModel = true;
@@ -1173,21 +1208,29 @@ async function switchModel(alias) {
             throw new Error(
                 errorMessage(
                     data,
-                    'Modellwechsel fehlgeschlagen'
+                    rut('switch_failed', 'Model switch failed')
                 )
             );
         }
 
-        setModelStatus('MLX startet neu…');
+        setModelStatus(rut('mlx_restarting', 'MLX is restarting…'));
 
         const status = await waitForModel(alias);
 
         await loadModelAliases();
         renderStatus(status);
-        setModelStatus(alias + ' bereit');
+        setModelStatus(rut(
+            'ready',
+            '{alias} ready',
+            { alias }
+        ));
 
     } catch (error) {
-        setModelStatus('Fehler: ' + error.message);
+        setModelStatus(rut(
+                'error_with_message',
+                'Error: {message}',
+                { message: error.message }
+            ));
 
     } finally {
         switchingModel = false;

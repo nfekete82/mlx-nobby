@@ -1,3 +1,16 @@
+function sessionT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [varName, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${varName}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (function () {
     const STORAGE_KEY = 'mlx-web-chats-v1';
 
@@ -304,7 +317,7 @@
     function createSession() {
         const session = {
             id: uid(),
-            title: 'Neuer Chat',
+            title: sessionT('sessions.new_chat', 'New chat'),
             created: Date.now(),
             updated: Date.now(),
             messages: [],
@@ -327,8 +340,8 @@
         if (!session) return;
 
         const name = prompt(
-            'Chat umbenennen:',
-            session.title || 'Neuer Chat'
+            sessionT('sessions.rename', 'Rename chat:'),
+            session.title || sessionT('sessions.new_chat', 'New chat')
         );
 
         if (name === null) return;
@@ -354,9 +367,15 @@
         if (!session) return;
 
         if (!confirm(
-            'Chat "' +
-            (session.title || 'Neuer Chat') +
-            '" wirklich löschen?'
+            sessionT(
+            'sessions.delete_confirm',
+            'Really delete chat "{name}"?',
+            {
+                name:
+                    session.title ||
+                    sessionT('sessions.new_chat', 'New chat')
+            }
+        )
         )) {
             return;
         }
@@ -387,13 +406,18 @@
 
         if (
             session.messages.length &&
-            !confirm('Diesen Chat wirklich leeren?')
+            !confirm(
+                sessionT(
+                    'ui.clear_chat_confirm',
+                    'Really clear this chat?'
+                )
+            )
         ) {
             return;
         }
 
         session.messages = [];
-        session.title = 'Neuer Chat';
+        session.title = sessionT('sessions.new_chat', 'New chat');
         session.updated = Date.now();
 
         saveSessions();
@@ -401,7 +425,7 @@
     }
 
     function updateTitle(session) {
-        if (session.title !== 'Neuer Chat') {
+        if (session.title !== sessionT('sessions.new_chat', 'New chat')) {
             return;
         }
 
@@ -419,7 +443,7 @@
             title = title.slice(0, 42) + '…';
         }
 
-        session.title = title || 'Neuer Chat';
+        session.title = title || sessionT('sessions.new_chat', 'New chat');
     }
 
     function selectSession(id) {
@@ -470,9 +494,15 @@
         if (!session) return;
 
         const lines = [
-            '# ' + (session.title || 'Neuer Chat'),
+            '# ' + (session.title || sessionT('sessions.new_chat', 'New chat')),
             '',
-            '_Erstellt: ' + new Date(session.created).toLocaleString('de-DE') + '_',
+            '_' +
+            sessionT('sessions.created', 'Created') +
+            ': ' +
+            new Date(session.created).toLocaleString(
+                window.MLXI18n?.getLocale?.() || 'en-US'
+            ) +
+            '_',
             ''
         ];
 
@@ -488,8 +518,14 @@
         session.messages.forEach(message => {
             lines.push('## ' + (message.role === 'assistant' ? 'Assistant' : 'User'), '', message.display_content ?? message.content ?? '', '');
             if (message.reasoning) lines.push('### Thinking', '', message.reasoning, '');
-            if (message.attachments?.length) lines.push('_Anhänge: ' + message.attachments.map(file => file.name + ' (' + file.size + ' Bytes)').join(', ') + '_', '');
-            if (message.metrics) lines.push('_Metriken: ' + [message.metrics.estimated_tokens + ' Tokens', message.metrics.tokens_per_second != null ? message.metrics.tokens_per_second + ' tok/s' : null, message.metrics.total_ms != null ? (message.metrics.total_ms / 1000).toFixed(1) + ' s' : null].filter(Boolean).join(' · ') + '_', '');
+            if (message.attachments?.length) lines.push('_' +
+                sessionT('sessions.attachments', 'Attachments') +
+                ': ' +
+                message.attachments
+                    .map(file => file.name + ' (' + file.size + ' Bytes)')
+                    .join(', ') +
+                '_', '');
+            if (message.metrics) lines.push('_' + sessionT('sessions.metrics', 'Metrics') + ': ' + [message.metrics.estimated_tokens + ' Tokens', message.metrics.tokens_per_second != null ? message.metrics.tokens_per_second + ' tok/s' : null, message.metrics.total_ms != null ? (message.metrics.total_ms / 1000).toFixed(1) + ' s' : null].filter(Boolean).join(' · ') + '_', '');
         });
 
         download(lines.join('\n'), 'text/markdown;charset=utf-8', 'mlx-chat-' + safeFileName(session.title) + '-' + exportDate() + '.md');
@@ -505,7 +541,7 @@
 
     function importBackup(text) {
         if (text.length > 20 * 1024 * 1024) {
-            throw new Error('Die Backup-Datei ist größer als 20 MB');
+            throw new Error(sessionT('sessions.backup_too_large', 'The backup file is larger than 20 MB'));
         }
 
         const data = JSON.parse(text);
@@ -513,7 +549,7 @@
             ? data.chats
             : validSession(data) ? [data] : null;
 
-        if (!chats) throw new Error('Ungültiges Chat-Backup');
+        if (!chats) throw new Error(sessionT('sessions.invalid_backup', 'Invalid chat backup'));
 
         let imported = 0;
 

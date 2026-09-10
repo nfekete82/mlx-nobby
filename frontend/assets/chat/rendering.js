@@ -1,4 +1,21 @@
 (function () {
+
+    function rt(key, fallback = '', variables = {}) {
+        let value = window.MLXI18n?.t(
+            `rendering.${key}`,
+            fallback
+        ) ?? fallback;
+
+        Object.entries(variables).forEach(([name, replacement]) => {
+            value = value.replaceAll(
+                `{${name}}`,
+                String(replacement ?? '')
+            );
+        });
+
+        return value;
+    }
+
     let state;
     let currentSession;
     let isGenerating;
@@ -54,10 +71,10 @@ function renderSidebar() {
                 : '');
 
         entry.textContent =
-            session.title || 'Neuer Chat';
+            session.title || rt('new_chat', 'New chat');
 
         entry.title =
-            session.title || 'Neuer Chat';
+            session.title || rt('new_chat', 'New chat');
 
         entry.addEventListener(
             'click',
@@ -107,7 +124,7 @@ function renderSidebar() {
             'chat-menu-item danger';
 
         remove.textContent =
-            'Löschen';
+            rt('delete', 'Delete');
 
         remove.addEventListener(
             'click',
@@ -220,16 +237,16 @@ function renderToolCard(message) {
 
     const toolNames = {
         web_search: 'Websuche',
-        model_list: 'Modelle',
-        model_switch: 'Modellwechsel',
+        model_list: rt('models', 'Models'),
+        model_switch: rt('model_switch', 'Model switch'),
         model_restart: 'MLX-Neustart',
         system_status: 'Systemstatus',
-        batch_status: 'Datei-Jobs',
+        batch_status: rt('file_jobs', 'File jobs'),
         logs_query: 'Logs',
         pii_audit: 'PII-Audit',
         thinking_on: 'Thinking',
         thinking_off: 'Thinking',
-        image_generate: 'Bildgenerierung',
+        image_generate: rt('image_generation', 'Image generation'),
         knowledge_search: 'Wissensbasis'
     };
 
@@ -244,7 +261,7 @@ function renderToolCard(message) {
     if (result.status === 'completed') {
         status.textContent = '✓';
     } else if (result.status === 'failed') {
-        status.textContent = 'Fehler';
+        status.textContent = rt('error', 'Error');
     } else if (result.status) {
         status.textContent = result.status;
     }
@@ -271,54 +288,62 @@ function agentStepLabel(step) {
 
     if (action === 'shell_read') {
         if (/docker\s+ps/i.test(query)) {
-            return 'Docker-Container prüfen';
+            return rt('check_docker', 'Check Docker containers');
         }
 
         if (/docker\s+logs/i.test(query)) {
-            return 'Logs prüfen';
+            return rt('check_logs', 'Check logs');
         }
 
         if (/docker\s+inspect/i.test(query)) {
-            return 'Container prüfen';
+            return rt('check_containers', 'Check containers');
         }
 
         if (/curl/i.test(query)) {
-            return 'Erreichbarkeit prüfen';
+            return rt('check_reachability', 'Check reachability');
         }
 
-        return 'System prüfen';
+        return rt('check_system', 'Check system');
     }
 
     const labels = {
-        system_status: 'Systemstatus prüfen',
-        process_usage: 'CPU- und RAM-intensive Prozesse prüfen',
-        logs_query: 'Logs prüfen',
-        batch_status: 'Datei-Jobs prüfen',
+        system_status: rt('check_system_status', 'Check system status'),
+        process_usage: rt('check_cpu_ram', 'Check CPU- and RAM-intensive processes'),
+        logs_query: rt('check_logs', 'Check logs'),
+        batch_status: rt('check_file_jobs', 'Check file jobs'),
         knowledge_search: 'Wissensbasis durchsuchen',
         code_search: 'Relevanten Code suchen',
         code_files: 'Projektstruktur analysiert',
-        code_read: 'Relevante Datei untersucht',
+        code_read: rt('relevant_file_checked', 'Relevant file inspected'),
         code_patch: fileCount
-            ? fileCount + ' Änderungen vorbereitet'
-            : 'Änderungen vorbereitet',
+            ? rt(
+                'files_prepared',
+                '{count} changes prepared',
+                { count: fileCount }
+            )
+            : rt('changes_prepared', 'Changes prepared'),
         code_diff: fileCount
-            ? 'Gesamt-Diff für ' + fileCount + ' Dateien erstellt'
-            : 'Gesamt-Diff erstellt',
+            ? rt(
+                'total_diff_files',
+                'Total diff created for {count} files',
+                { count: fileCount }
+            )
+            : rt('total_diff_created', 'Total diff created'),
         code_test: result.passed === true
             ? (fileCount
-                ? fileCount + ' Dateien getestet · Tests bestanden'
+                ? rt('files_tested', '{count} files tested · Tests passed', { count: fileCount })
                 : 'Tests bestanden')
             : 'Change-Set getestet',
         code_apply: fileCount
-            ? fileCount + ' Dateien angewendet'
+            ? rt('files_applied', '{count} files applied', { count: fileCount })
             : 'Change-Set angewendet',
-        agent_plan: 'Nächsten Schritt planen',
-        agent_error: 'Agent-Fehler',
+        agent_plan: rt('plan_next', 'Plan next step'),
+        agent_error: rt('agent_error', 'Agent error'),
         web_search: 'Web durchsuchen',
         search_web: 'Web durchsuchen',
-        fetch_url: 'Quelle öffnen',
-        docker_restart: 'Container neu starten',
-        verify_change: 'Änderung überprüfen',
+        fetch_url: rt('open_source', 'Open source'),
+        docker_restart: rt('restart_container', 'Restart container'),
+        verify_change: rt('review_change', 'Review change'),
         rejected_by_user: 'Aktion abgelehnt'
     };
 
@@ -487,7 +512,7 @@ function renderAgentCard(message) {
             'agent-approval-title';
 
         title.textContent =
-            '⚠ Aktion benötigt Freigabe';
+            rt('approval_required', '⚠ Action requires approval');
 
         approval.appendChild(title);
 
@@ -503,9 +528,13 @@ function renderAgentCard(message) {
         );
 
         operation.textContent = pending.operation === 'docker_restart'
-            ? (pending.target || 'Container') + ' neu starten'
+            ? rt(
+                'restart_target',
+                'Restart {target}',
+                { target: pending.target || 'Container' }
+            )
             : pending.operation === 'code_apply' && approvalFileCount
-                ? approvalFileCount + ' Dateien anwenden'
+                ? rt('apply_files', 'Apply {count} files', { count: approvalFileCount })
                 : String(pending.operation || 'Aktion').replace(/_/g, ' ');
 
         approval.appendChild(operation);
@@ -517,9 +546,21 @@ function renderAgentCard(message) {
             const counts = document.createElement('div');
             counts.className = 'agent-change-counts';
             counts.textContent = [
-                '+ ' + Number(changeSummary.create || 0) + ' neu',
-                '~ ' + Number(changeSummary.modify || 0) + ' geändert',
-                '− ' + Number(changeSummary.delete || 0) + ' gelöscht'
+                rt(
+                    'created_count',
+                    '+ {count} new',
+                    { count: Number(changeSummary.create || 0) }
+                ),
+                rt(
+                    'modified_count',
+                    '~ {count} modified',
+                    { count: Number(changeSummary.modify || 0) }
+                ),
+                rt(
+                    'deleted_count',
+                    '− {count} deleted',
+                    { count: Number(changeSummary.delete || 0) }
+                )
             ].join('  ·  ');
             summary.appendChild(counts);
 
@@ -527,7 +568,7 @@ function renderAgentCard(message) {
             testStatus.className = 'agent-change-tests';
             testStatus.textContent = pending.tests?.passed
                 ? '✓ Tests bestanden'
-                : '⚠ Tests nicht bestätigt';
+                : rt('tests_unconfirmed', '⚠ Tests not confirmed');
             summary.appendChild(testStatus);
 
             const lineDelta = document.createElement('div');
@@ -543,7 +584,7 @@ function renderAgentCard(message) {
                 const details = document.createElement('details');
                 details.className = 'agent-step-details';
                 const detailsTitle = document.createElement('summary');
-                detailsTitle.textContent = 'Betroffene Dateien';
+                detailsTitle.textContent = rt('affected_files', 'Affected files');
                 const fileList = document.createElement('pre');
                 fileList.textContent = pending.files.map(file =>
                     String(file.operation || '') + '  ' + String(file.path || '')
@@ -622,7 +663,7 @@ function renderAgentCard(message) {
         execute.textContent =
             pending.operation === 'code_apply'
                 ? 'Freigeben'
-                : 'Ausführen';
+                : rt('execute', 'Run');
 
         execute.addEventListener(
             'click',
@@ -649,13 +690,13 @@ function renderArtifactCard(message) {
     if (!artifact) return null;
     const card = document.createElement('section');
     card.className = 'batch-chat-card artifact-card';
-    const title = document.createElement('strong'); title.textContent = artifact.name || 'Erzeugte Datei';
+    const title = document.createElement('strong'); title.textContent = artifact.name || rt('generated_file', 'Generated file');
     const details = document.createElement('div'); details.className = 'batch-chat-details';
     details.textContent = [
         artifact.size != null ? formatBytes(artifact.size) : '',
         artifact.extension ? artifact.extension.toUpperCase() : '',
         message.batch_job?.processing_mode ? message.batch_job.processing_mode.toUpperCase() : '',
-        message.batch_job?.pii_audit ? 'PII-Audit verfügbar' : ''
+        message.batch_job?.pii_audit ? rt('pii_available', 'PII audit available') : ''
     ].filter(Boolean).join(' · ');
     card.appendChild(title); card.appendChild(details);
     const controls = document.createElement('div'); controls.className = 'batch-chat-controls';
@@ -664,7 +705,7 @@ function renderArtifactCard(message) {
         const button = document.createElement('button'); button.className = 'message-action-btn'; button.textContent = label;
         button.addEventListener('click', () => {
             const input = document.getElementById('input');
-            input.value = label === 'Ergebnis analysieren' ? 'Analysiere das Ergebnis.' : label === 'Ergebnis zusammenfassen' ? 'Fasse die erzeugte Datei zusammen.' : 'Mach einen PII Audit.';
+            input.value = label === 'Ergebnis analysieren' ? 'Analysiere das Ergebnis.' : label === 'Ergebnis zusammenfassen' ? 'Summarize the generated file.' : 'Mach einen PII Audit.';
             window.MLXChatGeneration.sendMessage();
         });
         controls.appendChild(button);
@@ -847,17 +888,19 @@ function renderBatchCard(message) {
     const analysisJob = job.kind === 'file_analysis';
     title.textContent = job.status === 'completed' ? (analysisJob ? '✓ Analyse abgeschlossen' : '✓ Verarbeitung abgeschlossen') :
         job.status === 'failed' ? (analysisJob ? 'Analyse fehlgeschlagen' : 'Verarbeitung fehlgeschlagen') :
-        (analysisJob ? 'Datei wird analysiert' : 'Datei wird verarbeitet');
+        (analysisJob ? rt('analyzing_file', 'Analyzing file') : rt('processing_file', 'Processing file'));
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
     const eta = Number(job.eta_seconds || 0);
     details.textContent = [
-        'Datei: ' + (message.batch_filename || 'Anhang'),
+        rt('file_prefix', 'File:') + ' ' + (message.batch_filename || 'Anhang'),
         analysisJob ? 'Operation: ' + ({ inspect: 'Inspektion', analyze: 'Analyse', summarize: 'Zusammenfassung' }[job.operation] || 'Analyse') :
-            'Modus: ' + String(job.processing_mode || job.instruction_plan?.mode || 'wird bestimmt').toUpperCase(),
+            'Modus: ' + String(job.processing_mode || job.instruction_plan?.mode || rt('determining', 'determining')).toUpperCase(),
         'Fortschritt: ' + done + ' / ' + (total || '…') + ' (' + percent + ' %)',
-        'MLX-Aufrufe: ' + Number(job.mlx_calls || 0),
-        'LLM übersprungen: ' + Number(job.skipped_llm_chunks || 0),
+        rt('mlx_calls', 'MLX calls:') + ' ' +
+        Number(job.mlx_calls || 0),
+        rt('llm_skipped_count', 'LLM skipped:') + ' ' +
+        Number(job.skipped_llm_chunks || 0),
         job.pii_audit ? 'PII-Audit: ' + (Object.values(job.pii_audit).every(value => value === 0) ? 'keine offensichtlichen Treffer' : 'restliche Treffer gefunden') : '',
         eta ? 'ETA: ' + Math.ceil(eta / 60) + ' Minuten' : ''
     ].filter(Boolean).join('\n');
@@ -904,14 +947,14 @@ function renderBatchCard(message) {
     ) {
         action('Kontrolliert starten', 'start');
         action('Alles automatisch', 'automatic-start');
-        action('Abbrechen', 'cancel');
+        action(rt('cancel', 'Cancel'), 'cancel');
     } else if (
         job.status === 'paused' &&
         job.waiting_for_user
     ) {
         action('Weiter', 'resume');
         action('Rest automatisch', 'automatic');
-        action('Abbrechen', 'cancel');
+        action(rt('cancel', 'Cancel'), 'cancel');
     } else {
         if (
             job.status === 'running' ||
@@ -932,7 +975,7 @@ function renderBatchCard(message) {
             job.status === 'queued' ||
             job.status === 'paused'
         ) {
-            action('Abbrechen', 'cancel');
+            action(rt('cancel', 'Cancel'), 'cancel');
         }
     }
 
@@ -946,11 +989,11 @@ function renderImageArtifactCard(message) {
     if (!artifact?.image_id) return null;
     const card = document.createElement('section');
     card.className = 'batch-chat-card image-artifact-card';
-    const title = document.createElement('strong'); title.textContent = 'Lokales Bild';
+    const title = document.createElement('strong'); title.textContent = rt('local_image', 'Local image');
     const image = document.createElement('img');
     image.className = 'image-artifact-preview';
     image.src = '/api/mlx/images/' + encodeURIComponent(artifact.image_id);
-    image.alt = artifact.prompt || 'Generiertes Bild';
+    image.alt = artifact.prompt || rt('generated_image', 'Generated image');
     image.loading = 'lazy';
     const details = document.createElement('div'); details.className = 'batch-chat-details';
     details.textContent = [
@@ -969,7 +1012,7 @@ function renderImageArtifactCard(message) {
     variation.className = 'message-action-btn'; variation.textContent = 'Variation';
     variation.addEventListener('click', () => {
         const input = document.getElementById('input');
-        input.value = 'Erstelle ein Bild von ' + (artifact.prompt || 'diesem Motiv');
+        input.value = 'Create an image of ' + (artifact.prompt || 'diesem Motiv');
         window.MLXChatGeneration.sendMessage({ image: {
             prompt: artifact.prompt || 'dieses Motiv',
             model: artifact.model || 'FLUX.1-schnell',
@@ -988,7 +1031,7 @@ function renderArtifactChoice(message) {
     const card = document.createElement('section'); card.className = 'batch-chat-card artifact-choice-card';
     for (const artifact of choice.candidates || []) {
         const button = document.createElement('button'); button.className = 'message-action-btn artifact-choice-button';
-        button.textContent = artifact.name || artifact.output_name || 'Erzeugte Datei';
+        button.textContent = artifact.name || artifact.output_name || rt('generated_file', 'Generated file');
         button.addEventListener('click', () => {
             const session = MLXChatSessions.currentSession();
             session.workspace = { ...(session.workspace || {}), active_artifact_id: artifact.artifact_id };
@@ -1016,7 +1059,7 @@ function renderMessages(options = {}) {
         messagesInner.innerHTML = `
             <div class="empty">
                 <div class="empty-logo"><img src="/assets/mlx-nobby.svg" alt="MLX nobby"></div>
-                <h1>Bereit für deine nächste geniale Idee?</h1>
+                <h1>${rt('ready_next_idea', 'Ready for your next great idea?')}</h1>
                 <p>
                     <span>Frag, diktier, lade hoch – Nobby ist am Start. 😎</span>
                     <span class="empty-local">Alles läuft lokal auf deinem Mac.</span>
@@ -1345,7 +1388,7 @@ function renderMessages(options = {}) {
             info.type = 'button';
             info.setAttribute(
                 'aria-label',
-                'Antwortinformationen'
+                rt('response_information', 'Response information')
             );
 
             info.innerHTML = `
@@ -1435,7 +1478,7 @@ function renderMessages(options = {}) {
                     'message-info-empty';
 
                 empty.textContent =
-                    'Keine Metriken verfügbar';
+                    rt('no_metrics', 'No metrics available');
 
                 list.appendChild(empty);
             } else {
@@ -1477,10 +1520,10 @@ function renderMessages(options = {}) {
                 regenerate.className =
                     'message-action-btn message-action-icon';
                 regenerate.type = 'button';
-                regenerate.title = 'Neu generieren';
+                regenerate.title = rt('regenerate', 'Regenerate');
                 regenerate.setAttribute(
                     'aria-label',
-                    'Neu generieren'
+                    rt('regenerate', 'Regenerate')
                 );
                 regenerate.innerHTML = `
                     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1563,7 +1606,7 @@ function renderMessages(options = {}) {
                             file.data_url;
 
                         preview.alt =
-                            file.name || 'Bild';
+                            file.name || rt('image', 'Image');
 
                         chip.appendChild(
                             preview
@@ -1583,7 +1626,7 @@ function renderMessages(options = {}) {
                         'message-attachment-title';
 
                     title.textContent =
-                        file.name || 'Datei';
+                        file.name || rt('file', 'File');
 
                     const details =
                         document.createElement('div');
@@ -1599,8 +1642,10 @@ function renderMessages(options = {}) {
                         (
                             Number.isFinite(file.record_count)
                                 ? ' · ' +
-                                  file.record_count.toLocaleString('de-DE') +
-                                  ' Datensätze'
+                                  file.record_count.toLocaleString(
+            window.MLXI18n?.getLocale?.() || 'en-US'
+        ) +
+                                  rt('records_suffix', ' records')
                                 : ''
                         );
 
@@ -1633,10 +1678,10 @@ function renderMessages(options = {}) {
             edit.className =
                 'message-action-btn message-action-icon';
             edit.type = 'button';
-            edit.title = 'Bearbeiten';
+            edit.title = rt('edit', 'Edit');
             edit.setAttribute(
                 'aria-label',
-                'Bearbeiten'
+                rt('edit', 'Edit')
             );
             edit.innerHTML = `
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1698,4 +1743,11 @@ function renderAll(options = {}) {
         renderMessages: renderMessages,
         renderAll: renderAll
     };
+
+    document.addEventListener('mlx-language-changed', () => {
+        if (typeof window.renderMessages === 'function') {
+            window.renderMessages();
+        }
+    });
+
 })();

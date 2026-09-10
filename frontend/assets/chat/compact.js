@@ -1,3 +1,16 @@
+function compactT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [varName, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${varName}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (function () {
     const KEEP_LAST_MESSAGES = 12;
     const MAX_CONTEXT_CHARS = 120000;
@@ -38,7 +51,7 @@ async function compactSession(session, automatic = false) {
             document.getElementById(
                 'contextText'
             ).textContent =
-                'Kontext wird komprimiert…';
+                compactT('compact.running', 'Compressing context…');
         }
 
         const {

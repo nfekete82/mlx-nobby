@@ -25,6 +25,12 @@ app = FastAPI(title="MLX Control Center")
 app.add_middleware(LocalRequestGuard)
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
+app.mount(
+    "/i18n",
+    StaticFiles(directory=str(FRONTEND_DIR / "i18n")),
+    name="i18n",
+)
+
 @app.get("/favicon.ico")
 def favicon():
     return FileResponse(

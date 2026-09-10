@@ -31,6 +31,26 @@
     let fetchImpl = (...args) => window.fetch(...args);
     let waitImpl = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
+    function mt(key, fallback = '', variables = {}) {
+        let value = window.MLXI18n?.t(
+            `models.${key}`,
+            fallback
+        ) ?? fallback;
+
+        Object.entries(variables).forEach(([name, replacement]) => {
+            value = value.replaceAll(
+                `{${name}}`,
+                String(replacement ?? '')
+            );
+        });
+
+        return value;
+    }
+
+    function modelLocale() {
+        return window.MLXI18n?.getLocale?.() || 'en-US';
+    }
+
     function node(tag, className, text) {
         const element = document.createElement(tag);
         if (className) element.className = className;
@@ -50,13 +70,13 @@
     }
 
     function cleanTechnicalError(value) {
-        if (!value) return 'Unbekannter Fehler';
+        if (!value) return mt('unknown_error', 'Unknown error');
         if (typeof value === 'string') return value.replace(/^Error:\s*/i, '').trim();
         if (typeof value.detail === 'string') return value.detail;
         if (value.detail && typeof value.detail === 'object') {
             return value.detail.stderr || value.detail.stdout || JSON.stringify(value.detail);
         }
-        return value.message || 'Unbekannter Fehler';
+        return value.message || mt('unknown_error', 'Unknown error');
     }
 
     async function requestJson(url, options) {
@@ -93,7 +113,7 @@
             .replace(/[-_]+/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-        if (!value) return typeof modelOrRepo === 'object' ? modelOrRepo.alias : 'Unbenanntes Modell';
+        if (!value) return typeof modelOrRepo === 'object' ? modelOrRepo.alias : mt('unnamed', 'Unnamed model');
         return value.split(' ').map(token => {
             if (/^(qwen|mlx|vlm|llm)$/i.test(token)) return token.toUpperCase() === 'QWEN' ? 'Qwen' : token.toUpperCase();
             if (/^gemma$/i.test(token)) return 'Gemma';
@@ -113,7 +133,7 @@
             index += 1;
         }
         const digits = index >= 3 ? 2 : index === 0 ? 0 : 1;
-        return size.toLocaleString('de-DE', { maximumFractionDigits: digits }) + ' ' + units[index];
+        return size.toLocaleString(modelLocale(), { maximumFractionDigits: digits }) + ' ' + units[index];
     }
 
     function formatUptime(seconds) {
@@ -134,13 +154,13 @@
         const errors = {};
         const normalizedAlias = String(alias || '').trim();
         const normalizedRepo = String(repo || '').trim();
-        if (!normalizedAlias) errors.alias = 'Alias ist erforderlich.';
-        else if (!/^[A-Za-z0-9._-]+$/.test(normalizedAlias)) errors.alias = 'Nur Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich.';
-        if (!normalizedRepo) errors.repo = 'Repository oder lokaler Pfad ist erforderlich.';
-        else if (/[\x00-\x1f\x7f\\"`$|&]/.test(normalizedRepo)) errors.repo = 'Modellreferenz enthält unsichere Zeichen.';
+        if (!normalizedAlias) errors.alias = mt('validation.alias_required', 'Alias is required.');
+        else if (!/^[A-Za-z0-9._-]+$/.test(normalizedAlias)) errors.alias = mt('validation.alias_chars', 'Only letters, numbers, dots, underscores and hyphens are allowed.');
+        if (!normalizedRepo) errors.repo = mt('validation.repo_required', 'Repository or local path is required.');
+        else if (/[\x00-\x1f\x7f\\"`$|&]/.test(normalizedRepo)) errors.repo = mt('validation.unsafe_reference', 'Model reference contains unsafe characters.');
         else if (!normalizedRepo.startsWith('/') && !normalizedRepo.startsWith('~/') &&
             !/^[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(normalizedRepo)) {
-            errors.repo = 'Erwartet wird owner/modell oder ein absoluter lokaler Pfad.';
+            errors.repo = mt('validation.repo_format', 'Expected owner/model or an absolute local path.');
         }
         return { valid: Object.keys(errors).length === 0, errors, alias: normalizedAlias, repo: normalizedRepo };
     }
@@ -188,24 +208,24 @@
     }
 
     function modelAvailability(model) {
-        if (model.local) return { state: 'ready', label: 'Bereit' };
+        if (model.local) return { state: 'ready', label: mt('status.ready', 'Ready') };
         const cache = cacheForModel(model);
         const job = jobForModel(model);
-        if (isJobRunning(job)) return { state: 'download', label: 'Wird heruntergeladen', job };
-        if (cache?.complete) return { state: 'ready', label: 'Bereit', cache };
-        if (job?.status === 'failed' || job?.status === 'interrupted') return { state: 'error', label: 'Download fehlgeschlagen', job, cache };
-        if (cache && !cache.complete) return { state: 'error', label: 'Download unvollständig', cache };
-        return { state: 'missing', label: 'Nicht lokal verfügbar' };
+        if (isJobRunning(job)) return { state: 'download', label: mt('status.downloading', 'Downloading'), job };
+        if (cache?.complete) return { state: 'ready', label: mt('status.ready', 'Ready'), cache };
+        if (job?.status === 'failed' || job?.status === 'interrupted') return { state: 'error', label: mt('status.download_failed', 'Download failed'), job, cache };
+        if (cache && !cache.complete) return { state: 'error', label: mt('status.download_incomplete', 'Download incomplete'), cache };
+        return { state: 'missing', label: mt('status.missing', 'Not available locally') };
     }
 
     function statusView() {
         if (state.runtimeAction) {
-            if (state.runtimeAction.error) return { kind: 'error', label: 'Fehler' };
+            if (state.runtimeAction.error) return { kind: 'error', label: mt('status.error', 'Error') };
             return state.runtimeAction.type === 'stop'
-                ? { kind: 'stopping', label: 'Stoppt' }
-                : { kind: 'starting', label: 'Startet' };
+                ? { kind: 'stopping', label: mt('status.stopping', 'Stopping') }
+                : { kind: 'starting', label: mt('status.starting', 'Starting') };
         }
-        if (state.error && !state.status) return { kind: 'error', label: 'Fehler' };
+        if (state.error && !state.status) return { kind: 'error', label: mt('status.error', 'Error') };
         return state.status?.online
             ? { kind: 'online', label: 'Online' }
             : { kind: 'offline', label: 'Offline' };
@@ -228,8 +248,16 @@
         container.appendChild(badge(model.backend === 'vlm' ? 'VLM' : 'LLM'));
         if (model.quantization) container.appendChild(badge(model.quantization));
         if (model.vision) container.appendChild(badge('Vision'));
-        container.appendChild(badge(model.local ? 'Lokal' : 'Hugging Face'));
-        if (includeThinking && state.status) container.appendChild(badge('Thinking ' + (state.status.thinking ? 'AN' : 'AUS')));
+        container.appendChild(badge(
+            model.local
+                ? mt('status.local', 'Local')
+                : 'Hugging Face'
+        ));
+        if (includeThinking && state.status) container.appendChild(badge('Thinking ' + (
+            state.status.thinking
+                ? mt('status.on', 'On')
+                : mt('status.off', 'Off')
+        )));
     }
 
     function metric(label, value) {
@@ -247,20 +275,20 @@
     function deriveActionSteps(action) {
         if (!action) return [];
         if (action.type === 'thinking') {
-            return [{ label: 'Runtime-Bestätigung abwarten', mode: action.phase === 'ready' ? 'done' : 'active' }];
+            return [{ label: mt('runtime.wait_confirmation', 'Wait for runtime confirmation'), mode: action.phase === 'ready' ? 'done' : 'active' }];
         }
         const stopped = Boolean(action.observedOffline);
         const checking = action.phase === 'checking' || action.phase === 'ready';
         if (action.type === 'stop') {
             return [
-                { label: 'Runtime stoppen', mode: action.phase === 'ready' ? 'done' : 'active' },
-                { label: 'Offline-Status bestätigen', mode: action.phase === 'ready' ? 'done' : action.phase === 'stopped' ? 'active' : 'pending' },
+                { label: mt('runtime.stop_runtime', 'Stop runtime'), mode: action.phase === 'ready' ? 'done' : 'active' },
+                { label: mt('runtime.confirm_offline', 'Confirm offline status'), mode: action.phase === 'ready' ? 'done' : action.phase === 'stopped' ? 'active' : 'pending' },
             ];
         }
         return [
-            { label: action.type === 'switch' ? 'Bisheriges Modell beenden' : 'Runtime stoppen', mode: stopped ? 'done' : action.phase === 'requesting' ? 'active' : 'pending' },
-            { label: 'Modell initialisieren', mode: checking || action.phase === 'ready' ? 'done' : action.phase === 'initializing' ? 'active' : 'pending' },
-            { label: 'Bereitschaft prüfen', mode: action.phase === 'ready' ? 'done' : checking ? 'active' : 'pending' },
+            { label: action.type === 'switch' ? mt('runtime.stop_previous', 'Stop previous model') : mt('runtime.stop_runtime', 'Stop runtime'), mode: stopped ? 'done' : action.phase === 'requesting' ? 'active' : 'pending' },
+            { label: mt('runtime.initialize', 'Initialize model'), mode: checking || action.phase === 'ready' ? 'done' : action.phase === 'initializing' ? 'active' : 'pending' },
+            { label: mt('runtime.check_ready', 'Check readiness'), mode: action.phase === 'ready' ? 'done' : checking ? 'active' : 'pending' },
         ];
     }
 
@@ -268,19 +296,23 @@
         if (!state.runtimeAction) return;
         const panel = node('div', 'model-console-action-progress');
         const title = state.runtimeAction.type === 'switch'
-            ? displayName(state.runtimeAction.model) + ' wird geladen …'
+            ? mt(
+                'runtime.loading',
+                'Loading {model} …',
+                { model: displayName(state.runtimeAction.model) }
+            )
             : state.runtimeAction.type === 'restart'
-                ? 'Modell wird neu gestartet …'
+                ? mt('runtime.restarting', 'Restarting model …')
                 : state.runtimeAction.type === 'start'
-                    ? 'Runtime wird gestartet …'
+                    ? mt('runtime.starting', 'Starting runtime …')
                     : state.runtimeAction.type === 'thinking'
-                        ? 'Thinking wird geändert …'
-                        : 'Runtime wird gestoppt …';
+                        ? mt('runtime.thinking_change', 'Changing Thinking …')
+                        : mt('runtime.stopping', 'Stopping runtime …');
         panel.appendChild(node('strong', '', title));
         deriveActionSteps(state.runtimeAction).forEach(step => panel.appendChild(actionStep(step.label, step.mode)));
         if (state.runtimeAction.error) {
             const error = node('div', 'model-console-inline-error', state.runtimeAction.error);
-            const retry = actionButton('Erneut versuchen', 'retry-runtime');
+            const retry = actionButton(mt('actions.retry', 'Try again'), 'retry-runtime');
             error.appendChild(retry);
             panel.appendChild(error);
         }
@@ -290,12 +322,12 @@
     function renderHero() {
         const hero = node('section', 'model-console-hero');
         const heading = node('div', 'model-console-hero-heading');
-        const label = node('div', 'model-console-eyebrow', 'Aktives Modell');
+        const label = node('div', 'model-console-eyebrow', mt('runtime.active_model', 'Active model'));
         heading.append(label, statusChip());
         hero.appendChild(heading);
 
         const model = activeModel();
-        const title = node('h5', '', model ? displayName(model) : 'Kein Modell konfiguriert');
+        const title = node('h5', '', model ? displayName(model) : mt('runtime.no_model', 'No model configured'));
         hero.appendChild(title);
         if (model?.alias) hero.appendChild(node('div', 'model-console-alias', model.alias));
         const badges = node('div', 'model-console-badges');
@@ -318,9 +350,9 @@
         if (!state.runtimeAction) {
             const actions = node('div', 'model-console-actions');
             if (state.status?.online) {
-                actions.append(actionButton('↻ Neustarten', 'restart-runtime'), actionButton('■ Stoppen', 'stop-runtime', { danger: true }));
+                actions.append(actionButton(mt('actions.restart', '↻ Restart'), 'restart-runtime'), actionButton(mt('actions.stop', '■ Stop'), 'stop-runtime', { danger: true }));
             } else if (model || state.status?.model) {
-                actions.append(actionButton('▶ Starten', 'start-runtime', { primary: true }));
+                actions.append(actionButton(mt('actions.start', '▶ Start'), 'start-runtime', { primary: true }));
             }
             if (actions.childNodes.length) hero.appendChild(actions);
         }
@@ -334,7 +366,10 @@
         const main = node('div', 'model-console-row-main');
         const titleLine = node('div', 'model-console-row-title');
         titleLine.appendChild(node('strong', '', displayName(model)));
-        if (active) titleLine.appendChild(badge('● Aktiv', 'active'));
+        if (active) titleLine.appendChild(badge(
+            '● ' + mt('status.active', 'Active'),
+            'active'
+        ));
         main.appendChild(titleLine);
         const meta = node('div', 'model-console-row-meta');
         meta.appendChild(node('span', 'model-console-alias', model.alias));
@@ -351,7 +386,7 @@
         const globallyBusy = Boolean(state.runtimeAction) || state.deletingModel;
         if (!active) {
             const ready = availability.state === 'ready';
-            actions.appendChild(actionButton('▶ Laden', 'load-model', {
+            actions.appendChild(actionButton(mt('actions.load', '▶ Load'), 'load-model', {
                 alias: model.alias,
                 primary: true,
                 disabled: globallyBusy || !ready,
@@ -360,19 +395,23 @@
         }
         const menu = node('details', 'model-console-menu');
         const summary = node('summary', 'model-console-icon-button', '•••');
-        summary.setAttribute('aria-label', 'Aktionen für ' + model.alias);
+        summary.setAttribute('aria-label', mt(
+            'models.actions_for',
+            'Actions for {model}',
+            { model: model.alias }
+        ));
         menu.appendChild(summary);
         const menuPanel = node('div', 'model-console-menu-panel');
-        menuPanel.appendChild(actionButton('Details', 'model-details', { alias: model.alias }));
-        if (!active) menuPanel.appendChild(actionButton('Modell laden', 'load-model', { alias: model.alias, disabled: globallyBusy || availability.state !== 'ready' }));
-        if (availability.state === 'error') menuPanel.appendChild(actionButton('Download fortsetzen', 'retry-download', { target: model.alias }));
-        menuPanel.appendChild(actionButton('Aus Konfiguration entfernen', 'remove-model', { alias: model.alias, danger: true, disabled: active || globallyBusy }));
+        menuPanel.appendChild(actionButton(mt('actions.details', 'Details'), 'model-details', { alias: model.alias }));
+        if (!active) menuPanel.appendChild(actionButton(mt('actions.load_model', 'Load model'), 'load-model', { alias: model.alias, disabled: globallyBusy || availability.state !== 'ready' }));
+        if (availability.state === 'error') menuPanel.appendChild(actionButton(mt('actions.continue_download', 'Resume download'), 'retry-download', { target: model.alias }));
+        menuPanel.appendChild(actionButton(mt('actions.remove_config', 'Remove from configuration'), 'remove-model', { alias: model.alias, danger: true, disabled: active || globallyBusy }));
         if (model.local && model.available !== false) {
             const protectedModel = model.active || activeModel()?.repo === model.repo;
-            actions.appendChild(actionButton('Löschen', 'delete-local-model', {
+            actions.appendChild(actionButton(mt('actions.delete', 'Delete'), 'delete-local-model', {
                 alias: model.alias, danger: true,
                 disabled: protectedModel || globallyBusy || isJobRunning(jobForModel(model)),
-                title: protectedModel ? 'Aktives Modell ist geschützt – auch bei gestoppter Runtime.' : 'Lokale Modelldateien und Alias löschen',
+                title: protectedModel ? mt('models.active_protected', 'The active model is protected even when the runtime is stopped.') : mt('models.delete_local', 'Delete local model files and alias'),
             }));
         }
         menu.appendChild(menuPanel);
@@ -386,11 +425,11 @@
         fragment.appendChild(renderHero());
         const section = node('section', 'model-console-section');
         const head = node('div', 'model-console-section-heading');
-        head.append(node('h5', '', 'Installierte Modelle'), node('span', '', String(state.aliases.models.length)));
+        head.append(node('h5', '', mt('models.installed', 'Installed models')), node('span', '', String(state.aliases.models.length)));
         section.appendChild(head);
         if (!state.aliases.models.length) {
             const empty = node('div', 'model-console-empty');
-            empty.append(node('strong', '', 'Noch keine Modelle'), node('p', '', 'Füge ein lokales MLX-Modell oder ein Hugging-Face-Repository hinzu.'), actionButton('+ Modell hinzufügen', 'add-model', { primary: true }));
+            empty.append(node('strong', '', mt('models.none', 'No models yet')), node('p', '', mt('models.none_description', 'Add a local MLX model or a Hugging Face repository.')), actionButton(mt('models.add', '+ Add model'), 'add-model', { primary: true }));
             section.appendChild(empty);
         } else {
             const list = node('div', 'model-console-list');
@@ -411,7 +450,7 @@
         valueNode.title = String(value);
         dd.appendChild(valueNode);
         if (options.copy) {
-            const copy = actionButton('Kopieren', 'copy-value');
+            const copy = actionButton(mt('actions.copy', 'Copy'), 'copy-value');
             copy.dataset.value = String(value);
             dd.appendChild(copy);
         }
@@ -430,7 +469,7 @@
         const details = node('dl', 'model-console-definitions');
         [
             definitionRow('Status', statusView().label),
-            definitionRow('Modell', model?.alias || state.status?.model),
+            definitionRow(mt('models.model', 'Model'), model?.alias || state.status?.model),
             definitionRow('Backend', model?.backend === 'vlm' ? 'VLM' : model ? 'LLM' : null),
             definitionRow('PID', mlx.pid ?? state.status?.pid),
             definitionRow('Port', mlx.port ?? state.status?.port),
@@ -447,19 +486,19 @@
         const switcher = node('div', 'model-console-control-row');
         const switcherInfo = node('div');
         switcherInfo.append(
-            node('strong', '', 'Aktives Modell'),
-            node('p', '', 'Wechselt das Modell über den vorhandenen Runtime-Manager.')
+            node('strong', '', mt('runtime.active_model', 'Active model')),
+            node('p', '', mt('runtime.switch_description', 'Switches the model through the existing runtime manager.'))
         );
         const switcherControls = node('div', 'model-console-switcher');
         const modelSelect = node('select');
-        modelSelect.setAttribute('aria-label', 'Runtime-Modell auswählen');
+        modelSelect.setAttribute('aria-label', mt('runtime.select_model', 'Select runtime model'));
         availableModels.forEach(item => {
             const option = node('option', '', item.alias);
             option.value = item.alias;
             if (item.alias === model?.alias) option.selected = true;
             modelSelect.appendChild(option);
         });
-        const switchButton = actionButton('Modell wechseln', 'switch-selected-model', {
+        const switchButton = actionButton(mt('actions.switch_model', 'Switch model'), 'switch-selected-model', {
             disabled: !availableModels.length || Boolean(state.runtimeAction),
         });
         modelSelect.addEventListener('change', () => {
@@ -475,7 +514,7 @@
 
         const thinking = node('div', 'model-console-control-row');
         const thinkingInfo = node('div');
-        thinkingInfo.append(node('strong', '', 'Thinking'), node('p', '', 'Aktiviert erweitertes Reasoning, sofern vom Modell unterstützt.'));
+        thinkingInfo.append(node('strong', '', 'Thinking'), node('p', '', mt('runtime.thinking_description', 'Enables extended reasoning when supported by the model.')));
         const thinkingButton = actionButton(state.status?.thinking ? 'An' : 'Aus', 'toggle-thinking', { primary: Boolean(state.status?.thinking), disabled: !state.status?.online || Boolean(state.runtimeAction) });
         thinkingButton.setAttribute('aria-pressed', state.status?.thinking ? 'true' : 'false');
         thinking.append(thinkingInfo, thinkingButton);
@@ -484,21 +523,21 @@
         renderActionProgress(section);
         if (!state.runtimeAction) {
             const actions = node('div', 'model-console-actions');
-            if (state.status?.online) actions.append(actionButton('↻ Neustarten', 'restart-runtime'), actionButton('■ Stoppen', 'stop-runtime', { danger: true }));
-            else if (model || state.status?.model) actions.append(actionButton('▶ Starten', 'start-runtime', { primary: true }));
-            actions.appendChild(actionButton('Logs anzeigen', 'show-logs'));
+            if (state.status?.online) actions.append(actionButton(mt('actions.restart', '↻ Restart'), 'restart-runtime'), actionButton(mt('actions.stop', '■ Stop'), 'stop-runtime', { danger: true }));
+            else if (model || state.status?.model) actions.append(actionButton(mt('actions.start', '▶ Start'), 'start-runtime', { primary: true }));
+            actions.appendChild(actionButton(mt('actions.show_logs', 'Show logs'), 'show-logs'));
             section.appendChild(actions);
         }
         fragment.appendChild(section);
 
         const technical = node('details', 'model-console-technical');
-        technical.appendChild(node('summary', '', 'Runtime-Details'));
+        technical.appendChild(node('summary', '', mt('runtime.details', 'Runtime details')));
         const technicalList = node('dl', 'model-console-definitions');
         const repo = model?.repo || state.status?.model;
         [
-            definitionRow('Server-Endpunkt', (mlx.port ?? state.status?.port) ? 'http://127.0.0.1:' + (mlx.port ?? state.status?.port) : null, { mono: true, copy: true }),
-            definitionRow(model?.local ? 'Lokaler Modellpfad' : 'Repository', repo, { mono: true, copy: true }),
-            definitionRow('Startparameter', Array.isArray(mlx.server_args) && mlx.server_args.length ? mlx.server_args.join(' ') : null, { mono: true, copy: true }),
+            definitionRow(mt('runtime.endpoint', 'Server endpoint'), (mlx.port ?? state.status?.port) ? 'http://127.0.0.1:' + (mlx.port ?? state.status?.port) : null, { mono: true, copy: true }),
+            definitionRow(model?.local ? mt('storage.local_path', 'Local model path') : 'Repository', repo, { mono: true, copy: true }),
+            definitionRow(mt('runtime.start_parameters', 'Start parameters'), Array.isArray(mlx.server_args) && mlx.server_args.length ? mlx.server_args.join(' ') : null, { mono: true, copy: true }),
         ].filter(Boolean).forEach(item => technicalList.appendChild(item));
         technical.appendChild(technicalList);
         fragment.appendChild(technical);
@@ -510,17 +549,32 @@
         const info = node('div', 'model-console-row-main');
         info.append(node('strong', '', displayName(item)), node('span', 'model-console-storage-repo', item.repo));
         if (!item.complete) {
-            info.appendChild(node('span', 'model-console-availability error', 'Unvollständig · ' + item.incomplete_files + ' Dateien'));
+            info.appendChild(node('span', 'model-console-availability error', mt(
+                'storage.incomplete',
+                'Incomplete · {count} files',
+                { count: item.incomplete_files }
+            )));
         } else if (item.duplicate) {
             const extra = item.duplicate_size || formatBytes(item.duplicate_size_bytes);
-            info.appendChild(node('span', 'model-console-availability error', 'Doppelt vorhanden' + (extra ? ' · zusätzlich ca. ' + extra : '')));
+            info.appendChild(node('span', 'model-console-availability error', mt(
+                'storage.duplicate',
+                'Duplicate'
+            ) + (
+                extra
+                    ? mt(
+                        'storage.duplicate_extra',
+                        ' · approx. {size} extra',
+                        { size: extra }
+                    )
+                    : ''
+            )));
         } else if (item.possible_duplicate) {
-            info.appendChild(node('span', 'model-console-availability error', 'Mögliche Dublette · lokalen Modellpfad prüfen'));
+            info.appendChild(node('span', 'model-console-availability error', mt('storage.possible_duplicate', 'Possible duplicate · check local model path')));
         }
         const right = node('div', 'model-console-storage-actions');
         right.appendChild(node('strong', '', item.size || formatBytes(item.size_bytes) || '–'));
-        if (!item.active) right.appendChild(actionButton('HF-Dateien löschen', 'delete-cache', { target: item.alias || item.repo, danger: true }));
-        else right.appendChild(badge('Aktives Modell', 'active'));
+        if (!item.active) right.appendChild(actionButton(mt('actions.delete_hf', 'Delete HF files'), 'delete-cache', { target: item.alias || item.repo, danger: true }));
+        else right.appendChild(badge(mt('runtime.active_model', 'Active model'), 'active'));
         row.append(info, right);
         return row;
     }
@@ -531,13 +585,13 @@
         const systemMemory = state.system?.system || {};
         summary.append(
             metric('Unified Memory', systemMemory.total_gb != null ? systemMemory.total_gb + ' GB' : '–'),
-            metric('RAM frei', systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–'),
-            metric('HF-Speicher', state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
-            metric('HF-Modelle', String(state.cache.count ?? state.cache.models.length))
+            metric(mt('storage.free_ram', 'Free RAM'), systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–'),
+            metric(mt('hf_storage', 'HF storage'), state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
+            metric(mt('storage.hf_models', 'HF models'), String(state.cache.count ?? state.cache.models.length))
         );
         if (state.cache.path) {
             const path = node('div', 'model-console-cache-path');
-            path.append(node('span', '', 'Hugging-Face-Speicher'), node('code', '', state.cache.path), actionButton('Kopieren', 'copy-value'));
+            path.append(node('span', '', mt('storage.hf_storage', 'Hugging Face storage')), node('code', '', state.cache.path), actionButton(mt('actions.copy', 'Copy'), 'copy-value'));
             path.lastChild.dataset.value = state.cache.path;
             summary.appendChild(path);
         }
@@ -546,7 +600,7 @@
         if (localModels.length) {
             const localSection = node('section', 'model-console-section');
             const localHead = node('div', 'model-console-section-heading');
-            localHead.append(node('h5', '', 'Lokale Modellpfade'), node('span', '', String(localModels.length)));
+            localHead.append(node('h5', '', mt('storage.local_paths', 'Local model paths')), node('span', '', String(localModels.length)));
             localSection.appendChild(localHead);
             const localList = node('div', 'model-console-list');
             localModels.forEach(model => {
@@ -556,12 +610,23 @@
                 const duplicateInfo = duplicateInfoForLocalModel(model);
                 if (duplicateInfo?.exact) {
                     const extra = duplicateInfo.cache.duplicate_size || formatBytes(duplicateInfo.cache.duplicate_size_bytes);
-                    info.appendChild(node('span', 'model-console-availability error', 'Doppelt vorhanden' + (extra ? ' · zusätzlich ca. ' + extra : '')));
+                    info.appendChild(node('span', 'model-console-availability error', mt(
+                'storage.duplicate',
+                'Duplicate'
+            ) + (
+                extra
+                    ? mt(
+                        'storage.duplicate_extra',
+                        ' · approx. {size} extra',
+                        { size: extra }
+                    )
+                    : ''
+            )));
                 } else if (duplicateInfo?.possible) {
-                    info.appendChild(node('span', 'model-console-availability error', 'Mögliche Dublette mit Hugging Face · bitte prüfen'));
+                    info.appendChild(node('span', 'model-console-availability error', mt('storage.possible_hf_duplicate', 'Possible duplicate with Hugging Face · please check')));
                 }
                 const right = node('div', 'model-console-storage-actions');
-                right.appendChild(badge(model.active ? 'Aktives Modell' : 'Lokal unter ~/Models', model.active ? 'active' : ''));
+                right.appendChild(badge(model.active ? mt('runtime.active_model', 'Active model') : 'Lokal unter ~/Models', model.active ? 'active' : ''));
                 row.append(info, right);
                 localList.appendChild(row);
             });
@@ -577,7 +642,7 @@
 
         const head = node('div', 'model-console-section-heading');
         head.append(
-            node('h5', '', 'Lokal verfügbare Hugging-Face-Modelle'),
+            node('h5', '', mt('storage.hf_available', 'Locally available Hugging Face models')),
             node('span', '', String(visibleCacheModels.length))
         );
         section.appendChild(head);
@@ -587,7 +652,7 @@
                 node(
                     'div',
                     'model-console-empty',
-                    'Keine lokal verfügbaren Hugging-Face-Modelle gefunden.'
+                    mt('storage.none_hf', 'No locally available Hugging Face models found.')
                 )
             );
         } else {
@@ -609,14 +674,18 @@
 
         const head = node('div', 'model-console-section-heading');
         head.append(
-            node('h5', '', 'Downloads & Jobs'),
+            node('h5', '', mt('downloads.title', 'Downloads & Jobs')),
             node('span', '', String(state.jobs.length))
         );
         const cleanup = node('div', 'history-cleanup');
         window.MLXHistoryCleanup?.mount(cleanup, {
             kind: 'downloads',
             onComplete: async data => {
-                toast(data.removed + ' Download-Einträge entfernt');
+                toast(mt(
+                    'downloads.removed',
+                    '{count} download entries removed',
+                    { count: data.removed }
+                ));
                 await load({ force: true });
             },
         });
@@ -628,7 +697,7 @@
                 node(
                     'div',
                     'model-console-empty',
-                    'Aktuell sind keine Download-Jobs vorhanden.'
+                    mt('downloads.none', 'There are currently no download jobs.')
                 )
             );
 
@@ -682,9 +751,9 @@
             }
 
             const status =
-                job.status === 'running' ? 'Wird heruntergeladen' :
+                job.status === 'running' ? mt('status.downloading', 'Downloading') :
                 job.status === 'queued' ? 'Wartet' :
-                job.status === 'detached' ? 'Läuft' :
+                job.status === 'detached' ? mt('remaining.running', 'Running') :
                 job.status === 'completed' ? 'Abgeschlossen' :
                 job.status === 'failed' ? 'Fehlgeschlagen' :
                 job.status === 'interrupted' ? 'Unterbrochen' :
@@ -753,8 +822,8 @@
         if (!state.error) return null;
         const banner = node('div', 'model-console-error-banner');
         const text = node('div');
-        text.append(node('strong', '', 'Daten konnten nicht vollständig geladen werden.'), node('span', '', state.error));
-        banner.append(text, actionButton('Erneut laden', 'refresh'));
+        text.append(node('strong', '', mt('messages.load_failed', 'Data could not be loaded completely.')), node('span', '', state.error));
+        banner.append(text, actionButton(mt('actions.reload', 'Reload'), 'refresh'));
         return banner;
     }
 
@@ -764,9 +833,9 @@
         const description = root.querySelector('.model-console-header p');
         const addButton = document.getElementById('modelConsoleAdd');
         const headings = {
-            models: ['Modelle', 'Installierte Modelle, Downloads und Modellrollen zentral verwalten.'],
-            runtime: ['Runtime', 'Aktives Modell, Backend und Laufzeitstatus verwalten.'],
-            storage: ['Speicher', 'Lokal verfügbare Modelle und ihr Speicherverbrauch im Überblick.'],
+            models: [mt('models.title', 'Models'), mt('models.description', 'Manage installed models, downloads and model roles.')],
+            runtime: ['Runtime', mt('runtime.switch_description', 'Switches the model through the existing runtime manager.')],
+            storage: [mt('storage', 'Storage'), mt('storage_description', 'Overview of locally available models and their storage usage.')],
             downloads: ['Downloads', 'Download-Jobs der Model Console.'],
         };
         const heading = headings[state.activeTab] || headings.models;
@@ -842,7 +911,7 @@
         item.appendChild(node('strong', '', (type === 'success' ? '✓ ' : '') + message));
         if (details) {
             const detail = node('details');
-            detail.append(node('summary', '', 'Details'), node('div', '', details));
+            detail.append(node('summary', '', mt('actions.details', 'Details')), node('div', '', details));
             item.appendChild(detail);
         }
         toastRegion.appendChild(item);
@@ -869,7 +938,69 @@
 
     function openAddDialog() {
         const form = node('div', 'model-console-form');
-        form.innerHTML = '<label>Alias<input id="modelAddAlias" autocomplete="off" placeholder="z. B. qwen38"></label><div id="modelAddAliasError" class="model-console-field-error"></div><label>Hugging-Face Repository oder lokaler Modellpfad<div style="display:flex;gap:8px;align-items:center"><input id="modelAddRepo" style="flex:1" autocomplete="off" placeholder="mlx-community/Modell oder ~/Models/…"><button id="modelSelectFolder" class="model-console-button" type="button">Auswählen…</button></div></label><div id="modelAddRepoError" class="model-console-field-error"></div><label>Quantisierung<select id="modelAddQuantization"><option value="">Automatisch erkennen</option><option value="2-bit">2-bit</option><option value="4-bit">4-bit</option><option value="6-bit">6-bit</option><option value="8-bit">8-bit</option></select></label><p class="settings-hint">Remote-Modelle werden nach dem Hinzufügen als Background Job heruntergeladen.</p>';
+        form.innerHTML = `
+            <label>
+                ${mt('dialog.alias', 'Alias')}
+                <input
+                    id="modelAddAlias"
+                    autocomplete="off"
+                    placeholder="e.g. qwen38"
+                >
+            </label>
+
+            <div
+                id="modelAddAliasError"
+                class="model-console-field-error"
+            ></div>
+
+            <label>
+                ${mt(
+                    'dialog.repository_or_path',
+                    'Hugging Face repository or local model path'
+                )}
+
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input
+                        id="modelAddRepo"
+                        style="flex:1"
+                        autocomplete="off"
+                        placeholder="mlx-community/model or ~/Models/…"
+                    >
+
+                    <button
+                        id="modelSelectFolder"
+                        class="model-console-button"
+                        type="button"
+                    >${mt('actions.select', 'Select…')}</button>
+                </div>
+            </label>
+
+            <div
+                id="modelAddRepoError"
+                class="model-console-field-error"
+            ></div>
+
+            <label>
+                ${mt('dialog.quantization', 'Quantization')}
+
+                <select id="modelAddQuantization">
+                    <option value="">
+                        ${mt('dialog.auto_detect', 'Detect automatically')}
+                    </option>
+                    <option value="2-bit">2-bit</option>
+                    <option value="4-bit">4-bit</option>
+                    <option value="6-bit">6-bit</option>
+                    <option value="8-bit">8-bit</option>
+                </select>
+            </label>
+
+            <p class="settings-hint">
+                ${mt(
+                    'dialog.remote_hint',
+                    'Remote models are downloaded as background jobs after being added.'
+                )}
+            </p>
+        `;
 
         const selectFolder = form.querySelector('#modelSelectFolder');
 
@@ -878,7 +1009,7 @@
             const repoError = document.getElementById('modelAddRepoError');
 
             selectFolder.disabled = true;
-            selectFolder.textContent = 'Öffne …';
+            selectFolder.textContent = mt('dialog.opening', 'Opening …');
             repoError.textContent = '';
 
             try {
@@ -888,7 +1019,7 @@
                     repoInput.value = result.path;
 
                     if (!result.looks_like_model) {
-                        repoError.textContent = 'Hinweis: Im ausgewählten Ordner wurden keine typischen MLX-Modell-Dateien erkannt.';
+                        repoError.textContent = mt('validation.folder_warning', 'Note: No typical MLX model files were detected in the selected folder.');
                     }
 
                     repoInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -897,12 +1028,12 @@
                 repoError.textContent = cleanTechnicalError(error);
             } finally {
                 selectFolder.disabled = false;
-                selectFolder.textContent = 'Auswählen…';
+                selectFolder.textContent = mt('dialog.select', 'Select…');
             }
         });
-        const cancel = actionButton('Abbrechen', 'close-dialog');
-        const submit = actionButton('Modell hinzufügen', 'submit-model', { primary: true });
-        openDialog({ eyebrow: 'Modelle', title: 'Modell hinzufügen', body: form, actions: [cancel, submit] });
+        const cancel = actionButton(mt('actions.cancel', 'Cancel'), 'close-dialog');
+        const submit = actionButton(mt('remaining.add_model', 'Add model'), 'submit-model', { primary: true });
+        openDialog({ eyebrow: mt('models.title', 'Models'), title: mt('remaining.add_model', 'Add model'), body: form, actions: [cancel, submit] });
     }
 
     function showModelDetails(model) {
@@ -910,26 +1041,26 @@
         const details = node('dl', 'model-console-definitions');
         [
             definitionRow('Alias', model.alias, { mono: true, copy: true }),
-            definitionRow('Anzeigename', displayName(model)),
-            definitionRow(model.local ? 'Lokaler Modellpfad' : 'Repository', model.repo, { mono: true, copy: true }),
+            definitionRow(mt('dialog.display_name', 'Display name'), displayName(model)),
+            definitionRow(model.local ? mt('storage.local_path', 'Local model path') : 'Repository', model.repo, { mono: true, copy: true }),
             definitionRow(!model.local && cache?.path ? 'Cache-Pfad' : null, cache?.path, { mono: true, copy: true }),
             definitionRow('Backend', model.backend === 'vlm' ? 'VLM' : 'LLM'),
-            definitionRow('Quantisierung', model.quantization),
+            definitionRow(mt('dialog.quantization', 'Quantization'), model.quantization),
             definitionRow('Vision', model.vision ? 'Ja' : 'Nein'),
-            definitionRow('Quelle', model.local ? 'Lokales Dateisystem' : 'Hugging Face'),
-            definitionRow('Cache-Größe', cache?.size || formatBytes(cache?.size_bytes)),
+            definitionRow(mt('storage.source', 'Source'), model.local ? mt('storage.local_filesystem', 'Local file system') : 'Hugging Face'),
+            definitionRow(mt('storage.cache_size', 'Cache size'), cache?.size || formatBytes(cache?.size_bytes)),
             model.active ? definitionRow('Thinking', state.status ? (state.status.thinking ? 'An' : 'Aus') : null) : null,
         ].filter(Boolean).forEach(item => details.appendChild(item));
-        openDialog({ eyebrow: 'Technische Details', title: displayName(model), body: details, actions: [actionButton('Schließen', 'close-dialog')] });
+        openDialog({ eyebrow: mt('dialog.technical_details', 'Technical details'), title: displayName(model), body: details, actions: [actionButton(mt('actions.close', 'Close'), 'close-dialog')] });
     }
 
     function confirmAction(title, message, confirmLabel, confirmAction, data = {}) {
         const body = node('div', 'model-console-confirm');
         body.appendChild(node('p', '', message));
-        const cancel = actionButton('Abbrechen', 'close-dialog');
+        const cancel = actionButton(mt('actions.cancel', 'Cancel'), 'close-dialog');
         const confirm = actionButton(confirmLabel, confirmAction, { danger: true });
         Object.entries(data).forEach(([key, value]) => { confirm.dataset[key] = value; });
-        openDialog({ eyebrow: 'Bestätigung', title, body, actions: [cancel, confirm] });
+        openDialog({ eyebrow: mt('dialog.confirmation', 'Confirmation'), title, body, actions: [cancel, confirm] });
     }
 
     async function submitModel() {
@@ -938,9 +1069,9 @@
         const quantization = document.getElementById('modelAddQuantization')?.value || null;
         const validation = validateModelInput(aliasInput?.value, repoInput?.value);
         const duplicate = aliasExists(validation.alias);
-        if (duplicate) validation.errors.alias = 'Dieser Alias ist bereits vorhanden.';
+        if (duplicate) validation.errors.alias = mt('validation.alias_exists', 'This alias already exists.');
         if (validation.repo.startsWith('/') && quantization) {
-            validation.errors.repo = 'Für lokale Modellpfade wird die vorhandene Quantisierung automatisch verwendet.';
+            validation.errors.repo = mt('validation.local_quantization', 'Existing quantization is used automatically for local model paths.');
         }
         const aliasError = document.getElementById('modelAddAliasError');
         const repoError = document.getElementById('modelAddRepoError');
@@ -949,7 +1080,7 @@
         if (!validation.valid || duplicate || validation.errors.repo) return;
         const button = dialogActions.querySelector('[data-action="submit-model"]');
         button.disabled = true;
-        button.textContent = 'Wird hinzugefügt …';
+        button.textContent = mt('dialog.adding', 'Adding …');
         try {
             await requestJson('/api/mlx/models/add', {
                 method: 'POST',
@@ -957,13 +1088,17 @@
                 body: JSON.stringify({ alias: validation.alias, repo: validation.repo, quantization }),
             });
             closeDialog();
-            toast(validation.alias + ' wurde hinzugefügt');
+            toast(mt(
+                'messages.added',
+                '{model} added',
+                { model: validation.alias }
+            ));
             await load({ force: true });
             window.loadModelRoles?.();
         } catch (error) {
             repoError.textContent = cleanTechnicalError(error);
             button.disabled = false;
-            button.textContent = 'Modell hinzufügen';
+            button.textContent = mt('remaining.add_model', 'Add model');
         }
     }
 
@@ -997,7 +1132,7 @@
             }
             await waitImpl(800);
         }
-        throw new Error('Die Runtime hat den erwarteten Zustand nicht rechtzeitig bestätigt.');
+        throw new Error(mt('runtime.confirmation_timeout', 'The runtime did not confirm the expected state in time.'));
     }
 
     function canBeginRuntimeAction() {
@@ -1009,7 +1144,11 @@
         const previous = activeModel();
         const expectedRepo = type === 'switch' ? model?.repo : previous?.repo || state.status?.model;
         state.runtimeAction = { type, model, phase: 'requesting', observedOffline: false, error: null };
-        if (liveRegion) liveRegion.textContent = type === 'switch' ? displayName(model) + ' wird geladen.' : 'Runtime-Aktion läuft.';
+        if (liveRegion) liveRegion.textContent = type === 'switch' ? mt(
+            'runtime.loading_sentence',
+            '{model} is loading.',
+            { model: displayName(model) }
+        ) : mt('runtime.action_running', 'Runtime action in progress.');
         window.MLXChatRuntime?.setExternalRuntimeBusy?.(true);
         render();
         const url = type === 'switch'
@@ -1028,7 +1167,7 @@
                 },
             });
             state.status = status;
-            const success = type === 'switch' ? displayName(model) + ' wurde geladen' : type === 'restart' ? 'Runtime neu gestartet' : type === 'start' ? 'Runtime gestartet' : 'Runtime gestoppt';
+            const success = type === 'switch' ? displayName(model) + ' wurde geladen' : type === 'restart' ? mt('runtime_restarted', 'Runtime restarted') : type === 'start' ? 'Runtime gestartet' : 'Runtime gestoppt';
             toast(success);
             if (liveRegion) liveRegion.textContent = success + '.';
             await load({ force: true });
@@ -1067,7 +1206,7 @@
                 } catch {}
                 await waitImpl(800);
             }
-            if (!confirmed) throw new Error('Thinking wurde nicht rechtzeitig von der Runtime bestätigt.');
+            if (!confirmed) throw new Error(mt('runtime.thinking_timeout', 'Thinking was not confirmed by the runtime in time.'));
             toast('Thinking ' + (enabled ? 'aktiviert' : 'deaktiviert'));
             state.runtimeAction = null;
             await load({ force: true });
@@ -1075,7 +1214,7 @@
         } catch (error) {
             const message = cleanTechnicalError(error);
             state.runtimeAction = null;
-            toast('Thinking konnte nicht geändert werden', 'error', message);
+            toast(mt('runtime.thinking_failed', 'Thinking could not be changed'), 'error', message);
             state.error = message;
             render();
         } finally {
@@ -1087,12 +1226,16 @@
         try {
             await requestJson('/api/mlx/models/' + encodeURIComponent(alias), { method: 'DELETE' });
             closeDialog();
-            toast(alias + ' wurde aus der Konfiguration entfernt');
+            toast(mt(
+                'messages.removed',
+                '{model} removed from configuration',
+                { model: alias }
+            ));
             await load({ force: true });
             window.loadModelRoles?.();
         } catch (error) {
             closeDialog();
-            toast('Modell konnte nicht entfernt werden', 'error', cleanTechnicalError(error));
+            toast(mt('messages.remove_failed', 'Model could not be removed'), 'error', cleanTechnicalError(error));
         }
     }
 
@@ -1106,10 +1249,14 @@
         try {
             await requestJson('/api/mlx/models/' + encodeURIComponent(alias) + '/local', { method: 'DELETE' });
             closeDialog();
-            toast(alias + ': lokale Dateien und Alias gelöscht');
+            toast(mt(
+                'messages.deleted',
+                '{model}: local files and alias deleted',
+                { model: alias }
+            ));
         } catch (error) {
             closeDialog();
-            toast('Modell konnte nicht gelöscht werden', 'error', cleanTechnicalError(error));
+            toast(mt('messages.delete_failed', 'Model could not be deleted'), 'error', cleanTechnicalError(error));
         } finally {
             state.deletingModel = false;
             window.MLXChatRuntime?.setExternalRuntimeBusy?.(false);
@@ -1123,18 +1270,18 @@
         try {
             await requestJson('/api/mlx/cache/' + encodeURIComponent(target), { method: 'DELETE' });
             closeDialog();
-            toast('Cache-Eintrag wurde gelöscht');
+            toast(mt('messages.cache_deleted', 'Cache entry deleted'));
             await load({ force: true });
         } catch (error) {
             closeDialog();
-            toast('Cache konnte nicht gelöscht werden', 'error', cleanTechnicalError(error));
+            toast(mt('messages.cache_delete_failed', 'Cache could not be deleted'), 'error', cleanTechnicalError(error));
         }
     }
 
     async function retryDownload(target) {
         try {
             await requestJson('/api/mlx/jobs/retry/' + encodeURIComponent(target), { method: 'POST' });
-            toast('Download wird fortgesetzt');
+            toast(mt('messages.download_continues', 'Download resumed'));
             await load({ force: true });
         } catch (error) {
             toast('Download konnte nicht gestartet werden', 'error', cleanTechnicalError(error));
@@ -1142,8 +1289,8 @@
     }
 
     async function showLogs() {
-        const loading = node('div', 'model-console-log', 'Logs werden geladen …');
-        openDialog({ eyebrow: 'Runtime', title: 'Letzte Logs', body: loading, actions: [actionButton('Aktualisieren', 'refresh-logs'), actionButton('Schließen', 'close-dialog')] });
+        const loading = node('div', 'model-console-log', mt('dialog.loading_logs', 'Loading logs …'));
+        openDialog({ eyebrow: 'Runtime', title: mt('dialog.last_logs', 'Latest logs'), body: loading, actions: [actionButton(mt('actions.refresh', 'Refresh'), 'refresh-logs'), actionButton(mt('actions.close', 'Close'), 'close-dialog')] });
         try {
             const data = await requestJson('/api/mlx/logs/all?limit=120');
             const sources = Array.isArray(data.sources) ? data.sources : [];
@@ -1166,7 +1313,7 @@
             await navigator.clipboard.writeText(value);
             toast('In die Zwischenablage kopiert');
         } catch {
-            toast('Kopieren nicht möglich', 'error');
+            toast(mt('dialog.copy_failed', 'Copy failed'), 'error');
         }
     }
 
@@ -1193,16 +1340,40 @@
         if (action === 'toggle-thinking') return toggleThinking();
         if (action === 'show-logs' || action === 'refresh-logs') return showLogs();
         if (action === 'retry-download') return retryDownload(button.dataset.target);
-        if (action === 'remove-model' && model) return confirmAction(displayName(model) + ' entfernen?', 'Der Alias „' + model.alias + '“ wird aus der Konfiguration entfernt. Heruntergeladene Modelldateien bleiben erhalten.', 'Aus Konfiguration entfernen', 'confirm-remove-model', { alias: model.alias });
+        if (action === 'remove-model' && model) return confirmAction(displayName(model) + mt(
+            'confirm.remove_suffix',
+            ' remove?'
+        ), mt(
+            'confirm.remove_alias',
+            'Alias “{alias}” will be removed from the configuration. Downloaded model files will remain.',
+            { alias: model.alias }
+        ), mt('actions.remove_config', 'Remove from configuration'), 'confirm-remove-model', { alias: model.alias });
         if (action === 'confirm-remove-model') return removeModel(button.dataset.alias);
         if (action === 'delete-local-model' && model?.local) return confirmAction(
-            displayName(model) + ' löschen?',
-            'Lokale Dateien von „' + model.alias + '“ dauerhaft löschen?\n' + model.repo +
-            '\nDer Alias wird ebenfalls entfernt. Aktive Modelle, Rollen-Zuordnungen und laufende Downloads verhindern die Löschung.',
-            'Modell dauerhaft löschen', 'confirm-delete-local-model', { alias: model.alias }
+            displayName(model) + mt(
+            'confirm.delete_suffix',
+            ' delete?'
+        ),
+            mt(
+                'local_files_prefix',
+                'Local files for “{alias}”',
+                { alias: model.alias }
+            ) + mt(
+            'confirm.delete_suffix',
+            ' delete?'
+        ) + model.repo +
+            mt(
+            'confirm.remove_alias_note',
+            '\nThe alias will also be removed. Active models, role assignments and running downloads prevent deletion.'
+        ),
+            mt('models.delete_permanently', 'Delete model permanently'), 'confirm-delete-local-model', { alias: model.alias }
         );
         if (action === 'confirm-delete-local-model') return deleteLocalModel(button.dataset.alias);
-        if (action === 'delete-cache') return confirmAction('Hugging-Face-Dateien löschen?', 'Die lokal gespeicherten Hugging-Face-Dateien für „' + button.dataset.target + '“ werden dauerhaft gelöscht. Falls keine zweite lokale Kopie existiert, muss das Modell später erneut heruntergeladen werden. Der Konfigurations-Alias bleibt erhalten.', 'HF-Dateien löschen', 'confirm-delete-cache', { target: button.dataset.target });
+        if (action === 'delete-cache') return confirmAction(mt('dialog.delete_hf_title', 'Delete Hugging Face files?'), mt(
+            'confirm.delete_cache_full',
+            'The locally stored Hugging Face files for “{model}” will be permanently deleted. If no second local copy exists, the model will need to be downloaded again later. The configuration alias will remain.',
+            { model: button.dataset.target }
+        ), mt('actions.delete_hf', 'Delete HF files'), 'confirm-delete-cache', { target: button.dataset.target });
         if (action === 'confirm-delete-cache') return deleteCache(button.dataset.target);
         if (action === 'submit-model') return submitModel();
         if (action === 'copy-value') return copyValue(button.dataset.value || '');
@@ -1267,4 +1438,11 @@
             },
         },
     };
+
+    document.addEventListener('mlx-language-changed', () => {
+        if (state.loaded) {
+            render();
+        }
+    });
+
 })();

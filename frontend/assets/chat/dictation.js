@@ -1,3 +1,16 @@
+function dictationT(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
+
+    for (const [varName, replacement] of Object.entries(variables)) {
+        value = value.replaceAll(
+            `{${varName}}`,
+            String(replacement ?? '')
+        );
+    }
+
+    return value;
+}
+
 (() => {
     const button = document.getElementById("dictationButton");
     const input = document.getElementById("input");
@@ -24,14 +37,14 @@
         );
 
         if (state === "recording") {
-            button.title = "Aufnahme stoppen";
-            button.setAttribute("aria-label", "Aufnahme stoppen");
+            button.title = dictationT('dictation.stop', 'Stop recording');
+            button.setAttribute("aria-label", dictationT('dictation.stop', 'Stop recording'));
         } else if (state === "transcribing") {
-            button.title = "Wird transkribiert…";
-            button.setAttribute("aria-label", "Wird transkribiert");
+            button.title = dictationT('dictation.transcribing', 'Transcribing…');
+            button.setAttribute("aria-label", dictationT('dictation.transcribing_label', 'Transcribing'));
         } else {
-            button.title = "Diktat starten";
-            button.setAttribute("aria-label", "Diktat starten");
+            button.title = dictationT('dictation.start', 'Start dictation');
+            button.setAttribute("aria-label", dictationT('dictation.start', 'Start dictation'));
         }
     }
 
@@ -127,7 +140,11 @@
                 data = await response.json();
             } catch (_) {
                 throw new Error(
-                    `Ungültige Antwort vom Speech-Service (${response.status})`
+                    dictationT(
+                    'dictation.invalid_response',
+                    'Invalid response from speech service ({status})',
+                    { status: response.status }
+                )
                 );
             }
 
@@ -155,7 +172,7 @@
             !navigator.mediaDevices.getUserMedia ||
             typeof MediaRecorder === "undefined"
         ) {
-            alert("Dieser Browser unterstützt keine Audioaufnahme.");
+            alert(dictationT('dictation.unsupported', 'This browser does not support audio recording.'));
             return;
         }
 
