@@ -949,6 +949,23 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(details["method"], "deterministic")
         classifier.assert_not_called()
 
+    def test_current_information_requests_route_to_web_search(self):
+        cases = {
+            "Fasse mir die wichtigsten News von heute zusammen": "web_search",
+            "Was gibt es heute Neues bei Apple?": "web_search",
+            "Wie ist der aktuelle Stand bei Python 3.14?": "web_search",
+            "Was sind die aktuellen Nachrichten aus Deutschland?": "web_search",
+            "Heute hatte ich einen schlechten Tag.": None,
+            "Ich habe heute Python programmiert.": None,
+        }
+
+        for prompt, expected in cases.items():
+            with self.subTest(prompt=prompt):
+                self.assertEqual(
+                    agent_app._deterministic_chat_action(prompt),
+                    expected,
+                )
+
     def test_classifier_prompt_describes_real_local_capabilities(self):
         captured = {}
 

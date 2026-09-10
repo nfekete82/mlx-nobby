@@ -4486,6 +4486,45 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     if explicit_web_search:
         return "web_search"
 
+    # ----------------------------------------------------
+    # Automatische aktuelle Informationssuche
+    # ----------------------------------------------------
+    # Freshness-Wörter wie "heute" allein reichen nicht aus:
+    # "Heute hatte ich einen schlechten Tag." darf keine Websuche starten.
+    # In Verbindung mit einer klaren Informationsabsicht werden aktuelle
+    # Fragen dagegen direkt über web_search beantwortet.
+    live_information_request = likely_current_question and (
+        any(
+            marker in value
+            for marker in (
+                "news",
+                "nachrichten",
+                "neuigkeiten",
+                "letzte meldung",
+                "letzten meldungen",
+                "letzte entwicklung",
+                "letzten entwicklungen",
+                "stand heute",
+                "was ist neu",
+                "was gibt es neues",
+                "was gibts neues",
+            )
+        )
+        or bool(
+            re.search(
+                r"^(?:bitte\s+)?(?:"
+                r"fass(?:e)?|"
+                r"was|wie|wer|wo|wann|welch\w*|"
+                r"gib|zeig|nenne"
+                r")\b",
+                value,
+            )
+        )
+    )
+
+    if live_information_request:
+        return "web_search"
+
     return None
 
 
