@@ -61,7 +61,7 @@ class Embedder:
         vectors: list[list[float]] = []
         for start in range(0, len(texts), MAX_BATCH_SIZE):
             batch = texts[start : start + MAX_BATCH_SIZE]
-            token_embeddings = generate(
+            outputs = generate(
                 self.model,
                 self.tokenizer,
                 batch,
@@ -69,15 +69,29 @@ class Embedder:
                 padding=True,
                 truncation=True,
             )
-            encoded = self.tokenizer.batch_encode_plus(
-                batch,
-                return_tensors="mlx",
-                padding=True,
-                truncation=True,
-                max_length=MAX_LENGTH,
-            )
-            mask = encoded["attention_mask"].astype(mx.float32)[..., None]
-            pooled = mx.sum(token_embeddings * mask, axis=1) / mx.maximum(mx.sum(mask, axis=1), 1e-12)
+
+            if hasattr(outputs, "text_embeds") and outputs.text_embeds is not None:
+                pooled = outputs.text_embeds
+            else:
+                token_embeddings = (
+                    outputs.last_hidden_state
+                    if hasattr(outputs, "last_hidden_state")
+                    else outputs
+                )
+
+                encoded = self.tokenizer.batch_encode_plus(
+                    batch,
+                    return_tensors="mlx",
+                    padding=True,
+                    truncation=True,
+                    max_length=MAX_LENGTH,
+                )
+
+                mask = encoded["attention_mask"].astype(mx.float32)[..., None]
+                pooled = mx.sum(token_embeddings * mask, axis=1) / mx.maximum(
+                    mx.sum(mask, axis=1),
+                    1e-12,
+                )
             normalized = pooled / mx.maximum(mx.linalg.norm(pooled, axis=1, keepdims=True), 1e-12)
             mx.eval(normalized)
             vectors.extend(normalized.tolist())
