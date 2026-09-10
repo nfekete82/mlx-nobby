@@ -584,6 +584,42 @@ def mlx_chat_stream(request: ChatRequest):
             },
         )
 
+    try:
+        profile_result = agent_json_request(
+            "GET",
+            "/api/profile/context",
+            timeout=5,
+        )
+        profile_context = str(
+            profile_result.get("context") or ""
+        ).strip()
+    except Exception:
+        profile_context = ""
+
+    if profile_context:
+        if (
+            messages
+            and isinstance(messages[0], dict)
+            and messages[0].get("role") == "system"
+        ):
+            existing_system = str(
+                messages[0].get("content") or ""
+            ).strip()
+
+            messages[0]["content"] = (
+                existing_system
+                + ("\n\n" if existing_system else "")
+                + profile_context
+            )
+        else:
+            messages.insert(
+                0,
+                {
+                    "role": "system",
+                    "content": profile_context,
+                },
+            )
+
     temperature = max(
         0.0,
         min(float(request.temperature), 2.0),
@@ -814,10 +850,29 @@ def mlx_chat_stream(request: ChatRequest):
 
             results = knowledge_result.get("results") or []
 
+            AUTO_RAG_MIN_SIMILARITY = 0.70
+
+            relevant_results = [
+                item
+                for item in results
+                if (
+                    isinstance(item, dict)
+                    and isinstance(
+                        item.get("similarity"),
+                        (int, float),
+                    )
+                    and item["similarity"]
+                    >= AUTO_RAG_MIN_SIMILARITY
+                )
+            ]
+
             context_parts = []
             rag_sources = []
 
-            for index, item in enumerate(results[:4], start=1):
+            for index, item in enumerate(
+                relevant_results[:4],
+                start=1,
+            ):
                 if not isinstance(item, dict):
                     continue
 
@@ -1971,4 +2026,32 @@ def document_search_proxy(request: DocumentSearchProxyRequest):
             "limit": request.limit,
         },
         timeout=60,
+    )
+
+
+@app.get("/api/mlx/profile")
+def mlx_profile_get():
+    return agent_json_request(
+        "GET",
+        "/api/profile",
+        timeout=30,
+    )
+
+
+@app.put("/api/mlx/profile")
+def mlx_profile_put(request: dict):
+    return agent_json_request(
+        "PUT",
+        "/api/profile",
+        payload=request,
+        timeout=30,
+    )
+
+
+@app.get("/api/mlx/profile/context")
+def mlx_profile_context():
+    return agent_json_request(
+        "GET",
+        "/api/profile/context",
+        timeout=30,
     )

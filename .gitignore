@@ -108,3 +108,5 @@ test-batch.transformed.sql
 # Pre-refactor/manual snapshots
 *.before-*
 *.pre-*
+
+agent/profile.json

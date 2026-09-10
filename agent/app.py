@@ -14,6 +14,7 @@ import uuid
 import urllib.error
 import urllib.request
 from agent import knowledge
+from agent import profile
 from agent import code_workspaces
 from agent import image_api
 from agent import model_cleanup
@@ -3424,6 +3425,13 @@ class KnowledgeSearchRequest(BaseModel):
     query: str
     scope: str | None = None
 
+
+class UserProfileRequest(BaseModel):
+    enabled: bool = True
+    fields: dict = {}
+    custom_fields: list[dict] = []
+
+
 class CodeWorkspaceRequest(BaseModel):
     path: str
     name: str | None = None
@@ -6169,6 +6177,24 @@ def knowledge_source_delete(source_id: str):
         return knowledge.delete_source(source_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/profile")
+def user_profile_get():
+    return profile.load()
+
+
+@app.put("/api/profile")
+def user_profile_put(request: UserProfileRequest):
+    return profile.save(request.model_dump())
+
+
+@app.get("/api/profile/context")
+def user_profile_context():
+    return {
+        "enabled": profile.load().get("enabled", True),
+        "context": profile.context(),
+    }
 
 
 

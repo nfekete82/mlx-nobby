@@ -437,6 +437,7 @@ railSettings?.addEventListener(
         'general',
         'models-system',
         'knowledge',
+        'profile',
         'appearance',
     ]);
     const systemTabs = new Set([
@@ -549,6 +550,7 @@ railSettings?.addEventListener(
         });
         window.MLXModelConsole?.close();
         if (tab === 'knowledge') window.MLXKnowledge?.loadStatus?.();
+        if (tab === 'profile') window.MLXProfile?.load?.();
         if (updateHistory) updateLocation();
     }
 

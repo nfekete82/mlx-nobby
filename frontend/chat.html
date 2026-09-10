@@ -318,6 +318,7 @@
         <button type="button" data-settings-tab="general" class="active" aria-selected="true">Allgemein</button>
         <button type="button" data-settings-tab="models-system" aria-selected="false">Modelle &amp; System</button>
         <button type="button" data-settings-tab="knowledge" aria-selected="false">Wissensbasis</button>
+        <button type="button" data-settings-tab="profile" aria-selected="false">Persönliches Profil</button>
         <button type="button" data-settings-tab="appearance" aria-selected="false">Darstellung</button>
     </nav>
     <nav class="settings-subtabs" role="tablist" aria-label="Modelle und System" hidden>
@@ -362,6 +363,85 @@
             <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
         </section>
     </div>
+    <div class="settings-pane" data-settings-pane="profile" hidden>
+        <div class="settings-page-intro">
+            <h4>Persönliches Profil</h4>
+            <p>Persönliche Informationen, die NobbyMLX bei passenden Antworten berücksichtigen kann.</p>
+        </div>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Persönlicher Kontext</h4>
+            <label class="settings-toggle">
+                <input id="profileEnabled" type="checkbox" checked>
+                Persönliches Profil bei Antworten berücksichtigen
+            </label>
+            <p class="settings-hint">
+                Profilinformationen werden lokal gespeichert und nur verwendet, wenn sie für die aktuelle Frage relevant sind.
+            </p>
+        </section>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Grundinformationen</h4>
+
+            <div class="field">
+                <label for="profileName">Name</label>
+                <input id="profileName" type="text" autocomplete="off" placeholder="z. B. Norbert">
+            </div>
+
+            <div class="field">
+                <label for="profileAge">Alter</label>
+                <input id="profileAge" type="text" inputmode="numeric" autocomplete="off" placeholder="z. B. 44">
+            </div>
+
+            <div class="field">
+                <label for="profileProfession">Beruf</label>
+                <input id="profileProfession" type="text" autocomplete="off" placeholder="z. B. IT-Entwickler">
+            </div>
+
+            <div class="field">
+                <label for="profileLocation">Wohnort</label>
+                <input id="profileLocation" type="text" autocomplete="off" placeholder="z. B. Göppingen">
+            </div>
+        </section>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Über mich</h4>
+
+            <div class="field">
+                <label for="profileAbout">Persönlicher Kontext</label>
+                <textarea id="profileAbout" rows="5" placeholder="Familie, Interessen, Alltag oder andere Informationen über dich."></textarea>
+            </div>
+
+            <div class="field">
+                <label for="profileResponsePreferences">Antwortpräferenzen</label>
+                <textarea id="profileResponsePreferences" rows="3" placeholder="z. B. direkt, technisch und kompakt"></textarea>
+            </div>
+        </section>
+
+        <section class="settings-card">
+            <div class="knowledge-section-heading">
+                <div>
+                    <h4 class="settings-group-title">Weitere Informationen</h4>
+                    <p class="settings-hint">Füge beliebige zusätzliche Informationen hinzu.</p>
+                </div>
+                <button id="profileAddField" class="settings-button" type="button">
+                    + Information hinzufügen
+                </button>
+            </div>
+
+            <div id="profileCustomFields"></div>
+        </section>
+
+        <section class="settings-card">
+            <div class="settings-action-row">
+                <button id="profileSave" class="settings-button primary" type="button">
+                    Profil speichern
+                </button>
+                <span id="profileSaveStatus" class="settings-hint" role="status"></span>
+            </div>
+        </section>
+    </div>
+
     <div class="settings-pane" data-settings-pane="appearance" hidden>
 
         <div class="settings-page-intro">
@@ -984,6 +1064,7 @@
 </div>
 
 <script src="/assets/chat/knowledge.js?v=20260910-source-management"></script>
+<script src="/assets/chat/profile.js?v=20260910-profile-v1"></script>
 <script src="/assets/chat/notes.js?v=1788548196"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
