@@ -15,10 +15,11 @@ REQUIRED_HITS = 2
 CHECK_INTERVAL = 300
 
 SERVICE_LABEL = "de.nobby.mlx-embeddings"
-LOG_FILE = Path.home() / "mlx-web" / "embedding-watchdog.log"
+LOG_FILE = Path.home() / ".config" / "mlx-web" / "embedding-watchdog.log"
 
 
 def log(message):
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {message}"
 
