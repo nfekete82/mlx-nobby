@@ -1,0 +1,483 @@
+(() => {
+    const $ = id => document.getElementById(id);
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    async function request(path, options = {}) {
+        const response = await fetch(path, options);
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (_) {}
+
+        if (!response.ok) {
+            throw new Error(
+                data.detail ||
+                data.error ||
+                `HTTP ${response.status}`
+            );
+        }
+
+        return data;
+    }
+
+    async function loadStatus() {
+        const target = $('knowledgeStatus');
+        if (!target) return;
+
+        target.textContent = 'Wird geladen…';
+
+        try {
+            const data = await request('/api/mlx/knowledge/status');
+
+            const sources = Array.isArray(data.sources)
+                ? data.sources
+                : [];
+
+            const documents = Number(data.documents ?? 0);
+            const chunks = Number(data.chunks ?? 0);
+
+            const mode =
+                String(data.mode || 'unknown').toLowerCase() === 'hybrid'
+                    ? 'Hybrid Retrieval'
+                    : String(data.mode || 'Retrieval');
+
+            const embedding = data.embedding || {};
+            const embeddingReady =
+                embedding.ok === true ||
+                embedding.status === 'ready';
+
+            const cards = `
+                <div class="knowledge-metrics">
+                    <div class="knowledge-metric">
+                        <span>Retrieval</span>
+                        <strong>${escapeHtml(mode)}</strong>
+                        <small class="${embeddingReady ? 'ready' : 'inactive'}">
+                            ${embeddingReady ? '● Aktiv' : '○ Nicht bereit'}
+                        </small>
+                    </div>
+                    <div class="knowledge-metric">
+                        <span>Quellen</span>
+                        <strong>${sources.length}</strong>
+                    </div>
+                    <div class="knowledge-metric">
+                        <span>Dokumente</span>
+                        <strong>${documents}</strong>
+                    </div>
+                    <div class="knowledge-metric">
+                        <span>Chunks</span>
+                        <strong>${chunks}</strong>
+                    </div>
+                </div>
+            `;
+
+            const embeddingInfo = `
+                <div class="knowledge-embedding">
+                    <span>Embedding-Modell</span>
+                    <strong>${escapeHtml(embedding.model || 'Unbekannt')}</strong>
+                    <div class="settings-hint">
+                        ${embedding.dimensions ? ' · ' + escapeHtml(embedding.dimensions) + ' Dimensionen' : ''}
+                        ${embedding.backend ? ' · ' + escapeHtml(embedding.backend) : ''}
+                    </div>
+                </div>
+            `;
+
+            const sourceList = sources.length
+                ? `
+                    <section class="knowledge-sources">
+                        <div class="knowledge-section-heading">
+                            <strong>Quellen</strong>
+                            <span>${sources.length} indexiert</span>
+                        </div>
+                        <div class="knowledge-source-list">
+                            ${sources.map(source => {
+                                    const enabled =
+                                        Number(source.enabled) === 1;
+
+                                    const sourceId =
+                                        escapeHtml(source.source_id || '');
+
+                                    const indexedAt =
+                                        source.last_indexed_at
+                                            ? new Date(
+                                                Number(source.last_indexed_at) * 1000
+                                            ).toLocaleString('de-DE')
+                                            : 'Noch nicht indexiert';
+
+                                    return `
+                                        <div
+                                            class="knowledge-source"
+                                            data-knowledge-source="${sourceId}"
+                                        >
+                                            <div class="knowledge-source-main">
+                                                <div class="knowledge-source-title">
+                                                    <span
+                                                        class="knowledge-source-state ${enabled ? 'ready' : 'inactive'}"
+                                                    >
+                                                        ${enabled ? '●' : '○'}
+                                                    </span>
+
+                                                    <strong>
+                                                        ${escapeHtml(source.name || 'Quelle')}
+                                                    </strong>
+
+                                                    <span class="settings-hint">
+                                                        ${enabled ? 'Aktiv' : 'Deaktiviert'}
+                                                    </span>
+                                                </div>
+
+                                                <div class="settings-hint knowledge-source-path">
+                                                    ${escapeHtml(source.root_path || '')}
+                                                </div>
+
+                                                <div class="settings-hint">
+                                                    Zuletzt indexiert:
+                                                    ${escapeHtml(indexedAt)}
+                                                </div>
+                                            </div>
+
+                                            <div class="knowledge-source-actions">
+                                                <button
+                                                    class="settings-button"
+                                                    type="button"
+                                                    data-knowledge-action="reindex"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    Reindexieren
+                                                </button>
+
+                                                <button
+                                                    class="settings-button"
+                                                    type="button"
+                                                    data-knowledge-action="${enabled ? 'disable' : 'enable'}"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    ${enabled ? 'Deaktivieren' : 'Aktivieren'}
+                                                </button>
+
+                                                <button
+                                                    class="settings-button danger"
+                                                    type="button"
+                                                    data-knowledge-action="delete"
+                                                    data-source-id="${sourceId}"
+                                                >
+                                                    Löschen
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                        </div>
+                    </section>
+                `
+                : `
+                    <div class="knowledge-empty">
+                        Noch keine Quellen indexiert.
+                    </div>
+                `;
+
+            target.innerHTML =
+                cards +
+                embeddingInfo +
+                sourceList;
+
+        } catch (error) {
+            target.textContent =
+                'Wissensbasis nicht erreichbar: ' + error.message;
+        }
+    }
+
+    async function manageSource(action, sourceId, button) {
+        if (!action || !sourceId) return;
+
+        if (
+            action === 'delete' &&
+            !window.confirm(
+                'Diese Wissensquelle wirklich löschen?\n\n' +
+                'Der Index dieser Quelle wird dauerhaft entfernt. ' +
+                'Die Originaldateien auf dem Mac bleiben unverändert.'
+            )
+        ) {
+            return;
+        }
+
+        const labels = {
+            enable: 'Aktiviere…',
+            disable: 'Deaktiviere…',
+            reindex: 'Indexiere…',
+            delete: 'Lösche…'
+        };
+
+        const originalText = button?.textContent || '';
+
+        if (button) {
+            button.disabled = true;
+            button.textContent =
+                labels[action] || 'Bitte warten…';
+        }
+
+        try {
+            const encodedId =
+                encodeURIComponent(sourceId);
+
+            const method =
+                action === 'delete'
+                    ? 'DELETE'
+                    : 'POST';
+
+            const suffix =
+                action === 'delete'
+                    ? ''
+                    : '/' + action;
+
+            await request(
+                '/api/mlx/knowledge/sources/' +
+                encodedId +
+                suffix,
+                {
+                    method
+                }
+            );
+
+            await loadStatus();
+        } catch (error) {
+            window.alert(
+                'Wissensquelle konnte nicht bearbeitet werden: ' +
+                error.message
+            );
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    }
+
+
+    async function selectKnowledgeFolder() {
+        const pathInput = $('knowledgePath');
+        const nameInput = $('knowledgeName');
+        const result = $('knowledgeIndexResult');
+        const button = $('knowledgeSelectFolder');
+
+        if (!pathInput || !button) return;
+
+        button.disabled = true;
+
+        if (result) {
+            result.textContent = 'Ordnerauswahl geöffnet …';
+        }
+
+        try {
+            const data = await request(
+                '/api/mlx/knowledge/select-folder'
+            );
+
+            if (data.cancelled) {
+                if (result) result.textContent = '';
+                return;
+            }
+
+            if (data.path) {
+                pathInput.value = data.path;
+            }
+
+            if (
+                nameInput &&
+                !nameInput.value.trim() &&
+                data.name
+            ) {
+                nameInput.value = data.name;
+            }
+
+            if (result) {
+                result.textContent = '✓ Ordner ausgewählt';
+            }
+        } catch (error) {
+            if (result) {
+                result.textContent =
+                    'Auswahl fehlgeschlagen: ' + error.message;
+            }
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function indexSource() {
+        const path = $('knowledgePath')?.value.trim();
+        const name = $('knowledgeName')?.value.trim();
+        const result = $('knowledgeIndexResult');
+
+        if (!path) {
+            if (result) result.textContent = 'Bitte einen Pfad angeben.';
+            return;
+        }
+
+        if (result) result.textContent = 'Indexiere…';
+
+        try {
+            const data = await request(
+                '/api/mlx/knowledge/sources',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        path,
+                        name: name || null,
+                        force: false
+                    })
+                }
+            );
+
+            if (result) {
+                result.textContent =
+                    '✓ Quelle erfolgreich indexiert';
+            }
+
+            await loadStatus();
+
+            console.log('[MLX nobby Knowledge]', data);
+        } catch (error) {
+            if (result) {
+                result.textContent =
+                    'Fehler: ' + error.message;
+            }
+        }
+    }
+
+    async function searchKnowledge() {
+        const query = $('knowledgeQuery')?.value.trim();
+        const target = $('knowledgeResults');
+
+        if (!query || !target) return;
+
+        target.textContent = 'Suche…';
+
+        try {
+            const data = await request(
+                '/api/mlx/knowledge/search',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query,
+                        scope: null
+                    })
+                }
+            );
+
+            const results =
+                data.results ||
+                data.matches ||
+                [];
+
+            if (!results.length) {
+                target.innerHTML =
+                    '<div class="knowledge-empty">' +
+                    'Keine passenden Chunks gefunden.' +
+                    '</div>';
+                return;
+            }
+
+            target.innerHTML = results.map((item, index) => {
+                const source =
+                    item.source ||
+                    item.path ||
+                    item.name ||
+                    'Quelle';
+
+                const score =
+                    item.score ??
+                    item.similarity ??
+                    '';
+
+                const text =
+                    item.snippet ||
+                    item.text ||
+                    item.content ||
+                    item.chunk ||
+                    '';
+
+                const scoreText =
+                    score === ''
+                        ? ''
+                        : ' · Score ' +
+                          Number(score).toFixed(3);
+
+                return (
+                    '<article class="knowledge-result">' +
+                        '<div class="knowledge-result-heading"><strong>' +
+                            (index + 1) + '. ' +
+                            escapeHtml(source) +
+                        '</strong>' +
+                        '<span class="settings-hint">' +
+                            escapeHtml(scoreText) +
+                        '</span></div>' +
+                        '<div class="knowledge-result-text">' +
+                            escapeHtml(text).slice(0, 1200) +
+                        '</div>' +
+                    '</article>'
+                );
+            }).join('');
+        } catch (error) {
+            target.textContent =
+                'Suche fehlgeschlagen: ' + error.message;
+        }
+    }
+
+    function init() {
+        $('knowledgeSelectFolder')
+            ?.addEventListener('click', selectKnowledgeFolder);
+
+        $('knowledgeStatus')
+            ?.addEventListener('click', event => {
+                const button = event.target.closest(
+                    '[data-knowledge-action][data-source-id]'
+                );
+
+                if (!button) return;
+
+                manageSource(
+                    button.dataset.knowledgeAction,
+                    button.dataset.sourceId,
+                    button
+                );
+            });
+
+        $('knowledgeIndex')
+            ?.addEventListener('click', indexSource);
+
+        $('knowledgeSearch')
+            ?.addEventListener('click', searchKnowledge);
+
+        $('knowledgeQuery')
+            ?.addEventListener('keydown', event => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    searchKnowledge();
+                }
+            });
+
+        loadStatus();
+    }
+
+    window.MLXKnowledge = { loadStatus };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();

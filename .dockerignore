@@ -1,0 +1,21 @@
+# Allow only files used by the web image into Docker's build context.
+**
+!Dockerfile
+!.dockerignore
+!requirements/
+!requirements/web.txt
+!backend/
+!backend/*.py
+!frontend/
+!frontend/*.html
+!frontend/assets/
+!frontend/assets/**
+!local_security.py
+**/*.bak*
+**/*.backup*
+**/*.before-*
+**/*.pre-*
+**/*~
+**/.DS_Store
+**/__pycache__/**
+**/*.pyc

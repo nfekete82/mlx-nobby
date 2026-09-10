@@ -1,0 +1,128 @@
+"""CPU-only HTTP regressions; native networking, FFmpeg and inference are mocked."""
+import importlib.util
+import io
+import json
+import sys
+import types
+import unittest
+import urllib.error
+from email.message import Message
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from agent import service_proxy
+from backend import app as web
+from local_security import LocalRequestGuard
+
+
+def upstream_response(body=b'{"text":"hello"}', status=200):
+    response = io.BytesIO(body)
+    response.status = status
+    response.headers = Message()
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+
+class ServiceBridgeTests(unittest.TestCase):
+    def setUp(self):
+        self.bridge = FastAPI()
+        self.bridge.add_middleware(LocalRequestGuard)
+        self.lock = MagicMock()
+        service_proxy.install_routes(self.bridge, lambda: 8123, self.lock)
+        self.agent_client = TestClient(self.bridge, base_url='http://localhost')
+        self.web_client = TestClient(web.app, base_url='http://localhost')
+        self.addCleanup(self.agent_client.close)
+        self.addCleanup(self.web_client.close)
+
+    def test_audio_route_through_agent_and_native_handler(self):
+        # Load the real speech HTTP handler without importing any MLX package.
+        stt = types.ModuleType('mlx_audio.stt')
+        stt.load = Mock(side_effect=AssertionError('Real model loading is forbidden'))
+        spec = importlib.util.spec_from_file_location('speech_test_service', Path(__file__).parents[1] / 'speech/app.py')
+        speech = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {'mlx_audio': types.ModuleType('mlx_audio'), 'mlx_audio.stt': stt}):
+            spec.loader.exec_module(speech)
+        native_client = TestClient(speech.app, base_url='http://localhost')
+        self.addCleanup(native_client.close)
+        requests = []
+
+        def open_local(request, timeout):
+            requests.append(request)
+            if request.full_url == web.SPEECH_URL + '/v1/audio/transcriptions':
+                client, path = self.agent_client, '/api/bridge/speech/v1/audio/transcriptions'
+            elif request.full_url == 'http://127.0.0.1:8050/v1/audio/transcriptions':
+                client, path = native_client, '/v1/audio/transcriptions'
+            else:
+                raise AssertionError('Unexpected native request: ' + request.full_url)
+            result = client.post(path, content=request.data, headers={'Content-Type': request.get_header('Content-type')})
+            response = upstream_response(result.content, result.status_code)
+            if result.status_code >= 400:
+                raise urllib.error.HTTPError(request.full_url, result.status_code, 'native error', response.headers, response)
+            return response
+
+        model = Mock()
+        model.generate.return_value = '  hello  '
+        with patch.dict('os.environ', {'SPEECH_SERVICE_URL': 'http://127.0.0.1:8050'}), \
+                patch.object(service_proxy.urllib.request, 'urlopen', side_effect=open_local), \
+                patch.object(speech.subprocess, 'run', return_value=Mock(returncode=0, stderr='')) as ffmpeg, \
+                patch.object(speech, 'get_model', return_value=model):
+            response = self.web_client.post('/api/mlx/audio/transcriptions', files={'file': ('original.WEBM', b'audio bytes', 'audio/webm')})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['text'], 'hello')
+            self.assertEqual(len(requests), 2)
+            self.assertEqual(requests[0].data, requests[1].data)
+            self.assertIn(b'filename="recording.webm"', requests[0].data)
+            self.assertIn(b'audio bytes', requests[0].data)
+            self.assertIn('boundary=----MLXSpeech', requests[0].get_header('Content-type'))
+            ffmpeg.assert_called_once()
+            model.generate.assert_called_once()
+            ffmpeg.return_value = Mock(returncode=1, stderr='test conversion failure')
+            failed = self.web_client.post('/api/mlx/audio/transcriptions', files={'file': ('audio.wav', b'audio bytes')})
+            self.assertEqual(failed.status_code, 500)
+            self.assertIn('test conversion failure', failed.json()['detail'])
+
+    def test_audio_rejects_invalid_empty_and_oversized_uploads(self):
+        with patch.object(web, 'MAX_UPLOAD_SIZE_BYTES', 4), patch.object(web.urllib.request, 'urlopen') as network:
+            for filename, data, status in [('audio.exe', b'abc', 415), ('audio.wav', b'', 400), ('audio.wav', b'abcde', 413)]:
+                with self.subTest(filename=filename, status=status):
+                    response = self.web_client.post('/api/mlx/audio/transcriptions', files={'file': (filename, data)})
+                    self.assertEqual(response.status_code, status, response.text)
+            network.assert_not_called()
+
+    def test_mlx_bridge_uses_runtime_port_and_lock(self):
+        payload = {'model': 'owner/model', 'messages': [{'role': 'user', 'content': 'hello'}], 'stream': False}
+        with patch.object(service_proxy.urllib.request, 'urlopen', side_effect=lambda *a, **k: upstream_response()) as network:
+            self.assertEqual(self.agent_client.get('/api/bridge/mlx/v1/models').status_code, 200)
+            self.assertEqual(network.call_args.args[0].full_url, 'http://127.0.0.1:8123/v1/models')
+            response = self.agent_client.post('/api/bridge/mlx/v1/chat/completions', json=payload)
+            self.assertEqual(response.status_code, 200)
+            request = network.call_args.args[0]
+            self.assertEqual(request.full_url, 'http://127.0.0.1:8123/v1/chat/completions')
+            self.assertEqual(json.loads(request.data), payload)
+            self.lock.__enter__.assert_called_once()
+            self.lock.__exit__.assert_called_once()
+
+    def test_bridge_rejects_streaming_arbitrary_paths_and_nonmultipart_audio(self):
+        with patch.object(service_proxy.urllib.request, 'urlopen') as network:
+            self.assertEqual(self.agent_client.post('/api/bridge/mlx/v1/chat/completions', json={'stream': True}).status_code, 422)
+            self.assertEqual(self.agent_client.get('/api/bridge/mlx/arbitrary').status_code, 404)
+            self.assertEqual(self.agent_client.post('/api/bridge/speech/v1/audio/transcriptions', json={}).status_code, 415)
+            network.assert_not_called()
+
+    def test_bridge_preserves_upstream_errors_and_reports_unavailable_service(self):
+        body = b'{"detail":"busy"}'
+        reply = upstream_response(body, 429)
+        upstream_error = urllib.error.HTTPError('http://localhost', 429, 'busy', reply.headers, reply)
+        for error, status in [(upstream_error, 429), (urllib.error.URLError('offline'), 503)]:
+            with self.subTest(status=status), patch.object(service_proxy.urllib.request, 'urlopen', side_effect=error):
+                response = self.agent_client.get('/api/bridge/mlx/v1/models')
+                self.assertEqual(response.status_code, status)
+                if status == 429:
+                    self.assertEqual(response.content, body)
+
+
+if __name__ == '__main__':
+    unittest.main()

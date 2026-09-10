@@ -1,0 +1,7 @@
+# Direct service dependencies; do not combine service environments.
+-c constraints/images.txt
+fastapi==0.141.1
+pydantic==2.13.5
+uvicorn==0.52.4
+pillow==12.3.0
+diffusionkit==0.5.1
