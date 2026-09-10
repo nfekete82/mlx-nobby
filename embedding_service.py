@@ -3,22 +3,16 @@
 import asyncio
 import logging
 import os
-import sys
-import types
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
 import mlx.core as mx
 from fastapi import FastAPI, HTTPException
-from huggingface_hub.errors import RepositoryNotFoundError
 from pydantic import BaseModel, Field
+from local_security import LocalRequestGuard
 
-# mlx-embeddings 0.0.1 imports this Hugging Face exception from its old private
-# module path. Keep that compatibility local to this independent service.
-_hub_errors_compat = types.ModuleType("huggingface_hub.utils._errors")
-_hub_errors_compat.RepositoryNotFoundError = RepositoryNotFoundError
-sys.modules.setdefault("huggingface_hub.utils._errors", _hub_errors_compat)
+# mlx-embeddings >=0.1.0 uses the public huggingface_hub.errors module.
 from mlx_embeddings.utils import generate, load
 
 MODEL_ID = "mlx-community/bge-m3-mlx-4bit"
@@ -27,19 +21,21 @@ MODEL_PATH = Path(
         "MLX_EMBEDDING_MODEL_PATH",
         str(Path.home() / "Models/bge-m3-mlx-4bit"),
     )
-)
+).expanduser()
 DIMENSIONS = 1024
 MAX_LENGTH = int(os.environ.get("MLX_EMBEDDING_MAX_LENGTH", "8192"))
 MAX_BATCH_SIZE = int(os.environ.get("MLX_EMBEDDING_BATCH_SIZE", "8"))
+if not 1 <= MAX_LENGTH <= 8192 or not 1 <= MAX_BATCH_SIZE <= 128:
+    raise ValueError("Embedding max length must be 1..8192 and batch size 1..128")
 logger = logging.getLogger("mlx_embeddings")
 
 
 class EmbeddingRequest(BaseModel):
-    texts: Annotated[list[str], Field(min_length=1, max_length=128)]
+    texts: Annotated[list[Annotated[str, Field(min_length=1, max_length=100_000)]], Field(min_length=1, max_length=128)]
 
 
 class SingleEmbeddingRequest(BaseModel):
-    text: Annotated[str, Field(min_length=1)]
+    text: Annotated[str, Field(min_length=1, max_length=100_000)]
 
 
 class Embedder:
@@ -118,6 +114,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="MLX Local Embeddings", version="1.0", lifespan=lifespan)
+app.add_middleware(LocalRequestGuard)
 
 
 @app.get("/health")
@@ -144,7 +141,7 @@ async def make_embeddings(texts: list[str]) -> dict:
             vectors = await asyncio.to_thread(embedder.embed_sync, texts)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Embedding failed: {exc}") from exc
-    if any(len(vector) != DIMENSIONS for vector in vectors):
+    if len(vectors) != len(texts) or any(len(vector) != DIMENSIONS for vector in vectors):
         raise HTTPException(status_code=503, detail="Unexpected embedding dimensions")
     return {"model": MODEL_ID, "dimensions": DIMENSIONS, "vectors": vectors}
 

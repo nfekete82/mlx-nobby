@@ -246,7 +246,8 @@ class CleanupTests(unittest.TestCase):
             await agent.app({'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
                              'method': method, 'scheme': 'http', 'path': path, 'raw_path': path.encode(),
                              'query_string': b'', 'root_path': '', 'server': ('test', 80), 'client': ('test', 1),
-                             'headers': [(b'content-type', b'application/json')]}, receive, send)
+                             'headers': [(b'host', b'localhost'),
+                                       (b'content-type', b'application/json')]}, receive, send)
             return next(message['status'] for message in messages if message['type'] == 'http.response.start')
         for endpoint in ['/api/jobs/cleanup', '/api/batch/cleanup']:
             self.assertEqual(asyncio.run(request(endpoint, 'POST', {'scope': 'running'})), 422)

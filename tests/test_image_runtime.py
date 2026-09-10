@@ -23,7 +23,7 @@ class ImageRuntimeTests(unittest.TestCase):
         for item in self.patches:
             item.start()
         registry.load_registry()
-        self.client = TestClient(service.app)
+        self.client = TestClient(service.app, base_url="http://localhost")
 
     def tearDown(self):
         for item in reversed(self.patches):

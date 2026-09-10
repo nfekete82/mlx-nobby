@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 import image_registry as registry
 from image_providers import availability, run_provider
+from local_security import LocalRequestGuard
 
 OUTPUT = Path.home() / ".config/mlx-web/images"
 MODEL = "FLUX.1-schnell"
@@ -35,6 +36,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="MLX nobby Images", lifespan=lifespan)
+app.add_middleware(LocalRequestGuard)
 
 
 @contextmanager

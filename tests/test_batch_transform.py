@@ -34,7 +34,7 @@ class BatchTransformTests(unittest.TestCase):
         self.assertEqual(agent.classify_batch_instruction("Fasse diese Datei zusammen")["mode"], "llm")
 
     def test_json_chunks_and_fast_output_remain_valid(self):
-        original = [{"Date": "2026-01-01", "Subject": "a@b.de", "Body": "Ruf 030 1234567 an"}]
+        original = [{"Date": "2026-01-01", "Subject": "sample@example.org", "Body": "Ruf 030 1234567 an"}]
         chunks = agent.split_batch_content(json.dumps(original), "json", 500)
         transformed = [
             agent.apply_deterministic_transform(part, ["replace_emails", "replace_phone_numbers"])
@@ -45,7 +45,7 @@ class BatchTransformTests(unittest.TestCase):
         self.assertEqual(rebuilt[0]["Subject"], "<EMAIL>")
 
     def test_hybrid_skip_does_not_need_mlx_for_clean_chunk(self):
-        value = agent.apply_deterministic_transform("Kontakt: a@b.de, +49 30 1234567", ["replace_emails", "replace_phone_numbers"])
+        value = agent.apply_deterministic_transform("Kontakt: sample@example.org, +49 30 1234567", ["replace_emails", "replace_phone_numbers"])
         self.assertFalse(agent.hybrid_chunk_needs_llm(value, ["replace_names", "replace_addresses"]))
 
     def test_large_json_inspection_returns_structure_without_llm(self):

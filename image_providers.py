@@ -80,7 +80,7 @@ def mflux_command(model, params, output):
                "--prompt=" + params["prompt"], "--width", str(params["width"]),
                "--height", str(params["height"]), "--steps", str(params["steps"]),
                "--seed", str(params["seed"]), "--output", str(output),
-               "--low-ram", "--mlx-cache-limit-gb", "2", "--no-progress"]
+               "--low-ram", "--mlx-cache-limit-gb", "2"]
     if model["model_family"] != "z-image-turbo":
         command += ["--guidance", str(params["guidance"])]
     if model["quantization"] != "none":

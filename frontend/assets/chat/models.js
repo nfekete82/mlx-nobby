@@ -137,7 +137,11 @@
         if (!normalizedAlias) errors.alias = 'Alias ist erforderlich.';
         else if (!/^[A-Za-z0-9._-]+$/.test(normalizedAlias)) errors.alias = 'Nur Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich.';
         if (!normalizedRepo) errors.repo = 'Repository oder lokaler Pfad ist erforderlich.';
-        else if (!normalizedRepo.includes('/')) errors.repo = 'Erwartet wird owner/modell oder ein absoluter lokaler Pfad.';
+        else if (/[\x00-\x1f\x7f\\"`$|&]/.test(normalizedRepo)) errors.repo = 'Modellreferenz enthält unsichere Zeichen.';
+        else if (!normalizedRepo.startsWith('/') && !normalizedRepo.startsWith('~/') &&
+            !/^[A-Za-z0-9_][A-Za-z0-9_.-]*\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(normalizedRepo)) {
+            errors.repo = 'Erwartet wird owner/modell oder ein absoluter lokaler Pfad.';
+        }
         return { valid: Object.keys(errors).length === 0, errors, alias: normalizedAlias, repo: normalizedRepo };
     }
 
@@ -865,7 +869,7 @@
 
     function openAddDialog() {
         const form = node('div', 'model-console-form');
-        form.innerHTML = '<label>Alias<input id="modelAddAlias" autocomplete="off" placeholder="z. B. qwen38"></label><div id="modelAddAliasError" class="model-console-field-error"></div><label>Hugging-Face Repository oder lokaler Modellpfad<div style="display:flex;gap:8px;align-items:center"><input id="modelAddRepo" style="flex:1" autocomplete="off" placeholder="mlx-community/Modell oder /Users/…"><button id="modelSelectFolder" class="model-console-button" type="button">Auswählen…</button></div></label><div id="modelAddRepoError" class="model-console-field-error"></div><label>Quantisierung<select id="modelAddQuantization"><option value="">Automatisch erkennen</option><option value="2-bit">2-bit</option><option value="4-bit">4-bit</option><option value="6-bit">6-bit</option><option value="8-bit">8-bit</option></select></label><p class="settings-hint">Remote-Modelle werden nach dem Hinzufügen als Background Job heruntergeladen.</p>';
+        form.innerHTML = '<label>Alias<input id="modelAddAlias" autocomplete="off" placeholder="z. B. qwen38"></label><div id="modelAddAliasError" class="model-console-field-error"></div><label>Hugging-Face Repository oder lokaler Modellpfad<div style="display:flex;gap:8px;align-items:center"><input id="modelAddRepo" style="flex:1" autocomplete="off" placeholder="mlx-community/Modell oder ~/Models/…"><button id="modelSelectFolder" class="model-console-button" type="button">Auswählen…</button></div></label><div id="modelAddRepoError" class="model-console-field-error"></div><label>Quantisierung<select id="modelAddQuantization"><option value="">Automatisch erkennen</option><option value="2-bit">2-bit</option><option value="4-bit">4-bit</option><option value="6-bit">6-bit</option><option value="8-bit">8-bit</option></select></label><p class="settings-hint">Remote-Modelle werden nach dem Hinzufügen als Background Job heruntergeladen.</p>';
 
         const selectFolder = form.querySelector('#modelSelectFolder');
 

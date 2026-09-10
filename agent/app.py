@@ -22,9 +22,12 @@ from agent import model_cleanup
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
+from local_security import LocalRequestGuard
+from agent.service_proxy import install_routes as install_service_routes
 
 
 app = FastAPI(title="MLX macOS Agent")
+app.add_middleware(LocalRequestGuard)
 
 CONFIG = Path.home() / ".config/mlx-server/config"
 MODELS = Path.home() / ".config/mlx-server/models"
@@ -74,6 +77,7 @@ JOBS = {}
 JOBS_LOCK = threading.Lock()
 CHATS_LOCK = threading.Lock()
 MODEL_RUNTIME_LOCK = threading.RLock()
+install_service_routes(app, lambda: int(load_config().get("PORT", 8000)), MODEL_RUNTIME_LOCK)
 JOB_PERSISTENCE_LOCK = threading.Lock()
 
 
@@ -2013,11 +2017,26 @@ def select_model_folder():
     }
 
 
+def validate_model_reference(value):
+    """The legacy manager writes shell config: reject shell/sed/awk metacharacters.
+
+    Spaces and Unicode in local directories remain supported. Remote references
+    must be Hugging Face owner/repository IDs, never command options.
+    """
+    if not value or any(ord(char) < 32 or ord(char) == 127 or char in '\\"`$|&' for char in value):
+        raise HTTPException(400, "Modellreferenz enthält unsichere Zeichen")
+    if value.startswith(("/", "~/")):
+        return str(Path(value).expanduser())
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*/[A-Za-z0-9_][A-Za-z0-9_.-]*", value):
+        raise HTTPException(400, "Erwartet wird owner/model oder ein absoluter Modellpfad")
+    return value
+
+
 @app.post("/api/models/add")
 @locked_model_change
 def add_model(request: AddModelRequest):
     alias = request.alias.strip()
-    repo = request.repo.strip()
+    repo = validate_model_reference(request.repo.strip())
 
     if not alias:
         raise HTTPException(
@@ -2031,6 +2050,8 @@ def add_model(request: AddModelRequest):
             detail="Repository fehlt",
         )
 
+    # The manager uses a positional argument, not an option parser. Preserve
+    # existing aliases such as _local and -local and the original length policy.
     if not re.fullmatch(r"[A-Za-z0-9._-]+", alias):
         raise HTTPException(
             status_code=400,
@@ -2055,6 +2076,8 @@ def add_model(request: AddModelRequest):
     quantization = (request.quantization or "").strip()
 
     if quantization:
+        if repo.startswith("/"):
+            raise HTTPException(400, "Quantisierungs-Download benötigt ein Hugging-Face-Repository")
         allowed_quantizations = {"2-bit", "4-bit", "6-bit", "8-bit"}
 
         if quantization not in allowed_quantizations:
@@ -7082,6 +7105,9 @@ def switch_model_runtime(alias: str):
             f"Unbekanntes Modell-Alias: {alias}"
         )
 
+    selected = next(item for item in models if item.get("alias") == alias)
+    validate_model_reference(selected.get("repo", ""))
+
     try:
         result = subprocess.run(
             [str(MLX), "model", alias],
@@ -10097,6 +10123,9 @@ async def upload_batch_file(
 
                 handle.write(chunk)
 
+    except BaseException:
+        target_path.unlink(missing_ok=True)
+        raise
     finally:
         await file.close()
 

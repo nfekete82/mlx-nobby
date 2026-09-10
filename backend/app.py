@@ -4,9 +4,11 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
+from local_security import LocalRequestGuard, read_upload
 import json
 import io
 import hashlib
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,6 +22,7 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"
 
 app = FastAPI(title="MLX Control Center")
+app.add_middleware(LocalRequestGuard)
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 
@@ -53,10 +56,10 @@ MAX_UPLOAD_SIZE_BYTES = (
 )
 
 
-MLX_URL = os.environ.get("MLX_URL", "http://127.0.0.1:8000").rstrip("/")
 AGENT_URL = os.environ.get("AGENT_URL", "http://127.0.0.1:8010").rstrip("/")
-SPEECH_URL = os.environ.get("SPEECH_URL", "http://127.0.0.1:8050").rstrip("/")
-IMAGE_URL = os.environ.get("IMAGE_URL", "http://host.docker.internal:8030").rstrip("/")
+# All Docker -> host traffic crosses the agent, including legacy vision/compact.
+MLX_URL = f"{AGENT_URL}/api/bridge/mlx"
+SPEECH_URL = f"{AGENT_URL}/api/bridge/speech"
 
 
 def get_json(url, timeout=5):
@@ -227,7 +230,7 @@ async def parse_document(file: UploadFile = File(...)):
             detail="Aktuell werden nur PDF-Dateien unterstützt",
         )
 
-    data = await file.read()
+    data = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
 
     if not data:
         raise HTTPException(
@@ -376,15 +379,18 @@ def document_status_proxy(document_id: str):
 
 @app.post("/api/mlx/audio/transcriptions")
 async def speech_transcription(file: UploadFile = File(...)):
-    audio = await file.read()
+    audio = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
 
     if not audio:
         raise HTTPException(status_code=400, detail="Leere Audiodatei")
 
-    filename = file.filename or "recording.webm"
-    content_type = file.content_type or "application/octet-stream"
+    suffix = Path(file.filename or "recording.webm").suffix.lower()
+    if suffix not in {".webm", ".wav", ".mp3", ".mp4", ".m4a", ".ogg", ".oga", ".flac", ".aac"}:
+        raise HTTPException(415, "Nicht unterstütztes Audioformat")
+    filename = "recording" + suffix
+    content_type = "application/octet-stream"
 
-    boundary = "----MLXNobbySpeechBoundary"
+    boundary = "----MLXSpeech" + uuid.uuid4().hex
 
     body = (
         f"--{boundary}\r\n"

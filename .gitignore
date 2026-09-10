@@ -110,3 +110,63 @@ test-batch.transformed.sql
 *.pre-*
 
 agent/profile.json
+
+# Local audit reports, generated media and build artifacts
+audit-private/
+output/
+generated_images/
+images/
+*.safetensors
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.npz
+*.npy
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.heic
+*.mp4
+*.wav
+*.mp3
+*.sqlite3-*
+*.tmp
+*.swp
+*.swo
+*.egg-info/
+build/
+dist/
+htmlcov/
+.coverage*
+node_modules/
+coverage/
+.config/
+# Deliberate public image assets belong here, after privacy review.
+!frontend/assets/images/
+!frontend/assets/**/*.png
+!frontend/assets/**/*.jpg
+!frontend/assets/**/*.jpeg
+!frontend/assets/**/*.webp
+!frontend/assets/**/*.svg
+
+# Additional local backups and rotated logs
+backup/
+*.bak.*
+logs/
+*.log.*
+
+# Local environment setup and SSH private keys
+.envrc
+.envrc.*
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+
+# Machine-specific LaunchAgents; keep launchd/templates/*.plist.template tracked.
+/launchd/*.plist
+
+# Local SQL test artifacts
+test-batch.sql

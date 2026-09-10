@@ -1,9 +1,11 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from agent import app as agent_app
 
@@ -17,6 +19,36 @@ class BusyLock:
 
 
 class ModelRuntimeApiTests(unittest.TestCase):
+    def test_model_input_compatibility_and_rejection_before_manager(self):
+        cases = json.loads((Path(__file__).parent / 'fixtures/model_validation.json').read_text())
+        cases.append({'alias': 'a' * 97, 'repo': 'owner/model', 'valid': True})
+        client = TestClient(agent_app.app, base_url='http://localhost')
+        for case in cases:
+            with self.subTest(case=case), mock.patch.object(agent_app, 'load_models', return_value=[]), \
+                    mock.patch.object(agent_app.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout='', stderr='')) as manager, \
+                    mock.patch.object(agent_app, 'create_background_job', return_value={'id': 'test'}):
+                response = client.post('/api/models/add', json={'alias': case['alias'], 'repo': case['repo']})
+                self.assertEqual(response.status_code, 200 if case['valid'] else 400, response.text)
+                if case['valid']:
+                    args = manager.call_args.args[0]
+                    self.assertEqual(args[3], case['alias'].strip())
+                    self.assertEqual(args[4], str(Path(case['repo'].strip()).expanduser()) if case['repo'].strip().startswith(('~/', '/')) else case['repo'].strip())
+                else:
+                    manager.assert_not_called()
+
+    def test_existing_local_reference_can_switch_but_unsafe_reference_cannot(self):
+        for repo, valid in [('~/Models/Qwen3.8-27B/6-bit', True), ('/Models/a$variable', False)]:
+            with self.subTest(repo=repo), mock.patch.object(agent_app, 'load_models', return_value=[{'alias': '_local', 'repo': repo}]), \
+                    mock.patch.object(agent_app.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout='', stderr='')) as manager, \
+                    mock.patch.object(agent_app, 'wait_for_model_runtime', return_value={'ok': True}):
+                if valid:
+                    self.assertTrue(agent_app.switch_model_runtime('_local')['ok'])
+                    self.assertEqual(manager.call_args.args[0][-1], '_local')
+                else:
+                    with self.assertRaises(HTTPException):
+                        agent_app.switch_model_runtime('_local')
+                    manager.assert_not_called()
+
     def test_cache_summary_uses_real_sizes_and_exposes_path(self):
         items = [
             {

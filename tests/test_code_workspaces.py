@@ -335,15 +335,15 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(read["content"], "second")
 
         with mock.patch.object(
-            code_workspaces.knowledge,
+            code_workspaces,
             "search",
-            return_value={"results": []},
+            return_value={"workspace_id": second["workspace_id"], "files": []},
         ) as search:
             result = agent_app.tool_code_search(
                 agent_app.ChatActionRequest(prompt="login")
             )
         self.assertEqual(result["workspace_id"], second["workspace_id"])
-        search.assert_called_once_with("login", "workspace-two")
+        search.assert_called_once_with(second["workspace_id"], "login")
 
     def test_active_workspace_routes_common_coding_requests(self):
         self.add_workspace()
@@ -961,7 +961,7 @@ class CodeWorkspaceTests(unittest.TestCase):
                 "reason": "Lokale Prozessprüfung",
             })
 
-        with mock.patch.object(agent_app, "agent_llm", side_effect=classify_llm):
+        with mock.patch.object(agent_app, "router_llm", side_effect=classify_llm):
             result = agent_app.semantic_intent_classifier(
                 "Kannst du prüfen, welche App am meisten verbraucht?",
             )
@@ -1100,8 +1100,11 @@ class CodeWorkspaceTests(unittest.TestCase):
         progress_events = []
 
         def planner(messages, **kwargs):
+            content = messages[1]["content"]
+            if "BISHERIGE OBSERVATIONS:\n" not in content:
+                return "Analyse fertig."
             observations = json.loads(
-                messages[1]["content"].split("BISHERIGE OBSERVATIONS:\n", 1)[1]
+                content.split("BISHERIGE OBSERVATIONS:\n", 1)[1]
             )
             if not observations:
                 return json.dumps({

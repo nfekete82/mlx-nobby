@@ -1,11 +1,7 @@
+# Direct service dependencies; do not combine service environments.
+-c constraints/embeddings.txt
 mlx-embeddings==0.1.0
 mlx==0.32.2
-mlx-vlm==0.7.0
-transformers==5.17.0
-huggingface-hub==1.30.0
-tokenizers==0.23.2
-safetensors==0.8.0
-sentencepiece==0.2.2
-numpy==2.0.2
 fastapi==0.141.1
+pydantic==2.13.5
 uvicorn==0.39.0

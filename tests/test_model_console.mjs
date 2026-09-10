@@ -36,7 +36,7 @@ assert.match(css, /@media \(max-width: 700px\)/);
 assert.match(css, /prefers-reduced-motion: reduce/);
 
 assert.equal(
-    test.displayName('/Users/test/Models/Qwen3.8-27B-Uncensored-MLX/6-bit'),
+    test.displayName('/example/Models/Qwen3.8-27B-Uncensored-MLX/6-bit'),
     'Qwen3.8 27B Uncensored',
 );
 assert.equal(
@@ -51,6 +51,15 @@ assert.equal(test.validateModelInput('', '').valid, false);
 assert.equal(test.validateModelInput('bad alias', 'owner/model').valid, false);
 assert.equal(test.validateModelInput('qwen38', 'owner/model').valid, true);
 assert.equal(test.aliasExists('QWEN38', [{ alias: 'qwen38' }]), true);
+
+// Both the browser and agent endpoint exercise the same compatibility cases.
+const validationCases = JSON.parse(fs.readFileSync(
+    new URL('./fixtures/model_validation.json', import.meta.url), 'utf8',
+));
+validationCases.push({ alias: 'a'.repeat(97), repo: 'owner/model', valid: true });
+for (const { alias, repo, valid } of validationCases) {
+    assert.equal(test.validateModelInput(alias, repo).valid, valid, JSON.stringify({ alias, repo }));
+}
 
 test.state.aliases = {
     current: 'owner/active',

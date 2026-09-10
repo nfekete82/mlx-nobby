@@ -23,7 +23,7 @@ artifact. The browser therefore keeps no image bytes in localStorage.
 `FLUX.1-schnell` through DiffusionKit remains the enabled legacy fallback.
 MFLUX entries are opt-in and are only reported as available when their local
 Hugging Face snapshot (or an allowed `~/Models` path) is present. The service
-does not download weights. MFLUX 0.33.1 is called through the installed native CLI
+does not download weights. MFLUX 0.19.1 is called through the installed native CLI
 (`~/.local/bin/mflux-*`) in a short-lived subprocess with `shell=False`; this
 keeps the image runtime isolated from the normal chat/agent Python process and
 allows MLX/Metal memory to be released after each request.
