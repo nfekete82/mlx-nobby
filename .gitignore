@@ -174,3 +174,7 @@ test-batch.sql
 # Internal development notes
 AGENTS.md
 FRONTEND_REFACTOR_PLAN.md
+
+# Public documentation screenshots
+!docs/screenshots/
+!docs/screenshots/*.png

@@ -22,6 +22,21 @@ the bridge between that container and host resources.
 - System metrics, service health, logs, and runtime controls
 - English and German chat UI with a persisted language setting
 
+
+## Screenshots
+
+### Start screen
+
+![MLX Nobby start screen](docs/screenshots/startscreen.png)
+
+### Local AI chat
+
+![MLX Nobby chat interface](docs/screenshots/chat.png)
+
+### Model management
+
+![MLX Nobby model management](docs/screenshots/models.png)
+
 ## Architecture
 
 ```mermaid

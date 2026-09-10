@@ -168,8 +168,79 @@
     };
 })();
 
+
+// Keep static and dynamically rendered UI translated.
+function applyCurrentTranslations(root = document) {
+    window.MLXI18n?.applyTranslations?.(root);
+}
+
+function startI18nDomObserver() {
+    if (window.__mlxI18nObserverStarted) {
+        return;
+    }
+
+    if (
+        typeof MutationObserver === 'undefined' ||
+        typeof Element === 'undefined'
+    ) {
+        return;
+    }
+
+    window.__mlxI18nObserverStarted = true;
+
+    const observer = new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (!(node instanceof Element)) {
+                    continue;
+                }
+
+                if (
+                    node.matches?.(
+                        '[data-i18n], ' +
+                        '[data-i18n-placeholder], ' +
+                        '[data-i18n-title], ' +
+                        '[data-i18n-aria-label]'
+                    )
+                ) {
+                    applyCurrentTranslations(node.parentElement || node);
+                    continue;
+                }
+
+                if (
+                    node.querySelector?.(
+                        '[data-i18n], ' +
+                        '[data-i18n-placeholder], ' +
+                        '[data-i18n-title], ' +
+                        '[data-i18n-aria-label]'
+                    )
+                ) {
+                    applyCurrentTranslations(node);
+                }
+            }
+        }
+    });
+
+    observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        applyCurrentTranslations();
+        startI18nDomObserver();
+    }, { once: true });
+} else {
+    applyCurrentTranslations();
+    startI18nDomObserver();
+}
+
 // Language selector integration.
 document.addEventListener('mlx-i18n-ready', event => {
+    applyCurrentTranslations();
+
     const selector = document.getElementById('interfaceLanguage');
 
     if (!selector) {
@@ -184,6 +255,8 @@ document.addEventListener('mlx-i18n-ready', event => {
 });
 
 document.addEventListener('mlx-language-changed', event => {
+    applyCurrentTranslations();
+
     const selector = document.getElementById('interfaceLanguage');
 
     if (selector) {
