@@ -150,8 +150,11 @@ function dictationT(key, fallback = '', variables = {}) {
 
             if (!response.ok) {
                 throw new Error(
-                    data?.detail ||
-                    `Transkription fehlgeschlagen (${response.status})`
+                    data?.detail || dictationT(
+                        'dictation.transcription_failed',
+                        'Transcription failed ({status})',
+                        { status: response.status }
+                    )
                 );
             }
 
@@ -159,7 +162,11 @@ function dictationT(key, fallback = '', variables = {}) {
 
         } catch (error) {
             console.error("[dictation]", error);
-            alert(`Diktat fehlgeschlagen: ${error.message}`);
+            alert(dictationT(
+                'dictation.failed',
+                'Dictation failed: {message}',
+                { message: error.message }
+            ));
 
         } finally {
             setState("idle");
@@ -243,13 +250,17 @@ function dictationT(key, fallback = '', variables = {}) {
                 error.name === "NotAllowedError" ||
                 error.name === "PermissionDeniedError"
             ) {
-                alert(
-                    "Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube MLX nobby den Zugriff auf das Mikrofon."
-                );
+                alert(window.MLXI18n?.t(
+                    "dictation.permission_denied",
+                    "Microphone access was denied. Allow MLX Nobby to use the microphone."
+                ));
                 return;
             }
 
-            alert(`Mikrofon konnte nicht gestartet werden: ${error.message}`);
+            alert((window.MLXI18n?.t(
+                "dictation.start_failed",
+                "Could not start the microphone:"
+            ) || "Could not start the microphone:") + ` ${error.message}`);
         }
     }
 

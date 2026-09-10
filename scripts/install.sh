@@ -21,6 +21,7 @@ DOCTOR="$ROOT/scripts/doctor.sh"
 
 START_WEB=1
 INSTALL_LAUNCHD_SERVICES=1
+INSTALL_PYTHON_ENVIRONMENTS=1
 
 
 # ------------------------------------------------------------
@@ -59,6 +60,10 @@ while [ "$#" -gt 0 ]; do
             INSTALL_LAUNCHD_SERVICES=0
             ;;
 
+        --no-python)
+            INSTALL_PYTHON_ENVIRONMENTS=0
+            ;;
+
         -h|--help)
             cat <<'EOF'
 
@@ -69,11 +74,13 @@ Usage:
   ./scripts/install.sh
   ./scripts/install.sh --no-docker
   ./scripts/install.sh --no-launchd
+  ./scripts/install.sh --no-python
 
 Options:
 
   --no-docker    Do not build/start the Docker web service
   --no-launchd   Do not install/update macOS LaunchAgents
+  --no-python    Do not create/update service Python environments
   -h, --help     Show this help
 
 EOF
@@ -132,12 +139,11 @@ ok "Repository: $ROOT"
 
 info "Checking required tools"
 
-REQUIRED_COMMANDS=(
-    python3
-    curl
-    launchctl
-    lsof
-)
+REQUIRED_COMMANDS=(curl launchctl lsof)
+
+if [ "$INSTALL_PYTHON_ENVIRONMENTS" -eq 1 ]; then
+    REQUIRED_COMMANDS+=(python3.11 python3.13)
+fi
 
 MISSING=0
 
@@ -174,10 +180,60 @@ else
 fi
 
 if command -v docker >/dev/null 2>&1; then
-    ok "Docker"
+    if docker compose version >/dev/null 2>&1; then
+        ok "Docker with Compose"
+    else
+        warn "Docker Compose is unavailable – web container cannot be started"
+        START_WEB=0
+    fi
 else
     warn "Docker not found – web container cannot be started"
     START_WEB=0
+fi
+
+
+# ------------------------------------------------------------
+# Python service environments
+# ------------------------------------------------------------
+
+install_environment() {
+    local python_command="$1"
+    local environment="$2"
+    local requirements="$3"
+    local expected_minor="$4"
+    local command_minor
+    local environment_minor
+
+    command_minor="$("$python_command" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    [ "$command_minor" = "$expected_minor" ] \
+        || fail "$python_command must provide Python $expected_minor (found $command_minor)."
+
+    if [ ! -x "$ROOT/$environment/bin/python" ]; then
+        "$python_command" -m venv "$ROOT/$environment"
+        ok "Created $environment"
+    else
+        environment_minor="$("$ROOT/$environment/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+        [ "$environment_minor" = "$expected_minor" ] \
+            || fail "$environment uses Python $environment_minor; Python $expected_minor is required. Move or recreate it manually."
+        ok "$environment already exists"
+    fi
+
+    "$ROOT/$environment/bin/python" -m pip install \
+        -r "$ROOT/$requirements"
+    "$ROOT/$environment/bin/python" -m pip check
+    ok "Installed $requirements in $environment"
+}
+
+if [ "$INSTALL_PYTHON_ENVIRONMENTS" -eq 1 ]; then
+    info "Installing isolated Python environments"
+
+    install_environment python3.13 agent-venv requirements/agent.txt 3.13
+    install_environment python3.13 runtime-venv requirements/runtime.txt 3.13
+    install_environment python3.11 embedding-venv requirements/embeddings.txt 3.11
+    install_environment python3.11 image-venv requirements/images.txt 3.11
+    install_environment python3.13 speech-venv requirements/speech.txt 3.13
+else
+    info "Skipping Python environments"
 fi
 
 
@@ -246,8 +302,16 @@ info "Checking MLX configuration"
 if [ -f "$CONFIG_DIR/config" ]; then
     ok "~/.config/mlx-server/config exists"
 else
-    warn "~/.config/mlx-server/config does not exist yet"
-    warn "Configure a model before starting the MLX server."
+    cat > "$CONFIG_DIR/config" <<'EOF'
+# MLX Nobby local runtime configuration.
+# Set MODEL to a local model path or to an alias from the models file.
+MODEL=""
+PORT=8000
+THINKING=false
+EOF
+    chmod 600 "$CONFIG_DIR/config"
+    ok "Created ~/.config/mlx-server/config with safe defaults"
+    warn "Set MODEL before starting the MLX runtime."
 fi
 
 if [ -f "$CONFIG_DIR/models" ]; then
@@ -266,7 +330,12 @@ if [ "$INSTALL_LAUNCHD_SERVICES" -eq 1 ]; then
 
     info "Installing LaunchAgents"
 
-    if [ -x "$INSTALL_LAUNCHD" ]; then
+    ROUTER_MODEL="${MLX_ROUTER_MODEL_PATH:-$HOME/Models/router/Qwen3.5-0.8B-MLX-4bit}"
+
+    if [ ! -d "$ROUTER_MODEL" ]; then
+        warn "Router model not found: $ROUTER_MODEL"
+        warn "Skipping LaunchAgents. Set MLX_ROUTER_MODEL_PATH and rerun scripts/install-launchd.sh after adding the model."
+    elif [ -x "$INSTALL_LAUNCHD" ]; then
         "$INSTALL_LAUNCHD"
         ok "LaunchAgent installer completed"
 
@@ -274,7 +343,7 @@ if [ "$INSTALL_LAUNCHD_SERVICES" -eq 1 ]; then
         bash "$INSTALL_LAUNCHD"
         ok "LaunchAgent installer completed"
 
-    else
+    elif [ ! -f "$INSTALL_LAUNCHD" ]; then
         warn "scripts/install-launchd.sh not found"
     fi
 

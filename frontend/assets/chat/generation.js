@@ -807,12 +807,11 @@ async function approveAgentAction(
         message.agent_run.status =
             'failed';
 
-        message.content =
-            'Agent-Freigabe fehlgeschlagen: ' +
-            (
-                error?.message ||
-                String(error)
-            );
+        message.content = gt(
+            'agent_approval_failed',
+            'Agent approval failed: {message}',
+            { message: error?.message || String(error) }
+        );
 
     } finally {
         setGenerating(false);
@@ -1075,21 +1074,19 @@ const imageFiles =
                         error
                     );
 
-                    documentPageContext =
-                        '\n\nHinweis: Seite ' +
-                        requestedPage +
-                        ' konnte im Dokument "' +
-                        document.name +
-                        '" nicht gelesen werden.';
+                    documentPageContext = '\n\n' + gt(
+                        'page_read_failed',
+                        'Note: Page {page} could not be read from document "{name}".',
+                        { page: requestedPage, name: document.name }
+                    );
                 }
 
             } else {
-                documentPageContext =
-                    '\n\nHinweis: Seite ' +
-                    requestedPage +
-                    ' konnte im Dokument "' +
-                    document.name +
-                    '" nicht gelesen werden.';
+                documentPageContext = '\n\n' + gt(
+                    'page_read_failed',
+                    'Note: Page {page} could not be read from document "{name}".',
+                    { page: requestedPage, name: document.name }
+                );
             }
         } else {
             const document = documentFiles[0];
@@ -1426,8 +1423,10 @@ const imageFiles =
                 if (!results.length) {
                     session.messages.push({
                         role: 'assistant',
-                        content:
-                            'Die Websuche hat keine passenden Ergebnisse gefunden.',
+                        content: gt(
+                            'web_search_no_results',
+                            'The web search returned no matching results.'
+                        ),
                         tool_result: toolResult
                     });
 
@@ -1686,7 +1685,10 @@ function toolSummary(result) {
             'Model switch has been started.'
         );
     }
-    if (result.tool === 'thinking_on' || result.tool === 'thinking_off') return 'Thinking wurde ' + (result.tool === 'thinking_on' ? 'aktiviert.' : 'deaktiviert.');
+    if (result.tool === 'thinking_on' || result.tool === 'thinking_off') return gt(
+        result.tool === 'thinking_on' ? 'thinking_enabled' : 'thinking_disabled',
+        result.tool === 'thinking_on' ? 'Thinking enabled.' : 'Thinking disabled.'
+    );
     if (result.tool === 'model_restart') {
         return gt(
             'server_restarting',
@@ -1720,11 +1722,11 @@ function toolSummary(result) {
             'No matching source found in the knowledge base ({mode}).',
             { mode: data.mode || 'fts_fallback' }
         );
-        return '**Wissensbasis · ' + (data.mode === 'hybrid' ? 'Hybrid' : 'FTS fallback') + '**\n\n' + results.map(item =>
+        return '**' + gt('knowledge_base', 'Knowledge base') + ' · ' + (data.mode === 'hybrid' ? 'Hybrid' : 'FTS fallback') + '**\n\n' + results.map(item =>
             '- `' + item.path + ':' + item.start_line + '-' + item.end_line + '`' + (item.symbol ? ' — ' + item.symbol : '') + '\n  ' + item.snippet.replace(/\n/g, ' ').slice(0, 260)
         ).join('\n');
     }
-    return 'Aktion abgeschlossen.';
+    return gt('action_completed', 'Action completed.');
 }
 
 function watchBatchJob(session, jobId) {
@@ -1803,7 +1805,7 @@ function watchBatchJob(session, jobId) {
                 setTimeout(poll, 2000);
             }
         } catch (error) {
-            console.warn('Batch-Status konnte nicht geladen werden', error);
+            console.warn('Could not load batch status', error);
         }
     };
     poll();

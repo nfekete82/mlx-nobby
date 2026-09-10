@@ -1,4 +1,4 @@
 <?php
 function saveNewsletter($memberId) {
-    return "dpolg_member_tracking";
+    return "newsletter_delivery_tracking";
 }

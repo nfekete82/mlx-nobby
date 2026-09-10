@@ -265,7 +265,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
             } catch (error) {
                 console.warn(
-                    '[MLX PDF RAG] Status konnte nicht gelesen werden:',
+                    '[MLX PDF RAG] Could not read status:',
                     error
                 );
             }
@@ -364,7 +364,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
                         throw new Error(
                             detail ||
-                            'PDF konnte nicht verarbeitet werden.'
+                            attachmentT('attachments.pdf_processing_failed', 'Could not process the PDF.')
                         );
                     }
 
@@ -375,7 +375,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
                     if (!extractedText.trim()) {
                         throw new Error(
-                            'In dieser PDF wurde kein lesbarer Text gefunden.'
+                            attachmentT('attachments.pdf_no_text', 'No readable text was found in this PDF.')
                         );
                     }
 
@@ -508,15 +508,14 @@ function attachmentT(key, fallback = '', variables = {}) {
                         error
                     );
 
-                    alert(
-                        'PDF konnte nicht gelesen werden: ' +
-                        file.name +
-                        '\n\n' +
-                        (
-                            error.message ||
-                            attachmentT('attachments.unknown_error', 'Unknown error')
-                        )
-                    );
+                    alert(attachmentT(
+                        'attachments.pdf_read_failed',
+                        'Could not read PDF: {name}\n\n{message}',
+                        {
+                            name: file.name,
+                            message: error.message || attachmentT('attachments.unknown_error', 'Unknown error')
+                        }
+                    ));
                 } finally {
                     if (window.MLXChatRuntime) {
                         MLXChatRuntime.setExternalRuntimeBusy(false);

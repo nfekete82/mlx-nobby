@@ -98,6 +98,8 @@ function createRuntimeHarness() {
     globalThis.cancelAnimationFrame = id => {
         frameCallbacks.delete(id);
     };
+    globalThis.setInterval = () => 0;
+    globalThis.clearInterval = () => {};
     globalThis.window = {
         addEventListener() {}
     };
@@ -200,7 +202,7 @@ test('chat follows only while the user remains at the bottom', () => {
     assert.equal(button.classList.contains('visible'), false);
     assert.equal(
         button.attributes.get('aria-label'),
-        'Zu neuen Nachrichten springen'
+        'Jump to new messages'
     );
 });
 

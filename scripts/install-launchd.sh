@@ -14,28 +14,25 @@ mkdir -p "${CONFIG_DIR}"
 mkdir -p "${TARGET_DIR}"
 
 if [ ! -x "${RUNTIME_PYTHON}" ]; then
-    echo "Fehler: MLX nobby Runtime fehlt: ${RUNTIME_PYTHON}" >&2
-    echo "Installiere zuerst runtime-venv." >&2
+    echo "Error: MLX Nobby runtime is missing: ${RUNTIME_PYTHON}" >&2
+    echo "Install runtime-venv first." >&2
     exit 1
 fi
 
-if [ ! -x "${PROJECT_DIR}/agent-venv/bin/python" ]; then
-    echo "Fehler: agent-venv fehlt." >&2
-    exit 1
-fi
-
-if [ ! -x "${PROJECT_DIR}/speech-venv/bin/python" ]; then
-    echo "Fehler: speech-venv fehlt." >&2
-    exit 1
-fi
+for environment in agent-venv embedding-venv image-venv speech-venv; do
+    if [ ! -x "${PROJECT_DIR}/${environment}/bin/python" ]; then
+        echo "Error: ${environment} is missing." >&2
+        exit 1
+    fi
+done
 
 if [ ! -d "${ROUTER_MODEL}" ]; then
-    echo "Fehler: Router-Modell fehlt: ${ROUTER_MODEL}" >&2
+    echo "Error: router model is missing: ${ROUTER_MODEL}" >&2
     exit 1
 fi
 
 if [ ! -d "${TEMPLATE_DIR}" ]; then
-    echo "Fehler: LaunchAgent-Templates nicht gefunden: ${TEMPLATE_DIR}" >&2
+    echo "Error: LaunchAgent templates not found: ${TEMPLATE_DIR}" >&2
     exit 1
 fi
 
@@ -61,10 +58,10 @@ for template in "${TEMPLATE_DIR}"/*.plist.template; do
     target="${TARGET_DIR}/${filename}"
 
     render_template "${template}" "${target}"
-    echo "Installiert: ${target}"
+    echo "Installed: ${target}"
 done
 
 echo
-echo "LaunchAgent-Dateien erfolgreich installiert."
-echo "Projekt: ${PROJECT_DIR}"
-echo "Konfiguration: ${CONFIG_DIR}"
+echo "LaunchAgent files installed successfully."
+echo "Project: ${PROJECT_DIR}"
+echo "Configuration: ${CONFIG_DIR}"

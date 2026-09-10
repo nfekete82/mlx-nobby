@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>MLX nobby · Verwaltung</title>
+    <title>MLX Nobby · Control Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         if (new URLSearchParams(location.search).get('embedded') === '1') {
@@ -68,7 +68,7 @@
                     data-view="models"
                     class="nav-item px-3 py-2 rounded-lg text-sm font-medium"
                 >
-                    Modelle
+                    Models
                 </a>
 
                 <a
@@ -131,7 +131,7 @@
                 </h1>
 
                 <p class="text-slate-400 text-sm mt-1">
-                    MLX Runtime Übersicht
+                    MLX runtime overview
                 </p>
             </div>
         </div>
@@ -142,7 +142,7 @@
                 id="statusBadge"
                 class="hidden"
             >
-                Status wird geladen…
+                Loading status…
             </div>
 
         </div>
@@ -153,7 +153,7 @@
         <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
 
             <div class="mb-6">
-                <div class="text-sm text-slate-400 mb-2">Aktuelles Modell</div>
+                <div class="text-sm text-slate-400 mb-2">Current model</div>
                 <div id="model" class="text-xl font-semibold break-all">–</div>
             </div>
 
@@ -243,18 +243,18 @@
     <section id="modelLibrary" data-app-view="models" class="mt-8">
 
     <div class="mb-6">
-        <h1 class="text-2xl font-bold">Modelle</h1>
+        <h1 class="text-2xl font-bold">Models</h1>
         <p class="text-slate-400 text-sm mt-1">
-            Zentrale Verwaltung für Modelle, Downloads und lokalen Speicher
+            Manage models, downloads, and local storage
         </p>
     </div>
 
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
 
         <div class="mb-5">
-            <h2 class="text-lg font-semibold">Modell hinzufügen</h2>
+            <h2 class="text-lg font-semibold">Add model</h2>
             <p class="text-sm text-slate-400">
-                Hugging-Face-Modell herunterladen und direkt als MLX-Alias registrieren
+                Download a Hugging Face model and register it as an MLX alias
             </p>
         </div>
 
@@ -269,7 +269,7 @@
                 <input
                     id="addModelAlias"
                     type="text"
-                    placeholder="z. B. qwen-coder"
+                    placeholder="e.g. qwen-coder"
                     autocomplete="off"
                     class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
                 >
@@ -291,14 +291,14 @@
 
             <div>
                 <label class="block text-sm text-slate-400 mb-2">
-                    Quantisierung
+                    Quantization
                 </label>
 
                 <select
                     id="addModelQuant"
                     class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
                 >
-                    <option value="">Automatisch</option>
+                    <option value="">Automatic</option>
                     <option value="2-bit">2-bit</option>
                     <option value="4-bit">4-bit</option>
                     <option value="6-bit">6-bit</option>
@@ -311,7 +311,7 @@
                 type="submit"
                 class="bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded-xl px-5 py-3 font-semibold whitespace-nowrap"
             >
-                + Hinzufügen & herunterladen
+                + Add and download
             </button>
 
         </form>
@@ -327,25 +327,25 @@
 
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
             <div>
-                <h2 class="text-lg font-semibold">Meine Modelle</h2>
+                <h2 class="text-lg font-semibold">My models</h2>
                 <p class="text-sm text-slate-400">
-                    Alias, lokaler Speicher, Downloadstatus und Runtime in einer Ansicht
+                    Aliases, local storage, download status, and runtime
                 </p>
             </div>
             <div id="modelLibrarySummary" class="text-sm text-slate-400">
-                Wird geladen…
+                Loading…
             </div>
         </div>
 
         <div class="mb-5">
-            <h3 class="text-sm text-slate-400 mb-2">Download-Historie</h3>
+            <h3 class="text-sm text-slate-400 mb-2">Download history</h3>
             <div id="downloadHistoryCleanup" class="history-cleanup"></div>
         </div>
         <div id="models" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            Modelle werden geladen…
+            Loading models…
         </div>
 
-        <!-- Kompatibilitaetsanker fuer bestehende Controller; nicht mehr separat dargestellt. -->
+        <!-- Compatibility anchors for existing controllers; no longer shown separately. -->
         <div class="hidden" aria-hidden="true">
             <span id="cacheSummary"></span>
             <div id="cacheModels"></div>
@@ -381,14 +381,14 @@
 
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                 <div class="text-xs uppercase text-slate-500">
-                    RAM gesamt
+                    Total RAM
                 </div>
                 <div id="sysRamTotal" class="text-2xl font-semibold mt-2">–</div>
             </div>
 
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                 <div class="text-xs uppercase text-slate-500">
-                    RAM frei
+                    Free RAM
                 </div>
                 <div id="sysRamFree" class="text-2xl font-semibold mt-2">–</div>
             </div>
@@ -446,7 +446,7 @@
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
 
                 <h2 class="text-lg font-semibold mb-4">
-                    Aktuelles Modell
+                    Current model
                 </h2>
 
                 <div
@@ -466,11 +466,11 @@
 
                 <div>
                     <h2 class="text-lg font-semibold">
-                        Serverargumente
+                        Server arguments
                     </h2>
 
                     <p class="text-sm text-slate-400 mt-1">
-                        Tatsächlich laufender mlx_lm.server Prozess
+                        Arguments used by the running mlx_lm.server process
                     </p>
                 </div>
 
@@ -504,7 +504,7 @@
             </h1>
 
             <p class="text-slate-400 text-sm mt-1">
-                MLX Runtime, Agent und Hintergrundjobs
+                MLX runtime, agent, and background jobs
             </p>
         </div>
 
@@ -513,7 +513,7 @@
             <input
                 id="logSearch"
                 type="search"
-                placeholder="Logs durchsuchen…"
+                placeholder="Search logs…"
                 class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm outline-none focus:border-blue-600 min-w-[230px]"
             >
 
@@ -538,7 +538,7 @@
                 id="logsRefresh"
                 class="bg-blue-700 hover:bg-blue-600 rounded-xl px-4 py-2 text-sm font-semibold"
             >
-                Aktualisieren
+                Refresh
             </button>
 
         </div>
@@ -585,7 +585,7 @@
                     id="copyLogs"
                     class="bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-2 text-xs font-semibold"
                 >
-                    Kopieren
+                    Copy
                 </button>
 
             </div>
@@ -596,7 +596,7 @@
             id="logsOutput"
             class="m-0 p-5 bg-black/50 text-xs leading-5 text-slate-300 font-mono overflow-auto whitespace-pre-wrap"
             style="height:62vh;"
-        >Logs werden geladen…</pre>
+        >Loading logs…</pre>
 
     </div>
 
@@ -615,7 +615,7 @@
                 </h2>
 
                 <p class="text-sm text-slate-400 mt-1">
-                    Große Dateien stateless und chunkweise mit dem aktiven MLX-Modell bearbeiten.
+                    Process large files statelessly in chunks with the active MLX model.
                 </p>
             </div>
         </div>
@@ -623,7 +623,7 @@
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <div>
                 <label class="block text-sm text-slate-400 mb-2">
-                    Eingabedatei
+                    Input file
                 </label>
 
                 <div class="flex gap-2">
@@ -639,14 +639,14 @@
                         type="button"
                         class="shrink-0 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition"
                     >
-                        Datei auswählen
+                        Choose file
                     </button>
 
                     <input
                         id="batchInputPath"
                         type="text"
                         readonly
-                        placeholder="Noch keine Datei hochgeladen"
+                        placeholder="No file uploaded"
                         class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-slate-400 font-mono outline-none"
                     >
                 </div>
@@ -659,14 +659,14 @@
 
             <div>
                 <label class="block text-sm text-slate-400 mb-2">
-                    Dateityp
+                    File type
                 </label>
 
                 <select
                     id="batchFileType"
                     class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500"
                 >
-                    <option value="auto">Automatisch</option>
+                    <option value="auto">Automatic</option>
                     <option value="text">Text</option>
                     <option value="sql">SQL</option>
                     <option value="csv">CSV</option>
@@ -677,13 +677,13 @@
 
         <div class="mt-5">
             <label class="block text-sm text-slate-400 mb-2">
-                Transformations-Anweisung
+                Transformation instruction
             </label>
 
             <textarea
                 id="batchInstruction"
                 rows="6"
-                placeholder="Beispiel: Ersetze alle personenbezogenen Daten durch neutrale Platzhalter. Verändere sonst nichts."
+                placeholder="Example: Replace personal data with neutral placeholders. Change nothing else."
                 class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 resize-y"
             ></textarea>
         </div>
@@ -691,7 +691,7 @@
         <div class="grid grid-cols-1 md:grid-cols-[220px_auto] gap-4 mt-5 items-end">
             <div>
                 <label class="block text-sm text-slate-400 mb-2">
-                    Chunkgröße
+                    Chunk size
                 </label>
 
                 <select
@@ -712,7 +712,7 @@
                     type="button"
                     class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold transition"
                 >
-                    Batch starten
+                    Start batch
                 </button>
             </div>
         </div>
@@ -728,7 +728,7 @@
                     type="button"
                     class="text-sm text-blue-400 hover:text-blue-300"
                 >
-                    Aktualisieren
+                    Refresh
                 </button>
             </div>
 
@@ -738,7 +738,7 @@
                 class="space-y-3"
             >
                 <div class="text-sm text-slate-500">
-                    Noch keine Jobs geladen.
+                    No jobs loaded.
                 </div>
             </div>
         </div>

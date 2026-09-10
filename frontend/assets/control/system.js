@@ -75,16 +75,16 @@ async function loadSystemView() {
         document.getElementById('sysArgs').textContent =
             args.length
                 ? args.join(' \\\n')
-                : 'Keine laufenden Serverargumente gefunden.';
+                : 'No running server arguments found.';
 
         updated.textContent =
-            'Aktualisiert: ' +
-            new Date().toLocaleTimeString('de-DE');
+            'Updated: ' +
+            new Date().toLocaleTimeString('en-US');
 
     } catch (error) {
         if (updated) {
             updated.textContent =
-                'Fehler: ' + error.message;
+                'Error: ' + error.message;
         }
     }
 }

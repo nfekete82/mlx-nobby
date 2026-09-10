@@ -102,7 +102,7 @@ function profileT(key, fallback = '', variables = {}) {
 
         sensitive.append(
             sensitiveInput,
-            document.createTextNode(' Sensibel')
+            document.createTextNode(' ' + profileT('profile.sensitive', 'Sensitive'))
         );
 
         const actions = document.createElement('div');
@@ -116,7 +116,7 @@ function profileT(key, fallback = '', variables = {}) {
         const done = document.createElement('button');
         done.type = 'button';
         done.className = 'settings-button';
-        done.textContent = 'Fertig';
+        done.textContent = profileT('common.done', 'Done');
 
         actions.append(remove, done);
         footer.append(sensitive, actions);
@@ -239,7 +239,7 @@ function profileT(key, fallback = '', variables = {}) {
         } catch (error) {
             if (status) {
                 status.textContent =
-                    'Profil konnte nicht geladen werden: ' +
+                    profileT('profile.load_failed', 'Could not load profile:') + ' ' +
                     error.message;
             }
         }
@@ -279,7 +279,7 @@ function profileT(key, fallback = '', variables = {}) {
             });
 
             if (status) {
-                status.textContent = '✓ Profil gespeichert';
+                status.textContent = profileT('profile.saved', '✓ Profile saved');
             }
         } catch (error) {
             if (status) {
@@ -321,4 +321,6 @@ function profileT(key, fallback = '', variables = {}) {
         load,
         save
     };
+
+    document.addEventListener('mlx-language-changed', load);
 })();

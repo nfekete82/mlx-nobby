@@ -91,7 +91,7 @@ async function compactSession(session, automatic = false) {
             );
 
         console.log(
-            'Kontext komprimiert:',
+            'Context compressed:',
             before,
             '→',
             after
@@ -101,7 +101,7 @@ async function compactSession(session, automatic = false) {
 
     } catch (error) {
         console.error(
-            'Komprimierung fehlgeschlagen:',
+            'Compression failed:',
             error
         );
 

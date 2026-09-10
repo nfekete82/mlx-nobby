@@ -185,7 +185,7 @@ async function loadLogsView() {
 
         } else {
             output.textContent =
-                'Keine Logs vorhanden.';
+                'No logs available.';
         }
 
         const updated =
@@ -197,14 +197,14 @@ async function loadLogsView() {
             updated.textContent =
                 new Date()
                     .toLocaleTimeString(
-                        'de-DE'
+                        'en-US'
                     );
         }
 
     } catch (error) {
 
         output.textContent =
-            'Logs konnten nicht geladen werden:\n' +
+            'Could not load logs:\n' +
             error.message;
     }
 }

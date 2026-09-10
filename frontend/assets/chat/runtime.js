@@ -680,7 +680,7 @@ async function loadStatus() {
         document.getElementById(
             'statusText'
         ).textContent =
-            'Nicht erreichbar';
+            rut('status_unavailable', 'Unavailable');
 
         document.getElementById(
             'onlineDot'
@@ -822,7 +822,7 @@ function renderRuntimeInfo(status, systemData) {
         appendRuntimeRow(
             runtime,
             'System',
-            'Systemdaten nicht erreichbar'
+            rut('system_unavailable', 'System data unavailable')
         );
     }
 
@@ -914,9 +914,11 @@ async function refreshRuntimeInfo() {
         renderRuntimeInfo(status, systemData);
 
     } catch (error) {
-        runtimeInfoContent.textContent =
-            'Runtime-Informationen nicht erreichbar: ' +
-            error.message;
+        runtimeInfoContent.textContent = rut(
+            'info_unavailable',
+            'Runtime information unavailable: {message}',
+            { message: error.message }
+        );
 
     } finally {
         runtimeInfoRefreshing = false;
@@ -958,7 +960,7 @@ function renderModelList() {
             const active = document.createElement('span');
 
             active.className = 'model-option-active';
-            active.textContent = '● aktiv';
+            active.textContent = rut('active_badge', '● active');
             alias.appendChild(active);
         }
 
@@ -993,7 +995,7 @@ async function loadModelAliases() {
         throw new Error(
             errorMessage(
                 data,
-                'Alias-Liste konnte nicht geladen werden'
+                rut('aliases_failed', 'Could not load model aliases')
             )
         );
     }
@@ -1019,7 +1021,7 @@ async function openModelPopover() {
         const status = await fetchStatus();
 
         modelSwitchStatus.textContent =
-            'Aktiv: ' + modelAliasFor(status);
+            rut('active_prefix', 'Active:') + ' ' + modelAliasFor(status);
         modelTitle.textContent = modelAliasFor(status);
 
     } catch (error) {
@@ -1126,7 +1128,7 @@ async function toggleThinking(enabled) {
 
         if (!response.ok) {
             throw new Error(
-                errorMessage(data, 'Thinking-Wechsel fehlgeschlagen')
+                errorMessage(data, rut('thinking_failed', 'Thinking switch failed'))
             );
         }
 

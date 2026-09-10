@@ -2,6 +2,8 @@
 
 set -u
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 OK=0
 WARN=0
 FAIL=0
@@ -113,8 +115,8 @@ fi
 printf "\n${bold}Python-Umgebungen${reset}\n"
 
 for venv in agent-venv runtime-venv embedding-venv image-venv speech-venv; do
-    if [ -x "$venv/bin/python" ]; then
-        version="$("$venv/bin/python" --version 2>&1)"
+    if [ -x "$ROOT/$venv/bin/python" ]; then
+        version="$("$ROOT/$venv/bin/python" --version 2>&1)"
         ok "$venv: $version"
     else
         warn "$venv fehlt"

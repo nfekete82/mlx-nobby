@@ -225,13 +225,13 @@ function notesT(key, fallback = '', variables = {}) {
             contentInput.value.trim();
 
         if (!name) {
-            alert('Bitte einen Namen eingeben.');
+            alert(notesT('notes.enter_name', 'Enter a name.'));
             nameInput.focus();
             return;
         }
 
         if (!content) {
-            alert('Bitte einen Notiztext eingeben.');
+            alert(notesT('notes.enter_content', 'Enter note text.'));
             contentInput.focus();
             return;
         }
@@ -587,7 +587,7 @@ function notesT(key, fallback = '', variables = {}) {
                     } catch (error) {
                         console.error(error);
                         alert(
-                            'Aktion fehlgeschlagen.'
+                            notesT('notes.action_failed', 'Action failed.')
                         );
                     }
                 }

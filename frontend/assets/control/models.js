@@ -37,7 +37,7 @@
         const complete = cache ? cache.complete !== false : false;
         const running = job && job.status === 'running';
         const alias = (model && model.alias) || (cache && cache.alias) || '';
-        const repo = (model && model.repo) || (cache && cache.repo) || job?.target || 'Unbekanntes Modell';
+        const repo = (model && model.repo) || (cache && cache.repo) || job?.target || 'Unknown model';
 
         const card = document.createElement('div');
         let border = active ? 'border-emerald-700' : 'border-slate-800';
@@ -69,13 +69,13 @@
             ));
             if (model.quantization) meta.appendChild(makeBadge(model.quantization, 'bg-amber-950 text-amber-300 border-amber-900'));
         }
-        if (local) meta.appendChild(makeBadge(complete ? '✓ LOKAL' : '⚠ UNVOLLSTÄNDIG', complete ? 'bg-emerald-950 text-emerald-300 border-emerald-900' : 'bg-amber-950 text-amber-300 border-amber-900'));
+        if (local) meta.appendChild(makeBadge(complete ? '✓ LOCAL' : '⚠ INCOMPLETE', complete ? 'bg-emerald-950 text-emerald-300 border-emerald-900' : 'bg-amber-950 text-amber-300 border-amber-900'));
         else meta.appendChild(makeBadge('Hugging Face', 'bg-blue-950 text-blue-300 border-blue-900'));
         if (cache && cache.size) meta.appendChild(makeBadge(cache.size, 'bg-slate-900 text-slate-300 border-slate-700'));
         info.appendChild(meta);
         head.appendChild(info);
 
-        if (active) head.appendChild(makeBadge('● AKTIV', 'bg-emerald-950 text-emerald-400 border-emerald-800'));
+        if (active) head.appendChild(makeBadge('● ACTIVE', 'bg-emerald-950 text-emerald-400 border-emerald-800'));
         else if (running) head.appendChild(makeBadge('⟳ DOWNLOAD', 'bg-blue-950 text-blue-400 border-blue-800'));
         card.appendChild(head);
 
@@ -88,31 +88,31 @@
             card.appendChild(wrap);
             const text = document.createElement('div');
             text.className = 'mt-2 text-xs text-blue-400';
-            text.textContent = 'Download läuft im Hintergrund…';
+            text.textContent = 'Download is running in the background…';
             card.appendChild(text);
         }
 
         if (cache && !complete) {
             const warning = document.createElement('div');
             warning.className = 'mt-3 text-xs text-amber-400';
-            warning.textContent = (cache.incomplete_files || 0) + ' unvollständige Dateien' + (cache.incomplete_size ? ' · ' + cache.incomplete_size : '');
+            warning.textContent = (cache.incomplete_files || 0) + ' incomplete files' + (cache.incomplete_size ? ' · ' + cache.incomplete_size : '');
             card.appendChild(warning);
         }
 
         if (job && job.status === 'failed') {
             const err = document.createElement('div');
             err.className = 'mt-3 text-xs text-red-400';
-            err.textContent = job.error || 'Letzter Modelljob fehlgeschlagen.';
+            err.textContent = job.error || 'The last model job failed.';
             card.appendChild(err);
         }
 
         const actions = document.createElement('div');
         actions.className = 'mt-4 flex flex-wrap items-center gap-2';
-        if (model && !active) addButton(actions, 'Starten', 'model-btn bg-blue-700 hover:bg-blue-600', () => switchModel(alias), running);
-        if (cache && !active && !complete) addButton(actions, '↻ Fortsetzen', 'retry-btn bg-amber-700 hover:bg-amber-600', () => retryDownload(alias || repo), running);
-        if (cache && !active && complete) addButton(actions, 'Neu herunterladen', 'redownload-btn bg-slate-800 hover:bg-blue-900 text-slate-300 hover:text-blue-300', () => redownloadModel(alias || repo, repo, cache.size), running);
-        if (cache) addButton(actions, active ? 'Aktives Modell' : 'Cache löschen', 'delete-cache-btn bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-red-300', active ? null : () => deleteModelCache(alias || repo, repo, cache.size), active || running, active ? 'Der Cache des aktiven Modells kann nicht gelöscht werden.' : '');
-        if (model && !active) addButton(actions, 'Alias entfernen', 'remove-model-btn bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-red-300', () => removeModelAlias(alias, repo), running);
+        if (model && !active) addButton(actions, 'Start', 'model-btn bg-blue-700 hover:bg-blue-600', () => switchModel(alias), running);
+        if (cache && !active && !complete) addButton(actions, '↻ Resume', 'retry-btn bg-amber-700 hover:bg-amber-600', () => retryDownload(alias || repo), running);
+        if (cache && !active && complete) addButton(actions, 'Download again', 'redownload-btn bg-slate-800 hover:bg-blue-900 text-slate-300 hover:text-blue-300', () => redownloadModel(alias || repo, repo, cache.size), running);
+        if (cache) addButton(actions, active ? 'Active model' : 'Delete cache', 'delete-cache-btn bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-red-300', active ? null : () => deleteModelCache(alias || repo, repo, cache.size), active || running, active ? 'The active model cache cannot be deleted.' : '');
+        if (model && !active) addButton(actions, 'Remove alias', 'remove-model-btn bg-slate-800 hover:bg-red-900 text-slate-300 hover:text-red-300', () => removeModelAlias(alias, repo), running);
         if (actions.children.length) card.appendChild(actions);
         return card;
     }
@@ -144,7 +144,7 @@
                 if (!usedCache.has(i)) entries.push({ model: null, cache, job: jobForModel(jobs, cache.alias, cache.repo) });
             });
 
-            // Auch laufende Downloads zeigen, die noch keinen Cache-/Alias-Eintrag erzeugt haben.
+            // Include running downloads that have not created a cache or alias entry yet.
             for (const job of jobs.filter(j => j.status === 'running')) {
                 const exists = entries.some(e => e.job && e.job.id === job.id);
                 if (!exists) entries.unshift({ model: null, cache: null, job });
@@ -153,14 +153,14 @@
             entries.sort((a, b) => Number(!!(b.model?.active || b.cache?.active)) - Number(!!(a.model?.active || a.cache?.active)) || Number(b.job?.status === 'running') - Number(a.job?.status === 'running'));
             container.innerHTML = '';
             entries.forEach(e => container.appendChild(renderModel(e.model, e.cache, e.job)));
-            if (!entries.length) container.textContent = 'Noch keine Modelle vorhanden.';
+            if (!entries.length) container.textContent = 'No models available.';
 
             const active = entries.filter(e => e.model?.active || e.cache?.active).length;
             const running = jobs.filter(j => j.status === 'running').length;
-            if (summary) summary.textContent = entries.length + ' Modelle · ' + caches.length + ' lokal' + (active ? ' · ' + active + ' aktiv' : '') + (running ? ' · ' + running + ' Download' + (running === 1 ? '' : 's') : '');
+            if (summary) summary.textContent = entries.length + ' models · ' + caches.length + ' local' + (active ? ' · ' + active + ' active' : '') + (running ? ' · ' + running + ' download' + (running === 1 ? '' : 's') : '');
         } catch (error) {
-            container.textContent = 'Modellverwaltung konnte nicht geladen werden.';
-            if (summary) summary.textContent = 'Fehler';
+            container.textContent = 'Could not load model management.';
+            if (summary) summary.textContent = 'Error';
         } finally {
             loading = false;
         }

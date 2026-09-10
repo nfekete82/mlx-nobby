@@ -114,7 +114,7 @@ function startEditMessage(index, article) {
         'message-action-btn edit-cancel';
 
     cancel.textContent =
-        'Abbrechen';
+        chatT('common.cancel', 'Cancel');
 
     save.addEventListener(
         'click',
@@ -269,7 +269,7 @@ document.getElementById('sidebarSettingsButton').addEventListener('click', () =>
 
 function loadJobsPanel() {
     const content = document.getElementById('jobsPanelContent');
-    content.textContent = 'Lade Vorgänge…';
+    content.textContent = chatT('ui.jobs_loading', 'Loading jobs…');
     return fetch('/api/mlx/batch').then(response => {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
@@ -277,7 +277,7 @@ function loadJobsPanel() {
         const jobs = (data.jobs || []).slice(0, 8);
         content.innerHTML = jobs.length ? jobs.map(job => {
             const active = ['queued', 'running', 'paused'].includes(job.status);
-            const progress = job.total_chunks ? Math.round((job.processed_chunks || 0) / job.total_chunks * 100) + ' %' : (active ? 'Verarbeitung läuft' : 'Fertig');
+            const progress = job.total_chunks ? Math.round((job.processed_chunks || 0) / job.total_chunks * 100) + ' %' : (active ? chatT('ui.processing_running', 'Processing') : chatT('ui.completed', 'Completed'));
             return '<div class="jobs-panel-item"><strong>' + (job.output_name || job.original_name || job.input_name || chatT('ui.file', 'File')) + '</strong><span>' + (job.operation || chatT('ui.file_operation', 'File operation')) + ' · ' + progress + '</span></div>';
         }).join('') : chatT('ui.no_active_file_jobs', 'No active file operations.');
     }).catch(() => { content.textContent = chatT('ui.jobs_unavailable', 'Jobs are currently unavailable.'); });
@@ -674,7 +674,7 @@ async function loadModelRoles() {
 
             automatic.value = 'auto';
             automatic.textContent =
-                'Automatisch' +
+                chatT('ui.automatic', 'Automatic') +
                 (
                     resolution.alias
                         ? ' (' + resolution.alias + ')'
@@ -692,7 +692,7 @@ async function loadModelRoles() {
                     model.alias +
                     (
                         model.active
-                            ? ' · aktiv'
+                            ? chatT('ui.active_suffix', ' · active')
                             : ''
                     );
 
@@ -805,12 +805,12 @@ const WORKSPACE_ERRORS = {
     WORKSPACE_PERMISSION_DENIED: chatT('ui.workspace_permission_denied', 'No permission for this folder.'),
     FOLDER_PICKER_UNAVAILABLE: chatT('ui.folder_picker_unavailable', 'The macOS folder picker is unavailable.'),
     FOLDER_PICKER_FAILED: chatT('ui.folder_picker_failed', 'The folder picker could not be opened.'),
-    WORKSPACE_CHANGED: 'Der aktive Workspace wurde zwischenzeitlich gewechselt.'
+    WORKSPACE_CHANGED: chatT('ui.workspace_changed', 'The active workspace changed during the operation.')
 };
 
 function workspaceErrorMessage(error) {
     const code = String(error?.message || error || '');
-    return WORKSPACE_ERRORS[code] || code || 'Workspace-Aktion fehlgeschlagen.';
+    return WORKSPACE_ERRORS[code] || code || chatT('ui.workspace_action_failed', 'Workspace action failed.');
 }
 
 async function workspaceRequest(path, options = {}) {
@@ -896,7 +896,7 @@ async function loadWorkspaces() {
             const item = document.createElement('div');
             item.className = 'jobs-panel-item';
             const name = document.createElement('strong');
-            name.textContent = space.name + (space.active ? ' · aktiv' : '');
+            name.textContent = space.name + (space.active ? chatT('ui.active_suffix', ' · active') : '');
             const path = document.createElement('span');
             path.textContent = space.root_path;
             path.title = space.root_path;
@@ -1043,10 +1043,10 @@ document.getElementById('importChatsFile').addEventListener(
                 await file.text()
             );
 
-            alert(imported + ' Chat(s) importiert.');
+            alert(chatT('ui.chats_imported', '{count} chat(s) imported.', { count: imported }));
 
         } catch (error) {
-            alert('Import fehlgeschlagen: ' + error.message);
+            alert(chatT('ui.import_failed', 'Import failed: {message}', { message: error.message }));
         } finally {
             event.target.value = '';
         }
@@ -1251,7 +1251,7 @@ input.focus();
 
     function serviceDetail(service) {
         if (!service.online) {
-            return 'Dienst nicht erreichbar';
+            return chatT('ui.service_unavailable', 'Service unavailable');
         }
 
         return service.detail || chatT('ui.ready', 'Ready');
@@ -1298,7 +1298,7 @@ input.focus();
         const title = createTextElement(
             'strong',
             'settings-service-name',
-            service.name || 'Dienst'
+            service.name || chatT('ui.service', 'Service')
         );
 
         const status = document.createElement('span');
@@ -1368,7 +1368,7 @@ input.focus();
             createTextElement(
                 'strong',
                 '',
-                'Dienststatus konnte nicht geladen werden'
+                chatT('ui.service_status_failed', 'Could not load service status')
             ),
             createTextElement(
                 'span',
@@ -1433,9 +1433,9 @@ input.focus();
                 services = nativeResult.value.payload.services.slice();
             } else {
                 services.push({
-                    name: 'Lokale Dienste',
+                    name: chatT('ui.local_services', 'Local services'),
                     online: false,
-                    detail: 'Agent nicht erreichbar',
+                    detail: chatT('ui.agent_unavailable', 'Agent unavailable'),
                 });
             }
 
@@ -1461,13 +1461,15 @@ input.focus();
 
             if (updated) {
                 updated.textContent =
-                    `Zuletzt geprüft ${new Date().toLocaleTimeString('de-DE')}`;
+                    chatT('ui.last_checked', 'Last checked: {time}', {
+                        time: new Date().toLocaleTimeString(window.MLXI18n?.getLocale?.() || 'en-US')
+                    });
             }
         } catch (error) {
             renderServiceHealthError(error?.message);
 
             if (updated) {
-                updated.textContent = 'Status nicht verfügbar';
+                updated.textContent = chatT('ui.status_unavailable', 'Status unavailable');
             }
         } finally {
             serviceHealthBusy = false;
@@ -1484,6 +1486,7 @@ input.focus();
         if (!grid) return;
 
         refresh?.addEventListener('click', loadServiceHealth);
+        document.addEventListener('mlx-language-changed', loadServiceHealth);
 
         document
             .querySelector('[data-settings-system-tab="server"]')
@@ -1536,7 +1539,7 @@ input.focus();
                     .trim();
 
             workspaceValue.textContent =
-                text || 'Kein Workspace';
+                text || chatT('ui.no_workspace', 'No workspace');
 
             workspaceValue.title =
                 workspace.title || text || '';

@@ -54,8 +54,8 @@
                 id="railChats"
                 class="rail-button"
                 type="button"
-                aria-label="Chats anzeigen"
-                title="Chats anzeigen"
+                aria-label="Chats anzeigen" data-i18n-aria-label="ui.show_chats"
+                title="Chats anzeigen" data-i18n-title="ui.show_chats"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.7-5.1A7 7 0 0 1 3 12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z"></path>
@@ -201,6 +201,7 @@
                     tabindex="0"
                     aria-haspopup="true"
                     aria-expanded="false"
+                    data-i18n="runtime_ui.runtime_loading"
                 >
                     MLX wird geladen…
                 </div>
@@ -338,13 +339,13 @@
             <div class="field">
                 <label for="showMetrics" data-i18n="ui.response_statistics">Antwort-Statistiken</label>
                 <select id="showMetrics">
-                    <option value="off">Aus</option>
-                    <option value="compact" selected>Kompakt</option>
-                    <option value="full">Vollständig</option>
+                    <option value="off" data-i18n="ui.off">Aus</option>
+                    <option value="compact" selected data-i18n="ui.compact">Kompakt</option>
+                    <option value="full" data-i18n="ui.full">Vollständig</option>
                 </select>
             </div>
-            <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> Auto-Scroll während Streaming</label>
-            <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> Runtime-/Thinking-Infos anzeigen</label>
+            <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> <span data-i18n="ui.auto_scroll_streaming">Auto-Scroll während Streaming</span></label>
+            <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
         </section>
 
         <section class="settings-card">
@@ -373,7 +374,7 @@
                 <input id="profileEnabled" type="checkbox" checked>
                 <span data-i18n="profile.enabled">Persönliches Profil bei Antworten berücksichtigen</span>
             </label>
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="profile.enabled_hint">
                 Profilinformationen werden lokal gespeichert und nur verwendet, wenn sie für die aktuelle Frage relevant sind.
             </p>
         </section>
@@ -388,11 +389,11 @@
                 <textarea
                     id="profileResponsePreferences"
                     rows="3"
-                    placeholder="z. B. direkt, technisch und kompakt"
+                    placeholder="z. B. direkt, technisch und kompakt" data-i18n-placeholder="profile.preferences_placeholder"
                 ></textarea>
             </div>
 
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="profile.preferences_hint">
                 Stil, Ton, Detailgrad und weitere Vorgaben für Antworten.
             </p>
         </section>
@@ -452,8 +453,7 @@
 
             <p
                 class="settings-hint"
-                data-i18n="language.hint"
-             data-i18n="ui.language_description">Ändert die Sprache der Benutzeroberfläche.</p>
+                data-i18n="language.hint">Ändert die Sprache der Benutzeroberfläche.</p>
         </section>
 
         <section class="settings-card">
@@ -461,7 +461,7 @@
 
         <div class="field">
             <label for="chatFontSize">
-                Schriftgröße
+                <span data-i18n="ui.font_size">Schriftgröße</span>
                 <span id="chatFontSizeValue" class="appearance-value">15 px</span>
             </label>
 
@@ -555,15 +555,15 @@
     </div>
 
     <div class="field">
-        <label>System-Prompt-Preset</label>
+        <label data-i18n="ui.system_prompt_preset">System-Prompt-Preset</label>
 
         <select id="systemPromptPreset">
             <option value="general" data-i18n="ui.general">Allgemein</option>
             <option value="coding">Coding</option>
-            <option value="analysis">Analyse</option>
+            <option value="analysis" data-i18n="ui.preset_analysis">Analyse</option>
             <option value="roleplay">Roleplay</option>
-            <option value="concise-de">Deutsch knapp</option>
-            <option value="custom">Benutzerdefiniert</option>
+            <option value="concise-de" data-i18n="ui.preset_concise_de">Deutsch knapp</option>
+            <option value="custom" data-i18n="ui.custom">Benutzerdefiniert</option>
         </select>
     </div>
 
@@ -580,31 +580,31 @@
     <section class="settings-card">
     <h4 class="settings-group-title" data-i18n="ui.context">Kontext</h4>
 
-    <label class="settings-toggle"><input id="autoCompact" type="checkbox" checked> Auto-Compact aktivieren</label>
-    <div class="settings-hint">Compact ab 80.000 Zeichen · Max Context 120.000 Zeichen</div>
+    <label class="settings-toggle"><input id="autoCompact" type="checkbox" checked> <span data-i18n="ui.enable_auto_compact">Auto-Compact aktivieren</span></label>
+    <div class="settings-hint" data-i18n="ui.auto_compact_hint">Compact ab 80.000 Zeichen · Max Context 120.000 Zeichen</div>
     </section>
 
     <section class="settings-card">
     <h4 class="settings-group-title" data-i18n="ui.new_chats">Neue Chats</h4>
 
     <div class="field">
-        <label>Standard-Preset</label>
+        <label data-i18n="ui.default_preset">Standard-Preset</label>
         <select id="defaultPreset">
             <option value="general" data-i18n="ui.general">Allgemein</option>
             <option value="coding">Coding</option>
-            <option value="analysis">Analyse</option>
+            <option value="analysis" data-i18n="ui.preset_analysis">Analyse</option>
             <option value="roleplay">Roleplay</option>
-            <option value="concise-de">Deutsch knapp</option>
+            <option value="concise-de" data-i18n="ui.preset_concise_de">Deutsch knapp</option>
         </select>
     </div>
 
     <div class="settings-row">
-        <div class="field"><label>Standard-Temperature</label><input id="defaultTemperature" type="number" min="0" max="2" step="0.1" value="0.7"></div>
-        <div class="field"><label>Standard-Max-Tokens</label><input id="defaultMaxTokens" type="number" min="1" max="32000" value="3000"></div>
+        <div class="field"><label data-i18n="ui.default_temperature">Standard-Temperature</label><input id="defaultTemperature" type="number" min="0" max="2" step="0.1" value="0.7"></div>
+        <div class="field"><label data-i18n="ui.default_max_tokens">Standard-Max-Tokens</label><input id="defaultMaxTokens" type="number" min="1" max="32000" value="3000"></div>
     </div>
 
     <h4 class="settings-group-title">Thinking</h4>
-    <label class="settings-toggle"><input id="thinkingPreferred" type="checkbox"> Thinking beim Start bevorzugen</label>
+    <label class="settings-toggle"><input id="thinkingPreferred" type="checkbox"> <span data-i18n="ui.prefer_thinking_start">Thinking beim Start bevorzugen</span></label>
     <div class="settings-hint" data-i18n="ui.preference_no_restart">Wird nur als Präferenz gespeichert; ein Chatwechsel startet MLX nicht neu.</div>
     </section>
     </div>
@@ -659,28 +659,28 @@
                     <label for="knowledgePath" data-i18n="ui.file_or_folder">Datei oder Ordner</label>
                     <div class="knowledge-path-picker">
                         <input id="knowledgePath" type="text" placeholder="~/Documents" spellcheck="false">
-                        <button id="knowledgeSelectFolder" class="settings-button" type="button">
+                        <button id="knowledgeSelectFolder" class="settings-button" type="button" data-i18n="ui.select">
                             Auswählen …
                         </button>
                     </div>
                 </div>
                 <div class="field">
-                    <label for="knowledgeName">Name (optional)</label>
-                    <input id="knowledgeName" type="text" placeholder="z. B. MLX Dokumentation">
+                    <label for="knowledgeName" data-i18n="ui.optional_name">Name (optional)</label>
+                    <input id="knowledgeName" type="text" placeholder="z. B. MLX Dokumentation" data-i18n-placeholder="ui.knowledge_name_placeholder">
                 </div>
                 <div class="settings-action-row">
-                    <button id="knowledgeIndex" class="settings-button primary" type="button">Indexieren</button>
+                    <button id="knowledgeIndex" class="settings-button primary" type="button" data-i18n="ui.index">Indexieren</button>
                     <span id="knowledgeIndexResult" class="settings-hint" role="status"></span>
                 </div>
             </section>
 
             <section class="settings-card">
-                <h4 class="settings-group-title">Retrieval testen</h4>
+                <h4 class="settings-group-title" data-i18n="ui.test_retrieval">Retrieval testen</h4>
                 <div class="field">
-                    <label for="knowledgeQuery">Testabfrage</label>
-                    <input id="knowledgeQuery" type="text" placeholder="Was soll in der Wissensbasis gefunden werden?">
+                    <label for="knowledgeQuery" data-i18n="ui.test_query">Testabfrage</label>
+                    <input id="knowledgeQuery" type="text" placeholder="Was soll in der Wissensbasis gefunden werden?" data-i18n-placeholder="ui.knowledge_query_placeholder">
                 </div>
-                <button id="knowledgeSearch" class="settings-button" type="button">Suchen</button>
+                <button id="knowledgeSearch" class="settings-button" type="button" data-i18n="ui.search">Suchen</button>
                 <div id="knowledgeResults" class="knowledge-results"></div>
             </section>
         </div>
@@ -688,14 +688,14 @@
     <div class="settings-pane settings-admin-pane" data-settings-pane="system" hidden>
         <div class="settings-page-intro settings-admin-intro">
             <h4>Server</h4>
-            <p>Lokale Dienste und die vorhandene Systemverwaltung im Überblick.</p>
+            <p data-i18n="ui.system_overview">Lokale Dienste und die vorhandene Systemverwaltung im Überblick.</p>
         </div>
         <div class="settings-service-toolbar">
             <div>
-                <strong>Live-Status</strong>
+                <strong data-i18n="ui.live_status">Live-Status</strong>
                 <span id="serviceHealthUpdated" data-i18n="ui.status_loading">Status wird geladen …</span>
             </div>
-            <button id="serviceHealthRefresh" class="settings-button" type="button">
+            <button id="serviceHealthRefresh" class="settings-button" type="button" data-i18n="ui.refresh">
                 Aktualisieren
             </button>
         </div>
@@ -703,10 +703,10 @@
         <div
             id="serviceHealthGrid"
             class="settings-service-grid"
-            aria-label="Status der lokalen Dienste"
+            aria-label="Status der lokalen Dienste" data-i18n-aria-label="ui.local_service_status"
             aria-live="polite"
         >
-            <div class="settings-service-loading">
+            <div class="settings-service-loading" data-i18n="ui.checking_services">
                 Dienste werden geprüft …
             </div>
         </div>
@@ -741,7 +741,7 @@
         class="composer"
     >
 
-        <div class="drop-overlay">
+        <div class="drop-overlay" data-i18n="ui.drop_files">
             Dateien hier ablegen
         </div>
 
@@ -864,8 +864,8 @@
                                 </span>
 
                                 <span class="composer-plus-meta-copy">
-                                    <small>Aktiver Workspace</small>
-                                    <strong id="composerWorkspaceValue">
+                                    <small data-i18n="ui.active_workspace">Aktiver Workspace</small>
+                                    <strong id="composerWorkspaceValue" data-i18n="ui.no_workspace">
                                         Kein Workspace
                                     </strong>
                                 </span>
@@ -957,7 +957,7 @@
                 id="dictationButton"
                 class="dictation-button"
                 type="button"
-                aria-label="Diktat starten"
+                aria-label="Diktat starten" data-i18n-aria-label="dictation.start"
                 aria-pressed="false"
                 title="Diktat starten"
             >
@@ -1079,7 +1079,7 @@
 
     <textarea
         id="noteContent"
-        placeholder="Notiztext..."
+        placeholder="Notiztext..." data-i18n-placeholder="ui.note_content"
         rows="7"
         style="
             width:100%;
@@ -1108,7 +1108,7 @@
             font-weight:600;
         "
     >
-        Notiz speichern
+        <span data-i18n="notes.save_note">Notiz speichern</span>
     </button>
 </div>
 

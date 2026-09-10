@@ -626,7 +626,7 @@
                     info.appendChild(node('span', 'model-console-availability error', mt('storage.possible_hf_duplicate', 'Possible duplicate with Hugging Face · please check')));
                 }
                 const right = node('div', 'model-console-storage-actions');
-                right.appendChild(badge(model.active ? mt('runtime.active_model', 'Active model') : 'Lokal unter ~/Models', model.active ? 'active' : ''));
+                right.appendChild(badge(model.active ? mt('runtime.active_model', 'Active model') : mt('storage.local_models_location', 'Local under ~/Models'), model.active ? 'active' : ''));
                 row.append(info, right);
                 localList.appendChild(row);
             });
@@ -752,12 +752,12 @@
 
             const status =
                 job.status === 'running' ? mt('status.downloading', 'Downloading') :
-                job.status === 'queued' ? 'Wartet' :
+                job.status === 'queued' ? mt('status.waiting', 'Queued') :
                 job.status === 'detached' ? mt('remaining.running', 'Running') :
-                job.status === 'completed' ? 'Abgeschlossen' :
-                job.status === 'failed' ? 'Fehlgeschlagen' :
-                job.status === 'interrupted' ? 'Unterbrochen' :
-                (job.status || 'Unbekannt');
+                job.status === 'completed' ? mt('status.completed', 'Completed') :
+                job.status === 'failed' ? mt('status.failed', 'Failed') :
+                job.status === 'interrupted' ? mt('status.interrupted', 'Interrupted') :
+                (job.status || mt('status.unknown', 'Unknown'));
 
             const statusClass =
                 isJobRunning(job) ? 'download' :
@@ -1167,7 +1167,13 @@
                 },
             });
             state.status = status;
-            const success = type === 'switch' ? displayName(model) + ' wurde geladen' : type === 'restart' ? mt('runtime_restarted', 'Runtime restarted') : type === 'start' ? 'Runtime gestartet' : 'Runtime gestoppt';
+            const success = type === 'switch'
+                ? mt('runtime.loaded', '{model} loaded', { model: displayName(model) })
+                : type === 'restart'
+                    ? mt('runtime.restarted', 'Runtime restarted')
+                    : type === 'start'
+                        ? mt('runtime.started', 'Runtime started')
+                        : mt('runtime.stopped', 'Runtime stopped');
             toast(success);
             if (liveRegion) liveRegion.textContent = success + '.';
             await load({ force: true });
@@ -1179,8 +1185,8 @@
             const message = cleanTechnicalError(error);
             state.runtimeAction = { ...state.runtimeAction, error: message };
             state.error = null;
-            if (liveRegion) liveRegion.textContent = 'Runtime-Aktion fehlgeschlagen: ' + message;
-            toast('Runtime-Aktion fehlgeschlagen', 'error', message);
+            if (liveRegion) liveRegion.textContent = mt('runtime.action_failed', 'Runtime action failed') + ': ' + message;
+            toast(mt('runtime.action_failed', 'Runtime action failed'), 'error', message);
             render();
             return false;
         } finally {
@@ -1207,7 +1213,7 @@
                 await waitImpl(800);
             }
             if (!confirmed) throw new Error(mt('runtime.thinking_timeout', 'Thinking was not confirmed by the runtime in time.'));
-            toast('Thinking ' + (enabled ? 'aktiviert' : 'deaktiviert'));
+            toast('Thinking ' + (enabled ? mt('status.on', 'enabled') : mt('status.off', 'disabled')));
             state.runtimeAction = null;
             await load({ force: true });
             window.MLXChatRuntime?.refreshModelState?.().catch(() => {});
@@ -1284,7 +1290,7 @@
             toast(mt('messages.download_continues', 'Download resumed'));
             await load({ force: true });
         } catch (error) {
-            toast('Download konnte nicht gestartet werden', 'error', cleanTechnicalError(error));
+            toast(mt('status.download_failed', 'Download failed'), 'error', cleanTechnicalError(error));
         }
     }
 
@@ -1295,23 +1301,23 @@
             const data = await requestJson('/api/mlx/logs/all?limit=120');
             const sources = Array.isArray(data.sources) ? data.sources : [];
             dialogBody.innerHTML = '';
-            if (!sources.length) dialogBody.appendChild(node('div', 'model-console-empty', 'Keine Logs vorhanden.'));
+            if (!sources.length) dialogBody.appendChild(node('div', 'model-console-empty', mt('dialog.no_logs', 'No logs available.')));
             sources.forEach(source => {
                 const details = node('details', 'model-console-log-source');
                 if (source.id === 'mlx-errors') details.open = true;
                 details.appendChild(node('summary', '', source.name || source.id));
-                details.appendChild(node('pre', 'model-console-log', (source.lines || []).join('\n') || 'Keine Einträge'));
+                details.appendChild(node('pre', 'model-console-log', (source.lines || []).join('\n') || mt('dialog.no_entries', 'No entries')));
                 dialogBody.appendChild(details);
             });
         } catch (error) {
-            dialogBody.textContent = 'Logs konnten nicht geladen werden: ' + cleanTechnicalError(error);
+            dialogBody.textContent = mt('dialog.logs_failed', 'Could not load logs') + ': ' + cleanTechnicalError(error);
         }
     }
 
     async function copyValue(value) {
         try {
             await navigator.clipboard.writeText(value);
-            toast('In die Zwischenablage kopiert');
+            toast(mt('dialog.copied', 'Copied to clipboard'));
         } catch {
             toast(mt('dialog.copy_failed', 'Copy failed'), 'error');
         }

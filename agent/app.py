@@ -8967,7 +8967,7 @@ def api_agent_run_progress(run_id: str):
 def local_file_llm(prompt, max_tokens=800):
     config = load_config(); model = config.get("MODEL"); port = int(config.get("PORT", 8000))
     if not model: raise RuntimeError("Kein aktives MLX-Modell gefunden")
-    payload = {"model": model, "messages": [{"role": "system", "content": "Antworte präzise auf Deutsch. Erfinde keine Fakten; nutze nur die übermittelten Dateifakten."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
+    payload = {"model": model, "messages": [{"role": "system", "content": "Answer precisely in the language of the user's instruction. Do not invent facts; use only the supplied file facts."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
     request = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=900) as response:
         result = json.loads(response.read().decode("utf-8"))
@@ -8984,7 +8984,7 @@ def run_file_analysis_job(job_id):
         operation = job["operation"]
         if operation == "inspect":
             facts = dict(metadata); facts.pop("sample", None); facts.pop("sample_structure", None)
-            answer = local_file_llm("Datei-Metadaten:\n" + json.dumps(facts, ensure_ascii=False) + "\n\nSample:\n" + metadata.get("sample", "") + "\n\n" + job["instruction"])
+            answer = local_file_llm("File metadata:\n" + json.dumps(facts, ensure_ascii=False) + "\n\nSample:\n" + metadata.get("sample", "") + "\n\n" + job["instruction"])
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); jobs[job_id].update({"status": "completed", "metadata": metadata, "result": answer, "processed_chunks": 1, "total_chunks": 1, "mlx_calls": 1, "finished_at": time.time()}); save_batch_jobs(jobs)
             return
@@ -8999,15 +8999,15 @@ def run_file_analysis_job(job_id):
                 if status == "cancelled": return
                 if status != "paused": break
                 time.sleep(1)
-            task = "Fasse diesen Dateiausschnitt knapp zusammen." if operation == "summarize" else "Analysiere diesen Dateiausschnitt knapp: Muster, Auffälligkeiten, Probleme und wichtige Fakten."
-            maps.append(local_file_llm(task + "\n\nAUSSCHNITT:\n" + chunk, 500))
+            task = "Summarize this file excerpt concisely." if operation == "summarize" else "Analyze this file excerpt concisely: patterns, anomalies, problems, and important facts."
+            maps.append(local_file_llm(task + "\n\nEXCERPT:\n" + chunk, 500))
             checkpoint = batch_checkpoint_path(job_id, index); temporary = checkpoint.with_suffix(".tmp"); temporary.write_text(maps[-1], encoding="utf-8"); temporary.replace(checkpoint)
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); current = jobs[job_id]; current["processed_chunks"] = index; current["mlx_calls"] = int(current.get("mlx_calls", 0)) + 1; current["eta_seconds"] = None; save_batch_jobs(jobs)
         groups = ["\n\n".join(maps[index:index + 12]) for index in range(0, len(maps), 12)]
         while len(groups) > 1:
-            groups = [local_file_llm("Verdichte diese Teil-Ergebnisse ohne Fakten zu erfinden:\n" + group, 900) for group in groups]
-        answer = local_file_llm("Datei-Metadaten:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nErgebnisse:\n" + (groups[0] if groups else "Keine lesbaren Inhalte gefunden.") + "\n\nBeantworte die Nutzerfrage: " + job["instruction"], 1200)
+            groups = [local_file_llm("Condense these partial results without inventing facts:\n" + group, 900) for group in groups]
+        answer = local_file_llm("File metadata:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nResults:\n" + (groups[0] if groups else "No readable content found.") + "\n\nAnswer the user's request: " + job["instruction"], 1200)
         with BATCH_LOCK:
             jobs = load_batch_jobs(); jobs[job_id].update({"status": "completed", "result": answer, "finished_at": time.time()}); save_batch_jobs(jobs)
     except Exception as exc:

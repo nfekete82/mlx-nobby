@@ -1,5 +1,5 @@
 (function () {
-    // Download-/Jobstatus wird direkt am jeweiligen Modell dargestellt.
+    // Download and job status is displayed with the corresponding model.
     async function loadJobs() {
         if (window.MLXModels?.loadModels) return window.MLXModels.loadModels();
     }

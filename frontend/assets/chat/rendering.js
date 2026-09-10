@@ -236,18 +236,18 @@ function renderToolCard(message) {
     header.className = 'tool-card-header';
 
     const toolNames = {
-        web_search: 'Websuche',
+        web_search: rt('web_search', 'Web search'),
         model_list: rt('models', 'Models'),
         model_switch: rt('model_switch', 'Model switch'),
-        model_restart: 'MLX-Neustart',
-        system_status: 'Systemstatus',
+        model_restart: rt('mlx_restart', 'Restart MLX'),
+        system_status: rt('system_status', 'System status'),
         batch_status: rt('file_jobs', 'File jobs'),
         logs_query: 'Logs',
         pii_audit: 'PII-Audit',
         thinking_on: 'Thinking',
         thinking_off: 'Thinking',
         image_generate: rt('image_generation', 'Image generation'),
-        knowledge_search: 'Wissensbasis'
+        knowledge_search: rt('knowledge_base', 'Knowledge base')
     };
 
     header.textContent =
@@ -311,9 +311,9 @@ function agentStepLabel(step) {
         process_usage: rt('check_cpu_ram', 'Check CPU- and RAM-intensive processes'),
         logs_query: rt('check_logs', 'Check logs'),
         batch_status: rt('check_file_jobs', 'Check file jobs'),
-        knowledge_search: 'Wissensbasis durchsuchen',
-        code_search: 'Relevanten Code suchen',
-        code_files: 'Projektstruktur analysiert',
+        knowledge_search: rt('search_knowledge', 'Search knowledge base'),
+        code_search: rt('search_relevant_code', 'Search relevant code'),
+        code_files: rt('analyze_project_structure', 'Analyze project structure'),
         code_read: rt('relevant_file_checked', 'Relevant file inspected'),
         code_patch: fileCount
             ? rt(
@@ -886,23 +886,23 @@ function renderBatchCard(message) {
     const percent = total ? ((done / total) * 100).toFixed(1) : '0.0';
     const title = document.createElement('strong');
     const analysisJob = job.kind === 'file_analysis';
-    title.textContent = job.status === 'completed' ? (analysisJob ? '✓ Analyse abgeschlossen' : '✓ Verarbeitung abgeschlossen') :
-        job.status === 'failed' ? (analysisJob ? 'Analyse fehlgeschlagen' : 'Verarbeitung fehlgeschlagen') :
+    title.textContent = job.status === 'completed' ? (analysisJob ? rt('analysis_completed', '✓ Analysis completed') : rt('processing_completed', '✓ Processing completed')) :
+        job.status === 'failed' ? (analysisJob ? rt('analysis_failed', 'Analysis failed') : rt('processing_failed', 'Processing failed')) :
         (analysisJob ? rt('analyzing_file', 'Analyzing file') : rt('processing_file', 'Processing file'));
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
     const eta = Number(job.eta_seconds || 0);
     details.textContent = [
-        rt('file_prefix', 'File:') + ' ' + (message.batch_filename || 'Anhang'),
-        analysisJob ? 'Operation: ' + ({ inspect: 'Inspektion', analyze: 'Analyse', summarize: 'Zusammenfassung' }[job.operation] || 'Analyse') :
-            'Modus: ' + String(job.processing_mode || job.instruction_plan?.mode || rt('determining', 'determining')).toUpperCase(),
-        'Fortschritt: ' + done + ' / ' + (total || '…') + ' (' + percent + ' %)',
+        rt('file_prefix', 'File:') + ' ' + (message.batch_filename || rt('attachment', 'Attachment')),
+        analysisJob ? rt('operation', 'Operation:') + ' ' + ({ inspect: rt('inspection', 'Inspection'), analyze: rt('analysis', 'Analysis'), summarize: rt('summary', 'Summary') }[job.operation] || rt('analysis', 'Analysis')) :
+            rt('mode', 'Mode:') + ' ' + String(job.processing_mode || job.instruction_plan?.mode || rt('determining', 'determining')).toUpperCase(),
+        rt('progress', 'Progress:') + ' ' + done + ' / ' + (total || '…') + ' (' + percent + ' %)',
         rt('mlx_calls', 'MLX calls:') + ' ' +
         Number(job.mlx_calls || 0),
         rt('llm_skipped_count', 'LLM skipped:') + ' ' +
         Number(job.skipped_llm_chunks || 0),
-        job.pii_audit ? 'PII-Audit: ' + (Object.values(job.pii_audit).every(value => value === 0) ? 'keine offensichtlichen Treffer' : 'restliche Treffer gefunden') : '',
-        eta ? 'ETA: ' + Math.ceil(eta / 60) + ' Minuten' : ''
+        job.pii_audit ? 'PII audit: ' + (Object.values(job.pii_audit).every(value => value === 0) ? rt('pii_no_hits', 'no obvious matches') : rt('pii_hits_remaining', 'remaining matches found')) : '',
+        eta ? 'ETA: ' + Math.ceil(eta / 60) + ' ' + rt('minutes', 'minutes') : ''
     ].filter(Boolean).join('\n');
     card.appendChild(title);
     card.appendChild(details);
@@ -939,21 +939,21 @@ function renderBatchCard(message) {
         'batch-progress-text';
 
     let statusText =
-        job.status || 'unbekannt';
+        job.status || rt('unknown', 'unknown');
 
     if (
         job.status === 'queued' &&
         job.requires_start_choice
     ) {
-        action('Kontrolliert starten', 'start');
-        action('Alles automatisch', 'automatic-start');
+        action(rt('start_controlled', 'Start controlled'), 'start');
+        action(rt('automatic_all', 'Process all automatically'), 'automatic-start');
         action(rt('cancel', 'Cancel'), 'cancel');
     } else if (
         job.status === 'paused' &&
         job.waiting_for_user
     ) {
-        action('Weiter', 'resume');
-        action('Rest automatisch', 'automatic');
+        action(rt('continue', 'Continue'), 'resume');
+        action(rt('automatic_remaining', 'Process remaining automatically'), 'automatic');
         action(rt('cancel', 'Cancel'), 'cancel');
     } else {
         if (
@@ -967,7 +967,7 @@ function renderBatchCard(message) {
             job.status === 'paused' ||
             job.status === 'interrupted'
         ) {
-            action('Fortsetzen', 'resume');
+            action(rt('resume', 'Resume'), 'resume');
         }
 
         if (
@@ -1061,8 +1061,8 @@ function renderMessages(options = {}) {
                 <div class="empty-logo"><img src="/assets/mlx-nobby.svg" alt="MLX nobby"></div>
                 <h1>${rt('ready_next_idea', 'Ready for your next great idea?')}</h1>
                 <p>
-                    <span>Frag, diktier, lade hoch – Nobby ist am Start. 😎</span>
-                    <span class="empty-local">Alles läuft lokal auf deinem Mac.</span>
+                    <span>${rt('empty_prompt', 'Ask, dictate, or upload — Nobby is ready. 😎')}</span>
+                    <span class="empty-local">${rt('empty_local', 'Everything runs locally on your Mac.')}</span>
                 </p>
             </div>
         `;
@@ -1243,7 +1243,7 @@ function renderMessages(options = {}) {
                     document.createElement('div');
                 sourcesHeader.className =
                     'message-rag-sources-header';
-                sourcesHeader.textContent = 'Wissensquellen';
+                sourcesHeader.textContent = rt('knowledge_sources', 'Knowledge sources');
 
                 const sourcesList =
                     document.createElement('div');
@@ -1258,7 +1258,7 @@ function renderMessages(options = {}) {
                     const sourceName =
                         String(
                             source.source ||
-                            'Lokale Wissensbasis'
+                            rt('local_knowledge_base', 'Local knowledge base')
                         ).trim();
 
                     const documentPath =

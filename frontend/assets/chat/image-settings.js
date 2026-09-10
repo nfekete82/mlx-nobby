@@ -51,7 +51,7 @@ function imageT(key, fallback = '', variables = {}) {
     }
     function renderModel(model, data) {
         const card = node('details', null, 'image-model-card');
-        const summary = node('summary', model.name + (data.effective_model === model.id ? ' · aktiv' : ''));
+        const summary = node('summary', model.name + (data.effective_model === model.id ? imageT('image_settings.active_suffix', ' · active') : ''));
         card.append(summary);
         card.append(node('p', [model.provider, model.model_family, model.quantization].join(' · ')));
         card.append(node('p', model.availability_note, 'settings-hint'));
@@ -70,7 +70,7 @@ function imageT(key, fallback = '', variables = {}) {
         function addLora(lora = {}) {
             const row = node('fieldset', null, 'image-lora-row');
             row.append(node('legend', 'LoRA ' + (loraRows.length + 1)));
-            const use = field(row, 'Aktiv', lora.enabled ?? true, 'checkbox');
+            const use = field(row, imageT('image_settings.enabled', 'Enabled'), lora.enabled ?? true, 'checkbox');
             const source = field(row, imageT(
                 'image_settings.lora_path',
                 'Path or org/repo[:file.safetensors]'
@@ -127,7 +127,7 @@ function imageT(key, fallback = '', variables = {}) {
                 option.value = model.id; option.disabled = !model.enabled || !model.available; role.append(option);
             }
             if (data.role !== 'auto' && !data.models.some(model => model.id === data.role)) {
-                const invalid = node('option', data.role + ' · nicht registriert'); invalid.value = data.role; invalid.disabled = true; role.append(invalid);
+                const invalid = node('option', data.role + imageT('image_settings.unregistered_suffix', ' · not registered')); invalid.value = data.role; invalid.disabled = true; role.append(invalid);
             }
             role.value = data.role;
             list.replaceChildren(...data.models.map(model => renderModel(model, data)));

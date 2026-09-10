@@ -46,19 +46,19 @@
     function statusLabel(status) {
         switch (status) {
             case 'queued':
-                return 'Wartend';
+                return 'Queued';
 
             case 'running':
-                return 'Läuft';
+                return 'Running';
 
             case 'completed':
-                return 'Fertig';
+                return 'Completed';
 
             case 'failed':
-                return 'Fehler';
+                return 'Error';
 
             default:
-                return status || 'Unbekannt';
+                return status || 'Unknown';
         }
     }
 
@@ -99,7 +99,7 @@
                 'text-sm text-slate-500';
 
             empty.textContent =
-                'Noch keine Batch-Jobs vorhanden.';
+                'No batch jobs available.';
 
             jobsContainer.appendChild(empty);
 
@@ -212,8 +212,8 @@
 
                 start.textContent =
                     job.status === 'failed'
-                        ? 'Erneut starten'
-                        : 'Starten';
+                        ? 'Start again'
+                        : 'Start';
 
                 start.addEventListener(
                     'click',
@@ -255,7 +255,7 @@
                     'px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold';
 
                 resume.textContent =
-                    'Fortsetzen';
+                    'Resume';
 
                 resume.addEventListener(
                     'click',
@@ -282,7 +282,7 @@
                     'px-3 py-2 rounded-lg bg-red-950 hover:bg-red-900 border border-red-900 text-red-300 text-sm font-semibold';
 
                 cancel.textContent =
-                    'Abbrechen';
+                    'Cancel';
 
                 cancel.addEventListener(
                     'click',
@@ -366,7 +366,7 @@
                     'text-xs text-slate-500 font-mono mt-3 break-all';
 
                 output.textContent =
-                    'Ausgabe: ' +
+                    'Output: ' +
                     job.output_path;
 
                 card.appendChild(output);
@@ -406,7 +406,7 @@
 
             jobsContainer.innerHTML =
                 '<div class="text-sm text-red-400">' +
-                'Batch-Jobs konnten nicht geladen werden.' +
+                'Could not load batch jobs.' +
                 '</div>';
         }
     }
@@ -449,7 +449,7 @@
         }
 
         uploadStatus.textContent =
-            'Datei wird hochgeladen…';
+            'Uploading file…';
 
         uploadStatus.className =
             'text-xs text-blue-400 mt-2 min-h-[18px]';
@@ -479,7 +479,7 @@
             if (!response.ok) {
                 throw new Error(
                     data.detail ||
-                    'Upload fehlgeschlagen'
+                    'Upload failed'
                 );
             }
 
@@ -494,7 +494,7 @@
             uploadStatus.textContent =
                 '✓ ' +
                 (data.original_name || file.name) +
-                ' hochgeladen';
+                ' uploaded';
 
             uploadStatus.className =
                 'text-xs text-emerald-400 mt-2 min-h-[18px]';
@@ -505,7 +505,7 @@
             inputPath.value = '';
 
             uploadStatus.textContent =
-                'Fehler: ' +
+                'Error: ' +
                 error.message;
 
             uploadStatus.className =
@@ -527,19 +527,19 @@
             instruction.value.trim();
 
         if (!path) {
-            alert('Bitte eine Eingabedatei angeben.');
+            alert('Select an input file.');
             inputPath.focus();
             return;
         }
 
         if (!prompt) {
-            alert('Bitte eine Transformations-Anweisung eingeben.');
+            alert('Enter a transformation instruction.');
             instruction.focus();
             return;
         }
 
         createButton.disabled = true;
-        createButton.textContent = 'Wird angelegt…';
+        createButton.textContent = 'Creating…';
 
         try {
             const created =
@@ -566,7 +566,7 @@
 
             if (!jobId) {
                 throw new Error(
-                    'Job-ID fehlt in der Server-Antwort'
+                    'The server response does not contain a job ID'
                 );
             }
 
@@ -592,14 +592,14 @@
             console.error(error);
 
             alert(
-                'Batch-Job konnte nicht angelegt werden:\n\n' +
+                'Could not create the batch job:\n\n' +
                 error.message
             );
 
         } finally {
             createButton.disabled = false;
             createButton.textContent =
-                'Batch-Job anlegen';
+                'Create batch job';
         }
     }
 
@@ -607,7 +607,7 @@
     async function controlJob(jobId, action) {
         if (
             action === 'cancel' &&
-            !confirm('Batch-Job wirklich abbrechen?')
+            !confirm('Cancel this batch job?')
         ) {
             return;
         }
@@ -634,7 +634,7 @@
             console.error(error);
 
             alert(
-                'Batch-Aktion fehlgeschlagen:\n\n' +
+                'Batch action failed:\n\n' +
                 error.message
             );
         }
@@ -663,7 +663,7 @@
             console.error(error);
 
             alert(
-                'Batch-Job konnte nicht gestartet werden:\n\n' +
+                'Could not start the batch job:\n\n' +
                 error.message
             );
         }

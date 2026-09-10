@@ -31,14 +31,7 @@
             return saved;
         }
 
-        const browserLanguage =
-            String(navigator.language || '')
-                .toLowerCase()
-                .split('-')[0];
-
-        return SUPPORTED_LANGUAGES.has(browserLanguage)
-            ? browserLanguage
-            : DEFAULT_LANGUAGE;
+        return DEFAULT_LANGUAGE;
     }
 
     async function loadTranslations(nextLanguage) {
@@ -66,7 +59,13 @@
     }
 
     function t(key, fallback = '') {
-        const value = getNestedValue(translations, key);
+        const directValue = translations &&
+            Object.prototype.hasOwnProperty.call(translations, key)
+            ? translations[key]
+            : undefined;
+        const value = typeof directValue === 'string'
+            ? directValue
+            : getNestedValue(translations, key);
 
         return typeof value === 'string'
             ? value

@@ -39,28 +39,27 @@ function findSectionByHeading(title) {
 function setupAppViews() {
 
     /*
-     * Bestehende Bereiche identifizieren.
-     * Kein HTML muss dafür zerstört werden.
+     * Identify existing sections without rebuilding the markup.
      */
 
     const addModel =
         findSectionByHeading(
-            'Neues Modell'
+            'Add model'
         );
 
     const models =
         findSectionByHeading(
-            'Modelle'
+            'Models'
         );
 
     const cache =
         findSectionByHeading(
-            'Lokaler Cache'
+            'Local cache'
         );
 
     const downloads =
         findSectionByHeading(
-            'Downloads & Jobs'
+            'Downloads & jobs'
         );
 
     const batch =
@@ -96,7 +95,7 @@ function setupAppViews() {
 
 
     /*
-     * Alles vor "Neues Modell" gehört zum Dashboard.
+     * Everything before "Add model" belongs to the dashboard.
      */
 
     if (addModel) {
@@ -302,7 +301,7 @@ async function loadStatus() {
             badge.className =
                 'px-4 py-2 rounded-full bg-emerald-950 text-emerald-400 text-sm font-semibold';
 
-            state.textContent = 'MLX läuft';
+            state.textContent = 'MLX is running';
             state.className = 'text-2xl font-bold text-emerald-400';
 
         } else {
@@ -310,16 +309,16 @@ async function loadStatus() {
             badge.className =
                 'px-4 py-2 rounded-full bg-red-950 text-red-400 text-sm font-semibold';
 
-            state.textContent = 'MLX gestoppt';
+            state.textContent = 'MLX is stopped';
             state.className = 'text-2xl font-bold text-red-400';
         }
 
         document.getElementById('lastUpdate').textContent =
-            'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+            'Updated: ' + new Date().toLocaleTimeString('en-US');
 
     } catch (error) {
-        document.getElementById('statusBadge').textContent = '● AGENT FEHLER';
-        document.getElementById('serverState').textContent = 'Nicht erreichbar';
+        document.getElementById('statusBadge').textContent = '● AGENT ERROR';
+        document.getElementById('serverState').textContent = 'Unavailable';
     }
 }
 
@@ -338,7 +337,7 @@ async function addModel(alias, repo, quantization) {
     repo = repo.trim();
 
     if (!alias) {
-        status.textContent = 'Bitte einen Alias eingeben.';
+        status.textContent = 'Enter an alias.';
         status.className =
             'text-sm text-amber-400 mt-4 min-h-[22px]';
         return;
@@ -346,7 +345,7 @@ async function addModel(alias, repo, quantization) {
 
     if (!repo) {
         status.textContent =
-            'Bitte ein Hugging-Face-Repository eingeben.';
+            'Enter a Hugging Face repository.';
 
         status.className =
             'text-sm text-amber-400 mt-4 min-h-[22px]';
@@ -358,7 +357,7 @@ async function addModel(alias, repo, quantization) {
     setButtonsDisabled(true);
 
     status.textContent =
-        'Modell wird angelegt und Download gestartet…';
+        'Creating model and starting download…';
 
     status.className =
         'text-sm text-blue-400 mt-4 min-h-[22px]';
@@ -385,7 +384,7 @@ async function addModel(alias, repo, quantization) {
 
         status.textContent =
             '✓ ' + alias +
-            ' hinzugefügt · Downloadjob ' +
+            ' added · download job ' +
             data.job.id;
 
         status.className =
@@ -401,7 +400,7 @@ async function addModel(alias, repo, quantization) {
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
         status.className =
             'text-sm text-red-400 mt-4 min-h-[22px]';
@@ -419,9 +418,9 @@ async function removeModelAlias(alias, repo) {
     if (busy) return;
 
     const confirmed = confirm(
-        'Alias "' + alias + '" entfernen?\n\n' +
+        'Remove alias "' + alias + '"?\n\n' +
         repo +
-        '\n\nDer lokale Modell-Cache bleibt erhalten.'
+        '\n\nThe local model cache will be preserved.'
     );
 
     if (!confirmed) return;
@@ -437,7 +436,7 @@ async function removeModelAlias(alias, repo) {
         document.getElementById('actionStatus');
 
     status.textContent =
-        'Alias ' + alias + ' wird entfernt…';
+        'Removing alias ' + alias + '…';
 
     try {
         const {
@@ -455,14 +454,14 @@ async function removeModelAlias(alias, repo) {
         }
 
         status.textContent =
-            '✓ Alias ' + alias + ' entfernt';
+            '✓ Alias ' + alias + ' removed';
 
         await MLXModels.loadModels();
         await MLXCache.loadCache();
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -490,7 +489,7 @@ async function switchModel(alias) {
         document.getElementById('actionStatus');
 
     status.textContent =
-        'Modell ' + alias + ' wird gestartet…';
+        'Starting model ' + alias + '…';
 
     try {
         const {
@@ -508,7 +507,7 @@ async function switchModel(alias) {
         }
 
         status.textContent =
-            '✓ Modell ' + alias + ' aktiv';
+            '✓ Model ' + alias + ' active';
 
         await loadStatus();
 MLXSystem.loadSystemView();
@@ -516,7 +515,7 @@ MLXSystem.loadSystemView();
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -534,10 +533,10 @@ async function redownloadModel(target, repo, size) {
     if (busy) return;
 
     const confirmed = confirm(
-        'Modell wirklich neu herunterladen?\n\n' +
+        'Download this model again?\n\n' +
         repo +
-        '\nAktuelle Cache-Größe: ' + size +
-        '\n\nDer vorhandene Cache wird verworfen und neu geladen.'
+        '\nCurrent cache size: ' + size +
+        '\n\nThe existing cache will be discarded and downloaded again.'
     );
 
     if (!confirmed) return;
@@ -555,7 +554,7 @@ async function redownloadModel(target, repo, size) {
         document.getElementById('actionStatus');
 
     status.textContent =
-        'Redownload für ' + target + ' wird gestartet…';
+        'Starting a new download for ' + target + '…';
 
     try {
         const {
@@ -573,14 +572,14 @@ async function redownloadModel(target, repo, size) {
         }
 
         status.textContent =
-            '✓ Redownload gestartet · Job ' + data.id;
+            '✓ Download started · job ' + data.id;
 
         await MLXJobs.loadJobs();
         await MLXCache.loadCache();
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -600,10 +599,10 @@ async function deleteModelCache(target, repo, size) {
     if (busy) return;
 
     const confirmed = confirm(
-        'Lokalen Cache wirklich löschen?\n\n' +
+        'Delete this local cache?\n\n' +
         repo +
-        '\nGröße: ' + size +
-        '\n\nDer Alias bleibt erhalten.'
+        '\nSize: ' + size +
+        '\n\nThe alias will be preserved.'
     );
 
     if (!confirmed) return;
@@ -621,7 +620,7 @@ async function deleteModelCache(target, repo, size) {
         document.getElementById('actionStatus');
 
     status.textContent =
-        'Cache von ' + target + ' wird gelöscht…';
+        'Deleting cache for ' + target + '…';
 
     try {
         const {
@@ -639,14 +638,14 @@ async function deleteModelCache(target, repo, size) {
         }
 
         status.textContent =
-            '✓ Cache gelöscht · Alias bleibt erhalten';
+            '✓ Cache deleted · alias preserved';
 
         await MLXCache.loadCache();
         await MLXModels.loadModels();
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -676,7 +675,7 @@ async function retryDownload(target) {
         document.getElementById('actionStatus');
 
     status.textContent =
-        'Download ' + target + ' wird fortgesetzt…';
+        'Resuming download ' + target + '…';
 
     try {
         const {
@@ -694,14 +693,14 @@ async function retryDownload(target) {
         }
 
         status.textContent =
-            '✓ Downloadjob gestartet · ' + data.id;
+            '✓ Download job started · ' + data.id;
 
         await MLXJobs.loadJobs();
         await MLXCache.loadCache();
 
     } catch (error) {
         status.textContent =
-            'Fehler: ' + error.message;
+            'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -722,7 +721,7 @@ async function serverCommand(command) {
     setButtonsDisabled(true);
 
     const status = document.getElementById('actionStatus');
-    status.textContent = command + ' läuft…';
+    status.textContent = command + ' is running…';
 
     try {
         const {
@@ -737,13 +736,13 @@ async function serverCommand(command) {
             throw new Error(JSON.stringify(data.detail));
         }
 
-        status.textContent = '✓ ' + command + ' erfolgreich';
+        status.textContent = '✓ ' + command + ' completed';
 
         await loadStatus();
         await MLXModels.loadModels();
 
     } catch (error) {
-        status.textContent = 'Fehler: ' + error.message;
+        status.textContent = 'Error: ' + error.message;
 
     } finally {
         busy = false;
@@ -761,7 +760,7 @@ async function toggleThinking() {
     const status = document.getElementById('actionStatus');
 
     status.textContent =
-        'Thinking wird ' + (target === 'on' ? 'aktiviert' : 'deaktiviert') + '…';
+        (target === 'on' ? 'Enabling' : 'Disabling') + ' thinking…';
 
     try {
         const {
@@ -777,13 +776,13 @@ async function toggleThinking() {
         }
 
         status.textContent =
-            '✓ Thinking ' + (target === 'on' ? 'aktiviert' : 'deaktiviert');
+            '✓ Thinking ' + (target === 'on' ? 'enabled' : 'disabled');
 
         await loadStatus();
         await MLXModels.loadModels();
 
     } catch (error) {
-        status.textContent = 'Fehler: ' + error.message;
+        status.textContent = 'Error: ' + error.message;
 
     } finally {
         busy = false;

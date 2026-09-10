@@ -20,7 +20,10 @@ const sandbox = {
     setTimeout,
     clearTimeout,
     window: { fetch: globalThis.fetch },
-    document: { getElementById: () => null },
+    document: {
+        getElementById: () => null,
+        addEventListener: () => {},
+    },
 };
 sandbox.window.window = sandbox.window;
 vm.runInNewContext(source, sandbox, { filename: 'models.js' });
@@ -43,7 +46,10 @@ assert.equal(
     test.displayName('TheCluster/Qwen3.6-35B-A3B-Heretic-MLX-mixed-6.4bit'),
     'Qwen3.6 35B A3B Heretic',
 );
+assert.equal(test.formatBytes(23_565_963_846), '21.95 GB');
+sandbox.window.MLXI18n = { getLocale: () => 'de-DE' };
 assert.equal(test.formatBytes(23_565_963_846), '21,95 GB');
+delete sandbox.window.MLXI18n;
 assert.equal(test.formatUptime(null), null);
 assert.equal(test.formatUptime(8_040), '2h 14m');
 
@@ -145,7 +151,7 @@ await assert.rejects(
         fetchStatus: async () => ({ online: false }),
         timeoutMs: 0,
     }),
-    /nicht rechtzeitig bestätigt/,
+    /did not confirm the expected state in time/,
 );
 
 test.state.cache.models = [{ repo: 'owner/broken', complete: false }];

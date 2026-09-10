@@ -174,7 +174,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
                                                     data-knowledge-action="reindex"
                                                     data-source-id="${sourceId}"
                                                 >
-                                                    Reindexieren
+                                                    ${knowledgeT('knowledge.reindex', 'Reindex')}
                                                 </button>
 
                                                 <button
@@ -192,7 +192,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
                                                     data-knowledge-action="delete"
                                                     data-source-id="${sourceId}"
                                                 >
-                                                    Löschen
+                                                    ${knowledgeT('notes.delete', 'Delete')}
                                                 </button>
                                             </div>
                                         </div>
@@ -217,7 +217,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
 
         } catch (error) {
             target.textContent =
-                'Wissensbasis nicht erreichbar: ' + error.message;
+                knowledgeT('knowledge.unavailable', 'Knowledge base unavailable:') + ' ' + error.message;
         }
     }
 
@@ -248,7 +248,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
         if (button) {
             button.disabled = true;
             button.textContent =
-                labels[action] || 'Bitte warten…';
+                labels[action] || knowledgeT('knowledge.please_wait', 'Please wait…');
         }
 
         try {
@@ -277,7 +277,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
             await loadStatus();
         } catch (error) {
             window.alert(
-                'Wissensquelle konnte nicht bearbeitet werden: ' +
+                knowledgeT('knowledge.manage_failed', 'Could not update the knowledge source:') + ' ' +
                 error.message
             );
 
@@ -331,7 +331,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
         } catch (error) {
             if (result) {
                 result.textContent =
-                    'Auswahl fehlgeschlagen: ' + error.message;
+                    knowledgeT('knowledge.selection_failed', 'Selection failed:') + ' ' + error.message;
             }
         } finally {
             button.disabled = false;
@@ -344,7 +344,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
         const result = $('knowledgeIndexResult');
 
         if (!path) {
-            if (result) result.textContent = 'Bitte einen Pfad angeben.';
+            if (result) result.textContent = knowledgeT('knowledge.path_required', 'Enter a path.');
             return;
         }
 
@@ -392,7 +392,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
 
         if (!query || !target) return;
 
-        target.textContent = 'Suche…';
+        target.textContent = knowledgeT('knowledge.searching', 'Searching…');
 
         try {
             const data = await request(
@@ -417,7 +417,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
             if (!results.length) {
                 target.innerHTML =
                     '<div class="knowledge-empty">' +
-                    'Keine passenden Chunks gefunden.' +
+                    knowledgeT('knowledge.no_matches', 'No matching chunks found.') +
                     '</div>';
                 return;
             }
@@ -464,7 +464,7 @@ function knowledgeT(key, fallback = '', variables = {}) {
             }).join('');
         } catch (error) {
             target.textContent =
-                'Suche fehlgeschlagen: ' + error.message;
+                knowledgeT('knowledge.search_failed', 'Search failed:') + ' ' + error.message;
         }
     }
 
@@ -505,6 +505,8 @@ function knowledgeT(key, fallback = '', variables = {}) {
     }
 
     window.MLXKnowledge = { loadStatus };
+
+    document.addEventListener('mlx-language-changed', loadStatus);
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

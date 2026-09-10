@@ -38,7 +38,7 @@ let refreshed = 0;
 mount(downloads, { kind: 'downloads', onComplete: () => { refreshed++; } });
 const buttons = downloads.children[0].children;
 assert.deepEqual(buttons.map(button => button.textContent), [
-    'Erledigte löschen', 'Fehlgeschlagene löschen', 'Historie leeren',
+    'Delete completed', 'Delete failed', 'Clear history',
 ]);
 await buttons[0].click();
 assert.equal(requests.length, 0, 'cancelling confirmation sends no request');
@@ -60,7 +60,7 @@ assert.equal(requests[0].options.method, 'POST');
 assert.deepEqual(JSON.parse(requests[0].options.body), { scope: 'completed' });
 assert.equal(refreshed, 1);
 assert.ok(buttons.every(button => !button.disabled));
-assert.match(downloads.children[1].textContent, /2 Einträge entfernt/);
+assert.match(downloads.children[1].textContent, /2 entries removed/);
 
 const batch = new Element();
 mount(batch, { kind: 'batch', onComplete: () => { refreshed++; } });

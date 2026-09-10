@@ -1,198 +1,290 @@
 # MLX Nobby
 
-Local AI platform for Apple Silicon built around MLX, FastAPI and native macOS services.
+MLX Nobby is a local AI control center for Apple Silicon. It combines native
+MLX inference, model and cache management, chat, coding workflows, retrieval,
+speech transcription, and image generation in one browser interface.
 
-MLX Nobby combines local language models, coding agents, multimodal models, speech, embeddings/RAG and image generation in a unified local interface.
+The inference services run directly on macOS so they can use Apple silicon and
+Metal. Only the web application runs in Docker. A loopback-only macOS agent is
+the bridge between that container and host resources.
 
-## Highlights
+## Features
 
-- Native MLX inference on macOS / Apple Silicon
-- Local LLM chat and model switching
-- Coding workspace with read/write tooling
-- Diagnostic and research agents
-- Multimodal VLM support
-- Speech-to-text
-- Local embeddings and RAG
-- Image generation
-- FastAPI-based service architecture
-- Dockerized web frontend/backend
-- Native MLX services remain outside Docker
-- Loopback-only service binding by default
-- Request-size and host validation
+- Local LLM chat with streaming, model switching, thinking controls, and saved
+  conversations
+- Model aliases, Hugging Face downloads, cache inspection, and background jobs
+- Coding workspaces with bounded file search, reviewable patches, and test runs
+- Diagnostic, research, and file-processing agents with approval checkpoints
+- Local embeddings, knowledge sources, and retrieval-augmented generation (RAG)
+- MLX-VLM routing for multimodal requests
+- Speech-to-text through the native MLX Audio service
+- Image generation through DiffusionKit and optional MFLUX providers
+- System metrics, service health, logs, and runtime controls
+- English and German chat UI with a persisted language setting
 
 ## Architecture
 
-    Browser
-      |
-      v
-    Docker Web Service :8090
-      |
-      v
-    Native Agent :8010
-      |
-      +--> MLX / MLX-VLM Runtime :8040
-      +--> Speech Service :8050
-      +--> Image Service :8030
-      +--> Embeddings / RAG
+```mermaid
+flowchart LR
+    Browser[Browser] -->|localhost:8090| Web[Docker web app<br/>:8090]
+    Web -->|host.docker.internal:8010| Agent[macOS agent<br/>:8010]
+    Agent --> Runtime[MLX-LM runtime<br/>:8000]
+    Agent --> Embeddings[Embedding service<br/>:8020]
+    Agent --> Images[Image service<br/>:8030]
+    Agent --> Router[MLX-VLM router<br/>:8040]
+    Agent --> Speech[Speech service<br/>:8050]
+```
 
-The web layer can run in Docker, while MLX inference stays native on macOS to retain Apple Silicon / Metal performance.
+| Port | Component | Runs in | Default exposure |
+| ---: | --- | --- | --- |
+| 8000 | MLX-LM runtime | macOS | `127.0.0.1` |
+| 8010 | Host agent and API bridge | macOS | `127.0.0.1` |
+| 8020 | Embedding service | macOS | `127.0.0.1` |
+| 8030 | Image service | macOS | `127.0.0.1` |
+| 8040 | MLX-VLM router | macOS | `127.0.0.1` |
+| 8050 | Speech service | macOS | `127.0.0.1` |
+| 8090 | Web application | Docker | `127.0.0.1` |
+
+MLX must remain native. Moving MLX into the Docker image would remove the
+intended Apple Silicon runtime path.
 
 ## Requirements
 
-- macOS
-- Apple Silicon
-- Python 3.13 for most services
-- Python 3.11 for the isolated DiffusionKit environment
-- Docker / Docker Compose for the web service
-- Node.js for frontend tests
+- macOS on Apple Silicon (`arm64`)
+- Python 3.13 and Python 3.11
+- Docker with Docker Compose for the web application
+- FFmpeg for speech input conversion
+- Node.js when running the JavaScript checks
+- Local model weights; the repository does not include models
 
-## Python environments
+Homebrew is optional, but is the simplest way to install the required Python
+interpreters, Docker tooling, and FFmpeg.
 
-The project intentionally uses separate Python environments because some MLX-related packages require different dependency versions.
+## Quick start
 
-See:
+Clone the repository, then run the installer from its root:
 
-- `docs/DEPENDENCIES.md`
-- `requirements/`
+```sh
+./scripts/install.sh
+```
 
-## Testing
+The installer validates macOS and Apple Silicon, creates or updates the five
+isolated service environments, installs `~/bin/mlx`, creates a minimal local
+runtime configuration if none exists, and starts the Docker web application.
+Existing MLX configuration and model aliases are preserved. LaunchAgent files
+are installed only when the configured router model directory exists.
 
-Create a clean test environment:
+Useful installer variants are:
 
-    python3 -m venv .venv-test
-    source .venv-test/bin/activate
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements/test.txt
+```sh
+./scripts/install.sh --no-docker
+./scripts/install.sh --no-launchd
+./scripts/install.sh --no-python
+./scripts/install.sh --no-launchd --no-docker
+```
 
-Run the tests:
+The last form is useful when you only want to install the manager and validate
+an existing setup. `--no-python` expects compatible service environments to
+already exist.
 
-    python -m unittest discover -s tests -p 'test_*.py'
-    node --check frontend/assets/chat/models.js
-    node tests/test_model_console.mjs
+Add `~/bin` to `PATH` if the installer reports that it is missing:
 
-Current verification:
+```sh
+export PATH="$HOME/bin:$PATH"
+```
 
-- 107 Python tests passed
-- JavaScript model runtime tests passed
-- `pip check` passed
-- `docker compose config` passed
-- `git diff --check` passed
+Set `MODEL` in `~/.config/mlx-server/config` to a local model path or an alias
+defined in `~/.config/mlx-server/models`. The generated configuration starts
+with an empty `MODEL`, port 8000, and thinking disabled so an incomplete first
+install cannot silently select a model.
 
-## Docker web service
+The router defaults to
+`~/Models/router/Qwen3.5-0.8B-MLX-4bit`. To use another local router model,
+install the LaunchAgents after setting its path:
 
-Start the web service:
+```sh
+MLX_ROUTER_MODEL_PATH=/absolute/path/to/router/model \
+  ./scripts/install-launchd.sh
+mlx restart-all
+```
 
-    docker compose up --build
+Then open <http://127.0.0.1:8090>. The web container reaches the native agent
+through `host.docker.internal`; it does not contain the MLX runtimes.
 
-By default the web interface is published only on localhost:
+## MLX manager
 
-    http://127.0.0.1:8090
+The maintained manager source is `scripts/mlx`; the installer copies it to
+`~/bin/mlx`. Common commands include:
 
-The Docker container connects to the native agent service through `host.docker.internal`.
+```sh
+mlx status
+mlx services
+mlx doctor
+mlx start
+mlx stop
+mlx restart
+mlx restart-all
+mlx reset
+mlx models
+mlx model <alias-or-huggingface-repository>
+mlx model add <alias> <repository-or-local-path>
+mlx download <alias-or-repository>
+mlx cache
+mlx thinking on
+mlx thinking off
+mlx chat
+mlx ask "Your question"
+```
+
+Commands that download a Hugging Face repository require network access and
+may require local Hugging Face authentication for gated models. Never put an
+access token in the tracked model alias file.
+
+## Service environments
+
+The Python environments are intentionally separate. DiffusionKit requires a
+legacy MLX combination that is incompatible with the current runtime stack.
+Do not merge these requirements into one environment.
+
+| Environment | Python | Requirements |
+| --- | --- | --- |
+| `agent-venv` | 3.13 | `requirements/agent.txt` |
+| `runtime-venv` | 3.13 | `requirements/runtime.txt` |
+| `embedding-venv` | 3.11 | `requirements/embeddings.txt` |
+| `image-venv` | 3.11 | `requirements/images.txt` |
+| `speech-venv` | 3.13 | `requirements/speech.txt` |
+
+See [Dependency setup](docs/DEPENDENCIES.md) for manual installation,
+constraints, tested versions, optional MFLUX setup, and offline import checks.
 
 ## Configuration
 
-Copy the example configuration:
+Copy `.env.example` to `.env` only when you need to override the Docker web
+defaults:
 
-    cp .env.example .env
+```sh
+cp .env.example .env
+```
 
-Then adjust the values as needed.
+The web container uses `AGENT_URL`, `MLX_WEB_PORT`, and upload/host limits from
+Compose. Native services do not automatically read this file. Their environment
+variables and ownership are documented in `.env.example` and
+`docs/DEPENDENCIES.md`.
 
-Do not commit credentials, tokens, private keys or machine-specific secrets.
+Local configuration belongs in:
 
-## Security model
+- `~/.config/mlx-server/config` for the runtime model and server settings
+- `~/.config/mlx-server/models` for model aliases
+- `~/.config/mlx-web/` for rendered service configuration and logs
+- local ignored `.env` files for Docker overrides
 
-MLX Nobby is designed primarily as a local application.
+Do not commit tokens, credentials, personal paths, model weights, local
+databases, generated media, or configuration copied from your machine.
 
-Relevant safeguards include:
+## RAG and embeddings
 
-- loopback-only native service listeners
-- localhost-only Docker port publishing
-- Host validation
-- same-origin request validation
-- request body size limits
-- upload size limits
-- restricted service proxy routes
-- validation of model references
-- no arbitrary user-controlled backend proxy URLs
+Knowledge sources are indexed by the native agent through the embedding service
+on port 8020. The API supports single and batched embeddings and keeps the
+contract used by `agent/knowledge.py`. Source data, generated indexes, and local
+knowledge directories are runtime data and are ignored by Git.
 
-These protections are not a replacement for authentication if the services are exposed beyond localhost.
+Embedding packages may contact Hugging Face when a referenced model is not
+already cached. Use local model paths and the offline variables documented in
+`docs/DEPENDENCIES.md` when network-free behavior is required.
 
-## Dependencies
+## Images and speech
 
-Dependency installation has been verified in fresh virtual environments.
+The image service supports the repository's DiffusionKit provider and an
+optional, separately installed MFLUX CLI. Image model weights and generated
+outputs are local data. MFLUX is not installed by the default installer.
 
-See `docs/DEPENDENCIES.md` for compatibility details and environment-specific requirements.
+The speech service uses `mlx-audio[stt]` and FFmpeg. Uploaded audio is relayed
+through the web application and host agent to the loopback-only speech service.
+See `IMAGE_RUNTIME.md` and `docs/DEPENDENCIES.md` for provider details.
+
+## Language settings
+
+The chat interface defaults to English on a new browser profile. English and
+German are selectable in Settings, and the choice is stored in browser local
+storage. The `concise-de` preset deliberately instructs the model to answer in
+German and is not an untranslated interface string.
+
+Run the translation audit with:
+
+```sh
+git ls-files -z '*.py' | xargs -0 test-venv/bin/python -m py_compile
+git ls-files -z '*.json' | xargs -0 -n1 python3 -m json.tool >/dev/null
+python3 scripts/i18n-audit.py
+```
+
+## Privacy and network behavior
+
+Model inference, saved chats, notes, knowledge indexes, generated images, and
+service logs are designed to remain on the local machine. The services bind to
+loopback by default and the web port is published on localhost.
+
+MLX Nobby is not completely offline by default:
+
+- Model download and cache actions can contact Hugging Face.
+- Research actions can query the configured SearXNG instance and fetch selected
+  external pages.
+- The current web pages load Tailwind CSS, Marked, DOMPurify, and Highlight.js
+  assets from public CDNs.
+- Docker builds and Python package installation contact their configured
+  registries.
+
+If those connections are unacceptable, place models and packages in local
+caches, configure research accordingly, and vendor or block the CDN assets
+before use. Review browser developer tools or network controls for the exact
+behavior of your deployment.
+
+## Security
+
+The supplied configuration is intended for a trusted, single-user machine.
+Native services and the Docker port are loopback-bound; request sizes, hosts,
+origins, model references, and proxy routes are validated. Coding and knowledge
+features can access explicitly configured local workspaces.
+
+There is no authentication layer suitable for public exposure. Do not bind the
+services to a LAN or the internet without adding authentication, TLS, and network
+isolation. See [SECURITY.md](SECURITY.md) for reporting and operating guidance.
+
+## Development and tests
+
+Install the CPU-only test environment and run the local checks:
+
+```sh
+python3.13 -m venv test-venv
+test-venv/bin/python -m pip install -r requirements/test.txt
+test-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+python3 scripts/i18n-audit.py
+find frontend -name '*.js' -print0 | xargs -0 -n1 node --check
+node tests/test_model_console.mjs
+node tests/test_chat_scroll.mjs
+node tests/test_history_cleanup.mjs
+node tests/test_i18n.mjs
+bash -n scripts/install.sh scripts/install-launchd.sh scripts/doctor.sh \
+  scripts/mlx scripts/mlx-server-start
+docker compose config
+git diff --check
+```
+
+The test manifest contains no MLX packages and downloads no models. Native MLX
+imports require Apple Silicon and Metal and are documented separately.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md). Keep changes focused, preserve
+the native-service boundary, add tests for behavior changes, and exclude local
+runtime data from pull requests.
 
 ## Project status
 
-MLX Nobby is under active development.
-
-APIs, configuration and architecture may still change.
+MLX Nobby is under active development. Configuration and APIs may change, and
+the image stack includes a deliberately isolated legacy dependency. The project
+has not been presented here as production-ready or independently security
+audited.
 
 ## License
 
-MIT License
-
-## Quick Start
-
-Requirements:
-
-- macOS on Apple Silicon
-- Python 3
-- Docker
-- FFmpeg
-- Homebrew recommended
-
-Clone the repository and run:
-
-    ./scripts/install.sh
-
-Then open:
-
-    http://127.0.0.1:8090
-
-Useful commands:
-
-    mlx status
-    mlx services
-    mlx doctor
-    mlx restart
-    mlx restart-all
-
-## MLX Manager
-
-MLX Nobby includes the command-line manager in:
-
-`scripts/mlx`
-
-Recommended installation:
-
-    ./scripts/install.sh
-
-Safe bootstrap without touching LaunchAgents or Docker:
-
-    ./scripts/install.sh --no-launchd --no-docker
-
-Manual MLX Manager installation:
-
-    mkdir -p ~/bin
-    cp scripts/mlx ~/bin/mlx
-    chmod +x ~/bin/mlx
-
-Useful commands:
-
-    mlx start
-    mlx stop
-    mlx restart
-    mlx restart-all
-    mlx status
-    mlx services
-    mlx agent status
-    mlx agent restart
-    mlx memory
-    mlx serverargs
-    mlx doctor
-
-The manager uses `~/.config/mlx-server/config`,
-`~/.config/mlx-server/models` and the native macOS LaunchAgents.
+Released under the [MIT License](LICENSE).
