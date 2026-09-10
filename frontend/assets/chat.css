@@ -5143,3 +5143,252 @@ body > * {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+
+/* MLX nobby icon message actions */
+.message-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 6px;
+}
+
+.message-actions .message-action-icon {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    padding: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #8f99a8;
+    cursor: pointer;
+    line-height: 1;
+    transition:
+        color 120ms ease,
+        background-color 120ms ease,
+        transform 80ms ease;
+}
+
+.message-actions .message-action-icon:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #f1f3f5;
+}
+
+.message-actions .message-action-icon:active {
+    transform: scale(0.92);
+}
+
+.message-actions .message-action-icon svg {
+    width: 17px;
+    height: 17px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+
+/* MLX nobby hover metric info */
+.message-info-btn {
+    position: relative;
+}
+
+.message-info-tooltip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    z-index: 100;
+    min-width: 190px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    background: #171b22;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    transform: translate(-50%, 4px);
+
+    transition:
+        opacity 120ms ease,
+        transform 120ms ease,
+        visibility 120ms ease;
+}
+
+.message-info-btn:hover .message-info-tooltip,
+.message-info-btn:focus-visible .message-info-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+}
+
+.message-info-list {
+    display: grid;
+    gap: 6px;
+}
+
+.message-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.message-info-row span {
+    color: #8f99a8;
+}
+
+.message-info-row strong {
+    color: #e1e5eb;
+    font-weight: 500;
+}
+
+.message-info-empty {
+    min-width: 150px;
+    padding: 2px 0;
+    color: #8f99a8;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* MLX nobby structured profile information */
+#profileCustomFields {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.profile-info-card {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.015);
+    transition:
+        border-color 120ms ease,
+        background-color 120ms ease;
+}
+
+.profile-info-card:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.profile-info-card.is-expanded {
+    background: rgba(255, 255, 255, 0.025);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.profile-info-card-header {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.profile-info-summary {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.profile-info-label {
+    overflow: hidden;
+    color: #e5e9ef;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-info-value {
+    overflow: hidden;
+    color: #8f99a8;
+    font-size: 12px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-info-chevron {
+    flex: 0 0 auto;
+    color: #7f8997;
+    font-size: 20px;
+    line-height: 1;
+    transform: rotate(90deg);
+    transition: transform 120ms ease;
+}
+
+.profile-info-card.is-expanded .profile-info-chevron {
+    transform: rotate(-90deg);
+}
+
+.profile-info-editor {
+    padding: 2px 14px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.profile-info-editor[hidden] {
+    display: none;
+}
+
+.profile-info-editor .field {
+    margin-top: 12px;
+}
+
+.profile-info-editor textarea {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.profile-info-editor-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.profile-info-editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.profile-info-card.is-empty .profile-info-value {
+    font-style: italic;
+    opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+    .profile-info-editor-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .profile-info-editor-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

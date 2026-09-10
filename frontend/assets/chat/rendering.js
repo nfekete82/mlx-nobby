@@ -1282,10 +1282,6 @@ function renderMessages(options = {}) {
                     ? renderMetrics(message.metrics)
                     : null;
 
-            if (metrics) {
-                content.appendChild(metrics);
-            }
-
             enhanceCodeBlocks(content);
 
             const actions =
@@ -1298,10 +1294,25 @@ function renderMessages(options = {}) {
                 document.createElement('button');
 
             copy.className =
-                'message-action-btn';
+                'message-action-btn message-action-icon';
+            copy.type = 'button';
+            copy.title = 'Kopieren';
+            copy.setAttribute('aria-label', 'Kopieren');
 
-            copy.textContent =
-                'Kopieren';
+            const copyIcon = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+                </svg>
+            `;
+
+            const copiedIcon = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12.5l4 4L19 6.5"></path>
+                </svg>
+            `;
+
+            copy.innerHTML = copyIcon;
 
             copy.addEventListener(
                 'click',
@@ -1310,13 +1321,13 @@ function renderMessages(options = {}) {
                         message.content
                     );
 
-                    copy.textContent =
-                        'Kopiert';
+                    copy.innerHTML = copiedIcon;
+                    copy.title = 'Kopiert';
 
                     setTimeout(
                         () => {
-                            copy.textContent =
-                                'Kopieren';
+                            copy.innerHTML = copyIcon;
+                            copy.title = 'Kopieren';
                         },
                         1200
                     );
@@ -1324,6 +1335,136 @@ function renderMessages(options = {}) {
             );
 
             actions.appendChild(copy);
+
+            const info =
+                document.createElement('button');
+
+            info.className =
+                'message-action-btn message-action-icon message-info-btn';
+
+            info.type = 'button';
+            info.setAttribute(
+                'aria-label',
+                'Antwortinformationen'
+            );
+
+            info.innerHTML = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <path d="M12 10v6"></path>
+                    <path d="M12 7h.01"></path>
+                </svg>
+            `;
+
+            const tooltip =
+                document.createElement('div');
+
+            tooltip.className =
+                'message-info-tooltip';
+
+            const metricData =
+                message.metrics || {};
+
+            const formatMetric = (value, digits = 1) =>
+                Number(value).toLocaleString(
+                    'de-DE',
+                    {
+                        maximumFractionDigits: digits
+                    }
+                );
+
+            const rows = [];
+
+            if (Number.isFinite(metricData.estimated_tokens)) {
+                rows.push([
+                    'Tokens',
+                    formatMetric(
+                        metricData.estimated_tokens,
+                        0
+                    )
+                ]);
+            }
+
+            if (Number.isFinite(metricData.tokens_per_second)) {
+                rows.push([
+                    'Geschwindigkeit',
+                    formatMetric(
+                        metricData.tokens_per_second
+                    ) + ' tok/s'
+                ]);
+            }
+
+            if (Number.isFinite(metricData.total_ms)) {
+                rows.push([
+                    'Gesamtzeit',
+                    formatMetric(
+                        metricData.total_ms / 1000
+                    ) + ' s'
+                ]);
+            }
+
+            if (Number.isFinite(metricData.first_content_ms)) {
+                rows.push([
+                    'First Token',
+                    formatMetric(
+                        metricData.first_content_ms / 1000
+                    ) + ' s'
+                ]);
+            }
+
+            if (Number.isFinite(metricData.thinking_ms)) {
+                rows.push([
+                    'Thinking',
+                    formatMetric(
+                        metricData.thinking_ms / 1000
+                    ) + ' s'
+                ]);
+            }
+
+            const list =
+                document.createElement('div');
+
+            list.className =
+                'message-info-list';
+
+            if (rows.length === 0) {
+                const empty =
+                    document.createElement('div');
+
+                empty.className =
+                    'message-info-empty';
+
+                empty.textContent =
+                    'Keine Metriken verfügbar';
+
+                list.appendChild(empty);
+            } else {
+                for (const [label, value] of rows) {
+                    const row =
+                        document.createElement('div');
+
+                    row.className =
+                        'message-info-row';
+
+                    const key =
+                        document.createElement('span');
+
+                    key.textContent = label;
+
+                    const val =
+                        document.createElement('strong');
+
+                    val.textContent = value;
+
+                    row.appendChild(key);
+                    row.appendChild(val);
+                    list.appendChild(row);
+                }
+            }
+
+            tooltip.appendChild(list);
+            info.appendChild(tooltip);
+            actions.appendChild(info);
 
             const isLast =
                 index ===
@@ -1334,10 +1475,21 @@ function renderMessages(options = {}) {
                     document.createElement('button');
 
                 regenerate.className =
-                    'message-action-btn';
-
-                regenerate.textContent =
-                    'Neu generieren';
+                    'message-action-btn message-action-icon';
+                regenerate.type = 'button';
+                regenerate.title = 'Neu generieren';
+                regenerate.setAttribute(
+                    'aria-label',
+                    'Neu generieren'
+                );
+                regenerate.innerHTML = `
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M20 11a8 8 0 0 0-14.9-4"></path>
+                        <path d="M5 3v5h5"></path>
+                        <path d="M4 13a8 8 0 0 0 14.9 4"></path>
+                        <path d="M19 21v-5h-5"></path>
+                    </svg>
+                `;
 
                 regenerate.addEventListener(
                     'click',
@@ -1479,10 +1631,19 @@ function renderMessages(options = {}) {
                 document.createElement('button');
 
             edit.className =
-                'message-action-btn';
-
-            edit.textContent =
-                'Bearbeiten';
+                'message-action-btn message-action-icon';
+            edit.type = 'button';
+            edit.title = 'Bearbeiten';
+            edit.setAttribute(
+                'aria-label',
+                'Bearbeiten'
+            );
+            edit.innerHTML = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path>
+                </svg>
+            `;
 
             edit.addEventListener(
                 'click',
