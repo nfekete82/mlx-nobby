@@ -1,12 +1,17 @@
 # MLX Nobby
 
-MLX Nobby is a local AI control center for Apple Silicon. It combines native
-MLX inference, model and cache management, chat, coding workflows, retrieval,
-speech transcription, and image generation in one browser interface.
+![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
+![MLX](https://img.shields.io/badge/MLX-native-blue)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Release](https://img.shields.io/badge/release-v1.0.0-informational)
 
-The inference services run directly on macOS so they can use Apple silicon and
-Metal. Only the web application runs in Docker. A loopback-only macOS agent is
-the bridge between that container and host resources.
+
+**MLX Nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
+
+Run LLMs and AI services locally on your Mac with MLX and Metal acceleration while keeping models, conversations, documents, embeddings, and generated content under your control.
+
+Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
 ## Features
 
