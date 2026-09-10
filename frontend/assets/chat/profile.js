@@ -214,11 +214,7 @@
             const fields = data.fields || {};
 
             $('profileEnabled').checked = data.enabled !== false;
-            $('profileName').value = fields.name || '';
-            $('profileAge').value = fields.age || '';
-            $('profileProfession').value = fields.profession || '';
-            $('profileLocation').value = fields.location || '';
-            $('profileAbout').value = fields.about || '';
+
             $('profileResponsePreferences').value =
                 fields.response_preferences || '';
 
@@ -246,13 +242,6 @@
         const payload = {
             enabled: $('profileEnabled')?.checked !== false,
             fields: {
-                name: $('profileName')?.value.trim() || '',
-                age: $('profileAge')?.value.trim() || '',
-                profession:
-                    $('profileProfession')?.value.trim() || '',
-                location:
-                    $('profileLocation')?.value.trim() || '',
-                about: $('profileAbout')?.value.trim() || '',
                 response_preferences:
                     $('profileResponsePreferences')?.value.trim() || ''
             },

@@ -12,62 +12,107 @@ ROOT = Path.home() / ".config/mlx-web"
 PROFILE_FILE = ROOT / "profile.json"
 PROFILE_LOCK = threading.RLock()
 
+
 DEFAULT_PROFILE = {
     "enabled": True,
     "fields": {
-        "name": "",
-        "age": "",
-        "profession": "",
-        "location": "",
-        "about": "",
         "response_preferences": "",
     },
     "custom_fields": [],
 }
 
 
+LEGACY_FIELDS = (
+    ("name", "Name", "personal"),
+    ("age", "Alter", "personal"),
+    ("profession", "Beruf", "work"),
+    ("location", "Wohnort", "personal"),
+    ("about", "Persönlicher Kontext", "personal"),
+)
+
+
+def _normalize_custom_field(item: Any) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+
+    label = str(item.get("label") or "").strip()
+    value = str(item.get("value") or "").strip()
+
+    if not label or not value:
+        return None
+
+    return {
+        "label": label[:120],
+        "value": value[:2000],
+        "category": str(
+            item.get("category") or "other"
+        ).strip()[:80],
+        "sensitive": item.get("sensitive") is True,
+        "enabled": item.get("enabled") is not False,
+    }
+
+
 def _normalize(data: Any) -> dict:
     if not isinstance(data, dict):
         data = {}
 
-    fields = data.get("fields")
-    if not isinstance(fields, dict):
-        fields = {}
+    raw_fields = data.get("fields")
 
-    normalized_fields = {}
-    for key in DEFAULT_PROFILE["fields"]:
-        value = fields.get(key, "")
-        normalized_fields[key] = str(value or "").strip()
+    if not isinstance(raw_fields, dict):
+        raw_fields = {}
+
+    response_preferences = str(
+        raw_fields.get("response_preferences") or ""
+    ).strip()
 
     custom_fields = []
     raw_custom = data.get("custom_fields")
 
     if isinstance(raw_custom, list):
         for item in raw_custom:
-            if not isinstance(item, dict):
-                continue
+            normalized = _normalize_custom_field(item)
 
-            label = str(item.get("label") or "").strip()
-            value = str(item.get("value") or "").strip()
+            if normalized:
+                custom_fields.append(normalized)
 
-            if not label or not value:
-                continue
+    # --------------------------------------------------------
+    # Legacy-Profil automatisch in flexible Informationen
+    # migrieren.
+    #
+    # Dadurch bleiben alte profile.json-Dateien kompatibel.
+    # --------------------------------------------------------
 
-            custom_fields.append(
-                {
-                    "label": label[:120],
-                    "value": value[:2000],
-                    "category": str(
-                        item.get("category") or "other"
-                    ).strip()[:80],
-                    "sensitive": item.get("sensitive") is True,
-                    "enabled": item.get("enabled") is not False,
-                }
-            )
+    existing_labels = {
+        item["label"].casefold()
+        for item in custom_fields
+    }
+
+    for key, label, category in LEGACY_FIELDS:
+        value = str(raw_fields.get(key) or "").strip()
+
+        if not value:
+            continue
+
+        if label.casefold() in existing_labels:
+            continue
+
+        custom_fields.append(
+            {
+                "label": label,
+                "value": value[:2000],
+                "category": category,
+                "sensitive": False,
+                "enabled": True,
+            }
+        )
+
+        existing_labels.add(label.casefold())
 
     return {
         "enabled": data.get("enabled") is not False,
-        "fields": normalized_fields,
+        "fields": {
+            "response_preferences": response_preferences,
+        },
         "custom_fields": custom_fields,
     }
 
@@ -119,22 +164,7 @@ def context() -> str:
     if not profile["enabled"]:
         return ""
 
-    fields = profile["fields"]
     lines = []
-
-    labels = {
-        "name": "Name",
-        "age": "Alter",
-        "profession": "Beruf",
-        "location": "Wohnort",
-        "about": "Über mich",
-        "response_preferences": "Antwortpräferenzen",
-    }
-
-    for key, label in labels.items():
-        value = fields.get(key, "")
-        if value:
-            lines.append(f"{label}: {value}")
 
     for item in profile["custom_fields"]:
         if not item.get("enabled", True):
@@ -142,6 +172,18 @@ def context() -> str:
 
         lines.append(
             f"{item['label']}: {item['value']}"
+        )
+
+    response_preferences = (
+        profile["fields"]
+        .get("response_preferences", "")
+        .strip()
+    )
+
+    if response_preferences:
+        lines.append(
+            "Antwortpräferenzen: "
+            + response_preferences
         )
 
     if not lines:
