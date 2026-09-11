@@ -1059,10 +1059,10 @@ function renderMessages(options = {}) {
         messagesInner.innerHTML = `
             <div class="empty">
                 <div class="empty-logo"><img src="/assets/mlx-nobby.svg" alt="MLX nobby"></div>
-                <h1>${rt('ready_next_idea', 'Ready for your next great idea?')}</h1>
+                <h1 data-i18n="ui.ready_next_idea">${rt('ready_next_idea', 'Ready for your next great idea?')}</h1>
                 <p>
-                    <span>${rt('empty_prompt', 'Ask, dictate, or upload — Nobby is ready. 😎')}</span>
-                    <span class="empty-local">${rt('empty_local', 'Everything runs locally on your Mac.')}</span>
+                    <span data-i18n="ui.empty_prompt">${rt('empty_prompt', 'Ask, dictate, or upload — Nobby is ready. 😎')}</span>
+                    <span class="empty-local" data-i18n="ui.empty_local">${rt('empty_local', 'Everything runs locally on your Mac.')}</span>
                 </p>
             </div>
         `;

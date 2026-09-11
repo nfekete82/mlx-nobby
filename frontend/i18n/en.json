@@ -33,7 +33,8 @@
   },
   "appearance": {
     "title": "Appearance",
-    "description": "Readability and appearance of your chat messages."
+    "description": "Readability and appearance of your chat messages.",
+    "preview_message": "This is what your message looks like."
   },
   "generation": {
     "title": "Generation",

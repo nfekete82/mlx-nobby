@@ -33,7 +33,8 @@
   },
   "appearance": {
     "title": "Darstellung",
-    "description": "Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten."
+    "description": "Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.",
+    "preview_message": "So sieht deine Nachricht aus."
   },
   "generation": {
     "title": "Generation",
@@ -500,7 +501,7 @@
     "add_file": "Datei hinzufügen",
     "attach_file_image": "Datei oder Bild anhängen",
     "open_folder": "Ordner öffnen",
-    "ready_next_idea": "Bereit für deine nächste geniale Idee?",
+    "ready_next_idea": "Bereit für deine nächste Idee?",
     "affected_files": "Betroffene Dateien",
     "generated_file": "Erzeugte Datei",
     "local_image": "Lokales Bild",
