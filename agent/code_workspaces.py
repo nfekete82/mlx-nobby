@@ -705,15 +705,29 @@ def test(patch_id):
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
+    checks_run=sum(
+        entry.get("status") in {"passed", "failed"}
+        for entry in results
+    )
+    has_blocking_result=any(
+        entry.get("status") not in {"passed", "skipped"}
+        for entry in results
+    )
+    if checks_run == 0:
+        test_status="no_checks"
+    elif has_blocking_result:
+        test_status="failed"
+    else:
+        test_status="passed"
+
     patch["tests"]={
         "patch_id": patch_id,
         "change_set_id": patch.get("change_set_id", patch_id),
         "summary": _change_summary(patch["files"]),
         "results": results,
-        "passed": all(
-            entry.get("status") in {"passed", "skipped"}
-            for entry in results
-        ),
+        "checks_run": checks_run,
+        "test_status": test_status,
+        "passed": test_status == "passed",
         "test_workspace_removed": not work.exists(),
     }
     _write_patch(patch)

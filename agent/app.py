@@ -11105,7 +11105,14 @@ def create_agent_approval(
 
             if observation.get("action") == "code_test":
                 result = observation.get("result") or {}
-                if result.get("passed") is True:
+                checks_run = result.get("checks_run")
+                if (
+                    result.get("patch_id") == target
+                    and result.get("passed") is True
+                    and result.get("test_status") == "passed"
+                    and type(checks_run) is int
+                    and checks_run > 0
+                ):
                     test_step = index
                     test_result = result
 
@@ -11159,6 +11166,8 @@ def create_agent_approval(
             ],
             "tests": {
                 "passed": bool((test_result or {}).get("passed")),
+                "test_status": (test_result or {}).get("test_status"),
+                "checks_run": (test_result or {}).get("checks_run", 0),
                 "results": len((test_result or {}).get("results", [])),
             },
         } if operation == "code_apply" else {}),

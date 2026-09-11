@@ -87,7 +87,7 @@ class CodeWorkspaceTests(unittest.TestCase):
         code_workspaces.apply(patch["patch_id"], approved=True)
         self.assertEqual(source.read_text(encoding="utf-8"), "new\n")
 
-    def test_creates_and_diffs_new_file(self):
+    def test_creates_diffs_and_reports_txt_as_no_checks(self):
         workspace = self.add_workspace()
         patch = code_workspaces.create_patch(
             workspace["workspace_id"],
@@ -101,8 +101,10 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertIn("+++ proposed/src/new.txt", file_diff["diff"])
         self.assertFalse((self.workspace_one / "src/new.txt").exists())
         test_result = code_workspaces.test(patch["patch_id"])
-        self.assertTrue(test_result["passed"])
-        self.assertNotEqual(test_result["results"][0]["status"], "failed")
+        self.assertFalse(test_result["passed"])
+        self.assertEqual(test_result["test_status"], "no_checks")
+        self.assertEqual(test_result["checks_run"], 0)
+        self.assertEqual(test_result["results"][0]["status"], "skipped")
 
     def test_apply_requires_approval(self):
         workspace = self.add_workspace()
@@ -431,7 +433,11 @@ class CodeWorkspaceTests(unittest.TestCase):
         )
 
     def test_coding_planner_runs_create_prepare_diff_test_then_approval(self):
-        self.add_workspace()
+        code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[[sys.executable, "-c", "raise SystemExit(0)"]],
+            activate=True,
+        )
         seen_system_prompts = []
 
         def planner(messages, **kwargs):
@@ -500,7 +506,11 @@ class CodeWorkspaceTests(unittest.TestCase):
     def test_followup_delete_resolves_file_from_conversation_context(self):
         target = self.workspace_one / "test.txt"
         target.write_text("Hallo Welt\n", encoding="utf-8")
-        self.add_workspace()
+        code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[[sys.executable, "-c", "raise SystemExit(0)"]],
+            activate=True,
+        )
         conversation_context = [{
             "role": "user",
             "content": "Erstelle test.txt mit dem Inhalt Hallo Welt",
@@ -578,7 +588,7 @@ class CodeWorkspaceTests(unittest.TestCase):
     def test_greenfield_multi_file_create_diff_apply_verify_and_revert(self):
         workspace = self.add_workspace()
         changes = [
-            {"path": "index.html", "operation": "CREATE", "proposed_content": "<h1>Nobby</h1>\n"},
+            {"path": "index.html", "operation": "CREATE", "proposed_content": "<h1>nobby</h1>\n"},
             {"path": "assets/css/style.css", "operation": "CREATE", "proposed_content": "body { color: #fff; }\n"},
             {"path": "assets/js/app.js", "operation": "CREATE", "proposed_content": "console.log('ready');\n"},
         ]
@@ -596,6 +606,12 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertGreater(patch["summary"]["added_lines"], 0)
         tests = code_workspaces.test(patch["patch_id"])
         self.assertTrue(tests["passed"])
+        self.assertEqual(tests["test_status"], "passed")
+        self.assertEqual(tests["checks_run"], 1)
+        self.assertEqual(
+            [entry["status"] for entry in tests["results"]],
+            ["skipped", "skipped", "passed"],
+        )
         self.assertTrue(tests["test_workspace_removed"])
 
         result = code_workspaces.apply(patch["patch_id"], approved=True)
@@ -757,9 +773,107 @@ class CodeWorkspaceTests(unittest.TestCase):
         result = code_workspaces.test(patch["patch_id"])
 
         self.assertTrue(result["passed"])
+        self.assertEqual(result["test_status"], "passed")
+        self.assertEqual(result["checks_run"], 1)
+        self.assertEqual(
+            [entry["status"] for entry in result["results"]],
+            ["skipped", "passed"],
+        )
         self.assertTrue(result["test_workspace_removed"])
         self.assertEqual(existing.read_text(encoding="utf-8"), "real\n")
         self.assertFalse((self.workspace_one / "new.txt").exists())
+
+    def test_html_without_commands_reports_no_checks(self):
+        workspace = self.add_workspace()
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create HTML",
+            [{"path": "index.html", "operation": "CREATE", "proposed_content": "<h1>nobby</h1>\n"}],
+        )
+
+        result = code_workspaces.test(patch["patch_id"])
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["test_status"], "no_checks")
+        self.assertEqual(result["checks_run"], 0)
+        self.assertEqual(result["results"][0]["status"], "skipped")
+
+    def test_javascript_syntax_check_counts_as_passed(self):
+        workspace = self.add_workspace()
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create JavaScript",
+            [{"path": "app.js", "operation": "CREATE", "proposed_content": "const ready = true;\n"}],
+        )
+
+        result = code_workspaces.test(patch["patch_id"])
+
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["test_status"], "passed")
+        self.assertEqual(result["checks_run"], 1)
+        self.assertEqual(result["results"][0]["status"], "passed")
+
+    def test_python_syntax_check_counts_as_passed(self):
+        workspace = self.add_workspace()
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create Python",
+            [{"path": "app.py", "operation": "CREATE", "proposed_content": "ready = True\n"}],
+        )
+
+        result = code_workspaces.test(patch["patch_id"])
+
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["test_status"], "passed")
+        self.assertEqual(result["checks_run"], 1)
+        self.assertEqual(result["results"][0]["status"], "passed")
+
+    def test_failed_test_command_reports_failed(self):
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[[sys.executable, "-c", "raise SystemExit(1)"]],
+            activate=True,
+        )
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create text",
+            [{"path": "notes.txt", "operation": "CREATE", "proposed_content": "notes\n"}],
+        )
+
+        result = code_workspaces.test(patch["patch_id"])
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["test_status"], "failed")
+        self.assertEqual(result["checks_run"], 1)
+        self.assertEqual(
+            [entry["status"] for entry in result["results"]],
+            ["skipped", "failed"],
+        )
+
+    def test_failed_result_overrides_passed_and_skipped_results(self):
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[
+                [sys.executable, "-c", "raise SystemExit(0)"],
+                [sys.executable, "-c", "raise SystemExit(1)"],
+            ],
+            activate=True,
+        )
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create text",
+            [{"path": "notes.txt", "operation": "CREATE", "proposed_content": "notes\n"}],
+        )
+
+        result = code_workspaces.test(patch["patch_id"])
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["test_status"], "failed")
+        self.assertEqual(result["checks_run"], 2)
+        self.assertEqual(
+            [entry["status"] for entry in result["results"]],
+            ["skipped", "passed", "failed"],
+        )
 
     def test_unavailable_required_syntax_checker_does_not_report_passed(self):
         workspace = self.add_workspace()
@@ -776,6 +890,8 @@ class CodeWorkspaceTests(unittest.TestCase):
             result = code_workspaces.test(patch["patch_id"])
 
         self.assertFalse(result["passed"])
+        self.assertEqual(result["test_status"], "no_checks")
+        self.assertEqual(result["checks_run"], 0)
         self.assertEqual(result["results"][0]["status"], "unavailable")
 
     def test_binary_patch_content_and_suffix_are_blocked(self):
@@ -794,7 +910,11 @@ class CodeWorkspaceTests(unittest.TestCase):
             )
 
     def test_approval_exposes_one_multi_file_summary(self):
-        workspace = self.add_workspace()
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[[sys.executable, "-c", "raise SystemExit(0)"]],
+            activate=True,
+        )
         patch = code_workspaces.create_patch(
             workspace["workspace_id"],
             "Create two files",
@@ -821,7 +941,34 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(approval["summary"]["files"], 2)
         self.assertEqual(approval["summary"]["create"], 2)
         self.assertTrue(approval["tests"]["passed"])
+        self.assertEqual(approval["tests"]["test_status"], "passed")
+        self.assertEqual(approval["tests"]["checks_run"], 1)
         self.assertEqual(len(approval["files"]), 2)
+
+    def test_approval_rejects_code_test_without_executed_checks(self):
+        workspace = self.add_workspace()
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create text",
+            [{"path": "new.txt", "operation": "CREATE", "proposed_content": "content\n"}],
+        )
+        patch_id = patch["patch_id"]
+        tests = code_workspaces.test(patch_id)
+        tests["passed"] = True
+
+        with self.assertRaisesRegex(ValueError, "erfolgreichen code_test"):
+            agent_app.create_agent_approval(
+                goal="Create text",
+                observations=[
+                    {"action": "code_diff", "query": patch_id, "status": "completed", "result": patch},
+                    {"action": "code_test", "query": patch_id, "status": "completed", "result": tests},
+                ],
+                step=3,
+                mode="coding",
+                operation="code_apply",
+                target=patch_id,
+                reason="Ready",
+            )
 
     def test_project_and_followup_routing_and_programming_question(self):
         self.add_workspace()
