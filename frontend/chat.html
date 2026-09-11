@@ -363,7 +363,14 @@
             </label>
             <p class="settings-hint" data-i18n="ui.workspace_test_commands_hint">JSON-Liste von Argumentlisten. Leere Liste entfernt alle Testbefehle.</p>
             <div class="workspace-test-actions">
+                <button id="workspaceTestsDetect" class="message-action-btn" type="button" data-i18n="ui.workspace_tests_detect">Tests automatisch erkennen</button>
                 <button id="workspaceTestsSave" class="message-action-btn" type="button" data-i18n="ui.workspace_tests_save">Testbefehle speichern</button>
+            </div>
+            <div id="workspaceTestDetection" class="workspace-test-detection" hidden>
+                <div id="workspaceTestDetectionList"></div>
+                <div class="workspace-test-actions">
+                    <button id="workspaceTestsUseDetected" class="message-action-btn" type="button" data-i18n="ui.workspace_tests_use_detected">Ausgewählte übernehmen</button>
+                </div>
             </div>
             <div id="workspaceSettingsFeedback" class="workspace-feedback" role="status" aria-live="polite"></div>
         </section>

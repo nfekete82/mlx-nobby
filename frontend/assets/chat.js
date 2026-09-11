@@ -845,13 +845,124 @@ function renderWorkspaceTestCommands(workspace) {
     activeWorkspaceSettings = workspace || null;
     const input = document.getElementById('workspaceTestCommands');
     const save = document.getElementById('workspaceTestsSave');
+    const detect = document.getElementById('workspaceTestsDetect');
     if (!input || !save) return;
 
     input.disabled = !workspace;
     save.disabled = !workspace;
+    if (detect) {
+        detect.disabled = !workspace;
+    }
+    clearWorkspaceTestDetection();
     input.value = workspace
         ? JSON.stringify(workspace.test_commands || [], null, 2)
         : '';
+}
+
+function clearWorkspaceTestDetection() {
+    const panel = document.getElementById('workspaceTestDetection');
+    const list = document.getElementById('workspaceTestDetectionList');
+    const use = document.getElementById('workspaceTestsUseDetected');
+
+    if (list) {
+        list.replaceChildren();
+    }
+
+    if (panel) {
+        panel.hidden = true;
+    }
+
+    if (use) {
+        use.disabled = true;
+    }
+}
+
+function renderWorkspaceTestDetection(result) {
+    const panel = document.getElementById('workspaceTestDetection');
+    const list = document.getElementById('workspaceTestDetectionList');
+    const use = document.getElementById('workspaceTestsUseDetected');
+
+    if (!panel || !list || !use) {
+        return;
+    }
+
+    list.replaceChildren();
+
+    const entries = [
+        ...(Array.isArray(result?.detected) ? result.detected : []),
+        ...(Array.isArray(result?.recommended) ? result.recommended : [])
+    ];
+
+    if (!entries.length) {
+        const empty = document.createElement('p');
+        empty.className = 'settings-hint';
+        empty.textContent = chatT(
+            'ui.workspace_tests_detect_none',
+            'No test commands were detected.'
+        );
+        list.appendChild(empty);
+        panel.hidden = false;
+        use.disabled = true;
+        return;
+    }
+
+    entries.forEach(entry => {
+        if (
+            !entry ||
+            !Array.isArray(entry.command) ||
+            !entry.command.length ||
+            !entry.command.every(
+                part => typeof part === 'string' && part.length > 0
+            )
+        ) {
+            return;
+        }
+
+        const row = document.createElement('label');
+        row.className = 'workspace-test-detection-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'workspace-test-detection-checkbox';
+        checkbox.dataset.command = JSON.stringify(entry.command);
+        checkbox.checked = entry.available !== false;
+
+        const body = document.createElement('span');
+
+        const command = document.createElement('code');
+        command.textContent = entry.command.join(' ');
+
+        const meta = document.createElement('small');
+
+        const metadata = [
+            entry.source,
+            entry.confidence
+        ].filter(Boolean);
+
+        if (entry.available === false) {
+            metadata.push(chatT(
+                'ui.workspace_tests_detect_unavailable',
+                'unavailable'
+            ));
+        }
+
+        meta.textContent = metadata.join(' · ');
+
+        body.append(command);
+
+        if (metadata.length) {
+            body.append(document.createElement('br'), meta);
+        }
+
+        row.append(checkbox, body);
+        list.appendChild(row);
+    });
+
+    panel.hidden = false;
+
+    use.disabled = !list.querySelector(
+        '.workspace-test-detection-checkbox'
+    );
 }
 
 function parseWorkspaceTestCommands(value) {
@@ -1026,6 +1137,84 @@ if (workspaceAdd) {
     });
 }
 
+const workspaceTestsDetect = document.getElementById('workspaceTestsDetect');
+
+if (workspaceTestsDetect) {
+    workspaceTestsDetect.addEventListener('click', async () => {
+        if (!activeWorkspaceSettings) {
+            return;
+        }
+
+        workspaceTestsDetect.disabled = true;
+        showWorkspaceFeedback('');
+        clearWorkspaceTestDetection();
+
+        try {
+            const result = await workspaceRequest(
+                '/api/mlx/code/workspaces/' +
+                encodeURIComponent(activeWorkspaceSettings.workspace_id) +
+                '/detect-tests'
+            );
+
+            renderWorkspaceTestDetection(result);
+
+            showWorkspaceFeedback(chatT(
+                'ui.workspace_tests_detect_complete',
+                'Test command detection completed. Review the suggestions before applying them.'
+            ));
+        } catch (error) {
+            showWorkspaceFeedback(workspaceErrorMessage(error));
+        } finally {
+            workspaceTestsDetect.disabled = !activeWorkspaceSettings;
+        }
+    });
+}
+
+const workspaceTestsUseDetected = document.getElementById(
+    'workspaceTestsUseDetected'
+);
+
+if (workspaceTestsUseDetected) {
+    workspaceTestsUseDetected.addEventListener('click', () => {
+        const input = document.getElementById('workspaceTestCommands');
+        const list = document.getElementById(
+            'workspaceTestDetectionList'
+        );
+
+        if (!input || !list) {
+            return;
+        }
+
+        const commands = Array.from(
+            list.querySelectorAll(
+                '.workspace-test-detection-checkbox:checked'
+            )
+        ).map(checkbox => {
+            try {
+                return JSON.parse(
+                    checkbox.dataset.command || 'null'
+                );
+            } catch (error) {
+                return null;
+            }
+        }).filter(command =>
+            Array.isArray(command) &&
+            command.length > 0 &&
+            command.every(
+                part => typeof part === 'string' && part.length > 0
+            )
+        );
+
+        input.value = JSON.stringify(commands, null, 2);
+        input.focus();
+
+        showWorkspaceFeedback(chatT(
+            'ui.workspace_tests_detect_applied',
+            'Selected commands were copied into the editor. Save them to update the workspace.'
+        ));
+    });
+}
+
 const workspaceTestsSave = document.getElementById('workspaceTestsSave');
 if (workspaceTestsSave) {
     workspaceTestsSave.addEventListener('click', async () => {
@@ -1074,7 +1263,9 @@ window.MLXChatWorkspace = {
     load: loadWorkspaces,
     openTestConfiguration: openWorkspaceTestConfiguration,
     __test: {
-        parseWorkspaceTestCommands
+        parseWorkspaceTestCommands,
+        renderWorkspaceTestDetection,
+        clearWorkspaceTestDetection
     }
 };
 

@@ -179,6 +179,416 @@ def add_workspace(path,name=None,test_commands=None,activate=True):
     items.append(item)
     _save(items)
     return _summary(item, existing=False)
+
+def detect_test_commands(workspace_id):
+    """Detect plausible workspace test commands without changing configuration."""
+    item = _workspace(workspace_id)
+    root = _root(item)
+    detected = []
+    recommended = []
+    warnings = []
+
+    def add(command, reason, confidence, source, available=True):
+        entry = {
+            "command": command,
+            "reason": reason,
+            "confidence": confidence,
+            "source": source,
+            "available": bool(available),
+        }
+        if available:
+            detected.append(entry)
+        else:
+            recommended.append(entry)
+
+    def binary_available(binary):
+        return shutil.which(binary) is not None
+
+    def workspace_files(*suffixes):
+        suffixes = tuple(suffix.lower() for suffix in suffixes)
+        found = []
+
+        for base, dirs, names in os.walk(root):
+            dirs[:] = sorted(
+                directory
+                for directory in dirs
+                if directory not in IGNORE
+            )
+
+            for name in sorted(names):
+                if name.lower().endswith(suffixes):
+                    found.append(Path(base) / name)
+
+        return found
+
+    # ---------------------------------------------------------
+    # Node / JavaScript
+    # ---------------------------------------------------------
+    package_json = root / "package.json"
+
+    if package_json.is_file():
+        try:
+            package = json.loads(_read_text(package_json))
+        except (ValueError, json.JSONDecodeError):
+            warnings.append({
+                "source": "package.json",
+                "warning": "INVALID_PACKAGE_JSON",
+            })
+            package = None
+
+        if isinstance(package, dict):
+            scripts = package.get("scripts")
+            scripts = scripts if isinstance(scripts, dict) else {}
+
+            lockfiles = {
+                "npm": (root / "package-lock.json").is_file(),
+                "pnpm": (root / "pnpm-lock.yaml").is_file(),
+                "yarn": (root / "yarn.lock").is_file(),
+            }
+
+            present_lockfiles = [
+                manager
+                for manager, present in lockfiles.items()
+                if present
+            ]
+
+            declared_manager = str(package.get("packageManager") or "")
+            declared_manager = declared_manager.split("@", 1)[0].strip()
+
+            if len(present_lockfiles) > 1:
+                warnings.append({
+                    "source": "package.json",
+                    "warning": "MULTIPLE_NODE_LOCKFILES",
+                    "lockfiles": present_lockfiles,
+                })
+
+            if declared_manager in {"npm", "pnpm", "yarn"}:
+                package_manager = declared_manager
+            elif lockfiles["pnpm"]:
+                package_manager = "pnpm"
+            elif lockfiles["yarn"]:
+                package_manager = "yarn"
+            else:
+                package_manager = "npm"
+
+            available = binary_available(package_manager)
+
+            for script_name in ("test", "lint", "check", "typecheck"):
+                script = scripts.get(script_name)
+
+                if not isinstance(script, str) or not script.strip():
+                    continue
+
+                normalized_script = " ".join(script.split()).lower()
+
+                # npm init's default placeholder is not a real test.
+                if (
+                    script_name == "test"
+                    and "error: no test specified" in normalized_script
+                    and "exit 1" in normalized_script
+                ):
+                    warnings.append({
+                        "source": "package.json",
+                        "warning": "NODE_TEST_PLACEHOLDER",
+                    })
+                    continue
+
+                if package_manager == "yarn":
+                    command = ["yarn", script_name]
+                else:
+                    command = [package_manager, "run", script_name]
+
+                add(
+                    command,
+                    f"package.json contains scripts.{script_name}",
+                    "high",
+                    "package.json",
+                    available,
+                )
+
+            if scripts and not available:
+                warnings.append({
+                    "source": "package.json",
+                    "warning": "PACKAGE_MANAGER_UNAVAILABLE",
+                    "binary": package_manager,
+                })
+
+    # ---------------------------------------------------------
+    # Python
+    # ---------------------------------------------------------
+    pytest_source = None
+
+    pytest_ini = root / "pytest.ini"
+    if pytest_ini.is_file():
+        pytest_source = "pytest.ini"
+
+    if pytest_source is None:
+        pyproject = root / "pyproject.toml"
+        if pyproject.is_file():
+            try:
+                content = _read_text(pyproject)
+            except ValueError:
+                content = ""
+
+            if re.search(
+                r"(?mi)^\s*\[tool\.pytest(?:\.ini_options)?\]\s*$",
+                content,
+            ):
+                pytest_source = "pyproject.toml"
+
+    if pytest_source is None:
+        setup_cfg = root / "setup.cfg"
+        if setup_cfg.is_file():
+            try:
+                content = _read_text(setup_cfg)
+            except ValueError:
+                content = ""
+
+            if re.search(r"(?mi)^\s*\[tool:pytest\]\s*$", content):
+                pytest_source = "setup.cfg"
+
+    if pytest_source is None:
+        tox_ini = root / "tox.ini"
+        if tox_ini.is_file():
+            try:
+                content = _read_text(tox_ini)
+            except ValueError:
+                content = ""
+
+            if re.search(r"(?i)\bpytest\b", content):
+                pytest_source = "tox.ini"
+
+    if pytest_source is None:
+        requirements_test = root / "requirements" / "test.txt"
+        if requirements_test.is_file():
+            try:
+                content = _read_text(requirements_test)
+            except ValueError:
+                content = ""
+
+            if re.search(
+                r"(?mi)^\s*pytest(?:\s|[<>=!~\[])",
+                content,
+            ):
+                pytest_source = "requirements/test.txt"
+
+    if pytest_source:
+        pytest_available = binary_available("pytest")
+
+        add(
+            ["pytest"],
+            f"{pytest_source} contains explicit pytest configuration",
+            "high",
+            pytest_source,
+            pytest_available,
+        )
+
+        if not pytest_available:
+            warnings.append({
+                "source": pytest_source,
+                "warning": "PYTEST_UNAVAILABLE",
+                "binary": "pytest",
+            })
+
+    elif (root / "tests").is_dir():
+        unittest_source = None
+
+        for candidate in workspace_files(".py"):
+            try:
+                relative = candidate.relative_to(root)
+            except ValueError:
+                continue
+
+            if not relative.parts or relative.parts[0] != "tests":
+                continue
+
+            if not candidate.name.startswith("test"):
+                continue
+
+            try:
+                content = _read_text(candidate)
+            except ValueError:
+                continue
+
+            if re.search(
+                r"(?m)^\s*(?:import unittest|from unittest\b)",
+                content,
+            ):
+                unittest_source = str(relative)
+                break
+
+        if unittest_source:
+            available = binary_available("python3")
+
+            add(
+                ["python3", "-m", "unittest", "discover"],
+                "Python unittest tests detected",
+                "medium",
+                unittest_source,
+                available,
+            )
+
+            if not available:
+                warnings.append({
+                    "source": unittest_source,
+                    "warning": "PYTHON_UNAVAILABLE",
+                    "binary": "python3",
+                })
+
+    # ---------------------------------------------------------
+    # PHP / PHPUnit
+    # ---------------------------------------------------------
+    composer_json = root / "composer.json"
+    composer = None
+
+    if composer_json.is_file():
+        try:
+            composer = json.loads(_read_text(composer_json))
+        except (ValueError, json.JSONDecodeError):
+            warnings.append({
+                "source": "composer.json",
+                "warning": "INVALID_COMPOSER_JSON",
+            })
+
+    phpunit_config = next(
+        (
+            name
+            for name in (
+                "phpunit.xml",
+                "phpunit.xml.dist",
+            )
+            if (root / name).is_file()
+        ),
+        None,
+    )
+
+    composer_mentions_phpunit = False
+
+    if isinstance(composer, dict):
+        for section in ("require", "require-dev"):
+            requirements = composer.get(section)
+
+            if isinstance(requirements, dict) and any(
+                str(name).lower() == "phpunit/phpunit"
+                for name in requirements
+            ):
+                composer_mentions_phpunit = True
+
+    phpunit_binary = root / "vendor" / "bin" / "phpunit"
+    phpunit_available = (
+        phpunit_binary.is_file()
+        and os.access(phpunit_binary, os.X_OK)
+    )
+
+    if phpunit_config or composer_mentions_phpunit or phpunit_binary.is_file():
+        source = (
+            phpunit_config
+            or (
+                "vendor/bin/phpunit"
+                if phpunit_binary.is_file()
+                else "composer.json"
+            )
+        )
+
+        add(
+            ["vendor/bin/phpunit"],
+            "PHPUnit project configuration detected",
+            "high",
+            source,
+            phpunit_available,
+        )
+
+        if not phpunit_available:
+            warnings.append({
+                "source": source,
+                "warning": "PHPUNIT_UNAVAILABLE",
+                "binary": "vendor/bin/phpunit",
+            })
+
+    # ---------------------------------------------------------
+    # HTML
+    # ---------------------------------------------------------
+    html_files = workspace_files(".html")
+
+    if html_files:
+        tidy_available = binary_available("tidy")
+        sample = str(html_files[0].relative_to(root))
+
+        add(
+            ["tidy", "-errors", "-quiet", sample],
+            "HTML file detected",
+            "medium",
+            sample,
+            tidy_available,
+        )
+
+        if not tidy_available:
+            warnings.append({
+                "source": sample,
+                "warning": "TIDY_UNAVAILABLE",
+                "binary": "tidy",
+            })
+
+    # ---------------------------------------------------------
+    # Shell
+    # ---------------------------------------------------------
+    shell_files = workspace_files(".sh")
+
+    if shell_files:
+        bash_available = binary_available("bash")
+        sample = str(shell_files[0].relative_to(root))
+
+        add(
+            ["bash", "-n", sample],
+            "Shell script detected",
+            "medium",
+            sample,
+            bash_available,
+        )
+
+        if not bash_available:
+            warnings.append({
+                "source": sample,
+                "warning": "BASH_UNAVAILABLE",
+                "binary": "bash",
+            })
+
+    # ---------------------------------------------------------
+    # JSON
+    # ---------------------------------------------------------
+    json_files = [
+        candidate
+        for candidate in workspace_files(".json")
+        if candidate.name not in {"package.json", "composer.json"}
+    ]
+
+    if json_files:
+        python_available = binary_available("python3")
+        sample = str(json_files[0].relative_to(root))
+
+        add(
+            ["python3", "-m", "json.tool", sample],
+            "JSON file detected",
+            "medium",
+            sample,
+            python_available,
+        )
+
+        if not python_available:
+            warnings.append({
+                "source": sample,
+                "warning": "PYTHON_UNAVAILABLE",
+                "binary": "python3",
+            })
+
+    return {
+        "workspace_id": workspace_id,
+        "detected": detected,
+        "recommended": recommended,
+        "warnings": warnings,
+    }
+
+
 def remove_workspace(workspace_id):
     items=_load(); item=_workspace(workspace_id); remaining=[x for x in items if x['workspace_id']!=workspace_id]
     if item.get("active") and remaining:

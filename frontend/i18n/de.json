@@ -646,7 +646,13 @@
     "live_status": "Live-Status",
     "refresh": "Aktualisieren",
     "checking_services": "Dienste werden geprüft …",
-    "drop_files": "Dateien hier ablegen"
+    "drop_files": "Dateien hier ablegen",
+    "workspace_tests_detect": "Tests automatisch erkennen",
+    "workspace_tests_use_detected": "Ausgewählte übernehmen",
+    "workspace_tests_detect_none": "Keine Testbefehle erkannt.",
+    "workspace_tests_detect_unavailable": "nicht verfügbar",
+    "workspace_tests_detect_complete": "Testbefehle erkannt. Prüfe die Vorschläge, bevor du sie übernimmst.",
+    "workspace_tests_detect_applied": "Ausgewählte Befehle wurden in den Editor übernommen. Speichere sie, um den Workspace zu aktualisieren."
   },
   "attachments.rag_ready": " · ✓ RAG bereit",
   "attachments.image_read_failed": "Bild konnte nicht gelesen werden: {name}",

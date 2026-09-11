@@ -1748,6 +1748,16 @@ def mlx_code_workspace_activate(workspace_id: str): return agent_json_request('P
 def mlx_code_workspace_remove(workspace_id: str): return agent_json_request('DELETE','/api/code/workspaces/'+urllib.parse.quote(workspace_id,safe=''))
 @app.post('/api/mlx/code/workspaces/{workspace_id}/refresh')
 def mlx_code_workspace_refresh(workspace_id: str): return agent_json_request('POST','/api/code/workspaces/'+urllib.parse.quote(workspace_id,safe='')+'/refresh',payload={},timeout=900)
+@app.get('/api/mlx/code/workspaces/{workspace_id}/detect-tests')
+def mlx_code_workspace_detect_tests(workspace_id: str):
+    return agent_json_request(
+        'GET',
+        '/api/code/workspaces/' +
+        urllib.parse.quote(workspace_id, safe='') +
+        '/detect-tests',
+        timeout=30,
+    )
+
 @app.post('/api/mlx/code/search')
 def mlx_code_search(request: dict): return agent_json_request('POST','/api/code/search',payload=request,timeout=30)
 

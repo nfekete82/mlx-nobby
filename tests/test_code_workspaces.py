@@ -113,6 +113,537 @@ class CodeWorkspaceTests(unittest.TestCase):
             [],
         )
 
+    def test_detects_node_test_script(self):
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "test": "vitest run",
+                },
+            }),
+            encoding="utf-8",
+        )
+        (self.workspace_one / "package-lock.json").write_text(
+            "{}\n",
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            side_effect=lambda binary: f"/usr/bin/{binary}",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        self.assertIn(
+            ["npm", "run", "test"],
+            [entry["command"] for entry in result["detected"]],
+        )
+
+    def test_does_not_invent_node_test_without_script(self):
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "start": "node app.js",
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/npm",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        commands = [
+            entry["command"]
+            for entry in result["detected"] + result["recommended"]
+        ]
+
+        self.assertNotIn(["npm", "run", "test"], commands)
+
+    def test_node_lockfiles_select_expected_package_manager(self):
+        cases = (
+            ("package-lock.json", ["npm", "run", "test"]),
+            ("pnpm-lock.yaml", ["pnpm", "run", "test"]),
+            ("yarn.lock", ["yarn", "test"]),
+        )
+
+        for lockfile, expected in cases:
+            with self.subTest(lockfile=lockfile):
+                for candidate in (
+                    "package-lock.json",
+                    "pnpm-lock.yaml",
+                    "yarn.lock",
+                ):
+                    target = self.workspace_one / candidate
+                    if target.exists():
+                        target.unlink()
+
+                (self.workspace_one / "package.json").write_text(
+                    json.dumps({
+                        "scripts": {
+                            "test": "runner",
+                        },
+                    }),
+                    encoding="utf-8",
+                )
+                (self.workspace_one / lockfile).write_text(
+                    "lock\n",
+                    encoding="utf-8",
+                )
+
+                workspace = self.add_workspace()
+
+                with mock.patch.object(
+                    code_workspaces.shutil,
+                    "which",
+                    side_effect=lambda binary: f"/usr/bin/{binary}",
+                ):
+                    result = code_workspaces.detect_test_commands(
+                        workspace["workspace_id"]
+                    )
+
+                self.assertIn(
+                    expected,
+                    [
+                        entry["command"]
+                        for entry in result["detected"]
+                    ],
+                )
+
+    def test_node_default_placeholder_is_not_detected_as_test(self):
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "test": (
+                        'echo "Error: no test specified" && exit 1'
+                    ),
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/npm",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        commands = [
+            entry["command"]
+            for entry in result["detected"] + result["recommended"]
+        ]
+
+        self.assertNotIn(["npm", "run", "test"], commands)
+        self.assertTrue(
+            any(
+                warning.get("warning") == "NODE_TEST_PLACEHOLDER"
+                for warning in result["warnings"]
+            )
+        )
+
+    def test_pyproject_without_pytest_configuration_does_not_invent_pytest(self):
+        (self.workspace_one / "pyproject.toml").write_text(
+            "[project]\nname = \"example\"\n",
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/pytest",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        commands = [
+            entry["command"]
+            for entry in result["detected"] + result["recommended"]
+        ]
+
+        self.assertNotIn(["pytest"], commands)
+
+    def test_detects_explicit_pytest_configuration(self):
+        (self.workspace_one / "pyproject.toml").write_text(
+            (
+                "[project]\n"
+                "name = \"example\"\n\n"
+                "[tool.pytest.ini_options]\n"
+                "testpaths = [\"tests\"]\n"
+            ),
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            side_effect=lambda binary: (
+                "/usr/bin/pytest"
+                if binary == "pytest"
+                else None
+            ),
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        self.assertIn(
+            ["pytest"],
+            [entry["command"] for entry in result["detected"]],
+        )
+
+    def test_detects_unittest_only_from_actual_unittest_test(self):
+        tests = self.workspace_one / "tests"
+        tests.mkdir()
+
+        (tests / "test_example.py").write_text(
+            (
+                "import unittest\n\n"
+                "class ExampleTests(unittest.TestCase):\n"
+                "    def test_example(self):\n"
+                "        self.assertTrue(True)\n"
+            ),
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            side_effect=lambda binary: (
+                "/usr/bin/python3"
+                if binary == "python3"
+                else None
+            ),
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        self.assertIn(
+            ["python3", "-m", "unittest", "discover"],
+            [entry["command"] for entry in result["detected"]],
+        )
+
+    def test_tests_directory_alone_does_not_invent_unittest(self):
+        tests = self.workspace_one / "tests"
+        tests.mkdir()
+
+        (tests / "test_example.py").write_text(
+            "def test_example():\n    assert True\n",
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/python3",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        commands = [
+            entry["command"]
+            for entry in result["detected"] + result["recommended"]
+        ]
+
+        self.assertNotIn(
+            ["python3", "-m", "unittest", "discover"],
+            commands,
+        )
+
+    def test_detects_phpunit_only_when_project_evidence_exists(self):
+        (self.workspace_one / "composer.json").write_text(
+            json.dumps({
+                "require-dev": {
+                    "phpunit/phpunit": "^11",
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        phpunit = self.workspace_one / "vendor" / "bin" / "phpunit"
+        phpunit.parent.mkdir(parents=True)
+        phpunit.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        phpunit.chmod(0o755)
+
+        workspace = self.add_workspace()
+        result = code_workspaces.detect_test_commands(
+            workspace["workspace_id"]
+        )
+
+        self.assertIn(
+            ["vendor/bin/phpunit"],
+            [entry["command"] for entry in result["detected"]],
+        )
+
+    def test_html_tidy_unavailable_is_recommended_not_detected(self):
+        (self.workspace_one / "index.html").write_text(
+            "<!doctype html><title>Test</title>\n",
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value=None,
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        self.assertNotIn(
+            ["tidy", "-errors", "-quiet", "index.html"],
+            [entry["command"] for entry in result["detected"]],
+        )
+        self.assertIn(
+            ["tidy", "-errors", "-quiet", "index.html"],
+            [entry["command"] for entry in result["recommended"]],
+        )
+        self.assertTrue(
+            any(
+                warning.get("warning") == "TIDY_UNAVAILABLE"
+                for warning in result["warnings"]
+            )
+        )
+
+    def test_node_script_content_is_never_used_as_free_shell_command(self):
+        dangerous = "vitest && touch SHOULD_NOT_EXIST"
+
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "test": dangerous,
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/npm",
+        ):
+            result = code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        commands = [
+            entry["command"]
+            for entry in result["detected"] + result["recommended"]
+        ]
+
+        self.assertIn(["npm", "run", "test"], commands)
+        self.assertNotIn([dangerous], commands)
+
+        for command in commands:
+            self.assertNotIn("sh", command[:1])
+            self.assertNotIn("bash", command[:1])
+
+        self.assertFalse(
+            (self.workspace_one / "SHOULD_NOT_EXIST").exists()
+        )
+
+    def test_detection_does_not_change_existing_test_commands(self):
+        configured_command = [
+            sys.executable,
+            "-m",
+            "unittest",
+        ]
+
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[configured_command],
+            activate=True,
+        )
+
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "test": "vitest",
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            return_value="/usr/bin/npm",
+        ):
+            code_workspaces.detect_test_commands(
+                workspace["workspace_id"]
+            )
+
+        stored = code_workspaces._workspace(
+            workspace["workspace_id"]
+        )
+
+        self.assertEqual(
+            stored["test_commands"],
+            [configured_command],
+        )
+
+    def test_detect_tests_api_returns_workspace_detection(self):
+        (self.workspace_one / "package.json").write_text(
+            json.dumps({
+                "scripts": {
+                    "test": "vitest run",
+                },
+            }),
+            encoding="utf-8",
+        )
+        (self.workspace_one / "package-lock.json").write_text(
+            "{}\n",
+            encoding="utf-8",
+        )
+
+        workspace = self.add_workspace()
+
+        with mock.patch.object(
+            code_workspaces.shutil,
+            "which",
+            side_effect=lambda binary: f"/usr/bin/{binary}",
+        ):
+            result = agent_app.code_workspace_detect_tests(
+                workspace["workspace_id"]
+            )
+
+        self.assertEqual(
+            result["workspace_id"],
+            workspace["workspace_id"],
+        )
+        self.assertIn(
+            ["npm", "run", "test"],
+            [
+                entry["command"]
+                for entry in result["detected"]
+            ],
+        )
+        self.assertIn("recommended", result)
+        self.assertIn("warnings", result)
+
+    def test_detect_tests_api_rejects_unknown_workspace(self):
+        with self.assertRaises(Exception) as context:
+            agent_app.code_workspace_detect_tests(
+                "does-not-exist"
+            )
+
+        self.assertIn(
+            "WORKSPACE_NOT_FOUND",
+            str(context.exception),
+        )
+
+    def test_workspace_detection_frontend_contract(self):
+        chat_html = Path("frontend/chat.html").read_text(
+            encoding="utf-8"
+        )
+        chat_js = Path("frontend/assets/chat.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'id="workspaceTestsDetect"',
+            chat_html,
+        )
+        self.assertIn(
+            'id="workspaceTestDetection"',
+            chat_html,
+        )
+        self.assertIn(
+            'id="workspaceTestsUseDetected"',
+            chat_html,
+        )
+
+        self.assertIn(
+            "'/detect-tests'",
+            chat_js,
+        )
+        self.assertIn(
+            "renderWorkspaceTestDetection(result)",
+            chat_js,
+        )
+        self.assertIn(
+            "JSON.stringify(commands, null, 2)",
+            chat_js,
+        )
+
+        # Auto-detection may populate the editor, but it must not
+        # persist test_commands automatically.
+        detect_handler_start = chat_js.index(
+            "const workspaceTestsDetect ="
+        )
+        save_handler_start = chat_js.index(
+            "const workspaceTestsSave ="
+        )
+
+        detect_handler = chat_js[
+            detect_handler_start:save_handler_start
+        ]
+
+        self.assertNotIn(
+            "test_commands:",
+            detect_handler,
+        )
+
+    def test_workspace_detection_i18n_exists_in_both_languages(self):
+        required = {
+            "workspace_tests_detect",
+            "workspace_tests_use_detected",
+            "workspace_tests_detect_none",
+            "workspace_tests_detect_unavailable",
+            "workspace_tests_detect_complete",
+            "workspace_tests_detect_applied",
+        }
+
+        for filename in (
+            "frontend/i18n/de.json",
+            "frontend/i18n/en.json",
+        ):
+            with self.subTest(filename=filename):
+                data = json.loads(
+                    Path(filename).read_text(encoding="utf-8")
+                )
+
+                ui = data.get("ui", {})
+
+                self.assertTrue(
+                    required.issubset(ui),
+                    required - set(ui),
+                )
+
+                for key in required:
+                    self.assertIsInstance(ui[key], str)
+                    self.assertTrue(ui[key].strip())
+
     def test_reads_existing_file(self):
         source = self.workspace_one / "app.php"
         source.write_text("<?php\necho 'ok';\n", encoding="utf-8")

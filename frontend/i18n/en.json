@@ -646,7 +646,13 @@
     "live_status": "Live status",
     "refresh": "Refresh",
     "checking_services": "Checking services …",
-    "drop_files": "Drop files here"
+    "drop_files": "Drop files here",
+    "workspace_tests_detect": "Detect tests automatically",
+    "workspace_tests_use_detected": "Use selected",
+    "workspace_tests_detect_none": "No test commands were detected.",
+    "workspace_tests_detect_unavailable": "unavailable",
+    "workspace_tests_detect_complete": "Test commands detected. Review the suggestions before applying them.",
+    "workspace_tests_detect_applied": "Selected commands were copied into the editor. Save them to update the workspace."
   },
   "attachments.rag_ready": " · ✓ RAG ready",
   "attachments.image_read_failed": "Image could not be read: {name}",

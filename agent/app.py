@@ -6116,6 +6116,13 @@ def code_workspace_remove(workspace_id: str):
 def code_workspace_refresh(workspace_id: str):
     try: return code_workspaces.refresh(workspace_id)
     except ValueError as exc: raise code_http_error(exc)
+@app.get('/api/code/workspaces/{workspace_id}/detect-tests')
+def code_workspace_detect_tests(workspace_id: str):
+    try:
+        return code_workspaces.detect_test_commands(workspace_id)
+    except ValueError as exc:
+        raise code_http_error(exc)
+
 @app.get('/api/code/workspaces/{workspace_id}')
 def code_workspace_status(workspace_id: str):
     try: return code_workspaces.status(workspace_id)
