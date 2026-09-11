@@ -11496,7 +11496,264 @@ def orchestrator_unresolved_subagent_quality(observations):
     return list(state.values())
 
 
+def coding_evidence_contract(observations):
+    """
+    Deterministic summary of what completed coding observations can prove.
+    This constrains the final LLM synthesis without trying to parse claims.
+    """
+    completed_actions = {
+        str(item.get("action") or "").strip()
+        for item in observations
+        if isinstance(item, dict)
+        and item.get("status") == "completed"
+    }
+
+    evidence = []
+
+    if "code_files" in completed_actions:
+        evidence.append(
+            "code_files proves only that workspace file metadata/listing was inspected."
+        )
+
+    if "code_search" in completed_actions:
+        evidence.append(
+            "code_search proves only that matching workspace locations were searched."
+        )
+
+    if "code_read" in completed_actions:
+        evidence.append(
+            "code_read proves that returned source code was inspected; "
+            "it does NOT prove runtime behavior or successful execution."
+        )
+
+    if "code_patch" in completed_actions:
+        evidence.append(
+            "code_patch proves only that a proposed patch was prepared; "
+            "it does NOT prove that workspace files were changed."
+        )
+
+    if "code_diff" in completed_actions:
+        evidence.append(
+            "code_diff proves only that the prepared patch diff was inspected."
+        )
+
+    if "code_test" in completed_actions:
+        evidence.append(
+            "code_test may support test-result claims only to the extent explicitly "
+            "shown by its returned test results."
+        )
+
+    verified_change = any(
+        isinstance(item, dict)
+        and item.get("status") == "completed"
+        and item.get("action") == "verify_change"
+        and isinstance(item.get("result"), dict)
+        and item.get("result", {}).get("verified") is True
+        for item in observations
+    )
+
+    if verified_change:
+        evidence.append(
+            "verify_change with verified=true proves that the applied change passed "
+            "the configured post-apply verification."
+        )
+    else:
+        evidence.append(
+            "No completed verify_change with verified=true exists. "
+            "Do NOT claim that a change was successfully applied and verified."
+        )
+
+    if "code_test" not in completed_actions:
+        evidence.append(
+            "No completed code_test exists. Do NOT claim that tests were run or passed."
+        )
+
+    return evidence
+
+
+def coding_final_answer_requires_repair(answer, observations):
+    """
+    Detect affirmative strong coding claims that are not supported by completed
+    evidence. Explicit uncertainty/negation must not trigger the gate.
+    """
+    value = str(answer or "").lower()
+
+    completed_actions = {
+        str(item.get("action") or "").strip()
+        for item in observations
+        if isinstance(item, dict)
+        and item.get("status") == "completed"
+    }
+
+    has_code_test = "code_test" in completed_actions
+
+    has_verified_change = any(
+        isinstance(item, dict)
+        and item.get("status") == "completed"
+        and item.get("action") == "verify_change"
+        and isinstance(item.get("result"), dict)
+        and item.get("result", {}).get("verified") is True
+        for item in observations
+    )
+
+    reasons = []
+
+    # Satzweise prüfen, damit negative Aussagen wie
+    # "Es kann nicht garantiert werden, dass der Code fehlerfrei läuft"
+    # nicht als positiver Funktionsclaim gewertet werden.
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", value)
+        if sentence.strip()
+    ]
+
+    def is_explicitly_uncertain(sentence):
+        uncertainty_markers = (
+            "nicht getestet",
+            "nicht ausgeführt",
+            "nicht verifiziert",
+            "nicht bestätigt",
+            "nicht garantiert",
+            "kann nicht garantiert",
+            "kann nicht bestätigt",
+            "lässt sich nicht bestätigen",
+            "lässt sich nicht verifizieren",
+            "keine tests",
+            "kein test",
+            "keine verifikation",
+            "keine garantie",
+            "nicht möglich",
+            "nicht beurteilt",
+            "nicht geprüft",
+            "ohne laufzeittest",
+            "ohne test",
+        )
+        return any(marker in sentence for marker in uncertainty_markers)
+
+    if not has_code_test:
+        affirmative_runtime_patterns = (
+            r"\b(?:der|die|das|dieser|diese|dieses)\b.{0,80}\b"
+            r"(?:funktioniert korrekt|funktioniert einwandfrei|"
+            r"technisch funktionsfähig|strukturell funktionsfähig|"
+            r"ist fehlerfrei|sind fehlerfrei|"
+            r"ist korrekt implementiert|sind korrekt implementiert|"
+            r"ist vollständig korrekt|sind vollständig korrekt|"
+            r"ist regelkonform|sind regelkonform)\b",
+
+            r"\b(?:keine fehler vorhanden|keine fehler gefunden|"
+            r"keine logischen fehler vorhanden|"
+            r"keine offensichtlichen fehler vorhanden)\b",
+        )
+
+        unsupported = any(
+            not is_explicitly_uncertain(sentence)
+            and any(
+                re.search(pattern, sentence)
+                for pattern in affirmative_runtime_patterns
+            )
+            for sentence in sentences
+        )
+
+        if unsupported:
+            reasons.append(
+                "Die Antwort enthält eine affirmative starke "
+                "Funktions-/Korrektheitsaussage, obwohl kein completed "
+                "code_test vorliegt."
+            )
+
+    if not has_verified_change:
+        verification_patterns = (
+            r"\b(?:änderung|patch|code)\b.{0,60}\b"
+            r"(?:erfolgreich angewendet und verifiziert|"
+            r"erfolgreich verifiziert|ist verifiziert|wurde verifiziert)\b",
+        )
+
+        unsupported_verification = any(
+            not is_explicitly_uncertain(sentence)
+            and any(
+                re.search(pattern, sentence)
+                for pattern in verification_patterns
+            )
+            for sentence in sentences
+        )
+
+        if unsupported_verification:
+            reasons.append(
+                "Die Antwort behauptet Verifikation ohne verify_change "
+                "verified=true."
+            )
+
+    return reasons
+
+
 def agent_v2_final_answer(goal, observations):
+    coding_contract = coding_evidence_contract(observations)
+
+    completed_actions = {
+        str(item.get("action") or "").strip()
+        for item in observations
+        if isinstance(item, dict)
+        and item.get("status") == "completed"
+    }
+
+    has_coding_evidence = bool(
+        completed_actions
+        & {
+            "code_files",
+            "code_search",
+            "code_read",
+            "code_patch",
+            "code_diff",
+            "code_test",
+            "verify_change",
+        }
+    )
+
+    has_code_test = "code_test" in completed_actions
+
+    has_verified_change = any(
+        isinstance(item, dict)
+        and item.get("status") == "completed"
+        and item.get("action") == "verify_change"
+        and isinstance(item.get("result"), dict)
+        and item.get("result", {}).get("verified") is True
+        for item in observations
+    )
+
+    coding_grounding_rules = ""
+
+    if has_coding_evidence:
+        coding_grounding_rules = """
+WICHTIGE CODING-EVIDENCE-REGELN:
+
+- Die Abschlussantwort MUSS zwischen statischer Codeanalyse,
+  ausgeführten Tests und verifizierten Änderungen unterscheiden.
+"""
+
+        if not has_code_test:
+            coding_grounding_rules += """
+- Es wurde KEIN code_test erfolgreich ausgeführt.
+- Behandle alle Aussagen zum Code deshalb ausschließlich als statische Analyse.
+- Behaupte NICHT als Tatsache, dass der Code funktioniert, funktionsfähig,
+  fehlerfrei, korrekt implementiert, regelkonform, vollständig korrekt oder
+  erfolgreich ausführbar ist.
+- Formulierungen wie "keine Fehler vorhanden", "keine Fehler gefunden",
+  "funktioniert korrekt", "technisch funktionsfähig" oder vergleichbare
+  Aussagen sind ohne ausgeführte Tests NICHT zulässig.
+- Zulässig sind Formulierungen wie:
+  "Im statisch gelesenen Code ist kein offensichtlicher Fehler erkennbar"
+  oder
+  "Die gelesene Implementierung entspricht strukturell dieser Logik;
+   das Laufzeitverhalten wurde nicht getestet."
+"""
+
+        if not has_verified_change:
+            coding_grounding_rules += """
+- Es liegt KEIN verify_change mit verified=true vor.
+- Behaupte daher NICHT, dass eine Änderung erfolgreich angewendet oder
+  verifiziert wurde.
+"""
+
     answer = agent_llm(
         [
             {
@@ -11594,7 +11851,8 @@ def agent_v2_final_answer(goal, observations):
                     "'Best Practice' nur bei konkreter Evidence. "
                     "Wenn die Evidence dafür nicht ausreicht, formuliere "
                     "neutral als mögliche Abhängigkeit, Konfigurationspunkt "
-                    "oder technische Einschätzung."
+                    "oder technische Einschätzung. "
+                    + coding_grounding_rules
                 ),
             },
             {
@@ -11608,12 +11866,64 @@ def agent_v2_final_answer(goal, observations):
                         ensure_ascii=False,
                         indent=2,
                     )
+                    + "\n\nDETERMINISTIC CODING EVIDENCE CONTRACT:\n"
+                    + json.dumps(
+                        coding_contract,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
                 ),
             },
         ],
         max_tokens=2400,
         temperature=0.05,
     )
+
+    repair_reasons = coding_final_answer_requires_repair(
+        answer,
+        observations,
+    )
+
+    if repair_reasons:
+        answer = agent_llm(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Überarbeite die vorhandene technische Abschlussantwort. "
+                        "Erhalte alle durch Observations belegten Fakten und sinnvollen "
+                        "Empfehlungen, aber entferne oder schwäche jede unbelegte starke "
+                        "Aussage über Funktionsfähigkeit, Korrektheit, Fehlerfreiheit, "
+                        "erfolgreiche Ausführung oder Verifikation. "
+                        "Wenn kein code_test vorliegt, formuliere ausschließlich als "
+                        "statische Codeanalyse und sage ausdrücklich, dass das "
+                        "Laufzeitverhalten nicht getestet wurde. "
+                        "Erfinde keine neuen Fakten."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "REPAIR-GRÜNDE:\n"
+                        + json.dumps(
+                            repair_reasons,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n\nEVIDENCE CONTRACT:\n"
+                        + json.dumps(
+                            coding_contract,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                        + "\n\nZU ÜBERARBEITENDE ANTWORT:\n"
+                        + answer
+                    ),
+                },
+            ],
+            max_tokens=2400,
+            temperature=0.0,
+        )
 
     return answer
 

@@ -1112,6 +1112,218 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(result["steps"][0]["result"], process_result)
         self.assertIn("Video", result["answer"])
 
+    def test_coding_evidence_contract_read_does_not_imply_tests(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script>console.log('blackjack')</script>",
+            },
+        }]
+
+        contract = agent_app.coding_evidence_contract(observations)
+        joined = " ".join(contract)
+
+        self.assertIn("source code was inspected", joined)
+        self.assertIn("does NOT prove runtime behavior", joined)
+        self.assertIn("No completed code_test exists", joined)
+        self.assertIn("No completed verify_change", joined)
+
+    def test_coding_evidence_contract_distinguishes_test_and_verification(self):
+        observations = [
+            {
+                "action": "code_test",
+                "status": "completed",
+                "result": {
+                    "results": [{
+                        "command": "python3 -m unittest",
+                        "success": True,
+                        "output": "OK",
+                    }],
+                },
+            },
+            {
+                "action": "verify_change",
+                "status": "completed",
+                "result": {
+                    "verified": True,
+                },
+            },
+        ]
+
+        contract = agent_app.coding_evidence_contract(observations)
+        joined = " ".join(contract)
+
+        self.assertIn("test-result claims", joined)
+        self.assertIn("verified=true proves", joined)
+        self.assertNotIn("No completed code_test exists", joined)
+        self.assertNotIn("No completed verify_change", joined)
+
+    def test_final_answer_marks_read_only_code_analysis_as_unverified(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script>function hit() {}</script>",
+            },
+        }]
+
+        captured = {}
+
+        def final_llm(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            captured["user"] = messages[1]["content"]
+            return "Statische Analyse."
+
+        with mock.patch.object(agent_app, "agent_llm", side_effect=final_llm):
+            answer = agent_app.agent_v2_final_answer(
+                "Analysiere blackjack.html",
+                observations,
+            )
+
+        self.assertEqual(answer, "Statische Analyse.")
+        self.assertIn(
+            "Es wurde KEIN code_test erfolgreich ausgeführt",
+            captured["system"],
+        )
+        self.assertIn(
+            "Behaupte NICHT als Tatsache, dass der Code funktioniert",
+            captured["system"],
+        )
+        self.assertIn(
+            "statische Analyse",
+            captured["system"],
+        )
+        self.assertIn(
+            "No completed code_test exists",
+            captured["user"],
+        )
+
+    def test_final_answer_allows_test_claims_when_code_test_exists(self):
+        observations = [{
+            "action": "code_test",
+            "status": "completed",
+            "result": {
+                "passed": True,
+                "results": [{
+                    "command": "node --check blackjack.js",
+                    "success": True,
+                    "output": "",
+                }],
+            },
+        }]
+
+        captured = {}
+
+        def final_llm(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            return "Test ausgeführt."
+
+        with mock.patch.object(agent_app, "agent_llm", side_effect=final_llm):
+            agent_app.agent_v2_final_answer(
+                "Prüfe blackjack",
+                observations,
+            )
+
+        self.assertNotIn(
+            "Es wurde KEIN code_test erfolgreich ausgeführt",
+            captured["system"],
+        )
+
+    def test_coding_final_answer_detects_unsupported_runtime_claims(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script></script>",
+            },
+        }]
+
+        reasons = agent_app.coding_final_answer_requires_repair(
+            "Der Code ist strukturell funktionsfähig und korrekt implementiert.",
+            observations,
+        )
+
+        self.assertTrue(reasons)
+
+    def test_coding_final_answer_allows_explicit_negative_disclaimer(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script></script>",
+            },
+        }]
+
+        answer = (
+            "Das Laufzeitverhalten wurde nicht getestet. "
+            "Es kann nicht garantiert werden, dass der Code fehlerfrei "
+            "ausgeführt wird oder korrekt funktioniert."
+        )
+
+        reasons = agent_app.coding_final_answer_requires_repair(
+            answer,
+            observations,
+        )
+
+        self.assertEqual(reasons, [])
+
+    def test_coding_final_answer_allows_static_language_without_tests(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script></script>",
+            },
+        }]
+
+        reasons = agent_app.coding_final_answer_requires_repair(
+            (
+                "Im statisch gelesenen Code ist kein offensichtlicher Widerspruch "
+                "erkennbar. Das Laufzeitverhalten wurde nicht getestet."
+            ),
+            observations,
+        )
+
+        self.assertEqual(reasons, [])
+
+    def test_final_answer_repairs_unsupported_runtime_claim_once(self):
+        observations = [{
+            "action": "code_read",
+            "status": "completed",
+            "result": {
+                "path": "blackjack.html",
+                "content": "<script></script>",
+            },
+        }]
+
+        responses = iter([
+            "Der Code ist strukturell funktionsfähig und korrekt implementiert.",
+            (
+                "Die statische Analyse zeigt eine plausible Struktur. "
+                "Das Laufzeitverhalten wurde nicht getestet."
+            ),
+        ])
+
+        with mock.patch.object(
+            agent_app,
+            "agent_llm",
+            side_effect=lambda *args, **kwargs: next(responses),
+        ) as llm:
+            answer = agent_app.agent_v2_final_answer(
+                "Analysiere blackjack.html",
+                observations,
+            )
+
+        self.assertEqual(llm.call_count, 2)
+        self.assertIn("statische Analyse", answer)
+        self.assertIn("nicht getestet", answer)
+
     def test_unclear_delete_reference_asks_instead_of_planning(self):
         self.add_workspace()
         with mock.patch.object(agent_app, "agent_llm") as llm:
