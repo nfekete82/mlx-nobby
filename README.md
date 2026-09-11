@@ -82,11 +82,22 @@ interpreters, Docker tooling, and FFmpeg.
 
 ## Quick start
 
-Clone the repository, then run the installer from its root:
+Clone the repository and run the installer:
 
 ```sh
+git clone https://github.com/nfekete82/mlx-nobby.git
+cd mlx-nobby
 ./scripts/install.sh
 ```
+
+After installation, open:
+
+```text
+http://127.0.0.1:8090
+```
+
+MLX nobby does not download an LLM automatically. Add or select a local
+MLX-compatible model before starting your first chat.
 
 The installer validates macOS and Apple Silicon, creates or updates the five
 isolated service environments, installs `~/bin/mlx`, creates a minimal local
@@ -117,6 +128,11 @@ Set `MODEL` in `~/.config/mlx-server/config` to a local model path or an alias
 defined in `~/.config/mlx-server/models`. The generated configuration starts
 with an empty `MODEL`, port 8000, and thinking disabled so an incomplete first
 install cannot silently select a model.
+
+You can manage local models from the MLX nobby model interface or configure
+aliases manually in:
+
+    ~/.config/mlx-server/models
 
 The router defaults to
 `~/Models/router/Qwen3.5-0.8B-MLX-4bit`. To use another local router model,
