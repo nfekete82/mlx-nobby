@@ -178,3 +178,9 @@ FRONTEND_REFACTOR_PLAN.md
 # Public documentation screenshots
 !docs/screenshots/
 !docs/screenshots/*.png
+
+# Local development / backup artifacts
+*.backup
+*.old
+*.pyc
+*.pyo
