@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# MLX Nobby Installer
+# MLX nobby Installer
 # macOS / Apple Silicon
 # ============================================================
 
@@ -67,7 +67,7 @@ while [ "$#" -gt 0 ]; do
         -h|--help)
             cat <<'EOF'
 
-MLX Nobby Installer
+MLX nobby Installer
 
 Usage:
 
@@ -103,7 +103,7 @@ done
 info "Checking platform"
 
 if [ "$(uname -s)" != "Darwin" ]; then
-    fail "MLX Nobby currently requires macOS."
+    fail "MLX nobby currently requires macOS."
 fi
 
 ARCH="$(uname -m)"
@@ -303,7 +303,7 @@ if [ -f "$CONFIG_DIR/config" ]; then
     ok "~/.config/mlx-server/config exists"
 else
     cat > "$CONFIG_DIR/config" <<'EOF'
-# MLX Nobby local runtime configuration.
+# MLX nobby local runtime configuration.
 # Set MODEL to a local model path or to an alias from the models file.
 MODEL=""
 PORT=8000
@@ -400,10 +400,48 @@ echo "  mlx services"
 echo "  mlx doctor"
 echo "  mlx restart"
 echo "  mlx restart-all"
+
 echo
 echo "Web UI:"
 echo
 echo "  http://127.0.0.1:8090"
-echo
 
-ok "MLX Nobby bootstrap completed"
+CONFIGURED_MODEL=""
+
+if [ -f "$CONFIG_DIR/config" ]; then
+    CONFIGURED_MODEL="$(
+        awk '
+            /^MODEL=/ {
+                sub(/^MODEL=/, "")
+                print
+                exit
+            }
+        ' "$CONFIG_DIR/config"
+    )"
+
+    CONFIGURED_MODEL="${CONFIGURED_MODEL#\"}"
+    CONFIGURED_MODEL="${CONFIGURED_MODEL%\"}"
+    CONFIGURED_MODEL="${CONFIGURED_MODEL#\'}"
+    CONFIGURED_MODEL="${CONFIGURED_MODEL%\'}"
+fi
+
+if [ -z "$CONFIGURED_MODEL" ]; then
+    echo
+    warn "No runtime model is configured yet."
+
+    echo
+    echo "Next step:"
+    echo
+    echo "  1. Open http://127.0.0.1:8090"
+    echo "  2. Open Models & System"
+    echo "  3. Add or select a local MLX-compatible model"
+
+    echo
+    echo "CLI alternatives:"
+    echo
+    echo "  mlx model <alias-or-huggingface-repository>"
+    echo "  mlx model add <alias> <repository-or-local-path>"
+fi
+
+echo
+ok "MLX nobby bootstrap completed"
