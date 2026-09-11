@@ -2174,6 +2174,93 @@ class CodeWorkspaceTests(unittest.TestCase):
                 }],
             )
 
+    def test_frontend_routes_new_text_files_to_file_pipeline(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "frontend/assets/chat/generation.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "textFiles.length > 0 ||",
+            source,
+        )
+        self.assertIn(
+            "fileOperationPattern.test(prompt) ||",
+            source,
+        )
+        self.assertIn(
+            "fileExcerptPattern.test(prompt)",
+            source,
+        )
+        self.assertIn(
+            "refersToExistingFile &&",
+            source,
+        )
+        self.assertIn(
+            "priorFileAttachments.length > 0",
+            source,
+        )
+
+        # A newly attached file must not depend on a keyword match.
+        routing_start = source.index(
+            "const routesFileOperation ="
+        )
+        routing_end = source.index(
+            "if (",
+            routing_start,
+        )
+        routing_block = source[
+            routing_start:routing_end
+        ]
+
+        self.assertLess(
+            routing_block.index("textFiles.length > 0"),
+            routing_block.index("fileOperationPattern.test(prompt)"),
+        )
+
+    def test_frontend_recognizes_file_followup_language(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "frontend/assets/chat/generation.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("zeile|zeilen", source)
+        self.assertIn("inhalt|inhaltlich", source)
+        self.assertIn("darin|davon|daraus", source)
+        self.assertIn("datensatz|datensätze", source)
+
+    def test_frontend_routes_explicit_line_excerpt_followups(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "frontend/assets/chat/generation.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("const fileExcerptPattern", source)
+        self.assertIn("fileExcerptPattern.test(prompt)", source)
+        self.assertIn("fileOperationPattern.test(prompt) ||", source)
+
+    def test_frontend_file_pipeline_keeps_audit_exclusion(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "frontend/assets/chat/generation.js"
+        ).read_text(encoding="utf-8")
+
+        routing_start = source.index(
+            "const routesFileOperation ="
+        )
+        routing_end = source.index(
+            "if (",
+            routing_start,
+        )
+        routing_block = source[
+            routing_start:routing_end
+        ]
+
+        self.assertIn(
+            "!auditPattern.test(prompt)",
+            routing_block,
+        )
+
     def test_frontend_forwards_router_mode_from_data(self):
         source = (
             Path(__file__).resolve().parents[1]

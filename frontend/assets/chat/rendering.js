@@ -1110,6 +1110,95 @@ function renderBatchCard(message) {
     let statusText =
         job.status || rt('unknown', 'unknown');
 
+    progressText.textContent = statusText;
+    progressWrap.appendChild(progressBar);
+    progressWrap.appendChild(progressText);
+    card.appendChild(progressWrap);
+
+    const controls = document.createElement('div');
+    controls.className = 'batch-chat-controls';
+
+    const action = (label, operation) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'message-action-btn';
+        button.textContent = label;
+
+        button.addEventListener('click', async () => {
+            const originalLabel = button.textContent;
+
+            button.disabled = true;
+
+            try {
+                const request = async endpoint => {
+                    const response = await fetch(
+                        '/api/mlx/batch/' +
+                        encodeURIComponent(job.id) +
+                        '/' +
+                        endpoint,
+                        {
+                            method: 'POST'
+                        }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(
+                            await response.text()
+                        );
+                    }
+
+                    return response;
+                };
+
+                if (operation === 'automatic-start') {
+                    await request('automatic');
+                    await request('start');
+                } else {
+                    await request(operation);
+                }
+
+                const statusResponse =
+                    await fetch('/api/mlx/batch');
+
+                if (!statusResponse.ok) {
+                    throw new Error(
+                        await statusResponse.text()
+                    );
+                }
+
+                const data =
+                    await statusResponse.json();
+
+                const updatedJob =
+                    (data.jobs || []).find(
+                        item => item.id === job.id
+                    );
+
+                if (updatedJob) {
+                    message.batch_job = updatedJob;
+                }
+
+                MLXChatSessions.saveSessions();
+
+                renderMessages({
+                    contentUpdated: true
+                });
+
+            } catch (error) {
+                console.warn(
+                    'Batch action failed',
+                    operation,
+                    error
+                );
+
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+        });
+
+        controls.appendChild(button);
+    };
+
     if (
         job.status === 'queued' &&
         job.requires_start_choice

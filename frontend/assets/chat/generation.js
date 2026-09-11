@@ -901,6 +901,9 @@ const imageFiles =
             .test(prompt);
     const transformPattern = /anonymis|entfern|bereinig|ersetz|änder|aender|transformier|schwärz|schwaerz/i;
     const fileOperationPattern = /anonymis|entfern|bereinig|ersetz|änder|aender|transformier|schwärz|schwaerz|fass|zusammenfass|prüf|pruef|struktur|datensätz|datensaetz|felder|zeitraum|auffällig|auffaellig|problem|muster|analys/i;
+
+    const fileExcerptPattern =
+        /\b(?:erste[nrms]?|letzte[nrms]?|first|last)\s+\d+\s+(?:zeile|zeilen|lines?)\b|\b(?:zeile|zeilen|lines?)\s+\d+(?:\s*(?:-|–|—|bis|to|through)\s*\d+)?\b/i;
     const auditPattern = /pii\s*audit|personenbezogene daten|noch.*daten.*drin|nochmal.*prüf|nochmal.*pruef/i;
     const artifactCandidates = session.messages.slice().reverse().flatMap(message =>
         message.file_artifact ? [message.file_artifact] : []
@@ -911,10 +914,28 @@ const imageFiles =
         Array.isArray(message.attachments) ? message.attachments : []
     ).filter(file => file.kind === 'text' && file.stored_path);
     const priorFileAttachments = activeArtifact ? [activeArtifact] : (artifactCandidates.length ? artifactCandidates : uploadCandidates);
-    const refersToExistingFile = /\b(sie|datei|diese|diesen|ergebnis|letzte|bearbeitete|neue)\b/i.test(prompt);
+    const refersToExistingFile =
+        /\b(?:sie|datei|diese|diesen|ergebnis|letzte|bearbeitete|neue|es|das|darin|davon|daraus|inhalt|inhaltlich|zeile|zeilen|feld|felder|datensatz|datensätze|record|records|json|csv|sql)\b/i
+            .test(prompt);
     const ambiguousArtifactReference = !textFiles.length && !activeArtifact && refersToExistingFile && artifactCandidates.length > 1;
-    const routesFileOperation = !auditPattern.test(prompt) && fileOperationPattern.test(prompt) &&
-        (textFiles.length > 0 || /\b(sie|datei|diese|diesen)\b/i.test(prompt) && priorFileAttachments.length > 0);
+    /*
+     * Newly attached text/data files always use the dedicated file
+     * pipeline. Follow-up operations on existing files still require
+     * an explicit file-operation intent.
+     */
+    const routesFileOperation =
+        !auditPattern.test(prompt) &&
+        (
+            textFiles.length > 0 ||
+            (
+                (
+                    fileOperationPattern.test(prompt) ||
+                    fileExcerptPattern.test(prompt)
+                ) &&
+                refersToExistingFile &&
+                priorFileAttachments.length > 0
+            )
+        );
 
     if (
         imageFiles.length &&
@@ -1604,12 +1625,27 @@ const imageFiles =
                     chain_next: routed.intent === 'transform' && /\b(?:und danach|anschließend|anschliessend).*(?:fass|zusammenfass)|(?:fass|zusammenfass).*\b(?:danach|anschließend|anschliessend)/i.test(prompt)
                         ? 'summarize' : null
                 });
-                watchBatchJob(session, routed.job.id);
             }
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderAll({
                 contentUpdated: true
             });
+
+            for (const message of session.messages) {
+                const job = message.batch_job;
+
+                if (
+                    job?.id &&
+                    (
+                        job.status === 'queued' ||
+                        job.status === 'running' ||
+                        job.status === 'paused'
+                    )
+                ) {
+                    watchBatchJob(session, job.id);
+                }
+            }
+
             return;
         } catch (error) {
             session.messages.push({ role: 'assistant', content: gt('batch_error', '**Batch error:** {message}', { message: error.message }) });

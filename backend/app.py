@@ -2029,6 +2029,17 @@ def mlx_resume_batch_job(job_id: str):
     )
 
 
+@app.post("/api/mlx/batch/{job_id}/automatic")
+def mlx_automatic_batch_job(job_id: str):
+    return agent_json_request(
+        "POST",
+        "/api/batch/" +
+        urllib.parse.quote(job_id, safe="") +
+        "/automatic",
+        timeout=10,
+    )
+
+
 @app.post("/api/mlx/batch/{job_id}/cancel")
 def mlx_cancel_batch_job(job_id: str):
     return agent_json_request(

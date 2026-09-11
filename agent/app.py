@@ -7057,14 +7057,115 @@ def analyze_file_structure(input_path):
     return result
 
 
+
+FILE_EXCERPT_MAX_LINES = 500
+FILE_EXCERPT_MAX_CHARS = 40000
+FILE_EXCERPT_MAX_CHARS_PER_LINE = 8000
+
+
+def parse_file_excerpt_selection(instruction):
+    """
+    Detect an explicitly requested line range.
+
+    Returned line numbers are 1-based and inclusive.
+    The actual end for ``last_lines`` is resolved against the file later.
+    """
+    value = str(instruction or "").strip().lower()
+
+    if not value:
+        return None
+
+    # Examples:
+    #   Zeilen 100-150
+    #   Zeile 100 bis 150
+    #   lines 100 through 150
+    range_match = re.search(
+        r"\b(?:zeile|zeilen|lines?)\s+"
+        r"(\d+)\s*(?:-|–|—|bis|to|through)\s*(\d+)\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    if range_match:
+        start = int(range_match.group(1))
+        end = int(range_match.group(2))
+
+        if start < 1 or end < start:
+            return None
+
+        if end - start + 1 > FILE_EXCERPT_MAX_LINES:
+            end = start + FILE_EXCERPT_MAX_LINES - 1
+
+        return {
+            "kind": "line_range",
+            "start_line": start,
+            "end_line": end,
+        }
+
+    # Examples:
+    #   erste 20 Zeilen
+    #   ersten 20 Zeilen
+    #   first 20 lines
+    first_match = re.search(
+        r"\b(?:erste[nrms]?|first)\s+(\d+)\s+"
+        r"(?:zeile|zeilen|lines?)\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    if first_match:
+        count = min(
+            int(first_match.group(1)),
+            FILE_EXCERPT_MAX_LINES,
+        )
+
+        if count < 1:
+            return None
+
+        return {
+            "kind": "line_range",
+            "start_line": 1,
+            "end_line": count,
+        }
+
+    # Examples:
+    #   letzte 30 Zeilen
+    #   letzten 30 Zeilen
+    #   last 30 lines
+    last_match = re.search(
+        r"\b(?:letzte[nrms]?|last)\s+(\d+)\s+"
+        r"(?:zeile|zeilen|lines?)\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    if last_match:
+        count = min(
+            int(last_match.group(1)),
+            FILE_EXCERPT_MAX_LINES,
+        )
+
+        if count < 1:
+            return None
+
+        return {
+            "kind": "last_lines",
+            "count": count,
+        }
+
+    return None
+
+
 def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None):
     path = Path(input_path).expanduser()
     if not path.is_file(): raise HTTPException(status_code=404, detail="Eingabedatei nicht gefunden")
     job_id = uuid.uuid4().hex[:12]
+    selection = parse_file_excerpt_selection(instruction)
     job = {
         "id": job_id, "kind": "file_analysis", "operation": operation,
         "attachment_id": attachment_id, "input_path": str(path), "instruction": instruction,
         "file_type": file_type, "chunk_tokens": max(500, min(int(chunk_tokens), 20000)),
+        "selection": selection,
         "status": "queued", "created_at": time.time(), "started_at": None, "finished_at": None,
         "processed_chunks": 0, "total_chunks": None, "error": None, "mlx_calls": 0,
     }
@@ -8990,17 +9091,216 @@ def local_file_llm(prompt, max_tokens=800):
     return result["choices"][0]["message"]["content"] or ""
 
 
+def read_file_excerpt(input_path, selection):
+    """Read only an explicitly selected line range from a text file."""
+    path = Path(input_path)
+
+    text = path.read_text(
+        encoding="utf-8-sig",
+        errors="replace",
+    )
+    lines = text.splitlines()
+
+    if not selection:
+        return None
+
+    kind = selection.get("kind")
+
+    if kind == "line_range":
+        start_line = max(
+            1,
+            int(selection["start_line"]),
+        )
+        requested_end_line = max(
+            start_line,
+            int(selection["end_line"]),
+        )
+
+    elif kind == "last_lines":
+        count = max(
+            1,
+            min(
+                int(selection["count"]),
+                FILE_EXCERPT_MAX_LINES,
+            ),
+        )
+
+        requested_end_line = len(lines)
+        start_line = max(
+            1,
+            requested_end_line - count + 1,
+        )
+
+    else:
+        return None
+
+    # Never read more than the configured safety limit.
+    end_line = min(
+        requested_end_line,
+        start_line + FILE_EXCERPT_MAX_LINES - 1,
+        len(lines),
+    )
+
+    selected_lines = lines[
+        start_line - 1:end_line
+    ]
+
+    rendered_lines = []
+    total_chars = 0
+    truncated_lines = []
+
+    for line_number, line in enumerate(
+        selected_lines,
+        start=start_line,
+    ):
+        rendered = line
+
+        if len(rendered) > FILE_EXCERPT_MAX_CHARS_PER_LINE:
+            rendered = (
+                rendered[:FILE_EXCERPT_MAX_CHARS_PER_LINE]
+                + " … [LINE TRUNCATED]"
+            )
+            truncated_lines.append(line_number)
+
+        entry = f"{line_number}: {rendered}"
+
+        remaining = FILE_EXCERPT_MAX_CHARS - total_chars
+
+        if remaining <= 0:
+            break
+
+        if len(entry) > remaining:
+            entry = entry[:remaining] + " … [EXCERPT TRUNCATED]"
+            rendered_lines.append(entry)
+            total_chars += len(entry)
+            break
+
+        rendered_lines.append(entry)
+        total_chars += len(entry) + 1
+
+    numbered = "\n".join(rendered_lines)
+
+    actual_end_line = (
+        start_line + len(selected_lines) - 1
+        if selected_lines
+        else start_line - 1
+    )
+
+    return {
+        "kind": "line_range",
+        "start_line": start_line,
+        "end_line": actual_end_line,
+        "requested_end_line": requested_end_line,
+        "file_line_count": len(lines),
+        "line_count": len(rendered_lines),
+        "requested_line_count": len(selected_lines),
+        "truncated": (
+            len(rendered_lines) < len(selected_lines)
+            or bool(truncated_lines)
+        ),
+        "truncated_lines": truncated_lines,
+        "content_chars": len(numbered),
+        "content": numbered,
+    }
+
+
 def run_file_analysis_job(job_id):
     try:
         with BATCH_LOCK:
             jobs = load_batch_jobs(); job = jobs.get(job_id)
             if not job: return
             job.update({"status": "running", "started_at": time.time(), "error": None}); jobs[job_id] = job; save_batch_jobs(jobs)
-        metadata = analyze_file_structure(job["input_path"])
         operation = job["operation"]
+        selection = job.get("selection")
+
+        if selection:
+            excerpt = read_file_excerpt(
+                job["input_path"],
+                selection,
+            )
+
+            if excerpt is not None:
+                answer = local_file_llm(
+                    "You are answering a question about an exact excerpt "
+                    "from a file.\n"
+                    "Use ONLY the lines supplied below.\n"
+                    "Do not refer to a sample, preview, probe, metadata view, "
+                    "or the rest of the file.\n"
+                    "Do not claim that line breaks are unavailable.\n"
+                    "The line numbers shown below are the actual original "
+                    "file line numbers.\n"
+                    "If the user asks for a summary, summarize only these "
+                    "lines.\n\n"
+                    "EXACT FILE EXCERPT:\n"
+                    + excerpt["content"]
+                    + "\n\nUser request:\n"
+                    + job["instruction"],
+                    1200,
+                )
+
+                with BATCH_LOCK:
+                    jobs = load_batch_jobs()
+                    jobs[job_id].update({
+                        "status": "completed",
+                        "selection": selection,
+                        "excerpt": {
+                            key: value
+                            for key, value in excerpt.items()
+                            if key != "content"
+                        },
+                        "result": answer,
+                        "processed_chunks": 1,
+                        "total_chunks": 1,
+                        "mlx_calls": 1,
+                        "finished_at": time.time(),
+                    })
+                    save_batch_jobs(jobs)
+
+                return
+
+        metadata = analyze_file_structure(job["input_path"])
+
         if operation == "inspect":
-            facts = dict(metadata); facts.pop("sample", None); facts.pop("sample_structure", None)
-            answer = local_file_llm("File metadata:\n" + json.dumps(facts, ensure_ascii=False) + "\n\nSample:\n" + metadata.get("sample", "") + "\n\n" + job["instruction"])
+            facts = dict(metadata)
+            sample = facts.pop("sample", "")
+            sample_structure = facts.pop("sample_structure", None)
+
+            inspect_context = (
+                "Deterministically extracted facts about the COMPLETE file:\n"
+                + json.dumps(facts, ensure_ascii=False, indent=2)
+            )
+
+            if sample_structure is not None:
+                inspect_context += (
+                    "\n\nRepresentative parsed structure:\n"
+                    + json.dumps(
+                        sample_structure,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+
+            if sample:
+                inspect_context += (
+                    "\n\nBeginning of file (SAMPLE ONLY; "
+                    "do not treat this sample as the complete file):\n"
+                    + sample
+                )
+
+            answer = local_file_llm(
+                inspect_context
+                + "\n\nImportant rules:\n"
+                + "- The metadata above describes the complete file.\n"
+                + "- Never claim the file is empty when byte_size, "
+                  "record_count, line_count, or estimated_tokens show content.\n"
+                + "- For JSON, report the top-level type, record count, "
+                  "important keys, and apparent purpose when available.\n"
+                + "- Distinguish deterministic facts from interpretation.\n"
+                + "- Answer directly in the language of the user's request.\n"
+                + "\nUser request:\n"
+                + job["instruction"],
+                1200,
+            )
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); jobs[job_id].update({"status": "completed", "metadata": metadata, "result": answer, "processed_chunks": 1, "total_chunks": 1, "mlx_calls": 1, "finished_at": time.time()}); save_batch_jobs(jobs)
             return

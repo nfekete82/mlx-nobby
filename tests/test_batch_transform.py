@@ -30,6 +30,178 @@ class BatchTransformTests(unittest.TestCase):
         )
         self.assertTrue(agent.hybrid_chunk_needs_llm(value, plan["llm_operations"]))
 
+    def test_file_excerpt_selection(self):
+        self.assertEqual(
+            agent.parse_file_excerpt_selection(
+                "Was steht in den ersten 20 Zeilen? Fasse es zusammen."
+            ),
+            {
+                "kind": "line_range",
+                "start_line": 1,
+                "end_line": 20,
+            },
+        )
+
+        self.assertEqual(
+            agent.parse_file_excerpt_selection(
+                "Fasse Zeilen 100 bis 150 zusammen."
+            ),
+            {
+                "kind": "line_range",
+                "start_line": 100,
+                "end_line": 150,
+            },
+        )
+
+        self.assertEqual(
+            agent.parse_file_excerpt_selection(
+                "Zeig mir die letzten 30 Zeilen."
+            ),
+            {
+                "kind": "last_lines",
+                "count": 30,
+            },
+        )
+
+        self.assertIsNone(
+            agent.parse_file_excerpt_selection(
+                "Fasse die Datei zusammen."
+            )
+        )
+
+    def test_read_file_excerpt_first_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.txt"
+            path.write_text(
+                "eins\nzwei\ndrei\nvier\nfuenf\n",
+                encoding="utf-8",
+            )
+
+            result = agent.read_file_excerpt(
+                path,
+                {
+                    "kind": "line_range",
+                    "start_line": 1,
+                    "end_line": 3,
+                },
+            )
+
+        self.assertEqual(result["start_line"], 1)
+        self.assertEqual(result["end_line"], 3)
+        self.assertEqual(result["line_count"], 3)
+        self.assertEqual(
+            result["content"],
+            "1: eins\n2: zwei\n3: drei",
+        )
+
+    def test_read_file_excerpt_last_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sample.txt"
+            path.write_text(
+                "eins\nzwei\ndrei\nvier\nfuenf\n",
+                encoding="utf-8",
+            )
+
+            result = agent.read_file_excerpt(
+                path,
+                {
+                    "kind": "last_lines",
+                    "count": 2,
+                },
+            )
+
+        self.assertEqual(result["start_line"], 4)
+        self.assertEqual(result["end_line"], 5)
+        self.assertEqual(result["line_count"], 2)
+        self.assertEqual(
+            result["content"],
+            "4: vier\n5: fuenf",
+        )
+
+    def test_file_excerpt_selection_caps_large_ranges(self):
+        self.assertEqual(
+            agent.parse_file_excerpt_selection(
+                "Fasse die ersten 5000 Zeilen zusammen."
+            ),
+            {
+                "kind": "line_range",
+                "start_line": 1,
+                "end_line": 500,
+            },
+        )
+
+    def test_file_excerpt_job_uses_single_llm_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "sample.txt"
+            source.write_text(
+                "\n".join(
+                    f"Zeile {index}"
+                    for index in range(1, 101)
+                ) + "\n",
+                encoding="utf-8",
+            )
+
+            job = agent.create_file_analysis_job(
+                source,
+                "Fasse die ersten 20 Zeilen zusammen.",
+                "text",
+                2000,
+                "summarize",
+            )
+
+            self.assertEqual(
+                job["selection"],
+                {
+                    "kind": "line_range",
+                    "start_line": 1,
+                    "end_line": 20,
+                },
+            )
+
+            with mock.patch.object(
+                agent,
+                "analyze_file_structure",
+            ) as analyzer, mock.patch.object(
+                agent,
+                "local_file_llm",
+                return_value="Kurzfassung",
+            ) as llm, mock.patch.object(
+                agent,
+                "split_batch_content",
+            ) as splitter:
+                agent.run_file_analysis_job(job["id"])
+
+            analyzer.assert_not_called()
+            splitter.assert_not_called()
+            llm.assert_called_once()
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(
+                stored["status"],
+                "completed",
+            )
+            self.assertEqual(
+                stored["processed_chunks"],
+                1,
+            )
+            self.assertEqual(
+                stored["total_chunks"],
+                1,
+            )
+            self.assertEqual(
+                stored["mlx_calls"],
+                1,
+            )
+            self.assertEqual(
+                stored["excerpt"]["start_line"],
+                1,
+            )
+            self.assertEqual(
+                stored["excerpt"]["end_line"],
+                20,
+            )
+
     def test_summary_stays_llm(self):
         self.assertEqual(agent.classify_batch_instruction("Fasse diese Datei zusammen")["mode"], "llm")
 
