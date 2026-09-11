@@ -1926,3 +1926,31 @@ function renderAll(options = {}) {
     });
 
 })();
+
+/* Large hover preview for image attachments in chat messages. */
+(function initImageAttachmentHoverPreview() {
+    function removePreview() {
+        document.querySelectorAll('.image-hover-preview')
+            .forEach(element => element.remove());
+    }
+
+    document.addEventListener('mouseover', event => {
+        const image = event.target.closest?.('.message-attachment-preview');
+        if (!image) return;
+
+        removePreview();
+
+        const preview = document.createElement('img');
+        preview.className = 'image-hover-preview';
+        preview.src = image.src;
+        preview.alt = image.alt || '';
+        document.body.appendChild(preview);
+    });
+
+    document.addEventListener('mouseout', event => {
+        const image = event.target.closest?.('.message-attachment-preview');
+        if (!image) return;
+
+        removePreview();
+    });
+})();

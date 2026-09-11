@@ -732,5 +732,6 @@
   "ui.import_failed": "Import fehlgeschlagen: {message}",
   "ui.no_workspace": "Kein Workspace",
   "dictation.transcription_failed": "Transkription fehlgeschlagen ({status})",
-  "dictation.failed": "Diktat fehlgeschlagen: {message}"
+  "dictation.failed": "Diktat fehlgeschlagen: {message}",
+  "generation.vision_describe_image_prompt": "Beschreibe dieses Bild detailliert. Antworte auf Deutsch."
 }

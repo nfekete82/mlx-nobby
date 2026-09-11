@@ -6409,3 +6409,27 @@ body.mlx-empty-chat .composer {
     }
 
 }
+
+/* Floating large preview for sent image attachments. */
+.image-hover-preview {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    max-width: min(75vw, 900px);
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%);
+    object-fit: contain;
+    border-radius: 12px;
+    z-index: 100000;
+    pointer-events: none;
+    background: #0b0f16;
+    box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.75),
+        0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.message-attachment-preview {
+    cursor: zoom-in;
+}

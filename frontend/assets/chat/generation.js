@@ -1165,7 +1165,10 @@ const imageFiles =
         prompt ||
         (
             imageFiles.length
-                ? 'Describe this image in detail.'
+                ? gt(
+                    'vision_describe_image_prompt',
+                    'Describe this image in detail. Answer in English.'
+                )
                 : ''
         );
 

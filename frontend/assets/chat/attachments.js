@@ -119,13 +119,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
                 preview.src = file.data_url;
                 preview.alt = file.name;
-
-                preview.style.width = '38px';
-                preview.style.height = '38px';
-                preview.style.objectFit = 'cover';
-                preview.style.borderRadius = '7px';
-                preview.style.marginRight = '7px';
-
+                preview.className = 'attachment-image-preview';
                 chip.appendChild(preview);
             }
 
