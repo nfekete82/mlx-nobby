@@ -399,6 +399,37 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(routed["tool"], "coding_agent")
         self.assertEqual(routed["data"]["mode"], "coding")
 
+    def test_workspace_file_review_routes_to_coding_agent(self):
+        self.add_workspace()
+
+        prompts = (
+            'Schau dir das Spiel blackjack an "blackjack.html" kann man das besser machen?',
+            "Schau dir index.html an.",
+            "Kann man login.php besser machen?",
+            "Prüfe diese CSS-Datei style.css.",
+            "Bewerte frontend.js.",
+        )
+
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                details = agent_app.classify_chat_action_details(
+                    prompt,
+                    classifier=lambda *_args: {
+                        "intent": "normal_chat",
+                        "confidence": 0.4,
+                        "requires_tools": False,
+                        "reason": "Unsicher",
+                    },
+                )
+                self.assertEqual(details["intent"], "coding_agent")
+                self.assertEqual(details["method"], "safe_fallback")
+
+        self.assertFalse(
+            agent_app._looks_like_coding_action(
+                "Wie kann man ein Blackjack-Spiel in HTML besser machen?"
+            )
+        )
+
     def test_coding_planner_runs_create_prepare_diff_test_then_approval(self):
         self.add_workspace()
         seen_system_prompts = []

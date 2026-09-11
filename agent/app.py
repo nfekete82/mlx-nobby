@@ -4587,6 +4587,10 @@ Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
 - Eine Bitte, den eigenen Mac jetzt zu prüfen, gehört zum diagnostic_agent.
 - Eine Erklärung, wie der Nutzer selbst etwas prüfen kann, gehört zu normal_chat.
 - Eine gewünschte Änderung im eigenen Projekt gehört zum coding_agent.
+- Das Prüfen, Bewerten oder Verbessern einer konkreten Datei im aktiven
+  Coding-Workspace gehört ebenfalls zum coding_agent, auch wenn noch keine
+  konkrete Änderung verlangt wird. Beispiele: "Schau dir index.html an",
+  "Kann man login.php besser machen?" oder "Prüfe diese CSS-Datei".
 - Eine Wissensfrage über Programmierung gehört zu normal_chat.
 - knowledge_search ist für Fragen über Informationen gedacht, die in der lokalen
   Wissensbasis von MLX nobby indexiert sein können.
@@ -4737,9 +4741,14 @@ def _looks_like_coding_action(prompt, conversation_context=None):
         r"repariere|reparier|behebe|fixe|ersetze|entferne|füge|fuege|ergänze|"
         r"ergaenze|erstelle|erstell|erstellen|erzeuge|lege|schreibe|baue|bau|"
         r"refaktoriere|refaktorier|überarbeite|ueberarbeite|lösche|loesche|"
-        r"remove|delete|analysiere|analysier|suche|such|prüfe|pruefe)\b",
+        r"remove|delete|analysiere|analysier|suche|such|prüfe|pruefe|"
+        r"bewerte|bewert|verbessere|verbesser)\b",
         value,
-    )) or bool(re.search(r"\bstell(?:e)?\b.*\bum\b", value)) or "kann weg" in value
+    )) or bool(
+        re.search(r"\bschau(?:e)?\s+(?:dir\s+)?(?:das|die|den|diese[nrsm]?|.+?)\s+an\b", value)
+    ) or bool(
+        re.search(r"\bkann\s+man\b.*\bbesser\s+machen\b", value)
+    ) or bool(re.search(r"\bstell(?:e)?\b.*\bum\b", value)) or "kann weg" in value
 
     context_text=_router_context_text(conversation_context).lower()
     coding_followup=bool(conversation_context) and any(
