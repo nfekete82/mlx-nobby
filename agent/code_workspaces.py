@@ -158,10 +158,18 @@ def add_workspace(path,name=None,test_commands=None,activate=True):
         raise ValueError("WORKSPACE_PERMISSION_DENIED")
     items=_load(); existing=next((x for x in items if x['root_path']==str(root)),None)
     if existing:
+        changed=False
+        if test_commands is not None:
+            existing["test_commands"]=test_commands
+            existing["updated_at"]=_now()
+            changed=True
         if activate:
             for entry in items:
                 entry["active"] = entry.get("workspace_id") == existing["workspace_id"]
+            changed=True
+        if changed:
             _save(items)
+        if activate:
             existing = {**existing, "active": True}
         return _summary(existing, existing=True)
     now=_now(); item={"workspace_id":uuid.uuid4().hex[:16],"name":name or root.name,"root_path":str(root),"allowed_paths":["."],"ignored_paths":sorted(IGNORE),"test_commands":test_commands or [],"created_at":now,"updated_at":now,"knowledge_source_id":None,"snapshot_root":str(SNAPSHOTS),"active":bool(activate)}

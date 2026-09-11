@@ -62,6 +62,57 @@ class CodeWorkspaceTests(unittest.TestCase):
         )
         self.assertEqual(len(code_workspaces.list_workspaces()), 1)
 
+    def test_reregistering_workspace_updates_only_explicit_test_commands(self):
+        workspace = self.add_workspace()
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "raise SystemExit(Path('checked.txt').read_text() != 'checked\\n')"
+            ),
+        ]
+
+        updated = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[command],
+            activate=True,
+        )
+        self.assertEqual(
+            code_workspaces._workspace(workspace["workspace_id"])["test_commands"],
+            [command],
+        )
+        patch = code_workspaces.create_patch(
+            workspace["workspace_id"],
+            "Create text",
+            [{"path": "checked.txt", "proposed_content": "checked\n"}],
+        )
+        test_result = code_workspaces.test(patch["patch_id"])
+        self.assertTrue(test_result["passed"])
+        self.assertEqual(test_result["checks_run"], 1)
+        preserved = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=None,
+            activate=True,
+        )
+        self.assertEqual(
+            code_workspaces._workspace(workspace["workspace_id"])["test_commands"],
+            [command],
+        )
+        cleared = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            test_commands=[],
+            activate=True,
+        )
+
+        self.assertEqual(updated["workspace_id"], workspace["workspace_id"])
+        self.assertEqual(preserved["workspace_id"], workspace["workspace_id"])
+        self.assertEqual(cleared["workspace_id"], workspace["workspace_id"])
+        self.assertEqual(
+            code_workspaces._workspace(workspace["workspace_id"])["test_commands"],
+            [],
+        )
+
     def test_reads_existing_file(self):
         source = self.workspace_one / "app.php"
         source.write_text("<?php\necho 'ok';\n", encoding="utf-8")
