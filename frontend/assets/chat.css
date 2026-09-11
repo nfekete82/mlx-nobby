@@ -2521,6 +2521,97 @@ button {
     color: #88d5aa;
 }
 
+.agent-change-tests.failed,
+.agent-change-tests.no_checks {
+    color: #f0b967;
+}
+
+.agent-test-evidence {
+    margin-top: 7px;
+    padding: 9px 10px;
+    border: 1px solid rgba(136, 213, 170, .28);
+    border-radius: 8px;
+    background: rgba(22, 101, 52, .1);
+    font-size: 12px;
+}
+
+.agent-test-evidence.failed {
+    border-color: rgba(248, 113, 113, .38);
+    background: rgba(127, 29, 29, .12);
+}
+
+.agent-test-evidence.no_checks {
+    border-color: rgba(240, 185, 103, .38);
+    background: rgba(120, 75, 16, .12);
+}
+
+.agent-test-evidence-title {
+    color: #a7e4bf;
+    font-weight: 700;
+}
+
+.agent-test-evidence.failed .agent-test-evidence-title {
+    color: #fca5a5;
+}
+
+.agent-test-evidence.no_checks .agent-test-evidence-title {
+    color: #f0c77e;
+}
+
+.agent-test-evidence-message {
+    margin-top: 4px;
+    color: #c7d0dc;
+    line-height: 1.45;
+}
+
+.agent-test-configure {
+    margin-top: 8px;
+}
+
+.agent-test-results {
+    display: grid;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.agent-test-result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 10px;
+    color: #bdc7d5;
+}
+
+.agent-test-result-label {
+    overflow-wrap: anywhere;
+}
+
+.agent-test-result-status {
+    color: #88d5aa;
+    font-weight: 650;
+}
+
+.agent-test-result.failed .agent-test-result-status,
+.agent-test-result.unavailable .agent-test-result-status {
+    color: #fca5a5;
+}
+
+.agent-test-result.skipped .agent-test-result-status {
+    color: #8f9baa;
+}
+
+.agent-test-result-output {
+    grid-column: 1 / -1;
+    max-height: 140px;
+    overflow: auto;
+    margin: 0;
+    padding: 7px;
+    border-radius: 6px;
+    background: #0c1118;
+    color: #f3b7b7;
+    font-size: 11px;
+    white-space: pre-wrap;
+}
+
 .agent-change-lines {
     color: #8f9baa;
 }
@@ -2553,6 +2644,43 @@ button {
     border-color: #4f8cff;
     background: #2868cf;
     color: white;
+}
+
+.agent-approval-button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
+.workspace-settings-add {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto auto;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.workspace-settings-list {
+    display: grid;
+    gap: 7px;
+    margin-bottom: 12px;
+}
+
+.workspace-test-command-field textarea {
+    min-height: 112px;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+
+.workspace-test-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 9px;
+}
+
+@media (max-width: 700px) {
+    .workspace-settings-add {
+        grid-template-columns: 1fr;
+    }
 }
 
 

@@ -15,7 +15,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260909-cleanup">
+<link rel="stylesheet" href="/assets/chat.css?v=20260911-code-evidence">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -346,6 +346,26 @@
             </div>
             <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> <span data-i18n="ui.auto_scroll_streaming">Auto-Scroll während Streaming</span></label>
             <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
+        </section>
+
+        <section id="workspaceTestSettings" class="settings-card">
+            <h4 class="settings-group-title" data-i18n="ui.coding_workspace">Coding-Workspace auswählen</h4>
+            <p class="settings-hint" data-i18n="ui.workspace_tests_description">Konfiguriere echte Testbefehle für den aktiven Workspace. Jeder Befehl wird ohne Shell in einer isolierten Workspace-Kopie ausgeführt.</p>
+            <div class="workspace-settings-add">
+                <input id="workspacePath" type="text" data-i18n-placeholder="ui.workspace_path_placeholder" placeholder="/Pfad/zum/Workspace">
+                <button id="workspaceAdd" class="message-action-btn" type="button" data-i18n="ui.workspace_add">Workspace hinzufügen</button>
+                <button id="workspacePickerSettings" class="message-action-btn" type="button" data-i18n="ui.workspace_choose">Ordner auswählen</button>
+            </div>
+            <div id="workspaceList" class="workspace-settings-list"></div>
+            <label class="field workspace-test-command-field" for="workspaceTestCommands">
+                <span data-i18n="ui.workspace_test_commands">Testbefehle</span>
+                <textarea id="workspaceTestCommands" rows="5" spellcheck="false" data-i18n-placeholder="ui.workspace_test_commands_placeholder" placeholder='[["python3", "-m", "unittest"]]'></textarea>
+            </label>
+            <p class="settings-hint" data-i18n="ui.workspace_test_commands_hint">JSON-Liste von Argumentlisten. Leere Liste entfernt alle Testbefehle.</p>
+            <div class="workspace-test-actions">
+                <button id="workspaceTestsSave" class="message-action-btn" type="button" data-i18n="ui.workspace_tests_save">Testbefehle speichern</button>
+            </div>
+            <div id="workspaceSettingsFeedback" class="workspace-feedback" role="status" aria-live="polite"></div>
         </section>
 
         <section class="settings-card">
@@ -998,7 +1018,7 @@
 <script src="/assets/chat/sessions.js"></script>
 <script src="/assets/chat/attachments.js?v=1788542000"></script>
 <script src="/assets/chat/i18n.js"></script>
-<script src="/assets/chat/rendering.js?v=20260906-scroll-follow"></script>
+<script src="/assets/chat/rendering.js?v=20260911-code-evidence"></script>
 <script src="/assets/chat/compact.js"></script>
 <script src="/assets/chat/runtime.js?v=20260906-vision-fix"></script>
 <script src="/assets/chat/appearance.js"></script>
@@ -1117,6 +1137,6 @@
 <script src="/assets/chat/notes.js?v=1788548196"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
-<script src="/assets/chat.js?v=20260909-cleanup"></script>
+<script src="/assets/chat.js?v=20260911-code-evidence"></script>
 </body>
 </html>

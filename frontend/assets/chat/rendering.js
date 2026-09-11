@@ -272,6 +272,160 @@ function renderToolCard(message) {
     return card;
 }
 
+function codeTestEvidence(result = {}) {
+    const results = Array.isArray(result.results)
+        ? result.results.filter(entry => entry && typeof entry === 'object')
+        : [];
+    const reportedChecks = Number(result.checks_run);
+    const checksRun = Number.isInteger(reportedChecks) && reportedChecks >= 0
+        ? reportedChecks
+        : results.filter(entry => ['passed', 'failed'].includes(entry.status)).length;
+    const failedCount = results.filter(
+        entry => ['failed', 'unavailable'].includes(entry.status)
+    ).length;
+    const relevantCount = results.filter(
+        entry => entry.status !== 'skipped'
+    ).length;
+    const reportedStatus = String(result.test_status || '').toLowerCase();
+    let status = 'no_checks';
+
+    if (reportedStatus === 'no_checks') {
+        status = 'no_checks';
+    } else if (reportedStatus === 'failed' || failedCount > 0) {
+        status = 'failed';
+    } else if (
+        reportedStatus === 'passed' &&
+        result.passed === true &&
+        checksRun > 0
+    ) {
+        status = 'passed';
+    } else if (
+        !reportedStatus &&
+        result.passed === true &&
+        checksRun > 0
+    ) {
+        status = 'passed';
+    }
+
+    return {
+        status,
+        checksRun,
+        failedCount,
+        totalCount: Math.max(checksRun, relevantCount),
+        results,
+    };
+}
+
+function codeTestEvidenceLabel(result = {}) {
+    const evidence = codeTestEvidence(result);
+
+    if (evidence.status === 'passed') {
+        return rt(
+            'tests_passed_checks',
+            'Tests passed · {count} checks run',
+            { count: evidence.checksRun }
+        );
+    }
+
+    if (evidence.status === 'failed') {
+        return rt(
+            'tests_failed_checks',
+            'Tests failed · {failed} of {total} checks failed',
+            {
+                failed: Math.max(1, evidence.failedCount),
+                total: Math.max(1, evidence.totalCount),
+            }
+        );
+    }
+
+    return rt(
+        'tests_no_checks',
+        'Not tested · No suitable test is configured for this workspace.'
+    );
+}
+
+function codeApplyEvidenceValid(pending = {}) {
+    if (pending.operation !== 'code_apply') return true;
+    return codeTestEvidence(pending.tests || {}).status === 'passed';
+}
+
+function renderCodeTestEvidence(result = {}) {
+    const evidence = codeTestEvidence(result);
+    const panel = document.createElement('div');
+    panel.className = 'agent-test-evidence ' + evidence.status;
+
+    const heading = document.createElement('div');
+    heading.className = 'agent-test-evidence-title';
+    heading.textContent = codeTestEvidenceLabel(result);
+    panel.appendChild(heading);
+
+    if (evidence.status === 'no_checks') {
+        const explanation = document.createElement('div');
+        explanation.className = 'agent-test-evidence-message';
+        explanation.textContent = rt(
+            'tests_no_checks_apply_blocked',
+            'This change cannot be applied yet because no real test could be run.'
+        );
+        panel.appendChild(explanation);
+
+        const configure = document.createElement('button');
+        configure.type = 'button';
+        configure.className = 'message-action-btn agent-test-configure';
+        configure.textContent = rt('configure_tests', 'Configure tests');
+        configure.addEventListener('click', () => {
+            if (window.MLXChatWorkspace?.openTestConfiguration) {
+                window.MLXChatWorkspace.openTestConfiguration();
+                return;
+            }
+            window.MLXChatSettings?.open?.('general');
+        });
+        panel.appendChild(configure);
+    }
+
+    if (evidence.results.length) {
+        const list = document.createElement('div');
+        list.className = 'agent-test-results';
+
+        evidence.results.forEach((entry, index) => {
+            const item = document.createElement('div');
+            const itemStatus = String(entry.status || 'unknown').toLowerCase();
+            item.className = 'agent-test-result ' + itemStatus;
+
+            const label = document.createElement('span');
+            label.className = 'agent-test-result-label';
+            label.textContent = entry.path ||
+                (Array.isArray(entry.command) ? entry.command.join(' ') : '') ||
+                rt('test_check_number', 'Check {count}', { count: index + 1 });
+
+            const status = document.createElement('span');
+            status.className = 'agent-test-result-status';
+            status.textContent = rt(
+                'test_result_' + itemStatus,
+                itemStatus.replace(/_/g, ' ')
+            );
+
+            item.appendChild(label);
+            item.appendChild(status);
+
+            if (
+                ['failed', 'unavailable'].includes(itemStatus) &&
+                String(entry.output || '').trim()
+            ) {
+                const output = document.createElement('pre');
+                output.className = 'agent-test-result-output';
+                output.textContent = String(entry.output).trim().slice(0, 2000);
+                item.appendChild(output);
+            }
+
+            list.appendChild(item);
+        });
+
+        panel.appendChild(list);
+    }
+
+    return panel;
+}
+
 function agentStepLabel(step) {
     const action =
         String(step?.action || '');
@@ -329,11 +483,7 @@ function agentStepLabel(step) {
                 { count: fileCount }
             )
             : rt('total_diff_created', 'Total diff created'),
-        code_test: result.passed === true
-            ? (fileCount
-                ? rt('files_tested', '{count} files tested · Tests passed', { count: fileCount })
-                : 'Tests bestanden')
-            : 'Change-Set getestet',
+        code_test: codeTestEvidenceLabel(result),
         code_apply: fileCount
             ? rt('files_applied', '{count} files applied', { count: fileCount })
             : 'Change-Set angewendet',
@@ -392,8 +542,14 @@ function renderAgentCard(message) {
         icon.className =
             'agent-step-icon';
 
-        if (step.status === 'failed') {
+        const testEvidence = step.action === 'code_test'
+            ? codeTestEvidence(step.result || {})
+            : null;
+
+        if (step.status === 'failed' || testEvidence?.status === 'failed') {
             icon.textContent = '⚠';
+        } else if (testEvidence?.status === 'no_checks') {
+            icon.textContent = '○';
         } else if (step.status === 'running') {
             icon.textContent = '●';
         } else if (
@@ -436,6 +592,10 @@ function renderAgentCard(message) {
             plan.className = 'agent-step-plan';
             plan.textContent = 'Plan: ' + step.plan.join(' · ');
             body.appendChild(plan);
+        }
+
+        if (step.action === 'code_test' && step.result) {
+            body.appendChild(renderCodeTestEvidence(step.result));
         }
 
         if (step.query || step.result) {
@@ -566,9 +726,10 @@ function renderAgentCard(message) {
 
             const testStatus = document.createElement('div');
             testStatus.className = 'agent-change-tests';
-            testStatus.textContent = pending.tests?.passed
-                ? '✓ Tests bestanden'
-                : rt('tests_unconfirmed', '⚠ Tests not confirmed');
+            testStatus.textContent = codeTestEvidenceLabel(pending.tests || {});
+            testStatus.classList.add(
+                codeTestEvidence(pending.tests || {}).status
+            );
             summary.appendChild(testStatus);
 
             const lineDelta = document.createElement('div');
@@ -662,8 +823,16 @@ function renderAgentCard(message) {
 
         execute.textContent =
             pending.operation === 'code_apply'
-                ? 'Freigeben'
+                ? rt('approve', 'Approve')
                 : rt('execute', 'Run');
+
+        if (!codeApplyEvidenceValid(pending)) {
+            execute.disabled = true;
+            execute.title = rt(
+                'apply_blocked_without_tests',
+                'Apply is blocked until a real test has passed.'
+            );
+        }
 
         execute.addEventListener(
             'click',
@@ -1741,13 +1910,19 @@ function renderAll(options = {}) {
         configure: configure,
         renderSidebar: renderSidebar,
         renderMessages: renderMessages,
-        renderAll: renderAll
+        renderAll: renderAll,
+        __test: {
+            codeTestEvidence,
+            codeTestEvidenceLabel,
+            codeApplyEvidenceValid,
+            renderCodeTestEvidence,
+        }
     };
 
     document.addEventListener('mlx-language-changed', () => {
-        if (typeof window.renderMessages === 'function') {
-            window.renderMessages();
-        }
+        window.MLXChatRendering?.renderMessages?.({
+            contentUpdated: false
+        });
     });
 
 })();

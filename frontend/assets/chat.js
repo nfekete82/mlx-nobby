@@ -831,8 +831,55 @@ async function workspaceRequest(path, options = {}) {
 }
 
 function showWorkspaceFeedback(message = '') {
-    const feedback = document.getElementById('workspaceFeedback');
-    if (feedback) feedback.textContent = message;
+    [
+        document.getElementById('workspaceFeedback'),
+        document.getElementById('workspaceSettingsFeedback')
+    ].filter(Boolean).forEach(feedback => {
+        feedback.textContent = message;
+    });
+}
+
+let activeWorkspaceSettings = null;
+
+function renderWorkspaceTestCommands(workspace) {
+    activeWorkspaceSettings = workspace || null;
+    const input = document.getElementById('workspaceTestCommands');
+    const save = document.getElementById('workspaceTestsSave');
+    if (!input || !save) return;
+
+    input.disabled = !workspace;
+    save.disabled = !workspace;
+    input.value = workspace
+        ? JSON.stringify(workspace.test_commands || [], null, 2)
+        : '';
+}
+
+function parseWorkspaceTestCommands(value) {
+    let commands;
+    try {
+        commands = JSON.parse(String(value || '').trim() || '[]');
+    } catch (error) {
+        throw new Error(chatT(
+            'ui.workspace_test_commands_invalid_json',
+            'Test commands must be valid JSON.'
+        ));
+    }
+
+    if (
+        !Array.isArray(commands) ||
+        !commands.every(command =>
+            Array.isArray(command) &&
+            command.length > 0 &&
+            command.every(part => typeof part === 'string' && part.length > 0)
+        )
+    ) {
+        throw new Error(chatT(
+            'ui.workspace_test_commands_invalid_shape',
+            'Use a JSON list containing one argument list per command.'
+        ));
+    }
+
+    return commands;
 }
 
 function renderActiveWorkspace(workspace) {
@@ -881,6 +928,7 @@ async function loadWorkspaces() {
         const data = await workspaceRequest('/api/mlx/code/workspaces');
         const spaces = data.workspaces || [];
         renderActiveWorkspace(data.active_workspace || null);
+        renderWorkspaceTestCommands(data.active_workspace || null);
         if (data.active_workspace && data.active_workspace.available === false) {
             showWorkspaceFeedback(WORKSPACE_ERRORS.WORKSPACE_ROOT_UNAVAILABLE);
         }
@@ -977,6 +1025,58 @@ if (workspaceAdd) {
         }
     });
 }
+
+const workspaceTestsSave = document.getElementById('workspaceTestsSave');
+if (workspaceTestsSave) {
+    workspaceTestsSave.addEventListener('click', async () => {
+        const input = document.getElementById('workspaceTestCommands');
+        if (!input || !activeWorkspaceSettings) return;
+
+        workspaceTestsSave.disabled = true;
+        showWorkspaceFeedback('');
+        try {
+            const testCommands = parseWorkspaceTestCommands(input.value);
+            await workspaceRequest('/api/mlx/code/workspaces', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    path: activeWorkspaceSettings.root_path,
+                    name: activeWorkspaceSettings.name,
+                    test_commands: testCommands
+                })
+            });
+            showWorkspaceFeedback(chatT(
+                'ui.workspace_test_commands_saved',
+                'Test commands saved.'
+            ));
+            await loadWorkspaces();
+        } catch (error) {
+            showWorkspaceFeedback(workspaceErrorMessage(error));
+        } finally {
+            workspaceTestsSave.disabled = !activeWorkspaceSettings;
+        }
+    });
+}
+
+function openWorkspaceTestConfiguration() {
+    window.MLXChatSettings?.open?.('general');
+    loadWorkspaces();
+    requestAnimationFrame(() => {
+        document.getElementById('workspaceTestSettings')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        });
+        document.getElementById('workspaceTestCommands')?.focus();
+    });
+}
+
+window.MLXChatWorkspace = {
+    load: loadWorkspaces,
+    openTestConfiguration: openWorkspaceTestConfiguration,
+    __test: {
+        parseWorkspaceTestCommands
+    }
+};
 
 
 document.getElementById(
