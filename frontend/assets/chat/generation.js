@@ -219,6 +219,44 @@ function buildContextSources(messages) {
 }
 
 
+async function* readSseEvents(reader) {
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    function takeEvents(final = false) {
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        if (final && buffer.trim()) {
+            events.push(buffer);
+            buffer = '';
+        }
+
+        return events;
+    }
+
+    while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+            buffer += decoder.decode();
+
+            for (const event of takeEvents(true)) {
+                yield event;
+            }
+
+            return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        for (const event of takeEvents()) {
+            yield event;
+        }
+    }
+}
+
+
 function defaultVisionPrompt(imageCount) {
     if (imageCount > 1) {
         return gt(
@@ -375,32 +413,7 @@ try {
         const reader =
             response.body.getReader();
 
-        const decoder =
-            new TextDecoder();
-
-        let buffer = '';
-
-        while (true) {
-            const {
-                value,
-                done
-            } = await reader.read();
-
-            if (done) break;
-
-            buffer +=
-                decoder.decode(
-                    value,
-                    { stream: true }
-                );
-
-            const events =
-                buffer.split('\n\n');
-
-            buffer =
-                events.pop() || '';
-
-            for (const event of events) {
+        for await (const event of readSseEvents(reader)) {
 
                 if (
                     event.startsWith(
@@ -549,7 +562,6 @@ try {
                         contentUpdated: true
                     });
                 }
-            }
         }
 
         completed = true;
@@ -2007,6 +2019,7 @@ function watchBatchJob(session, jobId) {
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
+            readSseEvents: readSseEvents,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments
         }
