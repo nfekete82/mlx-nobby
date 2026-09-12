@@ -261,12 +261,17 @@ ok "$LAUNCHD_DIR"
 
 info "Installing MLX Manager"
 
-if [ -f "$MLX_TARGET" ] && cmp -s "$MLX_SOURCE" "$MLX_TARGET"; then
-    ok "~/bin/mlx already up to date"
+chmod 755 "$MLX_SOURCE"
+
+if [ -L "$MLX_TARGET" ] && [ "$(readlink "$MLX_TARGET")" = "$MLX_SOURCE" ]; then
+    ok "~/bin/mlx already linked to repository"
 else
-    cp "$MLX_SOURCE" "$MLX_TARGET"
-    chmod 755 "$MLX_TARGET"
-    ok "Installed ~/bin/mlx"
+    if [ -e "$MLX_TARGET" ] || [ -L "$MLX_TARGET" ]; then
+        rm -f "$MLX_TARGET"
+    fi
+
+    ln -s "$MLX_SOURCE" "$MLX_TARGET"
+    ok "Linked ~/bin/mlx -> $MLX_SOURCE"
 fi
 
 

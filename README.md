@@ -100,8 +100,9 @@ MLX nobby does not download an LLM automatically. Add or select a local
 MLX-compatible model before starting your first chat.
 
 The installer validates macOS and Apple Silicon, creates or updates the five
-isolated service environments, installs `~/bin/mlx`, creates a minimal local
-runtime configuration if none exists, and starts the Docker web application.
+isolated service environments, links `~/bin/mlx` to the repository-managed
+`scripts/mlx`, creates a minimal local runtime configuration if none exists,
+and starts the Docker web application.
 Existing MLX configuration and model aliases are preserved. LaunchAgent files
 are installed only when the configured router model directory exists.
 
@@ -149,8 +150,10 @@ through `host.docker.internal`; it does not contain the MLX runtimes.
 
 ## MLX manager
 
-The maintained manager source is `scripts/mlx`; the installer copies it to
-`~/bin/mlx`. Common commands include:
+The maintained manager source is `scripts/mlx`; the installer creates
+`~/bin/mlx` as a symbolic link to that repository file. This means future
+`git pull` updates automatically apply to the `mlx` command without rerunning
+the installer. Common commands include:
 
 ```sh
 mlx status
