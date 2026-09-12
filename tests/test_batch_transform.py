@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import tempfile
 import unittest
 import urllib.error
@@ -730,6 +731,140 @@ class BatchTransformTests(unittest.TestCase):
                 stored["excerpt"]["end_line"],
                 20,
             )
+
+    def test_file_analysis_tree_reduction_counts_and_order(self):
+        cases = (
+            (1, 0, 0),
+            (12, 0, 0),
+            (13, 2, 3),
+            (24, 2, 3),
+            (25, 2, 4),
+            (1000, 3, 92),
+        )
+
+        for map_count, expected_depth, expected_reduce_calls in cases:
+            with self.subTest(map_count=map_count), self.batch_environment() as root:
+                source = root / "sample.txt"
+                source.write_text("synthetic input\n", encoding="utf-8")
+                chunks = [
+                    f"chunk-{index:04d}"
+                    for index in range(map_count)
+                ]
+                expected_total_calls = (
+                    map_count + expected_reduce_calls + 1
+                )
+                calls = []
+                final_prompts = []
+
+                def fake_llm(prompt, max_tokens=800):
+                    calls.append((prompt, max_tokens))
+
+                    if len(calls) > expected_total_calls:
+                        raise RuntimeError("Synthetic runaway call guard")
+
+                    if max_tokens == 500:
+                        chunk = prompt.split("EXCERPT:\n", 1)[1]
+                        index = int(chunk.removeprefix("chunk-"))
+                        return f"<{index}>"
+
+                    if max_tokens == 900:
+                        return prompt.split("\n", 1)[1]
+
+                    if max_tokens == 1200:
+                        final_prompts.append(prompt)
+                        return "final synthesis"
+
+                    self.fail(f"Unexpected max_tokens: {max_tokens}")
+
+                job = agent.create_file_analysis_job(
+                    source,
+                    "Summarize the synthetic file.",
+                    "text",
+                    2000,
+                    "summarize",
+                )
+
+                with mock.patch.object(
+                    agent,
+                    "analyze_file_structure",
+                    return_value={"detected_type": "text"},
+                ), mock.patch.object(
+                    agent,
+                    "split_batch_content",
+                    return_value=chunks,
+                ), mock.patch.object(
+                    agent,
+                    "local_file_llm",
+                    side_effect=fake_llm,
+                ):
+                    agent.run_file_analysis_job(job["id"])
+
+                stored = agent.load_batch_jobs()[job["id"]]
+                map_calls = [call for call in calls if call[1] == 500]
+                reduce_calls = [call for call in calls if call[1] == 900]
+                final_calls = [call for call in calls if call[1] == 1200]
+
+                self.assertEqual(stored["status"], "completed")
+                self.assertEqual(stored["result"], "final synthesis")
+                self.assertEqual(stored["processed_chunks"], map_count)
+                self.assertEqual(stored["total_chunks"], map_count)
+                self.assertEqual(len(map_calls), map_count)
+                self.assertEqual(len(reduce_calls), expected_reduce_calls)
+                self.assertEqual(len(final_calls), 1)
+                self.assertEqual(len(calls), expected_total_calls)
+                self.assertEqual(
+                    agent.file_analysis_reduction_limits(map_count),
+                    (expected_depth, expected_reduce_calls),
+                )
+
+                ordered_results = [
+                    int(value)
+                    for value in re.findall(r"<(\d+)>", final_prompts[0])
+                ]
+                self.assertEqual(
+                    ordered_results,
+                    list(range(map_count)),
+                )
+
+    def test_file_analysis_reduction_bound_failure_marks_job_failed(self):
+        with self.batch_environment() as root:
+            source = root / "sample.txt"
+            source.write_text("synthetic input\n", encoding="utf-8")
+            chunks = [f"chunk-{index}" for index in range(13)]
+            job = agent.create_file_analysis_job(
+                source,
+                "Summarize the synthetic file.",
+                "text",
+                2000,
+                "summarize",
+            )
+
+            with mock.patch.object(
+                agent,
+                "analyze_file_structure",
+                return_value={"detected_type": "text"},
+            ), mock.patch.object(
+                agent,
+                "split_batch_content",
+                return_value=chunks,
+            ), mock.patch.object(
+                agent,
+                "file_analysis_reduction_limits",
+                return_value=(0, 0),
+            ), mock.patch.object(
+                agent,
+                "local_file_llm",
+                return_value="map result",
+            ) as llm:
+                agent.run_file_analysis_job(job["id"])
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(stored["status"], "failed")
+            self.assertIn("derived depth limit", stored["error"])
+            self.assertEqual(stored["processed_chunks"], 13)
+            self.assertEqual(stored["total_chunks"], 13)
+            self.assertEqual(llm.call_count, 13)
 
     def test_summary_stays_llm(self):
         self.assertEqual(agent.classify_batch_instruction("Fasse diese Datei zusammen")["mode"], "llm")

@@ -9515,6 +9515,96 @@ def read_file_excerpt(input_path, selection):
     }
 
 
+FILE_ANALYSIS_REDUCE_GROUP_SIZE = 12
+
+
+def file_analysis_reduction_limits(item_count):
+    """Return the exact depth and call count for file-analysis reduction."""
+    width = max(0, int(item_count or 0))
+
+    if width <= FILE_ANALYSIS_REDUCE_GROUP_SIZE:
+        return 0, 0
+
+    depth = 0
+    calls = 0
+
+    while width > 1:
+        next_width = (
+            width + FILE_ANALYSIS_REDUCE_GROUP_SIZE - 1
+        ) // FILE_ANALYSIS_REDUCE_GROUP_SIZE
+
+        if next_width >= width:
+            raise RuntimeError(
+                "File analysis reduction cannot make progress"
+            )
+
+        depth += 1
+        calls += next_width
+        width = next_width
+
+    return depth, calls
+
+
+def reduce_file_analysis_maps(map_results):
+    """Reduce ordered map results through a finite, bounded tree."""
+    current_level = list(map_results or [])
+
+    if len(current_level) <= FILE_ANALYSIS_REDUCE_GROUP_SIZE:
+        return "\n\n".join(current_level)
+
+    max_depth, max_calls = file_analysis_reduction_limits(
+        len(current_level)
+    )
+    depth = 0
+    calls = 0
+
+    while len(current_level) > 1:
+        if depth >= max_depth:
+            raise RuntimeError(
+                "File analysis reduction exceeded its derived depth limit"
+            )
+
+        groups = [
+            current_level[index:index + FILE_ANALYSIS_REDUCE_GROUP_SIZE]
+            for index in range(
+                0,
+                len(current_level),
+                FILE_ANALYSIS_REDUCE_GROUP_SIZE,
+            )
+        ]
+        next_level = []
+
+        for group in groups:
+            if calls >= max_calls:
+                raise RuntimeError(
+                    "File analysis reduction exceeded its derived call limit"
+                )
+
+            next_level.append(
+                local_file_llm(
+                    "Condense these partial results without inventing facts:\n"
+                    + "\n\n".join(group),
+                    900,
+                )
+            )
+            calls += 1
+
+        if len(next_level) >= len(current_level):
+            raise RuntimeError(
+                "File analysis reduction did not decrease its level size"
+            )
+
+        current_level = next_level
+        depth += 1
+
+    if calls != max_calls:
+        raise RuntimeError(
+            "File analysis reduction did not use its derived call count"
+        )
+
+    return current_level[0]
+
+
 def run_file_analysis_job(job_id):
     try:
         with BATCH_LOCK:
@@ -9631,10 +9721,8 @@ def run_file_analysis_job(job_id):
             checkpoint = batch_checkpoint_path(job_id, index); temporary = checkpoint.with_suffix(".tmp"); temporary.write_text(maps[-1], encoding="utf-8"); temporary.replace(checkpoint)
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); current = jobs[job_id]; current["processed_chunks"] = index; current["mlx_calls"] = int(current.get("mlx_calls", 0)) + 1; current["eta_seconds"] = None; save_batch_jobs(jobs)
-        groups = ["\n\n".join(maps[index:index + 12]) for index in range(0, len(maps), 12)]
-        while len(groups) > 1:
-            groups = [local_file_llm("Condense these partial results without inventing facts:\n" + group, 900) for group in groups]
-        answer = local_file_llm("File metadata:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nResults:\n" + (groups[0] if groups else "No readable content found.") + "\n\nAnswer the user's request: " + job["instruction"], 1200)
+        reduced_results = reduce_file_analysis_maps(maps)
+        answer = local_file_llm("File metadata:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nResults:\n" + (reduced_results if maps else "No readable content found.") + "\n\nAnswer the user's request: " + job["instruction"], 1200)
         with BATCH_LOCK:
             jobs = load_batch_jobs(); jobs[job_id].update({"status": "completed", "result": answer, "finished_at": time.time()}); save_batch_jobs(jobs)
     except Exception as exc:
