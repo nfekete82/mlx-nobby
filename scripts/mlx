@@ -852,6 +852,11 @@ download_model() {
 
     local repo
     local downloader
+    local lock_base
+    local lock_name
+    local lock_dir
+    local download_pid
+    local status
 
     repo="$(resolve_model "$input")"
 
@@ -863,12 +868,61 @@ download_model() {
         return 1
     fi
 
+    lock_base="$HOME/.cache/mlx-web/download-locks"
+    lock_name="${repo//\//--}"
+    lock_dir="$lock_base/$lock_name"
+
+    mkdir -p "$lock_base"
+
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        local lock_pid=""
+
+        if [ -f "$lock_dir/pid" ]; then
+            lock_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+        fi
+
+        if (
+            [ -z "$lock_pid" ] ||
+            ! kill -0 "$lock_pid" 2>/dev/null
+        ); then
+            rm -rf -- "$lock_dir"
+
+            if ! mkdir "$lock_dir" 2>/dev/null; then
+                echo "Download-Lock konnte nicht neu erstellt werden: $repo"
+                return 2
+            fi
+        else
+            echo
+            printf "${YELLOW}Download läuft bereits:${RESET} %s\n" "$repo"
+            printf "PID: %s\n" "$lock_pid"
+            return 2
+        fi
+    fi
+
+    echo "$$" > "$lock_dir/pid"
+
     echo
     printf "${BOLD}${CYAN}MLX Download${RESET}\n"
     printf "${GRAY}────────────────────────────────────────────────────────────${RESET}\n"
     printf "Modell: ${BOLD}%s${RESET}\n\n" "$repo"
 
-    "$downloader" download "$repo"
+    "$downloader" download "$repo" &
+    download_pid=$!
+
+    trap '
+        kill "$download_pid" 2>/dev/null || true
+        wait "$download_pid" 2>/dev/null || true
+        rm -rf -- "$lock_dir"
+        exit 130
+    ' INT TERM HUP
+
+    wait "$download_pid"
+    status=$?
+
+    trap - INT TERM HUP
+    rm -rf -- "$lock_dir"
+
+    return "$status"
 }
 
 
