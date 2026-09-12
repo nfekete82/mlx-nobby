@@ -11,6 +11,10 @@ const generationSource = fs.readFileSync(
     new URL('../frontend/assets/chat/generation.js', import.meta.url),
     'utf8',
 );
+const renderingSource = fs.readFileSync(
+    new URL('../frontend/assets/chat/rendering.js', import.meta.url),
+    'utf8',
+);
 const requests = [];
 const input = { value: '' };
 
@@ -267,6 +271,77 @@ assert.equal(
     imageArtifact.artifact_id,
 );
 
+class TestElement {
+    constructor(tagName = 'div') {
+        this.tagName = tagName.toUpperCase();
+        this.children = [];
+        this.className = '';
+        this.textContent = '';
+    }
+
+    appendChild(child) {
+        this.children.push(child);
+        return child;
+    }
+
+    addEventListener() {}
+}
+
+const renderingWindow = {
+    MLXI18n: window.MLXI18n,
+};
+renderingWindow.window = renderingWindow;
+const renderingContext = {
+    console,
+    document: {
+        addEventListener() {},
+        createElement: tagName => new TestElement(tagName),
+        getElementById: () => new TestElement(),
+        querySelectorAll: () => [],
+    },
+    window: renderingWindow,
+};
+vm.runInNewContext(renderingSource, renderingContext, {
+    filename: 'frontend/assets/chat/rendering.js',
+});
+
+const renderImageArtifactCard =
+    renderingWindow.MLXChatRendering.__test.renderImageArtifactCard;
+const editMessage = session.messages.at(-1);
+assert.equal(
+    editMessage.tool_result.artifacts[0].artifact_id,
+    imageArtifact.artifact_id,
+);
+const editCard = renderImageArtifactCard(editMessage);
+const editPreview = editCard.children.find(
+    child => child.tagName === 'IMG',
+);
+assert.equal(
+    editPreview.src,
+    '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
+);
+
+const generatedCard = renderImageArtifactCard({
+    tool_result: {
+        tool: 'image_generate',
+        artifacts: [imageArtifact],
+    },
+});
+assert.ok(generatedCard);
+assert.equal(
+    generatedCard.children.find(child => child.tagName === 'IMG').src,
+    '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
+);
+assert.equal(
+    renderImageArtifactCard({
+        tool_result: {
+            tool: 'image_edit',
+            artifacts: [],
+        },
+    }),
+    null,
+);
+
 console.log(
-    'Image edit upload, routing, artifact, and provider error presentation passed.',
+    'Image edit upload, routing, artifact rendering, and provider error presentation passed.',
 );

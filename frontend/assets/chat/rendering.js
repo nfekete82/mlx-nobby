@@ -1372,7 +1372,10 @@ function renderBatchCard(message) {
 }
 
 function renderImageArtifactCard(message) {
-    const artifact = message.tool_result?.tool === 'image_generate'
+    const artifact = [
+        'image_generate',
+        'image_edit'
+    ].includes(message.tool_result?.tool)
         ? message.tool_result.artifacts?.[0]
         : null;
     if (!artifact?.image_id) return null;
@@ -2138,6 +2141,7 @@ function renderAll(options = {}) {
             codeApplyEvidenceValid,
             renderCodeTestEvidence,
             batchFailureDetail,
+            renderImageArtifactCard,
         }
     };
 
