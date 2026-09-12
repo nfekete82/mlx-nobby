@@ -6433,3 +6433,326 @@ body.mlx-empty-chat .composer {
 .message-attachment-preview {
     cursor: zoom-in;
 }
+
+/* ==========================================================
+   MLX Nobby – Composer Attachment Layout
+   Datei oben, Eingabe + Toolbar darunter
+   ========================================================== */
+
+/*
+ * Der Composer ist vertikal aufgebaut:
+ *
+ *   [ Texteingabe                         ]
+ *   [ Attachment 1 ] [ Attachment 2 ] ...
+ *   [ +                         mode mic ↑ ]
+ *
+ * Attachment-Chips dürfen die untere Toolbar nicht
+ * verschieben, überlagern oder künstlich reservieren.
+ */
+
+.composer .attachment-bar {
+    display: none;
+    width: 100%;
+    margin: 0;
+    padding: 4px 10px 6px;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.composer .attachment-bar.visible {
+    display: flex;
+}
+
+/*
+ * Überschreibt explizit den bisherigen 43px-Workaround.
+ */
+.composer:has(.attachment-bar.visible) .attachment-bar {
+    margin-bottom: 0;
+}
+
+/*
+ * Dateikarte etwas größer und klar als eigener Bereich.
+ */
+.composer .attachment-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    min-height: 42px;
+    max-width: 320px;
+
+    padding: 8px 10px;
+
+    border: 1px solid #303846;
+    border-radius: 11px;
+
+    background: #171d27;
+    color: #b9c3d0;
+
+    font-size: 12px;
+
+    box-sizing: border-box;
+}
+
+/*
+ * Dateiname bleibt sauber auf einer Zeile.
+ */
+.composer .attachment-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * Entfernen-Button bleibt rechts an der Karte.
+ */
+.composer .attachment-remove {
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+
+/*
+ * Untere Toolbar bleibt immer ihre eigene Zeile.
+ */
+.composer .composer-bottom {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+/*
+ * Mobile: Dateikarten dürfen fast die gesamte Breite nutzen.
+ */
+@media (max-width: 620px) {
+    .composer .attachment-chip {
+        max-width: calc(100% - 4px);
+    }
+}
+
+/* MLX-NOBBY-CHATGPT-COMPOSER-START */
+
+/* ==========================================================
+   Composer attachments
+   ========================================================== */
+
+.composer .attachment-image-preview {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+
+    display: block;
+    object-fit: cover;
+
+    border: 1px solid #303846;
+    border-radius: 8px;
+
+    background: #0b0f15;
+}
+
+.composer .attachment-chip {
+    overflow: hidden;
+}
+
+.composer .attachment-bar {
+    padding: 10px 18px 2px;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+/* ==========================================================
+   Composer row
+   ========================================================== */
+
+/*
+ * Alte absolute Toolbar-Geometrie vollständig neutralisieren.
+ */
+.composer .composer-bottom {
+    position: relative;
+
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+
+    width: 100%;
+    height: 60px;
+    min-height: 60px;
+
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+
+    box-sizing: border-box;
+
+    margin: 0;
+    padding: 0 18px;
+
+    gap: 10px;
+
+    pointer-events: auto;
+}
+
+/* ==========================================================
+   Left action
+   ========================================================== */
+
+.composer .composer-left {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    flex: 0 0 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    align-self: center;
+}
+
+.composer .composer-plus-wrap,
+.composer .composer-plus-button {
+    width: 38px;
+    height: 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    align-self: center;
+
+    margin: 0;
+    padding: 0;
+
+    transform: none;
+}
+
+.composer:not(.composer-multiline) .composer-plus-wrap::after {
+    content: "";
+
+    position: absolute;
+
+    right: -5px;
+    top: 9px;
+
+    width: 1px;
+    height: 20px;
+
+    background: #394150;
+}
+
+/* ==========================================================
+   Input
+   ========================================================== */
+
+.composer .composer-bottom .input {
+    flex: 1 1 auto;
+
+    width: auto;
+    min-width: 0;
+
+    height: 38px;
+    min-height: 38px;
+    max-height: 180px;
+
+    box-sizing: border-box;
+
+    align-self: center;
+
+    margin: 0;
+    padding: 8px;
+
+    line-height: 22px;
+
+    transform: none;
+}
+
+/* ==========================================================
+   Right actions
+   ========================================================== */
+
+.composer .composer-actions {
+    height: 38px;
+    flex: 0 0 auto;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    align-self: center;
+
+    gap: 10px;
+    margin: 0;
+}
+
+.composer .dictation-button,
+.composer .send-button {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    align-self: center;
+
+    margin: 0;
+    padding: 0;
+
+    transform: none;
+}
+
+.composer .send-button {
+    line-height: 1;
+}
+
+/* ==========================================================
+   Empty chat layout
+   ========================================================== */
+
+body.mlx-empty-chat .composer-wrap {
+    transform: none;
+}
+
+body.mlx-empty-chat .composer {
+    margin-top: 0;
+}
+
+body.mlx-empty-chat .empty {
+    margin-bottom: 10px;
+}
+
+body.mlx-empty-chat .composer-disclaimer {
+    margin-top: 12px;
+}
+
+/* ==========================================================
+   Hidden status UI
+   ========================================================== */
+
+#activeWorkspaceBadge,
+#workspaceFeedback,
+.composer-bottom .context {
+    display: none !important;
+}
+
+/* ==========================================================
+   Mobile
+   ========================================================== */
+
+@media (max-width: 620px) {
+    .composer .composer-bottom {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .composer .attachment-chip {
+        max-width: calc(100% - 4px);
+    }
+}
+
+/* MLX-NOBBY-CHATGPT-COMPOSER-END */
