@@ -40,6 +40,7 @@ from agent.batch_processing import (
     write_batch_text,
 )
 from agent import batch_state
+from backend import observability
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -3444,6 +3445,7 @@ class BatchTransformRequest(BaseModel):
     file_type: str = "auto"
     chunk_tokens: int = 12000
     execution_mode: str = "automatic"
+    trace_id: str | None = None
 
 
 class ChatFileRouteRequest(BaseModel):
@@ -3452,6 +3454,7 @@ class ChatFileRouteRequest(BaseModel):
     file_type: str = "auto"
     chunk_tokens: int = 12000
     attachment_id: str | None = None
+    trace_id: str | None = None
 
 
 class ChatActionRequest(BaseModel):
@@ -3460,6 +3463,7 @@ class ChatActionRequest(BaseModel):
     image_options: dict | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
+    trace_id: str | None = None
 
 class KnowledgeSourceRequest(BaseModel):
     path: str
@@ -3707,6 +3711,7 @@ def create_batch_job(request: BatchTransformRequest):
 
     job = {
         "id": job_id,
+        "trace_id": observability.ensure_trace_id(request.trace_id),
         "input_path": str(input_path),
         "output_path": str(output_path),
         "instruction": instruction,
@@ -3761,6 +3766,7 @@ def route_chat_file(request: ChatFileRouteRequest):
         job = create_file_analysis_job(
             request.input_path, instruction, request.file_type,
             request.chunk_tokens, operation, request.attachment_id,
+            request.trace_id,
         )
         start_file_analysis_job(job["id"])
         return {"intent": operation, "job": job}
@@ -3789,6 +3795,7 @@ def route_chat_file(request: ChatFileRouteRequest):
         file_type=request.file_type,
         chunk_tokens=request.chunk_tokens,
         execution_mode=execution_mode,
+        trace_id=request.trace_id,
     ))
 
     job = created["job"]
@@ -4947,8 +4954,11 @@ def translate_image_prompt_to_english(prompt):
     if not value:
         return value
 
+    call_metrics = None
+    wait_started = time.monotonic()
     try:
         with MODEL_RUNTIME_LOCK:
+            queue_wait_ms = (time.monotonic() - wait_started) * 1000
             runtime = ensure_model_for_role("chat")
             role = runtime["resolved"]
             model = role.get("repo")
@@ -4987,6 +4997,19 @@ def translate_image_prompt_to_english(prompt):
                 "max_tokens": 600,
                 "stream": False,
             }
+            call_metrics = observability.ModelCallMetrics(
+                purpose="image.prompt_translate",
+                model=model,
+                role="chat",
+                alias=role.get("alias"),
+                backend=role.get("backend"),
+                messages=payload["messages"],
+                context_sources=observability.message_context_counts(
+                    payload["messages"]
+                ),
+                started_at=wait_started,
+            )
+            call_metrics.set_queue_wait(queue_wait_ms)
 
             upstream = urllib.request.Request(
                 f"http://127.0.0.1:{port}/v1/chat/completions",
@@ -4995,14 +5018,19 @@ def translate_image_prompt_to_english(prompt):
                 method="POST",
             )
 
+            connect_started = time.monotonic()
             with urllib.request.urlopen(upstream, timeout=180) as response:
+                call_metrics.set_upstream_connect(
+                    (time.monotonic() - connect_started) * 1000
+                )
                 result = json.loads(response.read().decode("utf-8"))
 
-            translated = (
-                result.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
+            choice = result.get("choices", [{}])[0]
+            translated = choice.get("message", {}).get("content", "").strip()
+            call_metrics.finish(
+                usage=result.get("usage"),
+                output_text=translated,
+                finish_reason=choice.get("finish_reason"),
             )
 
             translated = translated.strip(' "\'')
@@ -5010,14 +5038,18 @@ def translate_image_prompt_to_english(prompt):
                 return value
 
             print(
-                f"[image-prompt] source={value!r} translated={translated!r}",
+                "[image-prompt] translated "
+                f"source_chars={len(value)} output_chars={len(translated)}",
                 flush=True,
             )
             return translated
 
     except Exception as exc:
+        if call_metrics is not None and call_metrics.metric["status"] == "running":
+            call_metrics.fail(type(exc).__name__)
         print(
-            f"[image-prompt] translation failed, using original: {exc}",
+            "[image-prompt] translation failed, using original "
+            f"error_type={type(exc).__name__}",
             flush=True,
         )
         return value
@@ -6340,6 +6372,7 @@ def _semantic_agent_route_allowed(
 
 
 @app.post("/api/chat/route")
+@observability.observed_turn
 def route_chat_action(request: ChatActionRequest):
     direct = _direct_chat_action(
         request.prompt,
@@ -6364,6 +6397,7 @@ def route_chat_action(request: ChatActionRequest):
 
 
 @app.post("/api/chat/actions")
+@observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
     routing = classify_chat_action_details(
         request.prompt,
@@ -7471,13 +7505,14 @@ def parse_file_excerpt_selection(instruction):
     return None
 
 
-def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None):
+def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None, trace_id=None):
     path = Path(input_path).expanduser()
     if not path.is_file(): raise HTTPException(status_code=404, detail="Eingabedatei nicht gefunden")
     job_id = uuid.uuid4().hex[:12]
     selection = parse_file_excerpt_selection(instruction)
     job = {
         "id": job_id, "kind": "file_analysis", "operation": operation,
+        "trace_id": observability.ensure_trace_id(trace_id),
         "attachment_id": attachment_id, "input_path": str(path), "instruction": instruction,
         "file_type": file_type, "chunk_tokens": max(500, min(int(chunk_tokens), 20000)),
         "selection": selection,
@@ -7711,17 +7746,30 @@ def router_llm(messages, max_tokens=220, temperature=0.0):
         },
         method="POST",
     )
+    call_metrics = observability.ModelCallMetrics(
+        purpose="router.classify",
+        model=ROUTER_MODEL,
+        role="router",
+        backend="mlx_vlm",
+        messages=messages,
+        context_sources=observability.message_context_counts(messages),
+    )
 
     try:
+        connect_started = time.monotonic()
         with urllib.request.urlopen(
             request,
             timeout=30,
         ) as response:
+            call_metrics.set_upstream_connect(
+                (time.monotonic() - connect_started) * 1000
+            )
             result = json.loads(
                 response.read().decode("utf-8")
             )
 
     except urllib.error.HTTPError as exc:
+        call_metrics.fail("http_error")
         body = exc.read().decode(
             "utf-8",
             errors="replace",
@@ -7731,18 +7779,34 @@ def router_llm(messages, max_tokens=220, temperature=0.0):
         ) from exc
 
     except urllib.error.URLError as exc:
+        call_metrics.fail(type(exc).__name__)
         raise RuntimeError(
             "Router-LLM nicht erreichbar: "
             f"{exc.reason}"
         ) from exc
 
-    message = result["choices"][0]["message"]
+    except Exception as exc:
+        call_metrics.fail(type(exc).__name__)
+        raise
 
-    return (
+    try:
+        choice = result["choices"][0]
+        message = choice["message"]
+    except (KeyError, IndexError, TypeError):
+        call_metrics.fail("invalid_response")
+        raise
+
+    output = (
         message.get("content")
         or message.get("reasoning")
         or ""
     ).strip()
+    call_metrics.finish(
+        usage=result.get("usage"),
+        output_text=output,
+        finish_reason=choice.get("finish_reason"),
+    )
+    return output
 
 
 def agent_llm(messages, max_tokens=1200, temperature=0.1):
@@ -7751,20 +7815,50 @@ def agent_llm(messages, max_tokens=1200, temperature=0.1):
 
     Hold the runtime lock throughout the model switch and the LLM request.
     """
+    call_metrics = observability.ModelCallMetrics(
+        purpose=observability.current_call_purpose("agent.call"),
+        role="agent",
+        messages=messages,
+        context_sources=observability.current_context_sources(
+            observability.message_context_counts(
+                messages,
+                "tool_agent",
+            )
+        ),
+    )
+    wait_started = time.monotonic()
     with MODEL_RUNTIME_LOCK:
-        runtime = ensure_model_for_role("agent")
-        role = runtime["resolved"]
-        model = role.get("repo")
+        queue_wait_ms = (time.monotonic() - wait_started) * 1000
+        call_metrics.set_queue_wait(queue_wait_ms)
+        try:
+            runtime = ensure_model_for_role("agent")
+            role = runtime["resolved"]
+            model = role.get("repo")
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
         if not model:
+            call_metrics.fail("model_unavailable")
             raise RuntimeError(
                 "Für die Agent-Rolle ist kein verfügbares "
                 "MLX-Modell konfiguriert"
             )
 
+        call_metrics.set_model(
+            model=model,
+            role="agent",
+            alias=role.get("alias"),
+            backend=role.get("backend"),
+        )
+
         # Reload the configuration after a possible model switch.
-        config = load_config()
-        port = int(config.get("PORT", 8000))
+        try:
+            config = load_config()
+            port = int(config.get("PORT", 8000))
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
         payload = {
             "model": model,
@@ -7784,17 +7878,21 @@ def agent_llm(messages, max_tokens=1200, temperature=0.1):
             },
             method="POST",
         )
-
         try:
+            connect_started = time.monotonic()
             with urllib.request.urlopen(
                 request,
                 timeout=900,
             ) as response:
+                call_metrics.set_upstream_connect(
+                    (time.monotonic() - connect_started) * 1000
+                )
                 result = json.loads(
                     response.read().decode("utf-8")
                 )
 
         except urllib.error.HTTPError as exc:
+            call_metrics.fail("http_error")
             body = exc.read().decode(
                 "utf-8",
                 errors="replace",
@@ -7804,18 +7902,49 @@ def agent_llm(messages, max_tokens=1200, temperature=0.1):
             ) from exc
 
         except urllib.error.URLError as exc:
+            call_metrics.fail(type(exc).__name__)
             raise RuntimeError(
                 "Agent-LLM nicht erreichbar: "
                 f"{exc.reason}"
             ) from exc
 
-        message = result["choices"][0]["message"]
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
-        return (
+        try:
+            choice = result["choices"][0]
+            message = choice["message"]
+        except (KeyError, IndexError, TypeError):
+            call_metrics.fail("invalid_response")
+            raise
+
+        output = (
             message.get("content")
             or message.get("reasoning")
             or ""
         ).strip()
+        call_metrics.finish(
+            usage=result.get("usage"),
+            output_text=output,
+            finish_reason=choice.get("finish_reason"),
+        )
+        return output
+
+
+def observed_agent_llm(
+    purpose,
+    messages,
+    max_tokens=1200,
+    temperature=0.1,
+):
+    """Call the agent model with a safe purpose label for metrics."""
+    with observability.model_call_context(purpose):
+        return agent_llm(
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
 
 
@@ -7829,6 +7958,8 @@ class RuntimeChatRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 3000
     stream: bool = True
+    trace_id: str | None = None
+    context_sources: dict | None = None
 
 
 @app.post("/api/runtime/chat")
@@ -7840,13 +7971,31 @@ def runtime_chat(request: RuntimeChatRequest):
     finishes completely.
     """
 
-    with MODEL_RUNTIME_LOCK:
+    trace_id = observability.ensure_trace_id(request.trace_id)
+    call_metrics = observability.ModelCallMetrics(
+        trace_id=trace_id,
+        purpose="chat.runtime",
+        role="chat",
+        messages=request.messages,
+        context_sources=request.context_sources,
+    )
+    wait_started = time.monotonic()
 
-        runtime = ensure_model_for_role("chat")
-        role = runtime["resolved"]
-        model = role.get("repo")
+    with MODEL_RUNTIME_LOCK:
+        call_metrics.set_queue_wait(
+            (time.monotonic() - wait_started) * 1000
+        )
+
+        try:
+            runtime = ensure_model_for_role("chat")
+            role = runtime["resolved"]
+            model = role.get("repo")
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
         if not model:
+            call_metrics.fail("model_unavailable")
             raise HTTPException(
                 status_code=500,
                 detail=(
@@ -7855,8 +8004,19 @@ def runtime_chat(request: RuntimeChatRequest):
                 ),
             )
 
-        config = load_config()
-        port = int(config.get("PORT", 8000))
+        call_metrics.set_model(
+            model=model,
+            role="chat",
+            alias=role.get("alias"),
+            backend=role.get("backend"),
+        )
+
+        try:
+            config = load_config()
+            port = int(config.get("PORT", 8000))
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
         payload = {
             "model": model,
@@ -7882,10 +8042,14 @@ def runtime_chat(request: RuntimeChatRequest):
         )
 
         try:
+            connect_started = time.monotonic()
             with urllib.request.urlopen(
                 upstream,
                 timeout=900,
             ) as response:
+                call_metrics.set_upstream_connect(
+                    (time.monotonic() - connect_started) * 1000
+                )
 
                 content_type = (
                     response.headers.get(
@@ -7896,6 +8060,27 @@ def runtime_chat(request: RuntimeChatRequest):
 
                 body = response.read()
 
+                try:
+                    result = json.loads(body.decode("utf-8"))
+                    choices = result.get("choices")
+                    choice = (
+                        choices[0]
+                        if isinstance(choices, list) and choices
+                        else {}
+                    )
+                    message = choice.get("message", {})
+                    call_metrics.finish(
+                        usage=result.get("usage"),
+                        output_text=(
+                            message.get("content")
+                            or message.get("reasoning")
+                            or ""
+                        ),
+                        finish_reason=choice.get("finish_reason"),
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    call_metrics.finish()
+
                 return Response(
                     content=body,
                     status_code=response.status,
@@ -7903,6 +8088,7 @@ def runtime_chat(request: RuntimeChatRequest):
                 )
 
         except urllib.error.HTTPError as exc:
+            call_metrics.fail("http_error")
             body = exc.read().decode(
                 "utf-8",
                 errors="replace",
@@ -7914,6 +8100,7 @@ def runtime_chat(request: RuntimeChatRequest):
             ) from exc
 
         except urllib.error.URLError as exc:
+            call_metrics.fail(type(exc).__name__)
             raise HTTPException(
                 status_code=503,
                 detail=(
@@ -7921,6 +8108,10 @@ def runtime_chat(request: RuntimeChatRequest):
                     f"{exc.reason}"
                 ),
             ) from exc
+
+        except Exception as exc:
+            call_metrics.fail(type(exc).__name__)
+            raise
 
 
 
@@ -7935,6 +8126,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
     The HTTP generator itself does not hold a runtime lock.
     """
 
+    trace_id = observability.ensure_trace_id(request.trace_id)
     event_queue = queue.Queue()
     sentinel = object()
 
@@ -7951,18 +8143,48 @@ def runtime_chat_stream(request: RuntimeChatRequest):
         )
 
     def worker():
+        call_metrics = observability.ModelCallMetrics(
+            trace_id=trace_id,
+            purpose="chat.stream",
+            role="chat",
+            messages=request.messages,
+            context_sources=request.context_sources,
+        )
+        output_characters = 0
+        reasoning_characters = 0
+        usage = None
+        finish_reason = None
+        wait_started = time.monotonic()
+
+        def put_metrics():
+            event_queue.put(
+                observability.metrics_sse(trace_id)
+            )
+
         try:
             with MODEL_RUNTIME_LOCK:
+                call_metrics.set_queue_wait(
+                    (time.monotonic() - wait_started) * 1000
+                )
                 runtime = ensure_model_for_role("chat")
                 role = runtime["resolved"]
                 model = role.get("repo")
 
                 if not model:
+                    call_metrics.fail("model_unavailable")
+                    put_metrics()
                     put_error(
                         "Für die Chat-Rolle ist kein "
                         "MLX-Modell verfügbar"
                     )
                     return
+
+                call_metrics.set_model(
+                    model=model,
+                    role="chat",
+                    alias=role.get("alias"),
+                    backend=role.get("backend"),
+                )
 
                 config = load_config()
                 port = int(config.get("PORT", 8000))
@@ -8002,11 +8224,14 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                 )
 
                 try:
+                    connect_started = time.monotonic()
                     with urllib.request.urlopen(
                         upstream,
                         timeout=900,
                     ) as response:
-                        done_sent = False
+                        call_metrics.set_upstream_connect(
+                            (time.monotonic() - connect_started) * 1000
+                        )
 
                         for raw_line in response:
                             line = raw_line.decode(
@@ -8023,17 +8248,15 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                             data = line[5:].strip()
 
                             if data == "[DONE]":
-                                event_queue.put(
-                                    "event: done\n"
-                                    "data: {}\n\n"
-                                )
-                                done_sent = True
                                 break
 
                             try:
                                 obj = json.loads(data)
                             except json.JSONDecodeError:
                                 continue
+
+                            if isinstance(obj.get("usage"), dict):
+                                usage = obj["usage"]
 
                             try:
                                 choice = obj["choices"][0]
@@ -8048,6 +8271,8 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                 choice.get("delta")
                                 or {}
                             )
+                            if choice.get("finish_reason") is not None:
+                                finish_reason = choice.get("finish_reason")
 
                             reasoning = (
                                 delta.get("reasoning")
@@ -8063,6 +8288,8 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                             )
 
                             if reasoning:
+                                call_metrics.mark_first_token()
+                                reasoning_characters += len(reasoning)
                                 event = json.dumps(
                                     {
                                         "type": "reasoning",
@@ -8075,6 +8302,8 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                 )
 
                             if content:
+                                call_metrics.mark_first_token()
+                                output_characters += len(content)
                                 event = json.dumps(
                                     {
                                         "type": "content",
@@ -8086,31 +8315,46 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                     f"data: {event}\n\n"
                                 )
 
-                        if not done_sent:
-                            event_queue.put(
-                                "event: done\n"
-                                "data: {}\n\n"
-                            )
+                        call_metrics.finish(
+                            usage=usage,
+                            output_characters=output_characters,
+                            reasoning_characters=reasoning_characters,
+                            finish_reason=finish_reason,
+                        )
+                        put_metrics()
+                        event_queue.put(
+                            "event: done\n"
+                            "data: {}\n\n"
+                        )
 
                 except urllib.error.HTTPError as exc:
+                    call_metrics.fail("http_error")
                     body = exc.read().decode(
                         "utf-8",
                         errors="replace",
                     )
+                    put_metrics()
                     put_error(
                         f"HTTP {exc.code}: {body}"
                     )
 
                 except urllib.error.URLError as exc:
+                    call_metrics.fail(type(exc).__name__)
+                    put_metrics()
                     put_error(
                         "MLX-Runtime nicht erreichbar: "
                         f"{exc.reason}"
                     )
 
                 except Exception as exc:
+                    call_metrics.fail(type(exc).__name__)
+                    put_metrics()
                     put_error(exc)
 
         except Exception as exc:
+            if call_metrics.metric["status"] == "running":
+                call_metrics.fail(type(exc).__name__)
+                put_metrics()
             put_error(exc)
 
         finally:
@@ -8868,7 +9112,8 @@ Wenn die Untersuchung beendet werden kann:
         indent=2,
     )
 
-    answer = agent_llm(
+    answer = observed_agent_llm(
+        "agent.legacy.plan",
         [
             {
                 "role": "system",
@@ -9260,7 +9505,8 @@ auf Grundlage der vorhandenen Observations.
 Keine neuen Fakten erfinden.
 """.strip()
 
-    answer = agent_llm(
+    answer = observed_agent_llm(
+        "agent.legacy.final",
         [
             {
                 "role": "system",
@@ -9297,9 +9543,11 @@ class AgentRunRequest(BaseModel):
     mode: str = "diagnostic"
     conversation_context: list[dict] | None = None
     run_id: str | None = None
+    trace_id: str | None = None
 
 
 @app.post("/api/agent/run")
+@observability.observed_turn
 def api_agent_run(request: AgentRunRequest):
     run_id = validate_agent_run_id(request.run_id) if request.run_id else None
 
@@ -9397,9 +9645,43 @@ def local_file_llm(prompt, max_tokens=800):
     if not model: raise RuntimeError("Kein aktives MLX-Modell gefunden")
     payload = {"model": model, "messages": [{"role": "system", "content": "Answer precisely in the language of the user's instruction. Do not invent facts; use only the supplied file facts."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
     request = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=900) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    return result["choices"][0]["message"]["content"] or ""
+    call_metrics = observability.ModelCallMetrics(
+        purpose=observability.current_call_purpose("file_analysis.call"),
+        model=model,
+        role="file_analysis",
+        backend="mlx_lm",
+        messages=payload["messages"],
+        context_sources=observability.current_context_sources(
+            observability.message_context_counts(
+                payload["messages"],
+                "document_web",
+            )
+        ),
+    )
+    try:
+        connect_started = time.monotonic()
+        with urllib.request.urlopen(request, timeout=900) as response:
+            call_metrics.set_upstream_connect(
+                (time.monotonic() - connect_started) * 1000
+            )
+            result = json.loads(response.read().decode("utf-8"))
+        choice = result["choices"][0]
+        output = choice["message"]["content"] or ""
+        call_metrics.finish(
+            usage=result.get("usage"),
+            output_text=output,
+            finish_reason=choice.get("finish_reason"),
+        )
+        return output
+    except Exception as exc:
+        call_metrics.fail(type(exc).__name__)
+        raise
+
+
+def observed_local_file_llm(purpose, prompt, max_tokens=800):
+    """Call the file-analysis model with a stable metrics purpose."""
+    with observability.model_call_context(purpose):
+        return local_file_llm(prompt, max_tokens)
 
 
 def read_file_excerpt(input_path, selection):
@@ -9581,7 +9863,8 @@ def reduce_file_analysis_maps(map_results):
                 )
 
             next_level.append(
-                local_file_llm(
+                observed_local_file_llm(
+                    "file_analysis.reduce",
                     "Condense these partial results without inventing facts:\n"
                     + "\n\n".join(group),
                     900,
@@ -9606,11 +9889,15 @@ def reduce_file_analysis_maps(map_results):
 
 
 def run_file_analysis_job(job_id):
+    trace_token = None
+    trace_id = None
     try:
         with BATCH_LOCK:
             jobs = load_batch_jobs(); job = jobs.get(job_id)
             if not job: return
             job.update({"status": "running", "started_at": time.time(), "error": None}); jobs[job_id] = job; save_batch_jobs(jobs)
+        trace_id = observability.ensure_trace_id(job.get("trace_id"))
+        trace_token = observability.bind_trace_id(trace_id)
         operation = job["operation"]
         selection = job.get("selection")
 
@@ -9621,7 +9908,8 @@ def run_file_analysis_job(job_id):
             )
 
             if excerpt is not None:
-                answer = local_file_llm(
+                answer = observed_local_file_llm(
+                    "file_analysis.excerpt",
                     "You are answering a question about an exact excerpt "
                     "from a file.\n"
                     "Use ONLY the lines supplied below.\n"
@@ -9688,7 +9976,8 @@ def run_file_analysis_job(job_id):
                     + sample
                 )
 
-            answer = local_file_llm(
+            answer = observed_local_file_llm(
+                "file_analysis.inspect",
                 inspect_context
                 + "\n\nImportant rules:\n"
                 + "- The metadata above describes the complete file.\n"
@@ -9717,12 +10006,16 @@ def run_file_analysis_job(job_id):
                 if status != "paused": break
                 time.sleep(1)
             task = "Summarize this file excerpt concisely." if operation == "summarize" else "Analyze this file excerpt concisely: patterns, anomalies, problems, and important facts."
-            maps.append(local_file_llm(task + "\n\nEXCERPT:\n" + chunk, 500))
+            maps.append(observed_local_file_llm(
+                "file_analysis.map",
+                task + "\n\nEXCERPT:\n" + chunk,
+                500,
+            ))
             checkpoint = batch_checkpoint_path(job_id, index); temporary = checkpoint.with_suffix(".tmp"); temporary.write_text(maps[-1], encoding="utf-8"); temporary.replace(checkpoint)
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); current = jobs[job_id]; current["processed_chunks"] = index; current["mlx_calls"] = int(current.get("mlx_calls", 0)) + 1; current["eta_seconds"] = None; save_batch_jobs(jobs)
         reduced_results = reduce_file_analysis_maps(maps)
-        answer = local_file_llm("File metadata:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nResults:\n" + (reduced_results if maps else "No readable content found.") + "\n\nAnswer the user's request: " + job["instruction"], 1200)
+        answer = observed_local_file_llm("file_analysis.final", "File metadata:\n" + json.dumps({key: value for key, value in metadata.items() if key not in ("sample", "sample_structure")}, ensure_ascii=False) + "\n\nResults:\n" + (reduced_results if maps else "No readable content found.") + "\n\nAnswer the user's request: " + job["instruction"], 1200)
         with BATCH_LOCK:
             jobs = load_batch_jobs(); jobs[job_id].update({"status": "completed", "result": answer, "finished_at": time.time()}); save_batch_jobs(jobs)
     except Exception as exc:
@@ -9730,6 +10023,16 @@ def run_file_analysis_job(job_id):
             jobs = load_batch_jobs()
             if job_id in jobs: jobs[job_id].update({"status": "failed", "error": str(exc), "finished_at": time.time()}); save_batch_jobs(jobs)
     finally:
+        if trace_id:
+            with BATCH_LOCK:
+                jobs = load_batch_jobs()
+                if job_id in jobs:
+                    jobs[job_id]["model_metrics"] = (
+                        observability.trace_snapshot(trace_id)
+                    )
+                    save_batch_jobs(jobs)
+        if trace_token is not None:
+            observability.reset_trace_id(trace_token)
         unregister_batch_worker(job_id)
 
 
@@ -9790,21 +10093,46 @@ def call_mlx_transform(
         },
         method="POST",
     )
-
-    with urllib.request.urlopen(
-        request,
-        timeout=timeout,
-    ) as response:
-        result = json.loads(
-            response.read().decode("utf-8")
-        )
+    call_metrics = observability.ModelCallMetrics(
+        purpose=observability.current_call_purpose("batch.transform"),
+        model=model,
+        role="batch",
+        backend="mlx_lm",
+        messages=payload["messages"],
+        context_sources=observability.current_context_sources(
+            observability.message_context_counts(
+                payload["messages"],
+                "document_web",
+            )
+        ),
+    )
+    try:
+        connect_started = time.monotonic()
+        with urllib.request.urlopen(
+            request,
+            timeout=timeout,
+        ) as response:
+            call_metrics.set_upstream_connect(
+                (time.monotonic() - connect_started) * 1000
+            )
+            result = json.loads(
+                response.read().decode("utf-8")
+            )
+    except Exception as exc:
+        call_metrics.fail(type(exc).__name__)
+        raise
 
     try:
-        return (
-            result["choices"][0]["message"]["content"]
-            or ""
+        choice = result["choices"][0]
+        output = choice["message"]["content"] or ""
+        call_metrics.finish(
+            usage=result.get("usage"),
+            output_text=output,
+            finish_reason=choice.get("finish_reason"),
         )
+        return output
     except Exception as exc:
+        call_metrics.fail(type(exc).__name__)
         raise RuntimeError(
             f"Ungültige MLX-Antwort: {exc}"
         ) from exc
@@ -9970,6 +10298,9 @@ def run_batch_transform_job(job_id):
 
         jobs[job_id] = job
         save_batch_jobs(jobs)
+
+    trace_id = observability.ensure_trace_id(job.get("trace_id"))
+    trace_token = observability.bind_trace_id(trace_id)
 
     try:
         input_path = Path(job["input_path"])
@@ -10820,16 +11151,34 @@ Keine Markdown-Codeblöcke.
                             ) + 1
                             save_batch_jobs(jobs)
 
+                    call_metrics = observability.ModelCallMetrics(
+                        purpose="batch.transform",
+                        model=model,
+                        role="batch",
+                        backend="mlx_lm",
+                        messages=payload["messages"],
+                        context_sources=(
+                            observability.message_context_counts(
+                                payload["messages"],
+                                "document_web",
+                            )
+                        ),
+                    )
                     try:
+                        connect_started = time.monotonic()
                         with urllib.request.urlopen(
                             request,
                             timeout=900,
                         ) as response:
+                            call_metrics.set_upstream_connect(
+                                (time.monotonic() - connect_started) * 1000
+                            )
                             result = json.loads(
                                 response.read().decode("utf-8")
                             )
 
                     except urllib.error.HTTPError as exc:
+                        call_metrics.fail("http_error")
                         body = exc.read().decode(
                             "utf-8",
                             errors="replace",
@@ -10899,15 +11248,24 @@ Keine Markdown-Codeblöcke.
                             error_text
                         ) from exc
 
-                    try:
-                        transformed_part = (
-                            result["choices"][0]["message"]["content"]
-                            or ""
-                        )
                     except Exception as exc:
+                        call_metrics.fail(type(exc).__name__)
+                        raise
+
+                    try:
+                        choice = result["choices"][0]
+                        transformed_part = choice["message"]["content"] or ""
+                    except Exception as exc:
+                        call_metrics.fail(type(exc).__name__)
                         raise RuntimeError(
                             f"Ungültige MLX-Antwort in Chunk {index}: {exc}"
                         )
+
+                    call_metrics.finish(
+                        usage=result.get("usage"),
+                        output_text=transformed_part,
+                        finish_reason=choice.get("finish_reason"),
+                    )
 
                     transformed_parts.append(
                         transformed_part
@@ -11084,6 +11442,14 @@ Keine Markdown-Codeblöcke.
                 save_batch_jobs(jobs)
 
     finally:
+        with BATCH_LOCK:
+            jobs = load_batch_jobs()
+            if job_id in jobs:
+                jobs[job_id]["model_metrics"] = (
+                    observability.trace_snapshot(trace_id)
+                )
+                save_batch_jobs(jobs)
+        observability.reset_trace_id(trace_token)
         unregister_batch_worker(
             job_id
         )
@@ -11994,7 +12360,8 @@ Bei allgemeinen Systemdiagnosen:
 - Maximal {max_steps} Schritte.
 """.strip()
 
-    answer = agent_llm(
+    answer = observed_agent_llm(
+        "agent.plan",
         [
             {
                 "role": "system",
@@ -12038,7 +12405,8 @@ Bei allgemeinen Systemdiagnosen:
 
     # Perform exactly one controlled format repair.
     # Do not execute an action until parsing succeeds.
-        repaired_answer = agent_llm(
+        repaired_answer = observed_agent_llm(
+            "agent.plan_repair",
             [
                 {
                     "role": "system",
@@ -12811,7 +13179,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
   verifiziert wurde.
 """
 
-    answer = agent_llm(
+    answer = observed_agent_llm(
+        "agent.final",
         [
             {
                 "role": "system",
@@ -12942,7 +13311,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     )
 
     if repair_reasons:
-        answer = agent_llm(
+        answer = observed_agent_llm(
+            "agent.final_repair",
             [
                 {
                     "role": "system",
@@ -13333,7 +13703,8 @@ Regeln:
         "observations": child_steps,
     }
 
-    raw = agent_llm(
+    raw = observed_agent_llm(
+        "agent.subagent_report",
         [
             {
                 "role": "system",

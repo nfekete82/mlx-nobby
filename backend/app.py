@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
+from backend import observability
 from local_security import LocalRequestGuard, read_upload
 import json
 import io
@@ -52,10 +53,13 @@ class ChatRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 3000
     system_prompt: str = ""
+    trace_id: str | None = None
+    context_sources: dict | None = None
 
 
 class CompactRequest(BaseModel):
     messages: list[dict]
+    trace_id: str | None = None
 
 
 
@@ -485,8 +489,17 @@ def compact_chat(request: CompactRequest):
         messages[-KEEP_LAST_MESSAGES:]
     )
 
+    prompt_messages = [
+        {
+            key: value
+            for key, value in message.items()
+            if key not in {"trace_id", "_context_sources", "model_metrics"}
+        }
+        for message in old_messages
+    ]
+
     history = json.dumps(
-        old_messages,
+        prompt_messages,
         ensure_ascii=False,
         indent=2,
     )
@@ -520,6 +533,18 @@ Gespräch:
         ],
         "temperature": 0.2,
         "max_tokens": 2500,
+        "_mlx_observability": {
+            "trace_id": observability.ensure_trace_id(request.trace_id),
+            "purpose": "chat.compact",
+            "role": "chat",
+            "backend": "mlx_lm",
+            "context_sources": {
+                "history": {
+                    "characters": len(history),
+                    "items": len(old_messages),
+                },
+            },
+        },
     }
 
     upstream = urllib.request.Request(
@@ -539,6 +564,7 @@ Gespräch:
             result = json.loads(
                 response.read().decode("utf-8")
             )
+            result.pop("_mlx_metrics", None)
 
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(
@@ -592,9 +618,28 @@ Gespräch:
 @app.post("/api/chat/stream")
 def mlx_chat_stream(request: ChatRequest):
 
+    trace_id = observability.ensure_trace_id(request.trace_id)
     messages = list(request.messages)
+    supplied_context = (
+        request.context_sources
+        if isinstance(request.context_sources, dict)
+        else {}
+    )
+    context_sources = {
+        entry["source"]: {
+            "characters": entry["characters"],
+            "items": entry["items"],
+        }
+        for entry in observability.context_accounting(supplied_context)
+    }
+
+    if "history" not in supplied_context:
+        context_sources["history"]["characters"] = (
+            observability.text_characters(request.messages)
+        )
 
     system_prompt = request.system_prompt.strip()
+    context_sources["system"]["characters"] += len(system_prompt)
 
     if system_prompt:
         messages.insert(
@@ -616,6 +661,8 @@ def mlx_chat_stream(request: ChatRequest):
         ).strip()
     except Exception:
         profile_context = ""
+
+    context_sources["profile"]["characters"] += len(profile_context)
 
     if profile_context:
         if (
@@ -691,6 +738,13 @@ def mlx_chat_stream(request: ChatRequest):
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": False,
+            "_mlx_observability": {
+                "trace_id": trace_id,
+                "purpose": "chat.vision",
+                "role": "vision",
+                "backend": "mlx_vlm",
+                "context_sources": context_sources,
+            },
         }
 
         upstream_request = urllib.request.Request(
@@ -715,6 +769,7 @@ def mlx_chat_stream(request: ChatRequest):
                     )
 
                     obj = json.loads(body)
+                    model_metrics = obj.pop("_mlx_metrics", None)
 
                     try:
                         message = obj["choices"][0]["message"]
@@ -755,6 +810,16 @@ def mlx_chat_stream(request: ChatRequest):
                             ensure_ascii=False,
                         )
                         yield f"data: {event}\n\n"
+
+                    if isinstance(model_metrics, dict):
+                        event = json.dumps(
+                            model_metrics,
+                            ensure_ascii=False,
+                        )
+                        yield (
+                            "event: metrics\n"
+                            f"data: {event}\n\n"
+                        )
 
                     yield (
                         "event: done\n"
@@ -849,6 +914,7 @@ def mlx_chat_stream(request: ChatRequest):
                     "prompt": last_user_prompt,
                     "file_context": None,
                     "conversation_context": routing_context,
+                    "trace_id": trace_id,
                 },
                 timeout=30,
             )
@@ -959,6 +1025,12 @@ def mlx_chat_stream(request: ChatRequest):
                     "- Verwende allgemeines Wissen nur ergänzend und "
                     "kennzeichne es als solches."
                 )
+                context_sources["knowledge_rag"]["characters"] += len(
+                    rag_context
+                )
+                context_sources["knowledge_rag"]["items"] += len(
+                    context_parts
+                )
 
                 if (
                     messages
@@ -1019,6 +1091,8 @@ def mlx_chat_stream(request: ChatRequest):
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
+        "trace_id": trace_id,
+        "context_sources": context_sources,
     }
 
     upstream_request = urllib.request.Request(

@@ -37,6 +37,23 @@ vm.runInNewContext(source, {
 
 const vision = window.MLXChatGeneration.__test;
 
+const contextSources = vision.buildContextSources([{
+    role: 'user',
+    content: 'question plus attachment and document',
+    _context_sources: {
+        attachments: { characters: 10, items: 2 },
+        document_web: { characters: 8, items: 1 },
+    },
+}]);
+assert.equal(contextSources.attachments.characters, 10);
+assert.equal(contextSources.attachments.items, 2);
+assert.equal(contextSources.document_web.characters, 8);
+assert.equal(contextSources.document_web.items, 1);
+assert.equal(
+    contextSources.history.characters,
+    'question plus attachment and document'.length - 18,
+);
+
 function image(index) {
     return {
         kind: 'image',

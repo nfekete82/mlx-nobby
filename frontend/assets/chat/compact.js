@@ -63,7 +63,13 @@ async function compactSession(session, automatic = false) {
                 'POST',
                 {
                     messages:
+                        session.messages,
+                    trace_id:
                         session.messages
+                            .slice()
+                            .reverse()
+                            .find(message => message?.role === 'user')
+                            ?.trace_id || null
                 }
             )
         );

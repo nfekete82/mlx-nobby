@@ -141,6 +141,84 @@ function buildApiMessages(messages) {
 }
 
 
+function newTraceId() {
+    return globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : 'trace-' + Date.now().toString(16) +
+            Math.random().toString(16).slice(2);
+}
+
+
+function textCharacters(value) {
+    if (typeof value === 'string') {
+        return value.length;
+    }
+
+    if (Array.isArray(value)) {
+        return value.reduce(
+            (total, item) => total + textCharacters(item),
+            0
+        );
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.entries(value).reduce(
+            (total, [key, item]) =>
+                ['image_url', 'url', 'data_url'].includes(key)
+                    ? total
+                    : total + textCharacters(item),
+            0
+        );
+    }
+
+    return 0;
+}
+
+
+function buildContextSources(messages) {
+    const sources = {
+        system: { characters: 0, items: 0 },
+        profile: { characters: 0, items: 0 },
+        history: { characters: 0, items: 0 },
+        knowledge_rag: { characters: 0, items: 0 },
+        document_web: { characters: 0, items: 0 },
+        attachments: { characters: 0, items: 0 },
+        tool_agent: { characters: 0, items: 0 }
+    };
+
+    for (const message of messages || []) {
+        const characters = textCharacters(message?.content);
+        const declared = message?._context_sources || {};
+        let declaredCharacters = 0;
+
+        for (const [source, value] of Object.entries(declared)) {
+            if (!sources[source]) continue;
+            const sourceCharacters = Math.max(
+                0,
+                Number(value?.characters || 0)
+            );
+            const sourceItems = Math.max(
+                0,
+                Number(value?.items || 0)
+            );
+            sources[source].characters += sourceCharacters;
+            sources[source].items += sourceItems;
+            declaredCharacters += sourceCharacters;
+        }
+
+        const defaultSource =
+            message?.role === 'system' ? 'system' : 'history';
+        sources[defaultSource].characters += Math.max(
+            0,
+            characters - declaredCharacters
+        );
+        sources[defaultSource].items += 1;
+    }
+
+    return sources;
+}
+
+
 function defaultVisionPrompt(imageCount) {
     if (imageCount > 1) {
         return gt(
@@ -238,15 +316,18 @@ MLXChatRendering.renderAll({
     contentUpdated: true
 });
 try {
+        const turnMessage = session.messages
+            .slice(0, -1)
+            .reverse()
+            .find(message => message?.role === 'user');
+        const traceId = turnMessage?.trace_id || newTraceId();
+        if (turnMessage && !turnMessage.trace_id) {
+            turnMessage.trace_id = traceId;
+        }
         const apiMessages =
             buildApiMessages(
                 session.messages.slice(0, -1)
             );
-
-        console.log(
-            '[MLX DEBUG] Chat messages:',
-            apiMessages
-        );
 
         const response = await fetch(
             '/api/chat/stream',
@@ -272,7 +353,14 @@ try {
 
                     system_prompt:
                         MLXChatRuntime
-                            .getSessionSystemPrompt()
+                            .getSessionSystemPrompt(),
+
+                    trace_id: traceId,
+
+                    context_sources:
+                        buildContextSources(
+                            session.messages.slice(0, -1)
+                        )
                 })
             }
         );
@@ -350,6 +438,25 @@ try {
                                 ? sourceData.sources
                                 : [];
 
+                        MLXChatSessions.saveSessions();
+                    }
+
+                    continue;
+                }
+
+                if (
+                    event.startsWith(
+                        'event: metrics'
+                    )
+                ) {
+                    const dataLine = event
+                        .split('\n')
+                        .find(line => line.startsWith('data:'));
+
+                    if (dataLine) {
+                        assistantMessage.model_metrics = JSON.parse(
+                            dataLine.slice(5)
+                        );
                         MLXChatSessions.saveSessions();
                     }
 
@@ -611,7 +718,8 @@ async function runAgent(
     goal,
     assistantMessage,
     mode = 'diagnostic',
-    conversationContext = []
+    conversationContext = [],
+    traceId = newTraceId()
 ) {
     setGenerating(true);
     setAbortController(null);
@@ -676,6 +784,7 @@ async function runAgent(
                     goal: goal,
                     mode: mode,
                     run_id: runId,
+                    trace_id: traceId,
                     conversation_context:
                         conversationContext
                 })
@@ -702,6 +811,8 @@ async function runAgent(
 
         assistantMessage.content =
             data.answer || '';
+        assistantMessage.model_metrics =
+            data.model_metrics || null;
 
     } catch (error) {
         console.error(
@@ -1192,8 +1303,11 @@ const imageFiles =
         }
     }
 
+    const attachmentTextContext =
+        MLXChatAttachments.buildAttachmentContext();
+
     const attachmentContext =
-        MLXChatAttachments.buildAttachmentContext() +
+        attachmentTextContext +
         documentPageContext +
         documentRagContext;
 
@@ -1275,6 +1389,7 @@ const imageFiles =
 
     const userMessage = {
         role: 'user',
+        trace_id: newTraceId(),
         content: messageContent,
         display_content: effectivePrompt,
         vision_images: visionImages,
@@ -1296,7 +1411,19 @@ const imageFiles =
                             ? file.data_url
                             : undefined
                 })
-            )
+            ),
+        _context_sources: {
+            attachments: {
+                characters: attachmentTextContext.length,
+                items: currentAttachments.length + visionImages.length
+            },
+            document_web: {
+                characters:
+                    documentPageContext.length +
+                    documentRagContext.length,
+                items: documentFiles.length
+            }
+        }
     };
     session.messages.push(userMessage);
 
@@ -1373,7 +1500,8 @@ const imageFiles =
                     prompt: prompt,
                     file_context: fileContext,
                     image_options: options?.image || null,
-                    conversation_context: conversationContext
+                    conversation_context: conversationContext,
+                    trace_id: userMessage.trace_id
                 })
             });
             if (!actionResponse.ok) throw new Error(await actionResponse.text());
@@ -1443,7 +1571,8 @@ const imageFiles =
                     toolResult.result?.mode ||
                     toolResult.mode ||
                     'diagnostic',
-                    conversationContext
+                    conversationContext,
+                    userMessage.trace_id
                 );
 
                 return;
@@ -1532,6 +1661,10 @@ const imageFiles =
                     'At the end, list the sources actually used as clickable URLs. ' +
                     'If the sources are insufficient or contradictory, state that explicitly.\n\n' +
                     searchContext;
+                userMessage._context_sources.document_web.characters +=
+                    userMessage.content.length - messageContent.length;
+                userMessage._context_sources.document_web.items +=
+                    results.length;
 
                 console.log(
                     '[MLX Web] SearXNG:',
@@ -1619,7 +1752,8 @@ const imageFiles =
                         file_type: ['json', 'csv', 'sql'].includes(item.attachment.extension)
                             ? item.attachment.extension : 'text',
                         chunk_tokens: 12000,
-                        attachment_id: item.upload.stored_name || item.attachment.file_id || null
+                        attachment_id: item.upload.stored_name || item.attachment.file_id || null,
+                        trace_id: userMessage.trace_id
                     })
                 });
                 if (!response.ok) throw new Error(await response.text());
@@ -1838,7 +1972,8 @@ function watchBatchJob(session, jobId) {
                             input_path: job.output_path,
                             instruction: 'Summarize the generated file.',
                             file_type: message.file_artifact.extension === 'md' ? 'text' : message.file_artifact.extension,
-                            attachment_id: message.file_artifact.file_id
+                            attachment_id: message.file_artifact.file_id,
+                            trace_id: job.trace_id
                         })
                     });
                     if (chainResponse.ok) {
@@ -1871,6 +2006,7 @@ function watchBatchJob(session, jobId) {
         approveAgentAction: approveAgentAction,
         __test: {
             buildApiMessages: buildApiMessages,
+            buildContextSources: buildContextSources,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments
         }

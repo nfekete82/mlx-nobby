@@ -1,6 +1,8 @@
 import tempfile
+import io
 import json
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -8,6 +10,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from agent import app as agent_app
+from backend import observability
 
 
 class BusyLock:
@@ -19,6 +22,183 @@ class BusyLock:
 
 
 class ModelRuntimeApiTests(unittest.TestCase):
+    def setUp(self):
+        observability.reset_metrics()
+
+    def test_stream_metrics_include_ttft_usage_and_stable_trace(self):
+        upstream = io.BytesIO(
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            b'"usage":{"prompt_tokens":9,"completion_tokens":2,'
+            b'"total_tokens":11}}\n\n'
+            b'data: [DONE]\n\n'
+        )
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+        client = TestClient(agent_app.app, base_url="http://localhost")
+        self.addCleanup(client.close)
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            return_value=upstream,
+        ):
+            response = client.post(
+                "/api/runtime/chat/stream",
+                json={
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "trace_id": "trace-stream-001",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        events = response.text.split("\n\n")
+        metric_event = next(
+            event for event in events
+            if event.startswith("event: metrics")
+        )
+        snapshot = json.loads(
+            next(
+                line[5:].strip()
+                for line in metric_event.splitlines()
+                if line.startswith("data:")
+            )
+        )
+        call = snapshot["calls"][0]
+        self.assertEqual(snapshot["trace_id"], "trace-stream-001")
+        self.assertEqual(snapshot["model_calls_in_turn"], 1)
+        self.assertEqual(call["purpose"], "chat.stream")
+        self.assertIsNotNone(call["timings_ms"]["ttft"])
+        self.assertIsNotNone(call["timings_ms"]["generation"])
+        self.assertEqual(call["finish_reason"], "stop")
+        self.assertEqual(call["usage"]["input_tokens"], 9)
+        self.assertEqual(call["usage"]["output_tokens"], 2)
+        self.assertEqual(call["usage"]["count_method"], "upstream")
+
+    def test_agent_planner_and_final_calls_share_trace_and_have_unique_ids(self):
+        runtime = {
+            "resolved": {
+                "repo": "owner/agent-model",
+                "alias": "agent",
+                "backend": "mlx_lm",
+            },
+        }
+
+        def response(content):
+            return io.BytesIO(json.dumps({
+                "choices": [{
+                    "message": {"content": content},
+                    "finish_reason": "stop",
+                }],
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 2,
+                    "total_tokens": 7,
+                },
+            }).encode("utf-8"))
+
+        with observability.trace_context("trace-agent-001"), mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            side_effect=[response("plan"), response("final")],
+        ):
+            self.assertEqual(
+                agent_app.observed_agent_llm(
+                    "agent.plan",
+                    [{"role": "user", "content": "goal"}],
+                ),
+                "plan",
+            )
+            self.assertEqual(
+                agent_app.observed_agent_llm(
+                    "agent.final",
+                    [{"role": "user", "content": "observations"}],
+                ),
+                "final",
+            )
+
+        snapshot = observability.trace_snapshot("trace-agent-001")
+        self.assertEqual(snapshot["model_calls_in_turn"], 2)
+        self.assertEqual(
+            [call["purpose"] for call in snapshot["calls"]],
+            ["agent.plan", "agent.final"],
+        )
+        self.assertNotEqual(
+            snapshot["calls"][0]["request_id"],
+            snapshot["calls"][1]["request_id"],
+        )
+        self.assertEqual(
+            snapshot["calls"][1]["parent_request_id"],
+            snapshot["calls"][0]["request_id"],
+        )
+        self.assertTrue(all(
+            call["timings_ms"]["generation"] is not None
+            for call in snapshot["calls"]
+        ))
+
+    def test_failed_stream_exposes_failed_metrics_before_error(self):
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+        client = TestClient(agent_app.app, base_url="http://localhost")
+        self.addCleanup(client.close)
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            response = client.post(
+                "/api/runtime/chat/stream",
+                json={
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "trace_id": "trace-stream-failed-001",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLess(
+            response.text.index("event: metrics"),
+            response.text.index("event: error"),
+        )
+        snapshot = observability.trace_snapshot("trace-stream-failed-001")
+        self.assertEqual(snapshot["model_calls_in_turn"], 1)
+        self.assertEqual(snapshot["calls"][0]["status"], "failed")
+        self.assertEqual(snapshot["calls"][0]["error_type"], "URLError")
+
     def test_model_input_compatibility_and_rejection_before_manager(self):
         cases = json.loads((Path(__file__).parent / 'fixtures/model_validation.json').read_text())
         cases.append({'alias': 'a' * 97, 'repo': 'owner/model', 'valid': True})

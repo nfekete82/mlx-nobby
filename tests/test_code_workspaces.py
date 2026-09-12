@@ -1752,6 +1752,7 @@ class CodeWorkspaceTests(unittest.TestCase):
         request = agent_app.AgentRunRequest(
             goal="Untersuche den lokalen Systemstatus",
             mode="diagnostic",
+            trace_id="trace-agent-api-001",
         )
         with mock.patch.object(
             agent_app,
@@ -1763,6 +1764,8 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error"]["code"], "invalid_agent_response")
         self.assertIn("nichts ausgeführt", result["answer"])
+        self.assertEqual(result["trace_id"], "trace-agent-api-001")
+        self.assertIn("model_metrics", result)
 
     def test_run_chat_action_routes_before_normal_chat_answer(self):
         with mock.patch.object(

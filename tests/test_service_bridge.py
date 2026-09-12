@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from agent import service_proxy
 from backend import app as web
+from backend import observability
 from local_security import LocalRequestGuard
 
 
@@ -28,6 +29,7 @@ def upstream_response(body=b'{"text":"hello"}', status=200):
 
 class ServiceBridgeTests(unittest.TestCase):
     def setUp(self):
+        observability.reset_metrics()
         self.bridge = FastAPI()
         self.bridge.add_middleware(LocalRequestGuard)
         self.lock = MagicMock()
@@ -145,7 +147,9 @@ class ServiceBridgeTests(unittest.TestCase):
             if request.full_url == 'http://127.0.0.1:8123/v1/chat/completions':
                 native_requests.append(request)
                 return upstream_response(
-                    b'{"choices":[{"message":{"content":"compared"}}]}'
+                    b'{"choices":[{"message":{"content":"compared"},'
+                    b'"finish_reason":"stop"}],"usage":{"prompt_tokens":12,'
+                    b'"completion_tokens":3,"total_tokens":15}}'
                 )
 
             raise AssertionError('Unexpected request: ' + request.full_url)
@@ -165,7 +169,10 @@ class ServiceBridgeTests(unittest.TestCase):
         ):
             response = self.web_client.post(
                 '/api/chat/stream',
-                json={'messages': messages},
+                json={
+                    'messages': messages,
+                    'trace_id': 'trace-vision-001',
+                },
             )
 
         self.assertEqual(response.status_code, 200, response.text)
@@ -179,6 +186,7 @@ class ServiceBridgeTests(unittest.TestCase):
         )
 
         payload = json.loads(native_requests[0].data)
+        self.assertNotIn('_mlx_observability', payload)
         content = payload['messages'][0]['content']
 
         self.assertEqual(content[0]['type'], 'text')
@@ -191,6 +199,86 @@ class ServiceBridgeTests(unittest.TestCase):
             ],
             image_urls,
         )
+        metric_event = next(
+            event for event in response.text.split('\n\n')
+            if event.startswith('event: metrics')
+        )
+        snapshot = json.loads(
+            next(
+                line[5:].strip()
+                for line in metric_event.splitlines()
+                if line.startswith('data:')
+            )
+        )
+        self.assertEqual(snapshot['trace_id'], 'trace-vision-001')
+        self.assertEqual(snapshot['model_calls_in_turn'], 1)
+        self.assertEqual(snapshot['calls'][0]['purpose'], 'chat.vision')
+        self.assertEqual(
+            snapshot['calls'][0]['usage']['count_method'],
+            'upstream',
+        )
+
+    def test_compaction_uses_turn_trace_without_sending_metrics_to_model(self):
+        native_requests = []
+
+        def open_local(request, timeout):
+            if request.full_url == web.MLX_URL + '/v1/chat/completions':
+                result = self.agent_client.post(
+                    '/api/bridge/mlx/v1/chat/completions',
+                    content=request.data,
+                    headers={
+                        'Content-Type': request.get_header('Content-type'),
+                    },
+                )
+                return upstream_response(result.content, result.status_code)
+
+            if request.full_url == 'http://127.0.0.1:8123/v1/chat/completions':
+                native_requests.append(request)
+                return upstream_response(
+                    b'{"choices":[{"message":{"content":"summary"},'
+                    b'"finish_reason":"stop"}]}'
+                )
+
+            raise AssertionError('Unexpected request: ' + request.full_url)
+
+        messages = [
+            {'role': 'user', 'content': f'message {index}'}
+            for index in range(13)
+        ]
+        messages[0].update({
+            'trace_id': 'must-not-reach-model',
+            '_context_sources': {'history': {'characters': 9, 'items': 1}},
+            'model_metrics': {'private': 'must-not-reach-model'},
+        })
+
+        with patch.object(
+            web,
+            'get_json',
+            return_value={'online': True, 'model': 'owner/chat-model'},
+        ), patch.object(
+            service_proxy.urllib.request,
+            'urlopen',
+            side_effect=open_local,
+        ):
+            response = self.web_client.post(
+                '/api/chat/compact',
+                json={
+                    'messages': messages,
+                    'trace_id': 'trace-compact-001',
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['compacted'])
+        self.assertEqual(len(native_requests), 1)
+        native_payload = json.loads(native_requests[0].data)
+        prompt = native_payload['messages'][0]['content']
+        self.assertNotIn('must-not-reach-model', prompt)
+        self.assertNotIn('_context_sources', prompt)
+        self.assertNotIn('model_metrics', prompt)
+        snapshot = observability.trace_snapshot('trace-compact-001')
+        self.assertEqual(snapshot['model_calls_in_turn'], 1)
+        self.assertEqual(snapshot['calls'][0]['purpose'], 'chat.compact')
 
     def test_bridge_rejects_streaming_arbitrary_paths_and_nonmultipart_audio(self):
         with patch.object(service_proxy.urllib.request, 'urlopen') as network:
