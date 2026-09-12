@@ -1097,10 +1097,6 @@ button {
     display: flex;
 }
 
-.composer {
-    position: relative;
-}
-
 .context {
     display: flex;
     align-items: center;
@@ -4576,21 +4572,6 @@ body > * {
     transform: rotate(45deg);
 }
 
-.composer-plus-menu {
-    position: absolute;
-    left: 0;
-    bottom: calc(100% + 10px);
-    z-index: 120;
-    width: 300px;
-    padding: 7px;
-    border: 1px solid #343b47;
-    border-radius: 15px;
-    background: #202020;
-    box-shadow:
-        0 18px 50px rgba(0, 0, 0, .42),
-        0 2px 8px rgba(0, 0, 0, .25);
-}
-
 .composer-plus-menu[hidden] {
     display: none;
 }
@@ -5757,11 +5738,6 @@ body > * {
 }
 
 
-.composer-plus-menu[hidden] {
-    display: none;
-}
-
-
 .composer-plus-divider {
     height: 1px;
 
@@ -5904,17 +5880,6 @@ body > * {
     transition:
         width .2s ease,
         background .2s ease;
-}
-
-
-/* ----------------------------------------------------------
-   Attachments:
-   Keep attachment chips above the lower toolbar when they appear.
-   ---------------------------------------------------------- */
-
-.composer:has(.attachment-bar.visible)
-.attachment-bar {
-    margin-bottom: 43px;
 }
 
 
@@ -6451,8 +6416,8 @@ body.mlx-empty-chat .composer {
     display: none;
     width: 100%;
     margin: 0;
-    padding: 4px 10px 6px;
-    gap: 8px;
+    padding: 10px 18px 2px;
+    gap: 7px;
     flex-wrap: wrap;
     align-items: center;
     box-sizing: border-box;
@@ -6460,13 +6425,6 @@ body.mlx-empty-chat .composer {
 
 .composer .attachment-bar.visible {
     display: flex;
-}
-
-/*
- * Explicitly override the previous 43px workaround.
- */
-.composer:has(.attachment-bar.visible) .attachment-bar {
-    margin-bottom: 0;
 }
 
 /*
@@ -6511,25 +6469,6 @@ body.mlx-empty-chat .composer {
     cursor: pointer;
 }
 
-/*
- * Keep the lower toolbar on its own row.
- */
-.composer .composer-bottom {
-    position: relative;
-    width: 100%;
-    box-sizing: border-box;
-    flex-shrink: 0;
-}
-
-/*
- * Mobile: allow attachment cards to use almost the full width.
- */
-@media (max-width: 620px) {
-    .composer .attachment-chip {
-        max-width: calc(100% - 4px);
-    }
-}
-
 /* MLX-NOBBY-CHATGPT-COMPOSER-START */
 
 /* ==========================================================
@@ -6554,12 +6493,6 @@ body.mlx-empty-chat .composer {
     overflow: hidden;
 }
 
-.composer .attachment-bar {
-    padding: 10px 18px 2px;
-    gap: 7px;
-    flex-wrap: wrap;
-}
-
 /* ==========================================================
    Composer row
    ========================================================== */
@@ -6569,6 +6502,7 @@ body.mlx-empty-chat .composer {
  */
 .composer .composer-bottom {
     position: relative;
+    flex-shrink: 0;
 
     top: auto;
     right: auto;
@@ -6725,16 +6659,6 @@ body.mlx-empty-chat .empty {
 
 body.mlx-empty-chat .composer-disclaimer {
     margin-top: 12px;
-}
-
-/* ==========================================================
-   Hidden status UI
-   ========================================================== */
-
-#activeWorkspaceBadge,
-#workspaceFeedback,
-.composer-bottom .context {
-    display: none !important;
 }
 
 /* ==========================================================
