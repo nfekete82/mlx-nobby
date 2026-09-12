@@ -1,6 +1,7 @@
 from pathlib import Path
 from functools import wraps
 from typing import Literal
+import hashlib
 import json
 import queue
 import os
@@ -3420,7 +3421,7 @@ class BatchTransformRequest(BaseModel):
     input_path: str
     instruction: str
     file_type: str = "auto"
-    chunk_tokens: int = 2000
+    chunk_tokens: int = 12000
     execution_mode: str = "automatic"
 
 
@@ -3428,7 +3429,7 @@ class ChatFileRouteRequest(BaseModel):
     input_path: str
     instruction: str = ""
     file_type: str = "auto"
-    chunk_tokens: int = 2000
+    chunk_tokens: int = 12000
     attachment_id: str | None = None
 
 
@@ -6442,6 +6443,83 @@ def run_chat_action(request: ChatActionRequest):
 # ============================================================
 
 
+BATCH_SINGLE_CHUNK_TOKENS = 12000
+BATCH_LARGE_FILE_TOKENS = 64000
+BATCH_LARGE_CHUNK_TOKENS = 8000
+BATCH_MAX_OUTPUT_TOKENS = 16000
+
+
+def estimate_batch_tokens(text):
+    """Estimate tokens without loading a model-specific tokenizer."""
+    value = str(text or "")
+    if not value:
+        return 0
+    return max(1, (len(value) + 3) // 4)
+
+
+def recommended_batch_chunk_tokens(estimated_tokens):
+    """Prefer one request for small files and bounded chunks for larger ones."""
+    estimated = max(0, int(estimated_tokens or 0))
+    if estimated <= BATCH_SINGLE_CHUNK_TOKENS:
+        return max(2000, estimated)
+    if estimated <= BATCH_LARGE_FILE_TOKENS:
+        return BATCH_SINGLE_CHUNK_TOKENS
+    return BATCH_LARGE_CHUNK_TOKENS
+
+
+def batch_max_output_tokens(estimated_input_tokens):
+    """Allow structure-preserving transforms to return the complete chunk."""
+    estimated = max(1, int(estimated_input_tokens or 1))
+    return max(
+        384,
+        min(
+            BATCH_MAX_OUTPUT_TOKENS,
+            int(estimated * 1.35) + 256,
+        ),
+    )
+
+
+def decode_batch_bytes(raw, encoding, errors="strict"):
+    """Decode known input encodings while consuming, not exposing, their BOM."""
+    if encoding == "utf-16-le":
+        payload = raw[2:] if raw.startswith(b"\xff\xfe") else raw
+        return payload.decode("utf-16-le", errors=errors)
+    if encoding == "utf-16-be":
+        payload = raw[2:] if raw.startswith(b"\xfe\xff") else raw
+        return payload.decode("utf-16-be", errors=errors)
+    if encoding == "utf-8-sig":
+        return raw.decode("utf-8-sig", errors=errors)
+    return raw.decode("utf-8", errors=errors)
+
+
+def write_batch_text(path, text, encoding):
+    """Write transformed text atomically and preserve an existing BOM."""
+    value = str(text or "")
+    if encoding == "utf-8-sig":
+        payload = b"\xef\xbb\xbf" + value.encode("utf-8")
+    elif encoding == "utf-16-le":
+        payload = b"\xff\xfe" + value.encode("utf-16-le")
+    elif encoding == "utf-16-be":
+        payload = b"\xfe\xff" + value.encode("utf-16-be")
+    else:
+        payload = value.encode("utf-8")
+    path.write_bytes(payload)
+
+
+def invalid_json_error(analysis):
+    error = (
+        analysis.get("repair_error")
+        or analysis.get("json_error")
+        or {}
+    )
+    return (
+        "JSON-Datei ist syntaktisch ungültig und konnte nicht "
+        "automatisch repariert werden. Fehler in Zeile "
+        f"{error.get('line', '?')}, Spalte {error.get('column', '?')}: "
+        f"{error.get('message', 'Unbekannter JSON-Syntaxfehler')}"
+    )
+
+
 
 def sanitize_invalid_json_escapes(text):
     valid_simple = {
@@ -6514,8 +6592,9 @@ def sanitize_invalid_json_escapes(text):
                     i += 6
                     continue
 
-            # Ungültiger JSON-Escape:
-            # Backslash entfernen, Zeichen behalten.
+            # Preserve the literal backslash by escaping it. Removing it would
+            # silently change values such as Windows paths.
+            out.append("\\\\")
             out.append(nxt)
             i += 2
             continue
@@ -6703,22 +6782,286 @@ def hybrid_chunk_needs_llm(text, operations):
     value = str(text or "")
     requested = set(operations or [])
     if "replace_names" in requested:
+        # Strong contextual indicators only.  A generic pair of capitalized
+        # words caused too many false positives in ordinary German prose
+        # ("Neue Kontaktanfrage", "Vielen Dank", product names, etc.).
         name_markers = (
-            r"\b(?:herr|frau|dr\.?|prof\.?)\s+[A-ZÄÖÜ][\wäöüß-]+",
-            r"\b(?:ansprechpartner(?:in)?|mit freundlichen grüßen|beste grüße|freundliche grüße)\b",
-            r"\b[A-ZÄÖÜ][a-zäöüß-]+\s+[A-ZÄÖÜ][a-zäöüß-]+\b",
+            # Herr/Frau/Dr./Prof. + probable name.
+            r"\b(?:Herr|Frau|Dr\.?|Prof\.?)\s+"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}\b",
+
+            # Explicit labels commonly used in forms, exports and JSON-ish
+            # documents.
+            r"(?<!\w)\"?(?:Name|name|Vorname|vorname|Nachname|"
+            r"nachname|Ansprechpartner|Ansprechpartnerin)\"?"
+            r"\s*[:=]\s*\"?"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}"
+            r"(?:\s+[A-ZÄÖÜ][a-zäöüß-]{1,40})?",
+
+            # Greeting containing a full name.
+            r"\b(?:Hallo|Guten Tag)\s+"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}\s+"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}\b",
+
+            # Sign-off followed by a probable full name. Supports both real
+            # newlines and escaped JSON newlines.
+            r"\b(?:Mit freundlichen Grüßen|Beste Grüße|"
+            r"Freundliche Grüße)\b"
+            r"(?:\s|\\r|\\n){1,40}"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}\s+"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}\b",
         )
-        if any(re.search(pattern, value, re.IGNORECASE) for pattern in name_markers):
+
+        if any(
+            re.search(pattern, value)
+            for pattern in name_markers
+        ):
             return True
     if "replace_addresses" in requested:
         address_markers = (
             r"\b(?:straße|strasse|str\.|weg|platz|allee|gasse|ufer|ring)\s*\d+[a-zA-Z]?\b",
             r"\b\d{5}\s+[A-ZÄÖÜ][\wäöüß-]+\b",
-            r"\b(?:anschrift|adresse|postfach)\b",
+            # Ein bereits anonymisierter Wert wie
+            # "Anschrift lautet <ADRESSE>" darf keinen LLM-Fallback auslösen.
+            r"\b(?:anschrift|adresse|postfach)\b"
+            r"(?!\s*(?:lautet\s*)?(?:[:=]\s*)?"
+            r"<(?:ADRESSE|PLZ|ORT)>)"
+            r"\s*(?:lautet\s*)?(?:[:=]\s*)?"
+            r"(?=[A-Za-zÄÖÜäöüß0-9])",
         )
-        if any(re.search(pattern, value, re.IGNORECASE) for pattern in address_markers):
+
+        if any(
+            re.search(pattern, value, re.IGNORECASE)
+            for pattern in address_markers
+        ):
             return True
     return False
+
+
+
+def transform_structured_json_pii(value, operations):
+    """Deterministically anonymize obvious PII in structured JSON fields.
+
+    Returns:
+        (transformed_value, changed_count)
+    """
+    requested = set(operations or [])
+    changed = 0
+
+    name_keys = {
+        "name", "vorname", "nachname",
+        "firstname", "lastname",
+        "first_name", "last_name",
+        "fullname", "full_name",
+        "ansprechpartner", "ansprechpartnerin",
+    }
+
+    email_keys = {
+        "email", "e-mail", "mail",
+        "email_address", "emailadresse",
+    }
+
+    phone_keys = {
+        "telefon", "telefonnummer",
+        "phone", "phone_number",
+        "mobile", "mobil", "mobilnummer",
+        "handy", "handynummer",
+        "rufnummer",
+    }
+
+    address_keys = {
+        "adresse", "anschrift",
+        "address", "street_address",
+        "wohnadresse", "postadresse",
+    }
+
+    postal_keys = {
+        "plz", "postcode", "postalcode",
+        "postal_code", "zip", "zipcode",
+        "zip_code",
+    }
+
+    city_keys = {
+        "ort", "stadt", "city",
+        "wohnort",
+    }
+
+    def normalize_key(key):
+        return str(key or "").strip().lower().replace("-", "_")
+
+    def walk(node):
+        nonlocal changed
+
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+
+        if not isinstance(node, dict):
+            return node
+
+        result = {}
+
+        for key, item in node.items():
+            normalized = normalize_key(key)
+
+            if isinstance(item, (dict, list)):
+                result[key] = walk(item)
+                continue
+
+            if not isinstance(item, str):
+                result[key] = item
+                continue
+
+            replacement = None
+
+            if (
+                "replace_names" in requested
+                and normalized in name_keys
+                and item.strip()
+            ):
+                replacement = "<NAME>"
+
+            elif (
+                "replace_emails" in requested
+                and normalized in email_keys
+                and item.strip()
+            ):
+                replacement = "<EMAIL>"
+
+            elif (
+                "replace_phone_numbers" in requested
+                and normalized in phone_keys
+                and item.strip()
+            ):
+                replacement = "<TELEFON>"
+
+            elif (
+                "replace_addresses" in requested
+                and normalized in address_keys
+                and item.strip()
+            ):
+                replacement = "<ADRESSE>"
+
+            elif (
+                "replace_addresses" in requested
+                and normalized in postal_keys
+                and item.strip()
+            ):
+                replacement = "<PLZ>"
+
+            elif (
+                "replace_addresses" in requested
+                and normalized in city_keys
+                and item.strip()
+            ):
+                replacement = "<ORT>"
+
+            if replacement is not None:
+                if item != replacement:
+                    changed += 1
+                result[key] = replacement
+            else:
+                result[key] = item
+
+        return result
+
+    return walk(value), changed
+
+
+
+PII_FREETEXT_KEYS = {
+    "body",
+    "message",
+    "text",
+    "content",
+    "description",
+    "comment",
+    "comments",
+    "note",
+    "notes",
+    "subject",
+}
+
+
+def collect_json_freetext_targets(value):
+    """Collect mutable paths for likely free-text JSON string fields."""
+    targets = []
+
+    def normalize_key(key):
+        return str(key or "").strip().lower().replace("-", "_")
+
+    def walk(node, path=()):
+        if isinstance(node, list):
+            for index, item in enumerate(node):
+                walk(item, path + (index,))
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        for key, item in node.items():
+            current_path = path + (key,)
+
+            if isinstance(item, (dict, list)):
+                walk(item, current_path)
+                continue
+
+            if (
+                isinstance(item, str)
+                and item.strip()
+                and normalize_key(key) in PII_FREETEXT_KEYS
+            ):
+                targets.append({
+                    "path": current_path,
+                    "text": item,
+                })
+
+    walk(value)
+    return targets
+
+
+def set_json_path_value(value, path, replacement):
+    """Set one nested dict/list value by a tuple path."""
+    node = value
+
+    for part in path[:-1]:
+        node = node[part]
+
+    node[path[-1]] = replacement
+
+
+
+def apply_deterministic_freetext_pii(text, operations):
+    """Replace only strong, explicit PII phrases in free text."""
+    value = str(text or "")
+    requested = set(operations or [])
+
+    if "replace_names" in requested:
+        value = re.sub(
+            r"\b("
+            r"(?:mein\s+Name\s+ist|Name\s*[:=])"
+            r"\s+)"
+            r"[A-ZÄÖÜ][a-zäöüß-]{1,40}"
+            r"(?:\s+[A-ZÄÖÜ][a-zäöüß-]{1,40})?"
+            r"(?:\s+\d+)?",
+            r"\1<NAME>",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+    if "replace_addresses" in requested:
+        value = re.sub(
+            r"\b("
+            r"(?:meine\s+Anschrift\s+lautet|"
+            r"Anschrift\s*[:=]|Adresse\s*[:=])"
+            r"\s+)"
+            r"[^.!?\n]{3,120}"
+            r"(?=[.!?\n]|$)",
+            r"\1<ADRESSE>",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+    return value
 
 
 def deterministic_pii_audit(text):
@@ -6748,7 +7091,8 @@ def analyze_input_file(input_path):
         "repairable": False,
         "repair": None,
         "chunk_strategy": "text",
-        "recommended_chunk_tokens": 2000,
+        "estimated_input_tokens": 0,
+        "recommended_chunk_tokens": BATCH_SINGLE_CHUNK_TOKENS,
         "notes": [],
     }
 
@@ -6772,13 +7116,15 @@ def analyze_input_file(input_path):
         result["encoding"] = "utf-8"
 
     try:
-        text = raw.decode(
+        text = decode_batch_bytes(
+            raw,
             result["encoding"],
             errors="strict",
         )
 
     except UnicodeDecodeError:
-        text = raw.decode(
+        text = decode_batch_bytes(
+            raw,
             "utf-8",
             errors="replace",
         )
@@ -6787,6 +7133,13 @@ def analyze_input_file(input_path):
         result["notes"].append(
             "Ungültige UTF-8-Zeichen wurden ersetzt"
         )
+
+    result["estimated_input_tokens"] = estimate_batch_tokens(text)
+    result["recommended_chunk_tokens"] = (
+        recommended_batch_chunk_tokens(
+            result["estimated_input_tokens"]
+        )
+    )
 
     stripped = text.lstrip()
 
@@ -6808,6 +7161,22 @@ def analyze_input_file(input_path):
             data = json.loads(text)
 
             result["valid"] = True
+            serialized = json.dumps(
+                data,
+                ensure_ascii=False,
+                indent=2,
+            )
+            result["estimated_structured_tokens"] = (
+                estimate_batch_tokens(serialized)
+            )
+            result["recommended_chunk_tokens"] = (
+                recommended_batch_chunk_tokens(
+                    max(
+                        result["estimated_input_tokens"],
+                        result["estimated_structured_tokens"],
+                    )
+                )
+            )
 
             if isinstance(data, list):
                 result["chunk_strategy"] = "json_array"
@@ -6854,6 +7223,23 @@ def analyze_input_file(input_path):
 
                     result["repairable"] = True
                     result["repair"] = "sanitize_invalid_json_escapes"
+                    result["estimated_structured_tokens"] = (
+                        estimate_batch_tokens(
+                            json.dumps(
+                                data,
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+                        )
+                    )
+                    result["recommended_chunk_tokens"] = (
+                        recommended_batch_chunk_tokens(
+                            max(
+                                result["estimated_input_tokens"],
+                                result["estimated_structured_tokens"],
+                            )
+                        )
+                    )
                     result["notes"].append(
                         "Ungültige JSON-Escapes können "
                         "automatisch repariert werden"
@@ -6894,11 +7280,10 @@ def analyze_input_file(input_path):
                         "position": repair_exc.pos,
                     }
 
-            result["chunk_strategy"] = "text_safe_fallback"
-            result["recommended_chunk_tokens"] = 1000
+            result["chunk_strategy"] = "json_invalid"
             result["notes"].append(
                 "JSON ungültig und nicht sicher reparierbar; "
-                "Text-Fallback wird empfohlen"
+                "Verarbeitung wird vor dem ersten MLX-Aufruf beendet"
             )
 
             return result
@@ -6926,8 +7311,6 @@ def analyze_input_file(input_path):
     ):
         result["detected_type"] = "sql"
         result["chunk_strategy"] = "sql_statements"
-        result["recommended_chunk_tokens"] = 2000
-
         return result
 
     # --------------------------------------------------------
@@ -6939,8 +7322,6 @@ def analyze_input_file(input_path):
     if result["extension"] == ".csv":
         result["detected_type"] = "csv"
         result["chunk_strategy"] = "csv_rows"
-        result["recommended_chunk_tokens"] = 2000
-
         return result
 
     if lines:
@@ -6961,8 +7342,6 @@ def analyze_input_file(input_path):
             result["detected_type"] = "csv"
             result["chunk_strategy"] = "csv_rows"
             result["csv_separator"] = separator
-            result["recommended_chunk_tokens"] = 2000
-
             return result
 
     # --------------------------------------------------------
@@ -6992,8 +7371,6 @@ def analyze_input_file(input_path):
         ]
 
     result["chunk_strategy"] = "text"
-    result["recommended_chunk_tokens"] = 2000
-
     return result
 
 
@@ -7004,14 +7381,18 @@ def analyze_file_structure(input_path):
     raw = path.read_bytes()
     encoding = base.get("encoding", "utf-8")
     try:
-        text = raw.decode("utf-8-sig" if encoding == "utf-8-replace" else encoding, errors="replace")
+        text = decode_batch_bytes(
+            raw,
+            encoding,
+            errors="replace",
+        )
     except LookupError:
-        text = raw.decode("utf-8", errors="replace")
+        text = decode_batch_bytes(raw, "utf-8", errors="replace")
     lines = text.splitlines()
     result = dict(base)
     result.update({
         "filename": path.name,
-        "estimated_tokens": max(1, (len(text) + 3) // 4),
+        "estimated_tokens": max(1, estimate_batch_tokens(text)),
         "line_count": len(lines),
         "sample": text[:FILE_SAMPLE_MAX_CHARS],
     })
@@ -9346,17 +9727,7 @@ def split_batch_content(text, file_type, chunk_size):
     file_type = str(file_type or "auto").lower()
 
     def estimate_tokens(value):
-        value = str(value or "")
-
-        if not value:
-            return 0
-
-        # Robuste Näherung ohne externen Tokenizer.
-        # Für Code/SQL/JSON/Deutsch meist ausreichend.
-        return max(
-            1,
-            (len(value) + 3) // 4,
-        )
+        return estimate_batch_tokens(value)
 
     def pack_units(units):
         chunks = []
@@ -9502,6 +9873,9 @@ def split_batch_content(text, file_type, chunk_size):
             # Top-Level Array:
             # Jeder Chunk soll für sich gültiges JSON sein.
             if isinstance(data, list):
+                if not data:
+                    return ["[]"]
+
                 chunks = []
                 current_items = []
 
@@ -9516,9 +9890,8 @@ def split_batch_content(text, file_type, chunk_size):
                     single = serialize_array([item])
                     single_tokens = estimate_tokens(single)
 
-                    # Einzelnes JSON-Element ist selbst zu groß:
-                    # aktuellen Sammelchunk zuerst abschließen,
-                    # danach dieses Element hart teilen.
+                    # A single oversized element remains valid JSON. Splitting
+                    # inside it would corrupt strings or object structure.
                     if single_tokens > chunk_size:
                         if current_items:
                             chunks.append(
@@ -9526,14 +9899,7 @@ def split_batch_content(text, file_type, chunk_size):
                             )
                             current_items = []
 
-                        hard_parts = split_chunk_hard(
-                            single,
-                            chunk_size,
-                        )
-
-                        chunks.extend(
-                            hard_parts
-                        )
+                        chunks.append(single)
 
                         continue
 
@@ -9559,19 +9925,68 @@ def split_batch_content(text, file_type, chunk_size):
 
                 return chunks
 
-            # Top-Level Objekt nicht künstlich zerlegen.
             serialized = json.dumps(
                 data,
                 ensure_ascii=False,
                 indent=2,
             )
 
-            return [serialized]
+            if not isinstance(data, dict) or estimate_tokens(serialized) <= chunk_size:
+                return [serialized]
 
-        except Exception:
-            # Ungültiges JSON:
-            # sicher auf Text-Fallback gehen.
-            detected_type = "text"
+            list_keys = [
+                key
+                for key, value in data.items()
+                if isinstance(value, list) and value
+            ]
+            if not list_keys:
+                return [serialized]
+
+            list_key = max(list_keys, key=lambda key: len(data[key]))
+            static_fields = {
+                key: value
+                for key, value in data.items()
+                if key != list_key
+            }
+            chunks = []
+            current_items = []
+
+            def serialize_object(items, include_static):
+                payload = dict(static_fields) if include_static else {}
+                payload[list_key] = items
+                return json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            for item in data[list_key]:
+                include_static = not chunks
+                candidate_items = current_items + [item]
+                candidate = serialize_object(candidate_items, include_static)
+
+                if current_items and estimate_tokens(candidate) > chunk_size:
+                    chunks.append(
+                        serialize_object(current_items, include_static)
+                    )
+                    current_items = [item]
+                else:
+                    current_items = candidate_items
+
+                single = serialize_object(current_items, not chunks)
+                if len(current_items) == 1 and estimate_tokens(single) > chunk_size:
+                    chunks.append(single)
+                    current_items = []
+
+            if current_items:
+                chunks.append(
+                    serialize_object(current_items, not chunks)
+                )
+
+            return chunks
+
+        except json.JSONDecodeError:
+            raise ValueError("INVALID_JSON_FOR_CHUNKING")
 
     # --------------------------------------------------------
     # Text
@@ -9652,6 +10067,302 @@ def split_chunk_hard(text, max_tokens):
         start = end
 
     return parts
+
+
+
+def call_mlx_transform(
+    *,
+    text,
+    instruction,
+    model,
+    port,
+    system_prompt,
+    timeout=900,
+):
+    """Run one deterministic MLX text transformation and return plain text."""
+    input_text = str(text or "")
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "TRANSFORMATIONS-ANWEISUNG:\n"
+                    + str(instruction or "")
+                    + "\n\n"
+                    + "DATEI-ABSCHNITT:\n"
+                    + input_text
+                ),
+            },
+        ],
+        "temperature": 0.0,
+        "max_tokens": batch_max_output_tokens(
+            max(
+                1,
+                estimate_batch_tokens(input_text),
+            )
+        ),
+        "chat_template_kwargs": {
+            "enable_thinking": False,
+        },
+    }
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{int(port)}/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=timeout,
+    ) as response:
+        result = json.loads(
+            response.read().decode("utf-8")
+        )
+
+    try:
+        return (
+            result["choices"][0]["message"]["content"]
+            or ""
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Ungültige MLX-Antwort: {exc}"
+        ) from exc
+
+
+
+JSON_FREETEXT_BATCH_MAX_ITEMS = 25
+JSON_FREETEXT_BATCH_MAX_TOKENS = 3000
+
+
+def build_json_freetext_batches(
+    targets,
+    *,
+    max_items=JSON_FREETEXT_BATCH_MAX_ITEMS,
+    max_tokens=JSON_FREETEXT_BATCH_MAX_TOKENS,
+):
+    """Pack free-text targets into small semantic LLM batches."""
+    batches = []
+    current = []
+    current_tokens = 0
+
+    for target in targets:
+        text_value = str(target.get("text") or "")
+
+        item_tokens = max(
+            1,
+            estimate_batch_tokens(text_value),
+        )
+
+        if (
+            current
+            and (
+                len(current) >= int(max_items)
+                or current_tokens + item_tokens > int(max_tokens)
+            )
+        ):
+            batches.append(current)
+            current = []
+            current_tokens = 0
+
+        current.append(target)
+        current_tokens += item_tokens
+
+    if current:
+        batches.append(current)
+
+    return batches
+
+
+def call_mlx_json_freetext_batch(
+    *,
+    targets,
+    instruction,
+    model,
+    port,
+):
+    """Transform only selected JSON free-text values via MLX."""
+    request_items = []
+
+    for index, target in enumerate(targets):
+        request_items.append({
+            "id": index,
+            "text": str(target.get("text") or ""),
+        })
+
+    batch_text = json.dumps(
+        request_items,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    system_prompt = """
+Du bearbeitest ausschließlich die Textwerte eines JSON-Arrays.
+
+Jeder Eintrag besitzt:
+- id
+- text
+
+Regeln:
+- Die id darf niemals verändert werden.
+- Verändere ausschließlich text entsprechend der Anweisung.
+- Anzahl und Reihenfolge der Einträge müssen exakt erhalten bleiben.
+- Entferne keine Einträge.
+- Füge keine Einträge hinzu.
+- Gib ausschließlich ein valides JSON-Array zurück.
+- Keine Erklärungen.
+- Keine Markdown-Codeblöcke.
+""".strip()
+
+    transformed = call_mlx_transform(
+        text=batch_text,
+        instruction=instruction,
+        model=model,
+        port=port,
+        system_prompt=system_prompt,
+    )
+
+    try:
+        parsed = json.loads(transformed)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "MLX-Freitext-Batch ist kein valides JSON: "
+            + str(exc)
+        ) from exc
+
+    if not isinstance(parsed, list):
+        raise RuntimeError(
+            "MLX-Freitext-Batch muss ein JSON-Array zurückgeben"
+        )
+
+    if len(parsed) != len(request_items):
+        raise RuntimeError(
+            "MLX-Freitext-Batch hat eine unerwartete Anzahl Einträge"
+        )
+
+    result = []
+
+    for expected, returned in zip(request_items, parsed):
+        if not isinstance(returned, dict):
+            raise RuntimeError(
+                "MLX-Freitext-Batch enthält einen ungültigen Eintrag"
+            )
+
+        if returned.get("id") != expected["id"]:
+            raise RuntimeError(
+                "MLX-Freitext-Batch hat eine ID verändert"
+            )
+
+        returned_text = returned.get("text")
+
+        if not isinstance(returned_text, str):
+            raise RuntimeError(
+                "MLX-Freitext-Batch enthält keinen gültigen Textwert"
+            )
+
+        result.append(returned_text)
+
+    return result
+
+
+def split_batch_part_for_oom(text, file_type, max_tokens):
+    """Retry smaller while keeping JSON fragments independently valid."""
+    if str(file_type or "").lower() == "json":
+        return split_batch_content(text, "json", max_tokens)
+    return split_chunk_hard(text, max_tokens)
+
+
+def assemble_batch_json(checkpoint_texts, analysis):
+    parsed_chunks = [
+        json.loads(item)
+        for item in checkpoint_texts
+    ]
+    if not parsed_chunks:
+        raise RuntimeError(
+            "JSON-Ausgabe enthält keine vollständig verarbeiteten Chunks"
+        )
+
+    strategy = analysis.get("chunk_strategy")
+    if strategy == "json_array":
+        if not all(isinstance(part, list) for part in parsed_chunks):
+            raise RuntimeError(
+                "JSON-Array-Ausgabe enthält einen ungültigen Chunk"
+            )
+        value = [
+            entry
+            for part in parsed_chunks
+            for entry in part
+        ]
+    elif strategy == "json_object_list":
+        list_key = analysis.get("json_list_key")
+        if not list_key:
+            raise RuntimeError(
+                "JSON-Listenfeld für Reassembly fehlt"
+            )
+        value = None
+        collected = []
+        for index, part in enumerate(parsed_chunks):
+            if not isinstance(part, dict) or not isinstance(part.get(list_key), list):
+                raise RuntimeError(
+                    "JSON-Objekt-Ausgabe enthält einen ungültigen Listen-Chunk"
+                )
+            if index == 0:
+                value = dict(part)
+            elif set(part) != {list_key}:
+                raise RuntimeError(
+                    "JSON-Listen-Chunk hat unerwartete statische Felder"
+                )
+            collected.extend(part[list_key])
+        value[list_key] = collected
+    elif len(parsed_chunks) == 1:
+        value = parsed_chunks[0]
+    else:
+        raise RuntimeError(
+            "JSON-Ausgabe konnte nicht strukturerhaltend zusammengesetzt werden"
+        )
+
+    output = json.dumps(
+        value,
+        ensure_ascii=False,
+        indent=2,
+    ) + "\n"
+    json.loads(output)
+    return output
+
+
+def batch_checkpoint_plan_id(
+    text,
+    instruction,
+    detected_type,
+    chunk_tokens,
+    analysis,
+):
+    metadata = json.dumps(
+        {
+            "instruction": str(instruction or ""),
+            "detected_type": str(detected_type or ""),
+            "chunk_tokens": int(chunk_tokens),
+            "chunk_strategy": analysis.get("chunk_strategy"),
+            "json_list_key": analysis.get("json_list_key"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    digest = hashlib.sha256()
+    digest.update(metadata.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(str(text or "").encode("utf-8"))
+    return digest.hexdigest()
 
 
 def is_metal_oom_error(message):
@@ -9763,28 +10474,21 @@ def run_batch_transform_job(job_id):
             input_path
         )
 
-        encoding = analysis.get(
-            "encoding",
-            "utf-8"
-        )
-
-        read_encoding = (
-            "utf-8-sig"
-            if encoding in {
-                "utf-8-sig",
-                "utf-8-replace"
-            }
-            else encoding
-        )
-
+        encoding = analysis.get("encoding", "utf-8")
         try:
-            text = input_path.read_text(
-                encoding=read_encoding,
-                errors="strict",
+            text = decode_batch_bytes(
+                input_path.read_bytes(),
+                encoding,
+                errors=(
+                    "replace"
+                    if encoding == "utf-8-replace"
+                    else "strict"
+                ),
             )
-        except Exception:
-            text = input_path.read_text(
-                encoding="utf-8",
+        except (UnicodeDecodeError, LookupError):
+            text = decode_batch_bytes(
+                input_path.read_bytes(),
+                "utf-8",
                 errors="replace",
             )
 
@@ -9799,10 +10503,534 @@ def run_batch_transform_job(job_id):
                 text
             )
 
+        detected_type = analysis.get(
+            "detected_type",
+            job.get("file_type", "text")
+        )
+        instruction_plan = classify_batch_instruction(
+            job["instruction"]
+        )
+        batch_mode = instruction_plan.get("mode", "llm")
+        fast_operations = instruction_plan.get("fast_operations", [])
+        llm_operations = instruction_plan.get("llm_operations", [])
+
+        if (
+            detected_type == "json"
+            and not analysis.get("valid")
+            and not analysis.get("repairable")
+        ):
+            with BATCH_LOCK:
+                jobs = load_batch_jobs()
+                if job_id in jobs:
+                    jobs[job_id].update({
+                        "analysis": analysis,
+                        "effective_file_type": "json",
+                        "effective_chunk_tokens": 0,
+                        "estimated_input_tokens": analysis.get(
+                            "estimated_input_tokens",
+                            estimate_batch_tokens(text),
+                        ),
+                        "total_chunks": 0,
+                        "repair_strategy": "none",
+                        "processing_mode": batch_mode,
+                        "instruction_plan": instruction_plan,
+                    })
+                    save_batch_jobs(jobs)
+            raise RuntimeError(invalid_json_error(analysis))
+
+
+        # Schneller JSON-PII-Pfad:
+        # Strukturierte Felder und eindeutig erkennbare Freitexte werden
+        # deterministisch anonymisiert. Nur echte Restfälle gehen ans LLM.
+        if (
+            detected_type == "json"
+            and batch_mode in {"fast", "hybrid"}
+            and instruction_plan.get("operations")
+        ):
+            try:
+                json_value = json.loads(text)
+            except json.JSONDecodeError:
+                json_value = None
+
+            if json_value is not None:
+                json_value, structured_changes = (
+                    transform_structured_json_pii(
+                        json_value,
+                        instruction_plan["operations"],
+                    )
+                )
+
+                freetext_targets = collect_json_freetext_targets(
+                    json_value
+                )
+
+                llm_targets = []
+                deterministic_freetext_changes = 0
+
+                for target in freetext_targets:
+                    original_value = target["text"]
+
+                    cleaned_value = apply_deterministic_transform(
+                        original_value,
+                        fast_operations,
+                    )
+
+                    cleaned_value = apply_deterministic_freetext_pii(
+                        cleaned_value,
+                        llm_operations,
+                    )
+
+                    if cleaned_value != original_value:
+                        deterministic_freetext_changes += 1
+
+                    set_json_path_value(
+                        json_value,
+                        target["path"],
+                        cleaned_value,
+                    )
+
+                    if (
+                        batch_mode == "hybrid"
+                        and hybrid_chunk_needs_llm(
+                            cleaned_value,
+                            llm_operations,
+                        )
+                    ):
+                        llm_targets.append({
+                            "path": target["path"],
+                            "text": cleaned_value,
+                        })
+
+                # Semantische Restfälle werden nicht mehr als komplette
+                # JSON-Datei an das Modell geschickt. Stattdessen verarbeiten
+                # wir nur die tatsächlich relevanten Freitextwerte in kleinen,
+                # strukturierten Batches.
+                freetext_batches = build_json_freetext_batches(
+                    llm_targets
+                )
+
+                freetext_plan_payload = json.dumps(
+                    {
+                        "instruction": job["instruction"],
+                        "targets": [
+                            {
+                                "path": list(target["path"]),
+                                "text": target["text"],
+                            }
+                            for target in llm_targets
+                        ],
+                        "max_items": JSON_FREETEXT_BATCH_MAX_ITEMS,
+                        "max_tokens": JSON_FREETEXT_BATCH_MAX_TOKENS,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+
+                freetext_plan_id = hashlib.sha256(
+                    freetext_plan_payload.encode("utf-8")
+                ).hexdigest()[:16]
+
+                total_freetext_batches = len(
+                    freetext_batches
+                )
+
+                processed_freetext_batches = 0
+
+                config = None
+                model = None
+                port = None
+
+                if freetext_batches:
+                    config = load_config()
+                    model = config.get("MODEL")
+                    port = int(
+                        config.get("PORT", 8000)
+                    )
+
+                    if not model:
+                        raise RuntimeError(
+                            "Kein aktives MLX-Modell gefunden"
+                        )
+
+                with BATCH_LOCK:
+                    jobs = load_batch_jobs()
+
+                    if job_id in jobs:
+                        jobs[job_id].update({
+                            "analysis": analysis,
+                            "effective_file_type": "json",
+                            "effective_chunk_tokens": (
+                                JSON_FREETEXT_BATCH_MAX_TOKENS
+                                if freetext_batches
+                                else 0
+                            ),
+                            "estimated_input_tokens": analysis.get(
+                                "estimated_input_tokens",
+                                estimate_batch_tokens(text),
+                            ),
+                            "total_chunks": total_freetext_batches,
+                            "processed_chunks": 0,
+                            "processing_mode": batch_mode,
+                            "instruction_plan": instruction_plan,
+                            "structured_pii_changes": (
+                                structured_changes
+                            ),
+                            "deterministic_freetext_changes": (
+                                deterministic_freetext_changes
+                            ),
+                            "freetext_targets": len(
+                                freetext_targets
+                            ),
+                            "llm_freetext_targets": len(
+                                llm_targets
+                            ),
+                            "freetext_batch_plan_id": (
+                                freetext_plan_id
+                            ),
+                        })
+
+                        save_batch_jobs(jobs)
+
+                for batch_index, batch in enumerate(
+                    freetext_batches,
+                    start=1,
+                ):
+                    checkpoint_path = (
+                        batch_checkpoint_directory(job_id)
+                        / (
+                            "freetext-"
+                            + freetext_plan_id
+                            + "-"
+                            + f"{batch_index:08d}"
+                            + ".json"
+                        )
+                    )
+
+                    # Bereits erfolgreich verarbeitete Batches können beim
+                    # Resume direkt wiederverwendet werden.
+                    if checkpoint_path.exists():
+                        try:
+                            checkpoint_values = json.loads(
+                                checkpoint_path.read_text(
+                                    encoding="utf-8"
+                                )
+                            )
+
+                            if (
+                                not isinstance(
+                                    checkpoint_values,
+                                    list,
+                                )
+                                or len(checkpoint_values)
+                                != len(batch)
+                                or not all(
+                                    isinstance(item, str)
+                                    for item in checkpoint_values
+                                )
+                            ):
+                                raise ValueError(
+                                    "Ungültiger Freitext-Checkpoint"
+                                )
+
+                            for target, replacement_value in zip(
+                                batch,
+                                checkpoint_values,
+                            ):
+                                set_json_path_value(
+                                    json_value,
+                                    target["path"],
+                                    replacement_value,
+                                )
+
+                            processed_freetext_batches += 1
+
+                            with BATCH_LOCK:
+                                jobs = load_batch_jobs()
+
+                                if job_id in jobs:
+                                    jobs[job_id][
+                                        "processed_chunks"
+                                    ] = (
+                                        processed_freetext_batches
+                                    )
+
+                                    jobs[job_id][
+                                        "checkpoint_count"
+                                    ] = (
+                                        processed_freetext_batches
+                                    )
+
+                                    save_batch_jobs(jobs)
+
+                            continue
+
+                        except Exception:
+                            # Kaputter oder veralteter Checkpoint:
+                            # Batch sicher neu ausführen.
+                            checkpoint_path.unlink(
+                                missing_ok=True
+                            )
+
+                    # Pause / Abbruch vor jedem LLM-Batch beachten.
+                    while True:
+                        with BATCH_LOCK:
+                            jobs = load_batch_jobs()
+                            current_job = jobs.get(
+                                job_id,
+                                {},
+                            )
+                            current_status = (
+                                current_job.get("status")
+                            )
+
+                        if current_status == "cancelled":
+                            with BATCH_LOCK:
+                                jobs = load_batch_jobs()
+
+                                if job_id in jobs:
+                                    jobs[job_id][
+                                        "finished_at"
+                                    ] = time.time()
+
+                                    jobs[job_id][
+                                        "current_chunk"
+                                    ] = None
+
+                                    save_batch_jobs(jobs)
+
+                            return
+
+                        if current_status == "paused":
+                            time.sleep(1)
+                            continue
+
+                        break
+
+                    batch_started_at = time.time()
+
+                    with BATCH_LOCK:
+                        jobs = load_batch_jobs()
+
+                        if job_id in jobs:
+                            jobs[job_id][
+                                "current_chunk"
+                            ] = batch_index
+
+                            jobs[job_id][
+                                "current_chunk_started_at"
+                            ] = batch_started_at
+
+                            # Der Zähler beschreibt echte Requests an MLX.
+                            jobs[job_id]["mlx_calls"] = int(
+                                jobs[job_id].get(
+                                    "mlx_calls",
+                                    0,
+                                )
+                            ) + 1
+
+                            jobs[job_id]["llm_chunks"] = int(
+                                jobs[job_id].get(
+                                    "llm_chunks",
+                                    0,
+                                )
+                            ) + 1
+
+                            save_batch_jobs(jobs)
+
+                    transformed_values = (
+                        call_mlx_json_freetext_batch(
+                            targets=batch,
+                            instruction=job["instruction"],
+                            model=model,
+                            port=port,
+                        )
+                    )
+
+                    for target, replacement_value in zip(
+                        batch,
+                        transformed_values,
+                    ):
+                        set_json_path_value(
+                            json_value,
+                            target["path"],
+                            replacement_value,
+                        )
+
+                    temporary_checkpoint = (
+                        checkpoint_path.with_suffix(
+                            checkpoint_path.suffix + ".tmp"
+                        )
+                    )
+
+                    temporary_checkpoint.write_text(
+                        json.dumps(
+                            transformed_values,
+                            ensure_ascii=False,
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
+
+                    temporary_checkpoint.replace(
+                        checkpoint_path
+                    )
+
+                    processed_freetext_batches += 1
+
+                    batch_duration = (
+                        time.time() - batch_started_at
+                    )
+
+                    with BATCH_LOCK:
+                        jobs = load_batch_jobs()
+
+                        if job_id in jobs:
+                            current_job = jobs[job_id]
+
+                            previous_average = float(
+                                current_job.get(
+                                    "average_chunk_seconds"
+                                ) or 0
+                            )
+
+                            if (
+                                processed_freetext_batches <= 1
+                                or previous_average <= 0
+                            ):
+                                average = batch_duration
+                            else:
+                                average = (
+                                    (
+                                        previous_average
+                                        * (
+                                            processed_freetext_batches
+                                            - 1
+                                        )
+                                    )
+                                    + batch_duration
+                                ) / processed_freetext_batches
+
+                            current_job.update({
+                                "processed_chunks": (
+                                    processed_freetext_batches
+                                ),
+                                "checkpoint_count": (
+                                    processed_freetext_batches
+                                ),
+                                "last_chunk_seconds": (
+                                    batch_duration
+                                ),
+                                "average_chunk_seconds": (
+                                    average
+                                ),
+                                "current_chunk": None,
+                                "current_chunk_started_at": None,
+                                "resume_from_chunk": (
+                                    processed_freetext_batches + 1
+                                    if processed_freetext_batches
+                                    < total_freetext_batches
+                                    else None
+                                ),
+                            })
+
+                            save_batch_jobs(jobs)
+
+                # Nach allen deterministischen und semantischen Batches
+                # wird die Originalstruktur genau einmal serialisiert.
+                output_text = json.dumps(
+                    json_value,
+                    ensure_ascii=False,
+                    indent=2,
+                ) + "\n"
+
+                # Harte Abschlussvalidierung.
+                json.loads(output_text)
+
+                output_path.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                temporary_output = output_path.with_suffix(
+                    output_path.suffix + ".tmp"
+                )
+
+                write_batch_text(
+                    temporary_output,
+                    output_text,
+                    encoding,
+                )
+
+                temporary_output.replace(
+                    output_path
+                )
+
+                with BATCH_LOCK:
+                    jobs = load_batch_jobs()
+
+                    if job_id in jobs:
+                        jobs[job_id].update({
+                            "analysis": analysis,
+                            "effective_file_type": "json",
+                            "effective_chunk_tokens": (
+                                JSON_FREETEXT_BATCH_MAX_TOKENS
+                                if freetext_batches
+                                else 0
+                            ),
+                            "estimated_input_tokens": analysis.get(
+                                "estimated_input_tokens",
+                                estimate_batch_tokens(text),
+                            ),
+                            "total_chunks": (
+                                total_freetext_batches
+                            ),
+                            "processed_chunks": (
+                                processed_freetext_batches
+                            ),
+                            "processing_mode": batch_mode,
+                            "instruction_plan": (
+                                instruction_plan
+                            ),
+                            "structured_pii_changes": (
+                                structured_changes
+                            ),
+                            "deterministic_freetext_changes": (
+                                deterministic_freetext_changes
+                            ),
+                            "freetext_targets": len(
+                                freetext_targets
+                            ),
+                            "llm_freetext_targets": len(
+                                llm_targets
+                            ),
+                            "output_name": output_path.name,
+                            "output_size": (
+                                output_path.stat().st_size
+                            ),
+                            "output_mime_type": (
+                                "application/json"
+                            ),
+                            "pii_audit": (
+                                deterministic_pii_audit(
+                                    output_text
+                                )
+                            ),
+                            "current_chunk": None,
+                            "current_chunk_started_at": None,
+                            "resume_from_chunk": None,
+                            "status": "completed",
+                            "finished_at": time.time(),
+                            "error": None,
+                        })
+
+                        save_batch_jobs(jobs)
+
+                return
+
         requested_tokens = int(
             job.get(
                 "chunk_tokens",
-                job.get("chunk_size", 2000)
+                job.get("chunk_size", BATCH_SINGLE_CHUNK_TOKENS)
             )
         )
 
@@ -9818,41 +11046,45 @@ def run_batch_transform_job(job_id):
             recommended_tokens
         )
 
-        detected_type = analysis.get(
-            "detected_type",
-            job.get("file_type", "text")
-        )
-
         chunks = split_batch_content(
             text,
             detected_type,
             chunk_tokens,
         )
+        checkpoint_plan_id = batch_checkpoint_plan_id(
+            text,
+            job["instruction"],
+            detected_type,
+            chunk_tokens,
+            analysis,
+        )
+        previous_checkpoint_plan_id = job.get("checkpoint_plan_id")
 
         with BATCH_LOCK:
             jobs = load_batch_jobs()
 
             if job_id in jobs:
-                jobs[job_id]["analysis"] = analysis
-                jobs[job_id]["effective_file_type"] = detected_type
-                jobs[job_id]["effective_chunk_tokens"] = chunk_tokens
+                jobs[job_id].update({
+                    "analysis": analysis,
+                    "effective_file_type": detected_type,
+                    "effective_chunk_tokens": chunk_tokens,
+                    "estimated_input_tokens": analysis.get(
+                        "estimated_input_tokens",
+                        estimate_batch_tokens(text),
+                    ),
+                    "total_chunks": len(chunks),
+                    "repair_strategy": (
+                        analysis.get("repair") or "none"
+                    ),
+                    "checkpoint_plan_id": checkpoint_plan_id,
+                })
 
                 save_batch_jobs(jobs)
-
-        with BATCH_LOCK:
-            jobs = load_batch_jobs()
-            jobs[job_id]["total_chunks"] = len(chunks)
-            save_batch_jobs(jobs)
 
         config = load_config()
 
         model = config.get("MODEL")
         port = int(config.get("PORT", 8000))
-
-        if not model:
-            raise RuntimeError(
-                "Kein aktives MLX-Modell gefunden"
-            )
 
         output_path.parent.mkdir(
             parents=True,
@@ -9863,8 +11095,10 @@ def run_batch_transform_job(job_id):
         # Checkpoint-basierte Resume-Logik
         # ----------------------------------------------------
 
-        completed = set(
-            completed_batch_checkpoints(job_id)
+        completed = (
+            set(completed_batch_checkpoints(job_id))
+            if previous_checkpoint_plan_id == checkpoint_plan_id
+            else set()
         )
 
         # Nur lückenlos abgeschlossene Chunks ab 1 zählen.
@@ -9911,25 +11145,6 @@ Gib ausschließlich den bearbeiteten Inhalt zurück.
 Keine Erklärungen.
 Keine Markdown-Codeblöcke.
 """.strip()
-
-        instruction_plan = classify_batch_instruction(
-            job["instruction"]
-        )
-
-        batch_mode = instruction_plan.get(
-            "mode",
-            "llm"
-        )
-
-        fast_operations = instruction_plan.get(
-            "fast_operations",
-            []
-        )
-
-        llm_operations = instruction_plan.get(
-            "llm_operations",
-            []
-        )
 
         with BATCH_LOCK:
             jobs = load_batch_jobs()
@@ -10010,6 +11225,10 @@ Keine Markdown-Codeblöcke.
                         save_batch_jobs(jobs)
 
             else:
+                if not model:
+                    raise RuntimeError(
+                        "Kein aktives MLX-Modell gefunden"
+                    )
                 with BATCH_LOCK:
                     jobs = load_batch_jobs()
                     if job_id in jobs:
@@ -10017,17 +11236,11 @@ Keine Markdown-Codeblöcke.
                         save_batch_jobs(jobs)
                 estimated_input_tokens = max(
                     1,
-                    (len(working_chunk) + 3) // 4,
+                    estimate_batch_tokens(working_chunk),
                 )
 
-                max_output_tokens = max(
-                    384,
-                    min(
-                        2800,
-                        int(
-                            estimated_input_tokens * 1.20
-                        ) + 192,
-                    ),
+                max_output_tokens = batch_max_output_tokens(
+                    estimated_input_tokens
                 )
 
                 payload = {
@@ -10071,17 +11284,11 @@ Keine Markdown-Codeblöcke.
 
                     part_input_tokens = max(
                         1,
-                        (len(part_text) + 3) // 4,
+                        estimate_batch_tokens(part_text),
                     )
 
-                    payload["max_tokens"] = max(
-                        384,
-                        min(
-                            2800,
-                            int(
-                                part_input_tokens * 1.20
-                            ) + 192,
-                        ),
+                    payload["max_tokens"] = batch_max_output_tokens(
+                        part_input_tokens
                     )
 
                     payload["messages"][1]["content"] = (
@@ -10101,6 +11308,14 @@ Keine Markdown-Codeblöcke.
                         method="POST",
                     )
 
+                    with BATCH_LOCK:
+                        jobs = load_batch_jobs()
+                        if job_id in jobs:
+                            jobs[job_id]["mlx_calls"] = int(
+                                jobs[job_id].get("mlx_calls", 0)
+                            ) + 1
+                            save_batch_jobs(jobs)
+
                     try:
                         with urllib.request.urlopen(
                             request,
@@ -10109,12 +11324,6 @@ Keine Markdown-Codeblöcke.
                             result = json.loads(
                                 response.read().decode("utf-8")
                             )
-
-                        with BATCH_LOCK:
-                            jobs = load_batch_jobs()
-                            if job_id in jobs:
-                                jobs[job_id]["mlx_calls"] = int(jobs[job_id].get("mlx_calls", 0)) + 1
-                                save_batch_jobs(jobs)
 
                     except urllib.error.HTTPError as exc:
                         body = exc.read().decode(
@@ -10140,14 +11349,14 @@ Keine Markdown-Codeblöcke.
                                 part_tokens // 2,
                             )
 
-                            smaller_parts = split_chunk_hard(
+                            smaller_parts = split_batch_part_for_oom(
                                 part_text,
+                                detected_type,
                                 next_tokens,
                             )
 
                             if (
-                                len(smaller_parts) == 1
-                                and smaller_parts[0] == part_text
+                                len(smaller_parts) <= 1
                             ):
                                 raise RuntimeError(
                                     error_text
@@ -10200,11 +11409,36 @@ Keine Markdown-Codeblöcke.
                         transformed_part
                     )
 
-                transformed = "\n".join(
-                    part
-                    for part in transformed_parts
-                    if part
-                )
+                if detected_type == "json" and len(transformed_parts) > 1:
+                    source_value = json.loads(working_chunk)
+                    part_analysis = {"chunk_strategy": "json_object"}
+                    if isinstance(source_value, list):
+                        part_analysis["chunk_strategy"] = "json_array"
+                    elif isinstance(source_value, dict):
+                        list_keys = [
+                            key
+                            for key, value in source_value.items()
+                            if isinstance(value, list)
+                        ]
+                        if list_keys:
+                            list_key = max(
+                                list_keys,
+                                key=lambda key: len(source_value[key]),
+                            )
+                            part_analysis.update({
+                                "chunk_strategy": "json_object_list",
+                                "json_list_key": list_key,
+                            })
+                    transformed = assemble_batch_json(
+                        transformed_parts,
+                        part_analysis,
+                    )
+                else:
+                    transformed = "\n".join(
+                        part
+                        for part in transformed_parts
+                        if part
+                    )
 
             checkpoint_path = batch_checkpoint_path(
                 job_id,
@@ -10243,6 +11477,10 @@ Keine Markdown-Codeblöcke.
                 current_job = jobs[job_id]
 
                 current_job["processed_chunks"] = index
+                current_job["checkpoint_count"] = max(
+                    int(current_job.get("checkpoint_count", 0)),
+                    index,
+                )
                 current_job["last_chunk_seconds"] = chunk_duration
 
                 previous_average = float(
@@ -10298,24 +11536,19 @@ Keine Markdown-Codeblöcke.
             for index in range(1, len(chunks) + 1)
         ]
         if detected_type == "json":
-            parsed_chunks = [json.loads(item) for item in checkpoint_texts]
-            if isinstance(parsed_chunks[0], list):
-                output_text = json.dumps(
-                    [entry for part in parsed_chunks for entry in part],
-                    ensure_ascii=False,
-                    indent=2,
-                ) + "\n"
-            elif len(parsed_chunks) == 1:
-                output_text = json.dumps(parsed_chunks[0], ensure_ascii=False, indent=2) + "\n"
-            else:
-                raise RuntimeError("JSON-Ausgabe konnte nicht strukturerhaltend zusammengesetzt werden")
-            # Explicit validation makes an invalid LLM response a failed job.
-            json.loads(output_text)
+            output_text = assemble_batch_json(
+                checkpoint_texts,
+                analysis,
+            )
         else:
             output_text = "".join(checkpoint_texts)
 
         temporary_output = output_path.with_suffix(output_path.suffix + ".tmp")
-        temporary_output.write_text(output_text, encoding=read_encoding)
+        write_batch_text(
+            temporary_output,
+            output_text,
+            encoding,
+        )
         temporary_output.replace(output_path)
 
         with BATCH_LOCK:
@@ -10339,6 +11572,10 @@ Keine Markdown-Codeblöcke.
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"] = str(exc)
                 jobs[job_id]["finished_at"] = time.time()
+                jobs[job_id]["current_chunk"] = None
+                jobs[job_id]["current_chunk_started_at"] = None
+                jobs[job_id]["waiting_for_user"] = False
+                jobs[job_id]["eta_seconds"] = None
 
                 save_batch_jobs(jobs)
 

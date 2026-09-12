@@ -1606,7 +1606,7 @@ const imageFiles =
                         instruction: prompt,
                         file_type: ['json', 'csv', 'sql'].includes(item.attachment.extension)
                             ? item.attachment.extension : 'text',
-                        chunk_tokens: 2000,
+                        chunk_tokens: 12000,
                         attachment_id: item.upload.stored_name || item.attachment.file_id || null
                     })
                 });

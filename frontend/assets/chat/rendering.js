@@ -1040,6 +1040,15 @@ function renderMetrics(metrics) {
     return details;
 }
 
+function batchFailureDetail(job = {}) {
+    if (job.status !== 'failed' || !job.error) return '';
+    const value = String(job.error);
+    const tracebackAt = value.indexOf('\nTraceback (most recent call last):');
+    return (tracebackAt >= 0 ? value.slice(0, tracebackAt) : value)
+        .trim()
+        .slice(0, 1200);
+}
+
 function renderBatchCard(message) {
     const job = message.batch_job;
     if (!job) return null;
@@ -1070,6 +1079,7 @@ function renderBatchCard(message) {
         Number(job.mlx_calls || 0),
         rt('llm_skipped_count', 'LLM skipped:') + ' ' +
         Number(job.skipped_llm_chunks || 0),
+        batchFailureDetail(job),
         job.pii_audit ? 'PII audit: ' + (Object.values(job.pii_audit).every(value => value === 0) ? rt('pii_no_hits', 'no obvious matches') : rt('pii_hits_remaining', 'remaining matches found')) : '',
         eta ? 'ETA: ' + Math.ceil(eta / 60) + ' ' + rt('minutes', 'minutes') : ''
     ].filter(Boolean).join('\n');
@@ -2005,6 +2015,7 @@ function renderAll(options = {}) {
             codeTestEvidenceLabel,
             codeApplyEvidenceValid,
             renderCodeTestEvidence,
+            batchFailureDetail,
         }
     };
 

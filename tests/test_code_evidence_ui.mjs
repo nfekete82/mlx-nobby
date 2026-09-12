@@ -69,6 +69,27 @@ vm.runInNewContext(source, { document, window, console }, {
 });
 
 const evidence = window.MLXChatRendering.__test;
+assert.equal(
+    evidence.batchFailureDetail({
+        status: 'failed',
+        error: 'JSON-Datei ist syntaktisch ungültig'
+    }),
+    'JSON-Datei ist syntaktisch ungültig'
+);
+assert.equal(
+    evidence.batchFailureDetail({
+        status: 'completed',
+        error: 'stale error'
+    }),
+    ''
+);
+assert.equal(
+    evidence.batchFailureDetail({
+        status: 'failed',
+        error: 'Konkreter Fehler\nTraceback (most recent call last):\nsecret internals'
+    }),
+    'Konkreter Fehler'
+);
 
 const passed = {
     patch_id: 'aaaaaaaaaaaaaaaa',
