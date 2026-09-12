@@ -203,6 +203,7 @@ assert.deepEqual(
 const actionPayload = JSON.parse(requests[1].options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
+assert.equal(actionPayload.image_options, null);
 assert.equal(session.messages.at(-1).tool_result.tool, 'image_edit');
 assert.equal(
     session.workspace.active_artifact_id,

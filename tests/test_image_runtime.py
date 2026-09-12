@@ -41,9 +41,36 @@ class ImageRuntimeTests(unittest.TestCase):
                 for model in data["models"]
             )
         )
+        self.assertEqual(
+            registry.get_model(
+                registry.QWEN_IMAGE_EDIT_ID,
+                require_enabled=False,
+            )["default_steps"],
+            8,
+        )
+        self.assertEqual(
+            registry.get_model(
+                "mflux-qwen-image",
+                require_enabled=False,
+            )["default_steps"],
+            30,
+        )
+        self.assertEqual(
+            registry.get_model(
+                "mflux-flux1-dev",
+                require_enabled=False,
+            )["default_steps"],
+            28,
+        )
         registry.update_model("mflux-z-image-turbo", {"default_steps": 7})
         self.assertEqual(registry.get_model("mflux-z-image-turbo", require_enabled=False)["default_steps"], 7)
         self.assertEqual(json.loads(registry.REGISTRY_FILE.read_text())["version"], 1)
+        self.assertEqual(
+            json.loads(registry.REGISTRY_FILE.read_text())[
+                "builtin_defaults_revision"
+            ],
+            registry.BUILTIN_DEFAULTS_REVISION,
+        )
 
     def test_existing_registry_migrates_new_builtin_families(self):
         legacy = registry.initial_registry()
@@ -59,6 +86,61 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(migrated["default_model"], registry.LEGACY_ID)
         legacy_model = next(model for model in migrated["models"] if model["id"] == registry.LEGACY_ID)
         self.assertTrue(legacy_model["enabled"])
+
+    def test_existing_registry_migrates_only_the_old_qwen_edit_default(self):
+        data = registry.initial_registry()
+        qwen_edit = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        qwen_edit["default_steps"] = 30
+        qwen_edit["default_guidance"] = 4.25
+        data.pop("builtin_defaults_revision")
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+        migrated_edit = next(
+            model
+            for model in migrated["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        self.assertEqual(migrated_edit["default_steps"], 8)
+        self.assertEqual(migrated_edit["default_guidance"], 4.25)
+        self.assertEqual(
+            registry.get_model(
+                "mflux-qwen-image",
+                require_enabled=False,
+            )["default_steps"],
+            30,
+        )
+
+        registry.update_model(
+            registry.QWEN_IMAGE_EDIT_ID,
+            {"default_steps": 12},
+        )
+        self.assertEqual(
+            registry.get_model(
+                registry.QWEN_IMAGE_EDIT_ID,
+                require_enabled=False,
+            )["default_steps"],
+            12,
+        )
+
+        registry.update_model(
+            registry.QWEN_IMAGE_EDIT_ID,
+            {"default_steps": 30},
+        )
+        self.assertEqual(
+            registry.get_model(
+                registry.QWEN_IMAGE_EDIT_ID,
+                require_enabled=False,
+            )["default_steps"],
+            30,
+        )
 
     def test_legacy_prompt_png_metadata_and_seed(self):
         seen = []
@@ -323,8 +405,11 @@ class ImageRuntimeTests(unittest.TestCase):
         Image.new("RGB", (320, 480), "white").save(source)
         resolved_source = source.resolve()
 
+        provider_params = []
+
         def edit_provider(_model, params, output):
             self.assertEqual(params["source_path"], str(resolved_source))
+            provider_params.append(params.copy())
             Image.new("RGB", (304, 464), "black").save(output)
 
         with patch.object(
@@ -338,18 +423,51 @@ class ImageRuntimeTests(unittest.TestCase):
                     "prompt": "Darken the background",
                     "source_path": str(source),
                     "model": "mflux-qwen-image-edit-2511",
-                    "steps": 4,
                     "seed": 17,
                 },
             )
 
+            explicit = self.client.post(
+                "/edit",
+                json={
+                    "prompt": "Darken the background",
+                    "source_path": str(source),
+                    "model": "mflux-qwen-image-edit-2511",
+                    "steps": 12,
+                    "seed": 18,
+                },
+            )
+
         self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(explicit.status_code, 200, explicit.text)
         result = response.json()
         self.assertEqual(result["width"], 304)
         self.assertEqual(result["height"], 464)
         self.assertEqual(result["source_path"], str(resolved_source))
-        self.assertEqual(result["steps"], 4)
+        self.assertEqual(result["steps"], 8)
+        self.assertEqual(explicit.json()["steps"], 12)
+        self.assertEqual(provider_params[0]["steps"], 8)
+        self.assertEqual(provider_params[1]["steps"], 12)
         self.assertTrue(Path(result["path"]).is_file())
+
+        model = registry.get_model(
+            registry.QWEN_IMAGE_EDIT_ID,
+            require_enabled=False,
+        )
+        with patch.object(
+            providers,
+            "model_directory",
+            return_value=Path("/models/qwen-edit"),
+        ):
+            command = providers.mflux_command(
+                model,
+                provider_params[0],
+                Path("/images/output.png"),
+            )
+        self.assertEqual(
+            command[command.index("--steps") + 1],
+            "8",
+        )
 
         invalid = self.client.post(
             "/edit",

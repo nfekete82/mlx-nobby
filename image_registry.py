@@ -19,6 +19,9 @@ REGISTRY_FILE = Path(
 MODEL_ROOTS = (Path.home() / "Models", Path.home() / ".cache/huggingface/hub")
 LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
+QWEN_IMAGE_EDIT_ID = "mflux-qwen-image-edit-2511"
+QWEN_IMAGE_EDIT_DEFAULT_STEPS = 8
+BUILTIN_DEFAULTS_REVISION = 1
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -184,12 +187,12 @@ def builtin_models():
         ("mflux-z-image-turbo", "Z-Image Turbo", "Tongyi-MAI/Z-Image-Turbo", "z-image-turbo", "z-image-turbo", 9, 0),
         ("mflux-qwen-image", "Qwen Image 2512", "Qwen/Qwen-Image-2512", "qwen-image", "qwen-image", 30, 3.5),
         (
-            "mflux-qwen-image-edit-2511",
+            QWEN_IMAGE_EDIT_ID,
             "Qwen Image Edit 2511 · 4-bit",
             "AbstractFramework/qwen-image-edit-2511-4bit",
             "qwen-image-edit",
             "qwen-image-edit-2511",
-            30,
+            QWEN_IMAGE_EDIT_DEFAULT_STEPS,
             3.5,
         ),
     ):
@@ -208,7 +211,12 @@ def builtin_models():
 
 
 def initial_registry():
-    return {"version": 1, "default_model": LEGACY_ID, "models": builtin_models()}
+    return {
+        "version": 1,
+        "builtin_defaults_revision": BUILTIN_DEFAULTS_REVISION,
+        "default_model": LEGACY_ID,
+        "models": builtin_models(),
+    }
 
 
 def _save(data):
@@ -234,12 +242,27 @@ def load_registry():
         if data.get("version") != 1:
             raise ValueError("Nicht unterstützte Image-Registry-Version")
         data["models"] = [ImageModel(**model).model_dump() for model in data["models"]]
+        defaults_changed = (
+            data.get("builtin_defaults_revision", 0)
+            < BUILTIN_DEFAULTS_REVISION
+        )
+        if defaults_changed:
+            for model in data["models"]:
+                # Migrate only the previously shipped value. Explicitly
+                # configured alternatives remain untouched.
+                if (
+                    model["id"] == QWEN_IMAGE_EDIT_ID
+                    and model["default_steps"] == 30
+                ):
+                    model["default_steps"] = QWEN_IMAGE_EDIT_DEFAULT_STEPS
+            data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while
         # preserving all user edits (enabled flags, LoRAs and custom entries).
         known_ids = {model["id"] for model in data["models"]}
         added = [model for model in builtin_models() if model["id"] not in known_ids]
         if added:
             data["models"].extend(added)
+        if added or defaults_changed:
             _save(data)
         ids = [model["id"] for model in data["models"]]
         if len(ids) != len(set(ids)) or data["default_model"] not in ids:
