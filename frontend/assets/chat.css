@@ -6677,3 +6677,48 @@ body.mlx-empty-chat .composer-disclaimer {
 }
 
 /* MLX-NOBBY-CHATGPT-COMPOSER-END */
+
+/* ==========================================================
+   MLX Nobby – multiline composer growth
+   ========================================================== */
+
+.composer .composer-bottom {
+    height: auto;
+    min-height: 60px;
+}
+
+.composer .composer-bottom .input {
+    height: 38px;
+    min-height: 38px;
+    max-height: 230px;
+
+    overflow-y: auto;
+    resize: none;
+}
+
+/* Keep the compact single-line layout unchanged. */
+.composer:not(.composer-multiline) .composer-bottom {
+    min-height: 60px;
+}
+
+/*
+ * When the textarea grows, keep controls aligned with
+ * the lower input row instead of vertically centering
+ * them across the full textarea height.
+ */
+.composer.composer-multiline .composer-bottom {
+    align-items: flex-end;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.composer.composer-multiline .composer-left,
+.composer.composer-multiline .composer-actions {
+    align-self: flex-end;
+}
+
+.composer.composer-multiline .composer-bottom .input {
+    align-self: flex-end;
+}
+
+/* MLX-NOBBY-MULTILINE-COMPOSER-END */
