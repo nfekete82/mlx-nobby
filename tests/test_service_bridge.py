@@ -105,6 +105,93 @@ class ServiceBridgeTests(unittest.TestCase):
             self.lock.__enter__.assert_called_once()
             self.lock.__exit__.assert_called_once()
 
+    def test_vision_chat_preserves_all_images_in_one_native_request(self):
+        image_urls = [
+            f'data:image/png;base64,image-{index}'
+            for index in range(1, 5)
+        ]
+        messages = [{
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': 'Compare the images.\n\nAdditional user files:\nnotes.txt',
+                },
+                *[
+                    {
+                        'type': 'image_url',
+                        'image_url': {'url': url},
+                    }
+                    for url in image_urls
+                ],
+            ],
+        }]
+        forwarded_urls = []
+        native_requests = []
+
+        def open_local(request, timeout):
+            forwarded_urls.append(request.full_url)
+
+            if request.full_url == web.MLX_URL + '/v1/chat/completions':
+                result = self.agent_client.post(
+                    '/api/bridge/mlx/v1/chat/completions',
+                    content=request.data,
+                    headers={
+                        'Content-Type': request.get_header('Content-type'),
+                    },
+                )
+                return upstream_response(result.content, result.status_code)
+
+            if request.full_url == 'http://127.0.0.1:8123/v1/chat/completions':
+                native_requests.append(request)
+                return upstream_response(
+                    b'{"choices":[{"message":{"content":"compared"}}]}'
+                )
+
+            raise AssertionError('Unexpected request: ' + request.full_url)
+
+        with patch.object(
+            web,
+            'agent_json_request',
+            return_value={},
+        ), patch.object(
+            web,
+            'get_json',
+            return_value={'online': True, 'model': 'vision-model'},
+        ), patch.object(
+            service_proxy.urllib.request,
+            'urlopen',
+            side_effect=open_local,
+        ):
+            response = self.web_client.post(
+                '/api/chat/stream',
+                json={'messages': messages},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(native_requests), 1)
+        self.assertEqual(
+            forwarded_urls,
+            [
+                web.MLX_URL + '/v1/chat/completions',
+                'http://127.0.0.1:8123/v1/chat/completions',
+            ],
+        )
+
+        payload = json.loads(native_requests[0].data)
+        content = payload['messages'][0]['content']
+
+        self.assertEqual(content[0]['type'], 'text')
+        self.assertIn('notes.txt', content[0]['text'])
+        self.assertEqual(
+            [
+                part['image_url']['url']
+                for part in content
+                if part.get('type') == 'image_url'
+            ],
+            image_urls,
+        )
+
     def test_bridge_rejects_streaming_arbitrary_paths_and_nonmultipart_audio(self):
         with patch.object(service_proxy.urllib.request, 'urlopen') as network:
             self.assertEqual(self.agent_client.post('/api/bridge/mlx/v1/chat/completions', json={'stream': True}).status_code, 422)

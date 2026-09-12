@@ -733,5 +733,6 @@
   "ui.no_workspace": "No workspace",
   "dictation.transcription_failed": "Transcription failed ({status})",
   "dictation.failed": "Dictation failed: {message}",
-  "generation.vision_describe_image_prompt": "Describe this image in detail. Answer in English."
+  "generation.vision_describe_image_prompt": "Describe this image in detail. Answer in English.",
+  "generation.vision_describe_images_prompt": "Describe all attached images in order. Answer in English."
 }

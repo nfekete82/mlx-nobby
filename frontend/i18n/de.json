@@ -733,5 +733,6 @@
   "ui.no_workspace": "Kein Workspace",
   "dictation.transcription_failed": "Transkription fehlgeschlagen ({status})",
   "dictation.failed": "Diktat fehlgeschlagen: {message}",
-  "generation.vision_describe_image_prompt": "Beschreibe dieses Bild detailliert. Antworte auf Deutsch."
+  "generation.vision_describe_image_prompt": "Beschreibe dieses Bild detailliert. Antworte auf Deutsch.",
+  "generation.vision_describe_images_prompt": "Beschreibe alle angehängten Bilder der Reihe nach detailliert. Antworte auf Deutsch."
 }

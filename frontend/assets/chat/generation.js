@@ -141,6 +141,21 @@ function buildApiMessages(messages) {
 }
 
 
+function defaultVisionPrompt(imageCount) {
+    if (imageCount > 1) {
+        return gt(
+            'vision_describe_images_prompt',
+            'Describe all attached images in order. Answer in English.'
+        );
+    }
+
+    return gt(
+        'vision_describe_image_prompt',
+        'Describe this image in detail. Answer in English.'
+    );
+}
+
+
 async function regenerateLastAnswer() {
     if (
         getGenerating() ||
@@ -1186,10 +1201,7 @@ const imageFiles =
         prompt ||
         (
             imageFiles.length
-                ? gt(
-                    'vision_describe_image_prompt',
-                    'Describe this image in detail. Answer in English.'
-                )
+                ? defaultVisionPrompt(imageFiles.length)
                 : ''
         );
 
@@ -1856,6 +1868,11 @@ function watchBatchJob(session, jobId) {
         regenerateLastAnswer: regenerateLastAnswer,
         generateAssistant: generateAssistant,
         sendMessage: sendMessage,
-        approveAgentAction: approveAgentAction
+        approveAgentAction: approveAgentAction,
+        __test: {
+            buildApiMessages: buildApiMessages,
+            defaultVisionPrompt: defaultVisionPrompt,
+            imageAttachments: imageAttachments
+        }
     };
 })();
