@@ -204,8 +204,7 @@ async function saveEditedMessage(index, value) {
     }
 
     /*
-     * Alles nach der bearbeiteten Nachricht
-     * wird verworfen.
+     * Discard everything after the edited message.
      */
     session.messages =
         session.messages.slice(
@@ -1890,10 +1889,10 @@ input.focus();
 
 
         /*
-         * 52px = normale Single-Line-Höhe.
+         * 52px is the regular single-line height.
          *
-         * scrollHeight steigt zuverlässig, sobald Text wrappt
-         * oder Enter verwendet wird.
+         * scrollHeight increases reliably once text wraps or
+         * the user presses Enter.
          */
         const multiline =
             input.value.includes('\n')
@@ -1957,8 +1956,8 @@ input.focus();
 
 
             /*
-             * Falls die vorhandene Autosize-Logik die Höhe
-             * verändert, reagieren wir ebenfalls darauf.
+             * Also respond when the existing autosize logic
+             * changes the height.
              */
             if ('ResizeObserver' in window) {
 
@@ -2094,15 +2093,15 @@ input.focus();
 
 
     /*
-     * renderMessages verändert messagesInner jedes Mal,
-     * wenn ein Chat geladen, geleert oder erweitert wird.
+     * renderMessages changes messagesInner whenever a chat is
+     * loaded, cleared, or extended.
      *
-     * Damit reagieren wir auch auf:
+     * This also covers:
      *
-     * - Neuer Chat
-     * - bestehenden Chat öffnen
-     * - erste Nachricht senden
-     * - Chat leeren
+     * - creating a new chat
+     * - opening an existing chat
+     * - sending the first message
+     * - clearing a chat
      */
 
     function observeMessages() {
@@ -2144,8 +2143,8 @@ input.focus();
 
 
         /*
-         * Zusätzliche Events, damit die Umschaltung schon beim
-         * ersten Submit passiert und nicht erst sichtbar später.
+         * Additional events make the switch happen on the first
+         * submit instead of after a visible delay.
          */
 
         const input =
@@ -2195,10 +2194,10 @@ input.focus();
 
 
         /*
-         * Sicherheitsnetz für Session-Wechsel.
+         * Safety net for session changes.
          *
-         * Kein Dauer-Polling: nur wenn das Fenster wieder
-         * aktiv wird.
+         * Avoid continuous polling; update only when the window
+         * becomes active again.
          */
 
         window.addEventListener(
@@ -2264,9 +2263,8 @@ input.focus();
         );
 
         /*
-         * Erst JETZT darf die UI sichtbar werden.
-         * Damit gibt es beim Reload keinen falschen
-         * Zwischenzustand mehr.
+         * The UI may become visible only now. This prevents an
+         * incorrect intermediate state during reload.
          */
         document.body.classList.remove(
             'mlx-ui-booting'
@@ -2303,9 +2301,8 @@ input.focus();
 
 
         /*
-         * Sofort beim Abschicken nach unten wechseln.
-         * Dadurch wartet die Animation nicht erst darauf,
-         * dass renderMessages() fertig ist.
+         * Move to the bottom immediately on submit so the animation
+         * does not wait for renderMessages() to finish.
          */
 
         const formInput =

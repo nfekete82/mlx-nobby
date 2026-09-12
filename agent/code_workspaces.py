@@ -97,8 +97,8 @@ def _patch(pid):
     try: return json.loads(_patch_path(pid).read_text())
     except FileNotFoundError: raise ValueError("PATCH_NOT_FOUND")
 def _operation(entry):
-    # Patches aus älteren Versionen hatten keinen expliziten Typ und waren
-    # ausschließlich MODIFY-Patches.
+        # Patches from earlier versions had no explicit type and were always
+        # MODIFY patches.
     operation=str(entry.get("operation") or "MODIFY").strip().upper()
     if operation not in {"CREATE", "MODIFY", "DELETE"}:
         raise ValueError("PATCH_INVALID_OPERATION")
@@ -1296,7 +1296,7 @@ def apply(patch_id, approved=False):
         if active_workspace_id() != patch["workspace_id"]:
             raise ValueError("WORKSPACE_CHANGED")
 
-        # Alle Konflikte werden vor der ersten Workspace-Änderung geprüft.
+        # Check every conflict before the first workspace change.
         targets=_check_apply_conflicts(item, patch)
         snapshot, metadata=_create_snapshot(item, patch, targets)
         try:

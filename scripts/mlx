@@ -250,32 +250,32 @@ memory_state() {
     local free_percent="$2"
     local swap_used_gb="$3"
 
-    # Kritisch:
-    # Hoher MLX-RAM UND wenig freier RAM
+    # Critical:
+    # High MLX memory use and little free memory
     if float_ge "$rss_gb" "$RAM_CRITICAL_GB" &&
        float_le "$free_percent" "$FREE_RAM_CRITICAL_PERCENT"; then
         echo "CRITICAL"
         return
     fi
 
-    # Kritisch:
-    # Sehr hoher Swap UND sehr wenig freier RAM
+    # Critical:
+    # Very high swap use and very little free memory
     if float_ge "$swap_used_gb" "$SWAP_CRITICAL_GB" &&
        float_le "$free_percent" "$FREE_RAM_CRITICAL_PERCENT"; then
         echo "CRITICAL"
         return
     fi
 
-    # Warnung:
-    # Erhöhter MLX-RAM UND wenig freier RAM
+    # Warning:
+    # Elevated MLX memory use and little free memory
     if float_ge "$rss_gb" "$RAM_WARN_GB" &&
        float_le "$free_percent" "$FREE_RAM_WARN_PERCENT"; then
         echo "WARN"
         return
     fi
 
-    # Warnung:
-    # Hoher Swap UND wenig freier RAM
+    # Warning:
+    # High swap use and little free memory
     if float_ge "$swap_used_gb" "$SWAP_WARN_GB" &&
        float_le "$free_percent" "$FREE_RAM_WARN_PERCENT"; then
         echo "WARN"

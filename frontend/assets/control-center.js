@@ -200,8 +200,8 @@ function showAppView() {
 
 
     /*
-     * Bereichsspezifische Daten erst laden,
-     * wenn der jeweilige View aktiv ist.
+     * Load section-specific data only when the corresponding
+     * view is active.
      */
     if (
         (view === 'system' || view === 'server') &&

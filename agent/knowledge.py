@@ -412,9 +412,8 @@ def index_uploaded_document(
     con = _db()
     _ensure_uploaded_document_tables(con)
 
-    # Bereits vollständig indexiertes Dokument wiederverwenden.
-    # document_id basiert auf dem SHA-256 der Originaldatei und ist
-    # deshalb für identische PDFs stabil.
+    # Reuse a fully indexed document. document_id is based on the SHA-256
+    # of the original file and is therefore stable for identical PDFs.
     existing = con.execute(
         """
         SELECT
@@ -644,9 +643,8 @@ def get_uploaded_document_page(document_id, page):
 
         previous = parts[-1]
 
-        # Die Index-Chunks überlappen sich. Den größten identischen
-        # Suffix-/Prefix-Bereich entfernen, damit Seitentext nicht
-        # doppelt rekonstruiert wird.
+        # Index chunks overlap. Remove the largest identical suffix/prefix
+        # region so page text is not reconstructed twice.
         max_overlap = min(
             500,
             len(previous),

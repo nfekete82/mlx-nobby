@@ -662,8 +662,8 @@ def mlx_chat_stream(request: ChatRequest):
         for message in messages
     )
 
-    # Vision bleibt vorerst auf dem bisherigen direkten
-    # MLX-Pfad. Die Vision-Rolle wird separat angebunden.
+    # Keep vision on the existing direct MLX path for now. The vision role
+    # will be connected separately.
     if has_vision:
 
         status = get_json(
@@ -784,8 +784,8 @@ def mlx_chat_stream(request: ChatRequest):
         )
 
     # -----------------------------------------------------
-    # Normaler Text-Chat:
-    # zentraler role-aware Runtime-Manager auf Port 8010.
+    # Standard text chat:
+    # central role-aware runtime manager on port 8010.
     # -----------------------------------------------------
 
     last_user_prompt = ""
@@ -1310,7 +1310,7 @@ def _safe_model_library_get(url: str, timeout: int = 10):
 
 @app.get("/api/mlx/model-library")
 def mlx_model_library():
-    """Gemeinsame Datenquelle fuer Modellverwaltung, Cache und Download-Jobs."""
+    """Shared data source for model management, cache, and download jobs."""
     return {
         "aliases": _safe_model_library_get(
             f"{AGENT_URL}/api/models",
@@ -1789,9 +1789,8 @@ async def mlx_batch_upload(
         or "application/octet-stream"
     )
 
-    # UploadFile verwendet intern SpooledTemporaryFile.
-    # Große Uploads liegen damit bereits auf Disk und müssen
-    # nicht vollständig in Python-RAM kopiert werden.
+    # UploadFile uses SpooledTemporaryFile internally, so large uploads are
+    # already stored on disk and need not be copied fully into Python memory.
     await file.seek(0)
 
     file.file.seek(0, 2)

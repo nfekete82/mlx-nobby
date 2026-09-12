@@ -299,7 +299,7 @@ function sessionT(key, fallback = '', variables = {}) {
             renderAll();
 
         } catch {
-            // LocalStorage bleibt der Fallback, wenn der Agent nicht erreichbar ist.
+            // Keep localStorage as the fallback when the agent is unavailable.
             if (!state.sessions.length) {
                 createSession();
             }

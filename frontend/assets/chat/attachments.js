@@ -374,11 +374,10 @@ function attachmentT(key, fallback = '', variables = {}) {
                     }
 
                     /*
-                     * Wichtig:
-                     * Für die bestehende große-Dateien-Pipeline erzeugen
-                     * wir aus dem extrahierten PDF-Inhalt eine lokale
-                     * Textdatei. Die Original-PDF bleibt nur die
-                     * Darstellung für den Benutzer.
+                     * Important:
+                     * Create a local text file from the extracted PDF content
+                     * for the existing large-file pipeline. Keep the original
+                     * PDF only as the user-facing representation.
                      */
                     const extractedFile = new File(
                         [extractedText],
@@ -403,9 +402,8 @@ function attachmentT(key, fallback = '', variables = {}) {
                         extension: 'pdf',
 
                         /*
-                         * Absichtlich "text":
-                         * Dadurch funktionieren die vorhandenen
-                         * File-/Batch-/Agent-Routen weiter.
+                         * Deliberately use "text" so the existing file,
+                         * batch, and agent routes continue to work.
                          */
                         kind: 'document',
 

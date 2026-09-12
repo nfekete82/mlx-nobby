@@ -75,7 +75,7 @@ async def transcribe(file: UploadFile = File(...)):
         ) as tmp:
             wav_path = tmp.name
 
-        # Browser-Audio zuverlässig auf Whisper-Format normalisieren.
+        # Reliably normalize browser audio to the format expected by Whisper.
         process = subprocess.run(
             [
                 FFMPEG,

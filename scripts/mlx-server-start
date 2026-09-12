@@ -20,7 +20,7 @@ source "$CONFIG"
 detect_backend() {
     local model="$1"
 
-    # Lokale Modelle automatisch über config.json erkennen
+    # Detect local models automatically through config.json
     if [ -d "$model" ] && [ -f "$model/config.json" ]; then
 
         "$PYTHON" - "$model/config.json" <<'PY'
@@ -57,7 +57,7 @@ PY
         return
     fi
 
-    # Bisherige Hugging-Face-Modelle bleiben LM.
+    # Existing Hugging Face models remain language models.
     echo "lm"
 }
 

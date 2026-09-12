@@ -76,10 +76,10 @@ def _normalize(data: Any) -> dict:
                 custom_fields.append(normalized)
 
     # --------------------------------------------------------
-    # Legacy-Profil automatisch in flexible Informationen
-    # migrieren.
+    # Automatically migrate the legacy profile to flexible
+    # information fields.
     #
-    # Dadurch bleiben alte profile.json-Dateien kompatibel.
+    # This keeps existing profile.json files compatible.
     # --------------------------------------------------------
 
     existing_labels = {

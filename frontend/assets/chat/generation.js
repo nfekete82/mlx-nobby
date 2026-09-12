@@ -643,7 +643,7 @@ async function runAgent(
                     contentUpdated: true
                 });
             } catch (_error) {
-                // Der synchrone Endpunkt bleibt die maßgebliche Antwort.
+                // The synchronous endpoint remains the authoritative response.
             }
         };
 
@@ -960,11 +960,11 @@ const imageFiles =
         );
 
     /*
-     * Dokumente bleiben nach dem ersten Senden im Gespräch aktiv.
+     * Documents remain active in the conversation after the first send.
      *
-     * Priorität:
-     * 1. aktuell angehängtes Dokument
-     * 2. zuletzt verwendetes Dokument aus dem Chatverlauf
+     * Priority:
+     * 1. currently attached document
+     * 2. most recently used document from the chat history
      */
     const priorDocumentFiles =
         session.messages
@@ -1382,8 +1382,8 @@ const imageFiles =
             // ------------------------------------------------
             // Auto-Agent
             // ------------------------------------------------
-            // Der normale Chat-Router kann eine komplexe Aufgabe
-            // automatisch an den bestehenden Agent-Loop eskalieren.
+            // The regular chat router can automatically escalate a complex
+            // task to the existing agent loop.
 
             if (
                 [

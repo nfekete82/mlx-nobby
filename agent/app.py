@@ -423,7 +423,7 @@ def load_jobs():
     if isinstance(payload, dict) and isinstance(payload.get("jobs"), list):
         raw_jobs = payload["jobs"]
     elif isinstance(payload, dict):
-        # Akzeptiert einen eventuell früher verwendeten Dictionary-Store.
+    # Accept a dictionary store that may have been used by earlier versions.
         raw_jobs = [
             {**job, "id": job_id}
             for job_id, job in payload.items()
@@ -544,7 +544,7 @@ def run_background_job(job_id, command, target):
                 with JOBS_LOCK:
                     JOBS[job_id]["output"].append(line)
 
-                    # Log nicht unbegrenzt wachsen lassen
+                    # Keep the log from growing indefinitely.
                     JOBS[job_id]["output"] = JOBS[job_id]["output"][-500:]
 
                 if time.monotonic() - last_save >= 1:
@@ -830,7 +830,7 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
 
 
 def collect_chat_image_ids(value):
-    """Sammelt ausschließlich gültige lokale Bild-IDs aus einem Chat."""
+    """Collect only valid local image IDs from a chat."""
     found = set()
 
     def walk(item):
@@ -855,7 +855,7 @@ def collect_chat_image_ids(value):
 
 
 def delete_chat_images(chat):
-    """Löscht lokale generierte Bilder, die im Chat referenziert sind."""
+    """Delete local generated images referenced by the chat."""
     deleted = []
     failed = []
 
@@ -1187,7 +1187,7 @@ def collect_log_sources(limit=200):
                 errors="replace",
             )
 
-            # Nullbytes aus alten/seltsamen Logs entfernen
+            # Remove null bytes from old or malformed logs.
             content = content.replace("\x00", "")
 
             lines = content.splitlines()
@@ -1353,7 +1353,7 @@ def detect_model_metadata(repo):
         "quantization": None,
     }
 
-    # Quantisierung aus Pfad/Repo ableiten
+    # Infer quantization from the path or repository name.
     lower_repo = repo.lower()
 
     quant_patterns = (
@@ -1371,7 +1371,7 @@ def detect_model_metadata(repo):
             metadata["quantization"] = label
             break
 
-    # Lokales Modell: config.json auswerten
+    # Local model: inspect config.json.
     model_path = Path(repo).expanduser()
 
     if metadata["local"]:
@@ -1795,10 +1795,10 @@ def human_size(num_bytes):
 
 def directory_size(path):
     """
-    Tatsächlich belegte Dateien im Hugging-Face-Cache zählen.
+    Count the actual files stored in the Hugging Face cache.
 
-    Snapshot-Symlinks werden bewusst ignoriert, da sie auf Dateien
-    unter blobs/ zeigen und sonst doppelt gezählt würden.
+    Deliberately ignore snapshot symlinks because they point to files under
+    blobs/ and would otherwise be counted twice.
     """
     total = 0
 
@@ -2881,8 +2881,8 @@ def start_safe_redownload_job(target: str):
 
 @app.post("/api/jobs/redownload/{target:path}")
 def start_redownload_job(target: str):
-    # Legacy-Route: aus Kompatibilitätsgründen erhalten, aber mit derselben
-    # Schutzlogik wie die vom Web-Backend verwendete Safe-Route.
+    # Legacy route retained for compatibility and protected by the same
+    # safeguards as the safe route used by the web backend.
     return start_safe_redownload_job(target)
 
 
@@ -2982,7 +2982,7 @@ def load_notes_data():
             NOTES_FILE.read_text(encoding="utf-8")
         )
 
-        # Alte notes.json automatisch übernehmen.
+        # Automatically migrate the legacy notes.json file.
         if isinstance(data, list):
             return {
                 "folders": [],
@@ -3314,8 +3314,8 @@ def update_note_folder(
 
             folder["name"] = name
 
-        # model_fields_set ist wichtig:
-        # parent_id=null bedeutet bewusst "auf Root verschieben".
+        # model_fields_set matters here:
+        # parent_id=null explicitly means "move to root."
         if "parent_id" in request.model_fields_set:
             parent_id = request.parent_id
 
@@ -3377,12 +3377,12 @@ def delete_note_folder(folder_id: str):
 
         parent_id = folder.get("parent_id")
 
-        # Notizen bleiben erhalten.
+        # Preserve notes.
         for note in data["notes"]:
             if note.get("folder_id") == folder_id:
                 note["folder_id"] = parent_id
 
-        # Unterordner eine Ebene nach oben verschieben.
+        # Move child folders up one level.
         for child in data["folders"]:
             if child.get("parent_id") == folder_id:
                 child["parent_id"] = parent_id
@@ -3777,8 +3777,8 @@ def route_chat_file(request: ChatFileRouteRequest):
         else 0
     )
 
-    # Große Dateien kontrolliert verarbeiten:
-    # Nach jedem vollständig gespeicherten Chunk pausieren.
+    # Process large files in controlled mode:
+    # pause after each fully saved chunk.
     execution_mode = (
         "controlled"
         if file_size >= 1024 * 1024
@@ -3799,8 +3799,8 @@ def route_chat_file(request: ChatFileRouteRequest):
         execution_mode == "controlled"
     )
 
-    # Kleine Jobs weiterhin sofort starten.
-    # Große Jobs bleiben queued, bis der Benutzer entscheidet.
+    # Continue to start small jobs immediately.
+    # Large jobs remain queued until the user chooses how to proceed.
     if not requires_start_choice:
         start_batch_job(job["id"])
 
@@ -3886,10 +3886,10 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         active_code_workspace = False
 
     # ----------------------------------------------------
-    # Automatischer Orchestrator
+    # Automatic orchestrator
     # ----------------------------------------------------
-    # Hat Vorrang vor einzelnen Spezial-Agenten, wenn der
-    # Prompt eindeutig mehrere Fähigkeiten kombinieren soll.
+    # Takes precedence over individual specialist agents when the
+    # prompt clearly requires several capabilities.
     explicit_local_project_reference = any(
         marker in value
         for marker in (
@@ -4097,7 +4097,7 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     ):
         return "coding_agent"
 
-    # Explizite Code-/Dateiänderungen haben Vorrang.
+    # Explicit code and file changes take precedence.
     coding_change_targets = (
         "code",
         "quellcode",
@@ -4188,8 +4188,8 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     ):
         return "coding_agent"
 
-    # "Status" innerhalb eines Datei-/Codeinhalts darf nicht
-    # versehentlich den Systemstatus auslösen.
+        # The word "status" inside file or code content must not
+        # accidentally trigger a system status request.
     system_status_request = (
         any(
             x in value
@@ -4209,10 +4209,10 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         or value.strip() == "status"
     )
 
-    # Ein einfacher Statusabruf bleibt ein schnelles Direkt-Tool.
-    # Eine echte Diagnose-/Analyseanforderung muss dagegen in den
-    # Diagnostic-Agent-Loop gelangen, damit mehrere READ-only
-    # Systembeobachtungen koordiniert werden können.
+        # A simple status request remains a fast direct tool.
+        # A genuine diagnostic or analysis request must enter the
+        # diagnostic agent loop so it can coordinate several read-only
+        # system observations.
     diagnostic_analysis_request = (
         _looks_like_local_diagnostic(
             prompt,
@@ -4335,10 +4335,10 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     )
 
     # ----------------------------------------------------
-    # Automatischer Research-Agent
+    # Automatic research agent
     # ----------------------------------------------------
-    # Nur für eindeutig mehrstufige Recherche.
-    # Einfache aktuelle Fragen bleiben beim schnellen web_search.
+    # Use only for clearly multi-step research.
+    # Simple current-information questions stay on the fast web_search path.
 
     research_markers = (
         "mehrere quellen",
@@ -4488,12 +4488,12 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         return "web_search"
 
     # ----------------------------------------------------
-    # Automatische aktuelle Informationssuche
+    # Automatic current-information search
     # ----------------------------------------------------
-    # Freshness-Wörter wie "heute" allein reichen nicht aus:
-    # "Heute hatte ich einen schlechten Tag." darf keine Websuche starten.
-    # In Verbindung mit einer klaren Informationsabsicht werden aktuelle
-    # Fragen dagegen direkt über web_search beantwortet.
+    # Freshness terms such as "today" are not sufficient on their own:
+    # "Today I had a bad day" must not trigger a web search.
+    # When paired with a clear request for information, current questions
+    # are answered directly through web_search.
     live_information_request = likely_current_question and (
         any(
             marker in value
@@ -4872,7 +4872,7 @@ def classify_chat_action_details(
             "method": "semantic_safety_fallback",
         }
 
-    # Vision bleibt technisch Teil des normalen Chat-/VLM-Pfads.
+    # Vision remains part of the regular chat and VLM path.
     effective_intent="normal_chat" if intent == "vision" else intent
     if intent == "file_analyze" and not file_context:
         effective_intent="normal_chat"
@@ -5366,7 +5366,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
             readable = readable.strip()
 
             # ------------------------------------------------
-            # Consent-/Cookie-/Paywall-Müll erkennen
+    # Detect consent, cookie, and paywall noise
             # ------------------------------------------------
 
             lowered = readable.lower()
@@ -5399,8 +5399,8 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
                 if marker in lowered
             )
 
-            # Viele Consent-Begriffe + wenig brauchbarer Inhalt:
-            # lieber Snippet verwenden.
+            # Prefer the snippet when consent terms dominate
+            # and little usable content remains.
             if junk_hits >= 3 and len(readable) < 8_000:
                 return {
                     "ok": False,
@@ -5409,7 +5409,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
                     "characters": len(readable),
                 }
 
-            # Extrem kurze Seiten sind für den Web-Kontext ebenfalls wertlos.
+    # Extremely short pages are also unsuitable as web context.
             if len(readable) < 500:
                 return {
                     "ok": False,
@@ -5418,7 +5418,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
                     "characters": len(readable),
                 }
 
-            # Genug für Qwen, aber nicht den Kontext fluten.
+    # Provide enough context for Qwen without flooding the context window.
             total_characters = len(readable)
 
             if offset >= total_characters:
@@ -5542,10 +5542,9 @@ def searxng_search_results(query, limit=8):
             ),
         ) from exc
 
-    # SearXNG meldet temporär gesperrte/ausgefallene Engines
-    # separat. Diese Information an den Agenten weiterreichen,
-    # damit "0 Treffer" nicht mit "keine Ergebnisse vorhanden"
-    # verwechselt wird.
+        # SearXNG reports temporarily blocked or unavailable engines
+        # separately. Pass this information to the agent so that
+        # "zero matches" is not confused with "no results available."
     unresponsive_engines = []
 
     for item in payload.get("unresponsive_engines", []):
@@ -5594,7 +5593,7 @@ def searxng_search_results(query, limit=8):
         if not title or not result_url:
             continue
 
-        # Keine lokalen/internen URLs an den Agenten geben.
+        # Do not pass local or internal URLs to the agent.
         if not web_url_is_safe(result_url):
             continue
 
@@ -5638,8 +5637,8 @@ def searxng_search_results(query, limit=8):
 
 def tool_search_web(request):
     """
-    Granulares Agent-Tool:
-    Sucht im Web, lädt die gefundenen Seiten aber noch nicht.
+    Granular agent tool:
+    Search the web without loading the result pages yet.
     """
     query = web_search_query_from_prompt(
         request.prompt
@@ -5663,8 +5662,8 @@ def tool_search_web(request):
 
 def tool_fetch_url(request):
     """
-    Granulares Agent-Tool:
-    Lädt gezielt eine einzelne öffentliche URL.
+    Granular agent tool:
+    Load one specific public URL.
 
     Optional:
         instruction="offset=18000"
@@ -5709,8 +5708,8 @@ def tool_fetch_url(request):
 
 def rerank_technical_web_results(query, results):
     """
-    Hebt für technische Recherche wahrscheinliche Primärquellen an
-    und stuft typische Sekundär-/Profilquellen ab.
+    Promote likely primary sources for technical research and demote
+    common secondary or profile sources.
     """
     from urllib.parse import urlsplit
 
@@ -5752,7 +5751,7 @@ def rerank_technical_web_results(query, results):
         host = host.lower()
         points = 0
 
-        # Typische Primärquellen
+    # Common primary sources
         if host == "github.com" or host.endswith(".github.io"):
             points += 100
 
@@ -5768,7 +5767,7 @@ def rerank_technical_web_results(query, results):
         if "official" in title:
             points += 25
 
-        # Typische schwache Sekundärquellen
+    # Common weak secondary sources
         if "linkedin.com" in host:
             points -= 120
 
@@ -5786,7 +5785,7 @@ def rerank_technical_web_results(query, results):
         if any(host.endswith(domain) for domain in weak_hosts):
             points -= 80
 
-        # Ursprünglichen SearXNG-Score leicht berücksichtigen
+    # Give the original SearXNG score a small weight
         try:
             points += float(item.get("score") or 0)
         except Exception:
@@ -5803,8 +5802,8 @@ def rerank_technical_web_results(query, results):
 
 def tool_web_search(request):
     """
-    Komfort-Tool für normalen Chat:
-    Suchen und automatisch die Top-3-Seiten abrufen.
+    Convenience tool for regular chat:
+    Search and automatically retrieve the top three pages.
     """
     query = web_search_query_from_prompt(
         request.prompt
@@ -5852,7 +5851,7 @@ def tool_web_search(request):
         )
 
         if is_technical:
-            # Kurze technische GitHub-Suche statt site:-Operator.
+            # Use a concise technical GitHub search instead of the site: operator.
             query_words = [
                 word
                 for word in re.findall(
@@ -5877,8 +5876,8 @@ def tool_web_search(request):
                     "konfiguration",
                 }
             ]
-            # Bekannte technische Ökosysteme mit ihrem
-            # kanonischen Suchbegriff recherchieren.
+        # Search known technical ecosystems using their
+        # canonical search terms.
             if re.search(r"\bmlx(?:-lm)?\b", query.lower()):
                 primary_query = "mlx-lm"
             else:
@@ -5898,7 +5897,7 @@ def tool_web_search(request):
                 merged = []
                 seen = set()
 
-                # Primärquellen zuerst.
+        # Prioritize primary sources.
                 for item in primary_results + results:
                     if not isinstance(item, dict):
                         continue
@@ -6403,8 +6402,8 @@ def run_chat_action(request: ChatActionRequest):
             {"routing": routing},
         )
 
-    # Kein direktes Tool:
-    # Signal an das Frontend, automatisch den Agent-Loop zu starten.
+    # No direct tool:
+    # tell the frontend to start the agent loop automatically.
     if action in {
         "research_agent",
         "diagnostic_agent",
@@ -6542,7 +6541,7 @@ def sanitize_invalid_json_escapes(text):
 
         if char == '"':
 
-            # Prüfen, ob Quote escaped ist
+            # Check whether the quote is escaped
             backslashes = 0
             j = i - 1
 
@@ -6568,14 +6567,14 @@ def sanitize_invalid_json_escapes(text):
 
             nxt = text[i + 1]
 
-            # Gültiger einfacher JSON-Escape
+            # Valid simple JSON escape
             if nxt in valid_simple:
                 out.append("\\")
                 out.append(nxt)
                 i += 2
                 continue
 
-            # Unicode-Escape nur gültig bei exakt 4 Hex-Zeichen
+            # A Unicode escape is valid only with exactly four hexadecimal digits
             if nxt == "u":
                 hexpart = text[i + 2:i + 6]
 
@@ -6766,9 +6765,9 @@ def apply_deterministic_transform(text, operations):
             value,
         )
 
-    # Namen und Adressen absichtlich noch NICHT heuristisch
-    # per Regex verändern: zu hohes False-Positive-Risiko.
-    # Diese Operationen werden später als LLM-Fallback behandelt.
+    # Deliberately avoid changing names and addresses heuristically
+    # with regexes because the false-positive risk is too high.
+    # These operations are handled later through the LLM fallback.
 
     return value
 
@@ -6821,8 +6820,8 @@ def hybrid_chunk_needs_llm(text, operations):
         address_markers = (
             r"\b(?:straße|strasse|str\.|weg|platz|allee|gasse|ufer|ring)\s*\d+[a-zA-Z]?\b",
             r"\b\d{5}\s+[A-ZÄÖÜ][\wäöüß-]+\b",
-            # Ein bereits anonymisierter Wert wie
-            # "Anschrift lautet <ADRESSE>" darf keinen LLM-Fallback auslösen.
+        # An already anonymized value such as
+        # "Address: <ADDRESS>" must not trigger the LLM fallback.
             r"\b(?:anschrift|adresse|postfach)\b"
             r"(?!\s*(?:lautet\s*)?(?:[:=]\s*)?"
             r"<(?:ADRESSE|PLZ|ORT)>)"
@@ -7097,7 +7096,7 @@ def analyze_input_file(input_path):
     }
 
     # --------------------------------------------------------
-    # Encoding erkennen
+    # Detect the encoding.
     # --------------------------------------------------------
 
     if raw.startswith(b"\xef\xbb\xbf"):
@@ -7144,7 +7143,7 @@ def analyze_input_file(input_path):
     stripped = text.lstrip()
 
     # --------------------------------------------------------
-    # JSON erkennen
+    # Detect JSON.
     # --------------------------------------------------------
 
     looks_like_json = (
@@ -7214,7 +7213,7 @@ def analyze_input_file(input_path):
                 "position": exc.pos,
             }
 
-            # Allgemeine Reparatur ungültiger JSON-Escapes.
+            # Repair invalid JSON escapes using the safe general rule.
             repaired = sanitize_invalid_json_escapes(text)
 
             if repaired != text:
@@ -7289,7 +7288,7 @@ def analyze_input_file(input_path):
             return result
 
     # --------------------------------------------------------
-    # SQL erkennen
+    # Detect SQL.
     # --------------------------------------------------------
 
     upper = stripped[:4000].upper()
@@ -7314,7 +7313,7 @@ def analyze_input_file(input_path):
         return result
 
     # --------------------------------------------------------
-    # CSV erkennen
+    # Detect CSV.
     # --------------------------------------------------------
 
     lines = text.splitlines()
@@ -7345,7 +7344,7 @@ def analyze_input_file(input_path):
             return result
 
     # --------------------------------------------------------
-    # Sonstige strukturierte Textdateien
+    # Other structured text files.
     # --------------------------------------------------------
 
     extension_map = {
@@ -7457,8 +7456,8 @@ def parse_file_excerpt_selection(instruction):
         return None
 
     # Examples:
-    #   Zeilen 100-150
-    #   Zeile 100 bis 150
+    #   lines 100-150
+    #   lines 100 to 150
     #   lines 100 through 150
     range_match = re.search(
         r"\b(?:zeile|zeilen|lines?)\s+"
@@ -7484,8 +7483,8 @@ def parse_file_excerpt_selection(instruction):
         }
 
     # Examples:
-    #   erste 20 Zeilen
-    #   ersten 20 Zeilen
+    #   German singular variant for "first 20 lines"
+    #   German plural variant for "first 20 lines"
     #   first 20 lines
     first_match = re.search(
         r"\b(?:erste[nrms]?|first)\s+(\d+)\s+"
@@ -7510,8 +7509,8 @@ def parse_file_excerpt_selection(instruction):
         }
 
     # Examples:
-    #   letzte 30 Zeilen
-    #   letzten 30 Zeilen
+    #   last 30 lines (German singular form)
+    #   last 30 lines (German plural form)
     #   last 30 lines
     last_match = re.search(
         r"\b(?:letzte[nrms]?|last)\s+(\d+)\s+"
@@ -7754,10 +7753,10 @@ ROUTER_URL = "http://127.0.0.1:8040"
 
 def router_llm(messages, max_tokens=220, temperature=0.0):
     """
-    Dedizierter semantischer Router.
+    Dedicated semantic router.
 
-    Läuft unabhängig von der wechselbaren Haupt-Runtime auf Port 8000.
-    Dadurch verursacht Intent-Klassifizierung keinen Modellwechsel.
+    Runs independently of the switchable main runtime on port 8000, so
+    intent classification does not trigger a model switch.
     """
     payload = {
         "model": ROUTER_MODEL,
@@ -7813,10 +7812,9 @@ def router_llm(messages, max_tokens=220, temperature=0.0):
 
 def agent_llm(messages, max_tokens=1200, temperature=0.1):
     """
-    Direkter MLX-Aufruf für den autonomen Agent-Loop.
+    Direct MLX call for the autonomous agent loop.
 
-    Der Runtime-Lock bleibt während des kompletten
-    Modellwechsels UND der LLM-Anfrage gehalten.
+    Hold the runtime lock throughout the model switch and the LLM request.
     """
     with MODEL_RUNTIME_LOCK:
         runtime = ensure_model_for_role("agent")
@@ -7829,7 +7827,7 @@ def agent_llm(messages, max_tokens=1200, temperature=0.1):
                 "MLX-Modell konfiguriert"
             )
 
-        # Nach einem möglichen Modellwechsel Config neu lesen.
+        # Reload the configuration after a possible model switch.
         config = load_config()
         port = int(config.get("PORT", 8000))
 
@@ -7901,10 +7899,10 @@ class RuntimeChatRequest(BaseModel):
 @app.post("/api/runtime/chat")
 def runtime_chat(request: RuntimeChatRequest):
     """
-    Zentraler role-aware MLX-Zugriff für normalen Chat.
+    Central role-aware MLX access for regular chat.
 
-    Der Runtime-Lock bleibt vom Modellwechsel bis zum
-    vollständigen Ende der MLX-Antwort gehalten.
+    Hold the runtime lock from the model switch until the MLX response
+    finishes completely.
     """
 
     with MODEL_RUNTIME_LOCK:
@@ -7994,13 +7992,12 @@ def runtime_chat(request: RuntimeChatRequest):
 @app.post("/api/runtime/chat/stream")
 def runtime_chat_stream(request: RuntimeChatRequest):
     """
-    Role-aware Streaming-Gateway für normalen Chat.
+    Role-aware streaming gateway for regular chat.
 
-    Der eigentliche MLX-Stream läuft in einem dedizierten
-    Worker-Thread. Dadurch wird MODEL_RUNTIME_LOCK immer
-    im selben Thread erworben und wieder freigegeben.
+    The actual MLX stream runs in a dedicated worker thread. This ensures
+    MODEL_RUNTIME_LOCK is always acquired and released in the same thread.
 
-    Der HTTP-Generator hält selbst keinen Runtime-Lock.
+    The HTTP generator itself does not hold a runtime lock.
     """
 
     event_queue = queue.Queue()
@@ -8224,7 +8221,7 @@ SHELL_READ_COMMANDS = {
     "sw_vers",
     "uname",
 
-    # Dateien / Programme
+    # Files and programs
     "ls",
     "find",
     "mdfind",
@@ -8237,7 +8234,7 @@ SHELL_READ_COMMANDS = {
     "system_profiler",
     "launchctl",
 
-    # Paketverwaltung – ausschließlich lesend
+# Package management: read-only access
     "brew",
 
     # Netzwerk / Docker
@@ -8276,7 +8273,7 @@ SHELL_READ_MAX_OUTPUT = 30_000
 
 
 def validate_shell_read_command(command):
-    """Validiert einen Diagnosebefehl ohne Shell-Interpreter."""
+    """Validate a diagnostic command without a shell interpreter."""
 
     import shlex
 
@@ -8300,8 +8297,8 @@ def validate_shell_read_command(command):
 
     executable = args[0]
 
-    # Das auszuführende Programm selbst darf nicht über einen
-    # beliebigen Pfad bestimmt werden.
+    # The executable itself must not be selected through an
+    # arbitrary path.
     if "/" in executable:
         raise ValueError(
             "Absolute oder relative Programmpfade sind nicht erlaubt"
@@ -8319,7 +8316,7 @@ def validate_shell_read_command(command):
 
     if executable == "sysctl":
 
-        # sysctl -w verändert Kernel-Parameter.
+            # sysctl -w changes kernel parameters.
         for arg in args[1:]:
             if arg == "-w" or arg.startswith("-w"):
                 raise ValueError(
@@ -8359,7 +8356,7 @@ def validate_shell_read_command(command):
                     f"find-Aktion nicht erlaubt: {arg}"
                 )
 
-            # Schutz für Varianten wie -execdir.
+            # Guard against variants such as -execdir.
             if (
                 lowered.startswith("-exec")
                 or lowered.startswith("-ok")
@@ -8389,7 +8386,7 @@ def validate_shell_read_command(command):
                 f"freigegeben: {subcommand}"
             )
 
-        # Zusätzlicher Schutz gegen bekannte Schreiboptionen.
+            # Additional guard against known write options.
         blocked_brew_options = {
             "--force",
             "--overwrite",
@@ -8408,7 +8405,7 @@ def validate_shell_read_command(command):
 
     if executable == "launchctl":
 
-        # Nur Abfragen erlauben.
+        # Allow read-only queries only.
         if len(args) < 2:
             raise ValueError(
                 "launchctl-Unterbefehl fehlt"
@@ -8446,7 +8443,7 @@ def validate_shell_read_command(command):
                 f"freigegeben: {subcommand}"
             )
 
-        # Unterkommandos von volume/network ebenfalls einschränken.
+            # Restrict volume and network subcommands as well.
         if subcommand in {"volume", "network"}:
 
             if len(args) < 3:
@@ -8521,10 +8518,9 @@ def validate_shell_read_command(command):
 
 def tool_shell_read(command):
     """
-    Führt ausschließlich freigegebene Read-only-Diagnosebefehle aus.
+    Execute only approved read-only diagnostic commands.
 
-    Kein shell=True, keine Pipes, keine Redirects und keine
-    Command-Substitution.
+    Do not use shell=True, pipes, redirects, or command substitution.
     """
     args = validate_shell_read_command(command)
 
@@ -8660,8 +8656,8 @@ READ_ONLY_AGENT_TOOLS = {
     "fetch_url",
 }
 
-# PREPARE-Tools dürfen Patch-Metadaten erzeugen,
-# verändern aber niemals direkt den Workspace-Quellcode.
+        # PREPARE tools may create patch metadata, but they must never
+        # modify workspace source code directly.
 PREPARE_AGENT_TOOLS = {
     "code_patch",
 }
@@ -8677,14 +8673,13 @@ def allowed_agent_tools(mode):
 
 def normalize_json_structural_whitespace(value):
     """
-    Normalisiert Unicode-Whitespace ausschließlich AUSSERHALB
-    von JSON-Strings.
+    Normalize Unicode whitespace only outside JSON strings.
 
-    Manche lokale Modelle erzeugen z.B. NBSP (U+00A0) für die
-    Einrückung eines ansonsten gültigen JSON-Objekts. Der Python-
-    JSON-Parser akzeptiert dort nur JSON-Whitespace nach RFC 8259.
+    Some local models emit NBSP (U+00A0), for example, when indenting an
+    otherwise valid JSON object. Python's JSON parser accepts only JSON
+    whitespace defined by RFC 8259 in that position.
 
-    Inhalte innerhalb von Strings bleiben vollständig unverändert.
+    Content inside strings remains unchanged.
     """
     value = str(value or "")
 
@@ -8714,11 +8709,11 @@ def normalize_json_structural_whitespace(value):
             result.append(char)
             continue
 
-        # JSON erlaubt strukturell nur:
-        # U+0020 SPACE, TAB, LF und CR.
+    # JSON permits only these whitespace characters structurally:
+    # U+0020 SPACE, TAB, LF, and CR.
         #
-        # Andere Unicode-Whitespace-Zeichen außerhalb von Strings
-        # werden sicher auf normales SPACE normalisiert.
+    # Other Unicode whitespace characters outside strings are
+    # safely normalized to regular SPACE characters.
         if char.isspace() and char not in " \t\n\r":
             result.append(" ")
         else:
@@ -8728,13 +8723,13 @@ def normalize_json_structural_whitespace(value):
 
 
 def parse_agent_json(value):
-    """Extrahiert robust genau ein JSON-Objekt aus einer Modellantwort."""
+    """Reliably extract exactly one JSON object from a model response."""
 
     value = str(value or "").strip()
 
-    # Lokale Modelle verwenden gelegentlich Unicode-Whitespace
-    # wie NBSP (U+00A0) für JSON-Einrückungen. Dieser ist außerhalb
-    # von Strings kein gültiger JSON-Whitespace.
+    # Local models occasionally use Unicode whitespace such as
+    # NBSP (U+00A0) for JSON indentation. Outside strings, this is
+    # not valid JSON whitespace.
     value = normalize_json_structural_whitespace(value)
 
     if not value:
@@ -8755,7 +8750,7 @@ def parse_agent_json(value):
             value,
         ).strip()
 
-    # Idealfall: komplette Antwort ist gültiges JSON.
+    # Ideal case: the complete response is valid JSON.
     try:
         result = json.loads(value)
         if isinstance(result, dict):
@@ -9002,11 +8997,11 @@ def execute_read_only_agent_tool(
         read_query = str(query).strip()
 
         # -------------------------------------------------
-        # Argument-Guard für code_read
+    # Argument guard for code_read
         # -------------------------------------------------
-        # code_read darf nur Workspace-Dateipfade erhalten.
-        # Damit verhindern wir z. B., dass eine Web-Suchanfrage
-        # versehentlich als Dateiname interpretiert wird.
+    # code_read may receive only workspace file paths.
+    # This prevents a web search query, for example, from being
+    # interpreted as a filename by mistake.
         if "\n" in read_query or "\r" in read_query:
             raise ValueError(
                 "code_read erwartet einen einzelnen Dateipfad, "
@@ -9019,7 +9014,7 @@ def execute_read_only_agent_tool(
                 "verwende dafür fetch_url"
             )
 
-        # Zeilenbereich vor der Pfadprüfung entfernen:
+    # Remove the line range before validating the path:
         #   agent/app.py:100-200 -> agent/app.py
         path_candidate = re.sub(
             r":\d+(?:-\d+)?$",
@@ -9039,11 +9034,11 @@ def execute_read_only_agent_tool(
                 "Workspace-Pfade"
             )
 
-        # Typischer Fehlrouting-Fall:
+    # Typical routing error:
         #   "MLX best practices local inference python"
         #
-        # Mehrere Wörter ohne irgendein Pfad-/Dateimerkmal sind
-        # sehr wahrscheinlich eine Suchanfrage und kein Dateiname.
+    # Multiple words without any path or file marker are most
+    # likely a search query rather than a filename.
         path_markers = (
             "/",
             "\\",
@@ -9065,8 +9060,8 @@ def execute_read_only_agent_tool(
                 "web_search"
             )
 
-        # Falls das Modell den gewünschten Zeilenbereich nur in
-        # "instruction" schreibt, wird er hier als Fallback übernommen.
+        # If the model puts the requested line range only in
+        # "instruction", use it here as a fallback.
         if ":" not in read_query and instruction:
             instruction_text = str(instruction).strip()
 
@@ -9092,7 +9087,7 @@ def execute_read_only_agent_tool(
                     f"{fallback_start}-{fallback_end}"
                 )
 
-        # Unterstützte Formen:
+    # Supported forms:
         #   agent/app.py
         #   agent/app.py:2880
         #   agent/app.py:2850-3150
@@ -9741,8 +9736,8 @@ def split_batch_content(text, file_type, chunk_size):
 
             current_tokens = estimate_tokens(current)
 
-            # Einzelnes Element größer als Token-Limit:
-            # als letzte Sicherheitsstufe hart teilen.
+            # A single item exceeds the token limit:
+            # split it as a final safety measure.
             if unit_tokens > chunk_size:
                 if current:
                     chunks.append(current)
@@ -9870,8 +9865,8 @@ def split_batch_content(text, file_type, chunk_size):
         try:
             data = json.loads(text)
 
-            # Top-Level Array:
-            # Jeder Chunk soll für sich gültiges JSON sein.
+            # Top-level array:
+            # each chunk must be valid JSON on its own.
             if isinstance(data, list):
                 if not data:
                     return ["[]"]
@@ -9992,7 +9987,7 @@ def split_batch_content(text, file_type, chunk_size):
     # Text
     # --------------------------------------------------------
     if detected_type == "text":
-        # Absätze erhalten.
+        # Preserve paragraphs.
         paragraphs = []
         current = []
 
@@ -10043,7 +10038,7 @@ def split_chunk_hard(text, max_tokens):
             start + max_chars,
         )
 
-        # Bevorzugt an Zeilenumbruch trennen.
+        # Prefer splitting at a line break.
         if end < len(text):
             newline = text.rfind(
                 "\n",
@@ -10539,9 +10534,9 @@ def run_batch_transform_job(job_id):
             raise RuntimeError(invalid_json_error(analysis))
 
 
-        # Schneller JSON-PII-Pfad:
-        # Strukturierte Felder und eindeutig erkennbare Freitexte werden
-        # deterministisch anonymisiert. Nur echte Restfälle gehen ans LLM.
+            # Fast JSON PII path:
+            # anonymize structured fields and clearly identifiable free text
+            # deterministically. Send only genuine remaining cases to the LLM.
         if (
             detected_type == "json"
             and batch_mode in {"fast", "hybrid"}
@@ -10601,10 +10596,9 @@ def run_batch_transform_job(job_id):
                             "text": cleaned_value,
                         })
 
-                # Semantische Restfälle werden nicht mehr als komplette
-                # JSON-Datei an das Modell geschickt. Stattdessen verarbeiten
-                # wir nur die tatsächlich relevanten Freitextwerte in kleinen,
-                # strukturierten Batches.
+            # Do not send the complete JSON file to the model for remaining
+            # semantic cases. Process only the relevant free-text values in
+            # small, structured batches.
                 freetext_batches = build_json_freetext_batches(
                     llm_targets
                 )
@@ -10706,8 +10700,8 @@ def run_batch_transform_job(job_id):
                         )
                     )
 
-                    # Bereits erfolgreich verarbeitete Batches können beim
-                    # Resume direkt wiederverwendet werden.
+                        # Reuse successfully processed batches directly when
+                        # resuming the job.
                     if checkpoint_path.exists():
                         try:
                             checkpoint_values = json.loads(
@@ -10765,13 +10759,13 @@ def run_batch_transform_job(job_id):
                             continue
 
                         except Exception:
-                            # Kaputter oder veralteter Checkpoint:
-                            # Batch sicher neu ausführen.
+                        # Invalid or outdated checkpoint:
+                        # rerun the batch safely.
                             checkpoint_path.unlink(
                                 missing_ok=True
                             )
 
-                    # Pause / Abbruch vor jedem LLM-Batch beachten.
+                    # Honor pause and cancellation before each LLM batch.
                     while True:
                         with BATCH_LOCK:
                             jobs = load_batch_jobs()
@@ -10820,7 +10814,7 @@ def run_batch_transform_job(job_id):
                                 "current_chunk_started_at"
                             ] = batch_started_at
 
-                            # Der Zähler beschreibt echte Requests an MLX.
+                    # This counter records actual requests to MLX.
                             jobs[job_id]["mlx_calls"] = int(
                                 jobs[job_id].get(
                                     "mlx_calls",
@@ -10935,8 +10929,8 @@ def run_batch_transform_job(job_id):
 
                             save_batch_jobs(jobs)
 
-                # Nach allen deterministischen und semantischen Batches
-                # wird die Originalstruktur genau einmal serialisiert.
+                # Serialize the original structure exactly once after all
+                # deterministic and semantic batches finish.
                 output_text = json.dumps(
                     json_value,
                     ensure_ascii=False,
@@ -11101,7 +11095,7 @@ def run_batch_transform_job(job_id):
             else set()
         )
 
-        # Nur lückenlos abgeschlossene Chunks ab 1 zählen.
+        # Count only contiguous completed chunks starting at 1.
         contiguous_completed = 0
 
         while (
@@ -11170,7 +11164,7 @@ Keine Markdown-Codeblöcke.
 
                     save_batch_jobs(jobs)
 
-            # Pause / Abbruch prüfen
+            # Check for pause or cancellation
             while True:
                 with BATCH_LOCK:
                     jobs = load_batch_jobs()
@@ -11604,8 +11598,8 @@ def start_batch_job(job_id: str):
             detail="Batch-Job läuft bereits",
         )
 
-    # Persistierter running-Status ohne lebenden Worker
-    # bedeutet: Agent/Worker wurde unterbrochen.
+    # A persisted running state without a live worker means
+    # that the agent or worker was interrupted.
     if job.get("status") == "running":
         with BATCH_LOCK:
             jobs = load_batch_jobs()
@@ -11889,7 +11883,7 @@ def cancel_batch_job(job_id: str):
 
 
 # =========================================================
-# Agent V2 - kontrollierte Schreibaktionen mit Approval
+# Agent V2 - controlled write actions with approval
 # =========================================================
 
 import time as _agent_time
@@ -12532,8 +12526,8 @@ Bei allgemeinen Systemdiagnosen:
             flush=True,
         )
 
-        # Genau ein kontrollierter Format-Repair.
-        # Vor erfolgreichem Parsing wird keine Aktion ausgeführt.
+    # Perform exactly one controlled format repair.
+    # Do not execute an action until parsing succeeds.
         repaired_answer = agent_llm(
             [
                 {
@@ -12624,13 +12618,13 @@ def create_agent_approval(
     elif operation == "code_apply":
         target = validate_agent_patch_id(target)
 
-        # Approval nur für tatsächlich existierenden Patch.
+    # Approve only a patch that actually exists.
         patch_state = code_workspaces.diff(target)
         if patch_state.get("status") != "proposed":
             raise ValueError("code_apply benötigt einen vorgeschlagenen Patch")
 
-        # Diff und Test müssen als erfolgreiche, geordnete Observations
-        # für exakt diesen Patch vorhanden sein.
+    # Diff and test must exist as successful, ordered observations
+    # for this exact patch.
         diff_step = None
         test_step = None
         test_result = None
@@ -12768,7 +12762,7 @@ def execute_agent_approved_action(pending):
 
 
 def orchestrator_required_evidence(goal):
-    """Ermittelt erforderliche Capability-Gruppen aus dem Nutzerziel."""
+    """Determine required capability groups from the user goal."""
 
     value = str(goal or "").lower()
 
@@ -12793,8 +12787,8 @@ def orchestrator_required_evidence(goal):
         "primaerquelle",
     ))
 
-    # Lokale Code-Evidence nur verlangen, wenn das Nutzerziel
-    # tatsächlich den eigenen/lokalen Workspace betrifft.
+    # Require local code evidence only when the user goal actually
+    # concerns the active local workspace.
     explicit_local_code = any(marker in value for marker in (
         "lokaler code",
         "lokalen code",
@@ -12846,10 +12840,10 @@ def orchestrator_required_evidence(goal):
 
 def orchestrator_observed_evidence(observations):
     """
-    Ermittelt tatsächlich beobachtete Evidence.
+    Determine evidence that was actually observed.
 
-    Neben direkten Orchestrator-Tool-Aufrufen werden auch erfolgreich
-    abgeschlossene Tool-Schritte delegierter Spezialagenten berücksichtigt.
+    Include both direct orchestrator tool calls and successfully completed
+    tool steps from delegated specialist agents.
     """
 
     actions = set()
@@ -12870,7 +12864,7 @@ def orchestrator_observed_evidence(observations):
                 actions.add(action)
 
             # Orchestrator v2:
-            # Evidence aus erfolgreichen Subagents übernehmen.
+            # include evidence from successful subagents.
             if action == "delegate_agent":
                 result = item.get("result")
 
@@ -12932,7 +12926,7 @@ def normalize_delegate_goal(value):
 
 def orchestrator_delegate_attempts(observations, agent_name):
     """
-    Zählt bereits ausgeführte Delegationen an denselben Spezialagenten.
+    Count delegations already run for the same specialist agent.
     """
     agent_name = str(agent_name or "").strip().lower()
 
@@ -12960,7 +12954,7 @@ def orchestrator_duplicate_delegation(
     delegate_goal,
 ):
     """
-    Erkennt identische oder praktisch identische Delegationen.
+    Detect identical or effectively identical delegations.
     """
     agent_name = str(agent_name or "").strip().lower()
     goal_norm = normalize_delegate_goal(delegate_goal)
@@ -12993,10 +12987,10 @@ def orchestrator_duplicate_delegation(
 
 def orchestrator_unresolved_subagent_quality(observations):
     """
-    Ermittelt offene Quality-Probleme delegierter Spezialagenten.
+    Determine unresolved quality issues from delegated specialist agents.
 
-    Ein späterer erfolgreicher Report desselben Agenten mit
-    evidence_sufficient=true löst den offenen Zustand wieder auf.
+    A later successful report from the same agent with
+    evidence_sufficient=true resolves the open state.
     """
     state = {}
 
@@ -13151,9 +13145,9 @@ def coding_final_answer_requires_repair(answer, observations):
 
     reasons = []
 
-    # Satzweise prüfen, damit negative Aussagen wie
-    # "Es kann nicht garantiert werden, dass der Code fehlerfrei läuft"
-    # nicht als positiver Funktionsclaim gewertet werden.
+    # Evaluate one sentence at a time so negative statements such as
+    # "The code cannot be guaranteed to run without errors" are not
+    # treated as positive claims about functionality.
     sentences = [
         sentence.strip()
         for sentence in re.split(r"(?<=[.!?])\s+|\n+", value)
@@ -13485,8 +13479,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
 
 def boost_orchestrator_research_query(goal, query):
     """
-    Verbessert technische Orchestrator-Suchen in Richtung Primärquellen,
-    ohne normale Websuchen global zu verändern.
+    Steer technical orchestrator searches toward primary sources without
+    changing regular web searches globally.
     """
     goal_value = str(goal or "").lower()
     value = str(query or "").strip()
@@ -13525,7 +13519,7 @@ def boost_orchestrator_research_query(goal, query):
     if not is_technical:
         return value
 
-    # Nicht doppelt aufblasen.
+    # Do not expand the request twice.
     lower = value.lower()
 
     if (
@@ -13543,8 +13537,8 @@ def boost_orchestrator_research_query(goal, query):
 
 def sanitize_orchestrator_web_query(goal, query):
     """
-    Entfernt bei explizit aktuellen Recherchen veraltete,
-    vom Modell erfundene Jahreszahlen aus Web-Suchanfragen.
+    Remove stale model-invented years from web queries for explicitly
+    current research.
     """
     from datetime import datetime
 
@@ -13592,14 +13586,13 @@ def sanitize_orchestrator_web_query(goal, query):
 
 def source_is_primary_for_goal(goal, reference):
     """
-    Konservative deterministische Prüfung, ob eine geladene Webquelle
-    für das konkrete Research-Ziel als Primärquelle gelten darf.
+    Conservatively determine whether a loaded web source qualifies as a
+    primary source for the specific research goal.
 
-    Aktuell werden GitHub-/Raw-GitHub-Projektquellen nur dann akzeptiert,
-    wenn Owner UND Repository im Ziel ausdrücklich genannt werden.
+    GitHub and raw GitHub project sources are accepted only when the goal
+    explicitly names both the owner and repository.
 
-    Ein beliebiges github.com-Resultat ist ausdrücklich NICHT automatisch
-    eine Primärquelle.
+    An arbitrary github.com result is not automatically a primary source.
     """
     from urllib.parse import urlsplit
 
@@ -13647,7 +13640,7 @@ def source_is_primary_for_goal(goal, reference):
     else:
         return False
 
-    # GitHub erlaubt .git am Repository-Ende.
+    # GitHub allows .git at the end of a repository name.
     if repo.endswith(".git"):
         repo = repo[:-4]
 
@@ -13662,8 +13655,8 @@ def source_is_primary_for_goal(goal, reference):
     normalized_owner = normalize_identifier(owner)
     normalized_repo = normalize_identifier(repo)
 
-    # Bewusst streng:
-    # Owner UND Repository müssen im Ziel erkennbar sein.
+    # Deliberately strict:
+    # both the owner and repository must be identifiable in the goal.
     if not normalized_owner or not normalized_repo:
         return False
 
@@ -13675,8 +13668,8 @@ def source_is_primary_for_goal(goal, reference):
 
 def deterministic_loaded_web_sources(goal, sub_result):
     """
-    Extrahiert ausschließlich tatsächlich erfolgreich geladene Webquellen
-    aus Child-Observations und versieht sie deterministisch mit Primary-Status.
+    Extract only successfully loaded web sources from child observations and
+    assign primary-source status deterministically.
     """
     sources = []
 
@@ -13732,11 +13725,10 @@ def deterministic_loaded_web_sources(goal, sub_result):
 
 def build_subagent_report(agent_name, goal, sub_result):
     """
-    Erzeugt eine kompakte, strukturierte Agent-zu-Agent-Übergabe.
+    Create a compact, structured agent-to-agent handoff.
 
-    Der Report wird ausschließlich aus dem tatsächlichen Child-Ergebnis
-    und dessen Observations erzeugt. Er verändert keine Toolrechte und
-    führt selbst keine Tools aus.
+    Build the report only from the actual child result and its observations.
+    It does not change tool permissions or execute tools itself.
     """
     agent_name = str(agent_name or "").strip()
     goal = str(goal or "").strip()
@@ -13916,8 +13908,8 @@ Regeln:
         if not reference:
             continue
 
-        # URLs sind Webquellen, auch wenn das Report-LLM sie
-        # fälschlich als "file" bezeichnet.
+                # URLs are web sources even when the report LLM
+                # incorrectly labels them as "file".
         if reference.lower().startswith(
             ("http://", "https://")
         ):
@@ -13927,13 +13919,13 @@ Regeln:
             "type": source_type,
             "reference": reference[:2000],
             "loaded": bool(item.get("loaded")),
-            # Das LLM darf Primary nicht bestimmen.
+        # The LLM must not determine primary-source status.
             "primary": False,
         })
 
     # --------------------------------------------------------
-    # Tatsächlich geladene Webquellen aus Tool-Evidence haben Vorrang
-    # vor der Klassifizierung des Report-LLMs.
+        # Web sources actually loaded through tool evidence take precedence
+        # over the report LLM classification.
     # --------------------------------------------------------
 
     deterministic_by_reference = {
@@ -14010,8 +14002,8 @@ Regeln:
 
 def research_goal_requires_primary_source(goal):
     """
-    Erkennt deterministisch, ob das Research-Ziel ausdrücklich eine
-    offizielle Quelle bzw. Primärquelle verlangt.
+    Determine whether the research goal explicitly requires an official or
+    primary source.
     """
     value = str(goal or "").strip().lower()
 
@@ -14037,10 +14029,10 @@ def research_goal_requires_primary_source(goal):
 
 def assess_subagent_report(agent_name, goal, report):
     """
-    Bewertet die Qualität eines strukturierten Subagent-Reports
-    deterministisch und ohne zusätzlichen LLM-Aufruf.
+    Evaluate the quality of a structured subagent report deterministically
+    without an additional LLM call.
 
-    Diese Funktion führt keine Tools aus und verändert keine Rechte.
+    This function does not execute tools or change permissions.
     """
     agent_name = str(agent_name or "").strip().lower()
     goal = str(goal or "").strip().lower()
@@ -14122,8 +14114,8 @@ def assess_subagent_report(agent_name, goal, report):
     reasons = []
     warnings = []
 
-    # Die LLM-Confidence ist nur eine Selbsteinschätzung des Reports.
-    # Deterministisch bestätigte Tool-Evidence hat Vorrang.
+    # LLM confidence is only the report's self-assessment.
+    # Deterministically confirmed tool evidence takes precedence.
     deterministic_evidence_present = bool(loaded_sources)
 
     if confidence < 0.65:
@@ -14203,15 +14195,14 @@ def assess_subagent_report(agent_name, goal, report):
 
 def canonical_github_repo_from_goal(goal):
     """
-    Extrahiert konservativ ein explizit genanntes GitHub owner/repo
-    aus dem Ziel.
+    Conservatively extract an explicitly named GitHub owner/repo from the goal.
 
-    Unterstützt:
+    Supported forms:
       - https://github.com/owner/repo
       - github.com/owner/repo
       - owner/repo
 
-    Keine freie Repository-Erfindung.
+    Do not infer an unspecified repository.
     """
     value = str(goal or "").strip()
 
@@ -14263,8 +14254,7 @@ def canonical_github_repo_from_goal(goal):
 
 def degraded_empty_web_search_count(observations):
     """
-    Zählt tatsächlich ausgeführte Websuchen,
-    die degradiert und ohne Treffer waren.
+    Count executed web searches that were degraded and returned no results.
     """
     count = 0
 
@@ -14314,10 +14304,9 @@ def run_agent_v2(
         "orchestrator": 12,
     }.get(mode, 6)
 
-    # Research behält sein normales 6-Schritt-Budget.
-    # Für das kontrollierte Weiterlesen bereits geladener,
-    # abgeschnittener Webquellen stehen höchstens drei
-    # zusätzliche Planner-Schritte zur Verfügung.
+    # Research keeps its regular six-step budget.
+    # At most three additional planner steps are available for
+    # controlled continuation of already loaded, truncated web sources.
     research_continuation_steps = 3 if mode == "research" else 0
     loop_max_steps = max_steps + research_continuation_steps
 
@@ -14362,9 +14351,8 @@ def run_agent_v2(
         start_step,
         loop_max_steps + 1,
     ):
-        # Zusätzliche Research-Schritte sind ausschließlich für
-        # die Fortsetzung einer bereits erfolgreich geladenen,
-        # abgeschnittenen Webquelle erlaubt.
+        # Additional research steps are allowed only to continue an
+        # already loaded, truncated web source.
         if mode == "research" and step > max_steps:
             continuation_available = any(
                 isinstance(item, dict)
@@ -14408,9 +14396,8 @@ def run_agent_v2(
 
         if action == "final":
 
-            # Orchestrator darf bei expliziten Cross-Capability-Zielen
-            # erst abschließen, wenn die erforderlichen Datenquellen
-            # tatsächlich erfolgreich benutzt wurden.
+            # For explicit cross-capability goals, the orchestrator may finish
+            # only after the required data sources have been used successfully.
             if mode == "orchestrator":
                 missing = orchestrator_missing_evidence(
                     goal,
@@ -14536,8 +14523,8 @@ def run_agent_v2(
 
                         publish("running", observations[-1])
 
-                # Beim Orchestrator wird die finale Antwort grundsätzlich
-                # erneut ausschließlich aus den Observations synthetisiert.
+                # The orchestrator always synthesizes the final answer again
+                # using only the observations.
                 final_answer = agent_v2_final_answer(
                     goal,
                     observations,
@@ -14663,9 +14650,8 @@ def run_agent_v2(
                 "research": "research",
                 "diagnostic": "diagnostic",
 
-                # coding_analysis wird absichtlich NICHT als
-                # Coding-Modus gestartet. Dadurch stehen dem
-                # Subagenten ausschließlich READ-Tools zur Verfügung.
+                # Deliberately do not start coding_analysis in coding mode.
+                # This gives the subagent access only to read tools.
                 "coding_analysis": "orchestrator_readonly_code",
             }
 
@@ -14745,12 +14731,12 @@ def run_agent_v2(
                 publish("running", observations[-1])
                 continue
 
-            # Schutz gegen riesige oder missbräuchliche Delegationsziele.
+            # Guard against excessively large or abusive delegation goals.
             delegate_goal = delegate_goal[:4000]
 
-            # coding_analysis bekommt einen speziellen READ-only Auftrag.
-            # Technisch verwenden wir dafür den Research-Modus, dessen
-            # Toolrechte ebenfalls ausschließlich READ-only sind.
+            # coding_analysis receives a dedicated read-only assignment.
+            # It uses research mode internally, whose tool permissions are
+            # also read-only.
             if delegate_name == "coding_analysis":
                 delegate_mode = "research"
                 effective_goal = (
@@ -14792,9 +14778,9 @@ def run_agent_v2(
                     mode=delegate_mode,
                     conversation_context=conversation_context,
 
-                    # Kein progress_callback:
-                    # Subagent-Schritte werden zunächst kompakt
-                    # als Ergebnis an den Orchestrator zurückgegeben.
+                    # No progress_callback:
+                    # return subagent steps to the orchestrator as a compact
+                    # result first.
                     allow_approval=False,
                     progress_callback=None,
                 )
@@ -14883,13 +14869,12 @@ def run_agent_v2(
         files = decision.get("files")
 
         # -------------------------------------------------
-        # Research Search-Loop-Guard
+        # Research search-loop guard
         # -------------------------------------------------
-        # Research soll nicht sein gesamtes Schrittbudget mit immer neuen
-        # Suchvarianten verbrauchen, wenn bereits konkrete Treffer vorliegen.
-        # Nach drei ausgeführten Websuchen wird eine weitere Suche blockiert.
-        # Der Planner muss dann vorhandene Treffer mit fetch_url verifizieren
-        # oder mit transparenter Einschränkung abschließen.
+        # Research should not consume its entire step budget on new search
+        # variations when concrete results already exist. After three web
+        # searches, block another search. The planner must then verify existing
+        # results with fetch_url or finish with a transparent limitation.
         if (
             mode == "research"
             and action in {"web_search", "search_web"}
@@ -14964,7 +14949,7 @@ def run_agent_v2(
                 continue
 
         # -------------------------------------------------
-        # Orchestrator Query-Härtung
+        # Orchestrator query hardening
         # -------------------------------------------------
         if (
             mode == "orchestrator"
@@ -15076,7 +15061,7 @@ def run_agent_v2(
                 except Exception:
                     return value.rstrip("/")
 
-                # Fragment ist für die Quellenidentität irrelevant.
+                # The fragment does not affect source identity.
                 return urlunsplit((
                     parts.scheme.lower(),
                     parts.netloc.lower(),
@@ -15135,8 +15120,8 @@ def run_agent_v2(
 
             def fetch_url_is_allowed(requested, allowed):
                 """
-                Erlaubt exakt gefundene URLs sowie echte Unterpfade.
-                Host und Scheme müssen identisch bleiben.
+                Allow exact discovered URLs and genuine subpaths.
+                The host and scheme must remain identical.
                 """
                 if requested == allowed:
                     return True
@@ -15166,8 +15151,8 @@ def run_agent_v2(
                     allowed_parts.path.rstrip("/") or "/"
                 )
 
-                # Ein Domain-Root-Treffer gibt nicht automatisch
-                # die gesamte Domain frei.
+                # A domain-root match does not automatically
+                # allow the entire domain.
                 if allowed_path == "/":
                     return False
 
@@ -15236,18 +15221,18 @@ def run_agent_v2(
                 continue
 
         # -------------------------------------------------
-        # Deterministisches code_search -> code_read Targeting
+        # Deterministic code_search -> code_read targeting
         # -------------------------------------------------
-        # Wenn das Modell nach einem erfolgreichen code_search nur den
-        # nackten Dateipfad lesen will, nutzen wir einen exakten Treffer
-        # aus der letzten passenden Suche als Zeilenanker.
+        # If the model requests only the bare file path after a successful
+        # code_search, use an exact result from the latest matching search
+        # as the line anchor.
         #
-        # Dadurch wird aus:
+        # This turns:
         #   code_search -> agent/app.py:6325
         #   code_read   -> agent/app.py
         #
-        # direkt ein gezielter Read um die Fundstelle, statt bei Zeile 1
-        # zu beginnen und anschließend linear zu paginieren.
+        # into a targeted read around the match instead of starting at line 1
+        # and then paginating sequentially.
         if action == "code_read" and query:
             requested_query = str(query).strip()
 
@@ -15331,16 +15316,14 @@ def run_agent_v2(
                     )
 
         # -------------------------------------------------
-        # Deterministische code_read-Pagination
+        # Deterministic code_read pagination
         # -------------------------------------------------
-        # Lokale Modelle vergessen gelegentlich, beim Weiterlesen
-        # einen neuen Zeilenbereich anzugeben und fordern stattdessen
-        # denselben nackten Dateipfad erneut an.
+        # Local models sometimes omit a new line range when continuing and
+        # request the same bare file path again.
         #
-        # Wenn genau dieser Pfad bereits erfolgreich gelesen wurde,
-        # setzen wir automatisch hinter dem zuletzt gelesenen Bereich
-        # fort. Dadurch funktioniert progressives Lesen auch dann
-        # zuverlässig, wenn das Modell die Prompt-Regel missachtet.
+        # If that exact path was already read successfully, continue after
+        # the most recently read range automatically. This keeps progressive
+        # reading reliable even when the model ignores the prompt rule.
         if action == "code_read" and query:
             requested_query = str(query).strip()
 
@@ -15393,7 +15376,7 @@ def run_agent_v2(
                         )
 
         # -------------------------------------------------
-        # Repeat- / Loop-Guard für Agent-Tool-Aufrufe
+        # Repeat and loop guard for agent tool calls
         # -------------------------------------------------
         if mode == "orchestrator":
 
@@ -15404,9 +15387,9 @@ def run_agent_v2(
                 and item.get("status") == "completed"
             ]
 
-            # 1. Identische action + query nicht mehrfach wiederholen.
-            # instruction wird absichtlich nicht Teil der Signatur,
-            # weil query für READ-Tools die eigentliche Zielreferenz ist.
+        # 1. Do not repeat an identical action and query.
+        # Deliberately exclude instruction from the signature because query
+        # is the actual target reference for read tools.
             same_call_count = sum(
                 1
                 for item in completed_tool_calls
@@ -15440,9 +15423,9 @@ def run_agent_v2(
                 publish("running", observations[-1])
                 continue
 
-            # 2. Web-Suche begrenzen.
-            # Nach drei erfolgreichen Suchen soll vertieft oder synthetisiert
-            # werden, statt weitere ähnliche Suchläufe zu verbrauchen.
+        # 2. Limit web searches.
+        # After three successful searches, inspect results more deeply or
+        # synthesize them instead of consuming more similar search runs.
             if action in {"web_search", "search_web"}:
                 web_search_count = sum(
                     1
@@ -15524,9 +15507,9 @@ def run_agent_v2(
         )
 
         if not missing:
-            # Alle für das Ziel erforderlichen Evidence-Typen
-            # liegen vor. Am Schrittlimit darf deshalb sauber
-            # synthetisiert und abgeschlossen werden.
+            # All evidence types required for the goal are available.
+            # At the step limit, the agent may therefore synthesize and
+            # finish cleanly.
             final_status = "completed"
 
         else:
@@ -15559,8 +15542,8 @@ def run_agent_v2(
 
 def verify_agent_action(pending):
     """
-    Verpflichtende technische Verifikation nach einer
-    freigegebenen zustandsverändernden Aktion.
+    Perform mandatory technical verification after an approved
+    state-changing action.
     """
     operation = pending["operation"]
     target = pending["target"]
@@ -15625,7 +15608,7 @@ def verify_agent_action(pending):
 
     checks = []
 
-    # Nach einem Restart kurz Zeit zum Hochfahren geben.
+    # Allow a short startup delay after a restart.
     _agent_time.sleep(2)
 
     # -----------------------------------------------------
@@ -15699,7 +15682,7 @@ def verify_agent_action(pending):
         })
 
     # -----------------------------------------------------
-    # Veröffentlichte Ports ermitteln
+    # Determine published ports
     # -----------------------------------------------------
 
     published_ports = []
@@ -15766,15 +15749,15 @@ def verify_agent_action(pending):
     if published_ports:
         http_ok = False
 
-        # Nur den ersten veröffentlichten Port prüfen.
+        # Check only the first published port.
         port = published_ports[0]
         url = f"http://127.0.0.1:{port}/"
 
         last_error = None
         status_code = None
 
-        # Manche Anwendungen brauchen nach docker restart
-        # ein paar Sekunden bis HTTP bereitsteht.
+        # Some applications need a few seconds after a Docker restart
+        # before HTTP becomes available.
         for attempt in range(1, 6):
             try:
                 request = urllib.request.Request(
@@ -15832,9 +15815,9 @@ def verify_agent_action(pending):
             ),
         })
 
-    # Docker muss zwingend laufen.
+    # Docker must be running.
     #
-    # HTTP muss erfolgreich sein, wenn ein Port vorhanden ist.
+    # HTTP must succeed when a port is available.
     verified = bool(
         docker_ok
         and (
@@ -15949,8 +15932,8 @@ def api_agent_approve(
             "error": str(exc),
         })
 
-    # Ein erfolgreich angewendeter UND verifizierter Code-Patch
-    # ist ein terminaler Zustand. Kein weiterer Planner-Lauf nötig.
+    # A successfully applied and verified code patch is a terminal state.
+    # No further planner run is needed.
     if pending["operation"] == "code_apply":
         verification_result = next(
             (

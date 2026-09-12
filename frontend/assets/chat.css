@@ -2196,7 +2196,7 @@ button {
 }
 
 
-/* Root / Ohne Ordner drop zone */
+/* Root / no-folder drop zone */
 
 .note-root-drop {
     display: grid;
@@ -2694,13 +2694,13 @@ button {
     justify-items: end;
 }
 
-/* Avatar rechts */
+/* Avatar on the right */
 .message.user > .avatar {
     grid-column: 2;
     grid-row: 1;
 }
 
-/* Nachrichtenbereich rechts */
+/* Message area on the right */
 .message.user > :last-child {
     grid-column: 1;
     grid-row: 1;
@@ -2718,23 +2718,23 @@ button {
     justify-self: end;
 }
 
-/* Autor rechtsbündig */
+/* Right-align the author */
 .message.user .message-author {
     text-align: right;
     margin-bottom: 6px;
 }
 
-/* Text bleibt angenehm lesbar */
+/* Keep the text comfortably readable */
 .message.user .message-content {
     text-align: left;
 }
 
-/* Buttons unter der User-Nachricht ebenfalls rechts */
+/* Right-align buttons below the user message as well */
 .message.user .message-actions {
     justify-content: flex-end;
 }
 
-/* Auf kleinen Displays mehr Platz für die Nachricht */
+/* Give the message more room on small displays */
 @media (max-width: 700px) {
     .message.user > :last-child {
         max-width: 88%;
@@ -2743,7 +2743,7 @@ button {
 
 
 /* ============================================================
-   Chat – Avatare ausblenden
+   Chat: hide avatars
    ============================================================ */
 
 .message {
@@ -2758,7 +2758,7 @@ button {
     grid-template-columns: 1fr;
 }
 
-/* User-Nachricht bleibt rechts */
+/* Keep the user message on the right */
 .message.user > :last-child {
     grid-column: 1;
     grid-row: 1;
@@ -2767,10 +2767,10 @@ button {
 
 
 /* ============================================================
-   User Bubble – Aktionen dezent unterhalb
+   User bubble: subtle actions below
    ============================================================ */
 
-/* Der äußere User-Bereich selbst ist nicht mehr die Bubble */
+/* The outer user area is no longer the bubble itself */
 .message.user > :last-child {
     background: transparent;
     border: 0;
@@ -2782,13 +2782,13 @@ button {
     align-items: flex-end;
 }
 
-/* Name + eigentlicher Text bilden die blaue Bubble */
+/* The name and message text form the blue bubble */
 .message.user .message-author,
 .message.user .message-content {
     background: #2f6fea;
 }
 
-/* Name oben */
+/* Name at the top */
 .message.user .message-author {
     width: 100%;
     box-sizing: border-box;
@@ -2801,7 +2801,7 @@ button {
     color: #fff;
 }
 
-/* Nachricht */
+/* Message */
 .message.user .message-content {
     width: 100%;
     box-sizing: border-box;
@@ -2813,14 +2813,14 @@ button {
     color: #fff;
 }
 
-/* Bearbeiten / weitere Aktionen unter der Bubble */
+/* Edit and other actions below the bubble */
 .message.user .message-actions {
     margin-top: 5px;
     padding-right: 4px;
     gap: 3px;
 }
 
-/* Buttons sehr dezent */
+/* Keep buttons subtle */
 .message.user .message-action-btn {
     padding: 3px 6px;
 
@@ -2837,12 +2837,12 @@ button {
 }
 
 
-/* Chat – Autorennamen ausblenden */
+/* Chat: hide author names */
 .message-author {
     display: none;
 }
 
-/* User-Bubble nach entferntem Autor wieder vollständig abrunden */
+/* Fully round the user bubble after removing the author */
 .message.user .message-content {
     border-radius: 16px;
     padding: 11px 16px;
@@ -2925,7 +2925,7 @@ button {
 }
 
 
-/* Chat-Schriftgröße */
+/* Chat font size */
 
 .message-content {
     font-size: var(--chat-font-size);
@@ -2940,7 +2940,7 @@ button {
 }
 
 
-/* Schriftgrößen-Anzeige */
+/* Font-size display */
 
 .appearance-value {
     float: right;
@@ -4003,7 +4003,7 @@ button {
 .image-model-card button { white-space: normal; overflow-wrap: anywhere; }
 
 
-/* MLX nobby – wartende Antwort */
+/* MLX nobby: pending response */
 
 .assistant-thinking-dot {
     display: inline-block;
@@ -4031,7 +4031,7 @@ button {
 }
 
 
-/* MLX nobby – Hinweis */
+/* MLX nobby: notice */
 
 .composer-disclaimer {
     width: 100%;
@@ -4053,7 +4053,7 @@ button {
 
 
 /* ==========================================================
-   MLX nobby – einklappbare Desktop-Sidebar
+   MLX nobby: collapsible desktop sidebar
    ========================================================== */
 
 .sidebar {
@@ -4061,7 +4061,7 @@ button {
 }
 
 
-/* Button innerhalb der geöffneten Sidebar */
+/* Button inside the open sidebar */
 
 .sidebar-collapse-button {
     position: absolute;
@@ -4121,8 +4121,8 @@ button {
     }
 
     /*
-     * Der bisherige Mobile-Button wird auf Desktop
-     * zum Öffnen/Schließen der Sidebar verwendet.
+     * On desktop, use the existing mobile button to open
+     * and close the sidebar.
      */
     .sidebar-toggle {
         display: inline-flex;
@@ -4131,8 +4131,8 @@ button {
     }
 
     /*
-     * Sidebar geschlossen:
-     * erste Grid-Spalte wird komplett auf 0 gesetzt.
+     * Closed sidebar:
+     * collapse the first grid column completely.
      */
     .app.sidebar-collapsed {
         grid-template-columns: 0 1fr;
@@ -4155,7 +4155,7 @@ button {
 }
 
 
-/* Mobile behält die bisherige Sidebar-Logik */
+/* Keep the existing sidebar behavior on mobile */
 
 @media (max-width: 900px) {
 
@@ -4179,8 +4179,8 @@ button {
 @media (min-width: 901px) {
 
     /*
-     * Der bisherige Button rechts oben wird auf Desktop
-     * nicht mehr benötigt.
+     * The existing top-right button is no longer needed
+     * on desktop.
      */
     .sidebar-toggle {
         display: none !important;
@@ -4188,7 +4188,7 @@ button {
 
 
     /*
-     * Eingeklappt bleibt links eine 56px breite Icon-Leiste.
+     * When collapsed, keep a 56px icon rail on the left.
      */
     .app.sidebar-collapsed {
         grid-template-columns: 56px minmax(0, 1fr);
@@ -4212,8 +4212,8 @@ button {
 
 
     /*
-     * Alle normalen Sidebar-Inhalte verschwinden,
-     * nur die Mini-Rail bleibt sichtbar.
+     * Hide all regular sidebar content and keep only the
+     * mini rail visible.
      */
     .app.sidebar-collapsed
     .sidebar
@@ -4312,8 +4312,7 @@ button {
 
 
     /*
-     * Wenn die Sidebar offen ist, wird die Rail
-     * komplett ausgeblendet.
+     * Hide the rail completely while the sidebar is open.
      */
     .app:not(.sidebar-collapsed)
     .sidebar-rail {
@@ -4322,7 +4321,7 @@ button {
 }
 
 
-/* Mobile unverändert */
+/* Mobile behavior remains unchanged */
 
 @media (max-width: 900px) {
 
@@ -4445,7 +4444,7 @@ button {
 }
 
 /* =========================================================
-   MLX nobby – dezenter Binary / Matrix Hintergrund
+   MLX nobby: subtle binary and matrix background
    ========================================================= */
 
 body {
@@ -4453,7 +4452,7 @@ body {
     position: relative;
 }
 
-/* Große Binary-Matrix über den kompletten Bildschirm */
+/* Large binary matrix across the entire screen */
 body::before {
     content:
         "010011010110100101101100011110000100111001101111011000100110001001111001"
@@ -4528,7 +4527,7 @@ body::before {
     z-index: 0;
 }
 
-/* Gesamte Oberfläche bleibt über dem Hintergrund */
+/* Keep the entire interface above the background */
 body > * {
     position: relative;
     z-index: 1;
@@ -4656,7 +4655,7 @@ body > * {
     }
 }
 
-/* Plus-Menü darf über den Composer hinausragen */
+/* Allow the plus menu to extend beyond the composer */
 .composer {
     overflow: visible;
 }
@@ -4726,7 +4725,7 @@ body > * {
 }
 
 
-/* Mikrofon + Senden kompakt rechts zusammen */
+/* Group the microphone and send controls compactly on the right */
 .composer-actions {
     display: flex;
     align-items: center;
@@ -4747,7 +4746,7 @@ body > * {
 }
 
 
-/* MLX nobby Begrüßungslogo */
+/* MLX nobby greeting logo */
 .empty-logo img {
     display: block;
     width: 64px;
@@ -4769,7 +4768,7 @@ body > * {
 }
 
 
-/* Begrüßungslogo – mehr Kontrast zum Hintergrund */
+/* Increase the greeting logo's contrast against the background */
 .empty-logo {
     width: 72px !important;
     height: 72px !important;
@@ -4792,7 +4791,7 @@ body > * {
     object-fit: contain;
 }
 
-/* ── Einheitliches MLX-Nobby Branding ───────────────── */
+/* ── Consistent MLX nobby branding ──────────────────── */
 
 .brand-logo-img {
     display: block;
@@ -4801,7 +4800,7 @@ body > * {
     object-fit: contain;
 }
 
-/* Logo-Container links oben */
+/* Logo container at the top left */
 .brand:has(.brand-logo-img) > div:first-child {
     width: 40px !important;
     height: 40px !important;
@@ -4817,7 +4816,7 @@ body > * {
         0 0 16px rgba(59,130,246,.12) !important;
 }
 
-/* Startseiten-Logo */
+/* Start-screen logo */
 .empty-logo {
     width: 76px !important;
     height: 76px !important;
@@ -4840,7 +4839,7 @@ body > * {
     object-fit: contain;
 }
 
-/* Rail-Logo bei eingeklappter Sidebar */
+/* Rail logo for the collapsed sidebar */
 .rail-logo-img {
     display: block;
     width: 30px !important;
@@ -4848,9 +4847,9 @@ body > * {
     object-fit: contain;
 }
 
-/* ── Nobby Logo Feinschliff ───────────────────────── */
+/* ── nobby logo polish ────────────────────────────── */
 
-/* Begrüßung etwas größer */
+/* Slightly larger greeting */
 .empty-logo {
     width: 86px !important;
     height: 86px !important;
@@ -4858,8 +4857,8 @@ body > * {
     border-radius: 25px !important;
 }
 
-/* Brand-Logo links oben:
-   Roboter größer, kein zusätzlicher Kasten */
+/* Brand logo at the top left:
+   larger robot without an additional container */
 .brand:has(.brand-logo-img) > div:first-child {
     width: 40px !important;
     height: 40px !important;
@@ -4897,7 +4896,7 @@ body > * {
     object-fit: contain;
 }
 
-/* Zweite Zeile der Nobby-Begrüßung */
+/* Second line of the nobby greeting */
 .empty-local {
     display: block;
     margin-top: 8px;
@@ -4934,7 +4933,7 @@ body > * {
     }
 }
 
-/* Bildvorschau in gesendeten Chat-Attachments */
+/* Image preview in sent chat attachments */
 
 .message-attachment-chip {
     max-width: 320px;
@@ -4959,7 +4958,7 @@ body > * {
     white-space: nowrap;
 }
 
-/* Zweizeilige Attachment-Metadaten im Chat */
+/* Two-line attachment metadata in the chat */
 
 .message-attachment-chip {
     align-items: center;
@@ -4995,7 +4994,7 @@ body > * {
 }
 
 
-/* Mehr Abstand zwischen Thumbnail und Dateiinformation */
+/* Add more space between the thumbnail and file information */
 .message-attachment-chip {
     gap: 14px;
 }
@@ -5528,12 +5527,12 @@ body > * {
  * ----------------------------------------------------------
  * Single-Line:
  *
- *   + | nobby fragen...                         mic  send
+ *   + | Ask nobby...                            mic  send
  *
- * Mehrzeilig:
+ * Multi-line:
  *
- *   längerer Text
- *   wächst nach oben
+ *   longer text
+ *   grows upward
  *
  *   +                                         mic  send
  * ----------------------------------------------------------
@@ -5547,7 +5546,7 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Texteingabe
+   Text input
    ---------------------------------------------------------- */
 
 .input {
@@ -5563,8 +5562,8 @@ body > * {
 
     /*
      * Single-Line:
-     * links Platz für + und Trennlinie,
-     * rechts Platz für Mic + Senden.
+     * leave room for + and the separator on the left,
+     * and for the microphone and send controls on the right.
      */
     padding:
         14px
@@ -5580,10 +5579,10 @@ body > * {
 
 
 /*
- * Sobald die Eingabe mehrzeilig wird, beginnt Text
- * wieder normal links oben.
+ * Once the input becomes multi-line, text starts from the
+ * top left as usual.
  *
- * Unten bleiben 49px für die Toolbar reserviert.
+ * Reserve 49px for the toolbar at the bottom.
  */
 .composer.composer-multiline .input {
     padding:
@@ -5595,7 +5594,7 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Toolbar liegt IN der Eingabefläche
+   Toolbar inside the input area
    ---------------------------------------------------------- */
 
 .composer-bottom {
@@ -5623,8 +5622,7 @@ body > * {
 
 
 /*
- * Buttons innerhalb der absolut positionierten Toolbar
- * bleiben natürlich anklickbar.
+ * Keep buttons inside the absolutely positioned toolbar clickable.
  */
 .composer-bottom button,
 .composer-bottom input,
@@ -5635,7 +5633,7 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Linke Seite
+   Left side
    ---------------------------------------------------------- */
 
 .composer-left {
@@ -5672,8 +5670,8 @@ body > * {
 
 
 /*
- * Dünne vertikale Linie wie im Beispielbild.
- * Nur im einzeiligen Zustand.
+ * Thin vertical line matching the reference image.
+ * Show only in the single-line state.
  */
 .composer:not(.composer-multiline)
 .composer-plus-wrap::after {
@@ -5694,7 +5692,7 @@ body > * {
 
 
 /*
- * Mehrzeilig brauchen wir die Linie nicht mehr.
+ * The line is unnecessary in the multi-line state.
  */
 .composer.composer-multiline
 .composer-plus-wrap::after {
@@ -5703,10 +5701,10 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Alte permanente Workspace/Token-Anzeigen verschwinden
-   aus der Toolbar.
-   Die Elemente bleiben im DOM und werden weiterhin von
-   der vorhandenen Runtime aktualisiert.
+   Hide the old persistent workspace and token indicators
+   from the toolbar.
+   Keep the elements in the DOM so the existing runtime can
+   continue to update them.
    ---------------------------------------------------------- */
 
 #activeWorkspaceBadge,
@@ -5717,7 +5715,7 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Rechte Seite
+   Right side
    ---------------------------------------------------------- */
 
 .composer-actions {
@@ -5910,9 +5908,8 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Anhänge:
-   Wenn Attachment-Chips erscheinen, bleiben sie oberhalb
-   der unteren Toolbar.
+   Attachments:
+   Keep attachment chips above the lower toolbar when they appear.
    ---------------------------------------------------------- */
 
 .composer:has(.attachment-bar.visible)
@@ -5922,7 +5919,7 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   Kleine Fenster
+   Small screens
    ---------------------------------------------------------- */
 
 @media (max-width: 620px) {
@@ -5944,23 +5941,23 @@ body > * {
 
 /*
  * ==========================================================
- * STARTANSICHT
+ * START VIEW
  *
- * Leerer Chat:
+ * Empty chat:
  *
- *       Schön, dich zu sehen, nobby.
+ *       Good to see you, nobby.
  *
  *       [ + | nobby fragen...              mic send ]
  *
  *
- * Sobald Nachrichten vorhanden sind:
- * Composer wieder normal unten.
+ * Once messages are present:
+ * Return the composer to its normal bottom position.
  * ==========================================================
  */
 
 
 /* ----------------------------------------------------------
-   Sanfte Bewegung zwischen Start- und Chatmodus
+   Smooth transition between start and chat mode
    ---------------------------------------------------------- */
 
 .composer-wrap {
@@ -5973,22 +5970,22 @@ body > * {
 
 
 /* ----------------------------------------------------------
-   LEERER CHAT
+   EMPTY CHAT
    ---------------------------------------------------------- */
 
 body.mlx-empty-chat .composer-wrap {
 
     /*
-     * Nicht mehr am unteren Fensterrand befestigen.
-     * Stattdessen vertikal mittig.
+     * Do not pin to the bottom edge of the window.
+     * Center vertically instead.
      */
 
     top: 50%;
     bottom: auto;
 
     /*
-     * Etwas unterhalb der exakten Mitte, damit oberhalb
-     * Platz für die Begrüßung bleibt.
+     * Place slightly below the exact center so there is
+     * space for the greeting above.
      */
 
     transform: translateY(12px);
@@ -5999,8 +5996,8 @@ body.mlx-empty-chat .composer-wrap {
         0;
 
     /*
-     * Im Startzustand brauchen wir keinen unteren
-     * Verlauf zum Seitenhintergrund.
+     * The start state does not need the bottom
+     * gradient into the page background.
      */
 
     background: transparent;
@@ -6008,8 +6005,8 @@ body.mlx-empty-chat .composer-wrap {
 
 
 /*
- * Composer in der Startansicht etwas kompakter.
- * Die 900px-Maximalbreite bleibt erhalten.
+ * Keep the composer slightly more compact in the start view.
+ * Keep the 900px maximum width.
  */
 
 body.mlx-empty-chat .composer {
@@ -6018,15 +6015,15 @@ body.mlx-empty-chat .composer {
 
 
 /* ----------------------------------------------------------
-   Begrüßung
+   Greeting
    ---------------------------------------------------------- */
 
 /*
- * Deine vorhandene .empty-Anzeige sitzt innerhalb von
+ * The existing .empty view is located inside
  * messagesInner.
  *
- * Im Startzustand positionieren wir sie passend oberhalb
- * des mittigen Composers.
+ * In the start state, position it appropriately above
+ * the centered composer.
  */
 
 body.mlx-empty-chat .messages {
@@ -6055,7 +6052,7 @@ body.mlx-empty-chat .empty {
     right: 0;
 
     /*
-     * Die Begrüßung liegt knapp oberhalb des Composers.
+     * Place the greeting just above the composer.
      */
 
     top: 50%;
@@ -6073,10 +6070,10 @@ body.mlx-empty-chat .empty {
 
 
 /*
- * Falls die bestehende Empty-Ansicht Logo/Untertext enthält,
- * konzentrieren wir die Startseite auf die Begrüßung.
+ * If the existing empty view contains a logo or subtitle,
+ * focus the start screen on the greeting.
  *
- * Das h1 bleibt sichtbar.
+ * Keep the h1 visible.
  */
 
 body.mlx-empty-chat .empty-logo {
@@ -6099,7 +6096,7 @@ body.mlx-empty-chat .empty p {
 
 
 /*
- * Disclaimer im Startmodus direkt unter dem Composer.
+ * Place the disclaimer directly below the composer in start mode.
  */
 
 body.mlx-empty-chat .composer-disclaimer {
@@ -6120,7 +6117,7 @@ body.mlx-empty-chat .composer-disclaimer {
 
 
 /* ----------------------------------------------------------
-   NORMALER CHAT
+   NORMAL CHAT
    ---------------------------------------------------------- */
 
 body.mlx-chat-started .composer-wrap {
@@ -6132,7 +6129,7 @@ body.mlx-chat-started .composer-wrap {
 
 
 /*
- * Sobald der Chat läuft, wieder normale Message-Abstände.
+ * Restore normal message spacing once the chat is active.
  */
 
 body.mlx-chat-started .messages-inner {
@@ -6162,8 +6159,8 @@ body.mlx-chat-started .messages-inner {
 @media (max-height: 650px) {
 
     /*
-     * Auf niedrigen Displays etwas höher,
-     * damit Tastatur/Browserleisten nicht stören.
+     * Move slightly higher on short displays
+     * to avoid interference from the keyboard or browser chrome.
      */
 
     body.mlx-empty-chat .composer-wrap {
@@ -6189,9 +6186,9 @@ body.mlx-chat-started .messages-inner {
 /* MLX-NOBBY-NO-EMPTY-FLASH */
 
 /*
- * Das alte Empty-State-Logo und der Untertext werden nicht
- * mehr verwendet. Dadurch können sie beim Hard-Reload auch
- * nicht kurz aufblitzen.
+ * The old empty-state logo and subtitle are no longer
+ * used, preventing them from briefly appearing during
+ * a hard reload.
  */
 
 .empty-logo,
@@ -6201,8 +6198,8 @@ body.mlx-chat-started .messages-inner {
 
 
 /*
- * Vor Initialisierung der Chat-State-Logik verhindern wir
- * einen sichtbaren Positionssprung des Composers.
+ * Before chat-state initialization, prevent
+ * a visible composer position jump.
  */
 
 body:not(.mlx-empty-chat):not(.mlx-chat-started) .composer-wrap {
@@ -6211,7 +6208,7 @@ body:not(.mlx-empty-chat):not(.mlx-chat-started) .composer-wrap {
 
 
 /*
- * Sobald der Zustand feststeht, normal anzeigen.
+ * Display normally once the state has been resolved.
  */
 
 body.mlx-empty-chat .composer-wrap,
@@ -6223,7 +6220,7 @@ body.mlx-chat-started .composer-wrap {
 /* MLX-NOBBY-STARTSCREEN-POLISH */
 
 /* ----------------------------------------------------------
-   Boot-Phase: nichts darf kurz an der falschen Stelle stehen.
+   Boot phase: prevent elements from briefly appearing in the wrong position.
    ---------------------------------------------------------- */
 
 body.mlx-ui-booting .empty,
@@ -6234,7 +6231,7 @@ body.mlx-ui-booting .composer-wrap {
 
 
 /* ----------------------------------------------------------
-   Startscreen
+   Start screen
    ---------------------------------------------------------- */
 
 body.mlx-empty-chat .messages {
@@ -6285,7 +6282,7 @@ body.mlx-empty-chat .empty h1 {
 
 
 /* ----------------------------------------------------------
-   Composer im Startscreen
+   Composer on the start screen
    ---------------------------------------------------------- */
 
 body.mlx-empty-chat .composer-wrap {
@@ -6328,7 +6325,7 @@ body.mlx-empty-chat .composer-disclaimer {
 
 
 /* ----------------------------------------------------------
-   Sobald Chat gestartet ist
+   Once the chat has started
    ---------------------------------------------------------- */
 
 body.mlx-chat-started .composer-wrap {
@@ -6346,7 +6343,7 @@ body.mlx-chat-started .messages-inner {
 }
 
 
-/* Begrüßung verschwindet ohne harten Sprung */
+/* Fade the greeting without an abrupt jump */
 body.mlx-chat-started .empty {
     opacity: 0;
     transform: translateY(-110px);
@@ -6355,7 +6352,7 @@ body.mlx-chat-started .empty {
 
 
 /* ----------------------------------------------------------
-   Etwas subtilerer Composer im leeren Zustand
+   Use a slightly subtler composer in the empty state
    ---------------------------------------------------------- */
 
 body.mlx-empty-chat .composer {
@@ -6397,7 +6394,7 @@ body.mlx-empty-chat .composer {
 
 
 /* ----------------------------------------------------------
-   Animationen respektieren
+   Respect reduced-motion preferences
    ---------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -6436,18 +6433,18 @@ body.mlx-empty-chat .composer {
 
 /* ==========================================================
    MLX Nobby – Composer Attachment Layout
-   Datei oben, Eingabe + Toolbar darunter
+   Attachment above, input and toolbar below
    ========================================================== */
 
 /*
- * Der Composer ist vertikal aufgebaut:
+ * The composer is arranged vertically:
  *
- *   [ Texteingabe                         ]
+ *   [ Text input                          ]
  *   [ Attachment 1 ] [ Attachment 2 ] ...
  *   [ +                         mode mic ↑ ]
  *
- * Attachment-Chips dürfen die untere Toolbar nicht
- * verschieben, überlagern oder künstlich reservieren.
+ * Attachment chips must not move, overlap, or
+ * artificially reserve the lower toolbar.
  */
 
 .composer .attachment-bar {
@@ -6466,14 +6463,14 @@ body.mlx-empty-chat .composer {
 }
 
 /*
- * Überschreibt explizit den bisherigen 43px-Workaround.
+ * Explicitly override the previous 43px workaround.
  */
 .composer:has(.attachment-bar.visible) .attachment-bar {
     margin-bottom: 0;
 }
 
 /*
- * Dateikarte etwas größer und klar als eigener Bereich.
+ * Make the attachment card slightly larger and visually distinct.
  */
 .composer .attachment-chip {
     display: flex;
@@ -6497,7 +6494,7 @@ body.mlx-empty-chat .composer {
 }
 
 /*
- * Dateiname bleibt sauber auf einer Zeile.
+ * Keep the file name on a single line.
  */
 .composer .attachment-name {
     min-width: 0;
@@ -6507,7 +6504,7 @@ body.mlx-empty-chat .composer {
 }
 
 /*
- * Entfernen-Button bleibt rechts an der Karte.
+ * Keep the remove button on the right side of the card.
  */
 .composer .attachment-remove {
     flex: 0 0 auto;
@@ -6515,7 +6512,7 @@ body.mlx-empty-chat .composer {
 }
 
 /*
- * Untere Toolbar bleibt immer ihre eigene Zeile.
+ * Keep the lower toolbar on its own row.
  */
 .composer .composer-bottom {
     position: relative;
@@ -6525,7 +6522,7 @@ body.mlx-empty-chat .composer {
 }
 
 /*
- * Mobile: Dateikarten dürfen fast die gesamte Breite nutzen.
+ * Mobile: allow attachment cards to use almost the full width.
  */
 @media (max-width: 620px) {
     .composer .attachment-chip {
@@ -6568,7 +6565,7 @@ body.mlx-empty-chat .composer {
    ========================================================== */
 
 /*
- * Alte absolute Toolbar-Geometrie vollständig neutralisieren.
+ * Fully neutralize the legacy absolute toolbar geometry.
  */
 .composer .composer-bottom {
     position: relative;
