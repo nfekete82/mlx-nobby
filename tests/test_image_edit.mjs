@@ -109,6 +109,64 @@ const unrelatedError = window.MLXChatGeneration.__test.toolFailureSummary({
 });
 assert.equal(unrelatedError, 'The action could not be completed.');
 
+const routing = window.MLXChatGeneration.__test;
+for (const prompt of [
+    'ändere das Kleid in rot',
+    'ändere das klein in rot',
+    'mach das Kleid rot',
+    'mach das rot',
+    'mach den Hintergrund dunkler',
+    'entferne die Person links',
+    'mach mich etwas jünger',
+    'ändere die Haarfarbe zu blond',
+    'mach den Hintergrund unscharf',
+    'ersetze den Himmel',
+    'füge eine Sonnenbrille hinzu',
+    'retuschiere das Gesicht',
+    'change the dress to red',
+    'make it red',
+    'remove the person',
+    'blur the background',
+]) {
+    assert.equal(
+        routing.isImageEditRequest(prompt, true),
+        true,
+        prompt,
+    );
+}
+
+for (const prompt of [
+    'Was ist auf dem Bild?',
+    'Beschreibe das Bild',
+    'Welche Farbe hat das Kleid?',
+    'Wie viele Personen sind zu sehen?',
+    'Was hält die Person in der Hand?',
+    'Ist das Bild scharf?',
+]) {
+    assert.equal(
+        routing.isImageEditRequest(prompt, true),
+        false,
+        prompt,
+    );
+}
+
+assert.equal(
+    routing.isImageEditRequest('Ändere diese Datei', false),
+    false,
+);
+assert.equal(
+    routing.isImageGenerationRequest(
+        'Erstelle ein Bild von einem roten Kleid',
+    ),
+    true,
+);
+assert.equal(
+    routing.isImageGenerationRequest(
+        'create an image of a red dress',
+    ),
+    true,
+);
+
 let generating = false;
 let visionChecks = 0;
 const session = {
@@ -190,8 +248,7 @@ context.fetch = async (url, options) => {
         },
     };
 };
-input.value =
-    'Mach den Hintergrund dunkel und lass die Person ansonsten unverändert.';
+input.value = 'ändere das klein in die farbe rot';
 
 await window.MLXChatGeneration.sendMessage();
 

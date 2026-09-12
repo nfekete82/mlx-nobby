@@ -495,6 +495,90 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(failed.status_code, 503)
         self.assertEqual(failed.json()["detail"], "Provider timeout")
 
+    def test_image_intent_routing(self):
+        image_context = {
+            "kind": "image",
+            "mime_type": "image/png",
+            "stored_path": str(self.root / "portrait.png"),
+        }
+        text_context = {
+            "kind": "text",
+            "mime_type": "text/plain",
+            "stored_path": str(self.root / "notes.txt"),
+        }
+
+        edit_prompts = (
+            "ändere das Kleid in rot",
+            "ändere das klein in die farbe rot",
+            "mach das Kleid rot",
+            "mach das rot",
+            "mach den Hintergrund dunkler",
+            "entferne die Person links",
+            "mach mich etwas jünger",
+            "ändere die Haarfarbe zu blond",
+            "mach den Hintergrund unscharf",
+            "ersetze den Himmel",
+            "füge eine Sonnenbrille hinzu",
+            "retuschiere das Gesicht",
+            "change the dress to red",
+            "make it red",
+            "remove the person",
+            "blur the background",
+        )
+        for prompt in edit_prompts:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(
+                    agent._looks_like_image_edit_request(prompt)
+                )
+                self.assertEqual(
+                    agent._deterministic_chat_action(
+                        prompt,
+                        image_context,
+                    ),
+                    "image_edit",
+                )
+
+        vision_prompts = (
+            "Was ist auf dem Bild?",
+            "Beschreibe das Bild",
+            "Welche Farbe hat das Kleid?",
+            "Wie viele Personen sind zu sehen?",
+            "Was hält die Person in der Hand?",
+            "Ist das Bild scharf?",
+        )
+        for prompt in vision_prompts:
+            with self.subTest(prompt=prompt):
+                self.assertFalse(
+                    agent._looks_like_image_edit_request(prompt)
+                )
+                self.assertNotEqual(
+                    agent._deterministic_chat_action(
+                        prompt,
+                        image_context,
+                    ),
+                    "image_edit",
+                )
+
+        self.assertEqual(
+            agent._deterministic_chat_action(
+                "Erstelle ein Bild von einem roten Kleid"
+            ),
+            "image_generate",
+        )
+        self.assertEqual(
+            agent._deterministic_chat_action(
+                "create an image of a red dress"
+            ),
+            "image_generate",
+        )
+        self.assertNotEqual(
+            agent._deterministic_chat_action(
+                "Ändere diese Datei",
+                text_context,
+            ),
+            "image_edit",
+        )
+
     def test_image_edit_routing_and_artifact_response(self):
         source = self.root / "portrait.png"
         source.write_bytes(b"image")

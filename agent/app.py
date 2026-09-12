@@ -3940,6 +3940,78 @@ def _file_context_is_image(file_context):
     return False
 
 
+_IMAGE_EDIT_VERB_PATTERN = re.compile(
+    r"\b(?:"
+    r"bearbeit(?:e|en)?|"
+    r"änder(?:e|n)?|aender(?:e|n)?|"
+    r"veränder(?:e|n)?|veraender(?:e|n)?|"
+    r"färb(?:e|en)?|faerb(?:e|en)?|"
+    r"entfern(?:e|en)?|"
+    r"lösch(?:e|en)?|loesch(?:e|en)?|"
+    r"ersetz(?:e|en)?|"
+    r"füg(?:e|en)?|fueg(?:e|en)?|"
+    r"retuschier(?:e|en)?|"
+    r"korrigier(?:e|en)?|"
+    r"verbesser(?:e|n)?|"
+    r"change|edit|modify|recolor|remove|replace|add|retouch|blur"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_EDIT_MAKE_PATTERN = re.compile(
+    r"\b(?:mach|mache|make)\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_EDIT_MODIFIER_PATTERN = re.compile(
+    r"\b(?:"
+    r"rot|blau|grün|gruen|gelb|schwarz|weiß|weiss|blond|"
+    r"heller|dunkler|dunkel|hell|"
+    r"jünger|juenger|älter|aelter|"
+    r"unscharf|scharf|weg|"
+    r"hintergrund|farbe|farben|person|objekt|gesicht|haare|"
+    r"bart|kleidung|stil|"
+    r"schwarzweiß|schwarz-weiss|schwarz-weiß|"
+    r"größer|groesser|kleiner|entfernt|"
+    r"red|blue|green|yellow|black|white|blonde?|"
+    r"lighter|darker|dark|bright|younger|older|"
+    r"blurry|blurred|sharp|"
+    r"background|color|colour|object|face|hair|beard|"
+    r"clothing|style|remove|removed"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_QUESTION_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"was|wie|welche|welcher|welches|wer|wo|wann|warum|"
+    r"ist|sind|hat|haben|"
+    r"what|how|which|who|where|when|why|"
+    r"is|are|does|do|has|have"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_CREATION_VERB_PATTERN = re.compile(
+    r"\b(?:"
+    r"erstelle|erstellen|generiere|generieren|"
+    r"erzeuge|erzeugen|zeichne|zeichnen|mach|mache|"
+    r"create|generate|draw|make"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_NOUN_PATTERN = re.compile(
+    r"\b(?:bild|foto|illustration|image|photo|picture)\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_NOUN_OF_PATTERN = re.compile(
+    r"\b(?:bild|foto|illustration|image|photo|picture)\s+(?:von|of)\b",
+    re.IGNORECASE,
+)
+
+
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
@@ -4025,20 +4097,11 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     if (
         file_context
         and _file_context_is_image(file_context)
-        and (re.search(
-        r"\b(?:bearbeite|bearbeit|ändere|aendere|verändere|veraendere|"
-        r"entferne|entfern|ersetze|ersetz|mache|mach|füge|fuege|"
-        r"retuschiere|retuschier|verbessere|verbesser)\b",
-        value,
-    ))
+        and _looks_like_image_edit_request(value)
     ):
         return "image_edit"
 
-    if re.search(
-        r"\b(?:erstelle|generiere|erzeuge|zeichne|mach)\b.*\b(?:bild|foto|illustration)\b|"
-        r"\b(?:bild|foto|illustration)\s+von\b",
-        value,
-    ):
+    if _looks_like_image_generation_request(value):
         return "image_generate"
     if "indexiere" in value:
         return "knowledge_add"
@@ -6554,59 +6617,45 @@ def route_chat_action(request: ChatActionRequest):
 
 
 def _looks_like_image_edit_request(prompt):
-    value = str(prompt or "").strip().lower()
+    value = str(prompt or "").strip()
 
     if not value:
         return False
 
-    explicit = re.search(
-        r"\b(?:"
-        r"bearbeite|bearbeit|"
-        r"ändere|aendere|"
-        r"verändere|veraendere|"
-        r"ersetze|ersetz|"
-        r"entferne|entfern|"
-        r"füge|fuege|"
-        r"retuschiere|retuschier|"
-        r"edit|change|replace|remove|retouch"
-        r")\w*\b",
-        value,
-        re.IGNORECASE,
-    )
+    if _IMAGE_QUESTION_PATTERN.search(value):
+        return False
 
-    if explicit:
+    if _IMAGE_EDIT_VERB_PATTERN.search(value):
         return True
 
-    natural_make = re.search(
-        r"\b(?:mach|mache|make)\b",
-        value,
-        re.IGNORECASE,
-    )
-
-    edit_target = re.search(
-        r"\b(?:"
-        r"hintergrund|background|"
-        r"farbe|farben|color|colour|"
-        r"heller|dunkler|dunkel|hell|"
-        r"schwarzweiß|schwarz-weiss|schwarz-weiß|"
-        r"person|objekt|object|"
-        r"gesicht|face|"
-        r"haare|hair|"
-        r"bart|beard|"
-        r"kleidung|clothing|"
-        r"stil|style|"
-        r"unscharf|blur|blurred|"
-        r"scharf|sharp|"
-        r"größer|groesser|kleiner|"
-        r"remove|removed"
-        r")\b",
-        value,
-        re.IGNORECASE,
-    )
+    if (
+        _IMAGE_EDIT_MAKE_PATTERN.search(value)
+        and _IMAGE_EDIT_MODIFIER_PATTERN.search(value)
+    ):
+        return True
 
     return bool(
-        natural_make
-        and edit_target
+        (
+            re.search(r"\b(?:hintergrund|background)\b", value, re.IGNORECASE)
+            and re.search(
+                r"\b(?:unscharf|dunkler|heller|blurry|blurred|darker|lighter)\b",
+                value,
+                re.IGNORECASE,
+            )
+        )
+        or re.search(r"\b(?:andere|andre)\s+farb(?:e|en)\b", value, re.IGNORECASE)
+    )
+
+
+def _looks_like_image_generation_request(prompt):
+    value = str(prompt or "").strip()
+
+    return bool(
+        _IMAGE_NOUN_OF_PATTERN.search(value)
+        or (
+            _IMAGE_CREATION_VERB_PATTERN.search(value)
+            and _IMAGE_NOUN_PATTERN.search(value)
+        )
     )
 
 

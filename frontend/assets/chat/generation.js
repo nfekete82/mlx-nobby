@@ -16,6 +16,66 @@ function gt(key, fallback = '', variables = {}) {
     return value;
 }
 
+const IMAGE_EDIT_VERB_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:bearbeit(?:e|en)?|änder(?:e|n)?|aender(?:e|n)?|veränder(?:e|n)?|veraender(?:e|n)?|färb(?:e|en)?|faerb(?:e|en)?|entfern(?:e|en)?|lösch(?:e|en)?|loesch(?:e|en)?|ersetz(?:e|en)?|füg(?:e|en)?|fueg(?:e|en)?|retuschier(?:e|en)?|korrigier(?:e|en)?|verbesser(?:e|n)?|change|edit|modify|recolor|remove|replace|add|retouch|blur)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_EDIT_MAKE_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:mach|mache|make)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_EDIT_MODIFIER_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:rot|blau|grün|gruen|gelb|schwarz|weiß|weiss|blond|heller|dunkler|dunkel|hell|jünger|juenger|älter|aelter|unscharf|scharf|weg|hintergrund|farbe|farben|person|objekt|gesicht|haare|bart|kleidung|stil|schwarzweiß|schwarz-weiss|schwarz-weiß|größer|groesser|kleiner|entfernt|red|blue|green|yellow|black|white|blonde?|lighter|darker|dark|bright|younger|older|blurry|blurred|sharp|background|color|colour|object|face|hair|beard|clothing|style|remove|removed)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_QUESTION_PATTERN =
+    /^\s*(?:was|wie|welche|welcher|welches|wer|wo|wann|warum|ist|sind|hat|haben|what|how|which|who|where|when|why|is|are|does|do|has|have)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_CREATION_VERB_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|zeichne|zeichnen|mach|mache|create|generate|draw|make)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_NOUN_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:bild|foto|illustration|image|photo|picture)(?=$|[^\p{L}\p{N}_])/iu;
+
+const IMAGE_NOUN_OF_PATTERN =
+    /(?:^|[^\p{L}\p{N}_])(?:bild|foto|illustration|image|photo|picture)\s+(?:von|of)(?=$|[^\p{L}\p{N}_])/iu;
+
+function isImageEditRequest(prompt, hasImage) {
+    if (!hasImage) {
+        return false;
+    }
+
+    const value = String(prompt || '').trim();
+
+    if (!value) {
+        return false;
+    }
+
+    if (IMAGE_QUESTION_PATTERN.test(value)) {
+        return false;
+    }
+
+    if (IMAGE_EDIT_VERB_PATTERN.test(value)) {
+        return true;
+    }
+
+    return (
+        IMAGE_EDIT_MAKE_PATTERN.test(value) &&
+        IMAGE_EDIT_MODIFIER_PATTERN.test(value)
+    ) || (
+        /(?:^|[^\p{L}\p{N}_])(?:hintergrund|background)(?=$|[^\p{L}\p{N}_])/iu.test(value) &&
+        /(?:^|[^\p{L}\p{N}_])(?:unscharf|dunkler|heller|blurry|blurred|darker|lighter)(?=$|[^\p{L}\p{N}_])/iu.test(value)
+    ) || (
+        /(?:^|[^\p{L}\p{N}_])(?:andere|andre)\s+farb(?:e|en)(?=$|[^\p{L}\p{N}_])/iu.test(value)
+    );
+}
+
+function isImageGenerationRequest(prompt) {
+    const value = String(prompt || '').trim();
+
+    return IMAGE_NOUN_OF_PATTERN.test(value) || (
+        IMAGE_CREATION_VERB_PATTERN.test(value) &&
+        IMAGE_NOUN_PATTERN.test(value)
+    );
+}
+
 (function () {
     let getGenerating;
     let setGenerating;
@@ -998,11 +1058,9 @@ const imageFiles =
         );
 
     const explicitImageEditRequest =
-        /\b(?:bearbeite|bearbeit|ändere|aendere|verändere|veraendere|ersetze|ersetz|entferne|entfern|füge|fuege|retuschiere|retuschier)\b/i.test(prompt) ||
-        (
-            imageFiles.length > 0 &&
-            /\b(?:mach|mache)\b/i.test(prompt) &&
-            /\b(?:hintergrund|farbe|farben|heller|dunkler|dunkel|hell|schwarzweiß|schwarz-weiss|schwarz-weiß|person|objekt|gesicht|haare|bart|kleidung|stil|entfernt|weg|unscharf|scharf|größer|groesser|kleiner)\b/i.test(prompt)
+        isImageEditRequest(
+            prompt,
+            imageFiles.length > 0
         );
 
     const textFiles =
@@ -1483,7 +1541,7 @@ const imageFiles =
     }
 
     const explicitImageCreationRequest =
-        /\b(?:erstelle|generiere|erzeuge|zeichne|mach)\b.*\b(?:bild|foto|illustration)\b|\b(?:bild|foto|illustration)\s+von\b/i.test(prompt);
+        isImageGenerationRequest(prompt);
 
     const routesCurrentImageToVision =
         imageFiles.length > 0 &&
@@ -2133,6 +2191,8 @@ function watchBatchJob(session, jobId) {
             readSseEvents: readSseEvents,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments,
+            isImageEditRequest: isImageEditRequest,
+            isImageGenerationRequest: isImageGenerationRequest,
             toolFailureSummary: toolFailureSummary
         }
     };
