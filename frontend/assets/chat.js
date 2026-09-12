@@ -397,7 +397,7 @@ function showConfirmModal({
     title = 'Bestätigung',
     message = 'Möchtest du fortfahren?',
     confirmLabel = 'OK',
-    cancelLabel = 'Abbrechen',
+    cancelLabel = 'Cancel',
 } = {}) {
     return new Promise(resolve => {
         const modal =

@@ -431,7 +431,7 @@ function sessionT(key, fallback = '', variables = {}) {
                 ),
                 cancelLabel: sessionT(
                     'ui.cancel',
-                    'Abbrechen'
+                    'Cancel'
                 ),
             });
 

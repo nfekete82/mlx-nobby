@@ -1536,7 +1536,10 @@ const imageFiles =
 
                     if (!item?.upload?.path) {
                         throw new Error(
-                            'Bild konnte nicht hochgeladen werden.'
+                            gt(
+                                'generation.image_upload_failed',
+                                'Image could not be uploaded.'
+                            )
                         );
                     }
 
@@ -1578,7 +1581,10 @@ const imageFiles =
                 !fileContext?.stored_path
             ) {
                 throw new Error(
-                    'Bitte hänge das Bild an, das ich bearbeiten soll.'
+                    gt(
+                        'generation.image_edit_source_required',
+                        'Please attach the image you want to edit.'
+                    )
                 );
             }
 
