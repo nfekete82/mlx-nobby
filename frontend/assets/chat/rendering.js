@@ -173,9 +173,130 @@ function renderSidebar() {
 
 
 function markdownHtml(text) {
-    const html = marked.parse(text || '');
+    const source = String(text || '');
 
-    return DOMPurify.sanitize(html);
+    if (
+        typeof katex === 'undefined'
+        || !katex
+        || typeof katex.renderToString !== 'function'
+    ) {
+        const html = marked.parse(source);
+        return DOMPurify.sanitize(html);
+    }
+
+    const protectedParts = [];
+
+    function protect(entry) {
+        const token =
+            `MLXPROTECTEDTOKEN${protectedParts.length}END`;
+
+        protectedParts.push(entry);
+
+        return token;
+    }
+
+    let prepared = source;
+
+    /*
+     * Protect fenced and inline code before parsing math.
+     * Dollar signs inside code must remain literal.
+     */
+    prepared = prepared.replace(
+        /```[\s\S]*?```/g,
+        match => protect({
+            type: 'raw',
+            value: match,
+        }),
+    );
+
+    prepared = prepared.replace(
+        /`[^`\n]+`/g,
+        match => protect({
+            type: 'raw',
+            value: match,
+        }),
+    );
+
+    /*
+     * Display math:
+     * $$...$$
+     * \[...\]
+     */
+    prepared = prepared.replace(
+        /\$\$([\s\S]+?)\$\$/g,
+        (_match, expression) => protect({
+            type: 'math',
+            displayMode: true,
+            value: expression.trim(),
+        }),
+    );
+
+    prepared = prepared.replace(
+        /\\\[([\s\S]+?)\\\]/g,
+        (_match, expression) => protect({
+            type: 'math',
+            displayMode: true,
+            value: expression.trim(),
+        }),
+    );
+
+    /*
+     * Inline math:
+     * $...$
+     * \(...\)
+     */
+    prepared = prepared.replace(
+        /(^|[^\\$])\$([^\n$]*?\S[^\n$]*?)\$/g,
+        (_match, prefix, expression) =>
+            prefix + protect({
+                type: 'math',
+                displayMode: false,
+                value: expression.trim(),
+            }),
+    );
+
+    prepared = prepared.replace(
+        /\\\(([\s\S]+?)\\\)/g,
+        (_match, expression) => protect({
+            type: 'math',
+            displayMode: false,
+            value: expression.trim(),
+        }),
+    );
+
+    let html = marked.parse(prepared);
+
+    html = DOMPurify.sanitize(html);
+
+    protectedParts.forEach((entry, index) => {
+        const token = `MLXPROTECTEDTOKEN${index}END`;
+
+        let replacement;
+
+        if (entry.type === 'raw') {
+            replacement = DOMPurify.sanitize(
+                marked.parse(entry.value)
+            );
+        } else {
+            try {
+                replacement = katex.renderToString(
+                    entry.value,
+                    {
+                        displayMode: entry.displayMode,
+                        throwOnError: false,
+                        strict: 'ignore',
+                        trust: false,
+                    },
+                );
+            } catch {
+                replacement = escapeHtml(entry.value);
+            }
+        }
+
+        html = html.replaceAll(token, replacement);
+    });
+
+    return html;
 }
 
 
@@ -2011,6 +2132,7 @@ function renderAll(options = {}) {
         renderMessages: renderMessages,
         renderAll: renderAll,
         __test: {
+            markdownHtml,
             codeTestEvidence,
             codeTestEvidenceLabel,
             codeApplyEvidenceValid,
