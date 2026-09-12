@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image
 import image_registry as registry
@@ -23,6 +24,8 @@ class ImageRuntimeTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.patches = [patch.object(registry, "REGISTRY_FILE", self.root / "image-models.json"),
                         patch.object(service, "OUTPUT", self.root / "images"),
+                        patch.object(agent, "IMAGE_DIRECTORY", self.root / "images"),
+                        patch.object(agent, "CHAT_DIRECTORY", self.root / "chats"),
                         patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json")]
         for item in self.patches:
             item.start()
@@ -976,6 +979,176 @@ class ImageRuntimeTests(unittest.TestCase):
             image_request.call_args_list[1].args[1],
             f"/jobs/{job_id}",
         )
+
+    def test_active_image_artifact_resolution_and_edit_chaining(self):
+        image_directory = agent.IMAGE_DIRECTORY
+        image_directory.mkdir(parents=True)
+        image_a = "1234567890-aaaaaaaaaaaa"
+        image_b = "1234567891-bbbbbbbbbbbb"
+        for image_id, color in ((image_a, "red"), (image_b, "blue")):
+            Image.new("RGB", (32, 32), color).save(
+                image_directory / f"{image_id}.png"
+            )
+
+        first_followup = agent.ChatActionRequest(
+            prompt="Mach es noch dunkler.",
+            active_artifact_id=f"image-{image_a}",
+        )
+        second_followup = agent.ChatActionRequest(
+            prompt="Mach das Bild etwas wärmer.",
+            active_artifact_id=f"image-{image_b}",
+        )
+
+        self.assertEqual(
+            agent._image_edit_payload(first_followup)["source_path"],
+            str((image_directory / f"{image_a}.png").resolve()),
+        )
+        self.assertEqual(
+            agent._image_edit_payload(second_followup)["source_path"],
+            str((image_directory / f"{image_b}.png").resolve()),
+        )
+        self.assertTrue(
+            agent._looks_like_image_edit_request(
+                "Und jetzt etwas wärmer."
+            )
+        )
+
+    def test_uploaded_image_takes_priority_over_active_artifact(self):
+        image_directory = agent.IMAGE_DIRECTORY
+        image_directory.mkdir(parents=True)
+        image_id = "1234567890-aaaaaaaaaaaa"
+        Image.new("RGB", (32, 32), "red").save(
+            image_directory / f"{image_id}.png"
+        )
+        upload = self.root / "uploaded.png"
+        Image.new("RGB", (32, 32), "green").save(upload)
+        request = agent.ChatActionRequest(
+            prompt="Mach das Bild dunkler.",
+            file_context={
+                "kind": "image",
+                "mime_type": "image/png",
+                "stored_path": str(upload),
+            },
+            active_artifact_id=f"image-{image_id}",
+        )
+
+        self.assertEqual(
+            agent._image_edit_payload(request)["source_path"],
+            str(upload),
+        )
+
+    def test_active_image_artifact_validation(self):
+        image_directory = agent.IMAGE_DIRECTORY
+        image_directory.mkdir(parents=True)
+        missing_id = "1234567890-aaaaaaaaaaaa"
+        corrupt_id = "1234567891-bbbbbbbbbbbb"
+        (image_directory / f"{corrupt_id}.png").write_text(
+            "not an image",
+            encoding="utf-8",
+        )
+
+        invalid_ids = (
+            "file-1234567890-aaaaaaaaaaaa",
+            "image-../../private",
+            "image-1234567890-aaaaaaaaaaaa/../secret",
+        )
+        for artifact_id in invalid_ids:
+            with self.subTest(artifact_id=artifact_id), self.assertRaises(
+                HTTPException
+            ) as raised:
+                agent._resolve_image_artifact_source(artifact_id)
+            self.assertEqual(raised.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as missing:
+            agent._resolve_image_artifact_source(f"image-{missing_id}")
+        self.assertEqual(missing.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as corrupt:
+            agent._resolve_image_artifact_source(f"image-{corrupt_id}")
+        self.assertEqual(corrupt.exception.status_code, 422)
+
+    def test_active_image_routes_followup_without_affecting_plain_chat(self):
+        image_directory = agent.IMAGE_DIRECTORY
+        image_directory.mkdir(parents=True)
+        image_id = "1234567890-aaaaaaaaaaaa"
+        Image.new("RGB", (32, 32), "red").save(
+            image_directory / f"{image_id}.png"
+        )
+        queued_job = {
+            "id": "c" * 24,
+            "operation": "edit",
+            "status": "queued",
+        }
+        request = agent.ChatActionRequest(
+            prompt="Mach es noch dunkler.",
+            active_artifact_id=f"image-{image_id}",
+        )
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            return_value=queued_job,
+        ) as image_request:
+            result = agent.run_chat_action(request)
+
+        self.assertEqual(result["tool"], "image_edit")
+        self.assertEqual(result["status"], "queued")
+        self.assertEqual(
+            image_request.call_args.args[2]["payload"]["source_path"],
+            str((image_directory / f"{image_id}.png").resolve()),
+        )
+
+        with patch.object(
+            agent,
+            "semantic_intent_classifier",
+            return_value={
+                "intent": "normal_chat",
+                "confidence": 0.99,
+                "requires_tools": False,
+                "reason": "general question",
+            },
+        ):
+            without_image = agent.run_chat_action(
+                agent.ChatActionRequest(prompt="Mach es noch dunkler.")
+            )
+            docker = agent.run_chat_action(
+                agent.ChatActionRequest(
+                    prompt="Wie funktioniert Docker?",
+                    active_artifact_id=f"image-{image_id}",
+                )
+            )
+
+        self.assertNotEqual(without_image["tool"], "image_edit")
+        self.assertEqual(docker["tool"], "normal_chat")
+
+    def test_active_artifact_workspace_is_persisted_per_chat(self):
+        artifact_id = "image-1234567890-aaaaaaaaaaaa"
+        first = agent.ChatSessionRequest(
+            id="first-chat",
+            title="First",
+            created=1,
+            updated=2,
+            messages=[],
+            workspace={"active_artifact_id": artifact_id},
+        )
+        second = agent.ChatSessionRequest(
+            id="second-chat",
+            title="Second",
+            created=1,
+            updated=2,
+            messages=[],
+        )
+
+        agent.put_chat("first-chat", first)
+        agent.put_chat("second-chat", second)
+
+        self.assertEqual(
+            agent.read_chat("first-chat")["workspace"][
+                "active_artifact_id"
+            ],
+            artifact_id,
+        )
+        self.assertNotIn("workspace", agent.read_chat("second-chat"))
 
     def test_completed_image_generate_job_returns_an_artifact(self):
         image_id = "1234567890-fedcba654321"

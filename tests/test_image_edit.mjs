@@ -178,6 +178,7 @@ assert.equal(
 
 let generating = false;
 let visionChecks = 0;
+let selectedAttachments = [imageAttachment];
 const session = {
     messages: [],
     workspace: {},
@@ -191,7 +192,7 @@ const imageArtifact = {
 
 context.MLXChatAttachments = {
     ...window.MLXChatAttachments,
-    getAttachments: () => [imageAttachment],
+    getAttachments: () => selectedAttachments,
     buildAttachmentContext: () => '',
     clearAttachments() {},
 };
@@ -329,6 +330,7 @@ assert.deepEqual(
 const actionPayload = JSON.parse(requests[1].options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
+assert.equal(actionPayload.active_artifact_id, null);
 assert.equal(actionPayload.image_options, null);
 assert.equal(session.messages.at(-1).image_job.status, 'running');
 assert.equal(session.messages.at(-1).image_job.current_step, 2);
@@ -342,6 +344,174 @@ assert.equal(session.messages.at(-1).tool_result.tool, 'image_edit');
 assert.equal(
     session.workspace.active_artifact_id,
     imageArtifact.artifact_id,
+);
+
+assert.equal(
+    routing.activeSessionImageArtifact(session).artifact_id,
+    imageArtifact.artifact_id,
+);
+assert.equal(
+    routing.isImageEditRequest('Mach es noch dunkler.', true),
+    true,
+);
+assert.equal(
+    routing.isImageEditRequest('Und jetzt etwas wärmer.', true),
+    true,
+);
+assert.equal(
+    routing.isImageEditRequest('Mach es noch dunkler.', false),
+    false,
+);
+
+const imageArtifactB = {
+    ...imageArtifact,
+    artifact_id: 'image-1234567891-bbbbbbbbbbbb',
+    image_id: '1234567891-bbbbbbbbbbbb',
+};
+const imageArtifactC = {
+    ...imageArtifact,
+    artifact_id: 'image-1234567892-cccccccccccc',
+    image_id: '1234567892-cccccccccccc',
+};
+const followupJobs = new Map([
+    ['d'.repeat(24), imageArtifactB],
+    ['e'.repeat(24), imageArtifactC],
+]);
+let followupActionCount = 0;
+selectedAttachments = [];
+context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (url.startsWith('/api/mlx/image-jobs/')) {
+        const jobId = url.split('/').at(-1);
+        const artifact = followupJobs.get(jobId);
+        return {
+            ok: true,
+            async json() {
+                return {
+                    tool: 'image_edit',
+                    status: 'completed',
+                    data: {
+                        job: {
+                            id: jobId,
+                            operation: 'edit',
+                            status: 'completed',
+                            current_step: 8,
+                            total_steps: 8,
+                        },
+                        image: artifact,
+                    },
+                    artifacts: [artifact],
+                    error: null,
+                };
+            },
+        };
+    }
+
+    assert.equal(url, '/api/mlx/chat/actions');
+    const jobId = followupActionCount === 0
+        ? 'd'.repeat(24)
+        : 'e'.repeat(24);
+    followupActionCount += 1;
+    return {
+        ok: true,
+        async json() {
+            return {
+                tool: 'image_edit',
+                status: 'queued',
+                data: {
+                    job: {
+                        id: jobId,
+                        operation: 'edit',
+                        status: 'queued',
+                    },
+                },
+                artifacts: [],
+                error: null,
+            };
+        },
+    };
+};
+
+const followupRequestStart = requests.length;
+input.value = 'Mach es noch dunkler.';
+await window.MLXChatGeneration.sendMessage();
+await new Promise(resolve => setImmediate(resolve));
+const secondActionPayload = JSON.parse(
+    requests[followupRequestStart].options.body
+);
+assert.equal(secondActionPayload.file_context, null);
+assert.equal(
+    secondActionPayload.active_artifact_id,
+    imageArtifact.artifact_id,
+);
+assert.equal(
+    session.workspace.active_artifact_id,
+    imageArtifactB.artifact_id,
+);
+
+const thirdRequestStart = requests.length;
+input.value = 'Mach das Bild etwas wärmer.';
+await window.MLXChatGeneration.sendMessage();
+await new Promise(resolve => setImmediate(resolve));
+const thirdActionPayload = JSON.parse(
+    requests[thirdRequestStart].options.body
+);
+assert.equal(thirdActionPayload.file_context, null);
+assert.equal(
+    thirdActionPayload.active_artifact_id,
+    imageArtifactB.artifact_id,
+);
+assert.equal(
+    session.workspace.active_artifact_id,
+    imageArtifactC.artifact_id,
+);
+
+selectedAttachments = [imageAttachment];
+const uploadedPriorityStart = requests.length;
+input.value = 'Mach das Bild dunkler.';
+await window.MLXChatGeneration.sendMessage();
+await new Promise(resolve => setImmediate(resolve));
+const uploadedPriorityPayload = JSON.parse(
+    requests[uploadedPriorityStart].options.body
+);
+assert.equal(
+    uploadedPriorityPayload.file_context.stored_path,
+    '/uploads/stored.png',
+);
+assert.equal(uploadedPriorityPayload.active_artifact_id, null);
+selectedAttachments = [];
+
+const preservedArtifactId = session.workspace.active_artifact_id;
+for (const status of ['failed', 'cancelled', 'running']) {
+    routing.updateImageJobMessage(session, {}, {
+        tool: 'image_edit',
+        status,
+        data: {
+            job: {
+                id: 'f'.repeat(24),
+                operation: 'edit',
+                status,
+            },
+        },
+        artifacts: [],
+        error: status === 'failed' ? 'provider failed' : null,
+    });
+    assert.equal(
+        session.workspace.active_artifact_id,
+        preservedArtifactId,
+    );
+}
+
+const emptySession = { messages: [], workspace: {} };
+assert.equal(routing.activeSessionImageArtifact(emptySession), null);
+assert.equal(
+    routing.activeSessionImageArtifact({
+        messages: session.messages,
+        workspace: {
+            active_artifact_id: 'file-1234567892-cccccccccccc',
+        },
+    }),
+    null,
 );
 
 class TestElement {
@@ -500,7 +670,7 @@ assert.equal(
 const editMessage = session.messages.at(-1);
 assert.equal(
     editMessage.tool_result.artifacts[0].artifact_id,
-    imageArtifact.artifact_id,
+    imageArtifactC.artifact_id,
 );
 const editCard = renderImageArtifactCard(editMessage);
 const editPreview = editCard.children.find(
@@ -508,7 +678,7 @@ const editPreview = editCard.children.find(
 );
 assert.equal(
     editPreview.src,
-    '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
+    '/api/mlx/images/' + encodeURIComponent(imageArtifactC.image_id),
 );
 
 const generatedCard = renderImageArtifactCard({

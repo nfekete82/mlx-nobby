@@ -14,6 +14,7 @@ import time
 import uuid
 import urllib.error
 import urllib.request
+import zlib
 from agent import knowledge
 from agent import profile
 from agent import code_workspaces
@@ -60,6 +61,9 @@ LOCAL_MODELS_ROOT = Path.home() / "Models"
 IMAGE_SERVICE_URL = os.environ.get("IMAGE_SERVICE_URL", "http://127.0.0.1:8030").rstrip("/")
 IMAGE_DIRECTORY = Path.home() / ".config/mlx-web/images"
 IMAGE_ID_PATTERN = re.compile(r"^\d{10}-[0-9a-f]{12}$")
+IMAGE_ARTIFACT_ID_PATTERN = re.compile(
+    r"^image-(?P<image_id>\d{10}-[0-9a-f]{12})$"
+)
 
 
 class AddModelRequest(BaseModel):
@@ -90,6 +94,7 @@ class ChatSessionRequest(BaseModel):
     updated: float
     messages: list[dict]
     settings: dict | None = None
+    workspace: dict | None = None
 
 
 CHAT_DIRECTORY = Path.home() / ".config/mlx-web/chats"
@@ -3460,6 +3465,7 @@ class ChatFileRouteRequest(BaseModel):
 class ChatActionRequest(BaseModel):
     prompt: str
     file_context: dict | None = None
+    active_artifact_id: str | None = None
     image_options: dict | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
@@ -3966,7 +3972,7 @@ _IMAGE_EDIT_MAKE_PATTERN = re.compile(
 _IMAGE_EDIT_MODIFIER_PATTERN = re.compile(
     r"\b(?:"
     r"rot|blau|grün|gruen|gelb|schwarz|weiß|weiss|blond|"
-    r"heller|dunkler|dunkel|hell|"
+    r"heller|dunkler|dunkel|hell|wärmer|waermer|kälter|kaelter|"
     r"jünger|juenger|älter|aelter|"
     r"unscharf|scharf|weg|"
     r"hintergrund|farbe|farben|person|objekt|gesicht|haare|"
@@ -3977,7 +3983,17 @@ _IMAGE_EDIT_MODIFIER_PATTERN = re.compile(
     r"lighter|darker|dark|bright|younger|older|"
     r"blurry|blurred|sharp|"
     r"background|color|colour|object|face|hair|beard|"
-    r"clothing|style|remove|removed"
+    r"realistischer|"
+    r"clothing|style|remove|removed|warmer|cooler|more realistic"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_IMAGE_EDIT_FOLLOWUP_PATTERN = re.compile(
+    r"^\s*(?:und\s+)?(?:jetzt|nun|noch|then|now)\b.*\b(?:"
+    r"dunkler|heller|wärmer|waermer|kälter|kaelter|"
+    r"realistischer|unscharf|schärfer|schaerfer|"
+    r"darker|lighter|warmer|cooler|more realistic|blurrier|sharper"
     r")\b",
     re.IGNORECASE,
 )
@@ -6658,9 +6674,17 @@ def tool_web_search(request):
 
 
 def _image_edit_payload(request):
-    source = Path(
-        str((request.file_context or {}).get("stored_path", ""))
-    ).expanduser()
+    file_context = request.file_context or {}
+    stored_path = str(file_context.get("stored_path") or "").strip()
+
+    if stored_path:
+        source = Path(stored_path).expanduser()
+    else:
+        artifact_id = (
+            file_context.get("artifact_id")
+            or request.active_artifact_id
+        )
+        source = _resolve_image_artifact_source(artifact_id)
 
     if not source.is_file():
         raise HTTPException(
@@ -6690,6 +6714,67 @@ def _image_edit_payload(request):
         payload.update(request.image_options)
 
     return payload
+
+
+def _resolve_image_artifact_source(artifact_id):
+    """Resolve a managed image artifact without accepting a client path."""
+    if not isinstance(artifact_id, str):
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Bitte hänge ein Bild an oder bearbeite zuerst "
+                "ein vorhandenes Bild."
+            ),
+        )
+
+    match = IMAGE_ARTIFACT_ID_PATTERN.fullmatch(artifact_id)
+    if not match:
+        raise HTTPException(
+            status_code=422,
+            detail="Ungültige Image-Artifact-ID",
+        )
+
+    image_directory = IMAGE_DIRECTORY.resolve()
+    source = (
+        image_directory / f"{match.group('image_id')}.png"
+    ).resolve()
+
+    if source.parent != image_directory:
+        raise HTTPException(
+            status_code=422,
+            detail="Ungültige Image-Artifact-ID",
+        )
+    if not source.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Referenziertes Bild ist nicht verfügbar",
+        )
+
+    try:
+        with source.open("rb") as handle:
+            header = handle.read(33)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Referenziertes Bild ist nicht verfügbar",
+        ) from exc
+
+    if (
+        len(header) != 33
+        or not header.startswith(b"\x89PNG\r\n\x1a\n")
+        or header[8:12] != b"\x00\x00\x00\r"
+        or header[12:16] != b"IHDR"
+        or int.from_bytes(header[16:20], "big") <= 0
+        or int.from_bytes(header[20:24], "big") <= 0
+        or int.from_bytes(header[29:33], "big")
+        != zlib.crc32(header[12:29])
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Image-Artifact ist kein gültiges PNG",
+        )
+
+    return source
 
 
 def _image_generate_payload(request):
@@ -7197,9 +7282,10 @@ def _semantic_agent_route_allowed(
 @app.post("/api/chat/route")
 @observability.observed_turn
 def route_chat_action(request: ChatActionRequest):
+    routing_file_context = _image_source_routing_context(request)
     direct = _direct_chat_action(
         request.prompt,
-        request.file_context,
+        routing_file_context,
         request.conversation_context,
     )
 
@@ -7214,7 +7300,7 @@ def route_chat_action(request: ChatActionRequest):
 
     return classify_chat_action_details(
         request.prompt,
-        request.file_context,
+        routing_file_context,
         request.conversation_context,
     )
 
@@ -7230,6 +7316,9 @@ def _looks_like_image_edit_request(prompt):
         return False
 
     if _IMAGE_EDIT_VERB_PATTERN.search(value):
+        return True
+
+    if _IMAGE_EDIT_FOLLOWUP_PATTERN.search(value):
         return True
 
     if (
@@ -7251,6 +7340,18 @@ def _looks_like_image_edit_request(prompt):
     )
 
 
+def _image_source_routing_context(request):
+    if _file_context_is_image(request.file_context):
+        return request.file_context
+    if request.active_artifact_id:
+        return {
+            "kind": "image",
+            "mime_type": "image/png",
+            "artifact_id": request.active_artifact_id,
+        }
+    return request.file_context
+
+
 def _looks_like_image_generation_request(prompt):
     value = str(prompt or "").strip()
 
@@ -7266,8 +7367,9 @@ def _looks_like_image_generation_request(prompt):
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
+    routing_file_context = _image_source_routing_context(request)
     if (
-        _file_context_is_image(request.file_context)
+        _file_context_is_image(routing_file_context)
         and _looks_like_image_edit_request(request.prompt)
     ):
         routing = {
@@ -7283,7 +7385,7 @@ def run_chat_action(request: ChatActionRequest):
     else:
         routing = classify_chat_action_details(
             request.prompt,
-            request.file_context,
+            routing_file_context,
             request.conversation_context,
         )
 
@@ -7294,7 +7396,7 @@ def run_chat_action(request: ChatActionRequest):
         and not _semantic_agent_route_allowed(
             routing,
             request.prompt,
-            request.file_context,
+            routing_file_context,
             request.conversation_context,
         )
     ):
