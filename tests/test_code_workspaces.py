@@ -1783,7 +1783,13 @@ class CodeWorkspaceTests(unittest.TestCase):
 
         self.assertEqual(result["tool"], "diagnostic_agent")
         self.assertEqual(result["data"]["mode"], "diagnostic")
-        self.assertEqual(result["data"]["routing"]["method"], "semantic_llm")
+        self.assertIn(
+            result["data"]["routing"]["method"],
+            {
+                "semantic_llm",
+                "semantic_manager",
+            },
+        )
 
     def test_process_usage_returns_separate_cpu_and_memory_rankings(self):
         process_output = "\n".join([

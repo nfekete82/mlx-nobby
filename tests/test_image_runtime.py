@@ -1046,3 +1046,203 @@ class ImageRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_hierarchical_router_escalates_only_when_needed(monkeypatch):
+    from agent import app as agent_app
+
+    calls = {
+        "manager": 0,
+    }
+
+    def manager(
+        prompt,
+        small_router_result,
+        trigger_reasons,
+        file_context=None,
+        conversation_context=None,
+    ):
+        calls["manager"] += 1
+
+        mapping = {
+            "Mach den Button im Frontend größer": "coding_agent",
+            "Warum reagiert mein Docker Container nicht?": "diagnostic_agent",
+            "Vergleiche mehrere aktuelle Quellen zu Qwen und Gemma": "research_agent",
+            "Prüfe mein Projekt und recherchiere online, wie man den gefundenen Fehler am besten behebt": "orchestrator",
+        }
+
+        intent = mapping[prompt]
+
+        return {
+            "intent": intent,
+            "confidence": 0.95,
+            "requires_tools": True,
+            "reason": "manager test route",
+        }
+
+    def classifier(prompt, *_args):
+        responses = {
+            "Warum ist der Himmel blau?": {
+                "intent": "normal_chat",
+                "confidence": 0.90,
+                "requires_tools": False,
+                "reason": "general knowledge",
+            },
+            "Mach den Button im Frontend größer": {
+                "intent": "",
+                "confidence": 0.0,
+                "requires_tools": False,
+                "reason": "invalid json",
+            },
+            "Warum reagiert mein Docker Container nicht?": {
+                "intent": "coding_agent",
+                "confidence": 0.90,
+                "requires_tools": True,
+                "reason": "wrong small-router route",
+            },
+            "Vergleiche mehrere aktuelle Quellen zu Qwen und Gemma": {
+                "intent": "web_search",
+                "confidence": 0.90,
+                "requires_tools": False,
+                "reason": "wrong tool flag",
+            },
+            "Prüfe mein Projekt und recherchiere online, wie man den gefundenen Fehler am besten behebt": {
+                "intent": "web_search",
+                "confidence": 0.90,
+                "requires_tools": False,
+                "reason": "cross capability missed",
+            },
+        }
+
+        return responses[prompt]
+
+    normal = agent_app.classify_chat_action_details(
+        "Warum ist der Himmel blau?",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert normal["intent"] == "normal_chat"
+    assert normal["method"] == "semantic_llm"
+    assert calls["manager"] == 0
+
+    coding = agent_app.classify_chat_action_details(
+        "Mach den Button im Frontend größer",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert coding["intent"] == "coding_agent"
+    assert coding["method"] == "semantic_manager"
+    assert "coding_conflict" in coding["manager_trigger_reasons"]
+
+    diagnostic = agent_app.classify_chat_action_details(
+        "Warum reagiert mein Docker Container nicht?",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert diagnostic["intent"] == "diagnostic_agent"
+    assert diagnostic["method"] == "semantic_manager"
+    assert "diagnostic_conflict" in diagnostic["manager_trigger_reasons"]
+
+    research = agent_app.classify_chat_action_details(
+        "Vergleiche mehrere aktuelle Quellen zu Qwen und Gemma",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert research["intent"] == "research_agent"
+    assert research["method"] == "semantic_manager"
+    assert "research_conflict" in research["manager_trigger_reasons"]
+
+    orchestrator = agent_app.classify_chat_action_details(
+        "Prüfe mein Projekt und recherchiere online, wie man den gefundenen Fehler am besten behebt",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert orchestrator["intent"] == "orchestrator"
+    assert orchestrator["method"] == "semantic_manager"
+    assert "cross_capability_conflict" in orchestrator["manager_trigger_reasons"]
+
+    assert calls["manager"] == 4
+
+def test_hierarchical_router_keeps_creative_chat_on_normal_chat():
+    from agent import app as agent_app
+
+    def classifier(_prompt, *_args):
+        return {
+            "intent": "normal_chat",
+            "confidence": 0.90,
+            "requires_tools": False,
+            "reason": "creative chat",
+        }
+
+    def manager(*_args, **_kwargs):
+        raise AssertionError("manager must not run")
+
+    result = agent_app.classify_chat_action_details(
+        "Du agierst als Spielleiter und Rollenspiel-Partner. "
+        "Beginne direkt mit der ersten Szene.",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert result["intent"] == "normal_chat"
+    assert result["method"] == "semantic_llm"
+    assert result["manager_trigger_reasons"] == []
+
+def test_hierarchical_router_manager_failure_uses_safe_fallback():
+    from agent import app as agent_app
+
+    def classifier(_prompt, *_args):
+        return {
+            "intent": "",
+            "confidence": 0.0,
+            "requires_tools": False,
+            "reason": "broken small router",
+        }
+
+    def manager(*_args, **_kwargs):
+        raise RuntimeError("manager unavailable")
+
+    result = agent_app.classify_chat_action_details(
+        "Mach den Button im Frontend größer",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert result["intent"] in {
+        "coding_agent",
+        "normal_chat",
+    }
+    assert result["method"] == "safe_fallback"
+    assert result["manager_error"] == "manager unavailable"
+
+def test_hierarchical_router_rejects_low_confidence_manager_agent():
+    from agent import app as agent_app
+
+    def classifier(_prompt, *_args):
+        return {
+            "intent": "",
+            "confidence": 0.0,
+            "requires_tools": False,
+            "reason": "small router failed",
+        }
+
+    def manager(*_args, **_kwargs):
+        return {
+            "intent": "research_agent",
+            "confidence": 0.40,
+            "requires_tools": True,
+            "reason": "uncertain",
+        }
+
+    result = agent_app.classify_chat_action_details(
+        "Vergleiche mehrere aktuelle Quellen zu Qwen und Gemma",
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert result["method"] == "safe_fallback"
+    assert result["intent"] != "research_agent"

@@ -4672,7 +4672,6 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
 
     return None
 
-
 def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     """Return only unambiguous direct actions that may bypass the LLM router.
 
@@ -4688,6 +4687,16 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if candidate == "orchestrator":
         return candidate
 
+    if (
+        candidate == "web_search"
+        and _looks_like_cross_capability_request(
+            prompt,
+            conversation_context,
+        )
+    ):
+        # Web + local-project tasks need semantic arbitration.
+        return None
+
     # Agent-like natural-language intents remain semantic so an LLM
     # classification plus the existing safety gate can validate them.
     #
@@ -4699,7 +4708,6 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
         return None
 
     return candidate
-
 
 def _router_context_text(conversation_context):
     entries=[]
@@ -4853,7 +4861,6 @@ def _looks_like_local_diagnostic(prompt, conversation_context=None):
         diagnostic_followup and followup_reference
     )
 
-
 def _looks_like_coding_action(prompt, conversation_context=None):
     """Conservative fallback used only when semantic classification fails."""
     value=str(prompt or "").strip().lower()
@@ -4889,7 +4896,7 @@ def _looks_like_coding_action(prompt, conversation_context=None):
         r"ergaenze|erstelle|erstell|erstellen|erzeuge|lege|schreibe|baue|bau|"
         r"refaktoriere|refaktorier|überarbeite|ueberarbeite|lösche|loesche|"
         r"remove|delete|analysiere|analysier|suche|such|prüfe|pruefe|"
-        r"bewerte|bewert|verbessere|verbesser)\b",
+        r"bewerte|bewert|verbessere|verbesser|mach|mache)\b",
         value,
     )) or bool(
         re.search(r"\bschau(?:e)?\s+(?:dir\s+)?(?:das|die|den|diese[nrsm]?|.+?)\s+an\b", value)
@@ -4920,6 +4927,392 @@ def _looks_like_coding_action(prompt, conversation_context=None):
         coding_followup and followup_change
     )
 
+def _looks_like_creative_chat_request(prompt):
+    """Recognize creative conversation that should normally stay in chat."""
+    value = str(prompt or "").strip().lower()
+
+    return bool(re.search(
+        r"\b(?:"
+        r"rollenspiel|roleplay|role-play|"
+        r"spielleiter|game master|gm|"
+        r"geschichte|story|szene|szenario|"
+        r"charakter|dialog|erzähle|erzaehle|"
+        r"spiele|simuliere|simulation|"
+        r"in medias res"
+        r")\b",
+        value,
+        re.IGNORECASE,
+    ))
+
+def _looks_like_research_request(prompt):
+    """Return True for clearly multi-source/current research requests."""
+    value = str(prompt or "").strip().lower()
+
+    explicit_research = bool(re.search(
+        r"\b(?:"
+        r"recherchier\w*|"
+        r"deep research|tiefe recherche|"
+        r"mehrere quellen|"
+        r"mehrere aktuelle quellen|"
+        r"vergleiche?\s+(?:mehrere|aktuelle|neue)\s+quellen|"
+        r"quellen\s+vergleichen"
+        r")\b",
+        value,
+        re.IGNORECASE,
+    ))
+
+    comparison = any(
+        marker in value
+        for marker in (
+            "vergleiche",
+            "vergleich",
+            "gegenüber",
+            "gegenueber",
+            "mehrere quellen",
+        )
+    )
+
+    freshness = any(
+        marker in value
+        for marker in (
+            "aktuell",
+            "aktuelle",
+            "aktuellen",
+            "heute",
+            "neueste",
+            "neuesten",
+            "news",
+        )
+    )
+
+    return explicit_research or (comparison and freshness)
+
+def _looks_like_cross_capability_request(
+    prompt,
+    conversation_context=None,
+):
+    """Recognize tasks combining local project work with external research."""
+    value = str(prompt or "").strip().lower()
+
+    local_project = any(
+        marker in value
+        for marker in (
+            "mein projekt",
+            "meinem projekt",
+            "mein code",
+            "meinem code",
+            "lokaler code",
+            "lokalen code",
+            "workspace",
+            "codebase",
+        )
+    )
+
+    external = any(
+        marker in value
+        for marker in (
+            "recherch",
+            "online",
+            "im web",
+            "internet",
+            "websuche",
+            "web search",
+        )
+    )
+
+    multi_step = any(
+        marker in value
+        for marker in (
+            "danach",
+            "anschließend",
+            "anschliessend",
+            "und recherchiere",
+            "und suche",
+            "vergleiche",
+            "kombiniere",
+            "behebt",
+            "beheben",
+        )
+    )
+
+    return local_project and external and multi_step
+
+def _safe_file_context_metadata(file_context):
+    """Expose only harmless file metadata to the routing manager."""
+    if not isinstance(file_context, dict):
+        return None
+
+    return {
+        "kind": file_context.get("kind"),
+        "mime_type": (
+            file_context.get("mime_type")
+            or file_context.get("mime")
+        ),
+        "name": (
+            file_context.get("name")
+            or file_context.get("filename")
+        ),
+        "has_stored_path": bool(
+            file_context.get("stored_path")
+            or file_context.get("path")
+        ),
+    }
+
+def _manager_route_trigger_reasons(
+    prompt,
+    semantic,
+    file_context=None,
+    conversation_context=None,
+    classifier_failed=False,
+):
+    """Return reasons why qwen35 should review the small-router result."""
+    reasons = []
+
+    intent = str(
+        (semantic or {}).get("intent") or ""
+    ).strip().lower()
+
+    try:
+        confidence = float(
+            (semantic or {}).get("confidence") or 0.0
+        )
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    requires_tools = (semantic or {}).get("requires_tools")
+
+    if classifier_failed:
+        reasons.append("small_router_failed")
+
+    if intent not in SEMANTIC_ROUTER_INTENTS:
+        reasons.append("invalid_intent")
+
+    if confidence < SEMANTIC_ROUTER_THRESHOLD:
+        reasons.append("low_confidence")
+
+    if (
+        intent in SEMANTIC_ROUTER_AGENT_INTENTS
+        and requires_tools is not True
+    ):
+        reasons.append("agent_without_tools")
+
+    if (
+        intent == "web_search"
+        and requires_tools is False
+    ):
+        reasons.append("web_search_without_tools")
+
+    if (
+        _looks_like_local_diagnostic(
+            prompt,
+            conversation_context,
+        )
+        and intent != "diagnostic_agent"
+    ):
+        reasons.append("diagnostic_conflict")
+
+    if (
+        _looks_like_coding_action(
+            prompt,
+            conversation_context,
+        )
+        and intent not in {
+            "coding_agent",
+            "orchestrator",
+        }
+    ):
+        reasons.append("coding_conflict")
+
+    if (
+        _looks_like_research_request(prompt)
+        and (
+            intent not in {
+                "research_agent",
+                "orchestrator",
+            }
+            or requires_tools is not True
+        )
+    ):
+        reasons.append("research_conflict")
+
+    if (
+        _looks_like_cross_capability_request(
+            prompt,
+            conversation_context,
+        )
+        and intent != "orchestrator"
+    ):
+        reasons.append("cross_capability_conflict")
+
+    if (
+        _looks_like_creative_chat_request(prompt)
+        and intent != "normal_chat"
+    ):
+        reasons.append("creative_chat_conflict")
+
+    return list(dict.fromkeys(reasons))
+
+def semantic_manager_classifier(
+    prompt,
+    small_router_result,
+    trigger_reasons,
+    file_context=None,
+    conversation_context=None,
+):
+    """
+    Use the configured agent model as a second-stage routing judge.
+
+    This function performs routing only. It never executes a tool.
+    """
+    try:
+        active_workspace = (
+            code_workspaces.active_workspace(
+                validate=False
+            )
+        )
+    except ValueError:
+        active_workspace = None
+
+    system_prompt = f"""
+Du bist ausschließlich der zweite Routing-Judge von MLX nobby.
+
+Du beantwortest die Nutzerfrage NICHT.
+Du führst KEIN Tool aus.
+Du entscheidest nur den endgültigen Routing-Intent.
+
+Der kleine Router wurde bereits ausgeführt, aber seine Entscheidung
+ist möglicherweise unsicher oder widersprüchlich.
+
+Verfügbare Fähigkeiten:
+
+{capability_model_text()}
+
+Wichtige Regeln:
+
+- Normale Wissensfragen, Beratung, kreative Texte, Geschichten,
+  Rollenspiele, Roleplay, Simulationen und Dialoge gehören zu
+  normal_chat, solange keine externe Recherche ausdrücklich nötig ist.
+
+- Eine konkrete Prüfung des aktuellen lokalen Macs oder laufender
+  Prozesse gehört zu diagnostic_agent.
+
+- Eine konkrete Änderung oder Untersuchung des aktiven lokalen
+  Coding-Projekts gehört zu coding_agent.
+
+- Allgemeine Programmierfragen gehören zu normal_chat.
+
+- Eine einzelne aktuelle Webabfrage gehört zu web_search.
+
+- Eine aktuelle mehrstufige Recherche oder ein Vergleich mehrerer
+  Quellen gehört zu research_agent.
+
+- Eine Aufgabe, die externe Recherche UND Arbeit am lokalen Projekt
+  kombiniert, gehört zu orchestrator.
+
+- Bildanalyse gehört zu vision.
+- Bildänderung gehört zu image_edit.
+- Bilderzeugung gehört zu image_generate.
+
+- requires_tools ist true für alle Intents, die tatsächlich ein Tool,
+  einen Agenten, Webzugriff oder eine Spezialpipeline benötigen.
+- requires_tools ist bei normal_chat false.
+
+Sei konservativ mit autonomen Agent-Intents.
+Wenn keine externe oder lokale Aktion erforderlich ist, bevorzuge
+normal_chat.
+
+Antworte ausschließlich mit genau einem gültigen JSON-Objekt:
+
+{{"intent":"...","confidence":0.0,"requires_tools":false,"reason":"maximal 12 Wörter"}}
+
+Erlaubte Intents:
+{', '.join(sorted(SEMANTIC_ROUTER_INTENTS))}
+""".strip()
+
+    payload = {
+        "prompt": str(prompt or "")[:4000],
+        "small_router": small_router_result,
+        "manager_trigger_reasons": trigger_reasons,
+        "active_coding_workspace": bool(active_workspace),
+        "file_context": _safe_file_context_metadata(
+            file_context
+        ),
+        "conversation_context": json.loads(
+            _router_context_text(
+                conversation_context
+            )
+        ),
+    }
+
+    answer = observed_agent_llm(
+        "router.manager",
+        [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+        max_tokens=320,
+        temperature=0.0,
+    )
+
+    parsed = parse_agent_json(answer)
+
+    intent = str(
+        parsed.get("intent") or ""
+    ).strip().lower()
+
+    aliases = {
+        "image_generation": "image_generate",
+        "file_analysis": "file_analyze",
+    }
+    intent = aliases.get(intent, intent)
+
+    if intent not in SEMANTIC_ROUTER_INTENTS:
+        raise ValueError(
+            "Manager lieferte unbekannten Intent"
+        )
+
+    try:
+        confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    parsed.get(
+                        "confidence",
+                        0.0,
+                    )
+                ),
+            ),
+        )
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    requires_tools = parsed.get(
+        "requires_tools"
+    )
+
+    if not isinstance(requires_tools, bool):
+        requires_tools = (
+            intent != "normal_chat"
+        )
+
+    return {
+        "intent": intent,
+        "confidence": confidence,
+        "requires_tools": requires_tools,
+        "reason": str(
+            parsed.get("reason") or ""
+        ).strip()[:500],
+    }
 
 def semantic_router_fallback(
     prompt,
@@ -4934,12 +5327,12 @@ def semantic_router_fallback(
         return "file_analyze"
     return "normal_chat"
 
-
 def classify_chat_action_details(
     prompt,
     file_context=None,
     conversation_context=None,
     classifier=None,
+    manager_classifier=None,
 ):
     deterministic=_direct_chat_action(
         prompt,
@@ -4954,21 +5347,63 @@ def classify_chat_action_details(
             "method": "deterministic",
         }
 
-    classify=classifier or semantic_intent_classifier
+    classify = classifier or semantic_intent_classifier
+    classifier_failed = False
+
     try:
-        semantic=classify(
+        semantic = classify(
             prompt,
             file_context,
             conversation_context,
         )
     except Exception as exc:
-        semantic={
+        classifier_failed = True
+        semantic = {
             "intent": "",
             "confidence": 0.0,
-            "reason": f"Classifier nicht verfügbar: {exc}",
+            "requires_tools": False,
+            "reason": (
+                "Classifier nicht verfügbar: "
+                + str(exc)
+            ),
         }
 
-    intent=str(semantic.get("intent") or "").strip().lower()
+    small_router_result = dict(semantic)
+
+    trigger_reasons = _manager_route_trigger_reasons(
+        prompt,
+        semantic,
+        file_context,
+        conversation_context,
+        classifier_failed=classifier_failed,
+    )
+
+    # Existing tests often inject a synthetic classifier.
+    # Do not unexpectedly load the real manager in those tests.
+    manager = manager_classifier
+    if manager is None and classifier is None:
+        manager = semantic_manager_classifier
+
+    manager_error = None
+    manager_used = False
+
+    if trigger_reasons and manager is not None:
+        try:
+            semantic = manager(
+                prompt,
+                small_router_result,
+                trigger_reasons,
+                file_context,
+                conversation_context,
+            )
+            manager_used = True
+        except Exception as exc:
+            manager_error = str(exc)
+            semantic = small_router_result
+
+    intent = str(
+        semantic.get("intent") or ""
+    ).strip().lower()
     try:
         confidence=max(0.0, min(1.0, float(semantic.get("confidence") or 0.0)))
     except (TypeError, ValueError):
@@ -4981,13 +5416,21 @@ def classify_chat_action_details(
             file_context,
             conversation_context,
         )
-        return {
+        result = {
             "intent": fallback,
             "confidence": confidence,
-            "reason": semantic.get("reason") or "Niedrige Classifier-Confidence",
+            "reason": (
+                semantic.get("reason")
+                or "Niedrige Classifier-Confidence"
+            ),
             "method": "safe_fallback",
             "classifier_intent": intent or None,
+            "small_router": small_router_result,
+            "manager_trigger_reasons": trigger_reasons,
         }
+        if manager_error:
+            result["manager_error"] = manager_error
+        return result
 
     requires_tools=semantic.get("requires_tools")
 
@@ -5015,22 +5458,38 @@ def classify_chat_action_details(
                 str(semantic.get("reason") or "")
                 or "Kein Werkzeugzugriff erforderlich"
             ),
-            "method": "semantic_safety_fallback",
+            "method": (
+                "semantic_manager_safety_fallback"
+                if manager_used
+                else "semantic_safety_fallback"
+            ),
+            "small_router": small_router_result,
+            "manager_trigger_reasons": trigger_reasons,
         }
 
     # Vision remains part of the regular chat and VLM path.
     effective_intent="normal_chat" if intent == "vision" else intent
     if intent == "file_analyze" and not file_context:
         effective_intent="normal_chat"
-    return {
+    result = {
         "intent": effective_intent,
         "semantic_intent": intent,
         "confidence": confidence,
         "requires_tools": requires_tools,
         "reason": str(semantic.get("reason") or ""),
-        "method": "semantic_llm",
+        "method": (
+            "semantic_manager"
+            if manager_used
+            else "semantic_llm"
+        ),
+        "small_router": small_router_result,
+        "manager_trigger_reasons": trigger_reasons,
     }
 
+    if manager_error:
+        result["manager_error"] = manager_error
+
+    return result
 
 def classify_chat_action(prompt, file_context=None, conversation_context=None):
     return classify_chat_action_details(
@@ -6577,8 +7036,6 @@ def user_profile_context():
         "context": profile.context(),
     }
 
-
-
 def _semantic_agent_route_allowed(
     routing,
     prompt,
@@ -6605,6 +7062,12 @@ def _semantic_agent_route_allowed(
     if deterministic == intent:
         return True
 
+    manager_verified = (
+        routing.get("method") == "semantic_manager"
+        and confidence >= 0.90
+        and requires_tools
+    )
+
     if intent == "diagnostic_agent":
         return (
             confidence >= 0.90
@@ -6630,13 +7093,32 @@ def _semantic_agent_route_allowed(
             r"aktuelle?\s+(?:quellen|informationen|news|änderungen|aenderungen))\w*\b",
             value,
         ))
-        return confidence >= 0.90 and explicit_research
+        return (
+            confidence >= 0.90
+            and (
+                explicit_research
+                or (
+                    manager_verified
+                    and _looks_like_research_request(
+                        prompt
+                    )
+                )
+            )
+        )
 
     if intent == "orchestrator":
-        return deterministic == "orchestrator"
+        return (
+            deterministic == "orchestrator"
+            or (
+                manager_verified
+                and _looks_like_cross_capability_request(
+                    prompt,
+                    conversation_context,
+                )
+            )
+        )
 
     return False
-
 
 @app.post("/api/chat/route")
 @observability.observed_turn
