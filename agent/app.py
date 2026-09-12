@@ -4555,8 +4555,16 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if candidate == "orchestrator":
         return candidate
 
-    if candidate in SEMANTIC_ROUTER_AGENT_INTENTS | {"normal_chat"}:
+    # Agent-like natural-language intents remain semantic so an LLM
+    # classification plus the existing safety gate can validate them.
+    #
+    # A deterministic normal_chat result is different: it represents a
+    # high-confidence knowledge/explanation question that explicitly does
+    # not require tools. Let it bypass the semantic router so ordinary
+    # programming knowledge cannot be misrouted to knowledge_search.
+    if candidate in SEMANTIC_ROUTER_AGENT_INTENTS:
         return None
+
     return candidate
 
 

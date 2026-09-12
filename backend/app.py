@@ -1121,13 +1121,11 @@ def mlx_chat_stream(request: ChatRequest):
                 timeout=900,
             ) as response:
 
-                while True:
-                    chunk = response.read(4096)
-
-                    if not chunk:
-                        break
-
-                    yield chunk
+                # Forward SSE lines immediately instead of buffering them
+                # into 4 KiB chunks. Small token events should reach the
+                # client as soon as the upstream agent emits them.
+                for line in response:
+                    yield line
 
         except urllib.error.HTTPError as exc:
             body = exc.read().decode(
