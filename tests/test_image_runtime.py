@@ -1,7 +1,10 @@
 import copy
+import io
 import json
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -23,13 +26,34 @@ class ImageRuntimeTests(unittest.TestCase):
                         patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json")]
         for item in self.patches:
             item.start()
+        with service._jobs_lock:
+            service._jobs.clear()
+            service._active_job_id = None
         registry.load_registry()
         self.client = TestClient(service.app, base_url="http://localhost")
 
     def tearDown(self):
+        with service._jobs_lock:
+            jobs = list(service._jobs.values())
+        for job in jobs:
+            job.get("_cancel_event", threading.Event()).set()
+            thread = job.get("_thread")
+            if thread:
+                thread.join(timeout=2)
         for item in reversed(self.patches):
             item.stop()
         self.temporary.cleanup()
+
+    def wait_for_image_job(self, job_id, statuses, timeout=3):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            response = self.client.get(f"/jobs/{job_id}")
+            self.assertEqual(response.status_code, 200, response.text)
+            job = response.json()
+            if job["status"] in statuses:
+                return job
+            time.sleep(0.01)
+        self.fail(f"Image job {job_id} did not reach {statuses}")
 
     def test_persistence_and_safe_default(self):
         data = registry.load_registry()
@@ -355,6 +379,94 @@ class ImageRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(process.wait.call_count, 2)
 
+    def test_provider_cancel_terminates_the_process_group(self):
+        model = registry.get_model(
+            "mflux-qwen-image-edit-2511",
+            require_enabled=False,
+        )
+        cancel_event = threading.Event()
+        process = Mock(pid=4321, returncode=None)
+        process.poll.return_value = None
+
+        def communicate(**_kwargs):
+            cancel_event.set()
+            raise subprocess.TimeoutExpired(
+                "mflux-generate-qwen-edit",
+                providers.PROVIDER_POLL_INTERVAL,
+            )
+
+        process.communicate.side_effect = communicate
+        process.wait.return_value = -15
+        params = {
+            "prompt": "Edit the image",
+            "source_path": "/uploads/source.png",
+            "steps": 8,
+            "guidance": 3.5,
+            "seed": 17,
+        }
+
+        with patch.object(
+            providers,
+            "availability",
+            return_value=(True, "ready"),
+        ), patch.object(
+            providers,
+            "model_directory",
+            return_value=Path("/models/qwen-edit"),
+        ), patch.object(
+            providers.subprocess,
+            "Popen",
+            return_value=process,
+        ) as popen, patch.object(
+            providers.subprocess,
+            "run",
+            return_value=Mock(stdout="0\n"),
+        ), patch.object(
+            providers.os,
+            "killpg",
+        ) as killpg:
+            with self.assertRaises(providers.ProviderCancelled):
+                providers.run_provider(
+                    model,
+                    params,
+                    self.root / "cancelled.png",
+                    cancel_event=cancel_event,
+                    progress_callback=lambda _event: None,
+                )
+
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertIn("--json-events", popen.call_args.args[0])
+        killpg.assert_called_once_with(4321, providers.signal.SIGTERM)
+        process.wait.assert_called_once_with(
+            timeout=providers.PROCESS_TERMINATION_TIMEOUT
+        )
+
+    def test_provider_runtime_events_report_only_real_step_progress(self):
+        events = []
+        stream = io.BytesIO(
+            b'{"type":"runtime","phase":"progress","step":2,"total_steps":8}\n'
+            b'{"type":"runtime","phase":"progress","step":1,"total_steps":5}\n'
+            b'provider diagnostic\n'
+            b'{"type":"runtime","phase":"save","step":8,"total_steps":8}\n'
+        )
+
+        remainder = providers._read_runtime_events(
+            stream,
+            "",
+            events.append,
+            8,
+        )
+
+        self.assertEqual(remainder, "")
+        self.assertEqual(
+            events,
+            [
+                {"phase": "progress", "step": 2, "total_steps": 8},
+                {"phase": "progress", "step": None, "total_steps": None},
+                {"phase": "save", "step": 8, "total_steps": 8},
+            ],
+        )
+
     def test_provider_rejects_a_non_png_edit_output(self):
         model = registry.get_model(
             "mflux-qwen-image-edit-2511",
@@ -494,6 +606,176 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(failed.status_code, 503)
         self.assertEqual(failed.json()["detail"], "Provider timeout")
+
+    def test_image_job_lifecycle_reports_real_progress_and_completion(self):
+        registry.update_model(
+            "mflux-qwen-image-edit-2511",
+            {"enabled": True},
+        )
+        service.OUTPUT.mkdir(parents=True)
+        source = service.OUTPUT / "source.png"
+        Image.new("RGB", (320, 480), "white").save(source)
+        started = threading.Event()
+        release = threading.Event()
+
+        def provider(_model, params, output, **options):
+            options["process_callback"](Mock(pid=4321))
+            options["progress_callback"]({
+                "phase": "progress",
+                "step": 2,
+                "total_steps": params["steps"],
+            })
+            started.set()
+            self.assertTrue(release.wait(timeout=2))
+            Image.new("RGB", (304, 464), "black").save(output)
+            options["progress_callback"]({
+                "phase": "save",
+                "step": params["steps"],
+                "total_steps": params["steps"],
+            })
+            options["process_callback"](None)
+
+        with patch.object(service, "run_provider", side_effect=provider):
+            created = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "edit",
+                    "payload": {
+                        "prompt": "Darken the background",
+                        "source_path": str(source),
+                        "model": "mflux-qwen-image-edit-2511",
+                        "seed": 17,
+                    },
+                },
+            )
+            self.assertEqual(created.status_code, 202, created.text)
+            job_id = created.json()["id"]
+            self.assertEqual(created.json()["status"], "queued")
+            self.assertTrue(started.wait(timeout=2))
+
+            running = self.client.get(f"/jobs/{job_id}").json()
+            self.assertEqual(running["status"], "running")
+            self.assertEqual(running["current_step"], 2)
+            self.assertEqual(running["total_steps"], 8)
+            self.assertEqual(running["progress"], 0.25)
+            self.assertEqual(self.client.get("/health").json()["status"], "busy")
+
+            busy = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "generate",
+                    "payload": {"prompt": "A red apple"},
+                },
+            )
+            self.assertEqual(busy.status_code, 409)
+
+            release.set()
+            completed = self.wait_for_image_job(job_id, {"completed"})
+
+        self.assertEqual(completed["operation"], "edit")
+        self.assertEqual(completed["current_step"], 8)
+        self.assertEqual(completed["result"]["steps"], 8)
+        self.assertTrue(Path(completed["result"]["path"]).is_file())
+        self.assertEqual(self.client.get("/health").json()["status"], "ready")
+
+    def test_image_job_failure_has_no_result_or_partial_artifact(self):
+        output_paths = []
+
+        def provider(_model, _params, output, **_options):
+            output_paths.append(output)
+            output.write_bytes(b"partial")
+            raise RuntimeError("Provider failed")
+
+        with patch.object(service, "run_provider", side_effect=provider):
+            created = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "generate",
+                    "payload": {"prompt": "A red apple"},
+                },
+            )
+            failed = self.wait_for_image_job(
+                created.json()["id"],
+                {"failed"},
+            )
+
+        self.assertEqual(failed["error"], "Provider failed")
+        self.assertIsNone(failed["result"])
+        self.assertFalse(output_paths[0].exists())
+        self.assertEqual(self.client.get("/health").json()["status"], "ready")
+
+    def test_image_job_cancel_cleans_output_and_allows_the_next_job(self):
+        registry.update_model(
+            "mflux-qwen-image-edit-2511",
+            {"enabled": True},
+        )
+        service.OUTPUT.mkdir(parents=True)
+        source = service.OUTPUT / "source.png"
+        Image.new("RGB", (320, 480), "white").save(source)
+        started = threading.Event()
+        output_paths = []
+        process = Mock(pid=4321)
+
+        def cancellable(_model, _params, output, **options):
+            output_paths.append(output)
+            output.write_bytes(b"partial")
+            options["process_callback"](process)
+            started.set()
+            self.assertTrue(options["cancel_event"].wait(timeout=2))
+            options["process_callback"](None)
+            raise providers.ProviderCancelled("cancelled")
+
+        with patch.object(
+            service,
+            "run_provider",
+            side_effect=cancellable,
+        ), patch.object(
+            service,
+            "terminate_process_tree",
+        ) as terminate:
+            created = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "edit",
+                    "payload": {
+                        "prompt": "Darken the background",
+                        "source_path": str(source),
+                        "model": "mflux-qwen-image-edit-2511",
+                    },
+                },
+            )
+            job_id = created.json()["id"]
+            self.assertTrue(started.wait(timeout=2))
+            cancelled_response = self.client.post(f"/jobs/{job_id}/cancel")
+
+        self.assertEqual(cancelled_response.status_code, 200)
+        cancelled = cancelled_response.json()
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertIsNone(cancelled["result"])
+        terminate.assert_called_once_with(process)
+        self.assertFalse(output_paths[0].exists())
+        self.assertEqual(self.client.get("/health").json()["status"], "ready")
+
+        def successful(_model, params, output, **_options):
+            Image.new(
+                "RGB",
+                (params["width"], params["height"]),
+                "red",
+            ).save(output)
+
+        with patch.object(service, "run_provider", side_effect=successful):
+            next_job = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "generate",
+                    "payload": {"prompt": "A red apple"},
+                },
+            )
+            completed = self.wait_for_image_job(
+                next_job.json()["id"],
+                {"completed"},
+            )
+        self.assertIsNotNone(completed["result"])
 
     def test_image_intent_routing(self):
         image_context = {
@@ -637,13 +919,37 @@ class ImageRuntimeTests(unittest.TestCase):
             trace_id="image-edit-test",
         )
 
+        job_id = "a" * 24
+        queued_job = {
+            "id": job_id,
+            "operation": "edit",
+            "status": "queued",
+            "current_step": None,
+            "total_steps": None,
+            "progress": None,
+            "result": None,
+            "error": None,
+        }
+        completed_job = {
+            **queued_job,
+            "status": "completed",
+            "current_step": 4,
+            "total_steps": 4,
+            "progress": 1.0,
+            "result": provider_result,
+        }
+
         with patch.object(
             agent.image_api,
             "request",
-            return_value=provider_result,
+            side_effect=[queued_job, completed_job],
         ) as image_request:
-            result = agent.run_chat_action(request)
+            queued = agent.run_chat_action(request)
+            result = agent.image_job_api(job_id)
 
+        self.assertEqual(queued["status"], "queued")
+        self.assertEqual(queued["data"]["job"]["id"], job_id)
+        self.assertEqual(queued["artifacts"], [])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["tool"], "image_edit")
         self.assertEqual(
@@ -651,16 +957,51 @@ class ImageRuntimeTests(unittest.TestCase):
             f"image-{image_id}",
         )
         self.assertEqual(
-            image_request.call_args.args[1],
-            "/edit",
+            image_request.call_args_list[0].args[1],
+            "/jobs",
         )
         self.assertEqual(
-            image_request.call_args.args[2]["source_path"],
+            image_request.call_args_list[0].args[2]["operation"],
+            "edit",
+        )
+        self.assertEqual(
+            image_request.call_args_list[0].args[2]["payload"]["source_path"],
             str(source),
         )
         self.assertEqual(
-            image_request.call_args.args[2]["steps"],
+            image_request.call_args_list[0].args[2]["payload"]["steps"],
             4,
+        )
+        self.assertEqual(
+            image_request.call_args_list[1].args[1],
+            f"/jobs/{job_id}",
+        )
+
+    def test_completed_image_generate_job_returns_an_artifact(self):
+        image_id = "1234567890-fedcba654321"
+        result = agent._image_job_tool_result({
+            "id": "b" * 24,
+            "operation": "generate",
+            "status": "completed",
+            "result": {
+                "id": image_id,
+                "path": str(agent.IMAGE_DIRECTORY / f"{image_id}.png"),
+                "width": 512,
+                "height": 512,
+                "prompt": "A red apple",
+                "model": "FLUX.1-schnell",
+                "provider": "diffusionkit",
+                "steps": 4,
+                "seed": 17,
+            },
+            "error": None,
+        })
+
+        self.assertEqual(result["tool"], "image_generate")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            result["artifacts"][0]["artifact_id"],
+            f"image-{image_id}",
         )
 
     def test_unsupported_lora_rejected(self):

@@ -6124,7 +6124,7 @@ def tool_web_search(request):
     return result
 
 
-def tool_image_edit(request):
+def _image_edit_payload(request):
     source = Path(
         str((request.file_context or {}).get("stored_path", ""))
     ).expanduser()
@@ -6156,13 +6156,28 @@ def tool_image_edit(request):
             )
         payload.update(request.image_options)
 
-    result = image_api.request(
-        "POST",
-        "/edit",
-        payload,
-        timeout=900,
-    )
+    return payload
 
+
+def _image_generate_payload(request):
+    source_prompt = image_prompt_from_request(request.prompt)
+    prompt = translate_image_prompt_to_english(source_prompt)
+    if len(prompt) < 3:
+        raise HTTPException(status_code=400, detail="Bitte beschreibe das gewünschte Bild")
+    payload = {
+        "prompt": prompt,
+        "model": "auto",
+        "width": 512,
+        "height": 512,
+    }
+    if request.image_options:
+        if set(request.image_options) - {"prompt", "model", "width", "height", "steps", "guidance", "seed"}:
+            raise HTTPException(422, "Unbekannte Bildparameter")
+        payload.update(request.image_options)
+    return payload
+
+
+def _image_artifact(result, action):
     image_id = str(result.get("id", ""))
     image_path = Path(str(result.get("path", "")))
 
@@ -6184,7 +6199,7 @@ def tool_image_edit(request):
         "mime_type": "image/png",
         "width": result.get("width"),
         "height": result.get("height"),
-        "prompt": result.get("prompt", request.prompt),
+        "prompt": result.get("prompt"),
         "model": result.get("model"),
         "seed": result.get("seed"),
         "steps": result.get("steps"),
@@ -6195,54 +6210,67 @@ def tool_image_edit(request):
         "loras": result.get("loras", []),
         "created_at": result.get("created_at", time.time()),
         "source_job_id": image_id,
-        "source_path": result.get("source_path"),
     }
+    if action == "image_edit":
+        artifact["source_path"] = result.get("source_path")
+    return artifact
 
-    return {"image": artifact}
+
+def tool_image_edit(request):
+    payload = _image_edit_payload(request)
+
+    result = image_api.request(
+        "POST",
+        "/edit",
+        payload,
+        timeout=900,
+    )
+    return {"image": _image_artifact(result, "image_edit")}
 
 
 def tool_image_generate(request):
-    source_prompt = image_prompt_from_request(request.prompt)
-    prompt = translate_image_prompt_to_english(source_prompt)
-    if len(prompt) < 3:
-        raise HTTPException(status_code=400, detail="Bitte beschreibe das gewünschte Bild")
-    payload = {
-        "prompt": prompt,
-        "model": "auto",
-        "width": 512,
-        "height": 512,
-    }
-    if request.image_options:
-        if set(request.image_options) - {"prompt", "model", "width", "height", "steps", "guidance", "seed"}:
-            raise HTTPException(422, "Unbekannte Bildparameter")
-        payload.update(request.image_options)
+    payload = _image_generate_payload(request)
     result = image_generate_api(payload)
+    return {"image": _image_artifact(result, "image_generate")}
 
-    image_id = str(result.get("id", ""))
-    image_path = Path(str(result.get("path", "")))
-    if not IMAGE_ID_PATTERN.fullmatch(image_id) or image_path.parent != IMAGE_DIRECTORY or image_path.suffix != ".png":
-        raise HTTPException(status_code=502, detail="Ungültige Antwort vom Image-Service")
-    artifact = {
-        "artifact_id": f"image-{image_id}",
-        "image_id": image_id,
-        "name": f"{image_id}.png",
-        "path": str(image_path),
-        "mime_type": "image/png",
-        "width": result.get("width"),
-        "height": result.get("height"),
-        "prompt": result.get("prompt", prompt),
-        "model": result.get("model", "FLUX.1-schnell"),
-        "seed": result.get("seed"),
-        "steps": result.get("steps"),
-        "guidance": result.get("guidance", 0),
-        "provider": result.get("provider", "diffusionkit"),
-        "model_family": result.get("model_family", "flux1"),
-        "quantization": result.get("quantization", "q4"),
-        "loras": result.get("loras", []),
-        "created_at": result.get("created_at", time.time()),
-        "source_job_id": image_id,
-    }
-    return {"image": artifact}
+
+def _start_chat_image_job(action, request):
+    payload = (
+        _image_edit_payload(request)
+        if action == "image_edit"
+        else _image_generate_payload(request)
+    )
+    if action == "image_generate" and payload.get("model", "auto") == "auto":
+        payload["model"] = load_model_roles()["image"]
+    return image_api.request(
+        "POST",
+        "/jobs",
+        {
+            "operation": action.removeprefix("image_"),
+            "payload": payload,
+        },
+        timeout=10,
+    )
+
+
+def _image_job_tool_result(job):
+    action = "image_" + str(job.get("operation") or "")
+    status = str(job.get("status") or "failed")
+    data = {"job": job}
+    artifacts = []
+
+    if status == "completed":
+        artifact = _image_artifact(job.get("result") or {}, action)
+        data["image"] = artifact
+        artifacts.append(artifact)
+
+    return chat_tool_result(
+        action,
+        status,
+        data,
+        artifacts=artifacts,
+        error=job.get("error"),
+    )
 
 
 @app.get("/api/image/health")
@@ -6287,6 +6315,26 @@ def image_activate_api(model_id: str):
 @app.post("/api/image/unload")
 def image_unload_api():
     return image_api.request("POST", "/unload", {})
+
+
+@app.get("/api/image/jobs/{job_id}")
+def image_job_api(job_id: str):
+    job = image_api.request(
+        "GET",
+        "/jobs/" + image_api.job_id(job_id),
+    )
+    return _image_job_tool_result(job)
+
+
+@app.post("/api/image/jobs/{job_id}/cancel")
+def image_job_cancel_api(job_id: str):
+    job = image_api.request(
+        "POST",
+        "/jobs/" + image_api.job_id(job_id) + "/cancel",
+        {},
+        timeout=15,
+    )
+    return _image_job_tool_result(job)
 
 
 @app.post("/api/image/generate")
@@ -6729,6 +6777,19 @@ def run_chat_action(request: ChatActionRequest):
                 "routing": routing,
             },
         )
+
+    if action in {"image_generate", "image_edit"}:
+        try:
+            job = _start_chat_image_job(action, request)
+            return chat_tool_result(
+                action,
+                job.get("status", "queued"),
+                {"job": job},
+            )
+        except HTTPException as exc:
+            return chat_tool_result(action, "failed", error=str(exc.detail))
+        except Exception as exc:
+            return chat_tool_result(action, "failed", error=str(exc))
 
     handler = TOOLS.get(action)
     if not handler:

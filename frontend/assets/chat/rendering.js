@@ -368,6 +368,7 @@ function renderToolCard(message) {
         thinking_on: 'Thinking',
         thinking_off: 'Thinking',
         image_generate: rt('image_generation', 'Image generation'),
+        image_edit: rt('image_editing', 'Image editing'),
         knowledge_search: rt('knowledge_base', 'Knowledge base')
     };
 
@@ -1417,6 +1418,106 @@ function renderImageArtifactCard(message) {
     return card;
 }
 
+function renderImageJobCard(message) {
+    const job = message.image_job;
+    if (!job || job.status === 'completed') return null;
+
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card image-job-card';
+    const title = document.createElement('strong');
+    if (job.status === 'cancelled') {
+        title.textContent = rt('image_job_cancelled', 'Image job cancelled');
+    } else if (job.status === 'failed') {
+        title.textContent = rt('image_job_failed', 'Image job failed');
+    } else {
+        title.textContent = job.operation === 'edit'
+            ? rt('image_editing', 'Editing image …')
+            : rt('image_generating', 'Generating image …');
+    }
+    card.appendChild(title);
+
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    const statusLabel = rt(
+        'image_job_status_' + String(job.status || 'queued'),
+        String(job.status || 'queued')
+    );
+    const currentStep = Number(job.current_step);
+    const totalSteps = Number(job.total_steps);
+    const hasStepProgress =
+        Number.isInteger(currentStep) &&
+        Number.isInteger(totalSteps) &&
+        currentStep >= 0 &&
+        totalSteps > 0 &&
+        currentStep <= totalSteps;
+    details.textContent = hasStepProgress
+        ? statusLabel + '\n' + rt(
+            'image_step',
+            'Step {current}/{total}',
+            { current: currentStep, total: totalSteps }
+        )
+        : statusLabel;
+    card.appendChild(details);
+
+    if (hasStepProgress) {
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'batch-progress-wrap';
+        const progressBar = document.createElement('div');
+        progressBar.className = 'batch-progress-bar';
+        const progressFill = document.createElement('div');
+        progressFill.className = 'batch-progress-fill';
+        progressFill.style.width =
+            Math.min(100, (currentStep / totalSteps) * 100).toFixed(2) + '%';
+        progressBar.appendChild(progressFill);
+        progressWrap.appendChild(progressBar);
+        card.appendChild(progressWrap);
+    }
+
+    if ([
+        'queued',
+        'loading',
+        'running',
+        'saving'
+    ].includes(job.status)) {
+        const controls = document.createElement('div');
+        controls.className = 'batch-chat-controls';
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'message-action-btn';
+        cancel.textContent = rt('cancel', 'Cancel');
+        cancel.addEventListener('click', async () => {
+            cancel.disabled = true;
+            try {
+                const response = await fetch(
+                    '/api/mlx/image-jobs/' +
+                    encodeURIComponent(job.id) +
+                    '/cancel',
+                    { method: 'POST' }
+                );
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+                const toolResult = await response.json();
+                const session = MLXChatSessions.currentSession();
+                window.MLXChatGeneration.updateImageJobMessage(
+                    session,
+                    message,
+                    toolResult
+                );
+                MLXChatSessions.saveSessions();
+                renderMessages({ contentUpdated: true });
+            } catch (error) {
+                console.warn('Image job cancellation failed', error);
+                cancel.disabled = false;
+            }
+        });
+        controls.appendChild(cancel);
+        card.appendChild(controls);
+    }
+
+    return card;
+}
+
 function renderArtifactChoice(message) {
     const choice = message.artifact_choice;
     if (!choice) return null;
@@ -1699,6 +1800,9 @@ function renderMessages(options = {}) {
 
             const toolCard = renderToolCard(message);
             if (toolCard) content.appendChild(toolCard);
+
+            const imageJobCard = renderImageJobCard(message);
+            if (imageJobCard) content.appendChild(imageJobCard);
 
             const agentCard = renderAgentCard(message);
             if (agentCard) content.appendChild(agentCard);
@@ -2142,6 +2246,7 @@ function renderAll(options = {}) {
             renderCodeTestEvidence,
             batchFailureDetail,
             renderImageArtifactCard,
+            renderImageJobCard,
         }
     };
 

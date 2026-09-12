@@ -1,6 +1,7 @@
 """Fixed provider adapters. Each generation owns one short-lived GPU process."""
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -13,6 +14,61 @@ MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local
 GENERATION_TIMEOUT = 840
 MAX_PROCESS_RSS_GB = 24
 PROCESS_TERMINATION_TIMEOUT = 5
+PROVIDER_POLL_INTERVAL = 0.5
+
+
+class ProviderCancelled(RuntimeError):
+    """Raised when a caller cancels an active provider process."""
+
+
+def _read_runtime_events(stream, remainder, callback, expected_steps):
+    chunk = stream.read()
+
+    if not chunk and not remainder:
+        return remainder
+
+    text = remainder + (
+        chunk.decode("utf-8", errors="replace")
+        if chunk
+        else ""
+    )
+    lines = re.split(r"[\r\n]", text)
+    remainder = lines.pop()
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+
+        if event.get("type") != "runtime":
+            continue
+
+        step = event.get("step")
+        total_steps = event.get("total_steps")
+
+        if not isinstance(step, int) or not isinstance(total_steps, int):
+            step = None
+            total_steps = None
+        elif (
+            step < 0
+            or total_steps <= 0
+            or step > total_steps
+            or (
+                expected_steps is not None
+                and total_steps != expected_steps
+            )
+        ):
+            step = None
+            total_steps = None
+
+        callback({
+            "phase": str(event.get("phase") or ""),
+            "step": step,
+            "total_steps": total_steps,
+        })
+
+    return remainder[-65536:]
 
 
 def model_directory(model):
@@ -205,10 +261,20 @@ def terminate_process_tree(process):
         ) from exc
 
 
-def run_provider(model, params, output):
+def run_provider(
+    model,
+    params,
+    output,
+    *,
+    cancel_event=None,
+    process_callback=None,
+    progress_callback=None,
+):
     ready, reason = availability(model)
     if not ready:
         raise RuntimeError(reason)
+    if cancel_event is not None and cancel_event.is_set():
+        raise ProviderCancelled("Image job was cancelled")
     environment = os.environ.copy()
     environment.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1", TOKENIZERS_PARALLELISM="false")
     if model["provider"] == "diffusionkit":
@@ -217,19 +283,41 @@ def run_provider(model, params, output):
     else:
         command = mflux_command(model, params, output)
         worker_input = None
+        if progress_callback is not None:
+            command.append("--json-events")
     # Do not expose prompts/tokens or unfiltered provider tracebacks. Spool output.
-    with tempfile.TemporaryFile() as diagnostics:
+    with tempfile.NamedTemporaryFile() as diagnostics, open(
+        diagnostics.name,
+        "rb",
+    ) as progress_stream:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
+        if process_callback is not None:
+            process_callback(process)
         deadline = time.monotonic() + GENERATION_TIMEOUT
+        progress_remainder = ""
         try:
             while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ProviderCancelled("Image job was cancelled")
                 try:
-                    process.communicate(input=worker_input, timeout=2)
+                    process.communicate(
+                        input=worker_input,
+                        timeout=PROVIDER_POLL_INTERVAL,
+                    )
                     break
                 except subprocess.TimeoutExpired:
                     worker_input = None
+                if progress_callback is not None:
+                    progress_remainder = _read_runtime_events(
+                        progress_stream,
+                        progress_remainder,
+                        progress_callback,
+                        params.get("steps"),
+                    )
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ProviderCancelled("Image job was cancelled")
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Image-Auftrag hat das Zeitlimit überschritten; Modellprozess wurde beendet")
                 if sys.platform == "darwin":
@@ -238,6 +326,17 @@ def run_provider(model, params, output):
                         raise RuntimeError("Image-Modell überschreitet das 24-GB-Prozessbudget. Ein kleineres oder vorquantisiertes Modell verwenden.")
         finally:
             terminate_process_tree(process)
+            if process_callback is not None:
+                process_callback(None)
+        if progress_callback is not None:
+            _read_runtime_events(
+                progress_stream,
+                progress_remainder + "\n",
+                progress_callback,
+                params.get("steps"),
+            )
+        if cancel_event is not None and cancel_event.is_set():
+            raise ProviderCancelled("Image job was cancelled")
         if process.returncode:
             diagnostics.seek(0, 2)
             diagnostics.seek(max(0, diagnostics.tell() - 65536))

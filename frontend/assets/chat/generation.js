@@ -1679,6 +1679,36 @@ const imageFiles =
                 };
             }
 
+            if (
+                [
+                    'image_generate',
+                    'image_edit'
+                ].includes(toolResult.tool) &&
+                [
+                    'queued',
+                    'loading',
+                    'running',
+                    'saving'
+                ].includes(toolResult.status) &&
+                toolResult.data?.job?.id &&
+                pendingImageMessage
+            ) {
+                updateImageJobMessage(
+                    session,
+                    pendingImageMessage,
+                    toolResult
+                );
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({
+                    contentUpdated: true
+                });
+                watchImageJob(
+                    session,
+                    pendingImageMessage
+                );
+                return;
+            }
+
             // ------------------------------------------------
             // Auto-Agent
             // ------------------------------------------------
@@ -2095,6 +2125,96 @@ function toolFailureSummary(result) {
     );
 }
 
+const ACTIVE_IMAGE_JOB_STATUSES = new Set([
+    'queued',
+    'loading',
+    'running',
+    'saving'
+]);
+
+function updateImageJobMessage(session, message, toolResult) {
+    const job = toolResult?.data?.job;
+
+    if (!job?.id) {
+        return true;
+    }
+
+    message.image_job = job;
+    message.tool_result = toolResult;
+    message.image_generation_pending = false;
+
+    if (toolResult.status === 'completed') {
+        const artifact = toolResult.artifacts?.[0];
+        if (artifact?.artifact_id) {
+            session.workspace = {
+                ...(session.workspace || {}),
+                active_artifact_id: artifact.artifact_id
+            };
+        }
+        message.content = toolSummary(toolResult);
+    } else if (toolResult.status === 'cancelled') {
+        message.content = gt(
+            'image_job_cancelled',
+            'Image job cancelled.'
+        );
+    } else if (toolResult.status === 'failed') {
+        message.content = toolResult.error
+            ? gt(
+                'tool_error',
+                '**Tool error:** {message}',
+                { message: toolResult.error }
+            )
+            : toolFailureSummary(toolResult);
+    } else {
+        message.content = '';
+    }
+
+    return !ACTIVE_IMAGE_JOB_STATUSES.has(toolResult.status);
+}
+
+function watchImageJob(session, message) {
+    let failures = 0;
+
+    const poll = async () => {
+        const jobId = message.image_job?.id;
+        if (!jobId || !session.messages.includes(message)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                '/api/mlx/image-jobs/' +
+                encodeURIComponent(jobId)
+            );
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+            const toolResult = await response.json();
+            const terminal = updateImageJobMessage(
+                session,
+                message,
+                toolResult
+            );
+            failures = 0;
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderMessages({
+                contentUpdated: true
+            });
+            if (!terminal) {
+                setTimeout(poll, 1000);
+            }
+        } catch (error) {
+            failures += 1;
+            console.warn('Could not load image job status', error);
+            if (failures < 3) {
+                setTimeout(poll, 1000);
+            }
+        }
+    };
+
+    poll();
+}
+
 function watchBatchJob(session, jobId) {
     const poll = async () => {
         try {
@@ -2185,6 +2305,7 @@ function watchBatchJob(session, jobId) {
         generateAssistant: generateAssistant,
         sendMessage: sendMessage,
         approveAgentAction: approveAgentAction,
+        updateImageJobMessage: updateImageJobMessage,
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
@@ -2193,6 +2314,8 @@ function watchBatchJob(session, jobId) {
             imageAttachments: imageAttachments,
             isImageEditRequest: isImageEditRequest,
             isImageGenerationRequest: isImageGenerationRequest,
+            updateImageJobMessage: updateImageJobMessage,
+            watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary
         }
     };

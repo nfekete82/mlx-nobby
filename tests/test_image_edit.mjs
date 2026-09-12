@@ -17,6 +17,7 @@ const renderingSource = fs.readFileSync(
 );
 const requests = [];
 const input = { value: '' };
+const scheduledCallbacks = [];
 
 class TestFormData {
     constructor() {
@@ -63,6 +64,10 @@ const context = {
         };
     },
     FormData: TestFormData,
+    setTimeout(callback) {
+        scheduledCallbacks.push(callback);
+        return scheduledCallbacks.length;
+    },
     window,
 };
 
@@ -209,6 +214,7 @@ context.MLXChatCompact = {
 };
 context.MLXChatRendering = {
     renderAll() {},
+    renderMessages() {},
 };
 context.alert = message => {
     throw new Error(`Unexpected alert: ${message}`);
@@ -223,6 +229,7 @@ window.MLXChatGeneration.configure({
 });
 
 requests.length = 0;
+let imageJobPolls = 0;
 context.fetch = async (url, options) => {
     requests.push({ url, options });
 
@@ -238,15 +245,68 @@ context.fetch = async (url, options) => {
         };
     }
 
+    if (url.startsWith('/api/mlx/image-jobs/')) {
+        imageJobPolls += 1;
+        return {
+            ok: true,
+            async json() {
+                if (imageJobPolls === 1) {
+                    return {
+                        tool: 'image_edit',
+                        status: 'running',
+                        data: {
+                            job: {
+                                id: 'a'.repeat(24),
+                                operation: 'edit',
+                                status: 'running',
+                                current_step: 2,
+                                total_steps: 8,
+                                progress: 0.25,
+                            },
+                        },
+                        artifacts: [],
+                        error: null,
+                    };
+                }
+                return {
+                    tool: 'image_edit',
+                    status: 'completed',
+                    data: {
+                        job: {
+                            id: 'a'.repeat(24),
+                            operation: 'edit',
+                            status: 'completed',
+                            current_step: 8,
+                            total_steps: 8,
+                            progress: 1,
+                        },
+                        image: imageArtifact,
+                    },
+                    artifacts: [imageArtifact],
+                    error: null,
+                };
+            },
+        };
+    }
+
     assert.equal(url, '/api/mlx/chat/actions');
     return {
         ok: true,
         async json() {
             return {
                 tool: 'image_edit',
-                status: 'completed',
-                data: { image: imageArtifact },
-                artifacts: [imageArtifact],
+                status: 'queued',
+                data: {
+                    job: {
+                        id: 'a'.repeat(24),
+                        operation: 'edit',
+                        status: 'queued',
+                        current_step: null,
+                        total_steps: null,
+                        progress: null,
+                    },
+                },
+                artifacts: [],
                 error: null,
             };
         },
@@ -255,16 +315,29 @@ context.fetch = async (url, options) => {
 input.value = 'ändere das klein in die farbe rot';
 
 await window.MLXChatGeneration.sendMessage();
+await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(visionChecks, 0);
 assert.deepEqual(
-    requests.map(request => request.url),
-    ['/api/mlx/batch/upload', '/api/mlx/chat/actions'],
+    requests.slice(0, 3).map(request => request.url),
+    [
+        '/api/mlx/batch/upload',
+        '/api/mlx/chat/actions',
+        '/api/mlx/image-jobs/' + 'a'.repeat(24),
+    ],
 );
 const actionPayload = JSON.parse(requests[1].options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.image_options, null);
+assert.equal(session.messages.at(-1).image_job.status, 'running');
+assert.equal(session.messages.at(-1).image_job.current_step, 2);
+assert.equal(session.messages.at(-1).tool_result.artifacts.length, 0);
+
+assert.equal(scheduledCallbacks.length, 1);
+await scheduledCallbacks.shift()();
+await new Promise(resolve => setImmediate(resolve));
+
 assert.equal(session.messages.at(-1).tool_result.tool, 'image_edit');
 assert.equal(
     session.workspace.active_artifact_id,
@@ -277,6 +350,8 @@ class TestElement {
         this.children = [];
         this.className = '';
         this.textContent = '';
+        this.style = {};
+        this.listeners = {};
     }
 
     appendChild(child) {
@@ -284,15 +359,56 @@ class TestElement {
         return child;
     }
 
-    addEventListener() {}
+    addEventListener(type, callback) {
+        this.listeners[type] = callback;
+    }
 }
 
 const renderingWindow = {
     MLXI18n: window.MLXI18n,
+    MLXChatGeneration: {
+        updateImageJobMessage(_session, message, result) {
+            message.image_job = result.data.job;
+            message.tool_result = result;
+        },
+    },
 };
 renderingWindow.window = renderingWindow;
+const cancellationRequests = [];
+const cancellationSession = { messages: [], workspace: {} };
 const renderingContext = {
     console,
+    fetch: async (url, options) => {
+        cancellationRequests.push({ url, options });
+        return {
+            ok: true,
+            async json() {
+                return {
+                    tool: 'image_edit',
+                    status: 'cancelled',
+                    data: {
+                        job: {
+                            id: 'b'.repeat(24),
+                            operation: 'edit',
+                            status: 'cancelled',
+                            current_step: 3,
+                            total_steps: 8,
+                        },
+                    },
+                    artifacts: [],
+                    error: null,
+                };
+            },
+        };
+    },
+    MLXChatSessions: {
+        currentSession: () => cancellationSession,
+        saveSessions() {},
+    },
+    MLXChatRuntime: {
+        beforeMessagesRender: () => null,
+        afterMessagesRender() {},
+    },
     document: {
         addEventListener() {},
         createElement: tagName => new TestElement(tagName),
@@ -304,9 +420,83 @@ const renderingContext = {
 vm.runInNewContext(renderingSource, renderingContext, {
     filename: 'frontend/assets/chat/rendering.js',
 });
+renderingWindow.MLXChatRendering.configure({
+    state: { sessions: [], activeId: null },
+    currentSession: () => cancellationSession,
+    isGenerating: () => false,
+    selectSession() {},
+    renameSession() {},
+    deleteSession() {},
+    updateContext() {},
+    startEditMessage() {},
+    regenerateLastAnswer() {},
+});
 
 const renderImageArtifactCard =
     renderingWindow.MLXChatRendering.__test.renderImageArtifactCard;
+const renderImageJobCard =
+    renderingWindow.MLXChatRendering.__test.renderImageJobCard;
+const descendants = element => [
+    element,
+    ...element.children.flatMap(descendants),
+];
+
+const runningJobMessage = {
+    image_job: {
+        id: 'b'.repeat(24),
+        operation: 'edit',
+        status: 'running',
+        current_step: 2,
+        total_steps: 8,
+    },
+};
+const runningJobCard = renderImageJobCard(runningJobMessage);
+const runningJobElements = descendants(runningJobCard);
+assert.match(
+    runningJobElements.find(
+        element => element.className === 'batch-chat-details'
+    ).textContent,
+    /2\/8/,
+);
+assert.equal(
+    runningJobElements.find(
+        element => element.className === 'batch-progress-fill'
+    ).style.width,
+    '25.00%',
+);
+const cancelButton = runningJobElements.find(
+    element => element.tagName === 'BUTTON'
+);
+await cancelButton.listeners.click();
+assert.equal(
+    cancellationRequests[0].url,
+    '/api/mlx/image-jobs/' + 'b'.repeat(24) + '/cancel',
+);
+assert.equal(cancellationRequests[0].options.method, 'POST');
+assert.equal(runningJobMessage.image_job.status, 'cancelled');
+
+const noProgressCard = renderImageJobCard({
+    image_job: {
+        id: 'c'.repeat(24),
+        operation: 'generate',
+        status: 'loading',
+        current_step: null,
+        total_steps: null,
+    },
+});
+assert.equal(
+    descendants(noProgressCard).some(
+        element => element.className === 'batch-progress-wrap'
+    ),
+    false,
+);
+assert.equal(
+    descendants(noProgressCard).find(
+        element => element.className === 'batch-chat-details'
+    ).textContent.includes('%'),
+    false,
+);
+
 const editMessage = session.messages.at(-1);
 assert.equal(
     editMessage.tool_result.artifacts[0].artifact_id,
@@ -341,7 +531,18 @@ assert.equal(
     }),
     null,
 );
+assert.equal(
+    renderImageArtifactCard({
+        image_job: { status: 'cancelled' },
+        tool_result: {
+            tool: 'image_edit',
+            status: 'cancelled',
+            artifacts: [],
+        },
+    }),
+    null,
+);
 
 console.log(
-    'Image edit upload, routing, artifact rendering, and provider error presentation passed.',
+    'Image jobs, routing, progress, cancellation, artifacts, and errors passed.',
 );

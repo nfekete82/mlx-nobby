@@ -219,6 +219,25 @@ def image_unload(): return image_json_request('/unload', {}, timeout=10)
 @app.post('/api/image/generate')
 def image_generate_compatible(request: dict): return image_generate(request)
 
+
+@app.get('/api/mlx/image-jobs/{job_id}')
+def image_job(job_id: str):
+    return agent_json_request(
+        'GET',
+        '/api/image/jobs/' + urllib.parse.quote(job_id, safe=''),
+        timeout=10,
+    )
+
+
+@app.post('/api/mlx/image-jobs/{job_id}/cancel')
+def image_job_cancel(job_id: str):
+    return agent_json_request(
+        'POST',
+        '/api/image/jobs/' + urllib.parse.quote(job_id, safe='') + '/cancel',
+        {},
+        timeout=20,
+    )
+
 @app.get('/api/mlx/images/{image_id}')
 def image_file(image_id: str, download: bool = False):
     suffix = '?download=1' if download else ''

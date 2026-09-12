@@ -16,6 +16,12 @@ def model_id(value):
     return value
 
 
+def job_id(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{24}", value):
+        raise HTTPException(422, "Ungültige Image-Job-ID")
+    return value
+
+
 def request(method, path, payload=None, timeout=10):
     req = urllib.request.Request(IMAGE_URL + path, method=method,
                                  data=json.dumps(payload).encode() if payload is not None else None,
