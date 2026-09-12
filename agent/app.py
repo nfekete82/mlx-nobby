@@ -4689,6 +4689,18 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
 
     if (
         candidate == "web_search"
+        and _looks_like_creative_chat_request(prompt)
+        and not _looks_like_external_information_request(prompt)
+    ):
+        # Creative writing, roleplay and fictional scenarios do not
+        # need external information merely because they mention
+        # locations, events, people, time or environmental details.
+        #
+        # Let the semantic router decide instead of forcing web search.
+        return None
+
+    if (
+        candidate == "web_search"
         and _looks_like_cross_capability_request(
             prompt,
             conversation_context,
@@ -4943,6 +4955,68 @@ def _looks_like_creative_chat_request(prompt):
         value,
         re.IGNORECASE,
     ))
+
+def _looks_like_external_information_request(prompt):
+    """
+    Return True only when the user actually needs information
+    from outside the conversation/model context.
+
+    Creative prompts mentioning places, time, events, people,
+    weather-like scene elements, etc. must not be treated as
+    web requests merely because those words occur in the prompt.
+    """
+    value = str(prompt or "").strip().lower()
+
+    if not value:
+        return False
+
+    explicit_search = bool(re.search(
+        r"(?:^|[\s,.;:!?()])(?:"
+        r"suche|such|suchst|sucht|"
+        r"recherchiere|recherchier|recherchiert|"
+        r"finde|find|"
+        r"schau\s+(?:im\s+)?web|"
+        r"schau\s+online|"
+        r"such\s+(?:im\s+)?internet|"
+        r"look\s+up|search|research"
+        r")(?:$|[\s,.;:!?()])",
+        value,
+        re.IGNORECASE,
+    ))
+
+    explicit_source_request = bool(re.search(
+        r"(?:^|[\s,.;:!?()])(?:"
+        r"quelle|quellen|"
+        r"webseite|webseiten|"
+        r"website|websites|"
+        r"onlinequelle|onlinequellen|"
+        r"link|links"
+        r")(?:$|[\s,.;:!?()])",
+        value,
+        re.IGNORECASE,
+    ))
+
+    current_external_data = bool(re.search(
+        r"(?:"
+        r"\bwetter\s+(?:heute|morgen|aktuell)|"
+        r"\b(?:aktueller|aktuellen|aktuelles|aktuelle)\s+"
+        r"(?:kurs|preis|stand|version|news|nachrichten)|"
+        r"\b(?:bitcoin|btc|ethereum|eth|aktien?|börse|boerse)\s+"
+        r"(?:kurs|preis|aktuell)|"
+        r"\b(?:neueste|neuesten|letzte|letzten)\s+"
+        r"(?:news|nachrichten|meldungen|version)"
+        r")",
+        value,
+        re.IGNORECASE,
+    ))
+
+    return (
+        explicit_search
+        or explicit_source_request
+        or current_external_data
+    )
+
+
 
 def _looks_like_research_request(prompt):
     """Return True for clearly multi-source/current research requests."""

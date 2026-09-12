@@ -1246,3 +1246,82 @@ def test_hierarchical_router_rejects_low_confidence_manager_agent():
 
     assert result["method"] == "safe_fallback"
     assert result["intent"] != "research_agent"
+
+
+def test_long_roleplay_prompt_does_not_route_to_web_search():
+    from agent import app as agent_app
+
+    prompt = """Nimm die Rolle einer weiblichen Hauptfigur und gleichzeitig
+des Spielleiters für ein Erwachsenen-Rollenspiel ein.
+
+Sprich immer aus der Ich-Perspektive als die Frau im Szenario.
+
+Erstelle zum Start ein komplett zufälliges Szenario.
+Erfinde deine Figur, Persönlichkeit und Beziehung zu mir.
+
+Wähle einen zufälligen Ort und Zeitpunkt, zum Beispiel ein spätes
+Büro-Meeting, eine verregnete Nacht, ein verlassenes Hotel oder
+eine Party im Hinterzimmer.
+
+Baue spontan unvorhersehbare Ereignisse ein, zum Beispiel Geräusche,
+jemand klopft, einen Stromausfall oder einen Stimmungswechsel.
+
+Starte jetzt direkt mit dem zufälligen Szenario."""
+
+    assert agent_app._looks_like_creative_chat_request(
+        prompt
+    )
+
+    assert not agent_app._looks_like_external_information_request(
+        prompt
+    )
+
+    # This is the regression that previously failed:
+    # deterministic routing must not force web_search.
+    assert agent_app._direct_chat_action(
+        prompt
+    ) is None
+
+    manager_calls = []
+
+    def classifier(_prompt, *_args):
+        return {
+            "intent": "normal_chat",
+            "confidence": 0.95,
+            "requires_tools": False,
+            "reason": "creative roleplay",
+        }
+
+    def manager(*args, **kwargs):
+        manager_calls.append((args, kwargs))
+        raise AssertionError(
+            "Manager must not run for a clear creative-chat route"
+        )
+
+    result = agent_app.classify_chat_action_details(
+        prompt,
+        classifier=classifier,
+        manager_classifier=manager,
+    )
+
+    assert result["intent"] == "normal_chat"
+    assert result["method"] == "semantic_llm"
+    assert result["requires_tools"] is False
+    assert manager_calls == []
+
+
+def test_creative_prompt_can_still_request_external_research():
+    from agent import app as agent_app
+
+    prompt = (
+        "Schreibe ein Rollenspiel, aber recherchiere zuerst "
+        "im Web die aktuellen Nachrichten aus Berlin."
+    )
+
+    assert agent_app._looks_like_creative_chat_request(
+        prompt
+    )
+
+    assert agent_app._looks_like_external_information_request(
+        prompt
+    )
