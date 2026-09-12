@@ -390,6 +390,155 @@ const railExpand =
 const railChats =
     document.getElementById('railChats');
 
+
+/* MLX-NOBBY-CONFIRM-MODAL-JS */
+
+function showConfirmModal({
+    title = 'Bestätigung',
+    message = 'Möchtest du fortfahren?',
+    confirmLabel = 'OK',
+    cancelLabel = 'Abbrechen',
+} = {}) {
+    return new Promise(resolve => {
+        const modal =
+            document.getElementById('confirmModal');
+
+        const titleElement =
+            document.getElementById('confirmModalTitle');
+
+        const messageElement =
+            document.getElementById('confirmModalMessage');
+
+        const confirmButton =
+            document.getElementById('confirmModalConfirm');
+
+        const cancelButton =
+            document.getElementById('confirmModalCancel');
+
+        if (
+            !modal ||
+            !titleElement ||
+            !messageElement ||
+            !confirmButton ||
+            !cancelButton
+        ) {
+            resolve(false);
+            return;
+        }
+
+        let settled = false;
+
+        titleElement.textContent = title;
+        messageElement.textContent = message;
+        confirmButton.textContent = confirmLabel;
+        cancelButton.textContent = cancelLabel;
+
+        function cleanup() {
+            confirmButton.removeEventListener(
+                'click',
+                onConfirm
+            );
+
+            cancelButton.removeEventListener(
+                'click',
+                onCancel
+            );
+
+            modal.removeEventListener(
+                'click',
+                onBackdrop
+            );
+
+            document.removeEventListener(
+                'keydown',
+                onKeydown
+            );
+        }
+
+        function finish(result) {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+
+            modal.hidden = true;
+            modal.setAttribute(
+                'aria-hidden',
+                'true'
+            );
+
+            cleanup();
+            resolve(result);
+        }
+
+        function onConfirm() {
+            finish(true);
+        }
+
+        function onCancel() {
+            finish(false);
+        }
+
+        function onBackdrop(event) {
+            if (
+                event.target.matches(
+                    '[data-confirm-dismiss]'
+                )
+            ) {
+                finish(false);
+            }
+        }
+
+        function onKeydown(event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                finish(false);
+                return;
+            }
+
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                finish(true);
+            }
+        }
+
+        confirmButton.addEventListener(
+            'click',
+            onConfirm
+        );
+
+        cancelButton.addEventListener(
+            'click',
+            onCancel
+        );
+
+        modal.addEventListener(
+            'click',
+            onBackdrop
+        );
+
+        document.addEventListener(
+            'keydown',
+            onKeydown
+        );
+
+        modal.hidden = false;
+        modal.setAttribute(
+            'aria-hidden',
+            'false'
+        );
+
+        requestAnimationFrame(() => {
+            confirmButton.focus();
+        });
+    });
+}
+
+window.MLXConfirm = showConfirmModal;
+
+/* MLX-NOBBY-CONFIRM-MODAL-JS-END */
+
 const railNewChat =
     document.getElementById('railNewChat');
 

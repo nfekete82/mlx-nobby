@@ -399,25 +399,52 @@ function sessionT(key, fallback = '', variables = {}) {
         renderAll();
     }
 
-    function deleteMessages() {
+    async function deleteMessages() {
         const session = currentSession();
 
-        if (!session) return;
-
-        if (
-            session.messages.length &&
-            !confirm(
-                sessionT(
-                    'ui.clear_chat_confirm',
-                    'Really clear this chat?'
-                )
-            )
-        ) {
+        if (!session) {
             return;
         }
 
+        if (session.messages.length) {
+            const confirmFn = window.MLXConfirm;
+
+            if (typeof confirmFn !== 'function') {
+                console.error(
+                    'MLX confirmation modal is unavailable'
+                );
+                return;
+            }
+
+            const confirmed = await confirmFn({
+                title: sessionT(
+                    'ui.clear_chat',
+                    'Chat leeren'
+                ),
+                message: sessionT(
+                    'ui.clear_chat_confirm',
+                    'Diesen Chat wirklich leeren?'
+                ),
+                confirmLabel: sessionT(
+                    'ui.clear_chat',
+                    'Leeren'
+                ),
+                cancelLabel: sessionT(
+                    'ui.cancel',
+                    'Abbrechen'
+                ),
+            });
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         session.messages = [];
-        session.title = sessionT('sessions.new_chat', 'New chat');
+        session.title = sessionT(
+            'sessions.new_chat',
+            'New chat'
+        );
         session.updated = Date.now();
 
         saveSessions();

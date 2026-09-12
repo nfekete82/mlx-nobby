@@ -6788,3 +6788,163 @@ body.mlx-empty-chat .composer-disclaimer {
 }
 
 /* MLX-NOBBY-MATH-EMOJI-END */
+
+/* ==========================================================
+   MLX Nobby – centered confirmation modal
+   ========================================================== */
+
+.app-modal[hidden] {
+    display: none;
+}
+
+.app-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 24px;
+}
+
+.app-modal-backdrop {
+    position: absolute;
+    inset: 0;
+
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.app-modal-dialog {
+    position: relative;
+    z-index: 1;
+
+    width: min(440px, 100%);
+    padding: 22px;
+
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 18px;
+
+    background: #111722;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+
+    color: #f7f8fa;
+}
+
+.app-modal-dialog h2 {
+    margin: 0 0 10px;
+
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.app-modal-dialog p {
+    margin: 0;
+
+    color: #b9c0cc;
+    line-height: 1.5;
+}
+
+.app-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+
+    margin-top: 22px;
+}
+
+.app-modal-button {
+    min-width: 100px;
+    height: 40px;
+
+    padding: 0 16px;
+
+    border: 0;
+    border-radius: 12px;
+
+    font: inherit;
+    font-weight: 600;
+
+    cursor: pointer;
+}
+
+.app-modal-button.secondary {
+    background: #232a35;
+    color: #f4f6f8;
+}
+
+.app-modal-button.primary {
+    background: #4f8cff;
+    color: #fff;
+}
+
+.app-modal-button:hover {
+    filter: brightness(1.08);
+}
+
+@media (max-width: 620px) {
+    .app-modal {
+        padding: 16px;
+    }
+
+    .app-modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .app-modal-button {
+        width: 100%;
+    }
+}
+
+/* MLX-NOBBY-CONFIRM-MODAL-END */
+
+/* ==========================================================
+   MLX Nobby – confirm modal animation
+   ========================================================== */
+
+.app-modal {
+    opacity: 1;
+}
+
+.app-modal-backdrop {
+    animation: mlxModalBackdropIn 140ms ease-out;
+}
+
+.app-modal-dialog {
+    transform-origin: center;
+    animation: mlxModalDialogIn 160ms ease-out;
+}
+
+@keyframes mlxModalBackdropIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes mlxModalDialogIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-modal-backdrop,
+    .app-modal-dialog {
+        animation: none;
+    }
+}
+
+/* MLX-NOBBY-CONFIRM-MODAL-ANIMATION-END */

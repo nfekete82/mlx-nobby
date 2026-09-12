@@ -1148,5 +1148,50 @@
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20260911-code-evidence"></script>
+
+<div
+    id="confirmModal"
+    class="app-modal"
+    hidden
+    aria-hidden="true"
+>
+    <div
+        class="app-modal-backdrop"
+        data-confirm-dismiss
+    ></div>
+
+    <div
+        class="app-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmModalTitle"
+        aria-describedby="confirmModalMessage"
+    >
+        <h2 id="confirmModalTitle">Bestätigung</h2>
+
+        <p id="confirmModalMessage">
+            Möchtest du fortfahren?
+        </p>
+
+        <div class="app-modal-actions">
+            <button
+                id="confirmModalCancel"
+                type="button"
+                class="app-modal-button secondary"
+            >
+                Abbrechen
+            </button>
+
+            <button
+                id="confirmModalConfirm"
+                type="button"
+                class="app-modal-button primary"
+            >
+                OK
+            </button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
