@@ -20,10 +20,22 @@ _running = None
 
 class Generate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
     prompt: str = Field(min_length=3, max_length=2000)
     model: str = "auto"
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=512, ge=256, le=1024)
+    steps: int | None = Field(default=None, ge=1, le=50)
+    guidance: float | None = Field(default=None, ge=0, le=10)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+
+
+class Edit(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    prompt: str = Field(min_length=3, max_length=2000)
+    source_path: str
+    model: str = "auto"
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
@@ -76,6 +88,51 @@ def health():
         "runtime_model": model.get("repository"),
         "default_model": data["default_model"], "offline": True,
     }
+
+
+def validate_edit_source(value: str) -> Path:
+    path = Path(value).expanduser().resolve()
+
+    allowed_roots = (
+        OUTPUT.resolve(),
+        (
+            Path.home()
+            / ".config/mlx-web/uploads"
+        ).resolve(),
+        (
+            Path.home()
+            / ".config/mlx-web/attachments"
+        ).resolve(),
+        (
+            Path.home()
+            / ".config/mlx-web/batch/uploads"
+        ).resolve(),
+    )
+
+    if not any(
+        path.is_relative_to(root)
+        for root in allowed_roots
+    ):
+        raise HTTPException(
+            422,
+            "Das Quellbild liegt außerhalb der erlaubten MLX-Nobby-Verzeichnisse",
+        )
+
+    if (
+        not path.is_file()
+        or path.suffix.lower() not in {
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+        }
+    ):
+        raise HTTPException(
+            422,
+            "Ungültiges Quellbild",
+        )
+
+    return path
 
 
 @app.get("/models")
@@ -158,6 +215,109 @@ def generate(request: Generate):
             "model_family": model["model_family"],
             "quantization": model["quantization"],
             "loras": [l for l in model["loras"] if l["enabled"]],
+            "guidance": params["guidance"],
+            "seed": params["seed"],
+            "steps": params["steps"],
+            "created_at": time.time(),
+        }
+
+
+@app.post("/edit")
+def edit(request: Edit):
+    global _running
+
+    with exclusive():
+        model = registry_call(
+            registry.get_model,
+            request.model,
+        )
+
+        if "image_edit" not in model.get(
+            "capabilities",
+            [],
+        ):
+            raise HTTPException(
+                422,
+                "Das gewählte Image-Modell unterstützt keine Bildbearbeitung",
+            )
+
+        source = validate_edit_source(
+            request.source_path
+        )
+
+        params = request.model_dump()
+        params["source_path"] = str(source)
+        params["steps"] = (
+            request.steps
+            if request.steps is not None
+            else model["default_steps"]
+        )
+        params["guidance"] = (
+            request.guidance
+            if request.guidance is not None
+            else model["default_guidance"]
+        )
+        params["seed"] = (
+            request.seed
+            if request.seed is not None
+            else secrets.randbelow(2**31 - 1)
+        )
+
+        OUTPUT.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        image_id = (
+            f"{int(time.time())}-"
+            f"{secrets.token_hex(6)}"
+        )
+
+        path = OUTPUT / f"{image_id}.png"
+
+        _running = model["id"]
+
+        try:
+            run_provider(
+                model,
+                params,
+                path,
+            )
+        except Exception as exc:
+            detail = (
+                str(exc)
+                if isinstance(exc, RuntimeError)
+                else "Image-Provider konnte kein gültiges PNG erzeugen"
+            )
+            raise HTTPException(
+                503,
+                detail,
+            ) from exc
+        finally:
+            _running = None
+
+        from PIL import Image
+
+        with Image.open(path) as image:
+            width, height = image.size
+
+        return {
+            "id": image_id,
+            "path": str(path),
+            "mime_type": "image/png",
+            "width": width,
+            "height": height,
+            "prompt": request.prompt,
+            "source_path": str(source),
+            "model": model["id"],
+            "provider": model["provider"],
+            "model_family": model["model_family"],
+            "quantization": model["quantization"],
+            "loras": [
+                l
+                for l in model["loras"]
+                if l["enabled"]
+            ],
             "guidance": params["guidance"],
             "seed": params["seed"],
             "steps": params["steps"],

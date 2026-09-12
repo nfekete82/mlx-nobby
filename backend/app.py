@@ -1695,7 +1695,7 @@ def mlx_chat_actions(request: dict):
         "POST",
         "/api/chat/actions",
         payload=request,
-        timeout=300,
+        timeout=900,
     )
 
 

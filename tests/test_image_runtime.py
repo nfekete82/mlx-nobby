@@ -1,9 +1,10 @@
 import copy
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -33,7 +34,13 @@ class ImageRuntimeTests(unittest.TestCase):
     def test_persistence_and_safe_default(self):
         data = registry.load_registry()
         self.assertEqual(data["default_model"], "FLUX.1-schnell")
-        self.assertEqual(len(data["models"]), 7)
+        self.assertGreaterEqual(len(data["models"]), 8)
+        self.assertTrue(
+            any(
+                model["id"] == "mflux-qwen-image-edit-2511"
+                for model in data["models"]
+            )
+        )
         registry.update_model("mflux-z-image-turbo", {"default_steps": 7})
         self.assertEqual(registry.get_model("mflux-z-image-turbo", require_enabled=False)["default_steps"], 7)
         self.assertEqual(json.loads(registry.REGISTRY_FILE.read_text())["version"], 1)
@@ -157,6 +164,302 @@ class ImageRuntimeTests(unittest.TestCase):
             command = providers.mflux_command(model, params, Path("/tmp/out.png"))
         self.assertTrue(command[0].endswith("mflux-generate-z-image"))
         self.assertIn("z-image", command)
+
+    def test_qwen_edit_command_uses_the_dedicated_cli_contract(self):
+        model = registry.get_model(
+            "mflux-qwen-image-edit-2511",
+            require_enabled=False,
+        )
+        params = {
+            "prompt": "Keep the person and darken the background.",
+            "source_path": "/uploads/source image.png",
+            "steps": 20,
+            "guidance": 3.5,
+            "seed": 17,
+        }
+
+        with patch.object(
+            providers,
+            "model_directory",
+            return_value=Path("/models/qwen-edit"),
+        ):
+            command = providers.mflux_command(
+                model,
+                params,
+                Path("/images/output.png"),
+            )
+
+        self.assertTrue(
+            command[0].endswith("mflux-generate-qwen-edit")
+        )
+        self.assertEqual(
+            command[command.index("--image-paths") + 1],
+            params["source_path"],
+        )
+        self.assertEqual(
+            command[command.index("--model") + 1],
+            "/models/qwen-edit",
+        )
+        for option in (
+            "--base-model",
+            "--width",
+            "--height",
+            "--quantize",
+        ):
+            self.assertNotIn(option, command)
+
+    def test_provider_timeout_terminates_the_entire_process_group(self):
+        model = registry.get_model(
+            "mflux-qwen-image-edit-2511",
+            require_enabled=False,
+        )
+        process = Mock(pid=4321, returncode=None)
+        process.poll.return_value = None
+        process.communicate.side_effect = subprocess.TimeoutExpired(
+            "mflux-generate-qwen-edit",
+            2,
+        )
+        process.wait.side_effect = [
+            subprocess.TimeoutExpired("provider", 5),
+            -9,
+        ]
+        params = {
+            "prompt": "Edit the image",
+            "source_path": "/uploads/source.png",
+            "steps": 4,
+            "guidance": 3.5,
+            "seed": 17,
+        }
+
+        with patch.object(
+            providers,
+            "availability",
+            return_value=(True, "ready"),
+        ), patch.object(
+            providers,
+            "model_directory",
+            return_value=Path("/models/qwen-edit"),
+        ), patch.object(
+            providers.subprocess,
+            "Popen",
+            return_value=process,
+        ) as popen, patch.object(
+            providers.time,
+            "monotonic",
+            side_effect=[0, providers.GENERATION_TIMEOUT + 1],
+        ), patch.object(
+            providers.os,
+            "killpg",
+        ) as killpg:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Zeitlimit",
+            ):
+                providers.run_provider(
+                    model,
+                    params,
+                    self.root / "timeout.png",
+                )
+
+        self.assertTrue(
+            popen.call_args.kwargs["start_new_session"]
+        )
+        self.assertEqual(
+            [call.args for call in killpg.call_args_list],
+            [
+                (4321, providers.signal.SIGTERM),
+                (4321, providers.signal.SIGKILL),
+            ],
+        )
+        self.assertEqual(process.wait.call_count, 2)
+
+    def test_provider_rejects_a_non_png_edit_output(self):
+        model = registry.get_model(
+            "mflux-qwen-image-edit-2511",
+            require_enabled=False,
+        )
+        output = self.root / "provider-output.png"
+        Image.new("RGB", (64, 96), "black").save(
+            output,
+            format="JPEG",
+        )
+        process = Mock(pid=4321, returncode=0)
+        process.poll.return_value = 0
+        process.communicate.return_value = (None, None)
+        params = {
+            "prompt": "Edit the image",
+            "source_path": "/uploads/source.png",
+            "steps": 4,
+            "guidance": 3.5,
+            "seed": 17,
+        }
+
+        with patch.object(
+            providers,
+            "availability",
+            return_value=(True, "ready"),
+        ), patch.object(
+            providers,
+            "model_directory",
+            return_value=Path("/models/qwen-edit"),
+        ), patch.object(
+            providers.subprocess,
+            "Popen",
+            return_value=process,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "gültiges PNG",
+            ):
+                providers.run_provider(model, params, output)
+
+    def test_image_edit_endpoint_validates_source_and_returns_png_metadata(self):
+        registry.update_model(
+            "mflux-qwen-image-edit-2511",
+            {"enabled": True},
+        )
+        service.OUTPUT.mkdir(parents=True)
+        source = service.OUTPUT / "source.png"
+        Image.new("RGB", (320, 480), "white").save(source)
+        resolved_source = source.resolve()
+
+        def edit_provider(_model, params, output):
+            self.assertEqual(params["source_path"], str(resolved_source))
+            Image.new("RGB", (304, 464), "black").save(output)
+
+        with patch.object(
+            service,
+            "run_provider",
+            side_effect=edit_provider,
+        ):
+            response = self.client.post(
+                "/edit",
+                json={
+                    "prompt": "Darken the background",
+                    "source_path": str(source),
+                    "model": "mflux-qwen-image-edit-2511",
+                    "steps": 4,
+                    "seed": 17,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual(result["width"], 304)
+        self.assertEqual(result["height"], 464)
+        self.assertEqual(result["source_path"], str(resolved_source))
+        self.assertEqual(result["steps"], 4)
+        self.assertTrue(Path(result["path"]).is_file())
+
+        invalid = self.client.post(
+            "/edit",
+            json={
+                "prompt": "Darken the background",
+                "source_path": str(self.root / "outside.png"),
+                "model": "mflux-qwen-image-edit-2511",
+            },
+        )
+        self.assertEqual(invalid.status_code, 422)
+
+        with patch.object(
+            service,
+            "run_provider",
+            side_effect=RuntimeError("Provider timeout"),
+        ):
+            failed = self.client.post(
+                "/edit",
+                json={
+                    "prompt": "Darken the background",
+                    "source_path": str(source),
+                    "model": "mflux-qwen-image-edit-2511",
+                },
+            )
+        self.assertEqual(failed.status_code, 503)
+        self.assertEqual(failed.json()["detail"], "Provider timeout")
+
+    def test_image_edit_routing_and_artifact_response(self):
+        source = self.root / "portrait.png"
+        source.write_bytes(b"image")
+        image_context = {
+            "kind": "image",
+            "mime_type": "image/png",
+            "stored_path": str(source),
+        }
+        text_context = {
+            "kind": "text",
+            "mime_type": "text/plain",
+            "stored_path": str(self.root / "notes.txt"),
+        }
+
+        self.assertEqual(
+            agent._deterministic_chat_action(
+                "Mach den Hintergrund dunkel",
+                image_context,
+            ),
+            "image_edit",
+        )
+        self.assertFalse(agent._file_context_is_image(text_context))
+        self.assertNotEqual(
+            agent._deterministic_chat_action(
+                "Ändere den Text",
+                text_context,
+            ),
+            "image_edit",
+        )
+        self.assertFalse(
+            agent._looks_like_image_edit_request(
+                "Beschreibe das Bild"
+            )
+        )
+
+        image_id = "1234567890-abcdef123456"
+        provider_result = {
+            "id": image_id,
+            "path": str(agent.IMAGE_DIRECTORY / f"{image_id}.png"),
+            "width": 832,
+            "height": 1248,
+            "prompt": "Mach den Hintergrund dunkel",
+            "model": "mflux-qwen-image-edit-2511",
+            "provider": "mflux",
+            "model_family": "qwen-image-edit",
+            "quantization": "q4",
+            "steps": 4,
+            "guidance": 3.5,
+            "seed": 17,
+            "source_path": str(source),
+        }
+        request = agent.ChatActionRequest(
+            prompt="Mach den Hintergrund dunkel",
+            file_context=image_context,
+            image_options={"steps": 4},
+            trace_id="image-edit-test",
+        )
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            return_value=provider_result,
+        ) as image_request:
+            result = agent.run_chat_action(request)
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["tool"], "image_edit")
+        self.assertEqual(
+            result["artifacts"][0]["artifact_id"],
+            f"image-{image_id}",
+        )
+        self.assertEqual(
+            image_request.call_args.args[1],
+            "/edit",
+        )
+        self.assertEqual(
+            image_request.call_args.args[2]["source_path"],
+            str(source),
+        )
+        self.assertEqual(
+            image_request.call_args.args[2]["steps"],
+            4,
+        )
 
     def test_unsupported_lora_rejected(self):
         model = registry.get_model()

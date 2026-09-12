@@ -997,6 +997,14 @@ const imageFiles =
             file => file.kind === 'image'
         );
 
+    const explicitImageEditRequest =
+        /\b(?:bearbeite|bearbeit|ändere|aendere|verändere|veraendere|ersetze|ersetz|entferne|entfern|füge|fuege|retuschiere|retuschier)\b/i.test(prompt) ||
+        (
+            imageFiles.length > 0 &&
+            /\b(?:mach|mache)\b/i.test(prompt) &&
+            /\b(?:hintergrund|farbe|farben|heller|dunkler|dunkel|hell|schwarzweiß|schwarz-weiss|schwarz-weiß|person|objekt|gesicht|haare|bart|kleidung|stil|entfernt|weg|unscharf|scharf|größer|groesser|kleiner)\b/i.test(prompt)
+        );
+
     const textFiles =
         currentAttachments.filter(
             file => file.kind === 'text'
@@ -1077,6 +1085,7 @@ const imageFiles =
 
     if (
         imageFiles.length &&
+        !explicitImageEditRequest &&
         !await MLXChatRuntime.ensureVisionSupport()
     ) {
         alert(
@@ -1476,9 +1485,6 @@ const imageFiles =
     const explicitImageCreationRequest =
         /\b(?:erstelle|generiere|erzeuge|zeichne|mach)\b.*\b(?:bild|foto|illustration)\b|\b(?:bild|foto|illustration)\s+von\b/i.test(prompt);
 
-    const explicitImageEditRequest =
-        /\b(?:bearbeite|ändere|aendere|verändere|veraendere|ersetze|entferne|füge|fuege|retuschiere|ändere.*stil|aendere.*stil)\b/i.test(prompt);
-
     const routesCurrentImageToVision =
         imageFiles.length > 0 &&
         !explicitImageCreationRequest &&
@@ -1489,7 +1495,9 @@ const imageFiles =
         !textFiles.length &&
         !routesCurrentImageToVision
     ) {
-        const imageRequest = explicitImageCreationRequest;
+        const imageRequest =
+            explicitImageCreationRequest ||
+            explicitImageEditRequest;
         let pendingImageMessage = null;
         if (imageRequest) {
             pendingImageMessage = { role: 'assistant', content: gt('image_generating', 'Generating the image locally with the selected image model …'), image_generation_pending: true };
@@ -1500,7 +1508,80 @@ const imageFiles =
             });
         }
         try {
-            const fileContext = priorFileAttachments[0] || null;
+            let currentImageContext = null;
+
+            if (
+                explicitImageEditRequest &&
+                imageFiles.length === 1
+            ) {
+                const image = imageFiles[0];
+
+                let storedPath =
+                    image.stored_path ||
+                    image.path ||
+                    null;
+
+                let storedName =
+                    image.file_id ||
+                    null;
+
+                if (!storedPath && image.file) {
+                    const uploaded =
+                        await MLXChatAttachments
+                            .uploadImageAttachments([
+                                image
+                            ]);
+
+                    const item = uploaded[0];
+
+                    if (!item?.upload?.path) {
+                        throw new Error(
+                            'Bild konnte nicht hochgeladen werden.'
+                        );
+                    }
+
+                    storedPath =
+                        item.upload.path;
+
+                    storedName =
+                        item.upload.stored_name ||
+                        storedName;
+
+                    image.stored_path =
+                        storedPath;
+
+                    image.file_id =
+                        storedName;
+                }
+
+                currentImageContext = {
+                    ...image,
+                    kind: 'image',
+                    mime_type:
+                        image.mime_type ||
+                        image.type ||
+                        'image/jpeg',
+                    stored_path:
+                        storedPath,
+                    file_id:
+                        storedName
+                };
+            }
+
+            const fileContext =
+                explicitImageEditRequest
+                    ? currentImageContext
+                    : priorFileAttachments[0] || null;
+
+            if (
+                explicitImageEditRequest &&
+                !fileContext?.stored_path
+            ) {
+                throw new Error(
+                    'Bitte hänge das Bild an, das ich bearbeiten soll.'
+                );
+            }
+
             const conversationContext =
                 buildAgentConversationContext(
                     session,
@@ -1520,7 +1601,10 @@ const imageFiles =
             const toolResult = await actionResponse.json();
 
             if (
-                toolResult.tool === 'image_generate' &&
+                [
+                    'image_generate',
+                    'image_edit'
+                ].includes(toolResult.tool) &&
                 Array.isArray(toolResult.artifacts) &&
                 toolResult.artifacts[0]?.artifact_id
             ) {
@@ -1721,7 +1805,10 @@ const imageFiles =
                 }
                 session.messages.push({
                     role: 'assistant',
-                    content: toolResult.status === 'completed' ? toolSummary(toolResult) : gt('action_failed', 'The action could not be completed.'),
+                    content:
+                        toolResult.status === 'completed'
+                            ? toolSummary(toolResult)
+                            : toolFailureSummary(toolResult),
                     tool_result: toolResult
                 });
                 MLXChatSessions.saveSessions();
@@ -1926,6 +2013,24 @@ function toolSummary(result) {
     return gt('action_completed', 'Action completed.');
 }
 
+function toolFailureSummary(result) {
+    if (
+        result?.tool === 'image_edit' &&
+        result.error
+    ) {
+        return gt(
+            'tool_error',
+            '**Tool error:** {message}',
+            { message: result.error }
+        );
+    }
+
+    return gt(
+        'action_failed',
+        'The action could not be completed.'
+    );
+}
+
 function watchBatchJob(session, jobId) {
     const poll = async () => {
         try {
@@ -2021,7 +2126,8 @@ function watchBatchJob(session, jobId) {
             buildContextSources: buildContextSources,
             readSseEvents: readSseEvents,
             defaultVisionPrompt: defaultVisionPrompt,
-            imageAttachments: imageAttachments
+            imageAttachments: imageAttachments,
+            toolFailureSummary: toolFailureSummary
         }
     };
 })();

@@ -3856,6 +3856,10 @@ MLX_CAPABILITY_MODEL = {
         "description": "Ein Bild lokal mit dem konfigurierten Bildmodell erzeugen",
         "access": "spezialisierte Bild-Pipeline",
     },
+    "image_edit": {
+        "description": "Ein angehängtes oder aktives Bild lokal bearbeiten",
+        "access": "spezialisierte Bild-Pipeline",
+    },
     "vision": {
         "description": "Ein angehängtes oder aktives Bild mit einem Vision-Modell analysieren",
         "access": "Bildanalyse im normalen Chatpfad",
@@ -3880,6 +3884,60 @@ def capability_model_text():
         f"- {intent}: {data['description']} ({data['access']})"
         for intent, data in MLX_CAPABILITY_MODEL.items()
     )
+
+
+
+_IMAGE_FILE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".heic",
+    ".heif",
+    ".avif",
+}
+
+
+def _file_context_is_image(file_context):
+    """Return True only for file contexts that actually represent images."""
+    if not isinstance(file_context, dict):
+        return False
+
+    kind = str(
+        file_context.get("kind") or ""
+    ).strip().lower()
+
+    if kind == "image":
+        return True
+
+    mime_type = str(
+        file_context.get("mime_type")
+        or file_context.get("mime")
+        or ""
+    ).strip().lower()
+
+    if mime_type.startswith("image/"):
+        return True
+
+    candidate = str(
+        file_context.get("stored_path")
+        or file_context.get("path")
+        or file_context.get("name")
+        or file_context.get("filename")
+        or ""
+    ).strip().lower()
+
+    if candidate:
+        from pathlib import Path as _Path
+
+        if _Path(candidate).suffix.lower() in _IMAGE_FILE_EXTENSIONS:
+            return True
+
+    return False
 
 
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
@@ -3964,6 +4022,18 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         and cross_capability_intent
     ):
         return "orchestrator"
+    if (
+        file_context
+        and _file_context_is_image(file_context)
+        and (re.search(
+        r"\b(?:bearbeite|bearbeit|ändere|aendere|verändere|veraendere|"
+        r"entferne|entfern|ersetze|ersetz|mache|mach|füge|fuege|"
+        r"retuschiere|retuschier|verbessere|verbesser)\b",
+        value,
+    ))
+    ):
+        return "image_edit"
+
     if re.search(
         r"\b(?:erstelle|generiere|erzeuge|zeichne|mach)\b.*\b(?:bild|foto|illustration)\b|"
         r"\b(?:bild|foto|illustration)\s+von\b",
@@ -5991,6 +6061,83 @@ def tool_web_search(request):
     return result
 
 
+def tool_image_edit(request):
+    source = Path(
+        str((request.file_context or {}).get("stored_path", ""))
+    ).expanduser()
+
+    if not source.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Referenziertes Bild ist nicht verfügbar",
+        )
+
+    payload = {
+        "prompt": str(request.prompt or "").strip(),
+        "source_path": str(source),
+        "model": "mflux-qwen-image-edit-2511",
+    }
+
+    if request.image_options:
+        allowed = {
+            "prompt",
+            "model",
+            "steps",
+            "guidance",
+            "seed",
+        }
+        if set(request.image_options) - allowed:
+            raise HTTPException(
+                422,
+                "Unbekannte Bildparameter",
+            )
+        payload.update(request.image_options)
+
+    result = image_api.request(
+        "POST",
+        "/edit",
+        payload,
+        timeout=900,
+    )
+
+    image_id = str(result.get("id", ""))
+    image_path = Path(str(result.get("path", "")))
+
+    if (
+        not IMAGE_ID_PATTERN.fullmatch(image_id)
+        or image_path.parent != IMAGE_DIRECTORY
+        or image_path.suffix != ".png"
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="Ungültige Antwort vom Image-Service",
+        )
+
+    artifact = {
+        "artifact_id": f"image-{image_id}",
+        "image_id": image_id,
+        "name": f"{image_id}.png",
+        "path": str(image_path),
+        "mime_type": "image/png",
+        "width": result.get("width"),
+        "height": result.get("height"),
+        "prompt": result.get("prompt", request.prompt),
+        "model": result.get("model"),
+        "seed": result.get("seed"),
+        "steps": result.get("steps"),
+        "guidance": result.get("guidance"),
+        "provider": result.get("provider"),
+        "model_family": result.get("model_family"),
+        "quantization": result.get("quantization"),
+        "loras": result.get("loras", []),
+        "created_at": result.get("created_at", time.time()),
+        "source_job_id": image_id,
+        "source_path": result.get("source_path"),
+    }
+
+    return {"image": artifact}
+
+
 def tool_image_generate(request):
     source_prompt = image_prompt_from_request(request.prompt)
     prompt = translate_image_prompt_to_english(source_prompt)
@@ -6116,6 +6263,7 @@ TOOLS = {
     "knowledge_status": lambda request: knowledge.status(),
     "code_search": tool_code_search,
     "image_generate": tool_image_generate,
+    "image_edit": tool_image_edit,
     "web_search": tool_web_search,
     "search_web": tool_search_web,
     "fetch_url": tool_fetch_url,
@@ -6404,14 +6552,87 @@ def route_chat_action(request: ChatActionRequest):
     )
 
 
+
+def _looks_like_image_edit_request(prompt):
+    value = str(prompt or "").strip().lower()
+
+    if not value:
+        return False
+
+    explicit = re.search(
+        r"\b(?:"
+        r"bearbeite|bearbeit|"
+        r"ändere|aendere|"
+        r"verändere|veraendere|"
+        r"ersetze|ersetz|"
+        r"entferne|entfern|"
+        r"füge|fuege|"
+        r"retuschiere|retuschier|"
+        r"edit|change|replace|remove|retouch"
+        r")\w*\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    if explicit:
+        return True
+
+    natural_make = re.search(
+        r"\b(?:mach|mache|make)\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    edit_target = re.search(
+        r"\b(?:"
+        r"hintergrund|background|"
+        r"farbe|farben|color|colour|"
+        r"heller|dunkler|dunkel|hell|"
+        r"schwarzweiß|schwarz-weiss|schwarz-weiß|"
+        r"person|objekt|object|"
+        r"gesicht|face|"
+        r"haare|hair|"
+        r"bart|beard|"
+        r"kleidung|clothing|"
+        r"stil|style|"
+        r"unscharf|blur|blurred|"
+        r"scharf|sharp|"
+        r"größer|groesser|kleiner|"
+        r"remove|removed"
+        r")\b",
+        value,
+        re.IGNORECASE,
+    )
+
+    return bool(
+        natural_make
+        and edit_target
+    )
+
+
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
-    routing = classify_chat_action_details(
-        request.prompt,
-        request.file_context,
-        request.conversation_context,
-    )
+    if (
+        _file_context_is_image(request.file_context)
+        and _looks_like_image_edit_request(request.prompt)
+    ):
+        routing = {
+            "intent": "image_edit",
+            "confidence": 1.0,
+            "requires_tools": True,
+            "reason": (
+                "Image attachment with explicit "
+                "image-edit instruction"
+            ),
+            "method": "deterministic_image_edit",
+        }
+    else:
+        routing = classify_chat_action_details(
+            request.prompt,
+            request.file_context,
+            request.conversation_context,
+        )
 
     action = routing["intent"]
 
@@ -6466,7 +6687,7 @@ def run_chat_action(request: ChatActionRequest):
     try:
         data = handler(request)
         artifacts = []
-        if action == "image_generate":
+        if action in {"image_generate", "image_edit"}:
             artifact = data.get("image") if isinstance(data, dict) else None
             if artifact:
                 artifacts.append(artifact)

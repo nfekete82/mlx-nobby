@@ -541,7 +541,8 @@ function attachmentT(key, fallback = '', variables = {}) {
                     type: file.type || 'image/jpeg',
                     extension: ext,
                     kind: 'image',
-                    data_url: dataUrl
+                    data_url: dataUrl,
+                    file: file
                 });
 
                 continue;
@@ -634,6 +635,43 @@ function attachmentT(key, fallback = '', variables = {}) {
             if (!response.ok) throw new Error(await response.text());
             uploaded.push({ attachment: item, upload: await response.json() });
         }
+        return uploaded;
+    }
+
+    async function uploadImageAttachments(files) {
+        const uploaded = [];
+
+        for (const item of files.filter(
+            file => file.kind === 'image' && file.file
+        )) {
+            const data = new FormData();
+
+            data.append(
+                'file',
+                item.file,
+                item.name
+            );
+
+            const response = await fetch(
+                '/api/mlx/batch/upload',
+                {
+                    method: 'POST',
+                    body: data
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    await response.text()
+                );
+            }
+
+            uploaded.push({
+                attachment: item,
+                upload: await response.json()
+            });
+        }
+
         return uploaded;
     }
 
@@ -793,6 +831,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         getAttachments:
             getAttachments,
         uploadTextAttachments: uploadTextAttachments,
+        uploadImageAttachments: uploadImageAttachments,
         clearAttachments:
             clearAttachments
     };

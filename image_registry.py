@@ -22,11 +22,43 @@ LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
-    "flux1": ("mflux-generate", ("schnell", "dev")),
-    "flux2-klein": ("mflux-generate-flux2", ("flux2-klein-4b", "flux2-klein-9b", "flux2-klein-base-4b", "flux2-klein-base-9b")),
-    "z-image": ("mflux-generate-z-image", ("z-image",)),
-    "z-image-turbo": ("mflux-generate-z-image-turbo", ("z-image-turbo",)),
-    "qwen-image": ("mflux-generate-qwen", ("qwen-image",)),
+    "flux1": (
+        "mflux-generate",
+        ("schnell", "dev"),
+    ),
+    "flux2-klein": (
+        "mflux-generate-flux2",
+        (
+            "flux2-klein-4b",
+            "flux2-klein-9b",
+            "flux2-klein-base-4b",
+            "flux2-klein-base-9b",
+        ),
+    ),
+    "z-image": (
+        "mflux-generate-z-image",
+        ("z-image",),
+    ),
+    "z-image-turbo": (
+        "mflux-generate-z-image-turbo",
+        ("z-image-turbo",),
+    ),
+    "qwen-image": (
+        "mflux-generate-qwen",
+        ("qwen-image",),
+    ),
+    "qwen-image-edit": (
+        "mflux-generate-qwen-edit",
+        (
+            "qwen-image-edit",
+            "qwen-image-edit-2509",
+            "qwen-image-edit-2511",
+            "qwen-edit",
+            "qwen-edit-2509",
+            "qwen-edit-2511",
+            "qwen-edit-plus",
+        ),
+    ),
 }
 _mutex = threading.RLock()
 
@@ -107,9 +139,25 @@ class ImageModel(BaseModel):
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
             raise ValueError("FLUX.2 Klein distilled benötigt Guidance 1")
         # Capabilities describe adapter support, never arbitrary HTTP claims.
-        self.capabilities = ["text_to_image", "variation"]
-        if self.provider == "mflux":
-            self.capabilities += ["lora", "multi_lora"]
+        if self.model_family == "qwen-image-edit":
+            self.capabilities = [
+                "image_edit",
+                "multi_image_edit",
+                "masked_edit",
+                "reframe",
+                "outpaint",
+            ]
+        else:
+            self.capabilities = [
+                "text_to_image",
+                "variation",
+            ]
+            if self.provider == "mflux":
+                self.capabilities += [
+                    "lora",
+                    "multi_lora",
+                ]
+
         return self
 
 
@@ -135,6 +183,15 @@ def builtin_models():
         ("mflux-z-image", "Z-Image", "Tongyi-MAI/Z-Image", "z-image", "z-image", 30, 4),
         ("mflux-z-image-turbo", "Z-Image Turbo", "Tongyi-MAI/Z-Image-Turbo", "z-image-turbo", "z-image-turbo", 9, 0),
         ("mflux-qwen-image", "Qwen Image 2512", "Qwen/Qwen-Image-2512", "qwen-image", "qwen-image", 30, 3.5),
+        (
+            "mflux-qwen-image-edit-2511",
+            "Qwen Image Edit 2511 · 4-bit",
+            "AbstractFramework/qwen-image-edit-2511-4bit",
+            "qwen-image-edit",
+            "qwen-image-edit-2511",
+            30,
+            3.5,
+        ),
     ):
         models.append(ImageModel(
             id=ident,
