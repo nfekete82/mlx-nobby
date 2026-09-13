@@ -502,6 +502,50 @@ for (const status of ['failed', 'cancelled', 'running']) {
     );
 }
 
+const progressSession = { messages: [], workspace: {} };
+const progressMessage = {};
+const imageProgressResult = (currentStep, status = 'running') => ({
+    tool: 'image_edit',
+    status,
+    data: {
+        job: {
+            id: '1'.repeat(24),
+            operation: 'edit',
+            status,
+            current_step: currentStep,
+            total_steps: 8,
+            created_at: 900,
+            started_at: 910,
+        },
+    },
+    artifacts: [],
+    error: null,
+});
+
+routing.updateImageJobMessage(
+    progressSession,
+    progressMessage,
+    imageProgressResult(1),
+    1000,
+);
+assert.equal(progressMessage.image_job.progress_updated_at, 1000);
+
+routing.updateImageJobMessage(
+    progressSession,
+    progressMessage,
+    imageProgressResult(1),
+    1010,
+);
+assert.equal(progressMessage.image_job.progress_updated_at, 1000);
+
+routing.updateImageJobMessage(
+    progressSession,
+    progressMessage,
+    imageProgressResult(2),
+    1030,
+);
+assert.equal(progressMessage.image_job.progress_updated_at, 1030);
+
 const emptySession = { messages: [], workspace: {} };
 assert.equal(routing.activeSessionImageArtifact(emptySession), null);
 assert.equal(
@@ -537,6 +581,9 @@ class TestElement {
 const renderingWindow = {
     MLXI18n: window.MLXI18n,
     MLXChatGeneration: {
+        isWatchingImageJob() {
+            return false;
+        },
         updateImageJobMessage(_session, message, result) {
             message.image_job = result.data.job;
             message.tool_result = result;
@@ -546,6 +593,8 @@ const renderingWindow = {
 renderingWindow.window = renderingWindow;
 const cancellationRequests = [];
 const cancellationSession = { messages: [], workspace: {} };
+const renderingIntervals = [];
+const clearedRenderingIntervals = [];
 const renderingContext = {
     console,
     fetch: async (url, options) => {
@@ -579,6 +628,13 @@ const renderingContext = {
         beforeMessagesRender: () => null,
         afterMessagesRender() {},
     },
+    setInterval(callback, delay) {
+        renderingIntervals.push({ callback, delay });
+        return renderingIntervals.length;
+    },
+    clearInterval(timerId) {
+        clearedRenderingIntervals.push(timerId);
+    },
     document: {
         addEventListener() {},
         createElement: tagName => new TestElement(tagName),
@@ -606,10 +662,107 @@ const renderImageArtifactCard =
     renderingWindow.MLXChatRendering.__test.renderImageArtifactCard;
 const renderImageJobCard =
     renderingWindow.MLXChatRendering.__test.renderImageJobCard;
+const imageJobPresentation =
+    renderingWindow.MLXChatRendering.__test.imageJobPresentation;
+const syncImageJobUiTimer =
+    renderingWindow.MLXChatRendering.__test.syncImageJobUiTimer;
 const descendants = element => [
     element,
     ...element.children.flatMap(descendants),
 ];
+
+const freshStep = imageJobPresentation({
+    id: '1'.repeat(24),
+    operation: 'edit',
+    status: 'running',
+    current_step: 1,
+    total_steps: 8,
+    created_at: 900,
+    started_at: 910,
+    progress_updated_at: 1000,
+}, 1024);
+assert.equal(freshStep.stale, false);
+assert.equal(freshStep.title, 'Editing image …');
+assert.match(freshStep.details, /Step 1\/8/);
+assert.match(freshStep.details, /Elapsed: 01:54/);
+
+const staleStepJob = {
+    id: '1'.repeat(24),
+    operation: 'edit',
+    status: 'running',
+    current_step: 1,
+    total_steps: 8,
+    created_at: 900,
+    started_at: 910,
+    progress_updated_at: 1000,
+};
+const staleStep = imageJobPresentation(staleStepJob, 1025);
+assert.equal(staleStep.stale, true);
+assert.equal(staleStep.title, 'Image processing continues …');
+assert.match(staleStep.details, /Last reported step: 1\/8/);
+assert.equal(staleStepJob.status, 'running');
+assert.equal(staleStepJob.current_step, 1);
+
+const freshSecondStep = imageJobPresentation(
+    progressMessage.image_job,
+    1031,
+);
+assert.equal(freshSecondStep.stale, false);
+assert.match(freshSecondStep.details, /Step 2\/8/);
+
+const noStep = imageJobPresentation({
+    status: 'running',
+    current_step: null,
+    total_steps: 8,
+    created_at: 1000,
+}, 1037);
+assert.equal(noStep.hasStepProgress, false);
+assert.equal(noStep.title, 'Image is being processed …');
+assert.equal(noStep.details, 'Elapsed: 00:37');
+
+const loading = imageJobPresentation({
+    status: 'loading',
+    created_at: 1000,
+}, 1012);
+assert.equal(loading.title, 'Loading model …');
+assert.equal(loading.details, 'Elapsed: 00:12');
+
+const saving = imageJobPresentation({
+    status: 'saving',
+    started_at: 1000,
+}, 1068);
+assert.equal(saving.title, 'Saving image …');
+assert.equal(saving.details, 'Elapsed: 01:08');
+
+const completed = imageJobPresentation({
+    status: 'completed',
+    started_at: 1000,
+}, 1068);
+assert.equal(completed.active, false);
+assert.equal(completed.elapsed, null);
+
+const reloadMessage = {
+    image_job: {
+        id: '9'.repeat(24),
+        status: 'running',
+        created_at: 1000,
+    },
+};
+cancellationSession.messages = [reloadMessage];
+syncImageJobUiTimer();
+syncImageJobUiTimer();
+assert.equal(renderingIntervals.length, 1);
+assert.equal(renderingIntervals[0].delay, 1000);
+
+cancellationSession.messages = [
+    { image_job: { status: 'completed' } },
+    { image_job: { status: 'completed' } },
+];
+syncImageJobUiTimer();
+assert.deepEqual(clearedRenderingIntervals, [1]);
+syncImageJobUiTimer();
+assert.equal(renderingIntervals.length, 1);
+cancellationSession.messages = [];
 
 const runningJobMessage = {
     image_job: {
@@ -634,6 +787,42 @@ assert.equal(
     ).style.width,
     '25.00%',
 );
+
+const staleJobMessage = {
+    image_job: {
+        id: '8'.repeat(24),
+        operation: 'edit',
+        status: 'running',
+        current_step: 1,
+        total_steps: 8,
+        created_at: Date.now() / 1000 - 60,
+        progress_updated_at: Date.now() / 1000 - 30,
+    },
+};
+const staleJobCard = renderImageJobCard(staleJobMessage);
+const staleJobElements = descendants(staleJobCard);
+assert.equal(
+    staleJobElements.find(element => element.tagName === 'STRONG')
+        .textContent,
+    'Image processing continues …',
+);
+assert.match(
+    staleJobElements.find(
+        element => element.className === 'batch-chat-details'
+    ).textContent,
+    /Last reported step: 1\/8/,
+);
+assert.equal(
+    staleJobElements.find(
+        element => element.className === 'batch-progress-fill'
+    ).style.width,
+    '12.50%',
+);
+assert.ok(
+    staleJobElements.find(element => element.tagName === 'BUTTON')
+);
+assert.equal(staleJobMessage.image_job.status, 'running');
+
 const cancelButton = runningJobElements.find(
     element => element.tagName === 'BUTTON'
 );

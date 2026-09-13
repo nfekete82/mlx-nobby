@@ -2164,15 +2164,67 @@ const ACTIVE_IMAGE_JOB_STATUSES = new Set([
     'running',
     'saving'
 ]);
+const watchedImageJobIds = new Set();
 
-function updateImageJobMessage(session, message, toolResult) {
+function imageJobHasStep(job) {
+    const currentStep = Number(job?.current_step);
+    const totalSteps = Number(job?.total_steps);
+
+    return job?.current_step != null &&
+        job?.total_steps != null &&
+        Number.isInteger(currentStep) &&
+        Number.isInteger(totalSteps) &&
+        currentStep > 0 &&
+        totalSteps > 0 &&
+        currentStep <= totalSteps;
+}
+
+function isWatchingImageJob(message) {
+    const jobId = message?.image_job?.id;
+    return Boolean(jobId && watchedImageJobIds.has(jobId));
+}
+
+function updateImageJobMessage(
+    session,
+    message,
+    toolResult,
+    nowSeconds = Date.now() / 1000
+) {
     const job = toolResult?.data?.job;
 
     if (!job?.id) {
         return true;
     }
 
-    message.image_job = job;
+    const previousJob = message.image_job;
+    const nextJob = { ...job };
+
+    if (imageJobHasStep(nextJob)) {
+        const sameStep =
+            imageJobHasStep(previousJob) &&
+            Number(previousJob.current_step) ===
+                Number(nextJob.current_step) &&
+            Number(previousJob.total_steps) ===
+                Number(nextJob.total_steps);
+        const previousProgressUpdate = Number(
+            previousJob?.progress_updated_at
+        );
+        const reportedProgressUpdate = Number(
+            nextJob.progress_updated_at
+        );
+
+        nextJob.progress_updated_at =
+            sameStep &&
+                Number.isFinite(previousProgressUpdate) &&
+                previousProgressUpdate > 0
+                ? previousProgressUpdate
+                : Number.isFinite(reportedProgressUpdate) &&
+                    reportedProgressUpdate > 0
+                    ? reportedProgressUpdate
+                    : nowSeconds;
+    }
+
+    message.image_job = nextJob;
     message.tool_result = toolResult;
     message.image_generation_pending = false;
 
@@ -2207,10 +2259,25 @@ function updateImageJobMessage(session, message, toolResult) {
 
 function watchImageJob(session, message) {
     let failures = 0;
+    const initialJobId = message.image_job?.id;
+
+    if (!initialJobId || watchedImageJobIds.has(initialJobId)) {
+        return;
+    }
+
+    watchedImageJobIds.add(initialJobId);
+
+    window.MLXChatRendering?.syncImageJobUiTimer?.();
+
+    const stopWatching = () => {
+        watchedImageJobIds.delete(initialJobId);
+        window.MLXChatRendering?.syncImageJobUiTimer?.();
+    };
 
     const poll = async () => {
         const jobId = message.image_job?.id;
         if (!jobId || !session.messages.includes(message)) {
+            stopWatching();
             return;
         }
 
@@ -2235,12 +2302,16 @@ function watchImageJob(session, message) {
             });
             if (!terminal) {
                 setTimeout(poll, 1000);
+            } else {
+                stopWatching();
             }
         } catch (error) {
             failures += 1;
             console.warn('Could not load image job status', error);
             if (failures < 3) {
                 setTimeout(poll, 1000);
+            } else {
+                stopWatching();
             }
         }
     };
@@ -2339,6 +2410,7 @@ function watchBatchJob(session, jobId) {
         sendMessage: sendMessage,
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
+        isWatchingImageJob: isWatchingImageJob,
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
@@ -2350,6 +2422,7 @@ function watchBatchJob(session, jobId) {
             isImageEditRequest: isImageEditRequest,
             isImageGenerationRequest: isImageGenerationRequest,
             updateImageJobMessage: updateImageJobMessage,
+            isWatchingImageJob: isWatchingImageJob,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary
         }

@@ -25,6 +25,16 @@
     let updateContext;
     let startEditMessage;
     let regenerateLastAnswer;
+    let imageJobUiTimer = null;
+
+    const ACTIVE_IMAGE_JOB_STATUSES = new Set([
+        'queued',
+        'loading',
+        'running',
+        'saving'
+    ]);
+    const IMAGE_JOB_STALE_SECONDS = 25;
+    const IMAGE_JOB_UI_TICK_MS = 1000;
 
     const messagesInner = document.getElementById('messagesInner');
 
@@ -38,6 +48,171 @@
         updateContext = options.updateContext;
         startEditMessage = options.startEditMessage;
         regenerateLastAnswer = options.regenerateLastAnswer;
+    }
+
+    function imageJobHasStep(job) {
+        const currentStep = Number(job?.current_step);
+        const totalSteps = Number(job?.total_steps);
+
+        return job?.current_step != null &&
+            job?.total_steps != null &&
+            Number.isInteger(currentStep) &&
+            Number.isInteger(totalSteps) &&
+            currentStep > 0 &&
+            totalSteps > 0 &&
+            currentStep <= totalSteps;
+    }
+
+    function imageJobElapsedSeconds(job, nowSeconds) {
+        const startedAt = Number(job?.started_at);
+        const createdAt = Number(job?.created_at);
+        const start = Number.isFinite(startedAt) && startedAt > 0
+            ? startedAt
+            : Number.isFinite(createdAt) && createdAt > 0
+                ? createdAt
+                : null;
+
+        return start == null
+            ? null
+            : Math.max(0, Math.floor(nowSeconds - start));
+    }
+
+    function formatImageJobDuration(seconds) {
+        const safeSeconds = Math.max(0, Number(seconds) || 0);
+        const minutes = Math.floor(safeSeconds / 60);
+        const remainder = Math.floor(safeSeconds % 60);
+
+        return String(minutes).padStart(2, '0') + ':' +
+            String(remainder).padStart(2, '0');
+    }
+
+    function imageJobPresentation(
+        job,
+        nowSeconds = Date.now() / 1000
+    ) {
+        const status = String(job?.status || 'queued');
+        const active = ACTIVE_IMAGE_JOB_STATUSES.has(status);
+        const hasStepProgress = imageJobHasStep(job);
+        const statusFallback = {
+            queued: 'Image job waiting …',
+            loading: 'Loading model …',
+            running: 'Image is being processed …',
+            saving: 'Saving image …',
+            cancelled: 'Cancelled',
+            failed: 'Failed'
+        }[status] || status;
+        const progressUpdatedAt = Number(job?.progress_updated_at);
+        const fallbackProgressUpdatedAt = Number(
+            job?.started_at || job?.created_at
+        );
+        const lastProgressAt =
+            Number.isFinite(progressUpdatedAt) && progressUpdatedAt > 0
+                ? progressUpdatedAt
+                : Number.isFinite(fallbackProgressUpdatedAt) &&
+                    fallbackProgressUpdatedAt > 0
+                    ? fallbackProgressUpdatedAt
+                    : null;
+        const stale =
+            status === 'running' &&
+            hasStepProgress &&
+            lastProgressAt != null &&
+            nowSeconds - lastProgressAt >= IMAGE_JOB_STALE_SECONDS;
+
+        let title;
+        if (status === 'cancelled') {
+            title = rt('image_job_cancelled', 'Image job cancelled');
+        } else if (status === 'failed') {
+            title = rt('image_job_failed', 'Image job failed');
+        } else if (status === 'running' && stale) {
+            title = rt(
+                'image_job_status_running_stale',
+                'Image processing continues …'
+            );
+        } else if (status === 'running' && hasStepProgress) {
+            title = job.operation === 'edit'
+                ? rt('image_editing', 'Editing image …')
+                : rt('image_generating', 'Generating image …');
+        } else {
+            title = rt(
+                'image_job_status_' + status,
+                statusFallback
+            );
+        }
+
+        const details = [];
+        if (status === 'running' && hasStepProgress) {
+            details.push(rt(
+                stale ? 'image_step_last' : 'image_step',
+                stale
+                    ? 'Last reported step: {current}/{total}'
+                    : 'Step {current}/{total}',
+                {
+                    current: Number(job.current_step),
+                    total: Number(job.total_steps)
+                }
+            ));
+        } else if (!active) {
+            details.push(rt(
+                'image_job_status_' + status,
+                statusFallback
+            ));
+        }
+
+        const elapsed = active
+            ? imageJobElapsedSeconds(job, nowSeconds)
+            : null;
+        if (elapsed != null) {
+            details.push(rt(
+                'image_elapsed',
+                'Elapsed: {duration}',
+                { duration: formatImageJobDuration(elapsed) }
+            ));
+        }
+
+        return {
+            active,
+            details: details.join('\n'),
+            elapsed,
+            hasStepProgress,
+            stale,
+            title
+        };
+    }
+
+    function sessionNeedsImageJobUiTimer(session) {
+        return Boolean(session?.messages?.some(message => (
+            ACTIVE_IMAGE_JOB_STATUSES.has(message?.image_job?.status) &&
+            !window.MLXChatGeneration?.isWatchingImageJob?.(
+                message
+            )
+        )));
+    }
+
+    function syncImageJobUiTimer() {
+        const needsTimer = sessionNeedsImageJobUiTimer(
+            currentSession?.()
+        );
+
+        if (
+            needsTimer &&
+            imageJobUiTimer == null &&
+            typeof setInterval === 'function'
+        ) {
+            imageJobUiTimer = setInterval(() => {
+                if (!sessionNeedsImageJobUiTimer(currentSession?.())) {
+                    syncImageJobUiTimer();
+                    return;
+                }
+                renderMessages({ contentUpdated: false });
+            }, IMAGE_JOB_UI_TICK_MS);
+        } else if (
+            !needsTimer &&
+            imageJobUiTimer != null &&
+            typeof clearInterval === 'function'
+        ) {
+            clearInterval(imageJobUiTimer);
+            imageJobUiTimer = null;
+        }
     }
 
 function escapeHtml(value) {
@@ -1421,45 +1596,22 @@ function renderImageArtifactCard(message) {
 function renderImageJobCard(message) {
     const job = message.image_job;
     if (!job || job.status === 'completed') return null;
+    const presentation = imageJobPresentation(job);
 
     const card = document.createElement('section');
     card.className = 'batch-chat-card image-job-card';
     const title = document.createElement('strong');
-    if (job.status === 'cancelled') {
-        title.textContent = rt('image_job_cancelled', 'Image job cancelled');
-    } else if (job.status === 'failed') {
-        title.textContent = rt('image_job_failed', 'Image job failed');
-    } else {
-        title.textContent = job.operation === 'edit'
-            ? rt('image_editing', 'Editing image …')
-            : rt('image_generating', 'Generating image …');
-    }
+    title.textContent = presentation.title;
     card.appendChild(title);
 
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
-    const statusLabel = rt(
-        'image_job_status_' + String(job.status || 'queued'),
-        String(job.status || 'queued')
-    );
     const currentStep = Number(job.current_step);
     const totalSteps = Number(job.total_steps);
-    const hasStepProgress =
-        Number.isInteger(currentStep) &&
-        Number.isInteger(totalSteps) &&
-        currentStep >= 0 &&
-        totalSteps > 0 &&
-        currentStep <= totalSteps;
-    details.textContent = hasStepProgress
-        ? statusLabel + '\n' + rt(
-            'image_step',
-            'Step {current}/{total}',
-            { current: currentStep, total: totalSteps }
-        )
-        : statusLabel;
+    details.textContent = presentation.details;
     card.appendChild(details);
 
-    if (hasStepProgress) {
+    if (presentation.hasStepProgress) {
         const progressWrap = document.createElement('div');
         progressWrap.className = 'batch-progress-wrap';
         const progressBar = document.createElement('div');
@@ -1540,6 +1692,7 @@ function renderArtifactChoice(message) {
 
 function renderMessages(options = {}) {
     const session = currentSession();
+    syncImageJobUiTimer();
     const scrollSnapshot =
         MLXChatRuntime.beforeMessagesRender();
 
@@ -2238,6 +2391,7 @@ function renderAll(options = {}) {
         renderSidebar: renderSidebar,
         renderMessages: renderMessages,
         renderAll: renderAll,
+        syncImageJobUiTimer: syncImageJobUiTimer,
         __test: {
             markdownHtml,
             codeTestEvidence,
@@ -2245,6 +2399,10 @@ function renderAll(options = {}) {
             codeApplyEvidenceValid,
             renderCodeTestEvidence,
             batchFailureDetail,
+            formatImageJobDuration,
+            imageJobPresentation,
+            sessionNeedsImageJobUiTimer,
+            syncImageJobUiTimer,
             renderImageArtifactCard,
             renderImageJobCard,
         }
