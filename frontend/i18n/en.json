@@ -47,6 +47,7 @@
     "generated_image_load_failed": "The most recently generated image could not be loaded for analysis.",
     "image_generating": "Generating the image locally with the selected image model …",
     "image_job_cancelled": "Image job cancelled.",
+    "image_job_unavailable": "The running image job is no longer available. The image service may have restarted.",
     "research_running": "Research in progress …",
     "coding_running": "Analyzing code …",
     "orchestration_running": "Orchestration in progress …",

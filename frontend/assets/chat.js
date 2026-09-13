@@ -1560,6 +1560,9 @@ MLXChatSessions.configure({
     onSessionSelected: () => {
         MLXChatRuntime.loadSessionSettings();
         MLXChatRuntime.resetScrollForChat();
+        MLXChatGeneration.resumeImageJobsForSession(
+            MLXChatSessions.currentSession()
+        );
     }
 });
 
@@ -1584,6 +1587,9 @@ MLXChatSessions.loadSessions();
 MLXChatRuntime.loadSettings();
 
 MLXChatRendering.renderAll();
+MLXChatGeneration.resumeImageJobsForSession(
+    MLXChatSessions.currentSession()
+);
 MLXChatSessions.syncWithServer();
 MLXChatRuntime.loadStatus();
 loadWorkspaces();

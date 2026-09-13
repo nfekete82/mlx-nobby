@@ -2164,7 +2164,12 @@ const ACTIVE_IMAGE_JOB_STATUSES = new Set([
     'running',
     'saving'
 ]);
-const watchedImageJobIds = new Set();
+const IMAGE_JOB_ID_PATTERN = /^[a-f0-9]{24}$/;
+const IMAGE_JOB_TOOLS = new Set([
+    'image_generate',
+    'image_edit'
+]);
+const imageJobWatchers = new Map();
 
 function imageJobHasStep(job) {
     const currentStep = Number(job?.current_step);
@@ -2181,7 +2186,7 @@ function imageJobHasStep(job) {
 
 function isWatchingImageJob(message) {
     const jobId = message?.image_job?.id;
-    return Boolean(jobId && watchedImageJobIds.has(jobId));
+    return Boolean(jobId && imageJobWatchers.has(jobId));
 }
 
 function updateImageJobMessage(
@@ -2257,39 +2262,118 @@ function updateImageJobMessage(
     return !ACTIVE_IMAGE_JOB_STATUSES.has(toolResult.status);
 }
 
+function imageJobWatcherIsCurrent(watcher) {
+    return !watcher.stopped &&
+        imageJobWatchers.get(watcher.jobId) === watcher &&
+        MLXChatSessions.currentSession() === watcher.session &&
+        watcher.session.messages.includes(watcher.message);
+}
+
+function stopImageJobWatcher(watcher) {
+    if (!watcher || watcher.stopped) {
+        return;
+    }
+
+    watcher.stopped = true;
+    if (watcher.timerId != null && typeof clearTimeout === 'function') {
+        clearTimeout(watcher.timerId);
+        watcher.timerId = null;
+    }
+    if (imageJobWatchers.get(watcher.jobId) === watcher) {
+        imageJobWatchers.delete(watcher.jobId);
+    }
+    window.MLXChatRendering?.syncImageJobUiTimer?.();
+}
+
+function scheduleImageJobPoll(watcher, poll) {
+    watcher.timerId = setTimeout(() => {
+        watcher.timerId = null;
+        poll();
+    }, 1000);
+}
+
+function unavailableImageJobResult(message) {
+    const error = gt(
+        'image_job_unavailable',
+        'The running image job is no longer available. ' +
+            'The image service may have restarted.'
+    );
+
+    return {
+        type: 'tool_result',
+        tool: message.tool_result.tool,
+        status: 'failed',
+        data: {
+            job: {
+                ...message.image_job,
+                status: 'failed',
+                result: null,
+                error,
+                recovery_status: 'not_found',
+                finished_at: Date.now() / 1000
+            }
+        },
+        artifacts: [],
+        error
+    };
+}
+
 function watchImageJob(session, message) {
     let failures = 0;
     const initialJobId = message.image_job?.id;
 
-    if (!initialJobId || watchedImageJobIds.has(initialJobId)) {
-        return;
+    if (
+        !IMAGE_JOB_ID_PATTERN.test(String(initialJobId || '')) ||
+        imageJobWatchers.has(initialJobId) ||
+        MLXChatSessions.currentSession() !== session
+    ) {
+        return false;
     }
 
-    watchedImageJobIds.add(initialJobId);
+    const watcher = {
+        jobId: initialJobId,
+        message,
+        session,
+        stopped: false,
+        timerId: null
+    };
+    imageJobWatchers.set(initialJobId, watcher);
 
     window.MLXChatRendering?.syncImageJobUiTimer?.();
 
-    const stopWatching = () => {
-        watchedImageJobIds.delete(initialJobId);
-        window.MLXChatRendering?.syncImageJobUiTimer?.();
-    };
-
     const poll = async () => {
-        const jobId = message.image_job?.id;
-        if (!jobId || !session.messages.includes(message)) {
-            stopWatching();
+        if (!imageJobWatcherIsCurrent(watcher)) {
+            stopImageJobWatcher(watcher);
             return;
         }
 
         try {
             const response = await fetch(
                 '/api/mlx/image-jobs/' +
-                encodeURIComponent(jobId)
+                encodeURIComponent(watcher.jobId)
             );
+            if (!imageJobWatcherIsCurrent(watcher)) {
+                stopImageJobWatcher(watcher);
+                return;
+            }
             if (!response.ok) {
+                if (response.status === 404) {
+                    const toolResult = unavailableImageJobResult(message);
+                    updateImageJobMessage(session, message, toolResult);
+                    MLXChatSessions.saveSessions();
+                    MLXChatRendering.renderMessages({
+                        contentUpdated: true
+                    });
+                    stopImageJobWatcher(watcher);
+                    return;
+                }
                 throw new Error(await response.text());
             }
             const toolResult = await response.json();
+            if (!imageJobWatcherIsCurrent(watcher)) {
+                stopImageJobWatcher(watcher);
+                return;
+            }
             const terminal = updateImageJobMessage(
                 session,
                 message,
@@ -2301,22 +2385,57 @@ function watchImageJob(session, message) {
                 contentUpdated: true
             });
             if (!terminal) {
-                setTimeout(poll, 1000);
+                scheduleImageJobPoll(watcher, poll);
             } else {
-                stopWatching();
+                stopImageJobWatcher(watcher);
             }
         } catch (error) {
+            if (!imageJobWatcherIsCurrent(watcher)) {
+                stopImageJobWatcher(watcher);
+                return;
+            }
             failures += 1;
             console.warn('Could not load image job status', error);
             if (failures < 3) {
-                setTimeout(poll, 1000);
+                scheduleImageJobPoll(watcher, poll);
             } else {
-                stopWatching();
+                stopImageJobWatcher(watcher);
             }
         }
     };
 
     poll();
+    return true;
+}
+
+function resumeImageJobsForSession(session) {
+    for (const watcher of imageJobWatchers.values()) {
+        if (watcher.session !== session) {
+            stopImageJobWatcher(watcher);
+        }
+    }
+
+    if (!session || MLXChatSessions.currentSession() !== session) {
+        return 0;
+    }
+
+    let started = 0;
+    for (const message of session.messages) {
+        const job = message?.image_job;
+        if (
+            !IMAGE_JOB_TOOLS.has(message?.tool_result?.tool) ||
+            !ACTIVE_IMAGE_JOB_STATUSES.has(job?.status) ||
+            !IMAGE_JOB_ID_PATTERN.test(String(job?.id || ''))
+        ) {
+            continue;
+        }
+
+        if (watchImageJob(session, message)) {
+            started += 1;
+        }
+    }
+
+    return started;
 }
 
 function watchBatchJob(session, jobId) {
@@ -2411,6 +2530,7 @@ function watchBatchJob(session, jobId) {
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
         isWatchingImageJob: isWatchingImageJob,
+        resumeImageJobsForSession: resumeImageJobsForSession,
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
@@ -2423,6 +2543,7 @@ function watchBatchJob(session, jobId) {
             isImageGenerationRequest: isImageGenerationRequest,
             updateImageJobMessage: updateImageJobMessage,
             isWatchingImageJob: isWatchingImageJob,
+            resumeImageJobsForSession: resumeImageJobsForSession,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary
         }

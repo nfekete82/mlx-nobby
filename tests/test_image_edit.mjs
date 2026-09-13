@@ -68,6 +68,12 @@ const context = {
         scheduledCallbacks.push(callback);
         return scheduledCallbacks.length;
     },
+    clearTimeout(timerId) {
+        const index = Number(timerId) - 1;
+        if (index >= 0 && index < scheduledCallbacks.length) {
+            scheduledCallbacks[index] = null;
+        }
+    },
     window,
 };
 
@@ -205,8 +211,9 @@ context.MLXChatRuntime = {
     autoResize() {},
     beginUserMessage() {},
 };
+let activeSession = session;
 context.MLXChatSessions = {
-    currentSession: () => session,
+    currentSession: () => activeSession,
     updateTitle() {},
     saveSessions() {},
 };
