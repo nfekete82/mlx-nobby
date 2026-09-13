@@ -163,6 +163,41 @@ def mflux_command(model, params, output):
             str(output),
         ]
 
+        quantization = model.get("quantization")
+        if (
+            model.get("quantize_on_load") is True
+            and quantization
+            and quantization != "none"
+        ):
+            command += [
+                "--quantize",
+                quantization[1:],
+            ]
+
+        loras = [
+            lora
+            for lora in model["loras"]
+            if lora["enabled"]
+        ]
+
+        if loras:
+            command += (
+                ["--lora-paths"]
+                + [
+                    lora.get("path")
+                    or lora["repository"]
+                    for lora in loras
+                ]
+            )
+
+            command += (
+                ["--lora-scales"]
+                + [
+                    str(lora["scale"])
+                    for lora in loras
+                ]
+            )
+
         return command
 
     command = [

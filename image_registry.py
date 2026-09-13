@@ -73,15 +73,28 @@ def validate_id(value):
 
 
 def validate_path(value, *, file=False):
-    path = Path(value).expanduser()
-    if not path.is_absolute():
+    source = Path(value).expanduser()
+
+    if not source.is_absolute():
         raise ValueError("Ein absoluter lokaler Pfad ist erforderlich")
-    path = path.resolve()
-    if not any(path.is_relative_to(root.resolve()) for root in MODEL_ROOTS):
-        raise ValueError("Modell-/LoRA-Pfade müssen unter ~/Models oder im Hugging-Face-Cache liegen")
-    if file and path.suffix != ".safetensors":
+
+    if file and source.suffix != ".safetensors":
         raise ValueError("LoRA-Dateien müssen Safetensors sein")
-    return str(path)
+
+    resolved = source.resolve()
+
+    if not any(
+        resolved.is_relative_to(root.resolve())
+        for root in MODEL_ROOTS
+    ):
+        raise ValueError(
+            "Modell-/LoRA-Pfade müssen unter ~/Models "
+            "oder im Hugging-Face-Cache liegen"
+        )
+
+    # Keep the user-visible snapshot path instead of replacing a
+    # Hugging Face symlink with its extensionless blob target.
+    return str(source)
 
 
 class LoRA(BaseModel):
@@ -115,6 +128,7 @@ class ImageModel(BaseModel):
     model_family: str
     base_model: str = "schnell"
     quantization: Literal["none", "q3", "q4", "q5", "q6", "q8"] = "q4"
+    quantize_on_load: bool = False
     enabled: bool = True
     capabilities: list[str] = Field(default_factory=lambda: ["text_to_image", "variation"])
     default_steps: int = Field(default=4, ge=1, le=50)
@@ -150,11 +164,18 @@ class ImageModel(BaseModel):
                 "reframe",
                 "outpaint",
             ]
+
+            if self.provider == "mflux":
+                self.capabilities += [
+                    "lora",
+                    "multi_lora",
+                ]
         else:
             self.capabilities = [
                 "text_to_image",
                 "variation",
             ]
+
             if self.provider == "mflux":
                 self.capabilities += [
                     "lora",
@@ -195,8 +216,17 @@ def builtin_models():
             QWEN_IMAGE_EDIT_DEFAULT_STEPS,
             3.5,
         ),
+        (
+            "mflux-qwen-image-edit-2511-quality",
+            "Qwen Image Edit 2511 · Quality · 8-bit",
+            "Qwen/Qwen-Image-Edit-2511",
+            "qwen-image-edit",
+            "qwen-image-edit-2511",
+            QWEN_IMAGE_EDIT_DEFAULT_STEPS,
+            3.5,
+        ),
     ):
-        models.append(ImageModel(
+        model_kwargs = dict(
             id=ident,
             name=name,
             provider="mflux",
@@ -206,7 +236,15 @@ def builtin_models():
             default_steps=steps,
             default_guidance=guidance,
             enabled=False,
-        ).model_dump())
+        )
+
+        if ident == "mflux-qwen-image-edit-2511-quality":
+            model_kwargs["quantization"] = "q8"
+            model_kwargs["quantize_on_load"] = True
+
+        models.append(
+            ImageModel(**model_kwargs).model_dump()
+        )
     return models
 
 

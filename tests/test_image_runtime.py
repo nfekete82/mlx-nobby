@@ -1498,3 +1498,212 @@ def test_creative_prompt_can_still_request_external_research():
     assert agent_app._looks_like_external_information_request(
         prompt
     )
+
+
+def test_qwen_image_edit_command_includes_enabled_loras(tmp_path, monkeypatch):
+    from image_providers import mflux_command
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+
+    lora_a = tmp_path / "a.safetensors"
+    lora_b = tmp_path / "b.safetensors"
+
+    lora_a.write_bytes(b"x")
+    lora_b.write_bytes(b"y")
+
+    model = {
+        "model_family": "qwen-image-edit",
+        "loras": [
+            {
+                "path": str(lora_a),
+                "repository": None,
+                "scale": 0.7,
+                "enabled": True,
+            },
+            {
+                "path": str(lora_b),
+                "repository": None,
+                "scale": 1.2,
+                "enabled": True,
+            },
+            {
+                "path": str(tmp_path / "disabled.safetensors"),
+                "repository": None,
+                "scale": 1.0,
+                "enabled": False,
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        "image_providers.model_directory",
+        lambda _model: model_dir,
+    )
+
+    params = {
+        "source_path": "/tmp/source.png",
+        "prompt": "test edit",
+        "steps": 8,
+        "guidance": 3.5,
+        "seed": 123,
+    }
+
+    command = mflux_command(
+        model,
+        params,
+        tmp_path / "output.png",
+    )
+
+    assert "--lora-paths" in command
+    assert "--lora-scales" in command
+
+    paths_index = command.index("--lora-paths")
+    scales_index = command.index("--lora-scales")
+
+    assert command[paths_index + 1:scales_index] == [
+        str(lora_a),
+        str(lora_b),
+    ]
+
+    assert command[scales_index + 1:] == [
+        "0.7",
+        "1.2",
+    ]
+
+
+def test_qwen_image_edit_command_omits_disabled_loras(tmp_path, monkeypatch):
+    from image_providers import mflux_command
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+
+    model = {
+        "model_family": "qwen-image-edit",
+        "loras": [
+            {
+                "path": str(tmp_path / "disabled.safetensors"),
+                "repository": None,
+                "scale": 1.0,
+                "enabled": False,
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        "image_providers.model_directory",
+        lambda _model: model_dir,
+    )
+
+    params = {
+        "source_path": "/tmp/source.png",
+        "prompt": "test edit",
+        "steps": 8,
+        "guidance": 3.5,
+        "seed": 123,
+    }
+
+    command = mflux_command(
+        model,
+        params,
+        tmp_path / "output.png",
+    )
+
+    assert "--lora-paths" not in command
+    assert "--lora-scales" not in command
+
+
+def test_qwen_image_edit_capabilities_include_lora():
+    from image_registry import ImageModel
+
+    model = ImageModel(
+        id="test-qwen-edit",
+        name="Test Qwen Edit",
+        provider="mflux",
+        repository="example/example",
+        model_family="qwen-image-edit",
+        base_model="qwen-image-edit-2511",
+        quantization="q4",
+    )
+
+    assert "image_edit" in model.capabilities
+    assert "lora" in model.capabilities
+    assert "multi_lora" in model.capabilities
+
+
+def test_qwen_image_edit_command_uses_registry_quantization(
+    tmp_path,
+    monkeypatch,
+):
+    from image_providers import mflux_command
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+
+    model = {
+        "model_family": "qwen-image-edit",
+        "quantization": "q8",
+        "quantize_on_load": True,
+        "loras": [],
+    }
+
+    monkeypatch.setattr(
+        "image_providers.model_directory",
+        lambda _model: model_dir,
+    )
+
+    command = mflux_command(
+        model,
+        {
+            "source_path": "/tmp/source.png",
+            "prompt": "test edit",
+            "steps": 8,
+            "guidance": 3.5,
+            "seed": 123,
+        },
+        tmp_path / "output.png",
+    )
+
+    index = command.index("--quantize")
+
+    assert command[index + 1] == "8"
+
+
+def test_validate_lora_path_preserves_huggingface_snapshot_symlink(
+    tmp_path,
+    monkeypatch,
+):
+    import image_registry
+
+    cache = tmp_path / "hub"
+    blobs = cache / "models--test--lora" / "blobs"
+    snapshot = (
+        cache
+        / "models--test--lora"
+        / "snapshots"
+        / "revision"
+    )
+
+    blobs.mkdir(parents=True)
+    snapshot.mkdir(parents=True)
+
+    blob = blobs / "abcdef123456"
+    blob.write_bytes(b"test")
+
+    link = snapshot / "adapter.safetensors"
+    link.symlink_to(Path("../../blobs") / blob.name)
+
+    monkeypatch.setattr(
+        image_registry,
+        "MODEL_ROOTS",
+        [cache],
+    )
+
+    result = image_registry.validate_path(
+        str(link),
+        file=True,
+    )
+
+    assert result == str(link)
+    assert Path(result).suffix == ".safetensors"
+    assert Path(result).resolve() == blob.resolve()
