@@ -979,6 +979,54 @@ button {
     margin-top: 12px;
 }
 
+.image-upscale-menu {
+    position: relative;
+}
+
+.image-upscale-menu > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.image-upscale-menu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.image-upscale-menu[open] > summary {
+    color: white;
+    background: #1a202b;
+}
+
+.image-upscale-menu-options {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    bottom: calc(100% + 6px);
+    display: grid;
+    min-width: 148px;
+    padding: 5px;
+    border: 1px solid #303846;
+    border-radius: 9px;
+    background: #121720;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+
+.image-upscale-option {
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #b9c3d0;
+    font-size: 11px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.image-upscale-option:hover {
+    color: white;
+    background: #1a202b;
+}
+
 .image-artifact-card {
     max-width: min(100%, 560px);
 }
@@ -6493,6 +6541,16 @@ body.mlx-empty-chat .composer {
     overflow: hidden;
 }
 
+.composer .attachment-chip.image-attachment-chip {
+    overflow: visible;
+    max-width: min(100%, 560px);
+}
+
+.composer .image-upscale-menu-options {
+    top: calc(100% + 6px);
+    bottom: auto;
+}
+
 /* ==========================================================
    Composer row
    ========================================================== */
@@ -6948,3 +7006,68 @@ body.mlx-empty-chat .composer-disclaimer {
 }
 
 /* MLX-NOBBY-CONFIRM-MODAL-ANIMATION-END */
+
+/* ----------------------------------------------------------
+   Image upscale menu
+   Keep the popup above the composer controls so every
+   preset remains clickable.
+   ---------------------------------------------------------- */
+
+.image-upscale-menu {
+    position: relative;
+    z-index: 40;
+    pointer-events: auto;
+}
+
+.image-upscale-menu[open] {
+    z-index: 1000;
+}
+
+.image-upscale-menu > summary {
+    position: relative;
+    z-index: 1001;
+    pointer-events: auto;
+}
+
+.image-upscale-menu-options {
+    position: absolute;
+    z-index: 1002;
+    pointer-events: auto;
+}
+
+.image-upscale-option {
+    position: relative;
+    z-index: 1003;
+    pointer-events: auto;
+}
+
+.image-attachment-chip {
+    overflow: visible;
+}
+
+.attachment-bar {
+    overflow: visible;
+}
+
+/* MLX Nobby – image edit prompt */
+
+
+
+
+
+
+
+
+
+/* Image attachment actions */
+.image-attachment-chip .image-upscale-menu > summary {
+    min-width: 112px;
+    width: auto;
+    white-space: nowrap;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.image-attachment-chip .attachment-remove {
+    margin-left: 11px;
+}

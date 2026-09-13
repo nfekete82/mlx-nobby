@@ -1,10 +1,7 @@
 'use strict';
 
-function gt(key, fallback = '', variables = {}) {
-    let value = window.MLXI18n?.t(
-        'generation.' + key,
-        fallback
-    ) ?? fallback;
+function generationText(key, fallback = '', variables = {}) {
+    let value = window.MLXI18n?.t(key, fallback) ?? fallback;
 
     for (const [name, replacement] of Object.entries(variables)) {
         value = value.replaceAll(
@@ -14,6 +11,14 @@ function gt(key, fallback = '', variables = {}) {
     }
 
     return value;
+}
+
+function gt(key, fallback = '', variables = {}) {
+    return generationText(
+        'generation.' + key,
+        fallback,
+        variables
+    );
 }
 
 const IMAGE_EDIT_VERB_PATTERN =
@@ -88,6 +93,24 @@ function isImageGenerationRequest(prompt) {
     let setGenerating;
     let getAbortController;
     let setAbortController;
+
+    const IMAGE_UPSCALE_PRESETS = Object.freeze([
+        Object.freeze({
+            preset: 'photo-2x',
+            labelKey: 'image_upscale_photo_2x',
+            fallback: '2× Photo'
+        }),
+        Object.freeze({
+            preset: 'photo-4x',
+            labelKey: 'image_upscale_photo_4x',
+            fallback: '4× Photo'
+        }),
+        Object.freeze({
+            preset: 'anime-4x',
+            labelKey: 'image_upscale_illustration_4x',
+            fallback: '4× Illustration'
+        })
+    ]);
 
     const input = document.getElementById('input');
 
@@ -168,7 +191,7 @@ function sessionImageArtifacts(session) {
             const result = message?.tool_result;
             if (
                 result?.status !== 'completed' ||
-                !['image_generate', 'image_edit'].includes(result?.tool)
+                !isImageJobTool(result?.tool)
             ) {
                 return [];
             }
@@ -184,6 +207,252 @@ function sessionImageArtifacts(session) {
             ) &&
             String(artifact?.mime_type || '').startsWith('image/')
         ));
+}
+
+
+function imageUpscalePresets() {
+    return IMAGE_UPSCALE_PRESETS.map(item => ({ ...item }));
+}
+
+function createImageUpscaleMenu(source) {
+    const menu = document.createElement('details');
+    menu.className = 'image-upscale-menu';
+
+    const summary = document.createElement('summary');
+    summary.className = 'message-action-btn';
+    summary.textContent = gt('image_enhance', 'Enhance image');
+    menu.appendChild(summary);
+
+    const choices = document.createElement('div');
+    choices.className = 'image-upscale-menu-options';
+
+    for (const option of IMAGE_UPSCALE_PRESETS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'image-upscale-option';
+        button.textContent = gt(
+            option.labelKey,
+            option.fallback
+        );
+        button.addEventListener('click', async () => {
+            menu.open = false;
+            await startImageUpscale(source, option.preset);
+        });
+        choices.appendChild(button);
+    }
+
+    menu.appendChild(choices);
+    return menu;
+}
+
+
+async function startImageUpscale(source, preset = 'photo-2x') {
+    if (MLXChatRuntime.isSwitching() || getGenerating()) {
+        return false;
+    }
+
+    const option = IMAGE_UPSCALE_PRESETS.find(
+        item => item.preset === preset
+    );
+    if (!option) {
+        return false;
+    }
+
+    const session = MLXChatSessions.currentSession();
+    if (!session) {
+        return false;
+    }
+
+    let selectedSource = source || activeSessionImageArtifact(session);
+    if (!selectedSource) {
+        selectedSource = MLXChatAttachments.getAttachments()
+            .find(item => item.kind === 'image') || null;
+    }
+
+    let fileContext = null;
+    let activeArtifactId = null;
+    let sourceAttachment = null;
+
+    try {
+        if (selectedSource?.artifact_id) {
+            const knownArtifact = sessionImageArtifacts(session).find(
+                artifact =>
+                    artifact.artifact_id === selectedSource.artifact_id
+            );
+            if (knownArtifact) {
+                activeArtifactId = knownArtifact.artifact_id;
+            }
+        } else if (selectedSource?.kind === 'image') {
+            let storedPath =
+                selectedSource.stored_path ||
+                selectedSource.path ||
+                null;
+            let storedName = selectedSource.file_id || null;
+
+            if (!storedPath && selectedSource.file) {
+                const uploaded = await MLXChatAttachments
+                    .uploadImageAttachments([selectedSource]);
+                const item = uploaded[0];
+                if (!item?.upload?.path) {
+                    throw new Error(
+                        gt(
+                            'image_upload_failed',
+                            'Image could not be uploaded.'
+                        )
+                    );
+                }
+                storedPath = item.upload.path;
+                storedName = item.upload.stored_name || storedName;
+                selectedSource.stored_path = storedPath;
+                selectedSource.file_id = storedName;
+            }
+
+            if (storedPath) {
+                fileContext = {
+                    ...selectedSource,
+                    kind: 'image',
+                    mime_type:
+                        selectedSource.mime_type ||
+                        selectedSource.type ||
+                        'image/jpeg',
+                    stored_path: storedPath,
+                    file_id: storedName
+                };
+                sourceAttachment = {
+                    name: selectedSource.name,
+                    size: selectedSource.size,
+                    type:
+                        selectedSource.type ||
+                        selectedSource.mime_type,
+                    extension: selectedSource.extension,
+                    kind: 'image',
+                    data_url: selectedSource.data_url
+                };
+            }
+        }
+
+        if (!fileContext?.stored_path && !activeArtifactId) {
+            throw new Error(
+                gt(
+                    'image_upscale_source_required',
+                    'Please select an image to enhance.'
+                )
+            );
+        }
+
+        const prompt = gt(
+            'image_upscale_request',
+            'Enhance image · {preset}',
+            { preset: gt(option.labelKey, option.fallback) }
+        );
+        const userMessage = {
+            role: 'user',
+            trace_id: newTraceId(),
+            content: prompt,
+            display_content: prompt,
+            attachments: sourceAttachment ? [sourceAttachment] : []
+        };
+        session.messages.push(userMessage);
+
+        if (sourceAttachment) {
+            MLXChatAttachments.removeAttachment?.(selectedSource);
+        }
+
+        const pendingMessage = {
+            role: 'assistant',
+            content: gt(
+                'image_upscaling',
+                'Enhancing the image locally with Real-ESRGAN …'
+            ),
+            image_generation_pending: true
+        };
+        session.messages.push(pendingMessage);
+        MLXChatSessions.updateTitle(session);
+        session.updated = Date.now();
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({ contentUpdated: true });
+
+        const response = await fetch('/api/mlx/chat/actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'image_upscale',
+                prompt,
+                file_context: fileContext,
+                active_artifact_id: activeArtifactId,
+                image_options: { preset: option.preset },
+                conversation_context: buildAgentConversationContext(
+                    session,
+                    userMessage
+                ),
+                trace_id: userMessage.trace_id
+            })
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+
+        const toolResult = await response.json();
+        if (toolResult.tool !== 'image_upscale') {
+            throw new Error(
+                gt(
+                    'image_upscale_unexpected_action',
+                    'The image enhancement action was not accepted.'
+                )
+            );
+        }
+
+        if (toolResult.data?.job?.id) {
+            const terminal = updateImageJobMessage(
+                session,
+                pendingMessage,
+                toolResult
+            );
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({ contentUpdated: true });
+            if (!terminal) {
+                watchImageJob(session, pendingMessage);
+            }
+            return true;
+        }
+
+        pendingMessage.tool_result = toolResult;
+        pendingMessage.image_generation_pending = false;
+        if (
+            toolResult.status === 'completed' &&
+            toolResult.artifacts?.[0]?.artifact_id
+        ) {
+            session.workspace = {
+                ...(session.workspace || {}),
+                active_artifact_id:
+                    toolResult.artifacts[0].artifact_id
+            };
+            pendingMessage.content = toolSummary(toolResult);
+        } else {
+            pendingMessage.content = toolFailureSummary(toolResult);
+        }
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({ contentUpdated: true });
+        return toolResult.status === 'completed';
+    } catch (error) {
+        const pendingMessage = session.messages.at(-1);
+        if (pendingMessage?.image_generation_pending) {
+            pendingMessage.image_generation_pending = false;
+            pendingMessage.tool_result = {
+                tool: 'image_upscale',
+                status: 'failed',
+                data: {},
+                artifacts: [],
+                error: error.message
+            };
+            pendingMessage.content = toolFailureSummary(
+                pendingMessage.tool_result
+            );
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({ contentUpdated: true });
+        }
+        return false;
+    }
 }
 
 
@@ -1697,10 +1966,7 @@ const imageFiles =
             const toolResult = await actionResponse.json();
 
             if (
-                [
-                    'image_generate',
-                    'image_edit'
-                ].includes(toolResult.tool) &&
+                isImageJobTool(toolResult.tool) &&
                 toolResult.status === 'completed' &&
                 Array.isArray(toolResult.artifacts) &&
                 toolResult.artifacts[0]?.artifact_id
@@ -1713,10 +1979,7 @@ const imageFiles =
             }
 
             if (
-                [
-                    'image_generate',
-                    'image_edit'
-                ].includes(toolResult.tool) &&
+                isImageJobTool(toolResult.tool) &&
                 [
                     'queued',
                     'loading',
@@ -2120,6 +2383,12 @@ function toolSummary(result) {
             }
         );
     }
+    if (result.tool === 'image_upscale') {
+        return gt(
+            'image_upscaled',
+            'Image enhanced locally with Real-ESRGAN.'
+        );
+    }
     if (result.tool === 'web_search') {
         return gt(
             'web_search_completed',
@@ -2142,7 +2411,7 @@ function toolSummary(result) {
 
 function toolFailureSummary(result) {
     if (
-        result?.tool === 'image_edit' &&
+        ['image_edit', 'image_upscale'].includes(result?.tool) &&
         result.error
     ) {
         return gt(
@@ -2167,9 +2436,14 @@ const ACTIVE_IMAGE_JOB_STATUSES = new Set([
 const IMAGE_JOB_ID_PATTERN = /^[a-f0-9]{24}$/;
 const IMAGE_JOB_TOOLS = new Set([
     'image_generate',
-    'image_edit'
+    'image_edit',
+    'image_upscale'
 ]);
 const imageJobWatchers = new Map();
+
+function isImageJobTool(tool) {
+    return IMAGE_JOB_TOOLS.has(tool);
+}
 
 function imageJobHasStep(job) {
     const currentStep = Number(job?.current_step);
@@ -2527,6 +2801,8 @@ function watchBatchJob(session, jobId) {
         regenerateLastAnswer: regenerateLastAnswer,
         generateAssistant: generateAssistant,
         sendMessage: sendMessage,
+        startImageUpscale: startImageUpscale,
+        createImageUpscaleMenu: createImageUpscaleMenu,
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
         isWatchingImageJob: isWatchingImageJob,
@@ -2541,11 +2817,14 @@ function watchBatchJob(session, jobId) {
             activeSessionImageArtifact: activeSessionImageArtifact,
             isImageEditRequest: isImageEditRequest,
             isImageGenerationRequest: isImageGenerationRequest,
+            imageUpscalePresets: imageUpscalePresets,
+            isImageJobTool: isImageJobTool,
             updateImageJobMessage: updateImageJobMessage,
             isWatchingImageJob: isWatchingImageJob,
             resumeImageJobsForSession: resumeImageJobsForSession,
             watchImageJob: watchImageJob,
-            toolFailureSummary: toolFailureSummary
+            toolFailureSummary: toolFailureSummary,
+            toolSummary: toolSummary
         }
     };
 })();

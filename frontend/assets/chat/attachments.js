@@ -185,6 +185,17 @@ function attachmentT(key, fallback = '', variables = {}) {
             });
 
             chip.appendChild(name);
+
+            if (file.kind === 'image') {
+                chip.className += ' image-attachment-chip';
+
+                const enhanceMenu = window.MLXChatGeneration
+                    ?.createImageUpscaleMenu?.(file);
+                if (enhanceMenu) {
+                    chip.appendChild(enhanceMenu);
+                }
+            }
+
             chip.appendChild(remove);
 
             bar.appendChild(chip);
@@ -626,6 +637,16 @@ function attachmentT(key, fallback = '', variables = {}) {
         renderAttachments();
     }
 
+    function removeAttachment(attachment) {
+        const index = attachments.indexOf(attachment);
+        if (index < 0) {
+            return false;
+        }
+        attachments.splice(index, 1);
+        renderAttachments();
+        return true;
+    }
+
     async function uploadTextAttachments(files) {
         const uploaded = [];
         for (const item of files.filter(file => file.kind === 'text' && file.file)) {
@@ -832,6 +853,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             getAttachments,
         uploadTextAttachments: uploadTextAttachments,
         uploadImageAttachments: uploadImageAttachments,
+        removeAttachment: removeAttachment,
         clearAttachments:
             clearAttachments
     };

@@ -3464,6 +3464,7 @@ class ChatFileRouteRequest(BaseModel):
 
 class ChatActionRequest(BaseModel):
     prompt: str
+    action: Literal["image_generate", "image_edit", "image_upscale"] | None = None
     file_context: dict | None = None
     active_artifact_id: str | None = None
     image_options: dict | None = None
@@ -3864,6 +3865,10 @@ MLX_CAPABILITY_MODEL = {
     },
     "image_edit": {
         "description": "Ein angehängtes oder aktives Bild lokal bearbeiten",
+        "access": "spezialisierte Bild-Pipeline",
+    },
+    "image_upscale": {
+        "description": "Ein angehängtes oder aktives Bild lokal mit Real-ESRGAN hochskalieren",
         "access": "spezialisierte Bild-Pipeline",
     },
     "vision": {
@@ -5302,6 +5307,7 @@ Wichtige Regeln:
 - Bildanalyse gehört zu vision.
 - Bildänderung gehört zu image_edit.
 - Bilderzeugung gehört zu image_generate.
+- Bildhochskalierung mit Real-ESRGAN gehört zu image_upscale.
 
 - requires_tools ist true für alle Intents, die tatsächlich ein Tool,
   einen Agenten, Webzugriff oder eine Spezialpipeline benötigen.
@@ -6673,7 +6679,7 @@ def tool_web_search(request):
     return result
 
 
-def _image_edit_payload(request):
+def _image_source_path(request):
     file_context = request.file_context or {}
     stored_path = str(file_context.get("stored_path") or "").strip()
 
@@ -6691,6 +6697,12 @@ def _image_edit_payload(request):
             status_code=404,
             detail="Referenziertes Bild ist nicht verfügbar",
         )
+
+    return source
+
+
+def _image_edit_payload(request):
+    source = _image_source_path(request)
 
     payload = {
         "prompt": str(request.prompt or "").strip(),
@@ -6714,6 +6726,48 @@ def _image_edit_payload(request):
         payload.update(request.image_options)
 
     return payload
+
+
+def _image_upscale_payload(request):
+    source = _image_source_path(request)
+    options = dict(request.image_options or {})
+    allowed = {"preset", "scale", "tile"}
+
+    if set(options) - allowed:
+        raise HTTPException(
+            422,
+            "Unbekannte Upscale-Parameter",
+        )
+
+    scale = options.pop("scale", None)
+    preset = options.get("preset")
+    preset_scales = {
+        "photo-2x": 2,
+        "photo-4x": 4,
+        "anime-4x": 4,
+    }
+
+    if scale is not None:
+        if scale not in {2, 4}:
+            raise HTTPException(
+                422,
+                "Upscale scale muss 2 oder 4 sein",
+            )
+        scale = int(scale)
+        if preset is None:
+            options["preset"] = (
+                "photo-2x" if scale == 2 else "photo-4x"
+            )
+        elif preset_scales.get(preset) != scale:
+            raise HTTPException(
+                422,
+                "Upscale preset und scale widersprechen sich",
+            )
+
+    return {
+        "source_path": str(source),
+        **options,
+    }
 
 
 def _resolve_image_artifact_source(artifact_id):
@@ -6829,8 +6883,16 @@ def _image_artifact(result, action):
         "created_at": result.get("created_at", time.time()),
         "source_job_id": image_id,
     }
-    if action == "image_edit":
+    if action in {"image_edit", "image_upscale"}:
         artifact["source_path"] = result.get("source_path")
+    if action == "image_upscale":
+        artifact.update({
+            "source_width": result.get("source_width"),
+            "source_height": result.get("source_height"),
+            "scale": result.get("scale"),
+            "preset": result.get("preset"),
+            "tile": result.get("tile"),
+        })
     return artifact
 
 
@@ -6853,11 +6915,19 @@ def tool_image_generate(request):
 
 
 def _start_chat_image_job(action, request):
-    payload = (
-        _image_edit_payload(request)
-        if action == "image_edit"
-        else _image_generate_payload(request)
-    )
+    payload_builders = {
+        "image_generate": _image_generate_payload,
+        "image_edit": _image_edit_payload,
+        "image_upscale": _image_upscale_payload,
+    }
+    payload_builder = payload_builders.get(action)
+    if payload_builder is None:
+        raise HTTPException(
+            422,
+            "Unbekannte Image-Job-Aktion",
+        )
+    payload = payload_builder(request)
+
     if action == "image_generate" and payload.get("model", "auto") == "auto":
         payload["model"] = load_model_roles()["image"]
     return image_api.request(
@@ -7368,7 +7438,15 @@ def _looks_like_image_generation_request(prompt):
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
     routing_file_context = _image_source_routing_context(request)
-    if (
+    if request.action == "image_upscale":
+        routing = {
+            "intent": "image_upscale",
+            "confidence": 1.0,
+            "requires_tools": True,
+            "reason": "Explicit image upscale action",
+            "method": "explicit_image_upscale",
+        }
+    elif (
         _file_context_is_image(routing_file_context)
         and _looks_like_image_edit_request(request.prompt)
     ):
@@ -7436,7 +7514,11 @@ def run_chat_action(request: ChatActionRequest):
             },
         )
 
-    if action in {"image_generate", "image_edit"}:
+    if action in {
+        "image_generate",
+        "image_edit",
+        "image_upscale",
+    }:
         try:
             job = _start_chat_image_job(action, request)
             return chat_tool_result(
@@ -7455,7 +7537,11 @@ def run_chat_action(request: ChatActionRequest):
     try:
         data = handler(request)
         artifacts = []
-        if action in {"image_generate", "image_edit"}:
+        if action in {
+            "image_generate",
+            "image_edit",
+            "image_upscale",
+        }:
             artifact = data.get("image") if isinstance(data, dict) else None
             if artifact:
                 artifacts.append(artifact)

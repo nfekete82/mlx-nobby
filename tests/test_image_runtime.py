@@ -980,6 +980,220 @@ class ImageRuntimeTests(unittest.TestCase):
             f"/jobs/{job_id}",
         )
 
+    def test_image_upscale_job_uses_uploaded_source_and_runtime_options(self):
+        source = self.root / "uploaded.png"
+        Image.new("RGB", (32, 24), "green").save(source)
+        request = agent.ChatActionRequest(
+            prompt="Upscale this image four times.",
+            action="image_upscale",
+            file_context={
+                "kind": "image",
+                "mime_type": "image/png",
+                "stored_path": str(source),
+            },
+            image_options={
+                "preset": "anime-4x",
+                "scale": 4,
+                "tile": 256,
+            },
+        )
+        queued_job = {
+            "id": "d" * 24,
+            "operation": "upscale",
+            "status": "queued",
+        }
+        with patch.object(
+            agent,
+            "classify_chat_action_details",
+            side_effect=AssertionError(
+                "Explicit upscale must not invoke semantic routing"
+            ),
+        ), patch.object(
+            agent,
+            "load_model_roles",
+            side_effect=AssertionError(
+                "Upscale must not resolve a generative image model"
+            ),
+        ), patch.object(
+            agent.image_api,
+            "request",
+            return_value=queued_job,
+        ) as image_request:
+            result = agent.run_chat_action(request)
+
+        self.assertEqual(result["tool"], "image_upscale")
+        self.assertEqual(result["status"], "queued")
+        image_request.assert_called_once_with(
+            "POST",
+            "/jobs",
+            {
+                "operation": "upscale",
+                "payload": {
+                    "source_path": str(source),
+                    "preset": "anime-4x",
+                    "tile": 256,
+                },
+            },
+            timeout=10,
+        )
+        self.assertNotIn(
+            "model",
+            image_request.call_args.args[2]["payload"],
+        )
+
+    def test_image_upscale_resolves_active_artifact_and_scale_alias(self):
+        image_directory = agent.IMAGE_DIRECTORY
+        image_directory.mkdir(parents=True)
+        image_id = "1234567890-cccccccccccc"
+        source = image_directory / f"{image_id}.png"
+        Image.new("RGB", (24, 16), "blue").save(source)
+
+        payload = agent._image_upscale_payload(
+            agent.ChatActionRequest(
+                prompt="Upscale this image.",
+                active_artifact_id=f"image-{image_id}",
+                image_options={"scale": 2},
+            )
+        )
+
+        self.assertEqual(payload, {
+            "source_path": str(source.resolve()),
+            "preset": "photo-2x",
+        })
+
+    def test_completed_image_upscale_job_returns_metadata_artifact(self):
+        image_id = "1234567890-dddddddddddd"
+        source = self.root / "source.png"
+        result = agent._image_job_tool_result({
+            "id": "e" * 24,
+            "operation": "upscale",
+            "status": "completed",
+            "result": {
+                "id": image_id,
+                "path": str(agent.IMAGE_DIRECTORY / f"{image_id}.png"),
+                "source_path": str(source),
+                "source_width": 320,
+                "source_height": 240,
+                "width": 640,
+                "height": 480,
+                "scale": 2,
+                "preset": "photo-2x",
+                "tile": 0,
+                "model": "realesrgan-x4plus",
+                "provider": "realesrgan",
+                "model_family": "realesrgan",
+            },
+            "error": None,
+        })
+
+        self.assertEqual(result["tool"], "image_upscale")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(len(result["artifacts"]), 1)
+        artifact = result["artifacts"][0]
+        self.assertEqual(artifact["artifact_id"], f"image-{image_id}")
+        for field in (
+            "source_path",
+            "source_width",
+            "source_height",
+            "width",
+            "height",
+            "scale",
+            "preset",
+            "tile",
+            "provider",
+            "model",
+            "model_family",
+        ):
+            self.assertEqual(
+                artifact[field],
+                result["data"]["job"]["result"][field],
+            )
+
+    def test_image_upscale_rejects_missing_source_and_invalid_options(self):
+        with self.assertRaises(HTTPException) as missing:
+            agent._image_upscale_payload(
+                agent.ChatActionRequest(
+                    prompt="Upscale this image.",
+                    image_options={"scale": 2},
+                )
+            )
+        self.assertEqual(missing.exception.status_code, 404)
+
+        source = self.root / "uploaded.png"
+        Image.new("RGB", (16, 16), "white").save(source)
+        context = {
+            "kind": "image",
+            "mime_type": "image/png",
+            "stored_path": str(source),
+        }
+        for options in (
+            {"steps": 8},
+            {"scale": 3},
+            {"preset": "photo-2x", "scale": 4},
+        ):
+            with self.subTest(options=options), self.assertRaises(
+                HTTPException
+            ) as invalid:
+                agent._image_upscale_payload(
+                    agent.ChatActionRequest(
+                        prompt="Upscale this image.",
+                        file_context=context,
+                        image_options=options,
+                    )
+                )
+            self.assertEqual(invalid.exception.status_code, 422)
+
+    def test_image_job_dispatch_preserves_generate_and_edit_behavior(self):
+        source = self.root / "source.png"
+        Image.new("RGB", (16, 16), "white").save(source)
+        queued_job = {
+            "id": "f" * 24,
+            "status": "queued",
+        }
+
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A red apple",
+        ), patch.object(
+            agent,
+            "load_model_roles",
+            return_value={"image": "FLUX.1-schnell"},
+        ), patch.object(
+            agent.image_api,
+            "request",
+            return_value=queued_job,
+        ) as image_request:
+            agent._start_chat_image_job(
+                "image_generate",
+                agent.ChatActionRequest(
+                    prompt="Erstelle ein Bild von einem roten Apfel",
+                ),
+            )
+            agent._start_chat_image_job(
+                "image_edit",
+                agent.ChatActionRequest(
+                    prompt="Mach den Hintergrund dunkler",
+                    file_context={
+                        "stored_path": str(source),
+                    },
+                    image_options={"steps": 12},
+                ),
+            )
+
+        generate_call, edit_call = image_request.call_args_list
+        self.assertEqual(generate_call.args[2]["operation"], "generate")
+        self.assertEqual(
+            generate_call.args[2]["payload"]["model"],
+            "FLUX.1-schnell",
+        )
+        self.assertEqual(edit_call.args[2]["operation"], "edit")
+        self.assertEqual(
+            edit_call.args[2]["payload"]["model"],
+            "mflux-qwen-image-edit-2511",
+        )
+        self.assertEqual(edit_call.args[2]["payload"]["steps"], 12)
+
     def test_active_image_artifact_resolution_and_edit_chaining(self):
         image_directory = agent.IMAGE_DIRECTORY
         image_directory.mkdir(parents=True)
@@ -1707,3 +1921,258 @@ def test_validate_lora_path_preserves_huggingface_snapshot_symlink(
     assert result == str(link)
     assert Path(result).suffix == ".safetensors"
     assert Path(result).resolve() == blob.resolve()
+
+
+def test_realesrgan_photo_2x_command(tmp_path, monkeypatch):
+    import image_providers as providers
+
+    binary = tmp_path / "realesrgan-ncnn-vulkan"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+
+    models = tmp_path / "models"
+    models.mkdir()
+
+    for suffix in (".param", ".bin"):
+        (
+            models / f"realesrgan-x4plus{suffix}"
+        ).write_bytes(b"model")
+
+    monkeypatch.setattr(
+        providers,
+        "REALESRGAN_BIN",
+        binary,
+    )
+    monkeypatch.setattr(
+        providers,
+        "REALESRGAN_MODELS",
+        models,
+    )
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "output.png"
+
+    command = providers.realesrgan_command(
+        source,
+        output,
+        preset="photo-2x",
+    )
+
+    assert command == [
+        str(binary),
+        "-i",
+        str(source),
+        "-o",
+        str(output),
+        "-m",
+        str(models),
+        "-n",
+        "realesrgan-x4plus",
+        "-s",
+        "2",
+        "-t",
+        "0",
+        "-f",
+        "png",
+        "-v",
+    ]
+
+
+def test_realesrgan_anime_4x_command(tmp_path, monkeypatch):
+    import image_providers as providers
+
+    binary = tmp_path / "realesrgan-ncnn-vulkan"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+
+    models = tmp_path / "models"
+    models.mkdir()
+
+    for suffix in (".param", ".bin"):
+        (
+            models / f"realesrgan-x4plus-anime{suffix}"
+        ).write_bytes(b"model")
+
+    monkeypatch.setattr(
+        providers,
+        "REALESRGAN_BIN",
+        binary,
+    )
+    monkeypatch.setattr(
+        providers,
+        "REALESRGAN_MODELS",
+        models,
+    )
+
+    command = providers.realesrgan_command(
+        tmp_path / "source.png",
+        tmp_path / "output.png",
+        preset="anime-4x",
+        tile=256,
+    )
+
+    assert command[
+        command.index("-n") + 1
+    ] == "realesrgan-x4plus-anime"
+
+    assert command[
+        command.index("-s") + 1
+    ] == "4"
+
+    assert command[
+        command.index("-t") + 1
+    ] == "256"
+
+
+def test_realesrgan_rejects_unknown_preset():
+    import image_providers as providers
+    import pytest
+
+    with pytest.raises(
+        ValueError,
+        match="Unbekanntes Real-ESRGAN-Preset",
+    ):
+        providers.realesrgan_command(
+            "/tmp/source.png",
+            "/tmp/output.png",
+            preset="potato-16x",
+        )
+
+
+def test_image_upscale_endpoint_returns_png_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    import image_service as service
+
+    monkeypatch.setattr(service, "OUTPUT", tmp_path / "images")
+    service.OUTPUT.mkdir(parents=True, exist_ok=True)
+
+    source = service.OUTPUT / "upscale-source.png"
+
+    from PIL import Image
+
+    Image.new(
+        "RGB",
+        (320, 240),
+        "white",
+    ).save(source)
+
+    def fake_command(
+        source_path,
+        output_path,
+        *,
+        preset,
+        tile,
+    ):
+        assert Path(source_path) == source
+        assert preset == "photo-2x"
+        assert tile == 0
+
+        return [
+            "fake-realesrgan",
+            str(source_path),
+            str(output_path),
+        ]
+
+    class FakeStdout:
+        def __init__(self):
+            self.lines = iter([
+                "0.00%\n",
+                "50.00%\n",
+                "100.00%\n",
+            ])
+
+        def readline(self):
+            return next(self.lines, "")
+
+        def read(self):
+            return ""
+
+    class FakeProcess:
+        def __init__(self, command):
+            self.command = command
+            self.stdout = FakeStdout()
+            self.returncode = None
+            self.pid = 12345
+            self._polls = 0
+
+            output = Path(command[-1])
+
+            Image.new(
+                "RGB",
+                (640, 480),
+                "white",
+            ).save(output)
+
+        def poll(self):
+            self._polls += 1
+
+            if self._polls >= 3:
+                self.returncode = 0
+
+            return self.returncode
+
+    def fake_popen(
+        command,
+        stdout,
+        stderr,
+        text,
+        bufsize,
+        start_new_session,
+    ):
+        assert stdout == service.subprocess.PIPE
+        assert stderr == service.subprocess.STDOUT
+        assert text is True
+        assert bufsize == 1
+        assert start_new_session is True
+
+        return FakeProcess(command)
+
+    monkeypatch.setattr(
+        service,
+        "realesrgan_command",
+        fake_command,
+    )
+
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        fake_popen,
+    )
+
+    monkeypatch.setattr(
+        service,
+        "terminate_process_tree",
+        lambda process: None,
+    )
+
+    result = service._upscale_result(
+        service.Upscale(
+            source_path=str(source),
+            preset="photo-2x",
+        )
+    )
+
+    assert result["width"] == 640
+    assert result["height"] == 480
+    assert result["source_width"] == 320
+    assert result["source_height"] == 240
+    assert result["scale"] == 2
+    assert result["preset"] == "photo-2x"
+    assert result["provider"] == "realesrgan"
+    assert Path(result["path"]).is_file()
+
+
+def test_image_job_create_accepts_upscale():
+    import image_service as service
+
+    job = service.ImageJobCreate(
+        operation="upscale",
+        payload={
+            "source_path": "/tmp/source.png",
+            "preset": "photo-2x",
+        },
+    )
+
+    assert job.operation == "upscale"

@@ -11,6 +11,100 @@ from pathlib import Path
 from image_registry import FAMILIES, MODEL_ROOTS, validate_path
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
+
+REALESRGAN_BIN = Path(
+    os.environ.get(
+        "MLX_IMAGE_REALESRGAN_BIN",
+        str(Path.home() / ".local/bin/realesrgan-ncnn-vulkan"),
+    )
+)
+
+REALESRGAN_MODELS = Path(
+    os.environ.get(
+        "MLX_IMAGE_REALESRGAN_MODELS",
+        str(Path.home() / ".local/share/realesrgan/models"),
+    )
+)
+
+REALESRGAN_PRESETS = {
+    "photo-2x": {
+        "model": "realesrgan-x4plus",
+        "scale": 2,
+    },
+    "photo-4x": {
+        "model": "realesrgan-x4plus",
+        "scale": 4,
+    },
+    "anime-4x": {
+        "model": "realesrgan-x4plus-anime",
+        "scale": 4,
+    },
+}
+
+
+def realesrgan_command(
+    source,
+    output,
+    *,
+    preset="photo-2x",
+    tile=0,
+):
+    try:
+        config = REALESRGAN_PRESETS[preset]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unbekanntes Real-ESRGAN-Preset: {preset}"
+        ) from exc
+
+    source = Path(source)
+    output = Path(output)
+
+    if not REALESRGAN_BIN.is_file():
+        raise RuntimeError(
+            "Real-ESRGAN-Binary ist nicht installiert"
+        )
+
+    if not os.access(REALESRGAN_BIN, os.X_OK):
+        raise RuntimeError(
+            "Real-ESRGAN-Binary ist nicht ausführbar"
+        )
+
+    model_name = config["model"]
+
+    for suffix in (".param", ".bin"):
+        model_file = (
+            REALESRGAN_MODELS
+            / f"{model_name}{suffix}"
+        )
+        if not model_file.is_file():
+            raise RuntimeError(
+                f"Real-ESRGAN-Modell fehlt: {model_file.name}"
+            )
+
+    if tile < 0:
+        raise ValueError(
+            "Real-ESRGAN tile muss 0 oder größer sein"
+        )
+
+    return [
+        str(REALESRGAN_BIN),
+        "-i",
+        str(source),
+        "-o",
+        str(output),
+        "-m",
+        str(REALESRGAN_MODELS),
+        "-n",
+        model_name,
+        "-s",
+        str(config["scale"]),
+        "-t",
+        str(tile),
+        "-f",
+        "png",
+        "-v",
+    ]
+
 GENERATION_TIMEOUT = 840
 MAX_PROCESS_RSS_GB = 24
 PROCESS_TERMINATION_TIMEOUT = 5

@@ -106,7 +106,9 @@ function toolResult(status, jobId, options = {}) {
                 id: jobId,
                 operation: options.tool === 'image_generate'
                     ? 'generate'
-                    : 'edit',
+                    : options.tool === 'image_upscale'
+                        ? 'upscale'
+                        : 'edit',
                 status,
                 current_step: options.currentStep ?? null,
                 total_steps: options.totalSteps ?? 8,
@@ -131,7 +133,9 @@ function storedMessage(status, jobId, options = {}) {
             id: jobId,
             operation: options.tool === 'image_generate'
                 ? 'generate'
-                : 'edit',
+                : options.tool === 'image_upscale'
+                    ? 'upscale'
+                    : 'edit',
             status,
             current_step: options.currentStep ?? null,
             total_steps: options.totalSteps ?? 8,
@@ -175,16 +179,15 @@ async function runNextTimeout() {
     await settle();
 }
 
-for (const [status, digit] of [
-    ['queued', '0'],
-    ['loading', '1'],
-    ['running', '2'],
-    ['saving', '3'],
+for (const [status, digit, restoredTool] of [
+    ['queued', '0', 'image_generate'],
+    ['loading', '1', 'image_edit'],
+    ['running', '2', 'image_edit'],
+    ['saving', '3', 'image_edit'],
+    ['queued', 'd', 'image_upscale'],
 ]) {
     const jobId = digit.repeat(24);
-    const tool = status === 'queued'
-        ? 'image_generate'
-        : 'image_edit';
+    const tool = restoredTool;
     const message = storedMessage(status, jobId, {
         tool,
         currentStep: status === 'running' ? 1 : null,

@@ -9,12 +9,14 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import image_registry as registry
+import subprocess
 from image_providers import (
     PROCESS_TERMINATION_TIMEOUT,
     ProviderCancelled,
     availability,
     run_provider,
     terminate_process_tree,
+    realesrgan_command,
 )
 from local_security import LocalRequestGuard
 
@@ -52,10 +54,22 @@ class Edit(BaseModel):
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
 
 
+class Upscale(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_path: str
+    preset: Literal[
+        "photo-2x",
+        "photo-4x",
+        "anime-4x",
+    ] = "photo-2x"
+    tile: int = Field(default=0, ge=0)
+
+
 class ImageJobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    operation: Literal["generate", "edit"]
+    operation: Literal["generate", "edit", "upscale"]
     payload: dict
 
 
@@ -315,6 +329,213 @@ def _edit_result(
     }
 
 
+def _upscale_result(
+    request,
+    *,
+    provider_options=None,
+    prepared_callback=None,
+    saving_callback=None,
+):
+    global _running
+
+    source = validate_edit_source(request.source_path)
+
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+
+    image_id = f"{int(time.time())}-{secrets.token_hex(6)}"
+    path = OUTPUT / f"{image_id}.png"
+
+    command = realesrgan_command(
+        source,
+        path,
+        preset=request.preset,
+        tile=request.tile,
+    )
+
+    params = {
+        "source_path": str(source),
+        "preset": request.preset,
+        "tile": request.tile,
+    }
+
+    model = {
+        "id": "realesrgan",
+        "provider": "realesrgan",
+        "model_family": "realesrgan",
+    }
+
+    if prepared_callback:
+        prepared_callback(model, params, path)
+
+    options = provider_options or {}
+    cancel_event = options.get("cancel_event")
+    process_callback = options.get("process_callback")
+    progress_callback = options.get("progress_callback")
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise ProviderCancelled("Image job was cancelled")
+
+    _running = "realesrgan"
+    process = None
+
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+
+        if process_callback:
+            process_callback(process)
+
+        deadline = time.monotonic() + 840
+        output_lines = []
+
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ProviderCancelled("Image job was cancelled")
+
+            line = process.stdout.readline()
+
+            if line:
+                line = line.strip()
+                output_lines.append(line)
+
+                if len(output_lines) > 200:
+                    output_lines = output_lines[-200:]
+
+                if line.endswith("%"):
+                    try:
+                        percent = float(line[:-1].strip())
+                    except ValueError:
+                        percent = None
+
+                    if percent is not None and progress_callback:
+                        progress_callback({
+                            "phase": "generate",
+                            "step": max(
+                                0,
+                                min(
+                                    1000,
+                                    round(percent * 10),
+                                ),
+                            ),
+                            "total_steps": 1000,
+                        })
+
+            returncode = process.poll()
+
+            if returncode is not None:
+                remainder = process.stdout.read()
+                if remainder:
+                    output_lines.extend(
+                        line.strip()
+                        for line in remainder.splitlines()
+                        if line.strip()
+                    )
+                break
+
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "Real-ESRGAN-Auftrag hat das Zeitlimit überschritten"
+                )
+
+            if not line:
+                time.sleep(0.05)
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise ProviderCancelled("Image job was cancelled")
+
+        if process.returncode != 0:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+            message = (
+                "\n".join(output_lines[-100:]).strip()
+                or "Real-ESRGAN konnte das Bild nicht hochskalieren"
+            )
+
+            raise RuntimeError(message[-4000:])
+
+    finally:
+        if process is not None:
+            terminate_process_tree(process)
+
+        if process_callback:
+            process_callback(None)
+
+        _running = None
+
+    if not path.is_file():
+        raise RuntimeError(
+            "Real-ESRGAN hat keine Ausgabedatei erzeugt"
+        )
+
+    if progress_callback:
+        progress_callback({
+            "phase": "save",
+            "step": 1000,
+            "total_steps": 1000,
+        })
+
+    if saving_callback:
+        saving_callback()
+
+    from PIL import Image
+
+    with Image.open(source) as image:
+        source_width, source_height = image.size
+
+    with Image.open(path) as image:
+        width, height = image.size
+
+    return {
+        "id": image_id,
+        "path": str(path),
+        "mime_type": "image/png",
+        "width": width,
+        "height": height,
+        "source_width": source_width,
+        "source_height": source_height,
+        "source_path": str(source),
+        "preset": request.preset,
+        "scale": (
+            2
+            if request.preset == "photo-2x"
+            else 4
+        ),
+        "tile": request.tile,
+        "model": (
+            "realesrgan-x4plus-anime"
+            if request.preset == "anime-4x"
+            else "realesrgan-x4plus"
+        ),
+        "provider": "realesrgan",
+        "model_family": "realesrgan",
+        "created_at": time.time(),
+    }
+
+
+@app.post("/upscale")
+def upscale(request: Upscale):
+    with exclusive():
+        try:
+            return _upscale_result(request)
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise HTTPException(
+                500,
+                _provider_failure(exc),
+            ) from exc
+
+
+
 @app.post("/generate")
 def generate(request: Generate):
     with exclusive():
@@ -384,7 +605,11 @@ def _run_image_job(job_id, operation, request):
         _update_job(
             job_id,
             model=model["id"],
-            total_steps=params.get("steps"),
+            total_steps=(
+                params.get("steps")
+                if operation != "upscale"
+                else 1000
+            ),
             _output_path=path,
         )
 
@@ -403,7 +628,13 @@ def _run_image_job(job_id, operation, request):
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
         _update_job(job_id, status="loading", started_at=time.time())
-        execute = _edit_result if operation == "edit" else _generate_result
+        if operation == "edit":
+            execute = _edit_result
+        elif operation == "upscale":
+            execute = _upscale_result
+        else:
+            execute = _generate_result
+
         result = execute(
             request,
             provider_options=provider_options,
@@ -463,11 +694,18 @@ def create_image_job(request: ImageJobCreate):
     global _active_job_id
 
     try:
-        image_request = (
-            Edit.model_validate(request.payload)
-            if request.operation == "edit"
-            else Generate.model_validate(request.payload)
-        )
+        if request.operation == "edit":
+            image_request = Edit.model_validate(
+                request.payload
+            )
+        elif request.operation == "upscale":
+            image_request = Upscale.model_validate(
+                request.payload
+            )
+        else:
+            image_request = Generate.model_validate(
+                request.payload
+            )
     except ValidationError as exc:
         raise HTTPException(422, exc.errors()) from exc
 
@@ -486,7 +724,11 @@ def create_image_job(request: ImageJobCreate):
         "status": "queued",
         "model": None,
         "current_step": None,
-        "total_steps": image_request.steps,
+        "total_steps": (
+            1000
+            if request.operation == "upscale"
+            else image_request.steps
+        ),
         "result": None,
         "error": None,
         "created_at": created_at,

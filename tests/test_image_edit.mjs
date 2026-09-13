@@ -31,7 +31,10 @@ class TestFormData {
 
 const window = {
     MLXI18n: {
-        t(_key, fallback, variables = {}) {
+        t(key, fallback, variables = {}) {
+            if (key === 'image_edit_action') {
+                return 'Bild ändern …';
+            }
             let value = fallback;
             for (const [name, replacement] of Object.entries(variables)) {
                 value = value.replaceAll(`{${name}}`, replacement);
@@ -116,6 +119,32 @@ const imageEditError = window.MLXChatGeneration.__test.toolFailureSummary({
     error: 'Image-Auftrag hat das Zeitlimit überschritten',
 });
 assert.match(imageEditError, /Zeitlimit überschritten/);
+
+const imageUpscaleError = window.MLXChatGeneration.__test.toolFailureSummary({
+    tool: 'image_upscale',
+    status: 'failed',
+    error: 'Real-ESRGAN provider failed',
+});
+assert.match(imageUpscaleError, /Real-ESRGAN provider failed/);
+assert.equal(
+    window.MLXChatGeneration.__test.toolSummary({
+        tool: 'image_upscale',
+        status: 'completed',
+        artifacts: [],
+    }),
+    'Image enhanced locally with Real-ESRGAN.',
+);
+assert.equal(
+    window.MLXChatGeneration.__test.isImageJobTool('image_upscale'),
+    true,
+);
+assert.deepEqual(
+    Array.from(
+        window.MLXChatGeneration.__test.imageUpscalePresets(),
+        item => item.preset,
+    ),
+    ['photo-2x', 'photo-4x', 'anime-4x'],
+);
 
 const unrelatedError = window.MLXChatGeneration.__test.toolFailureSummary({
     tool: 'system_status',
@@ -585,6 +614,7 @@ class TestElement {
     }
 }
 
+context.document.createElement = tagName => new TestElement(tagName);
 const renderingWindow = {
     MLXI18n: window.MLXI18n,
     MLXChatGeneration: {
@@ -594,6 +624,12 @@ const renderingWindow = {
         updateImageJobMessage(_session, message, result) {
             message.image_job = result.data.job;
             message.tool_result = result;
+        },
+        createImageUpscaleMenu(source) {
+            const menu = new TestElement('details');
+            menu.className = 'image-upscale-menu';
+            menu.source = source;
+            return menu;
         },
     },
 };
@@ -795,6 +831,28 @@ assert.equal(
     '25.00%',
 );
 
+const upscaleJobCard = renderImageJobCard({
+    image_job: {
+        id: '7'.repeat(24),
+        operation: 'upscale',
+        status: 'running',
+        current_step: 250,
+        total_steps: 1000,
+    },
+});
+const upscaleJobElements = descendants(upscaleJobCard);
+assert.equal(
+    upscaleJobElements.find(element => element.tagName === 'STRONG')
+        .textContent,
+    'Enhancing image …',
+);
+assert.equal(
+    upscaleJobElements.find(
+        element => element.className === 'batch-progress-fill'
+    ).style.width,
+    '25.00%',
+);
+
 const staleJobMessage = {
     image_job: {
         id: '8'.repeat(24),
@@ -876,6 +934,12 @@ assert.equal(
     editPreview.src,
     '/api/mlx/images/' + encodeURIComponent(imageArtifactC.image_id),
 );
+assert.equal(
+    descendants(editCard).find(
+        element => element.className === 'image-upscale-menu'
+    ).source.artifact_id,
+    imageArtifactC.artifact_id,
+);
 
 const generatedCard = renderImageArtifactCard({
     tool_result: {
@@ -897,6 +961,33 @@ assert.equal(
     }),
     null,
 );
+
+const upscaledArtifact = {
+    ...imageArtifact,
+    artifact_id: 'image-1234567893-dddddddddddd',
+    image_id: '1234567893-dddddddddddd',
+    provider: 'realesrgan',
+    scale: 2,
+    preset: 'photo-2x',
+};
+const upscaledCard = renderImageArtifactCard({
+    tool_result: {
+        tool: 'image_upscale',
+        status: 'completed',
+        artifacts: [upscaledArtifact],
+    },
+});
+assert.ok(upscaledCard);
+assert.equal(
+    upscaledCard.children.find(child => child.tagName === 'IMG').src,
+    '/api/mlx/images/' + encodeURIComponent(upscaledArtifact.image_id),
+);
+assert.equal(
+    descendants(upscaledCard).find(
+        element => element.className === 'image-upscale-menu'
+    ).source.artifact_id,
+    upscaledArtifact.artifact_id,
+);
 assert.equal(
     renderImageArtifactCard({
         image_job: { status: 'cancelled' },
@@ -908,6 +999,161 @@ assert.equal(
     }),
     null,
 );
+
+selectedAttachments = [];
+const upscaleJobId = '2'.repeat(24);
+let upscalePolls = 0;
+const upscaleRequestStart = requests.length;
+context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (url.startsWith('/api/mlx/image-jobs/')) {
+        upscalePolls += 1;
+        const status = upscalePolls === 1 ? 'running' : 'completed';
+        return {
+            ok: true,
+            async json() {
+                return {
+                    tool: 'image_upscale',
+                    status,
+                    data: {
+                        job: {
+                            id: upscaleJobId,
+                            operation: 'upscale',
+                            status,
+                            current_step:
+                                status === 'running' ? 250 : 1000,
+                            total_steps: 1000,
+                            ...(status === 'completed'
+                                ? { result: upscaledArtifact }
+                                : {}),
+                        },
+                        ...(status === 'completed'
+                            ? { image: upscaledArtifact }
+                            : {}),
+                    },
+                    artifacts:
+                        status === 'completed' ? [upscaledArtifact] : [],
+                    error: null,
+                };
+            },
+        };
+    }
+    assert.equal(url, '/api/mlx/chat/actions');
+    return {
+        ok: true,
+        async json() {
+            return {
+                tool: 'image_upscale',
+                status: 'queued',
+                data: {
+                    job: {
+                        id: upscaleJobId,
+                        operation: 'upscale',
+                        status: 'queued',
+                    },
+                },
+                artifacts: [],
+                error: null,
+            };
+        },
+    };
+};
+
+assert.equal(
+    await window.MLXChatGeneration.startImageUpscale(
+        imageArtifactC,
+        'photo-2x',
+    ),
+    true,
+);
+await new Promise(resolve => setImmediate(resolve));
+const upscaleActionPayload = JSON.parse(
+    requests[upscaleRequestStart].options.body,
+);
+assert.equal(upscaleActionPayload.action, 'image_upscale');
+assert.equal(upscaleActionPayload.active_artifact_id, imageArtifactC.artifact_id);
+assert.equal(upscaleActionPayload.file_context, null);
+assert.deepEqual(
+    Object.fromEntries(Object.entries(upscaleActionPayload.image_options)),
+    { preset: 'photo-2x' },
+);
+assert.equal(
+    routing.isWatchingImageJob(session.messages.at(-1)),
+    true,
+);
+assert.equal(session.messages.at(-1).image_job.current_step, 250);
+assert.equal(scheduledCallbacks.length, 1);
+await scheduledCallbacks.shift()();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(session.messages.at(-1).tool_result.tool, 'image_upscale');
+assert.equal(
+    session.messages.at(-1).content,
+    'Image enhanced locally with Real-ESRGAN.',
+);
+assert.equal(
+    session.workspace.active_artifact_id,
+    upscaledArtifact.artifact_id,
+);
+assert.equal(
+    routing.activeSessionImageArtifact(session).artifact_id,
+    upscaledArtifact.artifact_id,
+);
+assert.equal(
+    routing.isImageEditRequest('Make it darker.', true),
+    true,
+);
+
+const repeatUpscaleStart = requests.length;
+context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    assert.equal(url, '/api/mlx/chat/actions');
+    return {
+        ok: true,
+        async json() {
+            return {
+                tool: 'image_upscale',
+                status: 'failed',
+                data: {},
+                artifacts: [],
+                error: 'provider failed',
+            };
+        },
+    };
+};
+assert.equal(
+    await window.MLXChatGeneration.startImageUpscale(
+        upscaledArtifact,
+        'anime-4x',
+    ),
+    false,
+);
+const repeatUpscalePayload = JSON.parse(
+    requests[repeatUpscaleStart].options.body,
+);
+assert.equal(
+    repeatUpscalePayload.active_artifact_id,
+    upscaledArtifact.artifact_id,
+);
+assert.equal(repeatUpscalePayload.image_options.preset, 'anime-4x');
+assert.match(session.messages.at(-1).content, /provider failed/);
+
+const uploadedUpscaleStart = requests.length;
+assert.equal(
+    await window.MLXChatGeneration.startImageUpscale(
+        imageAttachment,
+        'photo-4x',
+    ),
+    false,
+);
+const uploadedUpscalePayload = JSON.parse(
+    requests[uploadedUpscaleStart].options.body,
+);
+assert.equal(uploadedUpscalePayload.active_artifact_id, null);
+assert.equal(
+    uploadedUpscalePayload.file_context.stored_path,
+    '/uploads/stored.png',
+);
+assert.equal(uploadedUpscalePayload.image_options.preset, 'photo-4x');
 
 console.log(
     'Image jobs, routing, progress, cancellation, artifacts, and errors passed.',

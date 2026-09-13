@@ -129,9 +129,13 @@
                 'Image processing continues …'
             );
         } else if (status === 'running' && hasStepProgress) {
-            title = job.operation === 'edit'
-                ? rt('image_editing', 'Editing image …')
-                : rt('image_generating', 'Generating image …');
+            if (job.operation === 'edit') {
+                title = rt('image_editing', 'Editing image …');
+            } else if (job.operation === 'upscale') {
+                title = rt('image_upscaling', 'Enhancing image …');
+            } else {
+                title = rt('image_generating', 'Generating image …');
+            }
         } else {
             title = rt(
                 'image_job_status_' + status,
@@ -544,6 +548,7 @@ function renderToolCard(message) {
         thinking_off: 'Thinking',
         image_generate: rt('image_generation', 'Image generation'),
         image_edit: rt('image_editing', 'Image editing'),
+        image_upscale: rt('image_upscale', 'Image enhancement'),
         knowledge_search: rt('knowledge_base', 'Knowledge base')
     };
 
@@ -1550,7 +1555,8 @@ function renderBatchCard(message) {
 function renderImageArtifactCard(message) {
     const artifact = [
         'image_generate',
-        'image_edit'
+        'image_edit',
+        'image_upscale'
     ].includes(message.tool_result?.tool)
         ? message.tool_result.artifacts?.[0]
         : null;
@@ -1568,6 +1574,7 @@ function renderImageArtifactCard(message) {
         artifact.model,
         artifact.provider,
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
+        artifact.scale ? artifact.scale + '×' : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');
@@ -1589,6 +1596,11 @@ function renderImageArtifactCard(message) {
         }});
     });
     controls.appendChild(variation);
+    const enhanceMenu = window.MLXChatGeneration
+        ?.createImageUpscaleMenu?.(artifact);
+    if (enhanceMenu) {
+        controls.appendChild(enhanceMenu);
+    }
     card.appendChild(title); card.appendChild(image); card.appendChild(details); card.appendChild(controls);
     return card;
 }
