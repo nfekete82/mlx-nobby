@@ -6701,29 +6701,345 @@ def _image_source_path(request):
     return source
 
 
+
+def normalize_image_edit_prompt(prompt):
+    """
+    Expand short, common image-edit instructions into precise English
+    instructions for Qwen Image Edit without requiring another LLM call.
+
+    Longer or more specific prompts are preserved to avoid changing
+    user intent.
+    """
+    value = str(prompt or "").strip()
+
+    if not value:
+        return value
+
+    normalized = re.sub(r"\s+", " ", value).strip()
+    lower = normalized.casefold()
+
+    # Preserve detailed prompts. They already contain enough intent and
+    # should not be rewritten heuristically.
+    if len(normalized) >= 120:
+        return normalized
+
+    rules = (
+        (
+            (
+                "tattoo entfernen",
+                "tattoos entfernen",
+                "tatoo entfernen",
+                "tatoos entfernen",
+                "tattoo weg",
+                "tattoos weg",
+                "tatoo weg",
+                "tatoos weg",
+            ),
+            (
+                "Remove all visible tattoos from the person's skin, "
+                "including partially visible tattoos. Reconstruct every "
+                "affected area with natural, realistic skin matching the "
+                "surrounding skin tone, texture, lighting and anatomy. "
+                "Preserve the person's identity, facial features, body shape, "
+                "pose, clothing, background and all unrelated image details."
+            ),
+        ),
+        (
+            (
+                "hintergrund entfernen",
+                "entferne den hintergrund",
+                "remove background",
+            ),
+            (
+                "Remove the entire background cleanly while preserving the "
+                "main subject, fine edges, hair and all foreground details. "
+                "Do not alter the subject."
+            ),
+        ),
+        (
+            (
+                "hintergrund unscharf",
+                "hintergrund unscharf machen",
+                "mach den hintergrund unscharf",
+                "blur background",
+            ),
+            (
+                "Apply a natural shallow depth-of-field blur to the background "
+                "while keeping the main subject perfectly sharp. Preserve the "
+                "subject's identity, details, lighting and colors."
+            ),
+        ),
+        (
+            (
+                "augen öffnen",
+                "öffne die augen",
+                "open eyes",
+            ),
+            (
+                "Open the person's eyes naturally and realistically. Preserve "
+                "identity, eye color, facial proportions, expression, lighting "
+                "and every unrelated image detail."
+            ),
+        ),
+        (
+            (
+                "zähne heller",
+                "zähne aufhellen",
+                "hellere zähne",
+                "whiten teeth",
+            ),
+            (
+                "Brighten the teeth subtly and naturally without making them "
+                "artificially white. Preserve tooth shape, facial identity, "
+                "skin tone, lighting and all unrelated image details."
+            ),
+        ),
+        (
+            (
+                "bart weniger grau",
+                "weniger grauer bart",
+                "bart dunkler",
+            ),
+            (
+                "Reduce the visible gray in the beard naturally while "
+                "preserving the beard shape, individual hair texture, facial "
+                "identity, skin tone, lighting and all unrelated image details."
+            ),
+        ),
+    )
+
+    for phrases, expanded in rules:
+        if any(phrase in lower for phrase in phrases):
+            return expanded
+
+    return normalized
+
+
+_IMAGE_EDIT_OPTIMIZER_REFUSAL_PATTERN = re.compile(
+    r"""
+    (?:
+        \bich\s+kann\b.{0,100}\b(?:leider\s+)?nicht\s+
+        (?:erf(?:ü|ue)llen|helfen|unterst(?:ü|ue)tzen)\b
+        |
+        \bals\s+(?:eine?\s+)?ki(?:[-\s]?assistent(?:in)?)?\b
+        |
+        \bi\s+can(?:not|['’]t)\s+
+        (?:comply|help(?:\s+with)?|fulfill)\b
+        |
+        \bi(?:\s+am|['’]m)\s+unable\s+to\b
+        |
+        \bas\s+an?\s+ai(?:\s+assistant)?\b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _is_image_edit_optimizer_refusal(content):
+    return bool(
+        _IMAGE_EDIT_OPTIMIZER_REFUSAL_PATTERN.search(
+            str(content or "")
+        )
+    )
+
+
+def optimize_image_edit_prompt(prompt):
+    """Compile an image-edit instruction with the local chat model."""
+    original = re.sub(
+        r"\s+",
+        " ",
+        str(prompt or ""),
+    ).strip()
+    fallback = normalize_image_edit_prompt(original)
+
+    if not original:
+        return fallback
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an image-edit instruction compiler. Convert the "
+                "user's instruction into precise English suitable for an "
+                "image-editing model. Preserve every requested edit, all "
+                "negations, exclusions, relationships, and constraints. "
+                "Handle every requested edit when the instruction contains "
+                "multiple changes. Never add unrelated edits, remove a "
+                "requested edit, or reinterpret the user's intent. Expand "
+                "short or vague instructions only enough to make the requested "
+                "visual change concrete. Explicitly preserve unrelated image "
+                "details where appropriate. Preserve identity unless the user "
+                "explicitly requests an identity change. Preserve pose, "
+                "anatomy, clothing, lighting, composition, and background "
+                "unless the user asks to modify them. Return only the final "
+                "English image-edit prompt. Do not output commentary, "
+                "markdown, quotes, explanations, prefixes, or reasoning."
+            ),
+        },
+        {
+            "role": "user",
+            "content": original,
+        },
+    ]
+    wait_started = time.monotonic()
+    call_metrics = observability.ModelCallMetrics(
+        purpose="image.edit_prompt_optimize",
+        role="chat",
+        messages=messages,
+        context_sources=observability.message_context_counts(
+            messages
+        ),
+        started_at=wait_started,
+    )
+
+    def use_fallback(reason):
+        if call_metrics.metric["status"] == "running":
+            call_metrics.fail(reason)
+        print(
+            "[image-edit-prompt] optimization failed, using fallback "
+            f"error_type={reason}",
+            flush=True,
+        )
+        return fallback
+
+    try:
+        with MODEL_RUNTIME_LOCK:
+            call_metrics.set_queue_wait(
+                (time.monotonic() - wait_started) * 1000
+            )
+            runtime = ensure_model_for_role("chat")
+            role = runtime["resolved"]
+            model = role.get("repo")
+
+            if not model:
+                return use_fallback("model_unavailable")
+
+            call_metrics.set_model(
+                model=model,
+                role="chat",
+                alias=role.get("alias"),
+                backend=role.get("backend"),
+            )
+
+            config = load_config()
+            port = int(config.get("PORT", 8000))
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.0,
+                "max_tokens": 650,
+                "stream": False,
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
+                },
+            }
+            upstream = urllib.request.Request(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            connect_started = time.monotonic()
+            with urllib.request.urlopen(
+                upstream,
+                timeout=180,
+            ) as response:
+                call_metrics.set_upstream_connect(
+                    (time.monotonic() - connect_started) * 1000
+                )
+                result = json.loads(
+                    response.read().decode("utf-8")
+                )
+
+            if not isinstance(result, dict):
+                return use_fallback("malformed_response")
+            choices = result.get("choices")
+            if not isinstance(choices, list) or not choices:
+                return use_fallback("missing_choices")
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                return use_fallback("malformed_choice")
+            message = choice.get("message")
+            if not isinstance(message, dict):
+                return use_fallback("missing_message")
+            content = message.get("content")
+            if not isinstance(content, str):
+                return use_fallback("missing_content")
+
+            optimized = re.sub(
+                r"\s+",
+                " ",
+                content.strip().strip("\"'“”‘’"),
+            ).strip()
+            lower = optimized.casefold()
+            if not optimized:
+                return use_fallback("empty_content")
+            if len(optimized) > 6000:
+                return use_fallback("response_too_large")
+            if _is_image_edit_optimizer_refusal(optimized):
+                return use_fallback("optimizer_refusal_fallback")
+            if (
+                not re.search(r"[A-Za-z]", optimized)
+                or "<think" in lower
+                or "</think>" in lower
+                or optimized.startswith(("```", "{", "[", "#"))
+                or re.match(
+                    r"^(?:(?:here(?:'s| is)\s+(?:the\s+)?)?"
+                    r"(?:optimized\s+)?(?:image[- ]edit\s+)?prompt)\s*:",
+                    optimized,
+                    re.IGNORECASE,
+                )
+            ):
+                return use_fallback("malformed_content")
+            if choice.get("finish_reason") == "length":
+                return use_fallback("truncated_response")
+
+            call_metrics.finish(
+                usage=result.get("usage"),
+                output_text=optimized,
+                finish_reason=choice.get("finish_reason"),
+            )
+            print(
+                "[image-edit-prompt] optimized "
+                f"source_chars={len(original)} "
+                f"output_chars={len(optimized)}",
+                flush=True,
+            )
+            return optimized
+
+    except Exception as exc:
+        return use_fallback(type(exc).__name__)
+
+
 def _image_edit_payload(request):
     source = _image_source_path(request)
 
+    options = dict(request.image_options or {})
+    allowed = {
+        "prompt",
+        "model",
+        "steps",
+        "guidance",
+        "seed",
+    }
+    if set(options) - allowed:
+        raise HTTPException(
+            422,
+            "Unbekannte Bildparameter",
+        )
+
     payload = {
-        "prompt": str(request.prompt or "").strip(),
+        "prompt": (
+            options["prompt"]
+            if "prompt" in options
+            else optimize_image_edit_prompt(request.prompt)
+        ),
         "source_path": str(source),
         "model": "mflux-qwen-image-edit-2511",
     }
 
-    if request.image_options:
-        allowed = {
-            "prompt",
-            "model",
-            "steps",
-            "guidance",
-            "seed",
-        }
-        if set(request.image_options) - allowed:
-            raise HTTPException(
-                422,
-                "Unbekannte Bildparameter",
-            )
-        payload.update(request.image_options)
+    payload.update(options)
 
     return payload
 

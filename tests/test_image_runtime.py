@@ -6,12 +6,14 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image
+from backend import observability
 import image_registry as registry
 import image_providers as providers
 import image_service as service
@@ -943,6 +945,10 @@ class ImageRuntimeTests(unittest.TestCase):
         }
 
         with patch.object(
+            agent,
+            "optimize_image_edit_prompt",
+            return_value=request.prompt,
+        ), patch.object(
             agent.image_api,
             "request",
             side_effect=[queued_job, completed_job],
@@ -1157,6 +1163,10 @@ class ImageRuntimeTests(unittest.TestCase):
             return_value="A red apple",
         ), patch.object(
             agent,
+            "optimize_image_edit_prompt",
+            return_value="Darken the background",
+        ), patch.object(
+            agent,
             "load_model_roles",
             return_value={"image": "FLUX.1-schnell"},
         ), patch.object(
@@ -1213,14 +1223,19 @@ class ImageRuntimeTests(unittest.TestCase):
             active_artifact_id=f"image-{image_b}",
         )
 
-        self.assertEqual(
-            agent._image_edit_payload(first_followup)["source_path"],
-            str((image_directory / f"{image_a}.png").resolve()),
-        )
-        self.assertEqual(
-            agent._image_edit_payload(second_followup)["source_path"],
-            str((image_directory / f"{image_b}.png").resolve()),
-        )
+        with patch.object(
+            agent,
+            "optimize_image_edit_prompt",
+            side_effect=lambda prompt: prompt,
+        ):
+            self.assertEqual(
+                agent._image_edit_payload(first_followup)["source_path"],
+                str((image_directory / f"{image_a}.png").resolve()),
+            )
+            self.assertEqual(
+                agent._image_edit_payload(second_followup)["source_path"],
+                str((image_directory / f"{image_b}.png").resolve()),
+            )
         self.assertTrue(
             agent._looks_like_image_edit_request(
                 "Und jetzt etwas wärmer."
@@ -1246,10 +1261,15 @@ class ImageRuntimeTests(unittest.TestCase):
             active_artifact_id=f"image-{image_id}",
         )
 
-        self.assertEqual(
-            agent._image_edit_payload(request)["source_path"],
-            str(upload),
-        )
+        with patch.object(
+            agent,
+            "optimize_image_edit_prompt",
+            return_value=request.prompt,
+        ):
+            self.assertEqual(
+                agent._image_edit_payload(request)["source_path"],
+                str(upload),
+            )
 
     def test_active_image_artifact_validation(self):
         image_directory = agent.IMAGE_DIRECTORY
@@ -1299,6 +1319,10 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
         with patch.object(
+            agent,
+            "optimize_image_edit_prompt",
+            return_value=request.prompt,
+        ), patch.object(
             agent.image_api,
             "request",
             return_value=queued_job,
@@ -2176,3 +2200,393 @@ def test_image_job_create_accepts_upscale():
     )
 
     assert job.operation == "upscale"
+
+
+def test_image_edit_prompt_normalizer_expands_tattoo_removal():
+    import agent.app as agent
+
+    prompt = agent.normalize_image_edit_prompt("Tatoos entfernen")
+
+    assert "Remove all visible tattoos" in prompt
+    assert "natural, realistic skin" in prompt
+    assert "Preserve the person's identity" in prompt
+
+
+def test_image_edit_prompt_normalizer_expands_background_blur():
+    import agent.app as agent
+
+    prompt = agent.normalize_image_edit_prompt(
+        "Mach den Hintergrund unscharf"
+    )
+
+    assert "depth-of-field blur" in prompt
+    assert "main subject perfectly sharp" in prompt
+
+
+def test_image_edit_prompt_normalizer_preserves_detailed_prompt():
+    import agent.app as agent
+
+    original = (
+        "Remove the small tattoo on the left forearm only. "
+        "Keep the large tattoo on the right shoulder unchanged. "
+        "Preserve the exact face, pose, clothing, lighting and background."
+    )
+
+    assert agent.normalize_image_edit_prompt(original) == original
+
+
+def _optimizer_response(content=None, body=None):
+    if body is None:
+        body = {
+            "choices": [{
+                "message": {"content": content},
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "prompt_tokens": 40,
+                "completion_tokens": 25,
+                "total_tokens": 65,
+            },
+        }
+    return io.BytesIO(json.dumps(body).encode("utf-8"))
+
+
+def _run_mocked_image_edit_optimizer(prompt, content=None, body=None):
+    import agent.app as agent
+
+    runtime = {
+        "resolved": {
+            "repo": "owner/chat-model",
+            "alias": "chat",
+            "backend": "mlx_lm",
+        },
+    }
+    with patch.object(
+        agent,
+        "ensure_model_for_role",
+        return_value=runtime,
+    ), patch.object(
+        agent,
+        "load_config",
+        return_value={"PORT": 8000},
+    ), patch.object(
+        agent.urllib.request,
+        "urlopen",
+        return_value=_optimizer_response(content, body),
+    ) as network:
+        result = agent.optimize_image_edit_prompt(prompt)
+
+    request = network.call_args.args[0]
+    return result, json.loads(request.data.decode("utf-8")), network
+
+
+def test_image_edit_prompt_optimizer_uses_original_instruction_and_metrics():
+    import agent.app as agent
+
+    optimized = (
+        "Remove all visible tattoos from the person's skin. Preserve the "
+        "person's identity, pose, clothing, background, and all unrelated "
+        "image details."
+    )
+    observability.reset_metrics()
+    with observability.trace_context("image-edit-optimize-001"):
+        result, payload, network = _run_mocked_image_edit_optimizer(
+            "  Tatoos\n entfernen  ",
+            f'"{optimized}"',
+        )
+
+    assert result == optimized
+    assert result != agent.normalize_image_edit_prompt("Tatoos entfernen")
+    assert payload["messages"][1] == {
+        "role": "user",
+        "content": "Tatoos entfernen",
+    }
+    assert "tattoo" not in payload["messages"][0]["content"].casefold()
+    assert payload["temperature"] == 0.0
+    assert payload["max_tokens"] == 650
+    assert payload["stream"] is False
+    assert payload["chat_template_kwargs"] == {
+        "enable_thinking": False,
+    }
+    assert network.call_args.kwargs["timeout"] == 180
+
+    snapshot = observability.trace_snapshot("image-edit-optimize-001")
+    assert snapshot["model_calls_in_turn"] == 1
+    metric = snapshot["calls"][0]
+    assert metric["purpose"] == "image.edit_prompt_optimize"
+    assert metric["status"] == "completed"
+    assert metric["model"]["role"] == "chat"
+    assert metric["model"]["identifier"] == "owner/chat-model"
+    assert metric["timings_ms"]["queue_wait"] is not None
+    assert metric["timings_ms"]["upstream_connect"] is not None
+    assert metric["finish_reason"] == "stop"
+    assert metric["usage"]["count_method"] == "upstream"
+    assert metric["usage"]["total_tokens"] == 65
+
+
+def test_image_edit_prompt_optimizer_preserves_multiple_edits():
+    optimized = (
+        "Reduce the gray in the beard and remove all visible tattoos. "
+        "Preserve identity and every unrelated image detail."
+    )
+    result, payload, _network = _run_mocked_image_edit_optimizer(
+        "Mach den Bart weniger grau und entferne die Tattoos",
+        optimized,
+    )
+
+    assert "gray in the beard" in result
+    assert "remove all visible tattoos" in result
+    assert payload["messages"][1]["content"] == (
+        "Mach den Bart weniger grau und entferne die Tattoos"
+    )
+
+
+def _assert_image_edit_optimizer_refusal_falls_back(refusal):
+    import agent.app as agent
+
+    original = "Tattoos entfernen"
+    trace_id = "image-edit-refusal-fallback"
+    observability.reset_metrics()
+    with observability.trace_context(trace_id):
+        result, _payload, _network = _run_mocked_image_edit_optimizer(
+            original,
+            refusal,
+        )
+
+    assert result == agent.normalize_image_edit_prompt(original)
+    assert refusal not in result
+    snapshot = observability.trace_snapshot(trace_id)
+    assert snapshot["model_calls_in_turn"] == 1
+    metric = snapshot["calls"][0]
+    assert metric["status"] == "failed"
+    assert metric["error_type"] == "optimizer_refusal_fallback"
+
+
+def test_image_edit_prompt_optimizer_rejects_german_refusal():
+    for refusal in (
+        "Ich kann diese Anforderung leider nicht erfüllen.",
+        "ich kann dabei nicht helfen.",
+    ):
+        _assert_image_edit_optimizer_refusal_falls_back(refusal)
+
+
+def test_image_edit_prompt_optimizer_rejects_english_refusal():
+    for refusal in (
+        "I can't comply with that request.",
+        "I cannot comply with that request.",
+        "I can't help with that image edit.",
+        "I cannot help with that image edit.",
+        "I cannot fulfill that request.",
+        "I'm unable to perform that edit.",
+        "I am unable to perform that edit.",
+    ):
+        _assert_image_edit_optimizer_refusal_falls_back(refusal)
+
+
+def test_image_edit_prompt_optimizer_rejects_ai_assistant_meta_output():
+    for refusal in (
+        "Als KI-Assistent bin ich darauf ausgelegt, respektvoll zu bleiben.",
+        "ALS KI kann ich diese Bearbeitung nicht vornehmen.",
+        "As an AI, I cannot perform that edit.",
+    ):
+        _assert_image_edit_optimizer_refusal_falls_back(refusal)
+
+
+def test_image_edit_prompt_optimizer_accepts_valid_english_output():
+    optimized = (
+        "Remove all visible tattoos while preserving the person's identity, "
+        "skin texture, clothing, lighting, background, and composition."
+    )
+
+    result, _payload, _network = _run_mocked_image_edit_optimizer(
+        "Tattoos entfernen",
+        optimized,
+    )
+
+    assert result == optimized
+
+
+def test_image_edit_prompt_optimizer_falls_back_for_invalid_responses():
+    import agent.app as agent
+
+    original = "Tatoos entfernen"
+    fallback = agent.normalize_image_edit_prompt(original)
+    cases = (
+        {"choices": [{"message": {"content": ""}}]},
+        {"choices": []},
+        {"choices": [{}]},
+        {"choices": [{"message": {"content": "```markdown"}}]},
+        {
+            "choices": [{
+                "message": {"content": "Here is the optimized prompt: Edit it"},
+            }],
+        },
+        {
+            "choices": [{
+                "message": {"content": "A valid but incomplete edit prompt"},
+                "finish_reason": "length",
+            }],
+        },
+        {
+            "choices": [{
+                "message": {"content": "A" * 6001},
+            }],
+        },
+    )
+
+    for body in cases:
+        result, _payload, _network = _run_mocked_image_edit_optimizer(
+            original,
+            body=body,
+        )
+        assert result == fallback
+
+
+def test_image_edit_prompt_optimizer_falls_back_when_model_unavailable():
+    import agent.app as agent
+
+    original = "Tatoos entfernen"
+    with patch.object(
+        agent,
+        "ensure_model_for_role",
+        side_effect=RuntimeError("model unavailable"),
+    ), patch.object(
+        agent.urllib.request,
+        "urlopen",
+    ) as network:
+        result = agent.optimize_image_edit_prompt(original)
+
+    assert result == agent.normalize_image_edit_prompt(original)
+    network.assert_not_called()
+
+
+def test_image_edit_prompt_optimizer_falls_back_on_network_error():
+    import agent.app as agent
+
+    original = "Mach den Hintergrund unscharf"
+    runtime = {
+        "resolved": {
+            "repo": "owner/chat-model",
+            "alias": "chat",
+            "backend": "mlx_lm",
+        },
+    }
+    with patch.object(
+        agent,
+        "ensure_model_for_role",
+        return_value=runtime,
+    ), patch.object(
+        agent,
+        "load_config",
+        return_value={"PORT": 8000},
+    ), patch.object(
+        agent.urllib.request,
+        "urlopen",
+        side_effect=urllib.error.URLError("offline"),
+    ):
+        result = agent.optimize_image_edit_prompt(original)
+
+    assert result == agent.normalize_image_edit_prompt(original)
+
+
+def test_image_edit_payload_uses_optimizer_result(tmp_path):
+    import agent.app as agent
+
+    source = tmp_path / "source.png"
+    source.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        b"\x00\x00\x00\rIHDR"
+        b"\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00"
+        b"\x90wS\xde"
+    )
+
+    request = agent.ChatActionRequest(
+        prompt="Tattoos entfernen",
+        file_context={
+            "stored_path": str(source),
+        },
+    )
+
+    with patch.object(
+        agent,
+        "optimize_image_edit_prompt",
+        return_value="Remove the requested tattoos and preserve all else.",
+    ) as optimizer:
+        payload = agent._image_edit_payload(request)
+
+    assert payload["source_path"] == str(source)
+    assert payload["prompt"] == (
+        "Remove the requested tattoos and preserve all else."
+    )
+    assert payload["model"] == "mflux-qwen-image-edit-2511"
+    optimizer.assert_called_once_with("Tattoos entfernen")
+
+
+def test_image_edit_payload_never_forwards_optimizer_refusal(tmp_path):
+    import agent.app as agent
+
+    source = tmp_path / "source.png"
+    source.write_bytes(b"image")
+    request = agent.ChatActionRequest(
+        prompt="Tattoos entfernen",
+        file_context={"stored_path": str(source)},
+    )
+    refusal = "I can't comply with that request."
+    runtime = {
+        "resolved": {
+            "repo": "owner/chat-model",
+            "alias": "chat",
+            "backend": "mlx_lm",
+        },
+    }
+
+    with patch.object(
+        agent,
+        "ensure_model_for_role",
+        return_value=runtime,
+    ), patch.object(
+        agent,
+        "load_config",
+        return_value={"PORT": 8000},
+    ), patch.object(
+        agent.urllib.request,
+        "urlopen",
+        return_value=_optimizer_response(refusal),
+    ):
+        payload = agent._image_edit_payload(request)
+
+    assert payload["prompt"] == agent.normalize_image_edit_prompt(
+        request.prompt
+    )
+    assert refusal not in payload["prompt"]
+
+
+def test_image_edit_payload_preserves_explicit_prompt_override(tmp_path):
+    import agent.app as agent
+
+    source = tmp_path / "source.png"
+    source.write_bytes(b"image")
+    request = agent.ChatActionRequest(
+        prompt="Tatoos entfernen",
+        file_context={"stored_path": str(source)},
+        image_options={
+            "prompt": "Exact low-level edit instruction",
+            "model": "custom-edit-model",
+        },
+    )
+
+    with patch.object(
+        agent,
+        "optimize_image_edit_prompt",
+        side_effect=AssertionError(
+            "Explicit prompt must bypass optimization"
+        ),
+    ) as optimizer:
+        payload = agent._image_edit_payload(request)
+
+    optimizer.assert_not_called()
+    assert payload["prompt"] == "Exact low-level edit instruction"
+    assert payload["source_path"] == str(source)
+    assert payload["model"] == "custom-edit-model"
