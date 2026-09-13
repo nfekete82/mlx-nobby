@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 
 
 const source = fs.readFileSync(
@@ -34,6 +35,11 @@ vm.runInNewContext(source, {
 }, {
     filename: 'frontend/assets/chat/generation.js',
 });
+
+const runtimeSource = readFileSync(
+    new URL('../frontend/assets/chat/runtime.js', import.meta.url),
+    'utf8',
+);
 
 const vision = window.MLXChatGeneration.__test;
 
@@ -156,6 +162,13 @@ assert.equal(
 assert.equal(
     vision.defaultVisionPrompt(2),
     'Describe all attached images in order. Answer in English.',
+);
+
+
+assert.match(
+    runtimeSource,
+    /async function ensureModelMetadata\(\)\s*\{\s*await loadModelAliases\(\);\s*return activeModelMetadata\(\);\s*\}/s,
+    'vision support must refresh active model metadata before checking capabilities',
 );
 
 console.log(

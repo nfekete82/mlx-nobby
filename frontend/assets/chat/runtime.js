@@ -544,10 +544,7 @@ function supportsVision() {
 
 
 async function ensureModelMetadata() {
-    if (!modelAliases.length) {
-        await loadModelAliases();
-    }
-
+    await loadModelAliases();
     return activeModelMetadata();
 }
 
