@@ -21,12 +21,19 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 - Coding workspaces with bounded file search, reviewable patches, and test runs
 - Diagnostic, research, and file-processing agents with approval checkpoints
 - Local embeddings, knowledge sources, and retrieval-augmented generation (RAG)
+- Hierarchical semantic routing for chat, multimodal, research, coding, and
+  creative requests
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
-- Image generation through DiffusionKit and optional MFLUX providers
+- Image generation and Qwen image editing through DiffusionKit and optional
+  MFLUX providers
+- Asynchronous image jobs with real progress, cancellation, reload recovery,
+  and persistent chat artifacts
+- Iterative image editing that continues from the active image artifact
+- Per-chat generation settings whose changes automatically become defaults for
+  newly created chats
 - System metrics, service health, logs, and runtime controls
 - English and German chat UI with a persisted language setting
-
 
 ## Screenshots
 
@@ -220,6 +227,10 @@ Local configuration belongs in:
 Do not commit tokens, credentials, personal paths, model weights, local
 databases, generated media, or configuration copied from your machine.
 
+Generation parameters such as system prompt, preset, temperature, and maximum
+token count belong to the active chat. Changes are persisted automatically as
+defaults for newly created chats.
+
 ## RAG and embeddings
 
 Knowledge sources are indexed by the native agent through the embedding service
@@ -235,11 +246,27 @@ already cached. Use local model paths and the offline variables documented in
 
 The image service supports the repository's DiffusionKit provider and an
 optional, separately installed MFLUX CLI. Image model weights and generated
-outputs are local data. MFLUX is not installed by the default installer.
+outputs remain local. MFLUX is not installed by the default installer.
+
+Image generation and image editing use asynchronous jobs with explicit
+`queued`, `loading`, `running`, `saving`, `completed`, `failed`, and
+`cancelled` states.
+
+The chat UI displays provider-reported progress without inventing intermediate
+steps. Active jobs can be cancelled and are automatically resumed when the
+browser is reloaded. The server remains the source of truth for recovered job
+state.
+
+Completed images are stored as chat artifacts. Qwen Image Edit supports
+iterative editing from the active image artifact of the current session, so a
+generated or edited image can be refined in subsequent prompts without
+re-uploading it.
 
 The speech service uses `mlx-audio[stt]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
-See `IMAGE_RUNTIME.md` and `docs/DEPENDENCIES.md` for provider details.
+
+See `IMAGE_RUNTIME.md` and `docs/DEPENDENCIES.md` for provider and runtime
+details.
 
 ## Language settings
 
@@ -295,13 +322,10 @@ Install the CPU-only test environment and run the local checks:
 ```sh
 python3.13 -m venv test-venv
 test-venv/bin/python -m pip install -r requirements/test.txt
-test-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+test-venv/bin/python -m pytest -q
 python3 scripts/i18n-audit.py
 find frontend -name '*.js' -print0 | xargs -0 -n1 node --check
-node tests/test_model_console.mjs
-node tests/test_chat_scroll.mjs
-node tests/test_history_cleanup.mjs
-node tests/test_i18n.mjs
+for test in tests/*.mjs; do node "$test" || exit 1; done
 bash -n scripts/install.sh scripts/install-launchd.sh scripts/doctor.sh \
   scripts/mlx scripts/mlx-server-start
 docker compose config

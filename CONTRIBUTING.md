@@ -33,7 +33,7 @@ bootstrap steps.
 
 Run the Python test suite:
 
-    test-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+    test-venv/bin/python -m pytest -q
 
 Run Python, translation, and JSON checks:
 
@@ -44,10 +44,7 @@ Run Python, translation, and JSON checks:
 Run JavaScript checks:
 
     find frontend -name '*.js' -print0 | xargs -0 -n1 node --check
-    node tests/test_model_console.mjs
-    node tests/test_chat_scroll.mjs
-    node tests/test_history_cleanup.mjs
-    node tests/test_i18n.mjs
+    for test in tests/*.mjs; do node "$test" || exit 1; done
 
 Validate shell scripts:
 

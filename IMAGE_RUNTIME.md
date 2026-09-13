@@ -46,3 +46,32 @@ Supported MFLUX command families are selected explicitly by `model_family`:
 Model-specific guidance/step limits and up to eight LoRAs are validated by
 the registry before a provider process is started. No prompt keyword filter is
 added by the runtime.
+
+## Image jobs and iterative editing
+
+Image generation and image editing use the same asynchronous lifecycle:
+
+`queued -> loading -> running -> saving -> completed`
+
+`failed` and `cancelled` are terminal states.
+
+The image service is the source of truth for job state. The browser displays only provider-reported progress and does not invent synthetic steps or percentages.
+
+Active jobs can be cancelled. A cancelled job creates no artifact and does not replace the previously active image artifact.
+
+## Browser reload recovery
+
+Active `image_generate` and `image_edit` jobs can resume after a browser reload. Persisted session state identifies the candidate job, but recovery always asks the image service for the current server-side state first.
+
+Recovery never starts a replacement job. Completed jobs are finalized exactly once.
+
+## Iterative image artifacts
+
+A completed image generation or edit becomes the active image artifact of the session. A following edit can use that artifact as its source image.
+
+Relevant regression suites include:
+
+- `tests/test_image_runtime.py`
+- `tests/test_image_edit.mjs`
+- `tests/test_image_job_resume.mjs`
+- `tests/test_multi_image_vision.mjs`
