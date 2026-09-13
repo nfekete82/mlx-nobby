@@ -752,5 +752,6 @@
   "generation.vision_describe_image_prompt": "Beschreibe dieses Bild detailliert. Antworte auf Deutsch.",
   "generation.image_upload_failed": "Bild konnte nicht hochgeladen werden.",
   "generation.image_edit_source_required": "Bitte hänge das Bild an, das du bearbeiten möchtest.",
-  "generation.vision_describe_images_prompt": "Beschreibe alle angehängten Bilder der Reihe nach detailliert. Antworte auf Deutsch."
+  "generation.vision_describe_images_prompt": "Beschreibe alle angehängten Bilder der Reihe nach detailliert. Antworte auf Deutsch.",
+  "ui.chat_parameters_description": "Parameter des aktuellen Chats. Änderungen werden automatisch als Standard für neue Chats gespeichert."
 }

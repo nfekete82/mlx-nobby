@@ -101,7 +101,7 @@
     const defaultTemperature = document.getElementById('defaultTemperature');
     const defaultMaxTokens = document.getElementById('defaultMaxTokens');
     const thinkingPreferred = document.getElementById('thinkingPreferred');
-    const modelTitle = document.getElementById('modelTitle');
+const modelTitle = document.getElementById('modelTitle');
     const modelPopover = document.getElementById('modelPopover');
     const modelList = document.getElementById('modelList');
     const modelSwitchStatus = document.getElementById(
@@ -1299,10 +1299,17 @@ function createSessionSettings() {
         globalSettings.default_preset
     ] || SYSTEM_PROMPT_PRESETS.general;
 
+    const defaultSystemPrompt =
+        typeof globalSettings.default_system_prompt === 'string'
+            ? globalSettings.default_system_prompt
+            : preset.prompt;
+
     return {
-        system_prompt:
-            preset.prompt,
-        preset_id: globalSettings.default_preset,
+        system_prompt: defaultSystemPrompt,
+        preset_id:
+            defaultSystemPrompt === preset.prompt
+                ? globalSettings.default_preset
+                : 'custom',
         temperature: globalSettings.default_temperature,
         max_tokens: globalSettings.default_max_tokens
     };
@@ -1350,6 +1357,13 @@ function normalizeGlobalSettings(settings = {}) {
             settings.show_runtime_thinking !== false,
         auto_compact: settings.auto_compact !== false,
         default_preset: preset,
+        default_system_prompt:
+            typeof settings.default_system_prompt === 'string'
+                ? settings.default_system_prompt
+                : (
+                    SYSTEM_PROMPT_PRESETS[preset]
+                        || SYSTEM_PROMPT_PRESETS.general
+                ).prompt,
         default_temperature:
             normalizeTemperature(settings.default_temperature),
         default_max_tokens:
@@ -1508,6 +1522,37 @@ function sessionSettings(session) {
 }
 
 
+function persistCurrentGenerationDefaults(settings) {
+    if (!settings) {
+        return;
+    }
+
+    globalSettings.default_preset =
+        SYSTEM_PROMPT_PRESETS[settings.preset_id]
+            ? settings.preset_id
+            : 'general';
+
+    globalSettings.default_system_prompt =
+        String(settings.system_prompt || '');
+
+    globalSettings.default_temperature =
+        normalizeTemperature(settings.temperature);
+
+    globalSettings.default_max_tokens =
+        normalizeMaxTokens(settings.max_tokens);
+
+    globalSettings =
+        normalizeGlobalSettings(globalSettings);
+
+    localStorage.setItem(
+        UI_SETTINGS_KEY,
+        JSON.stringify(globalSettings)
+    );
+
+    applyGlobalSettings();
+}
+
+
 function loadSessionSettings() {
     const session = MLXChatSessions.currentSession();
 
@@ -1546,6 +1591,7 @@ function handlePresetChange() {
     maxTokens.value = preset.max_tokens;
 
     MLXChatSessions.saveSessions();
+    persistCurrentGenerationDefaults(settings);
 }
 
 
@@ -1580,6 +1626,7 @@ function handleSystemPromptInput(event) {
     session.updated = Date.now();
 
     MLXChatSessions.saveSessions();
+    persistCurrentGenerationDefaults(settings);
 }
 
 
@@ -1642,8 +1689,6 @@ function loadSettings() {
 
     loadSessionSettings();
 }
-
-
 function saveSettings() {
     localStorage.setItem(
         SETTINGS_KEY,

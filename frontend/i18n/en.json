@@ -752,5 +752,6 @@
   "generation.vision_describe_image_prompt": "Describe this image in detail. Answer in English.",
   "generation.image_upload_failed": "Image could not be uploaded.",
   "generation.image_edit_source_required": "Please attach the image you want to edit.",
-  "generation.vision_describe_images_prompt": "Describe all attached images in order. Answer in English."
+  "generation.vision_describe_images_prompt": "Describe all attached images in order. Answer in English.",
+  "ui.chat_parameters_description": "Parameters for the current chat. Changes are automatically saved as defaults for new chats."
 }

@@ -604,7 +604,16 @@
             placeholder="Optionaler System-Prompt…"
         ></textarea>
     </div>
-    </section>
+
+
+    <div hidden>
+        <input id="defaultPreset" type="hidden" value="general">
+        <input id="defaultTemperature" type="hidden" value="0.7">
+        <input id="defaultMaxTokens" type="hidden" value="3000">
+        <input id="thinkingPreferred" type="checkbox" hidden>
+    </div>
+
+</section>
 
     <section class="settings-card">
     <h4 class="settings-group-title" data-i18n="ui.context">Kontext</h4>
@@ -613,29 +622,7 @@
     <div class="settings-hint" data-i18n="ui.auto_compact_hint">Compact ab 80.000 Zeichen · Max Context 120.000 Zeichen</div>
     </section>
 
-    <section class="settings-card">
-    <h4 class="settings-group-title" data-i18n="ui.new_chats">Neue Chats</h4>
 
-    <div class="field">
-        <label data-i18n="ui.default_preset">Standard-Preset</label>
-        <select id="defaultPreset">
-            <option value="general" data-i18n="ui.general">Allgemein</option>
-            <option value="coding">Coding</option>
-            <option value="analysis" data-i18n="ui.preset_analysis">Analyse</option>
-            <option value="roleplay">Roleplay</option>
-            <option value="concise-de" data-i18n="ui.preset_concise_de">Deutsch knapp</option>
-        </select>
-    </div>
-
-    <div class="settings-row">
-        <div class="field"><label data-i18n="ui.default_temperature">Standard-Temperature</label><input id="defaultTemperature" type="number" min="0" max="2" step="0.1" value="0.7"></div>
-        <div class="field"><label data-i18n="ui.default_max_tokens">Standard-Max-Tokens</label><input id="defaultMaxTokens" type="number" min="1" max="32000" value="3000"></div>
-    </div>
-
-    <h4 class="settings-group-title">Thinking</h4>
-    <label class="settings-toggle"><input id="thinkingPreferred" type="checkbox"> <span data-i18n="ui.prefer_thinking_start">Thinking beim Start bevorzugen</span></label>
-    <div class="settings-hint" data-i18n="ui.preference_no_restart">Wird nur als Präferenz gespeichert; ein Chatwechsel startet MLX nicht neu.</div>
-    </section>
     </div>
     <div class="settings-pane model-console-pane" data-settings-pane="models" hidden>
         <section id="modelConsole" class="model-console" aria-labelledby="modelConsoleTitle">
