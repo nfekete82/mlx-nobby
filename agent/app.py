@@ -10488,48 +10488,74 @@ def validate_shell_read_command(command):
     # ========================================================
 
     if executable == "curl":
-
-        blocked_curl_options = {
-            "-d",
-            "--data",
-            "--data-raw",
-            "--data-binary",
-            "--data-urlencode",
-            "-F",
-            "--form",
-            "-T",
-            "--upload-file",
-            "-X",
-            "--request",
-            "-o",
-            "--output",
-            "-O",
-            "--remote-name",
-            "--config",
+        # shell_read is a diagnostic/read-only capability.
+        #
+        # Do not try to maintain a blacklist of curl's many write-capable
+        # options. curl accepts both separated and concatenated short
+        # options (-X POST / -XPOST, -o FILE / -oFILE, -K FILE / -KFILE),
+        # which makes a blacklist easy to bypass.
+        #
+        # Instead allow only a deliberately small diagnostic subset.
+        allowed_curl_flags = {
+            "-I",
+            "--head",
+            "-i",
+            "--include",
+            "-s",
+            "--silent",
+            "-S",
+            "--show-error",
+            "-f",
+            "--fail",
+            "-L",
+            "--location",
         }
 
-        blocked_prefixes = (
-            "--data=",
-            "--data-raw=",
-            "--data-binary=",
-            "--data-urlencode=",
-            "--form=",
-            "--upload-file=",
-            "--request=",
-            "--output=",
-            "--config=",
-        )
+        # Combined short flags commonly used by diagnostics, e.g. -fsS.
+        allowed_short_flags = set("IisSfL")
+
+        urls = []
 
         for arg in args[1:]:
+            if arg.startswith("--"):
+                if arg not in allowed_curl_flags:
+                    raise ValueError(
+                        f"curl-Option nicht erlaubt: {arg}"
+                    )
+                continue
 
-            if arg in blocked_curl_options:
-                raise ValueError(
-                    f"curl-Option nicht erlaubt: {arg}"
-                )
+            if arg.startswith("-") and arg != "-":
+                flags = arg[1:]
 
-            if arg.startswith(blocked_prefixes):
+                if (
+                    not flags
+                    or any(
+                        flag not in allowed_short_flags
+                        for flag in flags
+                    )
+                ):
+                    raise ValueError(
+                        f"curl-Option nicht erlaubt: {arg}"
+                    )
+
+                continue
+
+            urls.append(arg)
+
+        if not urls:
+            raise ValueError(
+                "curl benötigt eine HTTP(S)-URL"
+            )
+
+        for url in urls:
+            lowered = url.lower()
+
+            if not (
+                lowered.startswith("http://")
+                or lowered.startswith("https://")
+            ):
                 raise ValueError(
-                    f"curl-Option nicht erlaubt: {arg}"
+                    "curl darf nur HTTP(S)-URLs lesen"
                 )
 
 
