@@ -449,6 +449,282 @@ class ImageRuntimeTests(unittest.TestCase):
         finally:
             manager.close()
 
+    def test_terminal_image_job_statuses_are_immutable(self):
+        terminal_statuses = (
+            "completed",
+            "failed",
+            "cancelled",
+        )
+
+        attempted_statuses = (
+            "queued",
+            "loading",
+            "running",
+            "saving",
+            "completed",
+            "failed",
+            "cancelled",
+        )
+
+        with service._jobs_lock:
+            for current_status in terminal_statuses:
+                job_id = f"job-{current_status}"
+
+                service._jobs[job_id] = {
+                    "id": job_id,
+                    "status": current_status,
+                    "result": None,
+                    "error": None,
+                }
+
+                for requested_status in attempted_statuses:
+                    applied = service._update_job(
+                        job_id,
+                        status=requested_status,
+                    )
+
+                    job = service._jobs[job_id]
+
+                    if requested_status == current_status:
+                        self.assertTrue(
+                            applied,
+                            (
+                                current_status,
+                                requested_status,
+                            ),
+                        )
+                        self.assertEqual(
+                            job["status"],
+                            current_status,
+                        )
+                    else:
+                        self.assertFalse(
+                            applied,
+                            (
+                                current_status,
+                                requested_status,
+                            ),
+                        )
+                        self.assertEqual(
+                            job["status"],
+                            current_status,
+                        )
+
+    def test_cancelled_job_ignores_late_progress_callbacks(self):
+        job_id = "cancelled-progress-test"
+
+        with service._jobs_lock:
+            service._jobs[job_id] = {
+                "id": job_id,
+                "status": "cancelled",
+                "current_step": 3,
+                "total_steps": 10,
+                "result": None,
+                "error": None,
+            }
+
+        service._provider_progress(
+            job_id,
+            {
+                "phase": "generate",
+                "step": 7,
+                "total_steps": 10,
+            },
+        )
+
+        with service._jobs_lock:
+            job = service._jobs[job_id]
+
+            self.assertEqual(
+                job["status"],
+                "cancelled",
+            )
+            # A terminal job is frozen completely. Late provider
+            # callbacks must not mutate either status or progress.
+            self.assertEqual(
+                job["current_step"],
+                3,
+            )
+            self.assertEqual(
+                job["total_steps"],
+                10,
+            )
+
+    def test_cancelled_job_cannot_be_completed_after_cancel(self):
+        job_id = "cancelled-complete-test"
+
+        with service._jobs_lock:
+            service._jobs[job_id] = {
+                "id": job_id,
+                "status": "cancelled",
+                "result": None,
+                "error": None,
+                "finished_at": 123.0,
+            }
+
+        applied = service._update_job(
+            job_id,
+            status="completed",
+            result={"image": "late"},
+            finished_at=456.0,
+        )
+
+        self.assertFalse(applied)
+
+        with service._jobs_lock:
+            job = service._jobs[job_id]
+
+            self.assertEqual(
+                job["status"],
+                "cancelled",
+            )
+            self.assertIsNone(
+                job["result"],
+            )
+            self.assertEqual(
+                job["finished_at"],
+                123.0,
+            )
+
+    def test_failed_job_cannot_be_completed_later(self):
+        job_id = "failed-complete-test"
+
+        with service._jobs_lock:
+            service._jobs[job_id] = {
+                "id": job_id,
+                "status": "failed",
+                "result": None,
+                "error": "provider failed",
+            }
+
+        applied = service._update_job(
+            job_id,
+            status="completed",
+            result={"image": "late"},
+        )
+
+        self.assertFalse(applied)
+
+        with service._jobs_lock:
+            job = service._jobs[job_id]
+
+            self.assertEqual(
+                job["status"],
+                "failed",
+            )
+            self.assertIsNone(
+                job["result"],
+            )
+            self.assertEqual(
+                job["error"],
+                "provider failed",
+            )
+
+
+    def test_cancelled_job_stays_cancelled_when_provider_returns_late(self):
+        entered_provider = threading.Event()
+
+        def late_generate(
+            request,
+            *,
+            provider_options=None,
+            prepared_callback=None,
+            saving_callback=None,
+        ):
+            entered_provider.set()
+
+            cancel_event = provider_options["cancel_event"]
+
+            if not cancel_event.wait(timeout=2):
+                raise RuntimeError(
+                    "test provider did not receive cancellation"
+                )
+
+            # Simulate a provider that still returns a result after the
+            # cancellation request was already issued.
+            return {
+                "ok": True,
+                "provider": "test",
+            }
+
+        with patch.object(
+            service,
+            "_generate_result",
+            side_effect=late_generate,
+        ):
+            response = self.client.post(
+                "/jobs",
+                json={
+                    "operation": "generate",
+                    "payload": {
+                        "prompt": "Cancellation race test",
+                        "model": "auto",
+                        "width": 512,
+                        "height": 512,
+                        "steps": 1,
+                        "guidance": 1.0,
+                        "seed": 1,
+                    },
+                },
+            )
+
+            self.assertEqual(
+                response.status_code,
+                202,
+                response.text,
+            )
+
+            job_id = response.json()["id"]
+
+            self.assertTrue(
+                entered_provider.wait(timeout=1),
+                "provider did not start",
+            )
+
+            cancel_response = self.client.post(
+                f"/jobs/{job_id}/cancel"
+            )
+
+            self.assertEqual(
+                cancel_response.status_code,
+                200,
+                cancel_response.text,
+            )
+
+            cancelled = cancel_response.json()
+
+            self.assertEqual(
+                cancelled["status"],
+                "cancelled",
+            )
+            self.assertIsNone(
+                cancelled["result"],
+            )
+
+            # Give any late worker code another chance to run.
+            time.sleep(0.05)
+
+            final_response = self.client.get(
+                f"/jobs/{job_id}"
+            )
+
+            self.assertEqual(
+                final_response.status_code,
+                200,
+                final_response.text,
+            )
+
+            final_job = final_response.json()
+
+            self.assertEqual(
+                final_job["status"],
+                "cancelled",
+            )
+            self.assertIsNone(
+                final_job["result"],
+            )
+
+
     def test_image_unload_stops_sdxl_worker(self):
         with patch.object(
             service,

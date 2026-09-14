@@ -654,12 +654,27 @@ def _job_snapshot(job):
     return snapshot
 
 
+_TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
+
+
 def _update_job(job_id, **changes):
     with _jobs_lock:
         job = _jobs.get(job_id)
         if not job:
-            return
+            return False
+
+        current_status = job.get("status")
+        requested_status = changes.get("status")
+
+        if (
+            current_status in _TERMINAL_JOB_STATUSES
+            and requested_status is not None
+            and requested_status != current_status
+        ):
+            return False
+
         job.update(changes)
+        return True
 
 
 def _provider_progress(job_id, event):
