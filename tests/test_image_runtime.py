@@ -3181,6 +3181,101 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
 
+
+    def test_write_chat_removes_temporary_file_when_replace_fails(self):
+        chat_id = "atomic-write-temp-cleanup"
+
+        chat = {
+            "id": chat_id,
+            "title": "Atomic write test",
+            "created": 1,
+            "updated": 2,
+            "revision": 1,
+            "messages": [],
+        }
+
+        original_replace = agent.os.replace
+        observed_temporary_paths = []
+
+        def failing_replace(source, destination):
+            source = Path(source)
+            destination = Path(destination)
+
+            if destination == agent.chat_path(chat_id):
+                observed_temporary_paths.append(source)
+
+                self.assertTrue(
+                    source.exists(),
+                    "temporary chat file must exist before os.replace",
+                )
+
+                raise OSError("simulated replace failure")
+
+            return original_replace(source, destination)
+
+        with patch.object(
+            agent.os,
+            "replace",
+            side_effect=failing_replace,
+        ):
+            with self.assertRaises(agent.HTTPException) as context:
+                agent.write_chat(chat)
+
+        self.assertEqual(
+            context.exception.status_code,
+            500,
+        )
+
+        self.assertIn(
+            "simulated replace failure",
+            str(context.exception.detail),
+        )
+
+        self.assertEqual(
+            len(observed_temporary_paths),
+            1,
+        )
+
+        self.assertFalse(
+            observed_temporary_paths[0].exists(),
+            "failed atomic write must remove its temporary file",
+        )
+
+
+    def test_write_chat_success_leaves_no_temporary_file(self):
+        chat_id = "atomic-write-success"
+
+        chat = {
+            "id": chat_id,
+            "title": "Atomic write success",
+            "created": 1,
+            "updated": 2,
+            "revision": 1,
+            "messages": [],
+        }
+
+        agent.write_chat(chat)
+
+        persisted = agent.read_chat(chat_id)
+
+        self.assertIsNotNone(persisted)
+        self.assertEqual(
+            persisted["id"],
+            chat_id,
+        )
+
+        leftovers = list(
+            agent.CHAT_DIRECTORY.glob(
+                f".{chat_id}.*.tmp"
+            )
+        )
+
+        self.assertEqual(
+            leftovers,
+            [],
+            "successful chat write must not leave temporary files",
+        )
+
 if __name__ == "__main__":
     unittest.main()
 

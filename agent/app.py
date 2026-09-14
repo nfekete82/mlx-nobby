@@ -281,6 +281,7 @@ def read_chat(chat_id):
 
 def write_chat(chat):
     path = chat_path(chat["id"])
+    temporary_path = None
 
     try:
         CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -297,6 +298,9 @@ def write_chat(chat):
             status_code=500,
             detail=f"Chat konnte nicht gespeichert werden: {exc}",
         )
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def list_chats():
