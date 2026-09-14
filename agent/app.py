@@ -946,9 +946,12 @@ def delete_chat_images(chat):
         image_path = IMAGE_DIRECTORY / f"{image_id}.png"
 
         try:
-            if image_path.is_file():
-                image_path.unlink()
-                deleted.append(image_id)
+            image_path.unlink()
+            deleted.append(image_id)
+        except FileNotFoundError:
+            # Another cleanup may already have removed the image.
+            # The desired final state is therefore already reached.
+            pass
         except Exception as exc:
             failed.append({
                 "image_id": image_id,

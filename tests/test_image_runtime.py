@@ -2904,8 +2904,149 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(agent.classify_chat_action("Erstelle ein Bild von einem Apfel"), "image_generate")
 
 
+    def test_delete_chat_images_tolerates_file_disappearing_before_unlink(self):
+        from pathlib import Path
+        from unittest import mock
+
+        image_id = "1234567890-abcdef123456"
+        image_path = (
+            agent.IMAGE_DIRECTORY /
+            f"{image_id}.png"
+        )
+
+        agent.IMAGE_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        image_path.write_bytes(b"image")
+
+        chat = {
+            "messages": [
+                {
+                    "image_id": image_id,
+                }
+            ],
+        }
+
+        original_unlink = Path.unlink
+
+        def disappearing_unlink(path, *args, **kwargs):
+            if path == image_path:
+                original_unlink(path)
+                raise FileNotFoundError(
+                    2,
+                    "No such file or directory",
+                    str(path),
+                )
+
+            return original_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        with mock.patch.object(
+            Path,
+            "unlink",
+            disappearing_unlink,
+        ):
+            deleted, failed = agent.delete_chat_images(
+                chat
+            )
+
+        self.assertEqual(
+            deleted,
+            [],
+        )
+        self.assertEqual(
+            failed,
+            [],
+        )
+        self.assertFalse(
+            image_path.exists(),
+        )
+
+
+
+    def test_delete_chat_images_reports_permission_error(self):
+        from pathlib import Path
+        from unittest import mock
+
+        image_id = "1234567890-abcdef123456"
+        image_path = (
+            agent.IMAGE_DIRECTORY /
+            f"{image_id}.png"
+        )
+
+        agent.IMAGE_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        image_path.write_bytes(b"image")
+
+        chat = {
+            "messages": [
+                {
+                    "image_id": image_id,
+                }
+            ],
+        }
+
+        original_unlink = Path.unlink
+
+        def denied_unlink(path, *args, **kwargs):
+            if path == image_path:
+                raise PermissionError(
+                    13,
+                    "Permission denied",
+                    str(path),
+                )
+
+            return original_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        with mock.patch.object(
+            Path,
+            "unlink",
+            denied_unlink,
+        ):
+            deleted, failed = agent.delete_chat_images(
+                chat
+            )
+
+        self.assertEqual(
+            deleted,
+            [],
+        )
+
+        self.assertEqual(
+            len(failed),
+            1,
+        )
+
+        self.assertEqual(
+            failed[0]["image_id"],
+            image_id,
+        )
+
+        self.assertIn(
+            "Permission denied",
+            failed[0]["error"],
+        )
+
+        self.assertTrue(
+            image_path.exists(),
+        )
+
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
 
 def test_hierarchical_router_escalates_only_when_needed(monkeypatch):
     from agent import app as agent_app
