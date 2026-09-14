@@ -423,9 +423,28 @@
     function renderModels() {
         const fragment = document.createDocumentFragment();
         fragment.appendChild(renderHero());
-        const section = node('section', 'model-console-section');
-        const head = node('div', 'model-console-section-heading');
-        head.append(node('h5', '', mt('models.installed', 'Installed models')), node('span', '', String(state.aliases.models.length)));
+        const section = node(
+            'details',
+            'model-console-section model-console-collapsible'
+        );
+        section.open = true;
+
+        const head = node(
+            'summary',
+            'model-console-section-heading model-console-collapsible-summary'
+        );
+        head.append(
+            node(
+                'h5',
+                '',
+                mt('models.installed', 'Installed models')
+            ),
+            node(
+                'span',
+                '',
+                String(state.aliases.models.length)
+            )
+        );
         section.appendChild(head);
         if (!state.aliases.models.length) {
             const empty = node('div', 'model-console-empty');

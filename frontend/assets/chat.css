@@ -7114,3 +7114,48 @@ body.mlx-empty-chat .composer-disclaimer {
 .image-attachment-chip .attachment-remove {
     margin-left: 11px;
 }
+
+/* Collapsible model-console sections */
+.model-console-collapsible > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.model-console-collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+
+.model-console-collapsible > summary::before {
+    content: "›";
+    display: inline-block;
+    flex: 0 0 auto;
+    font-size: 16px;
+    line-height: 1;
+    transform: rotate(0deg);
+    transition: transform 0.15s ease;
+}
+
+.model-console-collapsible[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.model-console-collapsible > summary:focus-visible {
+    outline: 2px solid var(--accent, #4f8cff);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* Left-align collapsible installed-models heading */
+.model-console-collapsible-summary {
+    justify-content: flex-start;
+    gap: 8px;
+}
+
+.model-console-collapsible-summary h5 {
+    margin: 0;
+}
+
+.model-console-collapsible-summary > span:last-child {
+    margin-left: auto;
+}
