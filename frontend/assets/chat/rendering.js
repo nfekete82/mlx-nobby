@@ -1632,12 +1632,32 @@ function renderImageArtifactCard(message) {
     if (!artifact?.image_id) return null;
     const card = document.createElement('section');
     card.className = 'batch-chat-card image-artifact-card';
-    const title = document.createElement('strong'); title.textContent = rt('local_image', 'Local image');
     const image = document.createElement('img');
     image.className = 'image-artifact-preview';
     image.src = '/api/mlx/images/' + encodeURIComponent(artifact.image_id);
     image.alt = artifact.prompt || rt('generated_image', 'Generated image');
     image.loading = 'lazy';
+
+    let hoverPreview = null;
+
+    image.addEventListener('mouseenter', () => {
+        if (hoverPreview) return;
+
+        hoverPreview = document.createElement('div');
+        hoverPreview.className = 'image-hover-preview';
+
+        const previewImage = document.createElement('img');
+        previewImage.src = image.src;
+        previewImage.alt = image.alt;
+
+        hoverPreview.appendChild(previewImage);
+        document.body.appendChild(hoverPreview);
+    });
+
+    image.addEventListener('mouseleave', () => {
+        hoverPreview?.remove();
+        hoverPreview = null;
+    });
     const details = document.createElement('div'); details.className = 'batch-chat-details';
     details.textContent = [
         artifact.model,
@@ -1652,25 +1672,14 @@ function renderImageArtifactCard(message) {
     download.className = 'message-action-btn'; download.textContent = 'Download';
     download.href = '/api/mlx/images/' + encodeURIComponent(artifact.image_id) + '?download=1';
     controls.appendChild(download);
-    const variation = document.createElement('button');
-    variation.className = 'message-action-btn'; variation.textContent = 'Variation';
-    variation.addEventListener('click', () => {
-        const input = document.getElementById('input');
-        input.value = 'Create an image of ' + (artifact.prompt || 'diesem Motiv');
-        window.MLXChatGeneration.sendMessage({ image: {
-            prompt: artifact.prompt || 'dieses Motiv',
-            model: artifact.model || 'FLUX.1-schnell',
-            width: artifact.width || 512, height: artifact.height || 512,
-            steps: artifact.steps || 4, guidance: artifact.guidance ?? 0, seed: null
-        }});
-    });
-    controls.appendChild(variation);
     const enhanceMenu = window.MLXChatGeneration
         ?.createImageUpscaleMenu?.(artifact);
     if (enhanceMenu) {
         controls.appendChild(enhanceMenu);
     }
-    card.appendChild(title); card.appendChild(image); card.appendChild(details); card.appendChild(controls);
+    card.appendChild(image);
+    card.appendChild(details);
+    card.appendChild(controls);
     return card;
 }
 

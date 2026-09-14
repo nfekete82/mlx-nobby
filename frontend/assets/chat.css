@@ -7159,3 +7159,40 @@ body.mlx-empty-chat .composer-disclaimer {
 .model-console-collapsible-summary > span:last-child {
     margin-left: auto;
 }
+
+/* Large preview for generated images on hover. */
+.image-artifact-preview {
+    cursor: zoom-in;
+}
+
+.image-hover-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 24px;
+
+    pointer-events: none;
+
+    background: rgba(0, 0, 0, .22);
+    backdrop-filter: blur(2px);
+}
+
+.image-hover-preview img {
+    width: auto;
+    height: auto;
+
+    max-width: calc(100vw - 48px);
+    max-height: calc(100vh - 48px);
+
+    object-fit: contain;
+
+    border-radius: 10px;
+
+    box-shadow:
+        0 24px 90px rgba(0, 0, 0, .55);
+}

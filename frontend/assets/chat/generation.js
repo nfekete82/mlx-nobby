@@ -2695,7 +2695,12 @@ function updateImageJobMessage(
                 active_artifact_id: artifact.artifact_id
             };
         }
-        message.content = toolSummary(toolResult);
+        message.content = [
+            'image_generate',
+            'image_edit'
+        ].includes(toolResult.tool)
+            ? ''
+            : toolSummary(toolResult);
     } else if (toolResult.status === 'cancelled') {
         message.content = gt(
             'image_job_cancelled',
