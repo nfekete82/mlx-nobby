@@ -16,6 +16,7 @@ from image_providers import (
     ProviderCancelled,
     availability,
     run_provider,
+    sdxl_worker_running,
     shutdown_sdxl_worker,
     terminate_process_tree,
     realesrgan_command,
@@ -210,7 +211,20 @@ def activate(model_id: str):
 @app.post("/unload")
 def unload():
     with exclusive():
-        return {"ok": True, "loaded": False, "detail": "Image-Modelle werden nach jedem Auftrag freigegeben"}
+        try:
+            shutdown_sdxl_worker()
+        except RuntimeError as exc:
+            raise HTTPException(
+                500,
+                "Image-Modell konnte nicht vollständig entladen werden",
+            ) from exc
+
+        return {
+            "ok": True,
+            "loaded": False,
+            "sdxl_worker_loaded": sdxl_worker_running(),
+            "detail": "Image-Modell wurde entladen",
+        }
 
 
 def _provider_failure(exc):

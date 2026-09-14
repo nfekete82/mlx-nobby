@@ -468,15 +468,18 @@ class SDXLWorkerManager:
     def _stop_locked(self):
         self._cancel_idle_timer_locked()
         process = self._process
-        self._process = None
         diagnostics = self._diagnostics
-        self._diagnostics = None
 
         if process is not None:
             try:
                 terminate_process_tree(process)
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError(
+                    "SDXL worker could not be terminated"
+                ) from exc
+
+            self._process = None
+            self._diagnostics = None
 
             for stream in (process.stdin, process.stdout):
                 if stream is None:
@@ -485,6 +488,9 @@ class SDXLWorkerManager:
                     stream.close()
                 except Exception:
                     pass
+        else:
+            self._process = None
+            self._diagnostics = None
 
         if diagnostics is not None:
             try:
@@ -664,12 +670,24 @@ class SDXLWorkerManager:
                 else:
                     self._stop_locked()
 
+    def is_running(self):
+        with self._lock:
+            return (
+                self._process is not None
+                and self._process.poll() is None
+            )
+
     def close(self):
         with self._lock:
             self._stop_locked()
 
 
 _sdxl_worker_manager = SDXLWorkerManager()
+
+
+def sdxl_worker_running():
+    """Return whether the warm SDXL worker is currently running."""
+    return _sdxl_worker_manager.is_running()
 
 
 def shutdown_sdxl_worker():

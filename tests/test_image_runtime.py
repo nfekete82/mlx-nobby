@@ -449,6 +449,97 @@ class ImageRuntimeTests(unittest.TestCase):
         finally:
             manager.close()
 
+    def test_image_unload_stops_sdxl_worker(self):
+        with patch.object(
+            service,
+            "shutdown_sdxl_worker",
+        ) as shutdown, patch.object(
+            service,
+            "sdxl_worker_running",
+            return_value=False,
+        ):
+            response = self.client.post("/unload")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        shutdown.assert_called_once_with()
+
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["loaded"])
+        self.assertFalse(payload["sdxl_worker_loaded"])
+
+    def test_image_unload_reports_shutdown_failure(self):
+        with patch.object(
+            service,
+            "shutdown_sdxl_worker",
+            side_effect=RuntimeError("termination failed"),
+        ):
+            response = self.client.post("/unload")
+
+        self.assertEqual(response.status_code, 500, response.text)
+        self.assertNotIn(
+            "termination failed",
+            response.text,
+        )
+
+    def test_sdxl_close_terminates_running_worker(self):
+        manager = self.make_sdxl_worker_manager()
+
+        try:
+            self.run_fake_sdxl(manager)
+
+            self.assertTrue(manager.is_running())
+            process = manager._process
+            self.assertIsNotNone(process)
+
+            manager.close()
+
+            self.assertFalse(manager.is_running())
+            self.assertIsNone(manager._process)
+            self.assertIsNotNone(process.poll())
+        finally:
+            try:
+                manager.close()
+            except Exception:
+                pass
+
+    def test_sdxl_failed_close_retains_running_state(self):
+        manager = self.make_sdxl_worker_manager()
+
+        try:
+            self.run_fake_sdxl(manager)
+
+            process = manager._process
+            self.assertIsNotNone(process)
+            self.assertTrue(manager.is_running())
+
+            with patch.object(
+                providers,
+                "terminate_process_tree",
+                side_effect=RuntimeError("simulated stop failure"),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "could not be terminated",
+                ):
+                    manager.close()
+
+            self.assertIs(manager._process, process)
+            self.assertTrue(manager.is_running())
+
+            # After the simulated failure, a real close must still be able
+            # to terminate the retained worker.
+            manager.close()
+
+            self.assertFalse(manager.is_running())
+            self.assertIsNone(manager._process)
+        finally:
+            try:
+                manager.close()
+            except Exception:
+                pass
+
+
     def test_sdxl_worker_cancellation_terminates_and_recovers(self):
         manager = self.make_sdxl_worker_manager()
         cancel_event = threading.Event()
