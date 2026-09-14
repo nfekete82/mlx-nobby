@@ -26,6 +26,7 @@
     let startEditMessage;
     let regenerateLastAnswer;
     let imageJobUiTimer = null;
+    const agentDetailsExpanded = new WeakMap();
 
     const ACTIVE_IMAGE_JOB_STATUSES = new Set([
         'queued',
@@ -765,6 +766,7 @@ function agentStepLabel(step) {
     const labels = {
         system_status: rt('check_system_status', 'Check system status'),
         process_usage: rt('check_cpu_ram', 'Check CPU- and RAM-intensive processes'),
+        disk_usage: rt('check_disk_usage', 'Analyze disk usage'),
         logs_query: rt('check_logs', 'Check logs'),
         batch_status: rt('check_file_jobs', 'Check file jobs'),
         knowledge_search: rt('search_knowledge', 'Search knowledge base'),
@@ -815,21 +817,84 @@ function renderAgentCard(message) {
 
     card.className = 'agent-card';
 
+    const steps =
+        Array.isArray(run.steps)
+            ? run.steps
+            : [];
+
     const header =
         document.createElement('div');
 
     header.className =
         'agent-card-header';
 
-    header.textContent =
-        '🤖 Agent';
+    const title = document.createElement('span');
+    title.textContent = '🤖 Agent';
+
+    const statusNames = {
+        running: ['●', rt('agent_status_running', 'Running')],
+        completed: ['✓', rt('agent_status_completed', 'Completed')],
+        failed: ['⚠', rt('agent_status_failed', 'Failed')],
+        cancelled: ['–', rt('agent_status_cancelled', 'Cancelled')],
+        approval_required: [
+            '⚠',
+            rt('agent_status_approval_required', 'Approval required')
+        ],
+        max_steps: ['○', rt('agent_status_max_steps', 'Step limit reached')]
+    };
+    const status = statusNames[run.status] || [
+        '○',
+        String(run.status || rt('agent_status_completed', 'Completed'))
+    ];
+    const stepCount = steps.length === 1
+        ? rt('agent_step_count_one', '1 step')
+        : rt(
+            'agent_step_count_many',
+            '{count} steps',
+            { count: steps.length }
+        );
+    const metadata = document.createElement('span');
+    metadata.className = 'agent-card-metadata';
+    metadata.textContent = stepCount + ' · ' + status.join(' ');
+
+    header.appendChild(title);
+    header.appendChild(metadata);
 
     card.appendChild(header);
 
-    const steps =
-        Array.isArray(run.steps)
-            ? run.steps
-            : [];
+    if (run.goal) {
+        const summary = document.createElement('div');
+        summary.className = 'agent-card-summary';
+        summary.textContent = String(run.goal).slice(0, 180);
+        card.appendChild(summary);
+    }
+
+    const detailsContainer = document.createElement('div');
+    detailsContainer.className = 'agent-card-details';
+    const detailsAreExpanded = agentDetailsExpanded.get(message) === true;
+    detailsContainer.hidden = !detailsAreExpanded;
+
+    if (steps.length) {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'agent-card-toggle';
+
+        const updateToggle = expanded => {
+            toggle.setAttribute('aria-expanded', String(expanded));
+            toggle.textContent = expanded
+                ? rt('agent_details_hide', 'Hide details') + ' ▴'
+                : rt('agent_details_show', 'Show details') + ' ▾';
+        };
+
+        updateToggle(detailsAreExpanded);
+        toggle.addEventListener('click', () => {
+            const expanded = detailsContainer.hidden;
+            detailsContainer.hidden = !expanded;
+            agentDetailsExpanded.set(message, expanded);
+            updateToggle(expanded);
+        });
+        card.appendChild(toggle);
+    }
 
     for (const step of steps) {
         const row =
@@ -911,7 +976,7 @@ function renderAgentCard(message) {
                 document.createElement('summary');
 
             summary.textContent =
-                'Technische Details';
+                rt('technical_details', 'Technical details');
 
             const pre =
                 document.createElement('pre');
@@ -937,7 +1002,7 @@ function renderAgentCard(message) {
         row.appendChild(icon);
         row.appendChild(body);
 
-        card.appendChild(row);
+        detailsContainer.appendChild(row);
     }
 
     if (run.status === 'running') {
@@ -954,7 +1019,11 @@ function renderAgentCard(message) {
             ? '● ' + agentStepLabel(currentStep) + ' …'
             : '● Agent arbeitet …';
 
-        card.appendChild(running);
+        detailsContainer.appendChild(running);
+    }
+
+    if (steps.length) {
+        card.appendChild(detailsContainer);
     }
 
     const pending =
@@ -2417,6 +2486,7 @@ function renderAll(options = {}) {
             syncImageJobUiTimer,
             renderImageArtifactCard,
             renderImageJobCard,
+            renderAgentCard,
         }
     };
 

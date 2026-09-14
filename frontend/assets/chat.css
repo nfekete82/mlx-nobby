@@ -71,6 +71,7 @@ button {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
 
     margin-bottom: 18px;
 }
@@ -2448,8 +2449,50 @@ button {
 }
 
 .agent-card-header {
-    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     font-weight: 700;
+}
+
+.agent-card-metadata {
+    color: #9ba9ba;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.agent-card-summary {
+    margin-top: 5px;
+    color: #c6d0dc;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.agent-card-toggle {
+    margin-top: 8px;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    color: #8db2ff;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.agent-card-toggle:hover,
+.agent-card-toggle:focus-visible {
+    color: #bed2ff;
+}
+
+.agent-card-details {
+    margin-top: 5px;
+}
+
+.agent-card-details[hidden] {
+    display: none;
 }
 
 .agent-step {

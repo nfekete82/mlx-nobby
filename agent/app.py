@@ -18,6 +18,7 @@ import zlib
 from agent import knowledge
 from agent import profile
 from agent import code_workspaces
+from agent import disk_usage
 from agent import image_api
 from agent import model_cleanup
 from agent.batch_processing import (
@@ -2294,6 +2295,46 @@ def resolve_model_role(role):
     )
 
     if configured == "auto":
+        if role == "vision":
+            selected = next(
+                (
+                    item
+                    for item in models
+                    if item.get("vision") is True
+                    and item.get("available") is not False
+                ),
+                None,
+            )
+
+            if selected is None:
+                return {
+                    "role": role,
+                    "configured": "auto",
+                    "alias": None,
+                    "repo": None,
+                    "backend": "vlm",
+                    "vision": True,
+                    "available": False,
+                    "active": False,
+                    "requires_switch": False,
+                    "error": "Kein verfügbares Vision-Modell gefunden",
+                }
+
+            selected_repo = selected.get("repo")
+            selected_alias = selected.get("alias")
+
+            return {
+                "role": role,
+                "configured": "auto",
+                "alias": selected_alias,
+                "repo": selected_repo,
+                "backend": selected.get("backend") or "vlm",
+                "vision": True,
+                "available": selected.get("available") is not False,
+                "active": selected_repo == current_repo,
+                "requires_switch": selected_repo != current_repo,
+            }
+
         return {
             "role": role,
             "configured": "auto",
@@ -3836,7 +3877,7 @@ MLX_CAPABILITY_MODEL = {
         "access": "keine lokale Untersuchung",
     },
     "diagnostic_agent": {
-        "description": "Lokalen Mac, Prozesse, CPU, RAM, Systemstatus, Logs und Docker untersuchen",
+        "description": "Lokalen Mac, Prozesse, CPU, RAM, Speicherplatz, Systemstatus, Logs und Docker untersuchen",
         "access": "ausschließlich READ-ONLY",
     },
     "coding_agent": {
@@ -3894,6 +3935,56 @@ def capability_model_text():
     return "\n".join(
         f"- {intent}: {data['description']} ({data['access']})"
         for intent, data in MLX_CAPABILITY_MODEL.items()
+    )
+
+
+def _looks_like_disk_usage_request(prompt):
+    value = re.sub(r"\s+", " ", str(prompt or "").strip().lower())
+    storage = bool(re.search(
+        r"\b(?:speicher|speicherplatz|speicherverbrauch|plattenspeicher|plattenplatz|"
+        r"festplatte|ssd|disk\s+(?:space|usage)|storage\s+usage)\b",
+        value,
+    ))
+    filesystem_subject = bool(re.search(
+        r"\b(?:datei(?:en)?|ordner|files?|folders?|directories|mac|rechner|"
+        r"computer|festplatte|ssd)\b",
+        value,
+    ))
+    strong_storage_term = bool(re.search(
+        r"\b(?:speicherplatz|speicherverbrauch|plattenspeicher|plattenplatz|"
+        r"festplatte|ssd|disk\s+(?:space|usage)|storage\s+usage)\b",
+        value,
+    ))
+    if "am meisten platz" in value and filesystem_subject:
+        storage = True
+    ranked_items = bool(re.search(
+        r"\b(?:grö(?:ß|ss)t(?:e|en|er)?|largest|biggest)\b.*\b"
+        r"(?:datei(?:en)?|ordner|files?|folders?|directories)\b",
+        value,
+    ))
+    project_context = bool(re.search(
+        r"\b(?:projekt|workspace|codebase|repository|repo)\b",
+        value,
+    ))
+    process_memory = bool(re.search(
+        r"\b(?:prozess(?:e)?|ram|arbeitsspeicher)\b",
+        value,
+    ))
+    storage_action = bool(re.search(
+        r"\b(?:prüf|pruef|analysier|untersuch|zeig|find|welch|was|warum|"
+        r"beleg|verbrauch|brauch|voll|freigeben|inspect|analy[sz]|show|find|"
+        r"what|why|full|consume|use)\w*\b",
+        value,
+    ))
+    if process_memory and not ranked_items:
+        return False
+    return (
+        (ranked_items and not project_context)
+        or (
+            storage
+            and storage_action
+            and (filesystem_subject or strong_storage_term)
+        )
     )
 
 
@@ -4115,6 +4206,8 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         and cross_capability_intent
     ):
         return "orchestrator"
+    if _looks_like_disk_usage_request(value):
+        return "diagnostic_agent"
     if (
         file_context
         and _file_context_is_image(file_context)
@@ -4773,6 +4866,8 @@ MLX nobby ist kein generischer Cloud-Chatbot. Es besitzt diese Fähigkeiten:
 
 Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
 - Eine Bitte, den eigenen Mac jetzt zu prüfen, gehört zum diagnostic_agent.
+- Eine Analyse großer Dateien, Ordner oder des lokalen Speicherplatzes gehört
+  zum diagnostic_agent.
 - Eine Erklärung, wie der Nutzer selbst etwas prüfen kann, gehört zu normal_chat.
 - Eine gewünschte Änderung im eigenen Projekt gehört zum coding_agent.
 - Das Prüfen, Bewerten oder Verbessern einer konkreten Datei im aktiven
@@ -5290,6 +5385,9 @@ Wichtige Regeln:
 
 - Eine konkrete Prüfung des aktuellen lokalen Macs oder laufender
   Prozesse gehört zu diagnostic_agent.
+
+- Eine Analyse großer Dateien, Ordner oder des lokalen Speicherplatzes
+  gehört zu diagnostic_agent.
 
 - Eine konkrete Änderung oder Untersuchung des aktiven lokalen
   Coding-Projekts gehört zu coding_agent.
@@ -9054,6 +9152,27 @@ def switch_model_runtime(alias: str):
     }
 
 
+@app.post("/api/runtime/ensure-role/{role}")
+def ensure_runtime_role(role: str):
+    if role not in MODEL_ROLE_NAMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Modellrolle: {role}",
+        )
+
+    try:
+        result = ensure_model_for_role(role)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    return result
+
+
 def ensure_model_for_role(role: str):
     """
     Ensure that the model configured for a logical role
@@ -10217,7 +10336,25 @@ def tool_process_usage(limit=10):
     }
 
 
+def tool_disk_usage(options=None):
+    """Scan approved local roots with the native read-only disk tool."""
+    allowed_roots = []
+    try:
+        workspace = code_workspaces.active_workspace(validate=False)
+    except (OSError, ValueError):
+        workspace = None
+    if isinstance(workspace, dict) and workspace.get("root_path"):
+        allowed_roots.append(workspace["root_path"])
+
+    return disk_usage.scan_disk_usage(
+        options,
+        home=Path.home(),
+        allowed_roots=allowed_roots,
+    )
+
+
 READ_ONLY_AGENT_TOOLS = {
+    "disk_usage",
     "shell_read",
     "process_usage",
     "system_status",
@@ -10381,6 +10518,20 @@ Zentrale MLX-Nobby-Fähigkeiten:
 
 Verfügbare automatisch ausführbare READ-Tools:
 
+disk_usage
+- Analysiert große Dateien und Ordner nativ, strukturiert und ausschließlich
+  lesend. Verwende dieses Tool immer für lokalen Speicherplatz,
+  Speicherverbrauch, volle SSDs und Ranglisten großer Dateien oder Ordner.
+- Verwende dafür NICHT shell_read mit du, find, sort, Pipes, Globs oder
+  Redirects.
+- Ohne Optionen wird sicher der Benutzerordner untersucht.
+- Optionale Eingabe im Feld "options":
+  {{"path":"/absoluter/freigegebener/Pfad","mode":"files|directories|both",
+  "limit":20,"min_size_bytes":104857600,"max_depth":5,
+  "include_hidden":true}}
+- Bei partial=true fasse die vorhandenen Resultate zusammen und erwähne die
+  Warnungen, statt die gesamte Analyse als fehlgeschlagen zu behandeln.
+
 shell_read
 - Führt einen einzelnen freigegebenen Diagnosebefehl aus.
 - Verwende dafür das JSON-Feld "query".
@@ -10465,6 +10616,13 @@ Bei Fragen, die aktuelle Webinformationen benötigen:
 
 
 def agent_choose_next_step(goal, observations):
+    if not observations and _looks_like_disk_usage_request(goal):
+        return {
+            "action": "disk_usage",
+            "reason": "Große Dateien und Ordner sicher analysieren",
+            "options": {},
+        }
+
     system_prompt = f"""
 Du bist ein lokaler technischer Diagnose-Agent auf einem Mac.
 
@@ -10542,6 +10700,7 @@ def execute_read_only_agent_tool(
     query=None,
     instruction=None,
     files=None,
+    options=None,
 ):
     if (
         action not in READ_ONLY_AGENT_TOOLS
@@ -10778,6 +10937,11 @@ def execute_read_only_agent_tool(
     if action == "process_usage":
         return tool_process_usage()
 
+    if action == "disk_usage":
+        if options is not None and not isinstance(options, dict):
+            raise ValueError("disk_usage options must be an object")
+        return tool_disk_usage(options)
+
     if action == "shell_read":
         if not query:
             raise ValueError(
@@ -10869,11 +11033,16 @@ def run_read_only_agent(goal):
             decision.get("query", "")
         ).strip()
 
+        tool_options = decision.get("options")
+        if not isinstance(tool_options, dict):
+            tool_options = {}
+
         try:
             result = execute_read_only_agent_tool(
                 action,
                 goal,
                 query=query or None,
+                options=tool_options,
             )
 
             observations.append({
@@ -10881,6 +11050,7 @@ def run_read_only_agent(goal):
                 "action": action,
                 "reason": reason,
                 "query": query or None,
+                "options": tool_options or None,
                 "status": "completed",
                 "result": result,
             })
@@ -10891,6 +11061,7 @@ def run_read_only_agent(goal):
                 "action": action,
                 "reason": reason,
                 "query": query or None,
+                "options": tool_options or None,
                 "status": "failed",
                 "error": str(exc),
             })
@@ -13320,6 +13491,17 @@ def agent_choose_next_step_v2(
     mode = str(mode or "diagnostic").strip().lower()
     coding_mode = mode == "coding"
 
+    if (
+        not observations
+        and mode in {"diagnostic", "orchestrator"}
+        and _looks_like_disk_usage_request(goal)
+    ):
+        return {
+            "action": "disk_usage",
+            "reason": "Große Dateien und Ordner sicher analysieren",
+            "options": {},
+        }
+
     if coding_mode:
         role_context = """
 Du bist der lokale Coding-Agent für den aktiven Code-Workspace.
@@ -13672,6 +13854,9 @@ Im Diagnose-Modus gilt:
 - Bei Fragen nach der höchsten Prozess-/App-Last zuerst process_usage nutzen
   und CPU sowie RAM/RSS getrennt auswerten. Niemals einen künstlichen
   universellen "Systemverbrauch" berechnen.
+- Bei Fragen nach großen Dateien, Ordnergrößen oder belegtem Speicherplatz
+  zuerst disk_usage verwenden. Dafür niemals du/find/sort über shell_read
+  kombinieren.
 """.strip()
 
     conversation_context = normalize_agent_conversation_context(
@@ -13725,7 +13910,10 @@ Regeln:
 - Kein docker stop, rm oder compose down.
 - Zustandsverändernde Aktionen ausschließlich über request_approval.
 
-- Nutze shell_read bei lokalen Diagnose-, Inventar- und Systemfragen aktiv und selbstständig.
+- Nutze shell_read bei passenden lokalen Diagnose-, Inventar- und Systemfragen aktiv und selbstständig.
+- Nutze für Speicherplatzanalysen ausschließlich disk_usage. Wenn der Scan
+  partial=true liefert, fasse die tatsächlich gefundenen Einträge zusammen
+  und nenne die Warnungen knapp.
 - Gib nach einem einzelnen erfolgreichen Diagnosebefehl nicht vorschnell auf, wenn mehrere Datenquellen für eine vollständige Antwort sinnvoll sind.
 - Kombiniere bei Bedarf mehrere READ-ONLY-Abfragen und führe deren Ergebnisse anschließend zusammen.
 - Wenn ein READ-ONLY-Befehl fehlschlägt oder keine ausreichenden Daten liefert, probiere eine andere erlaubte READ-ONLY-Methode.
@@ -16148,6 +16336,10 @@ def run_agent_v2(
 
         files = decision.get("files")
 
+        tool_options = decision.get("options")
+        if not isinstance(tool_options, dict):
+            tool_options = {}
+
         # -------------------------------------------------
         # Research search-loop guard
         # -------------------------------------------------
@@ -16676,6 +16868,10 @@ def run_agent_v2(
                 if str(item.get("action") or "").strip() == action
                 and str(item.get("query") or "").strip() == query
                 and (
+                    action != "disk_usage"
+                    or item.get("options") == (tool_options or None)
+                )
+                and (
                     action not in {"web_search", "search_web"}
                     or (
                         isinstance(item.get("result"), dict)
@@ -16742,6 +16938,7 @@ def run_agent_v2(
             "reason": reason,
             "plan": plan,
             "query": query or None,
+            "options": tool_options or None,
             "status": "running",
         })
 
@@ -16752,6 +16949,7 @@ def run_agent_v2(
                 query=query or None,
                 instruction=instruction or None,
                 files=files,
+                options=tool_options,
             )
 
             observations.append({
@@ -16760,6 +16958,7 @@ def run_agent_v2(
                 "reason": reason,
                 "plan": plan,
                 "query": query or None,
+                "options": tool_options or None,
                 "instruction": instruction or None,
                 "status": "completed",
                 "result": result,
@@ -16773,6 +16972,7 @@ def run_agent_v2(
                 "reason": reason,
                 "plan": plan,
                 "query": query or None,
+                "options": tool_options or None,
                 "status": "failed",
                 "error": str(exc),
             })
