@@ -668,7 +668,18 @@ def create_hf_subfolder_job(alias, repo, quantization):
         daemon=True,
     )
 
-    thread.start()
+    try:
+        thread.start()
+    except Exception as exc:
+        with JOBS_LOCK:
+            job["status"] = "failed"
+            job["error"] = (
+                "Background-Thread konnte nicht gestartet werden: "
+                + str(exc)
+            )
+            job["finished_at"] = time.time()
+        save_jobs()
+        raise
 
     return job
 
@@ -809,7 +820,18 @@ def create_background_job(command, target=None):
         daemon=True,
     )
 
-    thread.start()
+    try:
+        thread.start()
+    except Exception as exc:
+        with JOBS_LOCK:
+            job["status"] = "failed"
+            job["error"] = (
+                "Background-Thread konnte nicht gestartet werden: "
+                + str(exc)
+            )
+            job["finished_at"] = time.time()
+        save_jobs()
+        raise
 
     return job
 

@@ -312,5 +312,144 @@ class ModelRuntimeApiTests(unittest.TestCase):
                 self.assertIn("Runtime-Aktion", context.exception.detail)
 
 
+
+    def test_background_job_thread_start_failure_is_persisted(self):
+        with agent_app.JOBS_LOCK:
+            agent_app.JOBS.clear()
+
+        agent_app.JOBS_FILE.unlink(missing_ok=True)
+
+        class BrokenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                raise RuntimeError("thread start failed")
+
+        with (
+            mock.patch.object(
+                agent_app,
+                "resolve_repo",
+                return_value="repo/test",
+            ),
+            mock.patch.object(
+                agent_app,
+                "has_running_job_for_model",
+                return_value=(False, None),
+            ),
+            mock.patch.object(
+                agent_app.threading,
+                "Thread",
+                BrokenThread,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "thread start failed",
+            ):
+                agent_app.create_background_job(
+                    "download",
+                    "test-model",
+                )
+
+        with agent_app.JOBS_LOCK:
+            self.assertEqual(
+                len(agent_app.JOBS),
+                1,
+            )
+            job = next(iter(agent_app.JOBS.values())).copy()
+
+        self.assertEqual(
+            job["status"],
+            "failed",
+        )
+        self.assertIn(
+            "thread start failed",
+            job["error"],
+        )
+        self.assertIsNotNone(
+            job["finished_at"],
+        )
+
+        persisted = agent_app.JOBS_FILE.read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            '"status": "failed"',
+            persisted,
+        )
+        self.assertIn(
+            "thread start failed",
+            persisted,
+        )
+
+    def test_hf_subfolder_thread_start_failure_is_persisted(self):
+        with agent_app.JOBS_LOCK:
+            agent_app.JOBS.clear()
+
+        agent_app.JOBS_FILE.unlink(missing_ok=True)
+
+        class BrokenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                raise RuntimeError("hf thread start failed")
+
+        with (
+            mock.patch.object(
+                agent_app,
+                "has_running_job_for_model",
+                return_value=(False, None),
+            ),
+            mock.patch.object(
+                agent_app.threading,
+                "Thread",
+                BrokenThread,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "hf thread start failed",
+            ):
+                agent_app.create_hf_subfolder_job(
+                    "test-model",
+                    "org/test-model",
+                    "4-bit",
+                )
+
+        with agent_app.JOBS_LOCK:
+            self.assertEqual(
+                len(agent_app.JOBS),
+                1,
+            )
+            job = next(iter(agent_app.JOBS.values())).copy()
+
+        self.assertEqual(
+            job["status"],
+            "failed",
+        )
+        self.assertIn(
+            "hf thread start failed",
+            job["error"],
+        )
+        self.assertIsNotNone(
+            job["finished_at"],
+        )
+
+        persisted = agent_app.JOBS_FILE.read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            '"status": "failed"',
+            persisted,
+        )
+        self.assertIn(
+            "hf thread start failed",
+            persisted,
+        )
+
 if __name__ == "__main__":
     unittest.main()
