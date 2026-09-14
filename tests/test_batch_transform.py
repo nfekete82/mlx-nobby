@@ -927,5 +927,64 @@ class BatchTransformTests(unittest.TestCase):
         self.assertEqual(agent.normalize_chat(raw)["workspace"]["active_artifact_id"], "artifact-1")
 
 
+
+
+    def test_batch_checkpoint_atomic_write_cleans_temp_on_replace_failure(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkpoint = root / "00000001.txt"
+            temporary = checkpoint.with_suffix(
+                checkpoint.suffix + ".tmp"
+            )
+
+            original_replace = Path.replace
+
+            def failing_replace(source, destination):
+                source = Path(source)
+                destination = Path(destination)
+
+                if destination == checkpoint:
+                    self.assertTrue(
+                        source.exists(),
+                        "checkpoint temp file must exist before replace",
+                    )
+                    raise OSError(
+                        "simulated checkpoint replace failure"
+                    )
+
+                return original_replace(
+                    source,
+                    destination,
+                )
+
+            with mock.patch.object(
+                Path,
+                "replace",
+                failing_replace,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "simulated checkpoint replace failure",
+                ):
+                    agent.atomic_write_text(
+                        checkpoint,
+                        "checkpoint",
+                        encoding="utf-8",
+                    )
+
+            self.assertFalse(
+                temporary.exists(),
+                "failed checkpoint write must remove temp file",
+            )
+
+            self.assertFalse(
+                checkpoint.exists(),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

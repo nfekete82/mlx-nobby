@@ -1,6 +1,7 @@
 """File-backed persistence primitives for batch job state."""
 
 import json
+from pathlib import Path
 
 
 def load_jobs(path):
@@ -20,22 +21,44 @@ def load_jobs(path):
         return {}
 
 
+
+def atomic_write_with(path, writer):
+    """Atomically replace a file using a caller-provided temp-file writer."""
+    path = Path(path)
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+
+    try:
+        writer(temporary_path)
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def atomic_write_text(path, text, encoding="utf-8"):
+    """Atomically replace a text file and always remove its temp file."""
+    atomic_write_with(
+        path,
+        lambda temporary_path: temporary_path.write_text(
+            text,
+            encoding=encoding,
+        ),
+    )
+
+
 def save_jobs(directory, path, jobs):
     directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    temporary_path = path.with_suffix(".tmp")
-    temporary_path.write_text(
+    atomic_write_text(
+        path,
         json.dumps(
             jobs,
             ensure_ascii=False,
             indent=2,
         ),
-        encoding="utf-8",
     )
-    temporary_path.replace(path)
 
 
 def checkpoint_directory(root, job_id):

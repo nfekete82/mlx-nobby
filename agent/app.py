@@ -48,6 +48,7 @@ from backend import observability
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
+from agent.batch_state import atomic_write_text, atomic_write_with
 from local_security import LocalRequestGuard
 from agent.service_proxy import install_routes as install_service_routes
 
@@ -12055,7 +12056,7 @@ def run_file_analysis_job(job_id):
                 task + "\n\nEXCERPT:\n" + chunk,
                 500,
             ))
-            checkpoint = batch_checkpoint_path(job_id, index); temporary = checkpoint.with_suffix(".tmp"); temporary.write_text(maps[-1], encoding="utf-8"); temporary.replace(checkpoint)
+            checkpoint = batch_checkpoint_path(job_id, index); atomic_write_text(checkpoint, maps[-1], encoding="utf-8")
             with BATCH_LOCK:
                 jobs = load_batch_jobs(); current = jobs[job_id]; current["processed_chunks"] = index; current["mlx_calls"] = int(current.get("mlx_calls", 0)) + 1; current["eta_seconds"] = None; save_batch_jobs(jobs)
         reduced_results = reduce_file_analysis_maps(maps)
@@ -12735,23 +12736,14 @@ def run_batch_transform_job(job_id):
                             replacement_value,
                         )
 
-                    temporary_checkpoint = (
-                        checkpoint_path.with_suffix(
-                            checkpoint_path.suffix + ".tmp"
-                        )
-                    )
-
-                    temporary_checkpoint.write_text(
+                    atomic_write_text(
+                        checkpoint_path,
                         json.dumps(
                             transformed_values,
                             ensure_ascii=False,
                             indent=2,
                         ),
                         encoding="utf-8",
-                    )
-
-                    temporary_checkpoint.replace(
-                        checkpoint_path
                     )
 
                     processed_freetext_batches += 1
@@ -12830,18 +12822,13 @@ def run_batch_transform_job(job_id):
                     exist_ok=True,
                 )
 
-                temporary_output = output_path.with_suffix(
-                    output_path.suffix + ".tmp"
-                )
-
-                write_batch_text(
-                    temporary_output,
-                    output_text,
-                    encoding,
-                )
-
-                temporary_output.replace(
-                    output_path
+                atomic_write_with(
+                    output_path,
+                    lambda temporary_output: write_batch_text(
+                        temporary_output,
+                        output_text,
+                        encoding,
+                    ),
                 )
 
                 with BATCH_LOCK:
@@ -13351,10 +13338,6 @@ Keine Markdown-Codeblöcke.
                 index,
             )
 
-            temp_checkpoint = checkpoint_path.with_suffix(
-                ".tmp"
-            )
-
             checkpoint_content = transformed
 
             if (
@@ -13363,13 +13346,10 @@ Keine Markdown-Codeblöcke.
             ):
                 checkpoint_content += "\n"
 
-            temp_checkpoint.write_text(
+            atomic_write_text(
+                checkpoint_path,
                 checkpoint_content,
                 encoding="utf-8",
-            )
-
-            temp_checkpoint.replace(
-                checkpoint_path
             )
 
             chunk_duration = (
@@ -13449,13 +13429,14 @@ Keine Markdown-Codeblöcke.
         else:
             output_text = "".join(checkpoint_texts)
 
-        temporary_output = output_path.with_suffix(output_path.suffix + ".tmp")
-        write_batch_text(
-            temporary_output,
-            output_text,
-            encoding,
+        atomic_write_with(
+            output_path,
+            lambda temporary_output: write_batch_text(
+                temporary_output,
+                output_text,
+                encoding,
+            ),
         )
-        temporary_output.replace(output_path)
 
         with BATCH_LOCK:
             jobs = load_batch_jobs()
