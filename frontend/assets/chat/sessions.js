@@ -440,6 +440,18 @@ function sessionT(key, fallback = '', variables = {}) {
         }
 
         session.messages = [];
+
+        // Clearing a chat must also detach generated-image context.
+        // Otherwise image follow-ups can keep using the previous
+        // workspace artifact even though the conversation is empty.
+        if (session.workspace) {
+            delete session.workspace.active_artifact_id;
+
+            if (!Object.keys(session.workspace).length) {
+                delete session.workspace;
+            }
+        }
+
         session.title = sessionT(
             'sessions.new_chat',
             'New chat'

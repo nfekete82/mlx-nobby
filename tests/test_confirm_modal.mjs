@@ -69,6 +69,16 @@ assert.doesNotMatch(
     /(^|[^A-Za-z])confirm\s*\(/,
 );
 
+assert.match(
+    deleteMessagesBlock,
+    /delete session\.workspace\.active_artifact_id;/,
+);
+
+assert.match(
+    deleteMessagesBlock,
+    /if \(!Object\.keys\(session\.workspace\)\.length\)/,
+);
+
 console.log(
     'Confirm modal: markup, helper, async clear-chat flow, and native confirm removal passed.'
 );
