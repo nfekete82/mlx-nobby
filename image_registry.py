@@ -21,7 +21,9 @@ LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 QWEN_IMAGE_EDIT_ID = "mflux-qwen-image-edit-2511"
 QWEN_IMAGE_EDIT_DEFAULT_STEPS = 8
-BUILTIN_DEFAULTS_REVISION = 1
+JUGGERNAUT_XL_ID = "juggernaut-xl"
+JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
+BUILTIN_DEFAULTS_REVISION = 2
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -122,7 +124,7 @@ class ImageModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str
     name: str = Field(min_length=1, max_length=120)
-    provider: Literal["diffusionkit", "mflux"]
+    provider: Literal["diffusionkit", "mflux", "sdxl"]
     repository: str | None = None
     local_path: str | None = None
     model_family: str
@@ -151,6 +153,16 @@ class ImageModel(BaseModel):
                 raise ValueError("Der DiffusionKit-Fallback unterstützt keine LoRAs")
             if self.default_steps > 8:
                 raise ValueError("DiffusionKit schnell: maximal 8 Steps")
+        elif self.provider == "sdxl":
+            if (
+                self.repository
+                or not self.local_path
+                or self.model_family != "sdxl"
+                or self.base_model != "sdxl"
+                or self.quantization != "none"
+                or any(lora.enabled for lora in self.loras)
+            ):
+                raise ValueError("SDXL benötigt einen lokalen Checkpoint ohne LoRAs oder Quantisierung")
         elif self.model_family not in FAMILIES or self.base_model not in FAMILIES[self.model_family][1]:
             raise ValueError("Nicht unterstützte MFLUX-Modellfamilie/Basismodell-Kombination")
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
@@ -170,6 +182,15 @@ class ImageModel(BaseModel):
                     "lora",
                     "multi_lora",
                 ]
+        elif self.provider == "sdxl":
+            self.capabilities = [
+                "text_to_image",
+                "variation",
+                "photorealistic",
+                "people",
+                "portrait",
+                "fashion",
+            ]
         else:
             self.capabilities = [
                 "text_to_image",
@@ -245,6 +266,18 @@ def builtin_models():
         models.append(
             ImageModel(**model_kwargs).model_dump()
         )
+    models.append(ImageModel(
+        id=JUGGERNAUT_XL_ID,
+        name="Juggernaut XL",
+        provider="sdxl",
+        local_path=str(JUGGERNAUT_XL_DIRECTORY),
+        model_family="sdxl",
+        base_model="sdxl",
+        quantization="none",
+        enabled=False,
+        default_steps=30,
+        default_guidance=7.0,
+    ).model_dump())
     return models
 
 

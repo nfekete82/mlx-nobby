@@ -1,4 +1,5 @@
-"""Native, local FLUX image service. Images stay on disk, never in API payloads."""
+"""Native, local image service. Images stay on disk, never in API payloads."""
+import re
 import secrets
 import threading
 import time
@@ -35,6 +36,7 @@ class Generate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     prompt: str = Field(min_length=3, max_length=2000)
+    negative_prompt: str = Field(default="", max_length=2000)
     model: str = "auto"
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=512, ge=256, le=1024)
@@ -215,6 +217,69 @@ def _provider_failure(exc):
     )
 
 
+def _auto_generation_model(prompt):
+    data = registry_call(registry.load_registry)
+    value = str(prompt or "").lower()
+
+    def candidate(model_id):
+        model = next(
+            (item for item in data["models"] if item["id"] == model_id),
+            None,
+        )
+        if (
+            not model
+            or not model["enabled"]
+            or "text_to_image" not in model.get("capabilities", [])
+        ):
+            return None
+        ready, _ = availability(model)
+        return model if ready else None
+
+    text_image = re.search(
+        r"\b(?:poster|typography|text|lettering|logo|ui|interface|schrift|typografie)\b",
+        value,
+    )
+    realistic_style = re.search(
+        r"\b(?:photorealistic|photo-realistic|realistic(?: photo)?|photograph|fotorealistisch|realistisch(?:es foto)?)\b",
+        value,
+    )
+    human_subject = re.search(
+        r"\b(?:portrait|porträt|person|people|human|menschen?|woman|man|frau|mann|fashion|modefoto)\b",
+        value,
+    )
+    complex_prompt = re.search(
+        r"\b(?:complex prompt|high prompt fidelity|komplexer prompt|hohe prompttreue)\b",
+        value,
+    )
+    preferred_ids = []
+    if text_image:
+        preferred_ids.append("mflux-qwen-image")
+    elif realistic_style and human_subject:
+        preferred_ids.append(registry.JUGGERNAUT_XL_ID)
+    elif complex_prompt:
+        preferred_ids.append("mflux-qwen-image")
+    preferred_ids.append("mflux-z-image-turbo")
+
+    for model_id in preferred_ids:
+        model = candidate(model_id)
+        if model:
+            return model
+    default_model = candidate(data["default_model"])
+    if default_model:
+        return default_model
+    for model in data["models"]:
+        fallback = candidate(model["id"])
+        if fallback:
+            return fallback
+    return registry_call(registry.get_model)
+
+
+def _generation_model(model_id, prompt):
+    if model_id != "auto":
+        return registry_call(registry.get_model, model_id)
+    return _auto_generation_model(prompt)
+
+
 def _generate_result(
     request,
     *,
@@ -226,7 +291,7 @@ def _generate_result(
 
     if request.width % 16 or request.height % 16:
         raise HTTPException(422, "width and height must be divisible by 16")
-    model = registry_call(registry.get_model, request.model)
+    model = _generation_model(request.model, request.prompt)
     params = request.model_dump()
     params["steps"] = request.steps if request.steps is not None else model["default_steps"]
     params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]

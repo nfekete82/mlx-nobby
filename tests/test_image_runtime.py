@@ -101,6 +101,240 @@ class ImageRuntimeTests(unittest.TestCase):
             registry.BUILTIN_DEFAULTS_REVISION,
         )
 
+    def test_juggernaut_registry_entry_is_local_and_opt_in(self):
+        model = registry.get_model(
+            registry.JUGGERNAUT_XL_ID,
+            require_enabled=False,
+        )
+        self.assertEqual(model["provider"], "sdxl")
+        self.assertEqual(model["model_family"], "sdxl")
+        self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
+        self.assertFalse(model["enabled"])
+        self.assertIn("photorealistic", model["capabilities"])
+
+    def test_sdxl_checkpoint_resolution_is_local_and_unambiguous(self):
+        model_root = self.root / "JuggernautXL"
+        model_root.mkdir()
+        checkpoint = model_root / "juggernaut.safetensors"
+        model = registry.get_model(
+            registry.JUGGERNAUT_XL_ID,
+            require_enabled=False,
+        ) | {"local_path": str(model_root)}
+
+        with patch.object(registry, "MODEL_ROOTS", (self.root,)):
+            with self.assertRaisesRegex(RuntimeError, "genau einen"):
+                providers.sdxl_files(model)
+            checkpoint.write_bytes(b"checkpoint")
+            with self.assertRaisesRegex(RuntimeError, "Konfiguration fehlt"):
+                providers.sdxl_files(model)
+            config = model_root / "config"
+            config.mkdir()
+            (config / "model_index.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(
+                providers.sdxl_files(model),
+                (checkpoint, config),
+            )
+            (model_root / "second.safetensors").write_bytes(b"checkpoint")
+            with self.assertRaisesRegex(RuntimeError, "genau einen"):
+                providers.sdxl_files(model)
+
+        with self.assertRaises(ValueError):
+            registry.ImageModel(**(model | {"local_path": "/etc/model.safetensors"}))
+
+    def test_sdxl_provider_uses_the_existing_isolated_process_contract(self):
+        model = registry.get_model(
+            registry.JUGGERNAUT_XL_ID,
+            require_enabled=False,
+        )
+        checkpoint = self.root / "juggernaut.safetensors"
+        config = self.root / "config"
+        output = self.root / "output.png"
+        Image.new("RGB", (512, 512), "white").save(output)
+        process = Mock(pid=4321, returncode=0)
+        process.poll.return_value = 0
+        process.communicate.return_value = (None, None)
+        params = {
+            "prompt": "Studio portrait",
+            "negative_prompt": "blurry",
+            "width": 512,
+            "height": 512,
+            "steps": 12,
+            "guidance": 6.5,
+            "seed": 42,
+        }
+
+        with patch.object(
+            providers,
+            "availability",
+            return_value=(True, "ready"),
+        ), patch.object(
+            providers,
+            "sdxl_files",
+            return_value=(checkpoint, config),
+        ), patch.object(
+            providers.subprocess,
+            "Popen",
+            return_value=process,
+        ) as popen:
+            providers.run_provider(model, params, output)
+
+        self.assertTrue(popen.call_args.args[0][1].endswith("sdxl_worker.py"))
+        self.assertFalse(popen.call_args.kwargs["shell"])
+        payload = json.loads(process.communicate.call_args.kwargs["input"])
+        self.assertEqual(payload["checkpoint"], str(checkpoint))
+        self.assertEqual(payload["config"], str(config))
+        self.assertEqual(payload["params"]["negative_prompt"], "blurry")
+
+    def test_explicit_sdxl_generation_preserves_parameters(self):
+        registry.update_model(registry.JUGGERNAUT_XL_ID, {"enabled": True})
+        calls = []
+
+        def generate(model, params, output, **_options):
+            calls.append((model, params.copy()))
+            Image.new("RGB", (512, 512), "white").save(output)
+
+        with patch.object(service, "run_provider", side_effect=generate):
+            response = self.client.post(
+                "/generate",
+                json={
+                    "prompt": "Studio portrait",
+                    "negative_prompt": "blurry",
+                    "model": registry.JUGGERNAUT_XL_ID,
+                    "steps": 12,
+                    "guidance": 6.5,
+                    "seed": 42,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["provider"], "sdxl")
+        self.assertEqual(calls[0][0]["id"], registry.JUGGERNAUT_XL_ID)
+        self.assertEqual(calls[0][1]["negative_prompt"], "blurry")
+        self.assertEqual(calls[0][1]["steps"], 12)
+        self.assertEqual(calls[0][1]["guidance"], 6.5)
+
+    def test_agent_forwards_sdxl_negative_prompt_option(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A studio portrait",
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Erstelle ein Studioporträt",
+                    image_options={"negative_prompt": "blurry"},
+                )
+            )
+        self.assertEqual(payload["negative_prompt"], "blurry")
+
+    def test_auto_generation_uses_capabilities_and_availability(self):
+        for model_id in (
+            registry.JUGGERNAUT_XL_ID,
+            "mflux-qwen-image",
+            "mflux-z-image-turbo",
+        ):
+            registry.update_model(model_id, {"enabled": True})
+
+        with patch.object(service, "availability", return_value=(True, "ready")):
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A photorealistic studio portrait of a woman",
+                )["id"],
+                registry.JUGGERNAUT_XL_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A realistic person in natural light",
+                )["id"],
+                registry.JUGGERNAUT_XL_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A poster with clear typography and text",
+                )["id"],
+                "mflux-qwen-image",
+            )
+            self.assertEqual(
+                service._generation_model("auto", "A red apple")["id"],
+                "mflux-z-image-turbo",
+            )
+            self.assertEqual(
+                service._generation_model(
+                    "mflux-qwen-image",
+                    "A photorealistic portrait",
+                )["id"],
+                "mflux-qwen-image",
+            )
+
+        def without_juggernaut(model):
+            return (model["id"] != registry.JUGGERNAUT_XL_ID, "test")
+
+        with patch.object(service, "availability", side_effect=without_juggernaut):
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A photorealistic studio portrait of a woman",
+                )["id"],
+                "mflux-z-image-turbo",
+            )
+
+        def without_qwen(model):
+            return (model["id"] != "mflux-qwen-image", "test")
+
+        with patch.object(service, "availability", side_effect=without_qwen):
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A typography poster with text",
+                )["id"],
+                "mflux-z-image-turbo",
+            )
+
+        def without_turbo(model):
+            return (model["id"] != "mflux-z-image-turbo", "test")
+
+        with patch.object(service, "availability", side_effect=without_turbo):
+            self.assertEqual(
+                service._generation_model("auto", "A generic landscape")["id"],
+                registry.LEGACY_ID,
+            )
+
+        registry.update_model("mflux-z-image-turbo", {"enabled": False})
+        with patch.object(service, "availability", return_value=(True, "ready")):
+            self.assertEqual(
+                service._generation_model("auto", "A generic landscape")["id"],
+                registry.LEGACY_ID,
+            )
+
+    def test_agent_preserves_auto_image_role_for_service_routing(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A photorealistic portrait of an adult woman",
+        ), patch.object(
+            agent,
+            "load_model_roles",
+            return_value={"image": "auto"},
+        ), patch.object(
+            agent.image_api,
+            "request",
+            return_value={"id": "a" * 24, "status": "queued"},
+        ) as image_request:
+            agent._start_chat_image_job(
+                "image_generate",
+                agent.ChatActionRequest(
+                    prompt="Create a photorealistic portrait",
+                ),
+            )
+
+        self.assertEqual(
+            image_request.call_args.args[2]["payload"]["model"],
+            "auto",
+        )
+
     def test_existing_registry_migrates_new_builtin_families(self):
         legacy = registry.initial_registry()
         legacy["models"] = [legacy["models"][0]]

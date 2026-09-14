@@ -7267,7 +7267,7 @@ def _image_generate_payload(request):
         "height": 512,
     }
     if request.image_options:
-        if set(request.image_options) - {"prompt", "model", "width", "height", "steps", "guidance", "seed"}:
+        if set(request.image_options) - {"prompt", "negative_prompt", "model", "width", "height", "steps", "guidance", "seed"}:
             raise HTTPException(422, "Unbekannte Bildparameter")
         payload.update(request.image_options)
     return payload

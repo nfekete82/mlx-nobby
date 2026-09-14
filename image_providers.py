@@ -1,4 +1,5 @@
 """Fixed provider adapters. Each generation owns one short-lived GPU process."""
+import importlib.util
 import json
 import os
 import re
@@ -202,6 +203,16 @@ def repository_is_available(repository):
 
 
 def availability(model):
+    if model["provider"] == "sdxl":
+        if not importlib.util.find_spec("diffusers"):
+            return False, "Diffusers ist in der Image-Umgebung nicht installiert"
+        if not importlib.util.find_spec("torch"):
+            return False, "PyTorch ist in der Image-Umgebung nicht installiert"
+        try:
+            sdxl_files(model)
+        except (RuntimeError, ValueError) as exc:
+            return False, str(exc)
+        return True, "Lokaler SDXL-Checkpoint und lokale Runtime-Konfiguration vorhanden"
     if model["provider"] == "mflux":
         command = MFLUX_BIN / FAMILIES[model["model_family"]][0]
         if not command.is_file() or not os.access(command, os.X_OK):
@@ -224,6 +235,27 @@ def availability(model):
         if lora.get("repository") and not repository_is_available(lora["repository"]):
             return False, "Eine aktivierte LoRA ist nicht im lokalen Hugging-Face-Cache vorhanden"
     return True, "Lokale Gewichte vorhanden; Provider-Kompatibilität wird bei Generierung geprüft"
+
+
+def sdxl_files(model):
+    """Resolve one local SDXL checkpoint and its offline Diffusers config."""
+    root = model_directory(model)
+    if not root:
+        raise RuntimeError("Lokaler SDXL-Modellpfad fehlt")
+    if root.is_file():
+        checkpoints = [root] if root.suffix.lower() == ".safetensors" else []
+        directory = root.parent
+    else:
+        directory = root
+        checkpoints = sorted(directory.glob("*.safetensors")) if directory.is_dir() else []
+    if len(checkpoints) != 1:
+        raise RuntimeError("SDXL benötigt genau einen lokalen .safetensors-Checkpoint")
+    config = directory / "config"
+    if not (config / "model_index.json").is_file():
+        raise RuntimeError("Lokale SDXL-Diffusers-Konfiguration fehlt unter config/model_index.json")
+    validate_path(str(checkpoints[0]))
+    validate_path(str(config))
+    return checkpoints[0], config
 
 
 def mflux_command(model, params, output):
@@ -409,6 +441,15 @@ def run_provider(
     if model["provider"] == "diffusionkit":
         command = [sys.executable, str(Path(__file__).with_name("image_worker.py"))]
         worker_input = json.dumps({"params": params, "output": str(output), "repository": model["repository"]})
+    elif model["provider"] == "sdxl":
+        checkpoint, config = sdxl_files(model)
+        command = [sys.executable, str(Path(__file__).with_name("sdxl_worker.py"))]
+        worker_input = json.dumps({
+            "params": params,
+            "output": str(output),
+            "checkpoint": str(checkpoint),
+            "config": str(config),
+        })
     else:
         command = mflux_command(model, params, output)
         worker_input = None
