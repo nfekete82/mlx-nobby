@@ -1433,20 +1433,7 @@ const imageFiles =
             )
         );
 
-    if (
-        imageFiles.length &&
-        !explicitImageEditRequest &&
-        !await MLXChatRuntime.ensureVisionSupport()
-    ) {
-        alert(
-            gt(
-            'vision_not_supported',
-            'The active model does not support image analysis. Please select a VLM/vision model first.'
-        )
-        );
 
-        return;
-    }
 
     let documentPageContext = '';
     let documentRagContext = '';
@@ -1707,15 +1694,7 @@ const imageFiles =
         refersToExistingImage &&
         !explicitImageEditRequest
     ) {
-        if (!await MLXChatRuntime.ensureVisionSupport()) {
-            alert(
-                gt(
-                'vision_not_supported',
-                'The active model does not support image analysis. Please select a VLM/vision model first.'
-            )
-            );
-            return;
-        }
+
 
         try {
             const dataUrl =

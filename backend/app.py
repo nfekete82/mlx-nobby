@@ -728,9 +728,16 @@ def mlx_chat_stream(request: ChatRequest):
         for message in messages
     )
 
-    # Keep vision on the existing direct MLX path for now. The vision role
-    # will be connected separately.
+    # Vision uses the dedicated logical vision role. The active chat model
+    # may remain text-only; the agent switches to the configured VLM here.
     if has_vision:
+
+        agent_json_request(
+            "POST",
+            "/api/runtime/ensure-role/vision",
+            {},
+            timeout=300,
+        )
 
         status = get_json(
             f"{AGENT_URL}/api/status",
