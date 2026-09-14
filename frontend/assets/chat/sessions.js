@@ -452,6 +452,11 @@ function sessionT(key, fallback = '', variables = {}) {
             }
         }
 
+        // Clear transient files/images as well. They are kept outside the
+        // session and can otherwise make the next prompt look like an
+        // image-edit request after the conversation was cleared.
+        window.MLXChatAttachments?.clearAttachments?.();
+
         session.title = sessionT(
             'sessions.new_chat',
             'New chat'
