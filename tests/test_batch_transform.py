@@ -986,5 +986,178 @@ class BatchTransformTests(unittest.TestCase):
             )
 
 
+    def test_cancelled_batch_job_is_not_overwritten_by_completion(self):
+        data = [
+            {
+                "index": 1,
+                "text": "Bitte ändere diesen Text " + "x" * 2200,
+            }
+        ]
+
+        with self.batch_environment() as root:
+            source = root / "cancel-complete-race.json"
+            source.write_text(
+                json.dumps(data),
+                encoding="utf-8",
+            )
+
+            job = self.create_transform_job(
+                source,
+                "Formuliere den Text um",
+                chunk_tokens=500,
+            )
+
+            original_atomic_write_with = agent.atomic_write_with
+            cancellation_injected = False
+
+            def atomic_write_then_cancel(path, writer):
+                nonlocal cancellation_injected
+
+                result = original_atomic_write_with(
+                    path,
+                    writer,
+                )
+
+                if (
+                    not cancellation_injected
+                    and Path(path) == Path(job["output_path"])
+                ):
+                    cancellation_injected = True
+
+                    jobs = agent.load_batch_jobs()
+                    current = jobs[job["id"]]
+
+                    self.assertEqual(
+                        current["status"],
+                        "running",
+                    )
+
+                    current["status"] = "cancelled"
+                    current["finished_at"] = 123456789.0
+                    jobs[job["id"]] = current
+                    agent.save_batch_jobs(jobs)
+
+                return result
+
+            with mock.patch.object(
+                agent,
+                "load_config",
+                return_value={
+                    "MODEL": "test",
+                    "PORT": 8000,
+                },
+            ), mock.patch.object(
+                agent.urllib.request,
+                "urlopen",
+                side_effect=self.echo_mlx_response,
+            ), mock.patch.object(
+                agent,
+                "atomic_write_with",
+                side_effect=atomic_write_then_cancel,
+            ):
+                agent.run_batch_transform_job(
+                    job["id"]
+                )
+
+            self.assertTrue(
+                cancellation_injected,
+                "test must inject cancellation after final output write",
+            )
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(
+                stored["status"],
+                "cancelled",
+                "worker completion must not overwrite cancellation",
+            )
+
+
+    def test_cancelled_batch_job_is_not_overwritten_by_failure(self):
+        data = [
+            {
+                "index": 1,
+                "text": "Bitte ändere diesen Text " + "x" * 2200,
+            }
+        ]
+
+        with self.batch_environment() as root:
+            source = root / "cancel-failure-race.json"
+
+            source.write_text(
+                json.dumps(data),
+                encoding="utf-8",
+            )
+
+            job = self.create_transform_job(
+                source,
+                "Formuliere den Text um",
+                chunk_tokens=500,
+            )
+
+            cancellation_injected = False
+
+            def failing_atomic_write(path, writer):
+                nonlocal cancellation_injected
+
+                if Path(path) == Path(job["output_path"]):
+                    jobs = agent.load_batch_jobs()
+                    current = jobs[job["id"]]
+
+                    self.assertEqual(
+                        current["status"],
+                        "running",
+                    )
+
+                    current["status"] = "cancelled"
+                    current["finished_at"] = 123456789.0
+
+                    jobs[job["id"]] = current
+                    agent.save_batch_jobs(jobs)
+
+                    cancellation_injected = True
+
+                    raise OSError(
+                        "simulated final output failure"
+                    )
+
+                return agent.batch_state.atomic_write_with(
+                    path,
+                    writer,
+                )
+
+            with mock.patch.object(
+                agent,
+                "load_config",
+                return_value={
+                    "MODEL": "test",
+                    "PORT": 8000,
+                },
+            ), mock.patch.object(
+                agent.urllib.request,
+                "urlopen",
+                side_effect=self.echo_mlx_response,
+            ), mock.patch.object(
+                agent,
+                "atomic_write_with",
+                side_effect=failing_atomic_write,
+            ):
+                agent.run_batch_transform_job(
+                    job["id"]
+                )
+
+            self.assertTrue(
+                cancellation_injected,
+                "test must inject cancellation before worker failure",
+            )
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(
+                stored["status"],
+                "cancelled",
+                "worker failure must not overwrite cancellation",
+            )
+
 if __name__ == "__main__":
     unittest.main()

@@ -13440,32 +13440,55 @@ Keine Markdown-Codeblöcke.
 
         with BATCH_LOCK:
             jobs = load_batch_jobs()
+
             if job_id in jobs:
-                jobs[job_id]["output_name"] = output_path.name
-                jobs[job_id]["output_size"] = output_path.stat().st_size
-                jobs[job_id]["output_mime_type"] = "application/json" if output_path.suffix.lower() == ".json" else "text/plain"
-                operations = set(instruction_plan.get("operations", []))
-                if operations.intersection({"replace_emails", "replace_phone_numbers", "replace_names", "replace_addresses"}):
-                    jobs[job_id]["pii_audit"] = deterministic_pii_audit(output_text)
-            jobs[job_id]["status"] = "completed"
-            jobs[job_id]["finished_at"] = time.time()
-            save_batch_jobs(jobs)
+                current_job = jobs[job_id]
+
+                if current_job.get("status") == "cancelled":
+                    return
+
+                current_job["output_name"] = output_path.name
+                current_job["output_size"] = output_path.stat().st_size
+                current_job["output_mime_type"] = (
+                    "application/json"
+                    if output_path.suffix.lower() == ".json"
+                    else "text/plain"
+                )
+
+                operations = set(
+                    instruction_plan.get("operations", [])
+                )
+
+                if operations.intersection({
+                    "replace_emails",
+                    "replace_phone_numbers",
+                    "replace_names",
+                    "replace_addresses",
+                }):
+                    current_job["pii_audit"] = (
+                        deterministic_pii_audit(output_text)
+                    )
+
+                current_job["status"] = "completed"
+                current_job["finished_at"] = time.time()
+                save_batch_jobs(jobs)
 
     except Exception as exc:
         with BATCH_LOCK:
             jobs = load_batch_jobs()
 
             if job_id in jobs:
-                jobs[job_id]["status"] = "failed"
-                jobs[job_id]["error"] = str(exc)
-                jobs[job_id]["finished_at"] = time.time()
-                jobs[job_id]["current_chunk"] = None
-                jobs[job_id]["current_chunk_started_at"] = None
-                jobs[job_id]["waiting_for_user"] = False
-                jobs[job_id]["eta_seconds"] = None
+                current_job = jobs[job_id]
 
-                save_batch_jobs(jobs)
-
+                if current_job.get("status") != "cancelled":
+                    current_job["status"] = "failed"
+                    current_job["error"] = str(exc)
+                    current_job["finished_at"] = time.time()
+                    current_job["current_chunk"] = None
+                    current_job["current_chunk_started_at"] = None
+                    current_job["waiting_for_user"] = False
+                    current_job["eta_seconds"] = None
+                    save_batch_jobs(jobs)
     finally:
         with BATCH_LOCK:
             jobs = load_batch_jobs()
