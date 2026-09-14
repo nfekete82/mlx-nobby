@@ -21,6 +21,57 @@ const runtime = {
     updateSendButton() {},
 };
 const sessions = {
+    currentSession: () => session,
+
+    runtimeRevision(targetSession) {
+        const value = Number(
+            targetSession?._runtime_revision
+        );
+
+        return (
+            Number.isSafeInteger(value) &&
+            value >= 0
+        )
+            ? value
+            : 0;
+    },
+
+    bumpRuntimeRevision(targetSession) {
+        if (!targetSession) {
+            return 0;
+        }
+
+        const next =
+            sessions.runtimeRevision(
+                targetSession
+            ) + 1;
+
+        Object.defineProperty(
+            targetSession,
+            '_runtime_revision',
+            {
+                value: next,
+                writable: true,
+                configurable: true,
+                enumerable: false
+            }
+        );
+
+        return next;
+    },
+
+    runtimeRevisionIsCurrent(
+        targetSession,
+        revision
+    ) {
+        return (
+            targetSession === session &&
+            sessions.runtimeRevision(
+                targetSession
+            ) === revision
+        );
+    },
+
     saveSessions() {},
 };
 const rendering = {
@@ -184,6 +235,77 @@ assert.equal(assistant.sources.length, 1);
 assert.equal(assistant.sources[0].title, 'Source');
 assert.equal(assistant.model_metrics.trace_id, 'trace-turn-001');
 assert.equal(assistant.model_metrics.model_calls_in_turn, 1);
+
+
+// Regression: stale generation after chat reset must never restore content.
+{
+    let resolveResponse;
+    let responseBodyCancelled = false;
+
+    context.fetch = async () =>
+        new Promise(resolve => {
+            resolveResponse = resolve;
+        });
+
+    session.messages = [
+        {
+            role: 'user',
+            content: 'Old request',
+            trace_id: 'trace-stale-reset',
+        },
+    ];
+
+    const generationPromise =
+        generation.generateAssistant(session);
+
+    // Allow generateAssistant() to create its pending assistant message
+    // and reach the unresolved fetch().
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(
+        session.messages.length,
+        2,
+        'generation should have created a pending assistant message',
+    );
+
+    assert.equal(
+        session.messages.at(-1).role,
+        'assistant',
+    );
+
+    // Simulate "Chat leeren": invalidate all work from the old runtime
+    // revision and remove the conversation contents.
+    sessions.bumpRuntimeRevision(session);
+    session.messages = [];
+
+    resolveResponse({
+        ok: true,
+        body: {
+            async cancel() {
+                responseBodyCancelled = true;
+            },
+            getReader() {
+                throw new Error(
+                    'stale response must never open its SSE reader'
+                );
+            },
+        },
+    });
+
+    await generationPromise;
+
+    assert.deepEqual(
+        session.messages,
+        [],
+        'stale generation must not restore messages after chat reset',
+    );
+
+    assert.equal(
+        responseBodyCancelled,
+        true,
+        'stale response body should be cancelled',
+    );
+}
 
 console.log(
     'SSE finalization: final metrics, arbitrary chunks, Unicode, and event behavior passed.',

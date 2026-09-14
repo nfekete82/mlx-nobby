@@ -821,6 +821,19 @@ if (
 return;
     }
 
+    const runtimeRevision =
+        MLXChatSessions.runtimeRevision(session);
+
+    const generationIsCurrent = () =>
+        MLXChatSessions.runtimeRevisionIsCurrent(
+            session,
+            runtimeRevision
+        );
+
+    if (!generationIsCurrent()) {
+        return;
+    }
+
     const generationSettings =
         MLXChatRuntime
             .getSessionGenerationSettings();
@@ -910,6 +923,14 @@ try {
             }
         );
 
+        if (!generationIsCurrent()) {
+            try {
+                await response.body?.cancel?.();
+            } catch (_error) {}
+
+            return;
+        }
+
         if (!response.ok) {
             const error =
                 await response.text();
@@ -921,6 +942,13 @@ try {
             response.body.getReader();
 
         for await (const event of readSseEvents(reader)) {
+                if (!generationIsCurrent()) {
+                    try {
+                        await reader.cancel();
+                    } catch (_error) {}
+
+                    return;
+                }
 
                 if (
                     event.startsWith(

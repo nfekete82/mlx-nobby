@@ -282,6 +282,56 @@ context.MLXChatRuntime = {
 let activeSession = session;
 context.MLXChatSessions = {
     currentSession: () => activeSession,
+
+    runtimeRevision(targetSession) {
+        const value = Number(
+            targetSession?._runtime_revision
+        );
+
+        return (
+            Number.isSafeInteger(value) &&
+            value >= 0
+        )
+            ? value
+            : 0;
+    },
+
+    bumpRuntimeRevision(targetSession) {
+        if (!targetSession) {
+            return 0;
+        }
+
+        const next =
+            context.MLXChatSessions.runtimeRevision(
+                targetSession
+            ) + 1;
+
+        Object.defineProperty(
+            targetSession,
+            '_runtime_revision',
+            {
+                value: next,
+                writable: true,
+                configurable: true,
+                enumerable: false
+            }
+        );
+
+        return next;
+    },
+
+    runtimeRevisionIsCurrent(
+        targetSession,
+        revision
+    ) {
+        return (
+            targetSession === activeSession &&
+            context.MLXChatSessions.runtimeRevision(
+                targetSession
+            ) === revision
+        );
+    },
+
     updateTitle() {},
     saveSessions() {},
 };

@@ -313,6 +313,42 @@ function sessionT(key, fallback = '', variables = {}) {
         );
     }
 
+    function runtimeRevision(session) {
+        const value = Number(session?._runtime_revision);
+        return Number.isSafeInteger(value) && value >= 0
+            ? value
+            : 0;
+    }
+
+    function bumpRuntimeRevision(session) {
+        if (!session) {
+            return 0;
+        }
+
+        const next = runtimeRevision(session) + 1;
+
+        Object.defineProperty(
+            session,
+            '_runtime_revision',
+            {
+                value: next,
+                writable: true,
+                configurable: true,
+                enumerable: false
+            }
+        );
+
+        return next;
+    }
+
+    function runtimeRevisionIsCurrent(session, revision) {
+        return (
+            Boolean(session) &&
+            currentSession() === session &&
+            runtimeRevision(session) === revision
+        );
+    }
+
     function createSession() {
         const session = {
             id: uid(),
@@ -438,6 +474,10 @@ function sessionT(key, fallback = '', variables = {}) {
                 return;
             }
         }
+
+        // Invalidate every async operation that started before this reset.
+        // The revision is runtime-only and intentionally not persisted.
+        bumpRuntimeRevision(session);
 
         // Stop active runtime work before removing message/job state.
         await window.MLXChatGeneration?.resetSessionRuntime?.(session);
@@ -647,6 +687,9 @@ function sessionT(key, fallback = '', variables = {}) {
         syncWithServer: syncWithServer,
         saveSessions: saveSessions,
         currentSession: currentSession,
+        runtimeRevision: runtimeRevision,
+        bumpRuntimeRevision: bumpRuntimeRevision,
+        runtimeRevisionIsCurrent: runtimeRevisionIsCurrent,
         createSession: createSession,
         renameSession: renameSession,
         deleteSession: deleteSession,
