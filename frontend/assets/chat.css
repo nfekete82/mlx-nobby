@@ -7223,3 +7223,125 @@ body.mlx-empty-chat .composer-disclaimer {
         max-width: 34vw;
     }
 }
+
+
+/* ==========================================================
+   MLX Nobby lifecycle / power menu
+   ========================================================== */
+
+.power-menu-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.power-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 80;
+
+    min-width: 220px;
+    padding: 6px;
+
+    border: 1px solid var(--border);
+    border-radius: 10px;
+
+    background: var(--panel);
+    box-shadow:
+        0 12px 32px rgba(0, 0, 0, .24);
+}
+
+.power-menu[hidden] {
+    display: none;
+}
+
+.power-menu button {
+    display: block;
+    width: 100%;
+
+    padding: 9px 10px;
+
+    border: 0;
+    border-radius: 7px;
+
+    background: transparent;
+    color: var(--text);
+
+    text-align: left;
+    font: inherit;
+
+    cursor: pointer;
+}
+
+.power-menu button:hover {
+    background: var(--panel2);
+}
+
+#powerButton:disabled {
+    cursor: wait;
+    opacity: .6;
+}
+
+
+/* ==========================================================
+   Lifecycle working state inside existing app modal
+   ========================================================== */
+
+.app-modal-busy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+
+    min-height: 120px;
+    padding: 18px 0 8px;
+}
+
+.app-modal-busy[hidden] {
+    display: none;
+}
+
+.app-modal-spinner {
+    width: 30px;
+    height: 30px;
+
+    border: 3px solid var(--border);
+    border-top-color: var(--text);
+
+    border-radius: 50%;
+
+    animation:
+        mlx-nobby-modal-spin .8s linear infinite;
+}
+
+.app-modal-busy-text {
+    color: var(--muted);
+    font-size: .92rem;
+    text-align: center;
+}
+
+@keyframes mlx-nobby-modal-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+
+/* Lifecycle actions while restart/rebuild is running */
+
+.power-menu button:disabled,
+#powerButton:disabled {
+    opacity: .38;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+
+/*
+ * Lifecycle modal:
+ * hidden must always win over .app-modal-actions display rules.
+ */
+.app-modal-actions[hidden] {
+    display: none !important;
+}

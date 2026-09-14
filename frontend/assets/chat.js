@@ -2601,3 +2601,296 @@ input.focus();
 document.addEventListener('DOMContentLoaded', () => {
     window.MLXI18n?.init();
 });
+
+
+// ==========================================================
+// MLX Nobby lifecycle controls
+// ==========================================================
+
+const powerButton = document.getElementById('powerButton');
+const powerMenu = document.getElementById('powerMenu');
+
+function closePowerMenu() {
+    if (!powerButton || !powerMenu) return;
+
+    powerMenu.hidden = true;
+    powerButton.setAttribute(
+        'aria-expanded',
+        'false'
+    );
+}
+
+function openPowerMenu() {
+    if (!powerButton || !powerMenu) return;
+
+    powerMenu.hidden = false;
+    powerButton.setAttribute(
+        'aria-expanded',
+        'true'
+    );
+}
+
+async function waitForLifecycleRecovery(action) {
+    const recoveryUrl =
+        action === 'rebuild-all'
+            ? '/api/health'
+            : '/api/mlx/system';
+
+    const deadline = Date.now() + 180000;
+    let sawOffline = false;
+
+    // Give the detached helper a moment to start.
+    await new Promise(
+        resolve => setTimeout(resolve, 800)
+    );
+
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(
+                recoveryUrl + '?_=' + Date.now(),
+                {
+                    cache: 'no-store',
+                }
+            );
+
+            if (!response.ok) {
+                sawOffline = true;
+
+            } else if (sawOffline) {
+                window.location.reload();
+                return;
+            }
+
+        } catch (error) {
+            sawOffline = true;
+        }
+
+        await new Promise(
+            resolve => setTimeout(resolve, 750)
+        );
+    }
+
+    // Last-resort recovery if the expected transition could not
+    // be observed but the action itself was accepted.
+    window.location.reload();
+}
+
+function showLifecycleBusyModal(title, message) {
+    const modal =
+        document.getElementById('confirmModal');
+
+    const titleElement =
+        document.getElementById('confirmModalTitle');
+
+    const messageElement =
+        document.getElementById('confirmModalMessage');
+
+    const actions =
+        modal?.querySelector('.app-modal-actions');
+
+    const busy =
+        document.getElementById('confirmModalBusy');
+
+    const busyText =
+        document.getElementById('confirmModalBusyText');
+
+    if (
+        !modal ||
+        !titleElement ||
+        !messageElement ||
+        !actions ||
+        !busy ||
+        !busyText
+    ) {
+        return;
+    }
+
+    titleElement.textContent = title;
+    messageElement.hidden = true;
+
+    actions.hidden = true;
+
+    busy.hidden = false;
+    busyText.textContent = message;
+
+    modal.hidden = false;
+}
+
+
+function setLifecycleActionsDisabled(disabled) {
+    document
+        .querySelectorAll(
+            '#powerMenu [data-lifecycle-action]'
+        )
+        .forEach(button => {
+            button.disabled = disabled;
+            button.setAttribute(
+                'aria-disabled',
+                String(disabled)
+            );
+        });
+
+    if (powerButton) {
+        powerButton.disabled = disabled;
+    }
+}
+
+
+async function runLifecycleAction(action) {
+    const config = {
+        'restart-all': {
+            title: 'Dienste neu starten',
+            confirm:
+                'Alle MLX-Nobby-Dienste wirklich neu starten?',
+            confirmLabel:
+                'Neu starten',
+            busy:
+                'MLX Nobby wird neu gestartet …',
+        },
+
+        'rebuild-all': {
+            title: 'Alles neu bauen',
+            confirm:
+                'MLX Nobby vollständig neu bauen und anschließend alle Dienste neu starten?',
+            confirmLabel:
+                'Neu bauen',
+            busy:
+                'MLX Nobby wird neu gebaut …',
+        },
+    };
+
+    const current = config[action];
+
+    if (!current) {
+        return;
+    }
+
+    const confirmed = await showConfirmModal({
+        title: current.title,
+        message: current.confirm,
+        confirmLabel: current.confirmLabel,
+        cancelLabel: 'Abbrechen',
+    });
+
+    if (!confirmed) {
+        return;
+    }
+
+    closePowerMenu();
+
+    showLifecycleBusyModal(
+        current.title,
+        current.busy
+    );
+
+    setLifecycleActionsDisabled(true);
+
+    try {
+        const response = await fetch(
+            '/api/mlx/system/' + action,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: '{}',
+            }
+        );
+
+        if (!response.ok) {
+            const text = await response.text();
+
+            throw new Error(
+                text || ('HTTP ' + response.status)
+            );
+        }
+
+        waitForLifecycleRecovery(action);
+
+    } catch (error) {
+        const modal =
+            document.getElementById('confirmModal');
+
+        const messageElement =
+            document.getElementById('confirmModalMessage');
+
+        const actions =
+            modal?.querySelector('.app-modal-actions');
+
+        const busy =
+            document.getElementById('confirmModalBusy');
+
+        if (busy) {
+            busy.hidden = true;
+        }
+
+        if (messageElement) {
+            messageElement.hidden = false;
+            messageElement.textContent =
+                'Systemaktion fehlgeschlagen: ' +
+                String(error.message || error);
+        }
+
+        if (actions) {
+            actions.hidden = false;
+        }
+
+        setLifecycleActionsDisabled(false);
+    }
+}
+
+if (powerButton && powerMenu) {
+    powerButton.addEventListener(
+        'click',
+        event => {
+            event.stopPropagation();
+
+            if (powerMenu.hidden) {
+                openPowerMenu();
+            } else {
+                closePowerMenu();
+            }
+        }
+    );
+
+    powerMenu.addEventListener(
+        'click',
+        event => {
+            const button = event.target.closest(
+                '[data-lifecycle-action]'
+            );
+
+            if (!button) return;
+
+            runLifecycleAction(
+                button.dataset.lifecycleAction
+            );
+        }
+    );
+
+    document.addEventListener(
+        'click',
+        event => {
+            if (
+                !powerMenu.hidden &&
+                !powerMenu.contains(event.target) &&
+                event.target !== powerButton
+            ) {
+                closePowerMenu();
+            }
+        }
+    );
+
+    document.addEventListener(
+        'keydown',
+        event => {
+            if (
+                event.key === 'Escape' &&
+                !powerMenu.hidden
+            ) {
+                closePowerMenu();
+                powerButton.focus();
+            }
+        }
+    );
+}

@@ -856,6 +856,55 @@ def create_background_job(command, target=None):
     return job
 
 
+
+def _launch_system_lifecycle_helper(script_name):
+    """Launch a lifecycle helper independently of the agent process."""
+
+    project_root = Path(__file__).resolve().parent.parent
+    script_path = project_root / "scripts" / script_name
+
+    if not script_path.is_file():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lifecycle helper not found: {script_name}",
+        )
+
+    try:
+        subprocess.Popen(
+            [str(script_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=str(project_root),
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lifecycle helper could not be started: {exc}",
+        ) from exc
+
+
+@app.post("/api/system/restart-all", status_code=202)
+def system_restart_all():
+    _launch_system_lifecycle_helper("restart-all.sh")
+
+    return {
+        "status": "accepted",
+        "action": "restart-all",
+    }
+
+
+@app.post("/api/system/rebuild-all", status_code=202)
+def system_rebuild_all():
+    _launch_system_lifecycle_helper("rebuild-all.sh")
+
+    return {
+        "status": "accepted",
+        "action": "rebuild-all",
+    }
+
+
 @app.get("/api/chats")
 def get_chats():
     with CHATS_LOCK:

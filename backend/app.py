@@ -1852,6 +1852,27 @@ def mlx_knowledge_source_delete(source_id: str):
         timeout=30,
     )
 
+
+@app.post("/api/mlx/system/restart-all", status_code=202)
+def mlx_system_restart_all():
+    return agent_json_request(
+        "POST",
+        "/api/system/restart-all",
+        payload={},
+        timeout=10,
+    )
+
+
+@app.post("/api/mlx/system/rebuild-all", status_code=202)
+def mlx_system_rebuild_all():
+    return agent_json_request(
+        "POST",
+        "/api/system/rebuild-all",
+        payload={},
+        timeout=10,
+    )
+
+
 @app.get('/api/mlx/code/workspaces')
 def mlx_code_workspaces(): return agent_json_request('GET','/api/code/workspaces')
 @app.post('/api/mlx/code/workspaces')

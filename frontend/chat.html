@@ -303,12 +303,47 @@
                     class="icon-btn"
                  data-i18n="ui.clear_chat">Chat leeren</button>
 
+
                 <button
                     id="settingsButton"
                     class="icon-btn"
                 >
                     ⚙
                 </button>
+
+                <div class="power-menu-wrap">
+                    <button
+                        id="powerButton"
+                        class="icon-btn"
+                        type="button"
+                        aria-label="Systemaktionen"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        title="Systemaktionen"
+                    >
+                        ⏻
+                    </button>
+
+                    <div
+                        id="powerMenu"
+                        class="power-menu"
+                        hidden
+                    >
+                        <button
+                            type="button"
+                            data-lifecycle-action="restart-all"
+                        >
+                            ↻ Dienste neu starten
+                        </button>
+
+                        <button
+                            type="button"
+                            data-lifecycle-action="rebuild-all"
+                        >
+                            ♻ Alles neu bauen
+                        </button>
+                    </div>
+                </div>
 
             </div>
 
@@ -1186,6 +1221,24 @@
         <p id="confirmModalMessage">
             Möchtest du fortfahren?
         </p>
+
+        <div
+            id="confirmModalBusy"
+            class="app-modal-busy"
+            hidden
+        >
+            <div
+                class="app-modal-spinner"
+                aria-hidden="true"
+            ></div>
+
+            <div
+                id="confirmModalBusyText"
+                class="app-modal-busy-text"
+            >
+                Bitte warten …
+            </div>
+        </div>
 
         <div class="app-modal-actions">
             <button
