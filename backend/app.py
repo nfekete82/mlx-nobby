@@ -963,7 +963,7 @@ def mlx_chat_stream(request: ChatRequest):
 
             results = knowledge_result.get("results") or []
 
-            AUTO_RAG_MIN_SIMILARITY = 0.70
+            AUTO_RAG_MIN_SIMILARITY = 0.78
 
             relevant_results = [
                 item
@@ -1085,6 +1085,14 @@ def mlx_chat_stream(request: ChatRequest):
         rag_sources = []
 
     if rag_sources:
+        RAG_SOURCE_DISPLAY_MIN_SIMILARITY = 0.82
+        rag_sources = [
+            source
+            for source in rag_sources
+            if not isinstance(source.get("similarity"), (int, float))
+            or source["similarity"] >= RAG_SOURCE_DISPLAY_MIN_SIMILARITY
+        ]
+
         scored_sources = [
             source
             for source in rag_sources
