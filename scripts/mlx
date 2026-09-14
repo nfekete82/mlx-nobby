@@ -1470,6 +1470,29 @@ mlx_service_restart() {
 }
 
 
+mlx_service_wait_ready() {
+    local service="$1"
+    local port
+    local timeout="${2:-30}"
+    local attempts
+    local i
+
+    port="$(mlx_service_port "$service")" || return 1
+    attempts=$((timeout * 10))
+
+    for ((i = 1; i <= attempts; i++)); do
+        if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+
+        sleep 0.1
+    done
+
+    echo "✗ $service wurde nicht rechtzeitig bereit (Port $port)"
+    return 1
+}
+
+
 agent_command() {
     local action="${1:-status}"
 
@@ -1524,24 +1547,27 @@ restart_all() {
     echo
     echo "[2/6] Agent"
     mlx_service_restart agent || return 1
+    mlx_service_wait_ready agent 30 || return 1
 
     echo
     echo "[3/6] Router"
     mlx_service_restart router || return 1
+    mlx_service_wait_ready router 30 || return 1
 
     echo
     echo "[4/6] Embeddings"
     mlx_service_restart embeddings || return 1
+    mlx_service_wait_ready embeddings 30 || return 1
 
     echo
     echo "[5/6] Speech"
     mlx_service_restart speech || return 1
+    mlx_service_wait_ready speech 30 || return 1
 
     echo
     echo "[6/6] Images"
     mlx_service_restart images || return 1
-
-    sleep 2
+    mlx_service_wait_ready images 30 || return 1
 
     echo
     services_status
