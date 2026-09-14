@@ -439,11 +439,37 @@ function sessionT(key, fallback = '', variables = {}) {
             }
         }
 
+        // Stop active runtime work before removing message/job state.
+        await window.MLXChatGeneration?.resetSessionRuntime?.(session);
+
+        // Reset the persisted chat on the backend. This also removes
+        // locally generated images referenced by this chat.
+        if (serverReady) {
+            try {
+                const response = await fetch(
+                    '/api/mlx/chats/' +
+                        encodeURIComponent(session.id) +
+                        '/reset',
+                    { method: 'POST' }
+                );
+
+                if (!response.ok) {
+                    console.warn(
+                        'Chat backend reset failed:',
+                        response.status
+                    );
+                }
+            } catch (error) {
+                console.warn(
+                    'Chat backend reset failed:',
+                    error
+                );
+            }
+        }
+
         session.messages = [];
 
         // Clearing a chat must also detach generated-image context.
-        // Otherwise image follow-ups can keep using the previous
-        // workspace artifact even though the conversation is empty.
         if (session.workspace) {
             delete session.workspace.active_artifact_id;
 
@@ -452,9 +478,7 @@ function sessionT(key, fallback = '', variables = {}) {
             }
         }
 
-        // Clear transient files/images as well. They are kept outside the
-        // session and can otherwise make the next prompt look like an
-        // image-edit request after the conversation was cleared.
+        // Clear transient frontend files/images.
         window.MLXChatAttachments?.clearAttachments?.();
 
         session.title = sessionT(

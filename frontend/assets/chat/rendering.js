@@ -524,6 +524,12 @@ function enhanceCodeBlocks(container) {
 
 
 function renderToolCard(message) {
+    if (
+        message?.tool_result?.tool === 'image_generate' &&
+        message?.tool_result?.status === 'completed'
+    ) {
+        return null;
+    }
     const result = message?.tool_result;
 
     if (!result) {
@@ -1638,26 +1644,7 @@ function renderImageArtifactCard(message) {
     image.alt = artifact.prompt || rt('generated_image', 'Generated image');
     image.loading = 'lazy';
 
-    let hoverPreview = null;
 
-    image.addEventListener('mouseenter', () => {
-        if (hoverPreview) return;
-
-        hoverPreview = document.createElement('div');
-        hoverPreview.className = 'image-hover-preview';
-
-        const previewImage = document.createElement('img');
-        previewImage.src = image.src;
-        previewImage.alt = image.alt;
-
-        hoverPreview.appendChild(previewImage);
-        document.body.appendChild(hoverPreview);
-    });
-
-    image.addEventListener('mouseleave', () => {
-        hoverPreview?.remove();
-        hoverPreview = null;
-    });
     const details = document.createElement('div'); details.className = 'batch-chat-details';
     details.textContent = [
         artifact.model,

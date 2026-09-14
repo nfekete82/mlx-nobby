@@ -903,6 +903,50 @@ def delete_chat_images(chat):
     return deleted, failed
 
 
+@app.post("/api/chats/{chat_id}/reset")
+def reset_chat(chat_id: str):
+    """Clear one chat while preserving the chat session itself."""
+
+    path = chat_path(chat_id)
+
+    with CHATS_LOCK:
+        if not path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Chat nicht gefunden",
+            )
+
+        chat = read_chat(chat_id)
+
+        if chat is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Chat konnte vor dem Zurücksetzen nicht gelesen werden",
+            )
+
+        deleted_images, failed_images = delete_chat_images(chat)
+
+        reset = {
+            "id": chat["id"],
+            "title": "New chat",
+            "created": chat["created"],
+            "updated": time.time() * 1000,
+            "messages": [],
+        }
+
+        if chat.get("settings") is not None:
+            reset["settings"] = chat["settings"]
+
+        write_chat(reset)
+
+    return {
+        "reset": chat_id,
+        "deleted_images": deleted_images,
+        "failed_images": failed_images,
+        "chat": reset,
+    }
+
+
 @app.delete("/api/chats/{chat_id}")
 def delete_chat(chat_id: str):
     path = chat_path(chat_id)

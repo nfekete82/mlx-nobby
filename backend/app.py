@@ -1286,6 +1286,18 @@ def mlx_put_chat(chat_id: str, request: dict):
     )
 
 
+@app.post("/api/mlx/chats/{chat_id}/reset")
+def mlx_reset_chat(chat_id: str):
+    return agent_json_request(
+        "POST",
+        "/api/chats/" +
+        urllib.parse.quote(chat_id, safe="") +
+        "/reset",
+        payload={},
+        timeout=30,
+    )
+
+
 @app.delete("/api/mlx/chats/{chat_id}")
 def mlx_delete_chat(chat_id: str):
     return agent_json_request(

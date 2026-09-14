@@ -446,6 +446,31 @@ async function startImageUpscale(source, preset = 'photo-2x') {
         }
 
         const toolResult = await response.json();
+
+        // Ignore a late upscale response after the chat was cleared
+        // or the user switched to another session.
+        if (
+            MLXChatSessions.currentSession() !== session ||
+            !session.messages.includes(pendingMessage)
+        ) {
+            const staleJob = toolResult?.data?.job;
+
+            if (
+                staleJob?.id &&
+                IMAGE_JOB_ID_PATTERN.test(String(staleJob.id)) &&
+                ACTIVE_IMAGE_JOB_STATUSES.has(staleJob.status)
+            ) {
+                fetch(
+                    '/api/mlx/image-jobs/' +
+                        encodeURIComponent(staleJob.id) +
+                        '/cancel',
+                    { method: 'POST' }
+                ).catch(() => {});
+            }
+
+            return false;
+        }
+
         if (toolResult.tool !== 'image_upscale') {
             throw new Error(
                 gt(
@@ -2097,6 +2122,30 @@ const imageFiles =
             if (!actionResponse.ok) throw new Error(await actionResponse.text());
             const toolResult = await actionResponse.json();
 
+            // The request may have finished after "Chat leeren".
+            // Never let an old turn repopulate the fresh conversation.
+            if (
+                MLXChatSessions.currentSession() !== session ||
+                !session.messages.includes(userMessage)
+            ) {
+                const staleJob = toolResult?.data?.job;
+
+                if (
+                    staleJob?.id &&
+                    IMAGE_JOB_ID_PATTERN.test(String(staleJob.id)) &&
+                    ACTIVE_IMAGE_JOB_STATUSES.has(staleJob.status)
+                ) {
+                    fetch(
+                        '/api/mlx/image-jobs/' +
+                            encodeURIComponent(staleJob.id) +
+                            '/cancel',
+                        { method: 'POST' }
+                    ).catch(() => {});
+                }
+
+                return;
+            }
+
             // The semantic router may recognize an image operation even when
             // the frontend fast-path did not. Create the pending image
             // message after routing in that case so queued/running jobs are
@@ -2867,6 +2916,58 @@ function watchImageJob(session, message) {
     return true;
 }
 
+async function resetSessionRuntime(session) {
+    if (!session) {
+        return;
+    }
+
+    // Abort an active text/chat request.
+    try {
+        getAbortController?.()?.abort();
+    } catch (_error) {}
+
+    setAbortController?.(null);
+    setGenerating?.(false);
+
+    // Find every active image job belonging to this session before
+    // deleteMessages() removes the messages containing the job IDs.
+    const jobIds = new Set();
+
+    for (const message of session.messages || []) {
+        const job = message?.image_job;
+
+        if (
+            ACTIVE_IMAGE_JOB_STATUSES.has(job?.status) &&
+            IMAGE_JOB_ID_PATTERN.test(String(job?.id || ''))
+        ) {
+            jobIds.add(job.id);
+        }
+    }
+
+    // Stop browser-side polling immediately.
+    for (const watcher of [...imageJobWatchers.values()]) {
+        if (watcher.session === session) {
+            stopImageJobWatcher(watcher);
+        }
+    }
+
+    // Ask the image service to cancel the actual backend jobs.
+    await Promise.allSettled(
+        [...jobIds].map(jobId =>
+            fetch(
+                '/api/mlx/image-jobs/' +
+                    encodeURIComponent(jobId) +
+                    '/cancel',
+                { method: 'POST' }
+            )
+        )
+    );
+
+    window.MLXChatRendering?.syncImageJobUiTimer?.();
+    MLXChatRuntime?.updateSendButton?.();
+}
+
+
 function resumeImageJobsForSession(session) {
     for (const watcher of imageJobWatchers.values()) {
         if (watcher.session !== session) {
@@ -2991,6 +3092,7 @@ function watchBatchJob(session, jobId) {
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
         isWatchingImageJob: isWatchingImageJob,
+resetSessionRuntime: resetSessionRuntime,
         resumeImageJobsForSession: resumeImageJobsForSession,
         __test: {
             buildApiMessages: buildApiMessages,
