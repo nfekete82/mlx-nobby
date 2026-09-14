@@ -4086,10 +4086,20 @@ _IMAGE_EDIT_MODIFIER_PATTERN = re.compile(
 )
 
 _IMAGE_EDIT_FOLLOWUP_PATTERN = re.compile(
-    r"^\s*(?:und\s+)?(?:jetzt|nun|noch|then|now)\b.*\b(?:"
+    r"^\s*"
+    r"(?:(?:und\s+)?(?:jetzt|nun|noch|then|now)\b.*)?"
+    r"(?:bitte\s+)?"
+    r"(?:(?:mehr|etwas|ein\s+bisschen|more|a\s+bit)\s+)?"
+    r"(?:"
+    r"ganzkörper|ganzkoerper|full[ -]?body|"
     r"dunkler|heller|wärmer|waermer|kälter|kaelter|"
-    r"realistischer|unscharf|schärfer|schaerfer|"
-    r"darker|lighter|warmer|cooler|more realistic|blurrier|sharper"
+    r"realistischer|jünger|juenger|älter|aelter|"
+    r"unscharf|schärfer|schaerfer|"
+    r"weiter\s+(?:raus|weg)|näher|naeher|"
+    r"länger|laenger|kürzer|kuerzer|"
+    r"darker|lighter|warmer|cooler|more realistic|"
+    r"younger|older|blurrier|sharper|"
+    r"zoom(?:ed)?\s+out|zoom(?:ed)?\s+in|longer|shorter"
     r")\b",
     re.IGNORECASE,
 )
@@ -7851,7 +7861,9 @@ def _looks_like_image_generation_request(prompt):
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
+
     routing_file_context = _image_source_routing_context(request)
+
     if request.action == "image_upscale":
         routing = {
             "intent": "image_upscale",
@@ -7860,6 +7872,7 @@ def run_chat_action(request: ChatActionRequest):
             "reason": "Explicit image upscale action",
             "method": "explicit_image_upscale",
         }
+
     elif (
         _file_context_is_image(routing_file_context)
         and _looks_like_image_edit_request(request.prompt)
@@ -7874,6 +7887,7 @@ def run_chat_action(request: ChatActionRequest):
             ),
             "method": "deterministic_image_edit",
         }
+
     else:
         routing = classify_chat_action_details(
             request.prompt,

@@ -442,6 +442,35 @@ assert.equal(
     false,
 );
 
+for (const prompt of [
+    'bitte ganzkörper',
+    'ganzkörper',
+    'mehr ganzkörper',
+    'weiter raus',
+    'noch realistischer',
+    'full body',
+    'zoom out',
+]) {
+    assert.equal(
+        routing.isImageEditRequest(prompt, true),
+        true,
+        prompt,
+    );
+}
+
+assert.equal(
+    routing.isImageEditRequest('bitte ganzkörper', false),
+    false,
+);
+
+assert.equal(
+    routing.isImageEditRequest(
+        'Was ist ein Ganzkörperfoto?',
+        true,
+    ),
+    false,
+);
+
 // ----------------------------------------------------------------
 // Image comparison intent must only activate when a parent image
 // actually exists.

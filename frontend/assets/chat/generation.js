@@ -31,7 +31,7 @@ const IMAGE_EDIT_MODIFIER_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:rot|blau|grün|gruen|gelb|schwarz|weiß|weiss|blond|heller|dunkler|dunkel|hell|wärmer|waermer|kälter|kaelter|realistischer|jünger|juenger|älter|aelter|unscharf|scharf|weg|hintergrund|farbe|farben|person|objekt|gesicht|haare|bart|kleidung|stil|schwarzweiß|schwarz-weiss|schwarz-weiß|größer|groesser|kleiner|entfernt|red|blue|green|yellow|black|white|blonde?|lighter|darker|dark|bright|warmer|cooler|more realistic|younger|older|blurry|blurred|sharp|background|color|colour|object|face|hair|beard|clothing|style|remove|removed)(?=$|[^\p{L}\p{N}_])/iu;
 
 const IMAGE_EDIT_FOLLOWUP_PATTERN =
-    /^\s*(?:und\s+)?(?:jetzt|nun|noch|then|now)(?=$|[^\p{L}\p{N}_]).*(?:^|[^\p{L}\p{N}_])(?:dunkler|heller|wärmer|waermer|kälter|kaelter|realistischer|unscharf|schärfer|schaerfer|darker|lighter|warmer|cooler|more realistic|blurrier|sharper)(?=$|[^\p{L}\p{N}_])/iu;
+    /^\s*(?:(?:und\s+)?(?:jetzt|nun|noch|then|now)(?=$|[^\p{L}\p{N}_]).*)?(?:bitte\s+)?(?:(?:mehr|etwas|ein\s+bisschen|more|a\s+bit)\s+)?(?:ganzkörper|ganzkoerper|full[ -]?body|dunkler|heller|wärmer|waermer|kälter|kaelter|realistischer|jünger|juenger|älter|aelter|unscharf|schärfer|schaerfer|weiter\s+(?:raus|weg)|näher|naeher|länger|laenger|kürzer|kuerzer|darker|lighter|warmer|cooler|more realistic|younger|older|blurrier|sharper|zoom(?:ed)?\s+out|zoom(?:ed)?\s+in|longer|shorter)(?=$|[^\p{L}\p{N}_])/iu;
 
 const IMAGE_QUESTION_PATTERN =
     /^\s*(?:was|wie|welche|welcher|welches|wer|wo|wann|warum|ist|sind|hat|haben|what|how|which|who|where|when|why|is|are|does|do|has|have)(?=$|[^\p{L}\p{N}_])/iu;
@@ -225,15 +225,40 @@ function sessionImageArtifacts(session) {
             const artifacts = result.artifacts;
             return Array.isArray(artifacts) ? artifacts : [];
         })
-        .filter(artifact => (
-            /^image-\d{10}-[0-9a-f]{12}$/.test(
-                String(artifact?.artifact_id || '')
-            ) &&
-            /^\d{10}-[0-9a-f]{12}$/.test(
-                String(artifact?.image_id || '')
-            ) &&
-            String(artifact?.mime_type || '').startsWith('image/')
-        ));
+        .filter(artifact => {
+            const artifactId =
+                String(artifact?.artifact_id || '');
+
+            if (
+                !/^image-\d{10}-[0-9a-f]{12}$/.test(
+                    artifactId
+                )
+            ) {
+                return false;
+            }
+
+            const imageId =
+                String(artifact?.image_id || '');
+
+            if (
+                imageId &&
+                !/^\d{10}-[0-9a-f]{12}$/.test(imageId)
+            ) {
+                return false;
+            }
+
+            const mimeType =
+                String(artifact?.mime_type || '');
+
+            if (
+                mimeType &&
+                !mimeType.startsWith('image/')
+            ) {
+                return false;
+            }
+
+            return true;
+        });
 }
 
 
@@ -485,12 +510,42 @@ async function startImageUpscale(source, preset = 'photo-2x') {
 
 
 function activeSessionImageArtifact(session) {
-    const activeArtifactId = session?.workspace?.active_artifact_id;
+
+    const activeArtifactId =
+        session?.workspace?.active_artifact_id;
+
     if (!activeArtifactId) return null;
 
-    return sessionImageArtifacts(session).find(
-        artifact => artifact.artifact_id === activeArtifactId
-    ) || null;
+    const artifact =
+        sessionImageArtifacts(session).find(
+            item =>
+                item.artifact_id === activeArtifactId
+        );
+
+    if (artifact) {
+        return artifact;
+    }
+
+    // The workspace artifact ID is already a valid reference to a
+    // server-managed generated image. Preserve image follow-ups even
+    // when the originating tool_result is missing from session.messages.
+    if (
+        /^image-\d{10}-[0-9a-f]{12}$/i.test(
+            activeArtifactId
+        )
+    ) {
+        const imageId =
+            activeArtifactId.replace(/^image-/, '');
+
+        return {
+            artifact_id: activeArtifactId,
+            image_id: imageId,
+            name: 'generated-image.png',
+            mime_type: 'image/png'
+        };
+    }
+
+    return null;
 }
 
 
@@ -1445,7 +1500,7 @@ const imageFiles =
         isImageEditRequest(
             prompt,
             imageFiles.length > 0 ||
-                Boolean(activeWorkspaceImageArtifact)
+                Boolean(activeImageArtifact)
         );
 
     const imageComparisonRequest =
@@ -1984,10 +2039,17 @@ const imageFiles =
                     ? currentImageContext
                     : priorFileAttachments[0] || null;
 
+            // Always expose the active image artifact to the semantic
+            // router. This lets the router resolve natural image follow-ups
+            // from conversation context even when the deterministic edit
+            // patterns do not recognize the wording.
             const activeArtifactIdForEdit =
-                explicitImageEditRequest &&
                 !currentImageContext
-                    ? activeWorkspaceImageArtifact?.artifact_id || null
+                    ? (
+                        activeImageArtifact?.artifact_id ||
+                        session?.workspace?.active_artifact_id ||
+                        null
+                    )
                     : null;
 
             if (
@@ -2017,19 +2079,55 @@ const imageFiles =
                     session,
                     userMessage
                 );
+            const actionPayload = {
+                prompt: prompt,
+                file_context: fileContext,
+                active_artifact_id: activeArtifactIdForEdit,
+                image_options: options?.image || null,
+                conversation_context: conversationContext,
+                trace_id: userMessage.trace_id,
+
+            };
+
             const actionResponse = await fetch('/api/mlx/chat/actions', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt: prompt,
-                    file_context: fileContext,
-                    active_artifact_id: activeArtifactIdForEdit,
-                    image_options: options?.image || null,
-                    conversation_context: conversationContext,
-                    trace_id: userMessage.trace_id
-                })
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(actionPayload)
             });
             if (!actionResponse.ok) throw new Error(await actionResponse.text());
             const toolResult = await actionResponse.json();
+
+            // The semantic router may recognize an image operation even when
+            // the frontend fast-path did not. Create the pending image
+            // message after routing in that case so queued/running jobs are
+            // handled exactly like deterministic image requests.
+            if (
+                !pendingImageMessage &&
+                isImageJobTool(toolResult.tool)
+            ) {
+                pendingImageMessage = {
+                    role: 'assistant',
+                    content: gt(
+                        'image_generating',
+                        'Generating the image locally with the selected image model …'
+                    ),
+                    image_generation_pending: true
+                };
+
+                if (
+                    toolResult.tool === 'image_edit' &&
+                    activeArtifactIdForEdit
+                ) {
+                    pendingImageMessage.image_parent_artifact_id =
+                        activeArtifactIdForEdit;
+                }
+
+                session.messages.push(pendingImageMessage);
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({
+                    contentUpdated: true
+                });
+            }
 
             if (
                 isImageJobTool(toolResult.tool) &&

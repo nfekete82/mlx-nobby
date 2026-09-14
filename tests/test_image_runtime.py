@@ -782,6 +782,27 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertIsNotNone(completed["result"])
 
+    def test_image_followup_shorthand_routes_to_edit(self):
+        for prompt in (
+            "bitte ganzkörper",
+            "ganzkörper",
+            "mehr ganzkörper",
+            "weiter raus",
+            "noch realistischer",
+            "full body",
+            "zoom out",
+        ):
+            self.assertTrue(
+                agent._looks_like_image_edit_request(prompt),
+                prompt,
+            )
+
+        self.assertFalse(
+            agent._looks_like_image_edit_request(
+                "Was ist ein Ganzkörperfoto?"
+            )
+        )
+
     def test_image_intent_routing(self):
         image_context = {
             "kind": "image",

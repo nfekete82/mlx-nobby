@@ -84,7 +84,6 @@ function sessionT(key, fallback = '', variables = {}) {
                 if (
                     key === '_thinkingStarted' ||
                     key === 'data_url' ||
-                    key === 'content' ||
                     key === 'file' ||
                     key === 'blob' ||
                     key === 'raw_content' ||
