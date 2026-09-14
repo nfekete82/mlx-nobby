@@ -81,6 +81,25 @@ class ImageRuntimeTests(unittest.TestCase):
         registry.load_registry()
         self.client = TestClient(service.app, base_url="http://localhost")
 
+        # Existing image-runtime tests predate chat-bound image jobs.
+        # Supply neutral chat metadata for direct /jobs calls unless a test
+        # explicitly provides its own identity.
+        original_post = self.client.post
+
+        def post_with_chat_identity(url, *args, **kwargs):
+            if (
+                url == "/jobs"
+                and isinstance(kwargs.get("json"), dict)
+            ):
+                payload = copy.deepcopy(kwargs["json"])
+                payload.setdefault("chat_id", "test-chat")
+                payload.setdefault("chat_revision", 0)
+                kwargs["json"] = payload
+
+            return original_post(url, *args, **kwargs)
+
+        self.client.post = post_with_chat_identity
+
     def tearDown(self):
         with service._jobs_lock:
             jobs = list(service._jobs.values())
@@ -92,6 +111,33 @@ class ImageRuntimeTests(unittest.TestCase):
         for item in reversed(self.patches):
             item.stop()
         self.temporary.cleanup()
+
+    def make_chat_action_request(
+        self,
+        *,
+        chat_id="test-image-chat",
+        revision=0,
+        **kwargs,
+    ):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": chat_id,
+            "title": "Test chat",
+            "created": 1,
+            "updated": time.time() * 1000,
+            "revision": revision,
+            "messages": [],
+        })
+
+        return agent.ChatActionRequest(
+            chat_id=chat_id,
+            chat_revision=revision,
+            **kwargs,
+        )
 
     def wait_for_image_job(self, job_id, statuses, timeout=3):
         deadline = time.monotonic() + timeout
@@ -725,6 +771,317 @@ class ImageRuntimeTests(unittest.TestCase):
             )
 
 
+    def test_legacy_chat_defaults_to_revision_zero(self):
+        chat = agent.normalize_chat({
+            "id": "legacy-chat",
+            "title": "Legacy",
+            "created": 1,
+            "updated": 2,
+            "messages": [],
+        })
+
+        self.assertIsNotNone(chat)
+        self.assertEqual(chat["revision"], 0)
+
+        invalid = agent.normalize_chat({
+            "id": "legacy-invalid-revision",
+            "title": "Legacy",
+            "created": 1,
+            "updated": 2,
+            "revision": True,
+            "messages": [],
+        })
+
+        self.assertEqual(invalid["revision"], 0)
+
+    def test_chat_reset_increments_and_persists_revision(self):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": "revision-reset-chat",
+            "title": "Before reset",
+            "created": 1,
+            "updated": 2,
+            "revision": 4,
+            "messages": [],
+        })
+
+        result = agent.reset_chat(
+            "revision-reset-chat"
+        )
+
+        self.assertEqual(
+            result["chat"]["revision"],
+            5,
+        )
+
+        persisted = agent.read_chat(
+            "revision-reset-chat"
+        )
+
+        self.assertEqual(
+            persisted["revision"],
+            5,
+        )
+        self.assertEqual(
+            persisted["messages"],
+            [],
+        )
+
+    def test_chat_put_cannot_roll_back_server_revision(self):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": "revision-put-chat",
+            "title": "Server",
+            "created": 1,
+            "updated": 100,
+            "revision": 7,
+            "messages": [],
+        })
+
+        request = agent.ChatSessionRequest(
+            id="revision-put-chat",
+            title="Client",
+            created=1,
+            updated=200,
+            revision=1,
+            messages=[],
+        )
+
+        result = agent.put_chat(
+            "revision-put-chat",
+            request,
+        )
+
+        self.assertFalse(result["conflict"])
+        self.assertEqual(
+            result["chat"]["revision"],
+            7,
+        )
+
+        persisted = agent.read_chat(
+            "revision-put-chat"
+        )
+
+        self.assertEqual(
+            persisted["revision"],
+            7,
+        )
+
+    def test_image_job_chat_identity_accepts_current_revision(self):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": "image-chat-current",
+            "title": "Image",
+            "created": 1,
+            "updated": 2,
+            "revision": 3,
+            "messages": [],
+        })
+
+        request = agent.ChatActionRequest(
+            prompt="Generate an image",
+            chat_id="image-chat-current",
+            chat_revision=3,
+        )
+
+        self.assertEqual(
+            agent._validated_image_job_chat_identity(
+                request
+            ),
+            ("image-chat-current", 3),
+        )
+
+    def test_image_job_stale_chat_revision_is_rejected(self):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": "image-chat-stale",
+            "title": "Image",
+            "created": 1,
+            "updated": 2,
+            "revision": 5,
+            "messages": [],
+        })
+
+        request = agent.ChatActionRequest(
+            prompt="Generate an image",
+            chat_id="image-chat-stale",
+            chat_revision=4,
+        )
+
+        with self.assertRaises(HTTPException) as caught:
+            agent._validated_image_job_chat_identity(
+                request
+            )
+
+        self.assertEqual(
+            caught.exception.status_code,
+            409,
+        )
+
+    def test_start_image_job_forwards_chat_identity(self):
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": "image-chat-forward",
+            "title": "Image",
+            "created": 1,
+            "updated": 2,
+            "revision": 8,
+            "messages": [],
+        })
+
+        request = agent.ChatActionRequest(
+            prompt="Generate an image",
+            chat_id="image-chat-forward",
+            chat_revision=8,
+        )
+
+        with (
+            patch.object(
+                agent,
+                "_image_generate_payload",
+                return_value={
+                    "prompt": "A test image",
+                    "model": "test-model",
+                },
+            ),
+            patch.object(
+                agent.image_api,
+                "request",
+                return_value={
+                    "id": "a" * 24,
+                    "status": "queued",
+                },
+            ) as image_request,
+        ):
+            agent._start_chat_image_job(
+                "image_generate",
+                request,
+            )
+
+        call = image_request.call_args
+
+        self.assertEqual(
+            call.args[0],
+            "POST",
+        )
+        self.assertEqual(
+            call.args[1],
+            "/jobs",
+        )
+        self.assertEqual(
+            call.args[2]["chat_id"],
+            "image-chat-forward",
+        )
+        self.assertEqual(
+            call.args[2]["chat_revision"],
+            8,
+        )
+
+    def test_image_job_snapshot_preserves_chat_identity(self):
+        snapshot = service._job_snapshot({
+            "id": "b" * 24,
+            "operation": "generate",
+            "chat_id": "snapshot-chat",
+            "chat_revision": 12,
+            "status": "running",
+            "current_step": 1,
+            "total_steps": 2,
+            "_cancel_event": threading.Event(),
+        })
+
+        self.assertEqual(
+            snapshot["chat_id"],
+            "snapshot-chat",
+        )
+        self.assertEqual(
+            snapshot["chat_revision"],
+            12,
+        )
+        self.assertNotIn(
+            "_cancel_event",
+            snapshot,
+        )
+
+    def test_image_job_get_and_cancel_preserve_chat_identity(self):
+        job_id = "c" * 24
+
+        with service._jobs_lock:
+            service._jobs[job_id] = {
+                "id": job_id,
+                "operation": "generate",
+                "chat_id": "job-route-chat",
+                "chat_revision": 6,
+                "status": "running",
+                "model": None,
+                "current_step": 1,
+                "total_steps": 10,
+                "result": None,
+                "error": None,
+                "created_at": 1,
+                "started_at": 2,
+                "finished_at": None,
+                "_cancel_event": threading.Event(),
+                "_process": None,
+                "_thread": None,
+                "_output_path": None,
+            }
+
+        get_response = self.client.get(
+            f"/jobs/{job_id}"
+        )
+
+        self.assertEqual(
+            get_response.status_code,
+            200,
+            get_response.text,
+        )
+        self.assertEqual(
+            get_response.json()["chat_id"],
+            "job-route-chat",
+        )
+        self.assertEqual(
+            get_response.json()["chat_revision"],
+            6,
+        )
+
+        cancel_response = self.client.post(
+            f"/jobs/{job_id}/cancel"
+        )
+
+        self.assertEqual(
+            cancel_response.status_code,
+            200,
+            cancel_response.text,
+        )
+        self.assertEqual(
+            cancel_response.json()["chat_id"],
+            "job-route-chat",
+        )
+        self.assertEqual(
+            cancel_response.json()["chat_revision"],
+            6,
+        )
+
     def test_image_unload_stops_sdxl_worker(self):
         with patch.object(
             service,
@@ -1160,7 +1517,7 @@ class ImageRuntimeTests(unittest.TestCase):
         ) as image_request:
             agent._start_chat_image_job(
                 "image_generate",
-                agent.ChatActionRequest(
+                self.make_chat_action_request(
                     prompt="Create a photorealistic portrait",
                 ),
             )
@@ -2007,7 +2364,7 @@ class ImageRuntimeTests(unittest.TestCase):
             "seed": 17,
             "source_path": str(source),
         }
-        request = agent.ChatActionRequest(
+        request = self.make_chat_action_request(
             prompt="Mach den Hintergrund dunkel",
             file_context=image_context,
             image_options={"steps": 4},
@@ -2079,7 +2436,7 @@ class ImageRuntimeTests(unittest.TestCase):
     def test_image_upscale_job_uses_uploaded_source_and_runtime_options(self):
         source = self.root / "uploaded.png"
         Image.new("RGB", (32, 24), "green").save(source)
-        request = agent.ChatActionRequest(
+        request = self.make_chat_action_request(
             prompt="Upscale this image four times.",
             action="image_upscale",
             file_context={
@@ -2129,6 +2486,8 @@ class ImageRuntimeTests(unittest.TestCase):
                     "preset": "anime-4x",
                     "tile": 256,
                 },
+                "chat_id": "test-image-chat",
+                "chat_revision": 0,
             },
             timeout=10,
         )
@@ -2266,13 +2625,13 @@ class ImageRuntimeTests(unittest.TestCase):
         ) as image_request:
             agent._start_chat_image_job(
                 "image_generate",
-                agent.ChatActionRequest(
+                self.make_chat_action_request(
                     prompt="Erstelle ein Bild von einem roten Apfel",
                 ),
             )
             agent._start_chat_image_job(
                 "image_edit",
-                agent.ChatActionRequest(
+                self.make_chat_action_request(
                     prompt="Mach den Hintergrund dunkler",
                     file_context={
                         "stored_path": str(source),
@@ -2403,7 +2762,7 @@ class ImageRuntimeTests(unittest.TestCase):
             "operation": "edit",
             "status": "queued",
         }
-        request = agent.ChatActionRequest(
+        request = self.make_chat_action_request(
             prompt="Mach es noch dunkler.",
             active_artifact_id=f"image-{image_id}",
         )
@@ -2437,10 +2796,10 @@ class ImageRuntimeTests(unittest.TestCase):
             },
         ):
             without_image = agent.run_chat_action(
-                agent.ChatActionRequest(prompt="Mach es noch dunkler.")
+                self.make_chat_action_request(prompt="Mach es noch dunkler.")
             )
             docker = agent.run_chat_action(
-                agent.ChatActionRequest(
+                self.make_chat_action_request(
                     prompt="Wie funktioniert Docker?",
                     active_artifact_id=f"image-{image_id}",
                 )

@@ -79,6 +79,16 @@ assert.match(
     /if \(!Object\.keys\(session\.workspace\)\.length\)/,
 );
 
+assert.match(
+    deleteMessagesBlock,
+    /const resetResult = await response\.json\(\)/,
+);
+
+assert.match(
+    deleteMessagesBlock,
+    /session\.revision = revision/,
+);
+
 console.log(
     'Confirm modal: markup, helper, async clear-chat flow, and native confirm removal passed.'
 );

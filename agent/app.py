@@ -46,7 +46,7 @@ from backend import observability
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from local_security import LocalRequestGuard
 from agent.service_proxy import install_routes as install_service_routes
 
@@ -93,6 +93,11 @@ class ChatSessionRequest(BaseModel):
     title: str
     created: float
     updated: float
+    revision: int = Field(
+        default=0,
+        ge=0,
+        strict=True,
+    )
     messages: list[dict]
     settings: dict | None = None
     workspace: dict | None = None
@@ -195,11 +200,21 @@ def normalize_chat(raw_chat, expected_id=None):
     if workspace is not None and not isinstance(workspace, dict):
         return None
 
+    revision = raw_chat.get("revision", 0)
+
+    if (
+        isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 0
+    ):
+        revision = 0
+
     chat = {
         "id": chat_id,
         "title": title,
         "created": created,
         "updated": updated,
+        "revision": revision,
         "messages": messages,
     }
 
@@ -849,6 +864,9 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
                 "conflict": True,
             }
 
+        if existing is not None:
+            incoming["revision"] = existing.get("revision", 0)
+
         write_chat(incoming)
 
     return {
@@ -931,6 +949,7 @@ def reset_chat(chat_id: str):
             "title": "New chat",
             "created": chat["created"],
             "updated": time.time() * 1000,
+            "revision": chat.get("revision", 0) + 1,
             "messages": [],
         }
 
@@ -3556,6 +3575,12 @@ class ChatActionRequest(BaseModel):
     conversation_context: list[dict] | None = None
     instruction: str | None = None
     trace_id: str | None = None
+    chat_id: str | None = None
+    chat_revision: int | None = Field(
+        default=None,
+        ge=0,
+        strict=True,
+    )
 
 class KnowledgeSourceRequest(BaseModel):
     path: str
@@ -7647,6 +7672,48 @@ def tool_image_generate(request):
     return {"image": _image_artifact(result, "image_generate")}
 
 
+def _validated_image_job_chat_identity(request):
+    chat_id = request.chat_id
+    chat_revision = request.chat_revision
+
+    if not chat_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Image-Job benötigt eine Chat-ID",
+        )
+
+    validate_chat_id(chat_id)
+
+    if (
+        isinstance(chat_revision, bool)
+        or not isinstance(chat_revision, int)
+        or chat_revision < 0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Image-Job benötigt eine gültige Chat-Revision",
+        )
+
+    with CHATS_LOCK:
+        chat = read_chat(chat_id)
+
+    if chat is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat nicht gefunden",
+        )
+
+    current_revision = chat.get("revision", 0)
+
+    if chat_revision != current_revision:
+        raise HTTPException(
+            status_code=409,
+            detail="Chat wurde inzwischen zurückgesetzt",
+        )
+
+    return chat_id, chat_revision
+
+
 def _start_chat_image_job(action, request):
     payload_builders = {
         "image_generate": _image_generate_payload,
@@ -7660,15 +7727,19 @@ def _start_chat_image_job(action, request):
             "Unbekannte Image-Job-Aktion",
         )
     payload = payload_builder(request)
+    chat_id, chat_revision = _validated_image_job_chat_identity(request)
 
     if action == "image_generate" and payload.get("model", "auto") == "auto":
         payload["model"] = load_model_roles()["image"]
+
     return image_api.request(
         "POST",
         "/jobs",
         {
             "operation": action.removeprefix("image_"),
             "payload": payload,
+            "chat_id": chat_id,
+            "chat_revision": chat_revision,
         },
         timeout=10,
     )
@@ -8264,9 +8335,19 @@ def run_chat_action(request: ChatActionRequest):
                 {"job": job},
             )
         except HTTPException as exc:
-            return chat_tool_result(action, "failed", error=str(exc.detail))
+            if exc.status_code == 409:
+                raise
+            return chat_tool_result(
+                action,
+                "failed",
+                error=str(exc.detail),
+            )
         except Exception as exc:
-            return chat_tool_result(action, "failed", error=str(exc))
+            return chat_tool_result(
+                action,
+                "failed",
+                error=str(exc),
+            )
 
     handler = TOOLS.get(action)
     if not handler:

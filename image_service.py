@@ -75,6 +75,11 @@ class ImageJobCreate(BaseModel):
 
     operation: Literal["generate", "edit", "upscale"]
     payload: dict
+    chat_id: str = Field(min_length=1)
+    chat_revision: int = Field(
+        ge=0,
+        strict=True,
+    )
 
 
 @asynccontextmanager
@@ -819,6 +824,8 @@ def create_image_job(request: ImageJobCreate):
     job = {
         "id": job_id,
         "operation": request.operation,
+        "chat_id": request.chat_id,
+        "chat_revision": request.chat_revision,
         "status": "queued",
         "model": None,
         "current_step": None,

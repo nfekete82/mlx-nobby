@@ -442,6 +442,20 @@ context.fetch = async (url, options) => {
         },
     };
 };
+session.id = 'frontend-image-chat';
+session.revision = 7;
+
+Object.defineProperty(
+    session,
+    '_runtime_revision',
+    {
+        value: 99,
+        writable: true,
+        configurable: true,
+        enumerable: false
+    }
+);
+
 input.value = 'ändere das klein in die farbe rot';
 
 await window.MLXChatGeneration.sendMessage();
@@ -461,6 +475,18 @@ assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
 assert.equal(actionPayload.image_options, null);
+assert.equal(
+    actionPayload.chat_id,
+    'frontend-image-chat',
+);
+assert.equal(
+    actionPayload.chat_revision,
+    7,
+);
+assert.notEqual(
+    actionPayload.chat_revision,
+    session._runtime_revision,
+);
 assert.equal(session.messages.at(-1).image_job.status, 'running');
 assert.equal(session.messages.at(-1).image_job.current_step, 2);
 assert.equal(session.messages.at(-1).tool_result.artifacts.length, 0);
@@ -1551,6 +1577,18 @@ assert.equal(
 );
 const repeatUpscalePayload = JSON.parse(
     requests[repeatUpscaleStart].options.body,
+);
+assert.equal(
+    repeatUpscalePayload.chat_id,
+    'frontend-image-chat',
+);
+assert.equal(
+    repeatUpscalePayload.chat_revision,
+    7,
+);
+assert.notEqual(
+    repeatUpscalePayload.chat_revision,
+    session._runtime_revision,
 );
 assert.equal(
     repeatUpscalePayload.active_artifact_id,

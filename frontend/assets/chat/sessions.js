@@ -355,6 +355,7 @@ function sessionT(key, fallback = '', variables = {}) {
             title: sessionT('sessions.new_chat', 'New chat'),
             created: Date.now(),
             updated: Date.now(),
+            revision: 0,
             messages: [],
             settings: createSessionSettings()
         };
@@ -498,6 +499,16 @@ function sessionT(key, fallback = '', variables = {}) {
                         'Chat backend reset failed:',
                         response.status
                     );
+                } else {
+                    const resetResult = await response.json();
+                    const revision = resetResult?.chat?.revision;
+
+                    if (
+                        Number.isSafeInteger(revision) &&
+                        revision >= 0
+                    ) {
+                        session.revision = revision;
+                    }
                 }
             } catch (error) {
                 console.warn(

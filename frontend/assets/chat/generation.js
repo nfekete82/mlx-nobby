@@ -149,6 +149,18 @@ function isImageGenerationRequest(prompt) {
     }
 
 
+function persistentChatRevision(session) {
+    const revision = Number(session?.revision);
+
+    return (
+        Number.isSafeInteger(revision) &&
+        revision >= 0
+    )
+        ? revision
+        : 0;
+}
+
+
 function imageAttachments(message) {
     const attachments =
         Array.isArray(message?.attachments)
@@ -438,7 +450,9 @@ async function startImageUpscale(source, preset = 'photo-2x') {
                     session,
                     userMessage
                 ),
-                trace_id: userMessage.trace_id
+                trace_id: userMessage.trace_id,
+                chat_id: session.id,
+                chat_revision: persistentChatRevision(session)
             })
         });
         if (!response.ok) {
@@ -2139,6 +2153,8 @@ const imageFiles =
                 image_options: options?.image || null,
                 conversation_context: conversationContext,
                 trace_id: userMessage.trace_id,
+                chat_id: session.id,
+                chat_revision: persistentChatRevision(session)
 
             };
 
