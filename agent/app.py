@@ -3,6 +3,7 @@ from functools import wraps
 from typing import Literal
 import hashlib
 import json
+import logging
 import queue
 import os
 import sys
@@ -49,6 +50,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from local_security import LocalRequestGuard
 from agent.service_proxy import install_routes as install_service_routes
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="MLX macOS Agent")
@@ -16248,7 +16251,12 @@ def run_agent_v2(
                     pending_action,
                 )
             except Exception:
-                pass
+                logger.exception(
+                    "Agent progress callback failed "
+                    "(status=%s, current_step=%r)",
+                    status,
+                    current_step,
+                )
 
     if mode == "coding" and ambiguous_delete_reference(
         goal,

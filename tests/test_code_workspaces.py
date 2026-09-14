@@ -2282,6 +2282,60 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertIn("/api/mlx/agent/runs/", source)
 
 
+
+    def test_agent_progress_callback_failure_is_non_fatal_and_logged(self):
+        progress_calls = []
+
+        def broken_progress(*args, **kwargs):
+            progress_calls.append((args, kwargs))
+            raise RuntimeError("progress persistence failed")
+
+        with (
+            mock.patch.object(
+                agent_app,
+                "ambiguous_delete_reference",
+                return_value=True,
+            ),
+            self.assertLogs(
+                agent_app.logger.name,
+                level="ERROR",
+            ) as captured,
+        ):
+            result = agent_app.run_agent_v2(
+                "Lösche das",
+                mode="coding",
+                progress_callback=broken_progress,
+            )
+
+        self.assertEqual(
+            result["status"],
+            "completed",
+        )
+
+        self.assertIn(
+            "Welche konkrete Datei",
+            result["answer"],
+        )
+
+        self.assertGreaterEqual(
+            len(progress_calls),
+            1,
+        )
+
+        logged = "\n".join(captured.output)
+
+        self.assertIn(
+            "Agent progress callback failed",
+            logged,
+        )
+
+        self.assertIn(
+            "progress persistence failed",
+            logged,
+        )
+
+
+
 class FolderPickerTests(unittest.TestCase):
     def test_folder_picker_cancel_returns_clean_status(self):
         cancelled = subprocess.CompletedProcess(
