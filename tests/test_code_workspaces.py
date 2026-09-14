@@ -2336,6 +2336,78 @@ class CodeWorkspaceTests(unittest.TestCase):
 
 
 
+
+    def test_workspace_file_listing_question_routes_to_coding_agent(self):
+        with mock.patch.object(
+            agent_app.code_workspaces,
+            "active_workspace",
+            return_value={
+                "workspace_id": "workspace-1",
+                "root_path": "/tmp/workspace-1",
+            },
+        ):
+            result = agent_app._deterministic_chat_action(
+                "Welche Dateien befinden sich im Workspace?"
+            )
+
+        self.assertEqual(
+            result,
+            "coding_agent",
+            "read-only workspace inspection must route to coding_agent",
+        )
+
+    def test_workspace_definition_question_stays_normal_chat(self):
+        with mock.patch.object(
+            agent_app.code_workspaces,
+            "active_workspace",
+            return_value={
+                "workspace_id": "workspace-1",
+                "root_path": "/tmp/workspace-1",
+            },
+        ):
+            result = agent_app._deterministic_chat_action(
+                "Was ist ein Workspace?"
+            )
+
+        self.assertEqual(
+            result,
+            "normal_chat",
+            "general knowledge about workspaces must not trigger coding_agent",
+        )
+
+
+    def test_workspace_file_listing_question_chooses_code_files(self):
+        response = (
+            '{"action":"code_files",'
+            '"query":"",'
+            '"reason":"Workspace-Dateien auflisten"}'
+        )
+
+        with mock.patch.object(
+            agent_app.code_workspaces,
+            "active_workspace",
+            return_value={
+                "workspace_id": "workspace-1",
+                "root_path": "/tmp/workspace-1",
+            },
+        ), mock.patch.object(
+            agent_app,
+            "agent_llm",
+            return_value=response,
+        ) as llm:
+            decision = agent_app.agent_choose_next_step_v2(
+                "Welche Dateien befinden sich im Workspace?",
+                [],
+                mode="coding",
+            )
+
+        self.assertEqual(
+            decision["action"],
+            "code_files",
+        )
+
+        llm.assert_called_once()
+
 class FolderPickerTests(unittest.TestCase):
     def test_folder_picker_cancel_returns_clean_status(self):
         cancelled = subprocess.CompletedProcess(

@@ -4256,6 +4256,36 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     except ValueError:
         active_code_workspace = False
 
+    # Read-only questions about the contents or structure of the active
+    # coding workspace must enter the coding agent so it can use code_files.
+    workspace_read_request = bool(
+        active_code_workspace
+        and (
+            re.search(
+                r"\bwelche\s+dateien\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:zeige|zeig|liste|list)\b.*"
+                r"\b(?:dateien|ordner|workspace|projektstruktur)\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:was|welche)\b.*"
+                r"\b(?:liegt|liegen|befindet|befinden)\b.*"
+                r"\b(?:workspace|projekt|ordner)\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:workspace|projekt)struktur\b",
+                value,
+            )
+        )
+    )
+
+    if workspace_read_request:
+        return "coding_agent"
+
     # ----------------------------------------------------
     # Automatic orchestrator
     # ----------------------------------------------------
