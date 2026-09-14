@@ -5752,169 +5752,294 @@ def image_prompt_from_request(prompt):
 
 
 
+def _image_prompt_needs_english_retry(source, translated):
+    """Detect obvious cases where image translation was skipped."""
+    source = str(source or "").strip()
+    translated = str(translated or "").strip()
+
+    if not translated:
+        return True
+
+    german_markers = (
+        " einer ",
+        " eines ",
+        " einen ",
+        " einem ",
+        " erwachsenen ",
+        " schwarzen ",
+        " weißen ",
+        " weißem ",
+        " küstenstraße",
+        " sonnenuntergang",
+        " ganzkörper",
+        " nahaufnahme",
+        " berglandschaft",
+        " hintergrund",
+        " natürlichem ",
+        " natürlichen ",
+        " professionelles ",
+        " studioporträt",
+    )
+
+    value = f" {translated.casefold()} "
+
+    return any(
+        marker in value
+        for marker in german_markers
+    )
+
+
+def _retry_image_prompt_translation(prompt):
+    """Translate an image prompt with the configured chat model."""
+
+    value = str(prompt or "").strip()
+
+    if not value:
+        return value
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Translate the user's image-generation prompt literally "
+                "into English. Preserve every concrete fact exactly. "
+                "Do not describe, expand, improve, shorten, censor, "
+                "reinterpret or sanitize the prompt. "
+                "Return ONLY the English translation. "
+                "No JSON. No markdown. No explanation."
+            ),
+        },
+        {
+            "role": "user",
+            "content": value,
+        },
+    ]
+
+    call_metrics = observability.ModelCallMetrics(
+        purpose="image.prompt_translate",
+        role="chat",
+        messages=messages,
+        context_sources=observability.message_context_counts(messages),
+    )
+
+    wait_started = time.monotonic()
+
+    try:
+        runtime = ensure_model_for_role("chat")
+
+        call_metrics.set_queue_wait(
+            (time.monotonic() - wait_started) * 1000
+        )
+
+        role = runtime["resolved"]
+        model = role.get("repo")
+
+        if not model:
+            raise RuntimeError("chat model unavailable")
+
+        call_metrics.set_model(
+            model=model,
+            role="chat",
+            alias=role.get("alias"),
+            backend=role.get("backend"),
+        )
+
+        config = load_config()
+        port = int(config.get("PORT", 8000))
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.0,
+            "max_tokens": 220,
+            "stream": False,
+            "chat_template_kwargs": {
+                "enable_thinking": False,
+            },
+        }
+
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        connect_started = time.monotonic()
+
+        with urllib.request.urlopen(
+            request,
+            timeout=180,
+        ) as response:
+            call_metrics.set_upstream_connect(
+                (time.monotonic() - connect_started) * 1000
+            )
+
+            result = json.loads(
+                response.read().decode("utf-8")
+            )
+
+        choice = result.get("choices", [{}])[0]
+
+        translated = str(
+            choice.get("message", {}).get("content") or ""
+        ).strip()
+
+        call_metrics.finish(
+            usage=result.get("usage"),
+            output_text=translated,
+            finish_reason=choice.get("finish_reason"),
+        )
+
+    except Exception as exc:
+        if call_metrics.metric["status"] == "running":
+            call_metrics.fail(type(exc).__name__)
+        raise
+
+    translated = translated.strip()
+
+    if (
+        len(translated) >= 2
+        and translated[0] == translated[-1]
+        and translated[0] in {'"', "'"}
+    ):
+        translated = translated[1:-1].strip()
+
+    if not translated:
+        raise ValueError("empty image translation")
+
+    return translated
+
+
 def translate_image_prompt_to_english(prompt):
-    """Translate image prompts literally to English for better model adherence."""
+    """Translate an image prompt and select its layout using the small router."""
+
     value = str(prompt or "").strip()
     if not value:
         return value
 
-    call_metrics = None
-    wait_started = time.monotonic()
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "TASK: translate to English and classify image layout. "
+                "OUTPUT ONLY JSON. "
+                "Never describe, expand, improve or rewrite the scene. "
+                "Translate literally. Preserve all facts. Add zero new facts. "
+                "The prompt value MUST be English. "
+
+                "LAYOUT RULES IN PRIORITY ORDER: "
+                "1. icon, logo, avatar, square -> square. "
+                "2. full-body person, standing full person, vertical poster -> tall. "
+                "3. face, headshot, ordinary person portrait -> portrait. "
+                "4. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
+                "5. ordinary horizontal scene -> landscape. "
+                "6. otherwise -> square. "
+
+                "IMPORTANT: full-body ALWAYS means tall unless the user explicitly "
+                "requests another orientation. "
+                "Panorama ALWAYS means wide. "
+
+                "Examples: "
+                "Ganzkörperaufnahme einer Frau -> "
+                "{\"prompt\":\"Full-body shot of a woman\",\"layout\":\"tall\"}. "
+                "Nahaufnahme eines Mannes -> "
+                "{\"prompt\":\"Close-up of a man\",\"layout\":\"portrait\"}. "
+                "Panorama einer Berglandschaft -> "
+                "{\"prompt\":\"Panorama of a mountain landscape\",\"layout\":\"wide\"}. "
+                "Minimalistisches App-Icon -> "
+                "{\"prompt\":\"Minimalist app icon\",\"layout\":\"square\"}. "
+
+                "Return exactly: "
+                "{\"prompt\":\"English translation\","
+                "\"layout\":\"square|portrait|tall|landscape|wide\"}"
+            ),
+        },
+        {
+            "role": "user",
+            "content": value,
+        },
+    ]
+
     try:
-        with MODEL_RUNTIME_LOCK:
-            queue_wait_ms = (time.monotonic() - wait_started) * 1000
-            runtime = ensure_model_for_role("chat")
-            role = runtime["resolved"]
-            model = role.get("repo")
+        translated = router_llm(
+            messages,
+            max_tokens=220,
+            temperature=0.0,
+        ).strip()
 
-            if not model:
-                return value
+        if not translated:
+            return value
 
-            config = load_config()
-            port = int(config.get("PORT", 8000))
+        try:
+            structured = parse_agent_json(translated)
+        except Exception:
+            structured = json.loads(translated)
 
-            payload = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You prepare prompts for an image-generation model. "
-                            "Translate the user's image description literally into English "
-                            "and choose the most suitable canvas layout for the requested "
-                            "composition. Preserve every concrete detail exactly, including "
-                            "subject count, explicitly stated adult age, gender, nudity or "
-                            "clothing, pose, appearance, environment, camera details and "
-                            "artistic style. Do not add, remove, soften, censor, euphemize, "
-                            "reinterpret or sanitize anything. If the prompt is already "
-                            "English, preserve it. Choose exactly one layout from: "
-                            "square, portrait, tall, landscape, wide. "
-                            "Use square for compositions that benefit from equal dimensions; "
-                            "portrait for ordinary vertical portraits and people; "
-                            "tall for full-body, strongly vertical or poster-like compositions; "
-                            "landscape for ordinary horizontal scenes; "
-                            "wide for cinematic, panoramic or strongly horizontal compositions. "
-                            "Return ONLY valid compact JSON with exactly these keys: "
-                            "{\"prompt\":\"final English image prompt\","
-                            "\"layout\":\"square|portrait|tall|landscape|wide\"}. "
-                            "No markdown, quotes around the whole response, explanations "
-                            "or commentary."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": value,
-                    },
-                ],
-                "temperature": 0.0,
-                "max_tokens": 700,
-                "stream": False,
+        if isinstance(structured, dict):
+            final_prompt = str(
+                structured.get("prompt") or ""
+            ).strip()
+
+            layout = str(
+                structured.get("layout") or ""
+            ).strip().lower()
+
+            layouts = {
+                "square": (1024, 1024),
+                "portrait": (768, 1024),
+                "tall": (768, 1024),
+                "landscape": (1024, 768),
+                "wide": (1024, 768),
             }
-            call_metrics = observability.ModelCallMetrics(
-                purpose="image.prompt_translate",
-                model=model,
-                role="chat",
-                alias=role.get("alias"),
-                backend=role.get("backend"),
-                messages=payload["messages"],
-                context_sources=observability.message_context_counts(
-                    payload["messages"]
-                ),
-                started_at=wait_started,
-            )
-            call_metrics.set_queue_wait(queue_wait_ms)
 
-            upstream = urllib.request.Request(
-                f"http://127.0.0.1:{port}/v1/chat/completions",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-
-            connect_started = time.monotonic()
-            with urllib.request.urlopen(upstream, timeout=180) as response:
-                call_metrics.set_upstream_connect(
-                    (time.monotonic() - connect_started) * 1000
+            if final_prompt and layout in layouts:
+                # The small router is authoritative only for composition.
+                # Translation quality is handled by the configured chat model.
+                translated_prompt = _retry_image_prompt_translation(
+                    value
                 )
-                result = json.loads(response.read().decode("utf-8"))
 
-            choice = result.get("choices", [{}])[0]
-            translated = choice.get("message", {}).get("content", "").strip()
-            call_metrics.finish(
-                usage=result.get("usage"),
-                output_text=translated,
-                finish_reason=choice.get("finish_reason"),
-            )
+                if _image_prompt_needs_english_retry(
+                    value,
+                    translated_prompt,
+                ):
+                    raise ValueError(
+                        "chat image translation still appears non-English"
+                    )
 
-            translated = translated.strip()
-            if not translated:
-                return value
+                final_prompt = translated_prompt
+                width, height = layouts[layout]
 
-            # Preferred response: one LLM call returns both the translated
-            # image prompt and the composition-aware canvas layout.
-            try:
-                structured = json.loads(translated)
+                print(
+                    "[image-prompt] prepared "
+                    f"source_chars={len(value)} "
+                    f"output_chars={len(final_prompt)} "
+                    f"layout={layout} "
+                    f"size={width}x{height}",
+                    flush=True,
+                )
 
-                if isinstance(structured, dict):
-                    final_prompt = str(
-                        structured.get("prompt") or ""
-                    ).strip()
+                return {
+                    "prompt": final_prompt,
+                    "layout": layout,
+                    "width": width,
+                    "height": height,
+                }
 
-                    layout = str(
-                        structured.get("layout") or ""
-                    ).strip().lower()
-
-                    layouts = {
-                        "square": (1024, 1024),
-                        "portrait": (768, 1024),
-                        "tall": (768, 1024),
-                        "landscape": (1024, 768),
-                        "wide": (1024, 768),
-                    }
-
-                    if final_prompt and layout in layouts:
-                        width, height = layouts[layout]
-
-                        print(
-                            "[image-prompt] prepared "
-                            f"source_chars={len(value)} "
-                            f"output_chars={len(final_prompt)} "
-                            f"layout={layout} "
-                            f"size={width}x{height}",
-                            flush=True,
-                        )
-
-                        return {
-                            "prompt": final_prompt,
-                            "layout": layout,
-                            "width": width,
-                            "height": height,
-                        }
-
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
-
-            # Backward-compatible fallback for old/plain-text responses.
-            translated = translated.strip(' "\'')
-            if not translated:
-                return value
-
-            print(
-                "[image-prompt] translated "
-                f"source_chars={len(value)} output_chars={len(translated)}",
-                flush=True,
-            )
-            return translated
+        raise ValueError("invalid router image-prompt response")
 
     except Exception as exc:
-        if call_metrics is not None and call_metrics.metric["status"] == "running":
-            call_metrics.fail(type(exc).__name__)
         print(
-            "[image-prompt] translation failed, using original "
+            "[image-prompt] router preparation failed, "
+            "using original prompt "
             f"error_type={type(exc).__name__}",
             flush=True,
         )
         return value
+
 
 
 def web_search_query_from_prompt(prompt):

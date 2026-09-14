@@ -613,6 +613,74 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["width"], 896)
         self.assertEqual(payload["height"], 1152)
 
+    def test_image_prompt_router_controls_layout_and_chat_controls_translation(self):
+        router_result = (
+            '{"prompt":"Kinoreife Aufnahme eines Sportwagens auf einer '
+            'Küstenstraße bei Sonnenuntergang","layout":"wide"}'
+        )
+
+        with (
+            patch.object(
+                agent,
+                "router_llm",
+                return_value=router_result,
+            ),
+            patch.object(
+                agent,
+                "_retry_image_prompt_translation",
+                return_value=(
+                    "Cinematic shot of a sports car "
+                    "on a coastal road at sunset"
+                ),
+            ) as translator,
+        ):
+            result = agent.translate_image_prompt_to_english(
+                "Kinoreife Aufnahme eines Sportwagens "
+                "auf einer Küstenstraße bei Sonnenuntergang"
+            )
+
+        self.assertEqual(result["layout"], "wide")
+        self.assertEqual(result["width"], 1024)
+        self.assertEqual(result["height"], 768)
+        self.assertEqual(
+            result["prompt"],
+            "Cinematic shot of a sports car "
+            "on a coastal road at sunset",
+        )
+        translator.assert_called_once()
+
+
+    def test_image_prompt_accepts_unchanged_english_translation(self):
+        source = (
+            "Full-body photograph of an adult man "
+            "standing on a city street at night"
+        )
+
+        router_result = (
+            '{"prompt":"Full-body photograph of an adult man '
+            'standing on a city street at night","layout":"tall"}'
+        )
+
+        with (
+            patch.object(
+                agent,
+                "router_llm",
+                return_value=router_result,
+            ),
+            patch.object(
+                agent,
+                "_retry_image_prompt_translation",
+                return_value=source,
+            ),
+        ):
+            result = agent.translate_image_prompt_to_english(source)
+
+        self.assertEqual(result["prompt"], source)
+        self.assertEqual(result["layout"], "tall")
+        self.assertEqual(result["width"], 768)
+        self.assertEqual(result["height"], 1024)
+
+
     def test_agent_forwards_sdxl_negative_prompt_option(self):
         with patch.object(
             agent,
