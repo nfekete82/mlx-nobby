@@ -1,12 +1,16 @@
-"""Fixed provider adapters. Each generation owns one short-lived GPU process."""
+"""Fixed provider adapters with isolated native model processes."""
 import importlib.util
 import json
+import math
 import os
 import re
+import secrets
+import selectors
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from image_registry import FAMILIES, MODEL_ROOTS, validate_path
@@ -110,6 +114,7 @@ GENERATION_TIMEOUT = 840
 MAX_PROCESS_RSS_GB = 24
 PROCESS_TERMINATION_TIMEOUT = 5
 PROVIDER_POLL_INTERVAL = 0.5
+DEFAULT_SDXL_IDLE_TIMEOUT = 180.0
 
 
 class ProviderCancelled(RuntimeError):
@@ -422,6 +427,283 @@ def terminate_process_tree(process):
         ) from exc
 
 
+def _configured_sdxl_idle_timeout():
+    try:
+        timeout = float(os.environ.get(
+            "MLX_IMAGE_SDXL_IDLE_TIMEOUT",
+            DEFAULT_SDXL_IDLE_TIMEOUT,
+        ))
+    except (TypeError, ValueError):
+        return DEFAULT_SDXL_IDLE_TIMEOUT
+    return (
+        timeout
+        if math.isfinite(timeout) and timeout > 0
+        else DEFAULT_SDXL_IDLE_TIMEOUT
+    )
+
+
+class SDXLWorkerManager:
+    """Own one serialized, restartable SDXL worker with idle shutdown."""
+
+    def __init__(self, *, worker_path=None, idle_timeout=None, monitor_rss=True):
+        self.worker_path = Path(worker_path or Path(__file__).with_name("sdxl_worker.py"))
+        self.idle_timeout = (
+            _configured_sdxl_idle_timeout()
+            if idle_timeout is None
+            else float(idle_timeout)
+        )
+        self.monitor_rss = monitor_rss
+        self._lock = threading.Lock()
+        self._process = None
+        self._diagnostics = None
+        self._idle_timer = None
+        self._idle_generation = 0
+
+    def _cancel_idle_timer_locked(self):
+        self._idle_generation += 1
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+            self._idle_timer = None
+
+    def _stop_locked(self):
+        self._cancel_idle_timer_locked()
+        process = self._process
+        self._process = None
+        diagnostics = self._diagnostics
+        self._diagnostics = None
+
+        if process is not None:
+            try:
+                terminate_process_tree(process)
+            except Exception:
+                pass
+
+            for stream in (process.stdin, process.stdout):
+                if stream is None:
+                    continue
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+        if diagnostics is not None:
+            try:
+                diagnostics.close()
+            except Exception:
+                pass
+
+    def _start_locked(self, environment):
+        if self._process is not None and self._process.poll() is None:
+            return self._process
+        self._stop_locked()
+        diagnostics = tempfile.TemporaryFile()
+        try:
+            process = subprocess.Popen(
+                [sys.executable, str(self.worker_path)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=diagnostics,
+                bufsize=0,
+                env=environment,
+                shell=False,
+                start_new_session=True,
+            )
+        except Exception:
+            diagnostics.close()
+            raise
+        self._process = process
+        self._diagnostics = diagnostics
+        return process
+
+    def _schedule_idle_shutdown_locked(self):
+        self._cancel_idle_timer_locked()
+        generation = self._idle_generation
+
+        def shutdown_if_idle():
+            with self._lock:
+                if generation == self._idle_generation:
+                    self._stop_locked()
+
+        timer = threading.Timer(self.idle_timeout, shutdown_if_idle)
+        timer.daemon = True
+        self._idle_timer = timer
+        timer.start()
+
+    def _failure_message_locked(self, process):
+        diagnostics = self._diagnostics
+        if diagnostics is not None:
+            diagnostics.flush()
+            diagnostics.seek(0, 2)
+            diagnostics.seek(max(0, diagnostics.tell() - 65536))
+            message = diagnostics.read().decode("utf-8", errors="replace").lower()
+            if "all zero" in message or "weights appear corrupt" in message:
+                return "Lokale Modellgewichte sind beschädigt (Nullgewichte). Es wurden keine Dateien verändert oder heruntergeladen."
+        return f"sdxl konnte den lokalen Worker nicht ausführen (Exit {process.poll()}). Cache und Provider-Kompatibilität prüfen; es wurde nichts heruntergeladen."
+
+    def generate(
+        self,
+        checkpoint,
+        config,
+        params,
+        output,
+        *,
+        environment,
+        cancel_event=None,
+        process_callback=None,
+        progress_callback=None,
+    ):
+        with self._lock:
+            self._cancel_idle_timer_locked()
+            if cancel_event is not None and cancel_event.is_set():
+                raise ProviderCancelled("Image job was cancelled")
+            process = self._start_locked(environment)
+            request_id = secrets.token_hex(16)
+            request = {
+                "request_id": request_id,
+                "checkpoint": str(checkpoint),
+                "config": str(config),
+                "params": params,
+                "output": str(output),
+            }
+            succeeded = False
+            if process_callback is not None:
+                process_callback(process)
+            try:
+                try:
+                    process.stdin.write((json.dumps(request) + "\n").encode("utf-8"))
+                    process.stdin.flush()
+                except (BrokenPipeError, OSError) as exc:
+                    raise RuntimeError(self._failure_message_locked(process)) from exc
+
+                deadline = time.monotonic() + GENERATION_TIMEOUT
+                response_buffer = b""
+                with selectors.DefaultSelector() as selector:
+                    selector.register(process.stdout, selectors.EVENT_READ)
+                    while True:
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise ProviderCancelled("Image job was cancelled")
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError("Image-Auftrag hat das Zeitlimit überschritten; Modellprozess wurde beendet")
+                        if process.poll() is not None:
+                            raise RuntimeError(self._failure_message_locked(process))
+                        if self.monitor_rss and sys.platform == "darwin":
+                            usage = subprocess.run(
+                                ["/bin/ps", "-o", "rss=", "-p", str(process.pid)],
+                                capture_output=True,
+                                text=True,
+                                timeout=3,
+                            )
+                            if usage.stdout.strip().isdigit() and int(usage.stdout) > MAX_PROCESS_RSS_GB * 1024**2:
+                                raise RuntimeError("Image-Modell überschreitet das 24-GB-Prozessbudget. Ein kleineres oder vorquantisiertes Modell verwenden.")
+                        events = selector.select(PROVIDER_POLL_INTERVAL)
+                        if not events:
+                            continue
+                        chunk = os.read(process.stdout.fileno(), 65536)
+                        if not chunk:
+                            raise RuntimeError(self._failure_message_locked(process))
+                        response_buffer += chunk
+                        while b"\n" in response_buffer:
+                            line, response_buffer = response_buffer.split(b"\n", 1)
+                            try:
+                                event = json.loads(line)
+                            except (TypeError, ValueError):
+                                continue
+                            if event.get("request_id") != request_id:
+                                continue
+                            if event.get("type") == "runtime":
+                                if progress_callback is not None:
+                                    step = event.get("step")
+                                    total_steps = event.get("total_steps")
+                                    expected_steps = params.get("steps")
+                                    if (
+                                        not isinstance(step, int)
+                                        or not isinstance(total_steps, int)
+                                        or step < 0
+                                        or total_steps <= 0
+                                        or step > total_steps
+                                        or (
+                                            expected_steps is not None
+                                            and total_steps != expected_steps
+                                        )
+                                    ):
+                                        step = None
+                                        total_steps = None
+                                    progress_callback({
+                                        "phase": str(event.get("phase") or ""),
+                                        "step": step,
+                                        "total_steps": total_steps,
+                                    })
+                            elif event.get("type") == "error":
+                                error_type = str(
+                                    event.get("error_type") or "unknown error"
+                                )
+                                error_message = str(
+                                    event.get("message") or ""
+                                ).replace("\n", " ").replace("\r", " ").strip()
+
+                                if len(error_message) > 1500:
+                                    error_message = error_message[:1500] + "..."
+
+                                detail = error_type
+                                if error_message:
+                                    detail += ": " + error_message
+
+                                raise RuntimeError(
+                                    "SDXL worker failed: " + detail
+                                )
+                            elif event.get("type") == "complete":
+                                succeeded = True
+                                break
+                        if succeeded:
+                            break
+            finally:
+                if process_callback is not None:
+                    process_callback(None)
+                if succeeded:
+                    self._schedule_idle_shutdown_locked()
+                else:
+                    self._stop_locked()
+
+    def close(self):
+        with self._lock:
+            self._stop_locked()
+
+
+_sdxl_worker_manager = SDXLWorkerManager()
+
+
+def shutdown_sdxl_worker():
+    """Release the warm SDXL worker during image-service shutdown."""
+    _sdxl_worker_manager.close()
+
+
+def _validate_provider_output(params, output):
+    from PIL import Image
+
+    with Image.open(output) as image:
+        if image.format != "PNG":
+            raise RuntimeError(
+                "Provider lieferte kein gültiges PNG"
+            )
+
+        # Text-to-image requests have an explicitly requested canvas.
+        # Image-edit requests intentionally inherit the source dimensions
+        # unless the edit backend is told to resize/reframe.
+        if "source_path" not in params:
+            expected_size = (
+                params["width"],
+                params["height"],
+            )
+
+            if image.size != expected_size:
+                raise RuntimeError(
+                    "Provider lieferte kein PNG in der "
+                    "angeforderten Auflösung"
+                )
+
+        image.verify()
+
+
 def run_provider(
     model,
     params,
@@ -438,18 +720,23 @@ def run_provider(
         raise ProviderCancelled("Image job was cancelled")
     environment = os.environ.copy()
     environment.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1", TOKENIZERS_PARALLELISM="false")
+    if model["provider"] == "sdxl":
+        checkpoint, config = sdxl_files(model)
+        _sdxl_worker_manager.generate(
+            checkpoint,
+            config,
+            params,
+            output,
+            environment=environment,
+            cancel_event=cancel_event,
+            process_callback=process_callback,
+            progress_callback=progress_callback,
+        )
+        _validate_provider_output(params, output)
+        return
     if model["provider"] == "diffusionkit":
         command = [sys.executable, str(Path(__file__).with_name("image_worker.py"))]
         worker_input = json.dumps({"params": params, "output": str(output), "repository": model["repository"]})
-    elif model["provider"] == "sdxl":
-        checkpoint, config = sdxl_files(model)
-        command = [sys.executable, str(Path(__file__).with_name("sdxl_worker.py"))]
-        worker_input = json.dumps({
-            "params": params,
-            "output": str(output),
-            "checkpoint": str(checkpoint),
-            "config": str(config),
-        })
     else:
         command = mflux_command(model, params, output)
         worker_input = None
@@ -516,27 +803,4 @@ def run_provider(
             if "unrecognized arguments" in message:
                 raise RuntimeError("Installierte MFLUX-CLI ist mit den Provider-Parametern nicht kompatibel")
             raise RuntimeError(f"{model['provider']} konnte das lokale Modell/LoRA nicht ausführen (Exit {process.returncode}). Cache und Provider-Kompatibilität prüfen; es wurde nichts heruntergeladen.")
-    from PIL import Image
-
-    with Image.open(output) as image:
-        if image.format != "PNG":
-            raise RuntimeError(
-                "Provider lieferte kein gültiges PNG"
-            )
-
-        # Text-to-image requests have an explicitly requested canvas.
-        # Image-edit requests intentionally inherit the source dimensions
-        # unless the edit backend is told to resize/reframe.
-        if "source_path" not in params:
-            expected_size = (
-                params["width"],
-                params["height"],
-            )
-
-            if image.size != expected_size:
-                raise RuntimeError(
-                    "Provider lieferte kein PNG in der "
-                    "angeforderten Auflösung"
-                )
-
-        image.verify()
+    _validate_provider_output(params, output)

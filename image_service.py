@@ -16,6 +16,7 @@ from image_providers import (
     ProviderCancelled,
     availability,
     run_provider,
+    shutdown_sdxl_worker,
     terminate_process_tree,
     realesrgan_command,
 )
@@ -78,7 +79,10 @@ class ImageJobCreate(BaseModel):
 @asynccontextmanager
 async def lifespan(app):
     registry.load_registry()
-    yield
+    try:
+        yield
+    finally:
+        shutdown_sdxl_worker()
 
 
 app = FastAPI(title="MLX nobby Images", lifespan=lifespan)

@@ -1,10 +1,12 @@
 import copy
 import io
 import json
+import os
 import subprocess
 import tempfile
 import threading
 import time
+import types
 import unittest
 import urllib.error
 from pathlib import Path
@@ -17,7 +19,49 @@ from backend import observability
 import image_registry as registry
 import image_providers as providers
 import image_service as service
+import sdxl_worker
 from agent import app as agent
+
+
+FAKE_SDXL_WORKER = r'''
+import json
+import os
+import sys
+import time
+
+boot_id = f"{os.getpid()}-{time.time_ns()}"
+loaded_model = None
+for line in sys.stdin:
+    request = json.loads(line)
+    params = request["params"]
+    log_path = params["test_log"]
+    model = (request["checkpoint"], request["config"])
+    event = {
+        "boot_id": boot_id,
+        "kind": "request",
+        "params": params,
+    }
+    if model != loaded_model:
+        event["loaded"] = True
+        loaded_model = model
+    with open(log_path, "a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event) + "\n")
+    if params.get("behavior") == "crash":
+        os._exit(17)
+    if params.get("behavior") == "wait":
+        time.sleep(10)
+    print(json.dumps({
+        "type": "runtime",
+        "request_id": request["request_id"],
+        "phase": "generate",
+        "step": 1,
+        "total_steps": params["steps"],
+    }), flush=True)
+    print(json.dumps({
+        "type": "complete",
+        "request_id": request["request_id"],
+    }), flush=True)
+'''
 
 
 class ImageRuntimeTests(unittest.TestCase):
@@ -59,6 +103,49 @@ class ImageRuntimeTests(unittest.TestCase):
                 return job
             time.sleep(0.01)
         self.fail(f"Image job {job_id} did not reach {statuses}")
+
+    def make_sdxl_worker_manager(self, idle_timeout=5):
+        worker = self.root / "fake_sdxl_worker.py"
+        worker.write_text(FAKE_SDXL_WORKER, encoding="utf-8")
+        return providers.SDXLWorkerManager(
+            worker_path=worker,
+            idle_timeout=idle_timeout,
+            monitor_rss=False,
+        )
+
+    def run_fake_sdxl(
+        self,
+        manager,
+        *,
+        process_callback=None,
+        progress_callback=None,
+        **overrides,
+    ):
+        params = {
+            "prompt": "First prompt",
+            "negative_prompt": "blurry",
+            "width": 512,
+            "height": 512,
+            "steps": 1,
+            "guidance": 6.5,
+            "seed": 42,
+            "test_log": str(self.root / "sdxl-worker.jsonl"),
+        } | overrides
+        manager.generate(
+            self.root / "juggernaut.safetensors",
+            self.root / "config",
+            params,
+            self.root / "output.png",
+            environment=os.environ.copy(),
+            process_callback=process_callback,
+            progress_callback=progress_callback,
+        )
+
+    def sdxl_worker_log(self):
+        return [
+            json.loads(line)
+            for line in (self.root / "sdxl-worker.jsonl").read_text().splitlines()
+        ]
 
     def test_persistence_and_safe_default(self):
         data = registry.load_registry()
@@ -141,7 +228,25 @@ class ImageRuntimeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry.ImageModel(**(model | {"local_path": "/etc/model.safetensors"}))
 
-    def test_sdxl_provider_uses_the_existing_isolated_process_contract(self):
+    def test_sdxl_idle_timeout_is_configurable_with_safe_default(self):
+        with patch.dict(
+            os.environ,
+            {"MLX_IMAGE_SDXL_IDLE_TIMEOUT": "75"},
+        ):
+            manager = providers.SDXLWorkerManager()
+        self.assertEqual(manager.idle_timeout, 75)
+
+        with patch.dict(
+            os.environ,
+            {"MLX_IMAGE_SDXL_IDLE_TIMEOUT": "invalid"},
+        ):
+            manager = providers.SDXLWorkerManager()
+        self.assertEqual(
+            manager.idle_timeout,
+            providers.DEFAULT_SDXL_IDLE_TIMEOUT,
+        )
+
+    def test_sdxl_provider_uses_the_warm_worker_contract(self):
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
@@ -150,9 +255,7 @@ class ImageRuntimeTests(unittest.TestCase):
         config = self.root / "config"
         output = self.root / "output.png"
         Image.new("RGB", (512, 512), "white").save(output)
-        process = Mock(pid=4321, returncode=0)
-        process.poll.return_value = 0
-        process.communicate.return_value = (None, None)
+        manager = Mock()
         params = {
             "prompt": "Studio portrait",
             "negative_prompt": "blurry",
@@ -172,18 +275,211 @@ class ImageRuntimeTests(unittest.TestCase):
             "sdxl_files",
             return_value=(checkpoint, config),
         ), patch.object(
-            providers.subprocess,
-            "Popen",
-            return_value=process,
-        ) as popen:
+            providers,
+            "_sdxl_worker_manager",
+            manager,
+        ):
             providers.run_provider(model, params, output)
 
-        self.assertTrue(popen.call_args.args[0][1].endswith("sdxl_worker.py"))
-        self.assertFalse(popen.call_args.kwargs["shell"])
-        payload = json.loads(process.communicate.call_args.kwargs["input"])
-        self.assertEqual(payload["checkpoint"], str(checkpoint))
-        self.assertEqual(payload["config"], str(config))
-        self.assertEqual(payload["params"]["negative_prompt"], "blurry")
+        args = manager.generate.call_args.args
+        self.assertEqual(args[:2], (checkpoint, config))
+        self.assertEqual(args[2]["negative_prompt"], "blurry")
+        self.assertEqual(args[3], output)
+
+    def test_sdxl_worker_starts_once_reuses_pipeline_and_isolates_parameters(self):
+        manager = self.make_sdxl_worker_manager()
+        try:
+            self.assertIsNone(manager._process)
+            processes = []
+            progress = []
+            self.run_fake_sdxl(
+                manager,
+                process_callback=processes.append,
+                progress_callback=progress.append,
+            )
+            first_process = manager._process
+            self.assertIsNotNone(first_process)
+            self.assertEqual(processes, [first_process, None])
+            self.assertEqual(progress, [{
+                "phase": "generate",
+                "step": 1,
+                "total_steps": 1,
+            }])
+            self.run_fake_sdxl(
+                manager,
+                prompt="Second prompt",
+                negative_prompt="",
+                seed=99,
+                guidance=4.0,
+            )
+            self.assertIs(manager._process, first_process)
+            log = self.sdxl_worker_log()
+            self.assertEqual(len({entry["boot_id"] for entry in log}), 1)
+            self.assertEqual(sum(bool(entry.get("loaded")) for entry in log), 1)
+            self.assertEqual(log[0]["params"]["prompt"], "First prompt")
+            self.assertEqual(log[0]["params"]["seed"], 42)
+            self.assertEqual(log[1]["params"]["prompt"], "Second prompt")
+            self.assertEqual(log[1]["params"]["seed"], 99)
+            self.assertEqual(log[1]["params"]["negative_prompt"], "")
+            self.assertEqual(log[1]["params"]["guidance"], 4.0)
+        finally:
+            manager.close()
+
+    def test_sdxl_worker_reuses_one_pipeline_with_fresh_request_state(self):
+        loads = []
+        calls = []
+
+        class FakeGenerator:
+            def __init__(self, device):
+                self.device = device
+                self.seed = None
+
+            def manual_seed(self, seed):
+                self.seed = seed
+                return self
+
+        class FakeImage:
+            def save(self, *_args, **_kwargs):
+                pass
+
+        class FakePipeline:
+            @classmethod
+            def from_single_file(cls, checkpoint, **options):
+                loads.append((checkpoint, options))
+                return cls()
+
+            def to(self, device):
+                self.device = device
+                return self
+
+            def __call__(self, **options):
+                calls.append(options)
+                return types.SimpleNamespace(images=[FakeImage()])
+
+        fake_torch = types.ModuleType("torch")
+        fake_torch.float16 = "float16"
+        fake_torch.Generator = FakeGenerator
+        fake_torch.backends = types.SimpleNamespace(
+            mps=types.SimpleNamespace(is_available=lambda: True)
+        )
+        fake_torch.mps = types.SimpleNamespace(empty_cache=lambda: None)
+        fake_diffusers = types.ModuleType("diffusers")
+        fake_diffusers.StableDiffusionXLPipeline = FakePipeline
+        requests = [
+            {
+                "request_id": "first",
+                "checkpoint": "juggernaut.safetensors",
+                "config": "config",
+                "output": "first.png",
+                "params": {
+                    "prompt": "First",
+                    "negative_prompt": "blurry",
+                    "width": 512,
+                    "height": 512,
+                    "steps": 12,
+                    "guidance": 6.5,
+                    "seed": 42,
+                },
+            },
+            {
+                "request_id": "second",
+                "checkpoint": "juggernaut.safetensors",
+                "config": "config",
+                "output": "second.png",
+                "params": {
+                    "prompt": "Second",
+                    "negative_prompt": "",
+                    "width": 768,
+                    "height": 512,
+                    "steps": 8,
+                    "guidance": 4.0,
+                    "seed": 99,
+                },
+            },
+        ]
+        worker_input = io.StringIO(
+            "".join(json.dumps(request) + "\n" for request in requests)
+        )
+
+        with patch.dict(
+            "sys.modules",
+            {"torch": fake_torch, "diffusers": fake_diffusers},
+        ), patch.object(
+            sdxl_worker.sys,
+            "stdin",
+            worker_input,
+        ), patch.object(
+            sdxl_worker.sys,
+            "stdout",
+            io.StringIO(),
+        ):
+            sdxl_worker.main()
+
+        self.assertEqual(len(loads), 1)
+        self.assertEqual([call["prompt"] for call in calls], ["First", "Second"])
+        self.assertEqual([call["width"] for call in calls], [512, 768])
+        self.assertEqual([call["num_inference_steps"] for call in calls], [12, 8])
+        self.assertEqual([call["guidance_scale"] for call in calls], [6.5, 4.0])
+        self.assertEqual([call["generator"].seed for call in calls], [42, 99])
+        self.assertIsNot(calls[0]["generator"], calls[1]["generator"])
+
+    def test_sdxl_idle_shutdown_releases_worker_and_next_request_restarts(self):
+        manager = self.make_sdxl_worker_manager(idle_timeout=0.05)
+        try:
+            self.run_fake_sdxl(manager)
+            first_boot = self.sdxl_worker_log()[-1]["boot_id"]
+            deadline = time.monotonic() + 2
+            while manager._process is not None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIsNone(manager._process)
+            self.run_fake_sdxl(manager, prompt="After idle")
+            self.assertNotEqual(self.sdxl_worker_log()[-1]["boot_id"], first_boot)
+        finally:
+            manager.close()
+
+    def test_sdxl_worker_crash_is_recoverable(self):
+        manager = self.make_sdxl_worker_manager()
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Worker"):
+                self.run_fake_sdxl(manager, behavior="crash")
+            self.assertIsNone(manager._process)
+            crashed_boot = self.sdxl_worker_log()[-1]["boot_id"]
+            self.run_fake_sdxl(manager, prompt="Recovered")
+            self.assertNotEqual(self.sdxl_worker_log()[-1]["boot_id"], crashed_boot)
+        finally:
+            manager.close()
+
+    def test_sdxl_worker_cancellation_terminates_and_recovers(self):
+        manager = self.make_sdxl_worker_manager()
+        cancel_event = threading.Event()
+        timer = threading.Timer(0.05, cancel_event.set)
+        timer.start()
+        try:
+            with self.assertRaises(providers.ProviderCancelled):
+                manager.generate(
+                    self.root / "juggernaut.safetensors",
+                    self.root / "config",
+                    {
+                        "prompt": "Wait",
+                        "width": 512,
+                        "height": 512,
+                        "steps": 1,
+                        "guidance": 6.5,
+                        "seed": 42,
+                        "test_log": str(self.root / "sdxl-worker.jsonl"),
+                        "behavior": "wait",
+                    },
+                    self.root / "output.png",
+                    environment=os.environ.copy(),
+                    cancel_event=cancel_event,
+                )
+            self.assertIsNone(manager._process)
+            cancelled_boot = self.sdxl_worker_log()[-1]["boot_id"]
+            self.run_fake_sdxl(manager, prompt="After cancel")
+            self.assertNotEqual(self.sdxl_worker_log()[-1]["boot_id"], cancelled_boot)
+        finally:
+            timer.cancel()
+            manager.close()
 
     def test_explicit_sdxl_generation_preserves_parameters(self):
         registry.update_model(registry.JUGGERNAUT_XL_ID, {"enabled": True})
