@@ -169,12 +169,12 @@ function stopAllWatchers() {
     timeouts.clear();
 }
 
-async function runNextTimeout() {
+async function runNextTimeout(expectedDelay = 1000) {
     const entry = timeouts.entries().next().value;
     assert.ok(entry, 'expected a scheduled image-job poll');
     const [id, timer] = entry;
     timeouts.delete(id);
-    assert.equal(timer.delay, 1000);
+    assert.equal(timer.delay, expectedDelay);
     timer.callback();
     await settle();
 }
@@ -313,9 +313,13 @@ let transientCalls = 0;
 activeSession = transientSession;
 fetchImpl = async () => {
     transientCalls += 1;
-    if (transientCalls === 1) {
+
+    // Simulate an image-service restart that lasts longer than the old
+    // three-failure retry budget.
+    if (transientCalls <= 4) {
         throw new Error('temporary connection failure');
     }
+
     return response(toolResult('running', transientJobId, {
         currentStep: 1,
     }));
@@ -323,14 +327,118 @@ fetchImpl = async () => {
 
 assert.equal(recovery.resumeImageJobsForSession(transientSession), 1);
 await settle();
-assert.equal(transientMessage.image_job.status, 'running');
+
+assert.equal(transientCalls, 1);
 assert.equal(recovery.isWatchingImageJob(transientMessage), true);
 assert.equal(timeouts.size, 1);
-await runNextTimeout();
+
+await runNextTimeout(1000);
 assert.equal(transientCalls, 2);
+assert.equal(recovery.isWatchingImageJob(transientMessage), true);
+
+await runNextTimeout(2000);
+assert.equal(transientCalls, 3);
+assert.equal(recovery.isWatchingImageJob(transientMessage), true);
+
+await runNextTimeout(4000);
+assert.equal(transientCalls, 4);
+assert.equal(recovery.isWatchingImageJob(transientMessage), true);
+
+await runNextTimeout(8000);
+assert.equal(transientCalls, 5);
 assert.equal(transientMessage.image_job.status, 'running');
 assert.equal(recovery.isWatchingImageJob(transientMessage), true);
+
+// A successful status response resets failure recovery and returns to
+// the normal one-second polling cadence.
+assert.equal(timeouts.size, 1);
+
+const normalPoll = timeouts.values().next().value;
+assert.equal(normalPoll.delay, 1000);
+
 stopAllWatchers();
+
+const unavailableJobId = 'a'.repeat(24);
+const unavailableMessage = storedMessage(
+    'running',
+    unavailableJobId,
+);
+const unavailableSession = session(
+    'unavailable-session',
+    [unavailableMessage],
+);
+
+let unavailableCalls = 0;
+
+activeSession = unavailableSession;
+
+fetchImpl = async () => {
+    unavailableCalls += 1;
+    throw new Error('image service unavailable');
+};
+
+assert.equal(
+    recovery.resumeImageJobsForSession(
+        unavailableSession
+    ),
+    1,
+);
+
+await settle();
+
+// Initial failure schedules the first retry.
+assert.equal(unavailableCalls, 1);
+assert.equal(
+    recovery.isWatchingImageJob(unavailableMessage),
+    true,
+);
+
+for (const [index, delay] of [
+    1000,
+    2000,
+    4000,
+    8000,
+    10000,
+    10000,
+    10000,
+    10000,
+].entries()) {
+    await runNextTimeout(delay);
+
+    if (index < 7) {
+        assert.equal(
+            recovery.isWatchingImageJob(
+                unavailableMessage
+            ),
+            true,
+        );
+    }
+}
+
+// 1 initial request + 8 scheduled retries.
+assert.equal(unavailableCalls, 9);
+
+assert.equal(
+    unavailableMessage.image_job.status,
+    'failed',
+);
+
+assert.equal(
+    unavailableMessage.image_job.recovery_status,
+    'service_unavailable',
+);
+
+assert.match(
+    unavailableMessage.content,
+    /could not be reached after several retries/,
+);
+
+assert.equal(
+    recovery.isWatchingImageJob(unavailableMessage),
+    false,
+);
+
+assert.equal(timeouts.size, 0);
 
 const cancelJobId = '6'.repeat(24);
 const cancelMessage = storedMessage('running', cancelJobId);
@@ -424,7 +532,7 @@ assert.match(
 
 assert.ok(saves > 0);
 assert.ok(renders > 0);
-assert.equal(warnings.length, 1);
+assert.equal(warnings.length, 13);
 
 console.log(
     'Image job resume: restore, source of truth, retries, idempotency, ' +

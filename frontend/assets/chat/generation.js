@@ -2691,6 +2691,21 @@ const ACTIVE_IMAGE_JOB_STATUSES = new Set([
     'saving'
 ]);
 const IMAGE_JOB_ID_PATTERN = /^[a-f0-9]{24}$/;
+
+// Transient image-service failures are expected during a local service
+// restart. Keep retrying with bounded backoff long enough for the service
+// to return, but never poll forever.
+const IMAGE_JOB_RETRY_DELAYS_MS = [
+    1000,
+    2000,
+    4000,
+    8000,
+    10000,
+    10000,
+    10000,
+    10000
+];
+
 const IMAGE_JOB_TOOLS = new Set([
     'image_generate',
     'image_edit',
@@ -2837,11 +2852,15 @@ function stopImageJobWatcher(watcher) {
     window.MLXChatRendering?.syncImageJobUiTimer?.();
 }
 
-function scheduleImageJobPoll(watcher, poll) {
+function scheduleImageJobPoll(
+    watcher,
+    poll,
+    delayMs = 1000
+) {
     watcher.timerId = setTimeout(() => {
         watcher.timerId = null;
         poll();
-    }, 1000);
+    }, delayMs);
 }
 
 function unavailableImageJobResult(message) {
@@ -2869,6 +2888,33 @@ function unavailableImageJobResult(message) {
         error
     };
 }
+
+function unreachableImageJobResult(message) {
+    const error = gt(
+        'image_job_service_unavailable',
+        'The image service could not be reached after several retries. ' +
+            'The image job was interrupted.'
+    );
+
+    return {
+        type: 'tool_result',
+        tool: message.tool_result.tool,
+        status: 'failed',
+        data: {
+            job: {
+                ...message.image_job,
+                status: 'failed',
+                result: null,
+                error,
+                recovery_status: 'service_unavailable',
+                finished_at: Date.now() / 1000
+            }
+        },
+        artifacts: [],
+        error
+    };
+}
+
 
 function watchImageJob(session, message) {
     let failures = 0;
@@ -2948,9 +2994,31 @@ function watchImageJob(session, message) {
             }
             failures += 1;
             console.warn('Could not load image job status', error);
-            if (failures < 3) {
-                scheduleImageJobPoll(watcher, poll);
+
+            const retryDelay =
+                IMAGE_JOB_RETRY_DELAYS_MS[failures - 1];
+
+            if (retryDelay != null) {
+                scheduleImageJobPoll(
+                    watcher,
+                    poll,
+                    retryDelay
+                );
             } else {
+                const toolResult =
+                    unreachableImageJobResult(message);
+
+                updateImageJobMessage(
+                    session,
+                    message,
+                    toolResult
+                );
+
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderMessages({
+                    contentUpdated: true
+                });
+
                 stopImageJobWatcher(watcher);
             }
         }
