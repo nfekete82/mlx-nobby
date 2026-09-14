@@ -451,5 +451,88 @@ class ModelRuntimeApiTests(unittest.TestCase):
             persisted,
         )
 
+
+    def test_background_job_creation_fails_when_initial_persistence_fails(self):
+        with agent_app.JOBS_LOCK:
+            jobs_before = set(agent_app.JOBS)
+
+        with (
+            mock.patch.object(
+                agent_app,
+                "resolve_repo",
+                return_value="repo/test",
+            ),
+            mock.patch.object(
+                agent_app,
+                "has_running_job_for_model",
+                return_value=(False, None),
+            ),
+            mock.patch.object(
+                agent_app,
+                "save_jobs",
+                side_effect=OSError("disk full"),
+            ) as save_jobs,
+            mock.patch.object(
+                agent_app.threading,
+                "Thread",
+            ) as thread_class,
+        ):
+            with self.assertRaisesRegex(
+                OSError,
+                "disk full",
+            ):
+                agent_app.create_background_job(
+                    "download",
+                    "test-model",
+                )
+
+        save_jobs.assert_called_once_with(strict=True)
+        thread_class.assert_not_called()
+
+        with agent_app.JOBS_LOCK:
+            self.assertEqual(
+                set(agent_app.JOBS),
+                jobs_before,
+            )
+
+    def test_hf_job_creation_fails_when_initial_persistence_fails(self):
+        with agent_app.JOBS_LOCK:
+            jobs_before = set(agent_app.JOBS)
+
+        with (
+            mock.patch.object(
+                agent_app,
+                "has_running_job_for_model",
+                return_value=(False, None),
+            ),
+            mock.patch.object(
+                agent_app,
+                "save_jobs",
+                side_effect=OSError("disk full"),
+            ) as save_jobs,
+            mock.patch.object(
+                agent_app.threading,
+                "Thread",
+            ) as thread_class,
+        ):
+            with self.assertRaisesRegex(
+                OSError,
+                "disk full",
+            ):
+                agent_app.create_hf_subfolder_job(
+                    "test-model",
+                    "org/test-model",
+                    "4-bit",
+                )
+
+        save_jobs.assert_called_once_with(strict=True)
+        thread_class.assert_not_called()
+
+        with agent_app.JOBS_LOCK:
+            self.assertEqual(
+                set(agent_app.JOBS),
+                jobs_before,
+            )
+
 if __name__ == "__main__":
     unittest.main()

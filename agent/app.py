@@ -402,13 +402,15 @@ def normalize_job(raw_job, fallback_id=None):
     }
 
 
-def save_jobs():
+def save_jobs(strict=False):
     """Persist a consistent job snapshot without risking a partial JSON file."""
     # All writers serialize snapshot + replace, so an older snapshot cannot resurrect history.
     with JOB_PERSISTENCE_LOCK, JOBS_LOCK:
         try:
             write_jobs_snapshot(list(JOBS.values()))
         except Exception as exc:
+            if strict:
+                raise
             print(f"Job-Persistenz konnte nicht gespeichert werden: {exc}")
 
 
@@ -663,7 +665,12 @@ def create_hf_subfolder_job(alias, repo, quantization):
     with JOBS_LOCK:
         JOBS[job_id] = job
 
-    save_jobs()
+    try:
+        save_jobs(strict=True)
+    except Exception:
+        with JOBS_LOCK:
+            JOBS.pop(job_id, None)
+        raise
 
     thread = threading.Thread(
         target=run_hf_subfolder_job,
@@ -815,7 +822,12 @@ def create_background_job(command, target=None):
 
     with JOBS_LOCK:
         JOBS[job_id] = job
-    save_jobs()
+    try:
+        save_jobs(strict=True)
+    except Exception:
+        with JOBS_LOCK:
+            JOBS.pop(job_id, None)
+        raise
 
     thread = threading.Thread(
         target=run_background_job,

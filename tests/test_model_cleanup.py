@@ -195,6 +195,27 @@ class CleanupTests(unittest.TestCase):
         agent.cleanup_download_history(agent.HistoryCleanupRequest(scope='all'))
         self.assertIn('completed', agent.JOBS)
 
+    def test_save_jobs_best_effort_swallows_persistence_failure(self):
+        self.seed_downloads()
+
+        with mock.patch.object(
+            agent,
+            'write_jobs_snapshot',
+            side_effect=OSError('disk full'),
+        ):
+            agent.save_jobs()
+
+    def test_save_jobs_strict_propagates_persistence_failure(self):
+        self.seed_downloads()
+
+        with mock.patch.object(
+            agent,
+            'write_jobs_snapshot',
+            side_effect=OSError('disk full'),
+        ):
+            with self.assertRaisesRegex(OSError, 'disk full'):
+                agent.save_jobs(strict=True)
+
     def test_failed_persistence_does_not_remove_in_memory_history(self):
         self.seed_downloads()
         before = self.downloads.read_text()
