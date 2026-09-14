@@ -982,8 +982,6 @@ def reset_chat(chat_id: str):
                 detail="Chat konnte vor dem Zurücksetzen nicht gelesen werden",
             )
 
-        deleted_images, failed_images = delete_chat_images(chat)
-
         reset = {
             "id": chat["id"],
             "title": "New chat",
@@ -997,6 +995,8 @@ def reset_chat(chat_id: str):
             reset["settings"] = chat["settings"]
 
         write_chat(reset)
+
+        deleted_images, failed_images = delete_chat_images(chat)
 
     return {
         "reset": chat_id,
@@ -1025,8 +1025,6 @@ def delete_chat(chat_id: str):
                 detail="Chat konnte vor dem Löschen nicht gelesen werden",
             )
 
-        deleted_images, failed_images = delete_chat_images(chat)
-
         try:
             path.unlink()
         except Exception as exc:
@@ -1034,6 +1032,8 @@ def delete_chat(chat_id: str):
                 status_code=500,
                 detail=f"Chat konnte nicht gelöscht werden: {exc}",
             )
+
+        deleted_images, failed_images = delete_chat_images(chat)
 
     return {
         "deleted": chat_id,

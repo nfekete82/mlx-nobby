@@ -3043,6 +3043,144 @@ class ImageRuntimeTests(unittest.TestCase):
 
 
 
+
+    def test_reset_chat_keeps_images_when_chat_write_fails(self):
+        image_id = "1234567890-abcdef123456"
+
+        agent.IMAGE_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        image_path = (
+            agent.IMAGE_DIRECTORY /
+            f"{image_id}.png"
+        )
+
+        image_path.write_bytes(b"image")
+
+        chat_id = "reset-write-failure"
+
+        agent.write_chat({
+            "id": chat_id,
+            "title": "Before reset",
+            "created": 1,
+            "updated": 2,
+            "revision": 1,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "image_id": image_id,
+                }
+            ],
+        })
+
+        original_write_chat = agent.write_chat
+
+        def failing_write_chat(chat):
+            if chat.get("id") == chat_id:
+                raise agent.HTTPException(
+                    status_code=500,
+                    detail="simulated write failure",
+                )
+
+            return original_write_chat(chat)
+
+        with patch.object(
+            agent,
+            "write_chat",
+            side_effect=failing_write_chat,
+        ):
+            with self.assertRaises(agent.HTTPException):
+                agent.reset_chat(chat_id)
+
+        self.assertTrue(
+            image_path.exists(),
+            "reset failure must not delete referenced image",
+        )
+
+        persisted = agent.read_chat(chat_id)
+
+        self.assertIsNotNone(persisted)
+
+        self.assertEqual(
+            persisted["revision"],
+            1,
+        )
+
+        self.assertEqual(
+            persisted["messages"][0]["image_id"],
+            image_id,
+        )
+
+
+    def test_delete_chat_keeps_images_when_chat_unlink_fails(self):
+        image_id = "1234567890-abcdef123456"
+
+        agent.IMAGE_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        image_path = (
+            agent.IMAGE_DIRECTORY /
+            f"{image_id}.png"
+        )
+
+        image_path.write_bytes(b"image")
+
+        chat_id = "delete-unlink-failure"
+
+        agent.write_chat({
+            "id": chat_id,
+            "title": "Before delete",
+            "created": 1,
+            "updated": 2,
+            "revision": 1,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "image_id": image_id,
+                }
+            ],
+        })
+
+        chat_file = agent.chat_path(chat_id)
+        original_unlink = Path.unlink
+
+        def failing_unlink(path, *args, **kwargs):
+            if path == chat_file:
+                raise PermissionError(
+                    13,
+                    "Permission denied",
+                    str(path),
+                )
+
+            return original_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        with patch.object(
+            Path,
+            "unlink",
+            failing_unlink,
+        ):
+            with self.assertRaises(agent.HTTPException):
+                agent.delete_chat(chat_id)
+
+        self.assertTrue(
+            chat_file.exists(),
+            "failed delete must leave chat file intact",
+        )
+
+        self.assertTrue(
+            image_path.exists(),
+            "failed delete must not delete referenced image",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 
