@@ -12083,9 +12083,41 @@ def run_file_analysis_job(job_id):
 
 @locked_batch_start
 def start_file_analysis_job(job_id):
-    thread = threading.Thread(target=run_file_analysis_job, args=(job_id,), daemon=True, name=f"file-analysis-{job_id}")
-    register_batch_worker(job_id, thread)
-    thread.start()
+    thread = threading.Thread(
+        target=run_file_analysis_job,
+        args=(job_id,),
+        daemon=True,
+        name=f"file-analysis-{job_id}",
+    )
+
+    register_batch_worker(
+        job_id,
+        thread,
+    )
+
+    try:
+        thread.start()
+
+    except Exception as exc:
+        unregister_batch_worker(
+            job_id
+        )
+
+        with BATCH_LOCK:
+            jobs = load_batch_jobs()
+
+            if job_id in jobs:
+                current_job = jobs[job_id]
+                current_job["status"] = "failed"
+                current_job["error"] = str(exc)
+                current_job["finished_at"] = time.time()
+                current_job["current_chunk"] = None
+                current_job["current_chunk_started_at"] = None
+                current_job["waiting_for_user"] = False
+                current_job["eta_seconds"] = None
+                save_batch_jobs(jobs)
+
+        raise
 
 
 def call_mlx_transform(
@@ -13550,10 +13582,25 @@ def start_batch_job(job_id: str):
     try:
         thread.start()
 
-    except Exception:
+    except Exception as exc:
         unregister_batch_worker(
             job_id
         )
+
+        with BATCH_LOCK:
+            jobs = load_batch_jobs()
+
+            if job_id in jobs:
+                current_job = jobs[job_id]
+                current_job["status"] = "failed"
+                current_job["error"] = str(exc)
+                current_job["finished_at"] = time.time()
+                current_job["current_chunk"] = None
+                current_job["current_chunk_started_at"] = None
+                current_job["waiting_for_user"] = False
+                current_job["eta_seconds"] = None
+                save_batch_jobs(jobs)
+
         raise
 
     return {

@@ -1159,5 +1159,141 @@ class BatchTransformTests(unittest.TestCase):
                 "worker failure must not overwrite cancellation",
             )
 
+
+
+    def test_batch_worker_start_failure_is_persisted(self):
+        data = [
+            {
+                "index": 1,
+                "text": "worker start failure",
+            }
+        ]
+
+        with self.batch_environment() as root:
+            source = root / "worker-start-failure.json"
+            source.write_text(
+                json.dumps(data),
+                encoding="utf-8",
+            )
+
+            job = self.create_transform_job(
+                source,
+                "Formuliere den Text um",
+                chunk_tokens=500,
+            )
+
+            jobs = agent.load_batch_jobs()
+            jobs[job["id"]]["status"] = "running"
+            agent.save_batch_jobs(jobs)
+
+            class FailingThread:
+                def __init__(self, *args, **kwargs):
+                    self.name = kwargs.get(
+                        "name",
+                        "failing-batch-thread",
+                    )
+
+                def is_alive(self):
+                    return False
+
+                def start(self):
+                    raise RuntimeError(
+                        "simulated batch worker start failure"
+                    )
+
+            with mock.patch.object(
+                agent.threading,
+                "Thread",
+                FailingThread,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "simulated batch worker start failure",
+                ):
+                    agent.start_batch_job(job["id"])
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(
+                stored["status"],
+                "failed",
+                "failed worker start must be persisted as failed",
+            )
+
+            self.assertIn(
+                "simulated batch worker start failure",
+                stored.get("error") or "",
+            )
+
+            self.assertIsNotNone(
+                stored.get("finished_at"),
+            )
+
+            self.assertFalse(
+                agent.batch_worker_is_alive(job["id"]),
+                "failed worker must not remain registered",
+            )
+
+    def test_file_analysis_worker_start_failure_is_persisted(self):
+        with self.batch_environment() as root:
+            source = root / "file-analysis-start-failure.txt"
+            source.write_text(
+                "file analysis worker start failure",
+                encoding="utf-8",
+            )
+
+            job = agent.create_file_analysis_job(
+                source,
+                "Fasse die Datei zusammen.",
+                "text",
+                2000,
+                "summarize",
+            )
+
+            class FailingThread:
+                def __init__(self, *args, **kwargs):
+                    self.name = kwargs.get(
+                        "name",
+                        "failing-file-analysis-thread",
+                    )
+
+                def is_alive(self):
+                    return False
+
+                def start(self):
+                    raise RuntimeError(
+                        "simulated file analysis worker start failure"
+                    )
+
+            with mock.patch.object(
+                agent.threading,
+                "Thread",
+                FailingThread,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "simulated file analysis worker start failure",
+                ):
+                    agent.start_file_analysis_job(job["id"])
+
+            stored = agent.load_batch_jobs()[job["id"]]
+
+            self.assertEqual(
+                stored["status"],
+                "failed",
+                "failed file-analysis worker start must be persisted as failed",
+            )
+            self.assertIn(
+                "simulated file analysis worker start failure",
+                stored["error"],
+            )
+            self.assertIsNotNone(stored["finished_at"])
+
+            with agent.BATCH_WORKERS_LOCK:
+                self.assertNotIn(
+                    job["id"],
+                    agent.BATCH_WORKERS,
+                    "failed file-analysis worker must be unregistered",
+                )
 if __name__ == "__main__":
     unittest.main()
