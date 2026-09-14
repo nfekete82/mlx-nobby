@@ -79,6 +79,33 @@ function isImageEditRequest(prompt, hasImage) {
     );
 }
 
+function isImageComparisonRequest(prompt, hasParentImage) {
+    if (!hasParentImage) {
+        return false;
+    }
+
+    const value = String(prompt || '').trim();
+
+    if (!value) {
+        return false;
+    }
+
+    const explicitComparison =
+        /(?:^|[^\p{L}\p{N}_])(?:vergleich|vergleiche|unterschied|unterschiede|vorher|nachher|before|after|compare|comparison|difference|differences)(?=$|[^\p{L}\p{N}_])/iu;
+
+    const changedStateQuestion =
+        /(?:^|[^\p{L}\p{N}_])(?:verändert|veraendert|geändert|geaendert|anders|changed|modified|different)(?=$|[^\p{L}\p{N}_])/iu;
+
+    return (
+        explicitComparison.test(value) ||
+        (
+            IMAGE_QUESTION_PATTERN.test(value) &&
+            changedStateQuestion.test(value)
+        )
+    );
+}
+
+
 function isImageGenerationRequest(prompt) {
     const value = String(prompt || '').trim();
 
@@ -364,7 +391,8 @@ async function startImageUpscale(source, preset = 'photo-2x') {
                 'image_upscaling',
                 'Enhancing the image locally with Real-ESRGAN …'
             ),
-            image_generation_pending: true
+            image_generation_pending: true,
+            image_parent_artifact_id: activeArtifactId || null
         };
         session.messages.push(pendingMessage);
         MLXChatSessions.updateTitle(session);
@@ -463,6 +491,32 @@ function activeSessionImageArtifact(session) {
     return sessionImageArtifacts(session).find(
         artifact => artifact.artifact_id === activeArtifactId
     ) || null;
+}
+
+
+function imageConversationState(session) {
+    const artifacts = sessionImageArtifacts(session);
+
+    const active =
+        activeSessionImageArtifact(session) ||
+        artifacts[0] ||
+        null;
+
+    const parent =
+        active?.parent_artifact_id
+            ? artifacts.find(
+                artifact =>
+                    artifact.artifact_id === active.parent_artifact_id
+            ) || null
+            : null;
+
+    return {
+        artifacts,
+        active,
+        parent,
+        has_active_image: Boolean(active),
+        has_parent_image: Boolean(parent)
+    };
 }
 
 
@@ -1375,15 +1429,17 @@ const imageFiles =
             file => file.kind === 'text'
         );
 
-    const imageArtifactCandidates = sessionImageArtifacts(session);
+    const imageState =
+        imageConversationState(session);
+
+    const imageArtifactCandidates =
+        imageState.artifacts;
 
     const activeWorkspaceImageArtifact =
         activeSessionImageArtifact(session);
 
     const activeImageArtifact =
-        activeWorkspaceImageArtifact ||
-        imageArtifactCandidates[0] ||
-        null;
+        imageState.active;
 
     const explicitImageEditRequest =
         isImageEditRequest(
@@ -1392,7 +1448,14 @@ const imageFiles =
                 Boolean(activeWorkspaceImageArtifact)
         );
 
+    const imageComparisonRequest =
+        isImageComparisonRequest(
+            prompt,
+            imageState.has_parent_image
+        );
+
     const refersToExistingImage =
+        imageComparisonRequest ||
         /\b(?:das|dieses|diesem|dieser|bild|foto|abbildung|es|davon|darauf)\b|\bist\s+das\b|\bsieht\s+(?:das|es)\b/i
             .test(prompt);
     const transformPattern = /anonymis|entfern|bereinig|ersetz|änder|aender|transformier|schwärz|schwaerz/i;
@@ -1694,32 +1757,44 @@ const imageFiles =
         refersToExistingImage &&
         !explicitImageEditRequest
     ) {
-
-
         try {
-            const dataUrl =
-                await imageArtifactDataUrl(
-                    activeImageArtifact
-                );
+            const visionArtifacts =
+                imageComparisonRequest && imageState.parent
+                    ? [
+                        imageState.parent,
+                        activeImageArtifact
+                    ]
+                    : [activeImageArtifact];
 
-            visionImages.push({
-                kind: 'image',
-                name:
-                    activeImageArtifact.name ||
-                    'generated-image.png',
-                type:
-                    activeImageArtifact.mime_type ||
-                    'image/png',
-                image_id:
-                    activeImageArtifact.image_id,
-                artifact_id:
-                    activeImageArtifact.artifact_id,
-                data_url: dataUrl
-            });
+            for (const artifact of visionArtifacts) {
+                const dataUrl =
+                    await imageArtifactDataUrl(
+                        artifact
+                    );
+
+                visionImages.push({
+                    kind: 'image',
+                    name:
+                        artifact.name ||
+                        'generated-image.png',
+                    type:
+                        artifact.mime_type ||
+                        'image/png',
+                    image_id:
+                        artifact.image_id,
+                    artifact_id:
+                        artifact.artifact_id,
+                    data_url: dataUrl
+                });
+            }
 
             console.log(
-                '[MLX Vision] Active image artifact:',
-                activeImageArtifact.artifact_id
+                imageComparisonRequest
+                    ? '[MLX Vision] Image comparison artifacts:'
+                    : '[MLX Vision] Active image artifact:',
+                visionArtifacts.map(
+                    artifact => artifact.artifact_id
+                )
             );
         } catch (error) {
             console.error(
@@ -1816,7 +1891,10 @@ const imageFiles =
         isImageGenerationRequest(prompt);
 
     const routesCurrentImageToVision =
-        imageFiles.length > 0 &&
+        (
+            imageFiles.length > 0 ||
+            visionImages.length > 0
+        ) &&
         !explicitImageCreationRequest &&
         !explicitImageEditRequest;
 
@@ -1911,6 +1989,15 @@ const imageFiles =
                 !currentImageContext
                     ? activeWorkspaceImageArtifact?.artifact_id || null
                     : null;
+
+            if (
+                pendingImageMessage &&
+                explicitImageEditRequest &&
+                activeArtifactIdForEdit
+            ) {
+                pendingImageMessage.image_parent_artifact_id =
+                    activeArtifactIdForEdit;
+            }
 
             if (
                 explicitImageEditRequest &&
@@ -2483,6 +2570,22 @@ function updateImageJobMessage(
     }
 
     message.image_job = nextJob;
+
+    if (
+        toolResult.status === 'completed' &&
+        message.image_parent_artifact_id &&
+        toolResult.artifacts?.[0] &&
+        !toolResult.artifacts[0].parent_artifact_id
+    ) {
+        toolResult.artifacts[0].parent_artifact_id =
+            message.image_parent_artifact_id;
+
+        if (toolResult.data?.image) {
+            toolResult.data.image.parent_artifact_id =
+                message.image_parent_artifact_id;
+        }
+    }
+
     message.tool_result = toolResult;
     message.image_generation_pending = false;
 
@@ -2792,6 +2895,8 @@ function watchBatchJob(session, jobId) {
             readSseEvents: readSseEvents,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments,
+            imageConversationState: imageConversationState,
+            isImageComparisonRequest: isImageComparisonRequest,
             sessionImageArtifacts: sessionImageArtifacts,
             activeSessionImageArtifact: activeSessionImageArtifact,
             isImageEditRequest: isImageEditRequest,

@@ -45,9 +45,38 @@ const window = {
 };
 window.window = window;
 
+class TestFileReader {
+    readAsDataURL(blob) {
+        Promise.resolve(
+            blob.arrayBuffer()
+        ).then(buffer => {
+            const base64 =
+                Buffer.from(buffer).toString('base64');
+
+            this.result =
+                'data:' +
+                (blob.type || 'application/octet-stream') +
+                ';base64,' +
+                base64;
+
+            this.onload?.();
+        }).catch(error => {
+            this.error = error;
+            this.onerror?.();
+        });
+    }
+}
+
 const context = {
     console,
     crypto: { randomUUID: () => 'attachment-id' },
+    FileReader: TestFileReader,
+    Blob,
+    Buffer,
+    performance,
+    AbortController,
+    TextEncoder,
+    TextDecoder,
     document: {
         addEventListener() {},
         getElementById(id) {
@@ -237,6 +266,16 @@ context.MLXChatRuntime = {
         visionChecks += 1;
         return false;
     },
+    getSessionGenerationSettings() {
+        return {
+            temperature: 0.7,
+            max_tokens: 512,
+        };
+    },
+    getSessionSystemPrompt() {
+        return '';
+    },
+    updateSendButton() {},
     autoResize() {},
     beginUserMessage() {},
 };
@@ -256,13 +295,17 @@ context.MLXChatRendering = {
 context.alert = message => {
     throw new Error(`Unexpected alert: ${message}`);
 };
+let abortController = null;
+
 window.MLXChatGeneration.configure({
     getGenerating: () => generating,
     setGenerating: value => {
         generating = value;
     },
-    getAbortController: () => null,
-    setAbortController() {},
+    getAbortController: () => abortController,
+    setAbortController: value => {
+        abortController = value;
+    },
 });
 
 requests.length = 0;
@@ -399,6 +442,55 @@ assert.equal(
     false,
 );
 
+// ----------------------------------------------------------------
+// Image comparison intent must only activate when a parent image
+// actually exists.
+// ----------------------------------------------------------------
+
+for (const prompt of [
+    'Was wurde verändert?',
+    'Was ist jetzt anders?',
+    'Welche Unterschiede gibt es?',
+    'Vergleiche vorher und nachher.',
+    'What changed?',
+    'What is different?',
+    'Compare before and after.',
+]) {
+    assert.equal(
+        routing.isImageComparisonRequest(prompt, true),
+        true,
+        prompt,
+    );
+}
+
+for (const prompt of [
+    'Was wurde verändert?',
+    'Was ist jetzt anders?',
+    'Vergleiche vorher und nachher.',
+]) {
+    assert.equal(
+        routing.isImageComparisonRequest(prompt, false),
+        false,
+        `comparison without parent: ${prompt}`,
+    );
+}
+
+assert.equal(
+    routing.isImageComparisonRequest(
+        'Was siehst du auf dem Bild?',
+        true,
+    ),
+    false,
+);
+
+assert.equal(
+    routing.isImageComparisonRequest(
+        'Wie ist das Wetter heute?',
+        true,
+    ),
+    false,
+);
+
 const imageArtifactB = {
     ...imageArtifact,
     artifact_id: 'image-1234567891-bbbbbbbbbbbb',
@@ -485,6 +577,27 @@ assert.equal(
     imageArtifactB.artifact_id,
 );
 
+assert.equal(
+    imageArtifactB.parent_artifact_id,
+    imageArtifact.artifact_id,
+);
+
+let imageState =
+    routing.imageConversationState(session);
+
+assert.equal(
+    imageState.active.artifact_id,
+    imageArtifactB.artifact_id,
+);
+
+assert.equal(
+    imageState.parent.artifact_id,
+    imageArtifact.artifact_id,
+);
+
+assert.equal(imageState.has_active_image, true);
+assert.equal(imageState.has_parent_image, true);
+
 const thirdRequestStart = requests.length;
 input.value = 'Mach das Bild etwas wärmer.';
 await window.MLXChatGeneration.sendMessage();
@@ -500,6 +613,227 @@ assert.equal(
 assert.equal(
     session.workspace.active_artifact_id,
     imageArtifactC.artifact_id,
+);
+
+assert.equal(
+    imageArtifactC.parent_artifact_id,
+    imageArtifactB.artifact_id,
+);
+
+imageState =
+    routing.imageConversationState(session);
+
+assert.equal(
+    imageState.active.artifact_id,
+    imageArtifactC.artifact_id,
+);
+
+assert.equal(
+    imageState.parent.artifact_id,
+    imageArtifactB.artifact_id,
+);
+
+assert.equal(imageState.has_active_image, true);
+assert.equal(imageState.has_parent_image, true);
+
+// Comparison order is parent first, current result second.
+// buildApiMessages() must preserve this order for Vision.
+const comparisonMessage =
+    routing.buildApiMessages([{
+        role: 'user',
+        content: 'Was wurde verändert?',
+        vision_images: [
+            {
+                kind: 'image',
+                name: 'before.png',
+                data_url:
+                    'data:image/png;base64,before',
+                artifact_id:
+                    imageState.parent.artifact_id,
+            },
+            {
+                kind: 'image',
+                name: 'after.png',
+                data_url:
+                    'data:image/png;base64,after',
+                artifact_id:
+                    imageState.active.artifact_id,
+            },
+        ],
+    }])[0];
+
+assert.deepEqual(
+    Array.from(comparisonMessage.content)
+        .filter(part => part.type === 'image_url')
+        .map(part => part.image_url.url),
+    [
+        'data:image/png;base64,before',
+        'data:image/png;base64,after',
+    ],
+);
+
+// ----------------------------------------------------------------
+// Full sendMessage() integration:
+// "Was wurde verändert?" must load parent + active into
+// vision_images, in that exact order, without invoking image_edit.
+// ----------------------------------------------------------------
+
+const comparisonFetchStart = requests.length;
+
+const comparisonEncoder = new TextEncoder();
+
+function comparisonReader(text) {
+    const chunks = [
+        comparisonEncoder.encode(text),
+    ];
+
+    let index = 0;
+
+    return {
+        async read() {
+            if (index >= chunks.length) {
+                return {
+                    value: undefined,
+                    done: true,
+                };
+            }
+
+            return {
+                value: chunks[index++],
+                done: false,
+            };
+        },
+    };
+}
+
+let comparisonChatPayload = null;
+
+context.fetch = async (url, options) => {
+    requests.push({ url, options });
+
+    if (url.startsWith('/api/mlx/images/')) {
+        const imageId = decodeURIComponent(
+            url.split('/').at(-1)
+        );
+
+        const payload =
+            imageId === imageArtifactB.image_id
+                ? 'before'
+                : imageId === imageArtifactC.image_id
+                    ? 'after'
+                    : 'unknown';
+
+        return {
+            ok: true,
+            async blob() {
+                return new Blob([
+                    Buffer.from(payload),
+                ], {
+                    type: 'image/png',
+                });
+            },
+        };
+    }
+
+    if (url === '/api/chat/stream') {
+        comparisonChatPayload =
+            JSON.parse(options.body);
+
+        const stream =
+            'data: {"type":"content","text":"Comparison complete."}\n\n' +
+            'event: done\ndata: {}\n\n';
+
+        return {
+            ok: true,
+            body: {
+                getReader() {
+                    return comparisonReader(stream);
+                },
+            },
+        };
+    }
+
+    throw new Error(
+        `Unexpected request during comparison test: ${url}`
+    );
+};
+
+input.value = 'Was wurde verändert?';
+
+await window.MLXChatGeneration.sendMessage();
+
+await new Promise(resolve => setImmediate(resolve));
+
+const comparisonUserMessage =
+    session.messages
+        .slice()
+        .reverse()
+        .find(message =>
+            message.role === 'user' &&
+            message.display_content === 'Was wurde verändert?'
+        );
+
+assert.ok(comparisonUserMessage);
+
+assert.deepEqual(
+    Array.from(
+        comparisonUserMessage.vision_images,
+        image => image.artifact_id,
+    ),
+    [
+        imageArtifactB.artifact_id,
+        imageArtifactC.artifact_id,
+    ],
+);
+
+assert.equal(
+    comparisonUserMessage.vision_images.length,
+    2,
+);
+
+assert.ok(comparisonChatPayload);
+
+const comparisonApiUserMessage =
+    comparisonChatPayload.messages
+        .slice()
+        .reverse()
+        .find(message =>
+            message.role === 'user'
+        );
+
+assert.ok(comparisonApiUserMessage);
+
+assert.ok(
+    Array.isArray(comparisonApiUserMessage.content)
+);
+
+assert.deepEqual(
+    Array.from(comparisonApiUserMessage.content)
+        .filter(part => part.type === 'image_url')
+        .map(part => part.image_url.url),
+    [
+        'data:image/png;base64,YmVmb3Jl',
+        'data:image/png;base64,YWZ0ZXI=',
+    ],
+);
+
+assert.equal(
+    session.messages.at(-1).role,
+    'assistant',
+);
+
+assert.equal(
+    session.messages.at(-1).content,
+    'Comparison complete.',
+);
+
+assert.equal(
+    requests
+        .slice(comparisonFetchStart)
+        .some(request =>
+            request.url === '/api/mlx/chat/actions'
+        ),
+    false,
 );
 
 selectedAttachments = [imageAttachment];
@@ -921,7 +1255,16 @@ assert.equal(
     false,
 );
 
-const editMessage = session.messages.at(-1);
+const editMessage = session.messages
+    .slice()
+    .reverse()
+    .find(message =>
+        message?.tool_result?.artifacts?.some(
+            artifact =>
+                artifact.artifact_id ===
+                imageArtifactC.artifact_id
+        )
+    );
 assert.equal(
     editMessage.tool_result.artifacts[0].artifact_id,
     imageArtifactC.artifact_id,
