@@ -2408,6 +2408,41 @@ class CodeWorkspaceTests(unittest.TestCase):
 
         llm.assert_called_once()
 
+
+    def test_deactivate_workspace_leaves_workspace_registered(self):
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace_one),
+            activate=True,
+        )
+
+        self.assertIsNotNone(
+            code_workspaces.active_workspace()
+        )
+
+        result = code_workspaces.deactivate_workspace()
+
+        self.assertIsNone(
+            code_workspaces.active_workspace()
+        )
+
+        workspace_ids = {
+            item["workspace_id"]
+            for item in code_workspaces.list_workspaces()
+        }
+
+        self.assertIn(
+            workspace["workspace_id"],
+            workspace_ids,
+            "closing a workspace must not remove it from the workspace list",
+        )
+
+        self.assertEqual(
+            result,
+            {"active_workspace": None},
+        )
+
+
+
 class FolderPickerTests(unittest.TestCase):
     def test_folder_picker_cancel_returns_clean_status(self):
         cancelled = subprocess.CompletedProcess(

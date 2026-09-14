@@ -1143,18 +1143,48 @@ function parseWorkspaceTestCommands(value) {
 
 function renderActiveWorkspace(workspace) {
     const badge = document.getElementById('activeWorkspaceBadge');
-    if (!badge) return;
+    const header = document.getElementById('activeWorkspaceHeader');
+    const headerButton = document.getElementById('activeWorkspaceHeaderButton');
+    const headerClose = document.getElementById('activeWorkspaceHeaderClose');
 
-    if (!workspace) {
-        badge.hidden = true;
-        badge.textContent = '';
-        badge.removeAttribute('title');
+    if (badge) {
+        if (!workspace) {
+            badge.hidden = true;
+            badge.textContent = '';
+            badge.removeAttribute('title');
+        } else {
+            badge.hidden = false;
+            badge.textContent = '📁 ' + workspace.name;
+            badge.title = workspace.root_path;
+        }
+    }
+
+    if (!header || !headerButton || !headerClose) {
         return;
     }
 
-    badge.hidden = false;
-    badge.textContent = '📁 ' + workspace.name;
-    badge.title = workspace.root_path;
+    if (!workspace) {
+        header.dataset.active = 'false';
+        headerButton.textContent = '📁 Workspace öffnen';
+        headerButton.title = 'Workspace auswählen';
+        headerClose.hidden = true;
+        return;
+    }
+
+    const rootPath = String(workspace.root_path || '');
+    const home = rootPath.startsWith('/Users/')
+        ? rootPath.split('/').slice(0, 3).join('/')
+        : '';
+
+    const displayPath = home && rootPath.startsWith(home)
+        ? '~' + rootPath.slice(home.length)
+        : rootPath;
+
+    header.dataset.active = 'true';
+    headerButton.textContent =
+        '📁 ' + workspace.name + ' · ' + displayPath;
+    headerButton.title = rootPath;
+    headerClose.hidden = false;
 }
 
 function workspaceActionButton(label, action, workspaceId) {
@@ -1247,6 +1277,48 @@ async function openWorkspacePicker() {
         buttons.forEach(button => { button.disabled = false; });
     }
 }
+
+const activeWorkspaceHeaderButton = document.getElementById(
+    'activeWorkspaceHeaderButton'
+);
+
+if (activeWorkspaceHeaderButton) {
+    activeWorkspaceHeaderButton.addEventListener(
+        'click',
+        openWorkspacePicker
+    );
+}
+
+const activeWorkspaceHeaderClose = document.getElementById(
+    'activeWorkspaceHeaderClose'
+);
+
+if (activeWorkspaceHeaderClose) {
+    activeWorkspaceHeaderClose.addEventListener('click', async event => {
+        event.stopPropagation();
+        activeWorkspaceHeaderClose.disabled = true;
+
+        try {
+            await workspaceRequest(
+                '/api/mlx/code/workspaces/active',
+                {
+                    method: 'DELETE',
+                }
+            );
+
+            await loadWorkspaces();
+
+        } catch (error) {
+            showWorkspaceFeedback(
+                workspaceErrorMessage(error)
+            );
+
+        } finally {
+            activeWorkspaceHeaderClose.disabled = false;
+        }
+    });
+}
+
 
 const workspacePickerButton = document.getElementById('workspacePickerButton');
 if (workspacePickerButton) {

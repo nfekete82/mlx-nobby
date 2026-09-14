@@ -7159,3 +7159,67 @@ body.mlx-empty-chat .composer-disclaimer {
 .model-console-collapsible-summary > span:last-child {
     margin-left: auto;
 }
+
+
+/* ==========================================================
+   MLX nobby: active coding workspace in topbar
+   ========================================================== */
+
+.active-workspace-separator {
+    color: var(--border);
+    opacity: .9;
+}
+
+.active-workspace-header {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    gap: 4px;
+}
+
+.active-workspace-header-button,
+.active-workspace-header-close {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+}
+
+.active-workspace-header-button {
+    display: inline-block;
+    max-width: min(46vw, 520px);
+    padding: 2px 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.active-workspace-header-button:hover {
+    color: var(--text);
+}
+
+.active-workspace-header-close {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 5px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.active-workspace-header-close:hover {
+    background: var(--panel2);
+    color: var(--text);
+}
+
+.active-workspace-header-close:disabled {
+    cursor: wait;
+    opacity: .45;
+}
+
+@media (max-width: 760px) {
+    .active-workspace-header-button {
+        max-width: 34vw;
+    }
+}

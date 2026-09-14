@@ -112,7 +112,10 @@ def _summary(item, **extra):
         **extra,
     }
 def _active_from(items):
-    return next((item for item in items if item.get("active")), items[0] if items else None)
+    return next(
+        (item for item in items if item.get("active")),
+        None,
+    )
 def list_workspaces():
     items = _load()
     active = _active_from(items)
@@ -135,6 +138,19 @@ def active_workspace_id():
     if not item:
         raise ValueError("WORKSPACE_SELECTION_REQUIRED")
     return item["workspace_id"]
+def deactivate_workspace():
+    items = _load()
+
+    for entry in items:
+        entry["active"] = False
+
+    _save(items)
+
+    return {
+        "active_workspace": None,
+    }
+
+
 def set_active_workspace(workspace_id):
     items = _load()
     item = next((entry for entry in items if entry.get("workspace_id") == workspace_id), None)

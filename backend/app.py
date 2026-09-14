@@ -1860,6 +1860,14 @@ def mlx_code_workspace_add(request: dict): return agent_json_request('POST','/ap
 def mlx_code_workspace_pick(): return agent_json_request('POST','/api/code/workspaces/pick',timeout=3600)
 @app.get('/api/mlx/code/workspaces/active')
 def mlx_code_workspace_active(): return agent_json_request('GET','/api/code/workspaces/active')
+
+@app.delete('/api/mlx/code/workspaces/active')
+def mlx_code_workspace_deactivate():
+    return agent_json_request(
+        'DELETE',
+        '/api/code/workspaces/active',
+        timeout=30,
+    )
 @app.post('/api/mlx/code/workspaces/{workspace_id}/activate')
 def mlx_code_workspace_activate(workspace_id: str): return agent_json_request('POST','/api/code/workspaces/'+urllib.parse.quote(workspace_id,safe='')+'/activate',timeout=30)
 @app.delete('/api/mlx/code/workspaces/{workspace_id}')

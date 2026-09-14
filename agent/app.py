@@ -7968,6 +7968,13 @@ def code_workspace_pick():
 def code_workspace_active():
     try: return {'active_workspace':code_workspaces.active_workspace()}
     except ValueError as exc: raise code_http_error(exc)
+
+@app.delete('/api/code/workspaces/active')
+def code_workspace_deactivate():
+    try:
+        return code_workspaces.deactivate_workspace()
+    except ValueError as exc:
+        raise code_http_error(exc)
 @app.post('/api/code/workspaces/{workspace_id}/activate')
 def code_workspace_activate(workspace_id: str):
     try: return code_workspaces.set_active_workspace(workspace_id)
