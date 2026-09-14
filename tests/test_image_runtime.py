@@ -509,6 +509,110 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["steps"], 12)
         self.assertEqual(calls[0][1]["guidance"], 6.5)
 
+    def test_agent_automatic_image_dimensions(self):
+        self.assertEqual(
+            agent._automatic_image_dimensions(
+                "Photorealistic full body portrait of a woman"
+            ),
+            (768, 1024),
+        )
+        self.assertEqual(
+            agent._automatic_image_dimensions(
+                "Cinematic mountain landscape"
+            ),
+            (1024, 768),
+        )
+        self.assertEqual(
+            agent._automatic_image_dimensions(
+                "Minimal square app icon"
+            ),
+            (1024, 1024),
+        )
+        self.assertEqual(
+            agent._automatic_image_dimensions(
+                "A red apple"
+            ),
+            (1024, 1024),
+        )
+
+    def test_agent_uses_ai_selected_image_dimensions(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value={
+                "prompt": "A cinematic mountain valley at sunset",
+                "layout": "wide",
+                "width": 1024,
+                "height": 768,
+            },
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Erstelle ein Bild eines Bergtals bei Sonnenuntergang",
+                )
+            )
+
+        self.assertEqual(
+            payload["prompt"],
+            "A cinematic mountain valley at sunset",
+        )
+        self.assertEqual(payload["width"], 1024)
+        self.assertEqual(payload["height"], 768)
+
+    def test_agent_ai_tall_layout(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value={
+                "prompt": "Full body fashion portrait of an adult woman",
+                "layout": "tall",
+                "width": 768,
+                "height": 1024,
+            },
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Ganzkörper Fashion Portrait einer erwachsenen Frau",
+                )
+            )
+
+        self.assertEqual(payload["width"], 768)
+        self.assertEqual(payload["height"], 1024)
+
+    def test_agent_plain_text_translation_keeps_dimension_fallback(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="Full body portrait of a woman",
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Ganzkörperporträt einer Frau",
+                )
+            )
+
+        self.assertEqual(payload["width"], 768)
+        self.assertEqual(payload["height"], 1024)
+
+    def test_agent_explicit_image_dimensions_override_auto(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="Full body portrait of a woman",
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Erstelle ein Ganzkörperporträt",
+                    image_options={
+                        "width": 896,
+                        "height": 1152,
+                    },
+                )
+            )
+
+        self.assertEqual(payload["width"], 896)
+        self.assertEqual(payload["height"], 1152)
+
     def test_agent_forwards_sdxl_negative_prompt_option(self):
         with patch.object(
             agent,

@@ -5779,17 +5779,26 @@ def translate_image_prompt_to_english(prompt):
                     {
                         "role": "system",
                         "content": (
-                            "You are a literal image-prompt translator. "
-                            "Translate the user's image description into English. "
-                            "Preserve every concrete detail exactly, including "
-                            "subject count, explicitly stated adult age, gender, "
-                            "nudity or clothing, pose, appearance, environment, "
-                            "camera details and artistic style. "
-                            "Do not add, remove, soften, censor, euphemize, "
-                            "reinterpret or sanitize anything. "
-                            "If the prompt is already English, return it unchanged. "
-                            "Output only the final English image prompt. "
-                            "No quotes, explanations or commentary."
+                            "You prepare prompts for an image-generation model. "
+                            "Translate the user's image description literally into English "
+                            "and choose the most suitable canvas layout for the requested "
+                            "composition. Preserve every concrete detail exactly, including "
+                            "subject count, explicitly stated adult age, gender, nudity or "
+                            "clothing, pose, appearance, environment, camera details and "
+                            "artistic style. Do not add, remove, soften, censor, euphemize, "
+                            "reinterpret or sanitize anything. If the prompt is already "
+                            "English, preserve it. Choose exactly one layout from: "
+                            "square, portrait, tall, landscape, wide. "
+                            "Use square for compositions that benefit from equal dimensions; "
+                            "portrait for ordinary vertical portraits and people; "
+                            "tall for full-body, strongly vertical or poster-like compositions; "
+                            "landscape for ordinary horizontal scenes; "
+                            "wide for cinematic, panoramic or strongly horizontal compositions. "
+                            "Return ONLY valid compact JSON with exactly these keys: "
+                            "{\"prompt\":\"final English image prompt\","
+                            "\"layout\":\"square|portrait|tall|landscape|wide\"}. "
+                            "No markdown, quotes around the whole response, explanations "
+                            "or commentary."
                         ),
                     },
                     {
@@ -5798,7 +5807,7 @@ def translate_image_prompt_to_english(prompt):
                     },
                 ],
                 "temperature": 0.0,
-                "max_tokens": 600,
+                "max_tokens": 700,
                 "stream": False,
             }
             call_metrics = observability.ModelCallMetrics(
@@ -5837,6 +5846,55 @@ def translate_image_prompt_to_english(prompt):
                 finish_reason=choice.get("finish_reason"),
             )
 
+            translated = translated.strip()
+            if not translated:
+                return value
+
+            # Preferred response: one LLM call returns both the translated
+            # image prompt and the composition-aware canvas layout.
+            try:
+                structured = json.loads(translated)
+
+                if isinstance(structured, dict):
+                    final_prompt = str(
+                        structured.get("prompt") or ""
+                    ).strip()
+
+                    layout = str(
+                        structured.get("layout") or ""
+                    ).strip().lower()
+
+                    layouts = {
+                        "square": (1024, 1024),
+                        "portrait": (768, 1024),
+                        "tall": (768, 1024),
+                        "landscape": (1024, 768),
+                        "wide": (1024, 768),
+                    }
+
+                    if final_prompt and layout in layouts:
+                        width, height = layouts[layout]
+
+                        print(
+                            "[image-prompt] prepared "
+                            f"source_chars={len(value)} "
+                            f"output_chars={len(final_prompt)} "
+                            f"layout={layout} "
+                            f"size={width}x{height}",
+                            flush=True,
+                        )
+
+                        return {
+                            "prompt": final_prompt,
+                            "layout": layout,
+                            "width": width,
+                            "height": height,
+                        }
+
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+            # Backward-compatible fallback for old/plain-text responses.
             translated = translated.strip(' "\'')
             if not translated:
                 return value
@@ -7255,21 +7313,103 @@ def _resolve_image_artifact_source(artifact_id):
     return source
 
 
+def _automatic_image_dimensions(prompt):
+    """Choose dimensions from the requested image composition."""
+    value = str(prompt or "").lower()
+
+    square_markers = (
+        "square",
+        "icon",
+        "logo",
+        "avatar",
+        "profile picture",
+        "product shot",
+    )
+
+    landscape_markers = (
+        "landscape",
+        "panorama",
+        "scenery",
+        "cityscape",
+        "wide shot",
+        "cinematic wide",
+        "mountains",
+        "beach",
+        "forest",
+    )
+
+    portrait_markers = (
+        "portrait",
+        "full body",
+        "full-body",
+        "standing",
+        "person",
+        "woman",
+        "man",
+        "girl",
+        "boy",
+        "model",
+        "headshot",
+        "fashion",
+    )
+
+    # Specific composition wins before generic person markers.
+    if any(marker in value for marker in square_markers):
+        return 1024, 1024
+
+    if any(marker in value for marker in landscape_markers):
+        return 1024, 768
+
+    if any(marker in value for marker in portrait_markers):
+        return 768, 1024
+
+    return 1024, 1024
+
+
 def _image_generate_payload(request):
     source_prompt = image_prompt_from_request(request.prompt)
-    prompt = translate_image_prompt_to_english(source_prompt)
+    prepared = translate_image_prompt_to_english(source_prompt)
+
+    if isinstance(prepared, dict):
+        prompt = str(prepared.get("prompt") or "").strip()
+        width = int(prepared.get("width") or 0)
+        height = int(prepared.get("height") or 0)
+
+        if width <= 0 or height <= 0:
+            width, height = _automatic_image_dimensions(prompt)
+    else:
+        prompt = str(prepared or "").strip()
+        width, height = _automatic_image_dimensions(prompt)
+
     if len(prompt) < 3:
-        raise HTTPException(status_code=400, detail="Bitte beschreibe das gewünschte Bild")
+        raise HTTPException(
+            status_code=400,
+            detail="Bitte beschreibe das gewünschte Bild",
+        )
+
     payload = {
         "prompt": prompt,
         "model": "auto",
-        "width": 512,
-        "height": 512,
+        "width": width,
+        "height": height,
     }
+
     if request.image_options:
-        if set(request.image_options) - {"prompt", "negative_prompt", "model", "width", "height", "steps", "guidance", "seed"}:
+        if set(request.image_options) - {
+            "prompt",
+            "negative_prompt",
+            "model",
+            "width",
+            "height",
+            "steps",
+            "guidance",
+            "seed",
+        }:
             raise HTTPException(422, "Unbekannte Bildparameter")
+
+        # Explicit user options always override automatic defaults.
         payload.update(request.image_options)
+
     return payload
 
 
