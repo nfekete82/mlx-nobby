@@ -10,7 +10,7 @@ import types
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -809,8 +809,21 @@ class ImageRuntimeTests(unittest.TestCase):
             "messages": [],
         })
 
-        result = agent.reset_chat(
-            "revision-reset-chat"
+        with patch.object(
+            agent,
+            "cancel_chat_image_jobs_api",
+            return_value={
+                "cancelled": [],
+                "cancelled_count": 0,
+            },
+        ) as cancel_jobs:
+            result = agent.reset_chat(
+                "revision-reset-chat"
+            )
+
+        cancel_jobs.assert_called_once_with(
+            "revision-reset-chat",
+            4,
         )
 
         self.assertEqual(
@@ -2886,6 +2899,206 @@ class ImageRuntimeTests(unittest.TestCase):
             self.assertEqual(self.client.post("/models/mflux-z-image-turbo/activate").status_code, 409)
         self.assertEqual(registry.load_registry()["default_model"], registry.LEGACY_ID)
 
+    def test_cancel_chat_image_jobs_filters_chat_and_revision(self):
+        service._jobs.clear()
+
+        def make_job(job_id, chat_id, revision, status="running"):
+            return {
+                "id": job_id,
+                "operation": "generate",
+                "chat_id": chat_id,
+                "chat_revision": revision,
+                "status": status,
+                "model": None,
+                "current_step": None,
+                "total_steps": 10,
+                "result": None,
+                "error": None,
+                "created_at": 1,
+                "started_at": 1,
+                "finished_at": None,
+                "_cancel_event": __import__("threading").Event(),
+                "_process": None,
+                "_thread": None,
+                "_output_path": None,
+            }
+
+        target = make_job(
+            "target-job",
+            "chat-a",
+            3,
+        )
+        wrong_revision = make_job(
+            "wrong-revision",
+            "chat-a",
+            4,
+        )
+        wrong_chat = make_job(
+            "wrong-chat",
+            "chat-b",
+            3,
+        )
+
+        service._jobs.update({
+            target["id"]: target,
+            wrong_revision["id"]: wrong_revision,
+            wrong_chat["id"]: wrong_chat,
+        })
+
+        result = service.cancel_chat_image_jobs(
+            "chat-a",
+            3,
+        )
+
+        self.assertTrue(
+            target["_cancel_event"].is_set()
+        )
+        self.assertFalse(
+            wrong_revision["_cancel_event"].is_set()
+        )
+        self.assertFalse(
+            wrong_chat["_cancel_event"].is_set()
+        )
+
+        self.assertEqual(
+            [job["id"] for job in result],
+            [],
+        )
+
+    def test_cancel_chat_image_jobs_ignores_terminal_jobs(self):
+        service._jobs.clear()
+
+        terminal_statuses = (
+            "completed",
+            "failed",
+            "cancelled",
+        )
+
+        jobs = []
+
+        for index, status in enumerate(terminal_statuses):
+            job = {
+                "id": f"terminal-{index}",
+                "operation": "generate",
+                "chat_id": "chat-terminal",
+                "chat_revision": 2,
+                "status": status,
+                "model": None,
+                "current_step": None,
+                "total_steps": 10,
+                "result": None,
+                "error": None,
+                "created_at": 1,
+                "started_at": 1,
+                "finished_at": 2,
+                "_cancel_event": __import__("threading").Event(),
+                "_process": None,
+                "_thread": None,
+                "_output_path": None,
+            }
+            jobs.append(job)
+            service._jobs[job["id"]] = job
+
+        result = service.cancel_chat_image_jobs(
+            "chat-terminal",
+            2,
+        )
+
+        self.assertEqual(result, [])
+
+        for job in jobs:
+            self.assertFalse(
+                job["_cancel_event"].is_set()
+            )
+
+    def test_cancel_chat_endpoint_validates_request(self):
+        missing = self.client.post(
+            "/jobs/cancel-chat",
+            json={},
+        )
+        self.assertEqual(
+            missing.status_code,
+            422,
+        )
+
+        empty = self.client.post(
+            "/jobs/cancel-chat",
+            json={"chat_id": ""},
+        )
+        self.assertEqual(
+            empty.status_code,
+            422,
+        )
+
+        boolean_revision = self.client.post(
+            "/jobs/cancel-chat",
+            json={
+                "chat_id": "chat-a",
+                "chat_revision": True,
+            },
+        )
+        self.assertEqual(
+            boolean_revision.status_code,
+            422,
+        )
+
+        negative_revision = self.client.post(
+            "/jobs/cancel-chat",
+            json={
+                "chat_id": "chat-a",
+                "chat_revision": -1,
+            },
+        )
+        self.assertEqual(
+            negative_revision.status_code,
+            422,
+        )
+
+    def test_cancel_chat_endpoint_returns_summary(self):
+        with patch.object(
+            service,
+            "cancel_chat_image_jobs",
+            return_value=[
+                {
+                    "id": "cancelled-job",
+                    "status": "cancelled",
+                }
+            ],
+        ) as cancel:
+            response = self.client.post(
+                "/jobs/cancel-chat",
+                json={
+                    "chat_id": "chat-summary",
+                    "chat_revision": 7,
+                },
+            )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        payload = response.json()
+
+        self.assertEqual(
+            payload["chat_id"],
+            "chat-summary",
+        )
+        self.assertEqual(
+            payload["chat_revision"],
+            7,
+        )
+        self.assertEqual(
+            payload["cancelled_count"],
+            1,
+        )
+
+        cancel.assert_called_once_with(
+            "chat-summary",
+            7,
+        )
+
+
     def test_plain_chat_and_image_routing(self):
         with patch.object(
             agent,
@@ -3114,6 +3327,48 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
 
+    def test_delete_chat_cancels_all_image_jobs(self):
+        chat_id = "delete-cancel-jobs"
+
+        agent.CHAT_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        agent.write_chat({
+            "id": chat_id,
+            "title": "Delete me",
+            "created": 1,
+            "updated": 2,
+            "revision": 7,
+            "messages": [],
+        })
+
+        with patch.object(
+            agent,
+            "cancel_chat_image_jobs_api",
+            return_value={
+                "cancelled": [],
+                "cancelled_count": 0,
+            },
+        ) as cancel_jobs:
+            result = agent.delete_chat(chat_id)
+
+        cancel_jobs.assert_called_once_with(
+            chat_id,
+            None,
+        )
+
+        self.assertEqual(
+            result["deleted"],
+            chat_id,
+        )
+
+        self.assertFalse(
+            agent.chat_path(chat_id).exists()
+        )
+
+
     def test_delete_chat_keeps_images_when_chat_unlink_fails(self):
         image_id = "1234567890-abcdef123456"
 
@@ -3274,6 +3529,133 @@ class ImageRuntimeTests(unittest.TestCase):
             leftovers,
             [],
             "successful chat write must not leave temporary files",
+        )
+
+
+    def test_reset_chat_survives_image_job_cancellation_failure(self):
+        chat_id = "reset-cancel-failure"
+        chat = {
+            "id": chat_id,
+            "title": "Before reset",
+            "created": 1,
+            "updated": 2,
+            "revision": 7,
+            "messages": [],
+        }
+
+        with (
+            patch.object(
+                agent,
+                "chat_path",
+            ) as chat_path,
+            patch.object(
+                agent,
+                "read_chat",
+                return_value=chat,
+            ),
+            patch.object(
+                agent,
+                "write_chat",
+            ) as write_chat,
+            patch.object(
+                agent,
+                "cancel_chat_image_jobs_api",
+                side_effect=RuntimeError(
+                    "image service unavailable"
+                ),
+            ) as cancel_jobs,
+            patch.object(
+                agent,
+                "delete_chat_images",
+                return_value=([], []),
+            ) as delete_images,
+        ):
+            path_mock = MagicMock()
+            path_mock.exists.return_value = True
+            chat_path.return_value = path_mock
+
+            result = agent.reset_chat(chat_id)
+
+        write_chat.assert_called_once()
+        cancel_jobs.assert_called_once_with(
+            chat_id,
+            7,
+        )
+        delete_images.assert_called_once_with(chat)
+
+        self.assertEqual(
+            result["reset"],
+            chat_id,
+        )
+        self.assertEqual(
+            result["chat"]["revision"],
+            8,
+        )
+        self.assertFalse(
+            result["image_job_cancellation"]["ok"]
+        )
+        self.assertIn(
+            "image service unavailable",
+            result["image_job_cancellation"]["error"],
+        )
+
+    def test_delete_chat_survives_image_job_cancellation_failure(self):
+        chat_id = "delete-cancel-failure"
+        chat = {
+            "id": chat_id,
+            "title": "Delete me",
+            "created": 1,
+            "updated": 2,
+            "revision": 3,
+            "messages": [],
+        }
+
+        with (
+            patch.object(
+                agent,
+                "chat_path",
+            ) as chat_path,
+            patch.object(
+                agent,
+                "read_chat",
+                return_value=chat,
+            ),
+            patch.object(
+                agent,
+                "cancel_chat_image_jobs_api",
+                side_effect=RuntimeError(
+                    "image service unavailable"
+                ),
+            ) as cancel_jobs,
+            patch.object(
+                agent,
+                "delete_chat_images",
+                return_value=([], []),
+            ) as delete_images,
+        ):
+            path_mock = MagicMock()
+            path_mock.exists.return_value = True
+            chat_path.return_value = path_mock
+
+            result = agent.delete_chat(chat_id)
+
+        path_mock.unlink.assert_called_once_with()
+        cancel_jobs.assert_called_once_with(
+            chat_id,
+            None,
+        )
+        delete_images.assert_called_once_with(chat)
+
+        self.assertEqual(
+            result["deleted"],
+            chat_id,
+        )
+        self.assertFalse(
+            result["image_job_cancellation"]["ok"]
+        )
+        self.assertIn(
+            "image service unavailable",
+            result["image_job_cancellation"]["error"],
         )
 
 if __name__ == "__main__":

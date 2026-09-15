@@ -878,17 +878,117 @@ def image_job(job_id: str):
         return _job_snapshot(job)
 
 
+def _cancel_job(job):
+    """Signal one active image job for cancellation."""
+    if job.get("status") not in {
+        "queued",
+        "loading",
+        "running",
+        "saving",
+    }:
+        return None, None
+
+    job["_cancel_event"].set()
+    return job.get("_process"), job.get("_thread")
+
+
+def cancel_chat_image_jobs(chat_id: str, chat_revision: int | None = None):
+    """Cancel active image jobs owned by one chat/revision."""
+    targets = []
+
+    with _jobs_lock:
+        for job in _jobs.values():
+            if job.get("chat_id") != chat_id:
+                continue
+            if (
+                chat_revision is not None
+                and job.get("chat_revision") != chat_revision
+            ):
+                continue
+
+            process, thread = _cancel_job(job)
+            if process is not None or thread is not None:
+                targets.append((job["id"], process, thread))
+
+    cancelled = []
+
+    for job_id, process, thread in targets:
+        if process is not None:
+            terminate_process_tree(process)
+
+        if thread is not None:
+            thread.join(
+                timeout=PROCESS_TERMINATION_TIMEOUT * 2 + 1
+            )
+            if thread.is_alive():
+                raise HTTPException(
+                    503,
+                    "Image-Job konnte nicht rechtzeitig beendet werden",
+                )
+
+        with _jobs_lock:
+            job = _jobs.get(job_id)
+            if job is not None:
+                cancelled.append(_job_snapshot(job))
+
+    return cancelled
+
+
+@app.post("/jobs/cancel-chat")
+def cancel_chat_image_jobs_api(request: dict):
+    chat_id = request.get("chat_id")
+    chat_revision = request.get("chat_revision")
+
+    if not isinstance(chat_id, str) or not chat_id.strip():
+        raise HTTPException(
+            422,
+            "Chat-ID fehlt",
+        )
+
+    if (
+        chat_revision is not None
+        and (
+            isinstance(chat_revision, bool)
+            or not isinstance(chat_revision, int)
+            or chat_revision < 0
+        )
+    ):
+        raise HTTPException(
+            422,
+            "Ungültige Chat-Revision",
+        )
+
+    cancelled = cancel_chat_image_jobs(
+        chat_id,
+        chat_revision,
+    )
+
+    return {
+        "chat_id": chat_id,
+        "chat_revision": chat_revision,
+        "cancelled": cancelled,
+        "cancelled_count": len(cancelled),
+    }
+
+
+
 @app.post("/jobs/{job_id}/cancel")
 def cancel_image_job(job_id: str):
     with _jobs_lock:
         job = _jobs.get(job_id)
         if not job:
             raise HTTPException(404, "Image-Job nicht gefunden")
-        if job.get("status") not in {"queued", "loading", "running", "saving"}:
-            raise HTTPException(409, "Image-Job kann nicht mehr abgebrochen werden")
-        job["_cancel_event"].set()
-        process = job.get("_process")
-        thread = job.get("_thread")
+        if job.get("status") not in {
+            "queued",
+            "loading",
+            "running",
+            "saving",
+        }:
+            raise HTTPException(
+                409,
+                "Image-Job kann nicht mehr abgebrochen werden",
+            )
+        process, thread = _cancel_job(job)
 
     if process is not None:
         terminate_process_tree(process)

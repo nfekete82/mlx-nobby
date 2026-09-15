@@ -1147,6 +1147,35 @@ def delete_chat_images(chat):
     return deleted, failed
 
 
+def _best_effort_cancel_chat_image_jobs(
+    chat_id: str,
+    chat_revision: int | None = None,
+):
+    """Cancel image jobs without failing a durable chat mutation."""
+    try:
+        result = cancel_chat_image_jobs_api(
+            chat_id,
+            chat_revision,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Image-job cancellation failed after durable chat mutation "
+            "chat_id=%s revision=%s: %s",
+            chat_id,
+            chat_revision,
+            exc,
+        )
+        return {
+            "ok": False,
+            "error": str(exc),
+        }
+
+    return {
+        "ok": True,
+        "result": result,
+    }
+
+
 @app.post("/api/chats/{chat_id}/reset")
 def reset_chat(chat_id: str):
     """Clear one chat while preserving the chat session itself."""
@@ -1182,12 +1211,22 @@ def reset_chat(chat_id: str):
 
         write_chat(reset)
 
+        # The new revision is durable. Cancel only jobs belonging
+        # to the revision that was just cleared.
+        image_job_cancellation = (
+            _best_effort_cancel_chat_image_jobs(
+                chat_id,
+                chat.get("revision", 0),
+            )
+        )
+
         deleted_images, failed_images = delete_chat_images(chat)
 
     return {
         "reset": chat_id,
         "deleted_images": deleted_images,
         "failed_images": failed_images,
+        "image_job_cancellation": image_job_cancellation,
         "chat": reset,
     }
 
@@ -1219,12 +1258,21 @@ def delete_chat(chat_id: str):
                 detail=f"Chat konnte nicht gelöscht werden: {exc}",
             )
 
+        # The chat file is gone. Cancel every active image job
+        # owned by this chat, regardless of revision.
+        image_job_cancellation = (
+            _best_effort_cancel_chat_image_jobs(
+                chat_id,
+            )
+        )
+
         deleted_images, failed_images = delete_chat_images(chat)
 
     return {
         "deleted": chat_id,
         "deleted_images": deleted_images,
         "failed_images": failed_images,
+        "image_job_cancellation": image_job_cancellation,
     }
 
 
@@ -8072,6 +8120,26 @@ def image_job_api(job_id: str):
         "/jobs/" + image_api.job_id(job_id),
     )
     return _image_job_tool_result(job)
+
+
+def cancel_chat_image_jobs_api(
+    chat_id: str,
+    chat_revision: int | None = None,
+):
+    payload = {
+        "chat_id": chat_id,
+    }
+
+    if chat_revision is not None:
+        payload["chat_revision"] = chat_revision
+
+    return image_api.request(
+        "POST",
+        "/jobs/cancel-chat",
+        payload,
+        timeout=15,
+    )
+
 
 
 @app.post("/api/image/jobs/{job_id}/cancel")
