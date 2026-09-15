@@ -10287,9 +10287,7 @@ def runtime_chat(request: RuntimeChatRequest):
                 min(int(request.max_tokens), 32000),
             ),
             "stream": bool(request.stream),
-            "chat_template_kwargs": {
-                "enable_thinking": thinking,
-            },
+            "enable_thinking": thinking,
         }
 
         upstream = urllib.request.Request(
@@ -10486,9 +10484,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                         ),
                     ),
                     "stream": True,
-                    "chat_template_kwargs": {
-                        "enable_thinking": thinking,
-                    },
+                    "enable_thinking": thinking,
                 }
 
                 upstream = urllib.request.Request(

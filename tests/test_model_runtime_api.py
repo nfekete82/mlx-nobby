@@ -1119,10 +1119,12 @@ class ModelRuntimeApiTests(unittest.TestCase):
                 agent_app.runtime_chat(request)
 
             self.assertEqual(
-                captured["payload"]["chat_template_kwargs"][
-                    "enable_thinking"
-                ],
+                captured["payload"]["enable_thinking"],
                 expected,
+            )
+            self.assertNotIn(
+                "chat_template_kwargs",
+                captured["payload"],
             )
 
     def test_runtime_chat_stream_forwards_thinking_config(self):
@@ -1204,10 +1206,12 @@ class ModelRuntimeApiTests(unittest.TestCase):
                 asyncio.run(consume())
 
             self.assertEqual(
-                captured_payloads[-1][
-                    "chat_template_kwargs"
-                ]["enable_thinking"],
+                captured_payloads[-1]["enable_thinking"],
                 expected,
+            )
+            self.assertNotIn(
+                "chat_template_kwargs",
+                captured_payloads[-1],
             )
 
 
