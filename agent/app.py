@@ -10325,6 +10325,8 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             f"data: {event}\n\n"
         )
 
+    cancel_event = threading.Event()
+
     def worker():
         call_metrics = observability.ModelCallMetrics(
             trace_id=trace_id,
@@ -10417,6 +10419,9 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                         )
 
                         for raw_line in response:
+                            if cancel_event.is_set():
+                                break
+
                             line = raw_line.decode(
                                 "utf-8",
                                 errors="replace",
@@ -10498,6 +10503,12 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                     f"data: {event}\n\n"
                                 )
 
+                        if cancel_event.is_set():
+                            if call_metrics.metric["status"] == "running":
+                                call_metrics.fail("cancelled")
+                                put_metrics()
+                            return
+
                         call_metrics.finish(
                             usage=usage,
                             output_characters=output_characters,
@@ -10551,13 +10562,16 @@ def runtime_chat_stream(request: RuntimeChatRequest):
     thread.start()
 
     def generate():
-        while True:
-            item = event_queue.get()
+        try:
+            while True:
+                item = event_queue.get()
 
-            if item is sentinel:
-                break
+                if item is sentinel:
+                    break
 
-            yield item
+                yield item
+        finally:
+            cancel_event.set()
 
     return StreamingResponse(
         generate(),

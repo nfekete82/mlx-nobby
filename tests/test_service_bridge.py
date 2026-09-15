@@ -1,3 +1,4 @@
+import asyncio
 """CPU-only HTTP regressions; native networking, FFmpeg and inference are mocked."""
 import importlib.util
 import io
@@ -106,6 +107,110 @@ class ServiceBridgeTests(unittest.TestCase):
             self.assertEqual(json.loads(request.data), payload)
             self.lock.__enter__.assert_called_once()
             self.lock.__exit__.assert_called_once()
+
+
+    def test_text_chat_stream_close_closes_upstream_response(self):
+        class FakeUpstreamResponse:
+            def __init__(self):
+                self.closed = False
+                self.entered = False
+                self.exited = False
+                self.lines_consumed = 0
+
+            def __enter__(self):
+                self.entered = True
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                self.exited = True
+                self.close()
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.lines_consumed += 1
+
+                if self.lines_consumed == 1:
+                    return (
+                        b'data: {"type":"content",'
+                        b'"text":"hello"}\n\n'
+                    )
+
+                return (
+                    b'data: {"type":"content",'
+                    b'"text":"should-not-be-consumed"}\n\n'
+                )
+
+            def close(self):
+                self.closed = True
+
+        upstream = FakeUpstreamResponse()
+
+        def open_local(request, timeout):
+            self.assertEqual(
+                request.full_url,
+                web.AGENT_URL +
+                "/api/runtime/chat/stream",
+            )
+            self.assertEqual(timeout, 900)
+            return upstream
+
+        with patch.object(
+            web,
+            "agent_json_request",
+            return_value={},
+        ), patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=open_local,
+        ):
+            response = web.mlx_chat_stream(
+                web.ChatRequest(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "hello",
+                        }
+                    ],
+                    trace_id="trace-cancel-backend",
+                )
+            )
+
+            generator = response.body_iterator
+
+            self.assertFalse(upstream.closed)
+
+            first = asyncio.run(anext(generator))
+
+            self.assertIn(
+                b'"text":"hello"',
+                first,
+            )
+
+            self.assertTrue(upstream.entered)
+            self.assertFalse(upstream.closed)
+            self.assertEqual(
+                upstream.lines_consumed,
+                1,
+            )
+
+            asyncio.run(generator.aclose())
+
+        self.assertTrue(
+            upstream.exited,
+            "closing backend stream must exit upstream context",
+        )
+        self.assertTrue(
+            upstream.closed,
+            "closing backend stream must close upstream response",
+        )
+        self.assertEqual(
+            upstream.lines_consumed,
+            1,
+            "backend must stop consuming upstream after close",
+        )
 
     def test_vision_chat_preserves_all_images_in_one_native_request(self):
         image_urls = [

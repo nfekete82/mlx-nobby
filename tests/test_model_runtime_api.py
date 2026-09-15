@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import io
 import json
@@ -533,6 +534,266 @@ class ModelRuntimeApiTests(unittest.TestCase):
                 set(agent_app.JOBS),
                 jobs_before,
             )
+
+    def test_stream_generator_close_cancels_worker_and_upstream(self):
+        import threading
+        import time
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        first_line_consumed = threading.Event()
+        allow_next_line = threading.Event()
+        upstream_closed = threading.Event()
+
+        class BlockingUpstream:
+            def __init__(self):
+                self.index = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                upstream_closed.set()
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.index += 1
+
+                if self.index == 1:
+                    first_line_consumed.set()
+                    return (
+                        b'data: {"choices":[{"delta":'
+                        b'{"content":"first"}}]}\n\n'
+                    )
+
+                if self.index == 2:
+                    allow_next_line.wait(timeout=2)
+                    return (
+                        b'data: {"choices":[{"delta":'
+                        b'{"content":"second"}}]}\n\n'
+                    )
+
+                return b'data: [DONE]\n\n'
+
+        upstream = BlockingUpstream()
+
+        request = agent_app.RuntimeChatRequest(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "hello",
+                }
+            ],
+            trace_id="trace-stream-cancel-001",
+        )
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            return_value=upstream,
+        ):
+            response = agent_app.runtime_chat_stream(request)
+
+            generator = response.body_iterator
+
+            async def read_first():
+                return await anext(generator)
+
+            first = asyncio.run(
+                read_first()
+            )
+
+            self.assertIsNotNone(first)
+            self.assertIn('"text": "first"', first)
+
+            self.assertTrue(
+                first_line_consumed.wait(timeout=1),
+                "worker never consumed first upstream line",
+            )
+
+            asyncio.run(
+                generator.aclose()
+            )
+            allow_next_line.set()
+
+            self.assertTrue(
+                upstream_closed.wait(timeout=2),
+                "upstream response was not closed after cancellation",
+            )
+
+            deadline = time.monotonic() + 2
+
+            snapshot = None
+            while time.monotonic() < deadline:
+                snapshot = observability.trace_snapshot(
+                    "trace-stream-cancel-001"
+                )
+
+                calls = snapshot.get("calls", [])
+                if (
+                    calls
+                    and calls[0].get("status") == "failed"
+                ):
+                    break
+
+                time.sleep(0.01)
+
+            self.assertIsNotNone(snapshot)
+            self.assertEqual(
+                snapshot["calls"][0]["status"],
+                "failed",
+            )
+            self.assertEqual(
+                snapshot["calls"][0].get("error_type"),
+                "cancelled",
+            )
+
+            self.assertLessEqual(
+                upstream.index,
+                2,
+                "worker kept consuming upstream after cancellation",
+            )
+
+
+    def test_cancelled_stream_does_not_emit_normal_done_event(self):
+        import threading
+        import time
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        release = threading.Event()
+
+        class ControlledUpstream:
+            def __init__(self):
+                self.index = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.index += 1
+
+                if self.index == 1:
+                    return (
+                        b'data: {"choices":[{"delta":'
+                        b'{"content":"hello"}}]}\n\n'
+                    )
+
+                release.wait(timeout=2)
+
+                return (
+                    b'data: {"choices":[{"delta":'
+                    b'{"content":"must-not-complete"}}]}\n\n'
+                )
+
+        request = agent_app.RuntimeChatRequest(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "hello",
+                }
+            ],
+            trace_id="trace-stream-cancel-002",
+        )
+
+        captured = []
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            return_value=ControlledUpstream(),
+        ):
+            response = agent_app.runtime_chat_stream(request)
+            generator = response.body_iterator
+
+            async def read_first_and_close():
+                try:
+                    return await anext(generator)
+                finally:
+                    await generator.aclose()
+
+            captured.append(
+                asyncio.run(
+                    read_first_and_close()
+                )
+            )
+
+            release.set()
+
+            deadline = time.monotonic() + 2
+
+            while time.monotonic() < deadline:
+                snapshot = observability.trace_snapshot(
+                    "trace-stream-cancel-002"
+                )
+
+                calls = snapshot.get("calls", [])
+                if (
+                    calls
+                    and calls[0].get("status") != "running"
+                ):
+                    break
+
+                time.sleep(0.01)
+
+        joined = "".join(captured)
+
+        self.assertNotIn(
+            "event: done",
+            joined,
+            "cancelled stream emitted normal done event",
+        )
+
+        snapshot = observability.trace_snapshot(
+            "trace-stream-cancel-002"
+        )
+
+        self.assertEqual(
+            snapshot["calls"][0]["status"],
+            "failed",
+        )
+        self.assertEqual(
+            snapshot["calls"][0].get("error_type"),
+            "cancelled",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
