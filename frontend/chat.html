@@ -235,17 +235,17 @@
                             id="activeWorkspaceHeaderButton"
                             class="active-workspace-header-button"
                             type="button"
-                            title="Workspace auswählen"
+                            title="Workspace auswählen" data-i18n-title="ui.workspace_select"
                         >
-                            📁 Workspace öffnen
+                            <span data-i18n="ui.workspace_open">📁 Workspace öffnen</span>
                         </button>
 
                         <button
                             id="activeWorkspaceHeaderClose"
                             class="active-workspace-header-close"
                             type="button"
-                            title="Workspace schließen"
-                            aria-label="Workspace schließen"
+                            title="Workspace schließen" data-i18n-title="ui.workspace_close"
+                            aria-label="Workspace schließen" data-i18n-aria-label="ui.workspace_close"
                             hidden
                         >
                             ×
@@ -316,10 +316,10 @@
                         id="powerButton"
                         class="icon-btn"
                         type="button"
-                        aria-label="Systemaktionen"
+                        aria-label="Systemaktionen" data-i18n-aria-label="ui.system_actions"
                         aria-haspopup="true"
                         aria-expanded="false"
-                        title="Systemaktionen"
+                        title="Systemaktionen" data-i18n-title="ui.system_actions"
                     >
                         ⏻
                     </button>
@@ -333,14 +333,14 @@
                             type="button"
                             data-lifecycle-action="restart-all"
                         >
-                            ↻ Dienste neu starten
+                            <span data-i18n="ui.services_restart">↻ Dienste neu starten</span>
                         </button>
 
                         <button
                             type="button"
                             data-lifecycle-action="rebuild-all"
                         >
-                            ♻ Alles neu bauen
+                            <span data-i18n="ui.rebuild_all">♻ Alles neu bauen</span>
                         </button>
                     </div>
                 </div>

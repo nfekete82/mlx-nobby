@@ -1165,8 +1165,8 @@ function renderActiveWorkspace(workspace) {
 
     if (!workspace) {
         header.dataset.active = 'false';
-        headerButton.textContent = '📁 Workspace öffnen';
-        headerButton.title = 'Workspace auswählen';
+        headerButton.textContent = chatT('ui.workspace_open', '📁 Open workspace');
+        headerButton.title = chatT('ui.workspace_select', 'Select workspace');
         headerClose.hidden = true;
         return;
     }
@@ -2719,8 +2719,7 @@ function showLifecycleFailure(message) {
     if (messageElement) {
         messageElement.hidden = false;
         messageElement.textContent =
-            'Systemaktion fehlgeschlagen: ' +
-            message;
+            chatT('ui.system_action_failed', 'System action failed: {message}', { message });
     }
 
     if (actions) {
@@ -2789,7 +2788,7 @@ async function waitForLifecycleProgress(action) {
                 showLifecycleFailure(
                     data.error ||
                     data.message ||
-                    'Unbekannter Fehler'
+                    chatT('ui.unknown_error', 'Unknown error')
                 );
 
                 return;
@@ -2817,7 +2816,7 @@ async function waitForLifecycleProgress(action) {
 
                 if (phase) {
                     phase.textContent =
-                        'Dienste werden neu gestartet …';
+                        chatT('ui.services_restarting_progress', 'Services are restarting …');
                 }
             }
         }
@@ -2948,23 +2947,23 @@ function setLifecycleActionsDisabled(disabled) {
 async function runLifecycleAction(action) {
     const config = {
         'restart-all': {
-            title: 'Dienste neu starten',
+            title: chatT('ui.services_restart_title', 'Restart services'),
             confirm:
-                'Alle MLX-Nobby-Dienste wirklich neu starten?',
+                chatT('ui.services_restart_confirm', 'Really restart all MLX Nobby services?'),
             confirmLabel:
-                'Neu starten',
+                chatT('ui.services_restart_confirm_label', 'Restart'),
             busy:
-                'MLX Nobby wird neu gestartet …',
+                chatT('ui.services_restarting', 'MLX Nobby is restarting …'),
         },
 
         'rebuild-all': {
-            title: 'Alles neu bauen',
+            title: chatT('ui.rebuild_all_title', 'Rebuild everything'),
             confirm:
-                'MLX Nobby vollständig neu bauen und anschließend alle Dienste neu starten?',
+                chatT('ui.rebuild_all_confirm', 'Completely rebuild MLX Nobby and then restart all services?'),
             confirmLabel:
-                'Neu bauen',
+                chatT('ui.rebuild_all_confirm_label', 'Rebuild'),
             busy:
-                'MLX Nobby wird neu gebaut …',
+                chatT('ui.rebuilding', 'MLX Nobby is being rebuilt …'),
         },
     };
 
@@ -2978,7 +2977,7 @@ async function runLifecycleAction(action) {
         title: current.title,
         message: current.confirm,
         confirmLabel: current.confirmLabel,
-        cancelLabel: 'Abbrechen',
+        cancelLabel: chatT('common.cancel', 'Cancel'),
     });
 
     if (!confirmed) {
@@ -3036,8 +3035,7 @@ async function runLifecycleAction(action) {
         if (messageElement) {
             messageElement.hidden = false;
             messageElement.textContent =
-                'Systemaktion fehlgeschlagen: ' +
-                String(error.message || error);
+                chatT('ui.system_action_failed', 'System action failed: {message}', { message: String(error.message || error) });
         }
 
         if (actions) {
