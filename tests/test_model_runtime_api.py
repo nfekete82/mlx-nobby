@@ -1050,5 +1050,166 @@ class ModelRuntimeApiTests(unittest.TestCase):
         )
 
 
+    def test_runtime_chat_forwards_thinking_config(self):
+        import json
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        class FakeResponse:
+            status = 200
+            headers = {
+                "Content-Type": "application/json",
+            }
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    b'{"choices":[{"message":{"content":"ok"}}]}'
+                )
+
+        for config_value, expected in (
+            ("false", False),
+            ("true", True),
+        ):
+            captured = {}
+
+            def fake_urlopen(request, timeout=900):
+                captured["payload"] = json.loads(
+                    request.data.decode("utf-8")
+                )
+                return FakeResponse()
+
+            with mock.patch.object(
+                agent_app,
+                "ensure_model_for_role",
+                return_value=runtime,
+            ), mock.patch.object(
+                agent_app,
+                "load_config",
+                return_value={
+                    "PORT": 8000,
+                    "THINKING": config_value,
+                },
+            ), mock.patch.object(
+                agent_app.urllib.request,
+                "urlopen",
+                side_effect=fake_urlopen,
+            ):
+                request = agent_app.RuntimeChatRequest(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "hello",
+                        }
+                    ],
+                    stream=False,
+                )
+
+                agent_app.runtime_chat(request)
+
+            self.assertEqual(
+                captured["payload"]["chat_template_kwargs"][
+                    "enable_thinking"
+                ],
+                expected,
+            )
+
+    def test_runtime_chat_stream_forwards_thinking_config(self):
+        import asyncio
+        import json
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        captured_payloads = []
+
+        class FakeStream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return iter([
+                    b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+                    b'data: [DONE]\n\n',
+                ])
+
+        for config_value, expected in (
+            ("false", False),
+            ("true", True),
+        ):
+            def fake_urlopen(request, timeout=900):
+                payload = json.loads(
+                    request.data.decode("utf-8")
+                )
+                captured_payloads.append(payload)
+                return FakeStream()
+
+            with mock.patch.object(
+                agent_app,
+                "ensure_model_for_role",
+                return_value=runtime,
+            ), mock.patch.object(
+                agent_app,
+                "load_config",
+                return_value={
+                    "PORT": 8000,
+                    "THINKING": config_value,
+                },
+            ), mock.patch.object(
+                agent_app.urllib.request,
+                "urlopen",
+                side_effect=fake_urlopen,
+            ):
+                request = agent_app.RuntimeChatRequest(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "hello",
+                        }
+                    ],
+                    trace_id=(
+                        "trace-thinking-"
+                        + config_value
+                    ),
+                )
+
+                response = agent_app.runtime_chat_stream(request)
+                generator = response.body_iterator
+
+                async def consume():
+                    chunks = []
+                    async for chunk in generator:
+                        chunks.append(chunk)
+                    return chunks
+
+                asyncio.run(consume())
+
+            self.assertEqual(
+                captured_payloads[-1][
+                    "chat_template_kwargs"
+                ]["enable_thinking"],
+                expected,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

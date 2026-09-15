@@ -10203,6 +10203,10 @@ def runtime_chat(request: RuntimeChatRequest):
             call_metrics.fail(type(exc).__name__)
             raise
 
+        thinking = (
+            str(config.get("THINKING", "false")).lower()
+            == "true"
+        )
         payload = {
             "model": model,
             "messages": request.messages,
@@ -10215,6 +10219,9 @@ def runtime_chat(request: RuntimeChatRequest):
                 min(int(request.max_tokens), 32000),
             ),
             "stream": bool(request.stream),
+            "chat_template_kwargs": {
+                "enable_thinking": thinking,
+            },
         }
 
         upstream = urllib.request.Request(
@@ -10389,6 +10396,10 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                 config = load_config()
                 port = int(config.get("PORT", 8000))
 
+                thinking = (
+                    str(config.get("THINKING", "false")).lower()
+                    == "true"
+                )
                 payload = {
                     "model": model,
                     "messages": request.messages,
@@ -10407,6 +10418,9 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                         ),
                     ),
                     "stream": True,
+                    "chat_template_kwargs": {
+                        "enable_thinking": thinking,
+                    },
                 }
 
                 upstream = urllib.request.Request(
