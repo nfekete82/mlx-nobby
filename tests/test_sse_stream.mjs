@@ -307,6 +307,143 @@ assert.equal(assistant.model_metrics.model_calls_in_turn, 1);
     );
 }
 
+// Regression: the real resetSessionRuntime() path must invalidate an
+// in-flight generation before a late response can restore stale content.
+{
+    let resolveResponse;
+    let responseBodyCancelled = false;
+
+    context.fetch = async () =>
+        new Promise(resolve => {
+            resolveResponse = resolve;
+        });
+
+    session.messages = [
+        {
+            role: 'user',
+            content: 'Old request through real reset',
+            trace_id: 'trace-real-reset-race',
+        },
+    ];
+
+    const generationPromise =
+        generation.generateAssistant(session);
+
+    // Let generateAssistant() create the pending assistant message and
+    // block on the unresolved fetch().
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(
+        session.messages.length,
+        2,
+        'generation should be pending before reset',
+    );
+
+    const revisionBeforeReset =
+        sessions.runtimeRevision(session);
+
+    // Exercise the production reset runtime path rather than manually
+    // reproducing its state changes.
+    await generation.resetSessionRuntime(session);
+
+    sessions.bumpRuntimeRevision(session);
+    session.messages = [];
+
+    assert.equal(
+        generating,
+        false,
+        'resetSessionRuntime should clear generating state',
+    );
+
+    assert.equal(
+        abortController,
+        null,
+        'resetSessionRuntime should clear the abort controller',
+    );
+
+    assert.equal(
+        sessions.runtimeRevision(session),
+        revisionBeforeReset + 1,
+        'reset should invalidate the old runtime revision',
+    );
+
+    // Complete the old request only after reset has finished.
+    resolveResponse({
+        ok: true,
+        body: {
+            async cancel() {
+                responseBodyCancelled = true;
+            },
+            getReader() {
+                throw new Error(
+                    'late stale response must never open its SSE reader'
+                );
+            },
+        },
+    });
+
+    await generationPromise;
+
+    assert.deepEqual(
+        session.messages,
+        [],
+        'late generation must not restore messages after real reset',
+    );
+
+    assert.equal(
+        responseBodyCancelled,
+        true,
+        'late stale response body should be cancelled',
+    );
+}
+
+
+// Regression: resetSessionRuntime() must abort the active text request
+// before clearing the shared AbortController reference.
+{
+    let abortObserved = false;
+
+    const controller = new AbortController();
+
+    controller.signal.addEventListener(
+        'abort',
+        () => {
+            abortObserved = true;
+        },
+        { once: true },
+    );
+
+    abortController = controller;
+    generating = true;
+
+    await generation.resetSessionRuntime(session);
+
+    assert.equal(
+        controller.signal.aborted,
+        true,
+        'active AbortController should be aborted by reset',
+    );
+
+    assert.equal(
+        abortObserved,
+        true,
+        'abort signal should be observable by the active request',
+    );
+
+    assert.equal(
+        abortController,
+        null,
+        'AbortController reference should be cleared after abort',
+    );
+
+    assert.equal(
+        generating,
+        false,
+        'generation state should be cleared after reset',
+    );
+}
+
+
 console.log(
     'SSE finalization: final metrics, arbitrary chunks, Unicode, and event behavior passed.',
 );
