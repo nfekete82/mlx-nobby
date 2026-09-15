@@ -406,3 +406,344 @@ class ServiceBridgeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BackendHttpHelperTests(unittest.TestCase):
+
+    def test_get_json_success(self):
+        response = upstream_response(
+            json.dumps({"ok": True}).encode("utf-8")
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as network:
+            result = web.get_json(
+                "http://127.0.0.1:9999/test",
+                timeout=7,
+            )
+
+        self.assertEqual(result, {"ok": True})
+        network.assert_called_once_with(
+            "http://127.0.0.1:9999/test",
+            timeout=7,
+        )
+
+    def test_get_json_url_error(self):
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.get_json("http://127.0.0.1:9999/test")
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn(
+            "offline",
+            str(raised.exception.detail),
+        )
+
+    def test_post_json_success(self):
+        response = upstream_response(
+            json.dumps({"started": True}).encode("utf-8")
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as network:
+            result = web.post_json(
+                "http://127.0.0.1:9999/start",
+                timeout=11,
+            )
+
+        self.assertEqual(result, {"started": True})
+
+        request = network.call_args.args[0]
+
+        self.assertEqual(
+            request.full_url,
+            "http://127.0.0.1:9999/start",
+        )
+        self.assertEqual(
+            request.get_method(),
+            "POST",
+        )
+        self.assertEqual(
+            request.data,
+            b"",
+        )
+        self.assertEqual(
+            network.call_args.kwargs["timeout"],
+            11,
+        )
+
+    def test_post_json_http_error(self):
+        error = urllib.error.HTTPError(
+            "http://127.0.0.1:9999/start",
+            409,
+            "Conflict",
+            Message(),
+            io.BytesIO(b"already running"),
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=error,
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.post_json(
+                    "http://127.0.0.1:9999/start"
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            409,
+        )
+        self.assertEqual(
+            raised.exception.detail,
+            "already running",
+        )
+
+    def test_post_json_url_error(self):
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.post_json(
+                    "http://127.0.0.1:9999/start"
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            503,
+        )
+        self.assertIn(
+            "offline",
+            str(raised.exception.detail),
+        )
+
+    def test_agent_json_request_success_with_payload(self):
+        response = upstream_response(
+            json.dumps({"ok": True}).encode("utf-8")
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as network:
+            result = web.agent_json_request(
+                "POST",
+                "/api/test",
+                {"hello": "world"},
+                timeout=17,
+            )
+
+        self.assertEqual(result, {"ok": True})
+
+        request = network.call_args.args[0]
+
+        self.assertEqual(
+            request.full_url,
+            web.AGENT_URL + "/api/test",
+        )
+        self.assertEqual(
+            request.get_method(),
+            "POST",
+        )
+        self.assertEqual(
+            json.loads(request.data),
+            {"hello": "world"},
+        )
+        self.assertEqual(
+            request.get_header("Content-type"),
+            "application/json",
+        )
+        self.assertEqual(
+            network.call_args.kwargs["timeout"],
+            17,
+        )
+
+    def test_agent_json_request_get_without_payload(self):
+        response = upstream_response(
+            json.dumps({"status": "ok"}).encode("utf-8")
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as network:
+            result = web.agent_json_request(
+                "GET",
+                "/api/status",
+            )
+
+        self.assertEqual(
+            result,
+            {"status": "ok"},
+        )
+
+        request = network.call_args.args[0]
+
+        self.assertEqual(
+            request.get_method(),
+            "GET",
+        )
+        self.assertIsNone(request.data)
+
+    def test_agent_json_request_http_error_json_detail(self):
+        error = urllib.error.HTTPError(
+            web.AGENT_URL + "/api/test",
+            422,
+            "Unprocessable Entity",
+            Message(),
+            io.BytesIO(
+                json.dumps(
+                    {"detail": "bad payload"}
+                ).encode("utf-8")
+            ),
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=error,
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.agent_json_request(
+                    "POST",
+                    "/api/test",
+                    {"x": 1},
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            422,
+        )
+        self.assertEqual(
+            raised.exception.detail,
+            "bad payload",
+        )
+
+    def test_agent_json_request_http_error_plain_text(self):
+        error = urllib.error.HTTPError(
+            web.AGENT_URL + "/api/test",
+            500,
+            "Internal Server Error",
+            Message(),
+            io.BytesIO(b"plain failure"),
+        )
+
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=error,
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.agent_json_request(
+                    "GET",
+                    "/api/test",
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            500,
+        )
+        self.assertEqual(
+            raised.exception.detail,
+            "plain failure",
+        )
+
+    def test_agent_json_request_url_error(self):
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.agent_json_request(
+                    "GET",
+                    "/api/test",
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            503,
+        )
+
+    def test_agent_json_request_timeout(self):
+        with patch.object(
+            web.urllib.request,
+            "urlopen",
+            side_effect=TimeoutError("timeout"),
+        ):
+            with self.assertRaises(web.HTTPException) as raised:
+                web.agent_json_request(
+                    "GET",
+                    "/api/test",
+                )
+
+        self.assertEqual(
+            raised.exception.status_code,
+            503,
+        )
+
+    def test_image_json_request_get_and_post(self):
+        with patch.object(
+            web,
+            "agent_json_request",
+            return_value={"ok": True},
+        ) as request:
+            result_get = web.image_json_request(
+                "/status"
+            )
+
+            result_post = web.image_json_request(
+                "/generate",
+                {"prompt": "hello"},
+                timeout=123,
+            )
+
+        self.assertEqual(
+            result_get,
+            {"ok": True},
+        )
+        self.assertEqual(
+            result_post,
+            {"ok": True},
+        )
+
+        self.assertEqual(
+            request.call_args_list[0].args,
+            (
+                "GET",
+                "/api/image/status",
+                None,
+            ),
+        )
+        self.assertEqual(
+            request.call_args_list[0].kwargs,
+            {"timeout": 900},
+        )
+
+        self.assertEqual(
+            request.call_args_list[1].args,
+            (
+                "POST",
+                "/api/image/generate",
+                {"prompt": "hello"},
+            ),
+        )
+        self.assertEqual(
+            request.call_args_list[1].kwargs,
+            {"timeout": 123},
+        )
