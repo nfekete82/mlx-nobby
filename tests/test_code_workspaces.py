@@ -1006,7 +1006,7 @@ class CodeWorkspaceTests(unittest.TestCase):
                     },
                 )
                 self.assertEqual(details["intent"], "coding_agent")
-                self.assertEqual(details["method"], "safe_fallback")
+                self.assertEqual(details["method"], "deterministic")
 
         self.assertFalse(
             agent_app._looks_like_coding_action(
@@ -2355,6 +2355,67 @@ class CodeWorkspaceTests(unittest.TestCase):
             "coding_agent",
             "read-only workspace inspection must route to coding_agent",
         )
+
+    def test_active_workspace_is_primary_context_for_local_requests(self):
+        workspace = {
+            "workspace_id": "workspace-1",
+            "root_path": "/tmp/workspace-1",
+        }
+
+        prompts = (
+            "Siehst du das blackjack Spiel?",
+            "Siehst du blackjack.html?",
+            "Schau dir blackjack.html an.",
+            "Öffne index.html.",
+            "Was steht in app.js?",
+            "Prüfe diese Datei style.css.",
+            "Wie funktioniert das hier?",
+            "Findest du den Fehler?",
+            "Mach das schöner.",
+            "Kann man das besser machen?",
+        )
+
+        with mock.patch.object(
+            agent_app.code_workspaces,
+            "active_workspace",
+            return_value=workspace,
+        ):
+            for prompt in prompts:
+                with self.subTest(prompt=prompt):
+                    self.assertEqual(
+                        agent_app._deterministic_chat_action(
+                            prompt
+                        ),
+                        "coding_agent",
+                    )
+
+    def test_active_workspace_does_not_capture_general_questions(self):
+        workspace = {
+            "workspace_id": "workspace-1",
+            "root_path": "/tmp/workspace-1",
+        }
+
+        cases = {
+            "Was ist ein Workspace?": "normal_chat",
+            "Was ist der Satz des Pythagoras?": "normal_chat",
+            "Heute hatte ich einen schlechten Tag.": None,
+            "Was sind die aktuellen Nachrichten aus Deutschland?":
+                "web_search",
+        }
+
+        with mock.patch.object(
+            agent_app.code_workspaces,
+            "active_workspace",
+            return_value=workspace,
+        ):
+            for prompt, expected in cases.items():
+                with self.subTest(prompt=prompt):
+                    self.assertEqual(
+                        agent_app._deterministic_chat_action(
+                            prompt
+                        ),
+                        expected,
+                    )
 
     def test_workspace_definition_question_stays_normal_chat(self):
         with mock.patch.object(

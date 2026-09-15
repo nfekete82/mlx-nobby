@@ -4485,8 +4485,12 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
     except ValueError:
         active_code_workspace = False
 
-    # Read-only questions about the contents or structure of the active
-    # coding workspace must enter the coding agent so it can use code_files.
+    # An explicitly active coding workspace is the primary local context.
+    #
+    # Route local/project-oriented and ambiguous "this/that/here" work to
+    # the coding agent so it can inspect the workspace with code_files,
+    # code_search and code_read.  Do not route generic knowledge questions
+    # merely because a workspace happens to be open.
     workspace_read_request = bool(
         active_code_workspace
         and (
@@ -4509,8 +4513,58 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
                 r"\b(?:workspace|projekt)struktur\b",
                 value,
             )
+            or re.search(
+                r"\b[\w.-]+\.(?:"
+                r"html?|css|js|mjs|cjs|ts|tsx|jsx|"
+                r"php|py|java|kt|kts|swift|go|rs|"
+                r"c|cc|cpp|h|hpp|cs|rb|sh|bash|zsh|"
+                r"json|ya?ml|toml|xml|sql|md|txt"
+                r")\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:"
+                r"sieh(?:st)?|"
+                r"schau|schaue|"
+                r"öffne|oeffne|"
+                r"prüf|prüfe|pruef|pruefe|"
+                r"analysier|analysiere|"
+                r"änder|ändere|aender|aendere|"
+                r"verbesser|verbessere|"
+                r"fix|fixe|"
+                r"bearbeite"
+                r")\b.*"
+                r"\b(?:"
+                r"das|dies(?:e|es|en|er)?|"
+                r"hier|spiel|projekt|workspace|"
+                r"code|datei|seite|app"
+                r")\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:"
+                r"was hältst du davon|"
+                r"was haeltst du davon|"
+                r"wie funktioniert das hier|"
+                r"findest du den fehler|"
+                r"finde den fehler|"
+                r"mach das schöner|"
+                r"mach das schoener|"
+                r"kann man das besser machen"
+                r")\b",
+                value,
+            )
         )
     )
+
+    # An attached image is stronger context than the active coding
+    # workspace for an explicit image-edit request.
+    if (
+        file_context
+        and _file_context_is_image(file_context)
+        and _looks_like_image_edit_request(value)
+    ):
+        return "image_edit"
 
     if workspace_read_request:
         return "coding_agent"
@@ -5169,6 +5223,35 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
 
     return None
 
+def _trusted_workspace_chat_action(
+    prompt,
+    file_context=None,
+    conversation_context=None,
+):
+    """Return a trusted deterministic route for explicit active-workspace work.
+
+    Only coding_agent is trusted here. Other agent intents continue through
+    the semantic router and its existing confidence/safety gate.
+    """
+    candidate = _deterministic_chat_action(
+        prompt,
+        file_context,
+        conversation_context,
+    )
+    if candidate != "coding_agent":
+        return None
+
+    try:
+        active_workspace = code_workspaces.active_workspace()
+    except ValueError:
+        active_workspace = None
+
+    if active_workspace is None:
+        return None
+
+    return "coding_agent"
+
+
 def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     """Return only unambiguous direct actions that may bypass the LLM router.
 
@@ -5181,6 +5264,15 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
         file_context,
         conversation_context,
     )
+
+    trusted_workspace_action = _trusted_workspace_chat_action(
+        prompt,
+        file_context,
+        conversation_context,
+    )
+    if trusted_workspace_action is not None:
+        return trusted_workspace_action
+
     if candidate == "orchestrator":
         return candidate
 
@@ -8600,11 +8692,26 @@ def run_chat_action(request: ChatActionRequest):
         }
 
     else:
-        routing = classify_chat_action_details(
+        trusted_workspace_action = _trusted_workspace_chat_action(
             request.prompt,
             routing_file_context,
             request.conversation_context,
         )
+
+        if trusted_workspace_action is not None:
+            routing = {
+                "intent": trusted_workspace_action,
+                "confidence": 1.0,
+                "requires_tools": True,
+                "reason": "Eindeutiger aktiver Workspace-Kontext",
+                "method": "deterministic_workspace",
+            }
+        else:
+            routing = classify_chat_action_details(
+                request.prompt,
+                routing_file_context,
+                request.conversation_context,
+            )
 
     action = routing["intent"]
 
@@ -15637,11 +15744,30 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                 "role": "system",
                 "content": (
                     "Formuliere ausschließlich anhand der vorhandenen "
-                    "Observations eine technische Abschlussantwort. "
+                    "Observations eine direkte, natürliche Antwort auf das "
+                    "konkrete Nutzerziel. "
                     "Erfinde keine neuen Fakten. "
-                    "Trenne klar zwischen beobachteten Fakten aus "
-                    "Tool-Ergebnissen, daraus abgeleiteten technischen "
-                    "Schlussfolgerungen und Empfehlungen oder Bewertungen. "
+                    "Passe Länge, Detailgrad und Struktur an die Frage an. "
+                    "Einfache Ja/Nein-, Existenz-, Sichtbarkeits-, "
+                    "Lokalisierungs- oder Statusfragen beantwortest du "
+                    "normalerweise knapp in 1 bis 3 Sätzen. "
+                    "Beginne direkt mit der Antwort und vermeide bei solchen "
+                    "einfachen Fragen technische Abschlussberichte, "
+                    "Metaformulierungen, Tool-Chronologien sowie künstliche "
+                    "Abschnitte wie 'Beobachtete Fakten', 'Schlussfolgerung' "
+                    "oder 'Empfehlung'. "
+                    "Wenn der Nutzer eine Analyse, ein Review, eine Diagnose, "
+                    "einen Vergleich, mehrere Findings oder ausdrücklich eine "
+                    "ausführliche Erklärung verlangt, darf und soll die Antwort "
+                    "entsprechend ausführlich und sinnvoll strukturiert sein. "
+                    "Explizite Wünsche des Nutzers nach kurzer oder ausführlicher "
+                    "Darstellung haben Vorrang. "
+                    "Wiederhole keine Tool-Ergebnisse, die für die konkrete "
+                    "Antwort nicht relevant sind. "
+                    "Unterscheide weiterhin sachlich zwischen beobachteten "
+                    "Fakten aus Tool-Ergebnissen, daraus abgeleiteten technischen "
+                    "Schlussfolgerungen und Empfehlungen oder Bewertungen, "
+                    "ohne dafür zwingend separate Überschriften zu verwenden. "
                     "Behaupte niemals, eine Webquelle empfehle oder belege "
                     "etwas, wenn dies nicht tatsächlich aus den vorhandenen "
                     "Web-Observations hervorgeht. "
