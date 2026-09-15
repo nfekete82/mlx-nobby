@@ -1,4 +1,6 @@
+import asyncio
 from pathlib import Path
+
 from functools import wraps
 from typing import Literal
 import hashlib
@@ -10310,7 +10312,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
     """
 
     trace_id = observability.ensure_trace_id(request.trace_id)
-    event_queue = queue.Queue()
+    event_queue = queue.Queue(maxsize=64)
     sentinel = object()
 
     def put_error(message):
@@ -10320,12 +10322,25 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             },
             ensure_ascii=False,
         )
-        event_queue.put(
+        put_event(
             "event: error\n"
             f"data: {event}\n\n"
         )
 
     cancel_event = threading.Event()
+
+    def put_event(item):
+        while not cancel_event.is_set():
+            try:
+                event_queue.put(
+                    item,
+                    timeout=0.05,
+                )
+                return True
+            except queue.Full:
+                continue
+
+        return False
 
     def worker():
         call_metrics = observability.ModelCallMetrics(
@@ -10342,7 +10357,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
         wait_started = time.monotonic()
 
         def put_metrics():
-            event_queue.put(
+            put_event(
                 observability.metrics_sse(trace_id)
             )
 
@@ -10485,7 +10500,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                     },
                                     ensure_ascii=False,
                                 )
-                                event_queue.put(
+                                put_event(
                                     f"data: {event}\n\n"
                                 )
 
@@ -10499,7 +10514,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                     },
                                     ensure_ascii=False,
                                 )
-                                event_queue.put(
+                                put_event(
                                     f"data: {event}\n\n"
                                 )
 
@@ -10516,7 +10531,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                             finish_reason=finish_reason,
                         )
                         put_metrics()
-                        event_queue.put(
+                        put_event(
                             "event: done\n"
                             "data: {}\n\n"
                         )
@@ -10552,7 +10567,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             put_error(exc)
 
         finally:
-            event_queue.put(sentinel)
+            put_event(sentinel)
 
     thread = threading.Thread(
         target=worker,
@@ -10561,20 +10576,36 @@ def runtime_chat_stream(request: RuntimeChatRequest):
     )
     thread.start()
 
-    def generate():
-        try:
-            while True:
-                item = event_queue.get()
+    class CancelAwareAsyncStream:
+        def __init__(self):
+            self._closed = False
 
-                if item is sentinel:
-                    break
+        def __aiter__(self):
+            return self
 
-                yield item
-        finally:
+        async def __anext__(self):
+            if self._closed:
+                raise StopAsyncIteration
+
+            item = await asyncio.to_thread(
+                event_queue.get
+            )
+
+            if item is sentinel:
+                self._closed = True
+                raise StopAsyncIteration
+
+            return item
+
+        async def aclose(self):
+            if self._closed:
+                return
+
+            self._closed = True
             cancel_event.set()
 
     return StreamingResponse(
-        generate(),
+        CancelAwareAsyncStream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

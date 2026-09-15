@@ -672,6 +672,261 @@ class ModelRuntimeApiTests(unittest.TestCase):
             )
 
 
+
+    def test_stream_generator_close_terminates_worker_thread(self):
+        import threading
+        import time
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        release = threading.Event()
+        first_line_consumed = threading.Event()
+
+        class BlockingUpstream:
+            def __init__(self):
+                self.index = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                self.index += 1
+
+                if self.index == 1:
+                    first_line_consumed.set()
+                    return (
+                        b'data: {"choices":[{"delta":'
+                        b'{"content":"first"}}]}\n\n'
+                    )
+
+                release.wait(timeout=2)
+
+                return b'data: [DONE]\n\n'
+
+        request = agent_app.RuntimeChatRequest(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "hello",
+                }
+            ],
+            trace_id="trace-stream-worker-lifecycle-001",
+        )
+
+        before = {
+            thread.ident
+            for thread in threading.enumerate()
+            if thread.name == "mlx-chat-stream"
+        }
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            return_value=BlockingUpstream(),
+        ):
+            response = agent_app.runtime_chat_stream(request)
+            generator = response.body_iterator
+
+            async def read_first():
+                return await anext(generator)
+
+            first = asyncio.run(read_first())
+
+            self.assertIn('"text": "first"', first)
+
+            self.assertTrue(
+                first_line_consumed.wait(timeout=1),
+                "worker never consumed first upstream line",
+            )
+
+            active = [
+                thread
+                for thread in threading.enumerate()
+                if (
+                    thread.name == "mlx-chat-stream"
+                    and thread.ident not in before
+                )
+            ]
+
+            self.assertEqual(
+                len(active),
+                1,
+                "expected exactly one stream worker",
+            )
+
+            worker_thread = active[0]
+
+            asyncio.run(generator.aclose())
+
+            release.set()
+
+            deadline = time.monotonic() + 2
+
+            while (
+                worker_thread.is_alive()
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+
+            self.assertFalse(
+                worker_thread.is_alive(),
+                "mlx-chat-stream worker survived stream cancellation",
+            )
+
+
+
+    def test_stream_applies_backpressure_to_fast_upstream(self):
+        import threading
+        import time
+
+        runtime = {
+            "resolved": {
+                "repo": "owner/chat-model",
+                "alias": "chat",
+                "backend": "mlx_lm",
+            },
+        }
+
+        produced = 0
+        produced_lock = threading.Lock()
+        producer_started = threading.Event()
+
+        class FastUpstream:
+            def __init__(self):
+                self.index = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                nonlocal produced
+
+                self.index += 1
+
+                if self.index > 10000:
+                    return b'data: [DONE]\n\n'
+
+                with produced_lock:
+                    produced += 1
+
+                producer_started.set()
+
+                return (
+                    b'data: {"choices":[{"delta":'
+                    b'{"content":"x"}}]}\n\n'
+                )
+
+        request = agent_app.RuntimeChatRequest(
+            messages=[
+                {
+                    "role": "user",
+                    "content": "hello",
+                }
+            ],
+            trace_id="trace-stream-backpressure-001",
+        )
+
+        with mock.patch.object(
+            agent_app,
+            "ensure_model_for_role",
+            return_value=runtime,
+        ), mock.patch.object(
+            agent_app,
+            "load_config",
+            return_value={"PORT": 8000},
+        ), mock.patch.object(
+            agent_app.urllib.request,
+            "urlopen",
+            return_value=FastUpstream(),
+        ):
+            response = agent_app.runtime_chat_stream(request)
+            generator = response.body_iterator
+
+            self.assertTrue(
+                producer_started.wait(timeout=1),
+                "upstream producer never started",
+            )
+
+            # Deliberately do not consume the downstream stream.
+            #
+            # A bounded queue should apply backpressure and prevent
+            # the worker from racing arbitrarily far ahead.
+            time.sleep(0.1)
+
+            with produced_lock:
+                produced_before_close = produced
+
+            asyncio.run(generator.aclose())
+
+            deadline = time.monotonic() + 1.0
+
+            while time.monotonic() < deadline:
+                live_stream_threads = [
+                    thread
+                    for thread in threading.enumerate()
+                    if (
+                        thread.name == "mlx-chat-stream"
+                        and thread.is_alive()
+                    )
+                ]
+
+                if not live_stream_threads:
+                    break
+
+                time.sleep(0.01)
+
+            self.assertFalse(
+                [
+                    thread
+                    for thread in threading.enumerate()
+                    if (
+                        thread.name == "mlx-chat-stream"
+                        and thread.is_alive()
+                    )
+                ],
+                (
+                    "backpressure test leaked an "
+                    "mlx-chat-stream worker"
+                ),
+            )
+
+            self.assertLessEqual(
+                produced_before_close,
+                128,
+                (
+                    "stream worker consumed too much upstream data "
+                    "without downstream consumption; event queue "
+                    "appears to be unbounded"
+                ),
+            )
+
+
     def test_cancelled_stream_does_not_emit_normal_done_event(self):
         import threading
         import time
