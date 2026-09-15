@@ -1853,6 +1853,15 @@ def mlx_knowledge_source_delete(source_id: str):
     )
 
 
+@app.get("/api/mlx/system/lifecycle")
+def mlx_system_lifecycle():
+    return agent_json_request(
+        "GET",
+        "/api/system/lifecycle",
+        timeout=10,
+    )
+
+
 @app.post("/api/mlx/system/restart-all", status_code=202)
 def mlx_system_restart_all():
     return agent_json_request(

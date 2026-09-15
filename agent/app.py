@@ -857,6 +857,52 @@ def create_background_job(command, target=None):
 
 
 
+
+_SYSTEM_LIFECYCLE_LOCK = threading.RLock()
+_SYSTEM_LIFECYCLE_STATE = {
+    "action": None,
+    "state": "idle",
+    "phase": "idle",
+    "current": 0,
+    "total": 0,
+    "message": "",
+    "error": None,
+}
+
+
+def _set_system_lifecycle_state(
+    *,
+    action=None,
+    state="idle",
+    phase=None,
+    current=0,
+    total=0,
+    message="",
+    error=None,
+):
+    _SYSTEM_LIFECYCLE_STATE.update(
+        {
+            "action": action,
+            "state": state,
+            "phase": phase or state,
+            "current": current,
+            "total": total,
+            "message": message,
+            "error": error,
+        }
+    )
+
+
+def _get_system_lifecycle_state():
+    with _SYSTEM_LIFECYCLE_LOCK:
+        return dict(_SYSTEM_LIFECYCLE_STATE)
+
+
+@app.get("/api/system/lifecycle")
+def system_lifecycle_status():
+    return _get_system_lifecycle_state()
+
+
 def _launch_system_lifecycle_helper(script_name):
     """Launch a lifecycle helper independently of the agent process."""
 
@@ -885,8 +931,83 @@ def _launch_system_lifecycle_helper(script_name):
         ) from exc
 
 
+
+@app.post("/api/system/lifecycle/progress")
+def system_lifecycle_progress(payload: dict):
+    allowed_states = {
+        "idle",
+        "accepted",
+        "running",
+        "completed",
+        "failed",
+    }
+
+    state = payload.get("state")
+
+    if state not in allowed_states:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid lifecycle state.",
+        )
+
+    action = payload.get("action")
+    phase = payload.get("phase")
+    message = payload.get("message")
+    error = payload.get("error")
+
+    current = payload.get("current", 0)
+    total = payload.get("total", 0)
+
+    if (
+        not isinstance(current, int)
+        or isinstance(current, bool)
+        or current < 0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="current must be a non-negative integer.",
+        )
+
+    if (
+        not isinstance(total, int)
+        or isinstance(total, bool)
+        or total < 0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="total must be a non-negative integer.",
+        )
+
+    if total and current > total:
+        raise HTTPException(
+            status_code=422,
+            detail="current must not exceed total.",
+        )
+
+    _set_system_lifecycle_state(
+        state=state,
+        action=action,
+        phase=phase,
+        message=message,
+        current=current,
+        total=total,
+        error=error,
+    )
+
+    return _get_system_lifecycle_state()
+
+
 @app.post("/api/system/restart-all", status_code=202)
 def system_restart_all():
+    _set_system_lifecycle_state(
+        state="accepted",
+        action="restart-all",
+        phase="accepted",
+        message="Dienste werden neu gestartet.",
+        current=0,
+        total=0,
+    )
+
     _launch_system_lifecycle_helper("restart-all.sh")
 
     return {
@@ -897,6 +1018,15 @@ def system_restart_all():
 
 @app.post("/api/system/rebuild-all", status_code=202)
 def system_rebuild_all():
+    _set_system_lifecycle_state(
+        state="accepted",
+        action="rebuild-all",
+        phase="accepted",
+        message="MLX Nobby wird neu gebaut.",
+        current=0,
+        total=0,
+    )
+
     _launch_system_lifecycle_helper("rebuild-all.sh")
 
     return {

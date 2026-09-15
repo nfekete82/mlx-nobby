@@ -2630,39 +2630,196 @@ function openPowerMenu() {
     );
 }
 
-async function waitForLifecycleRecovery(action) {
-    const recoveryUrl =
-        action === 'rebuild-all'
-            ? '/api/health'
-            : '/api/mlx/system';
+function updateLifecycleProgress(data) {
+    const bar =
+        document.getElementById('lifecycleProgressBar');
 
-    const deadline = Date.now() + 180000;
-    let sawOffline = false;
+    const progressText =
+        document.getElementById('lifecycleProgressText');
 
-    // Give the detached helper a moment to start.
-    await new Promise(
-        resolve => setTimeout(resolve, 800)
-    );
+    const phase =
+        document.getElementById('lifecycleProgressPhase');
+
+    const busyText =
+        document.getElementById('confirmModalBusyText');
+
+    const current = Number(data.current || 0);
+    const total = Number(data.total || 0);
+
+    let percent = 0;
+
+    if (total > 0) {
+        percent = Math.max(
+            0,
+            Math.min(
+                100,
+                Math.round((current / total) * 100)
+            )
+        );
+    }
+
+    if (bar) {
+        bar.style.width = percent + '%';
+    }
+
+    const percentText =
+        document.getElementById('lifecycleProgressPercent');
+
+    const track =
+        document.querySelector(
+            '#lifecycleProgress .lifecycle-progress-track'
+        );
+
+    if (percentText) {
+        percentText.textContent = percent + ' %';
+    }
+
+    if (track) {
+        track.setAttribute(
+            'aria-valuenow',
+            String(percent)
+        );
+    }
+
+    if (progressText) {
+        progressText.textContent =
+            total > 0
+                ? current + ' / ' + total
+                : '';
+    }
+
+    if (phase) {
+        phase.textContent =
+            data.message || '';
+    }
+
+    if (busyText && data.message) {
+        busyText.textContent = data.message;
+    }
+}
+
+
+function showLifecycleFailure(message) {
+    const modal =
+        document.getElementById('confirmModal');
+
+    const messageElement =
+        document.getElementById('confirmModalMessage');
+
+    const actions =
+        modal?.querySelector('.app-modal-actions');
+
+    const busy =
+        document.getElementById('confirmModalBusy');
+
+    if (busy) {
+        busy.hidden = true;
+    }
+
+    if (messageElement) {
+        messageElement.hidden = false;
+        messageElement.textContent =
+            'Systemaktion fehlgeschlagen: ' +
+            message;
+    }
+
+    if (actions) {
+        actions.hidden = false;
+    }
+
+    setLifecycleActionsDisabled(false);
+}
+
+
+async function waitForLifecycleProgress(action) {
+    const deadline = Date.now() + 240000;
+
+    let sawLifecycleState = false;
+    let consecutiveErrors = 0;
 
     while (Date.now() < deadline) {
         try {
             const response = await fetch(
-                recoveryUrl + '?_=' + Date.now(),
+                '/api/mlx/system/lifecycle?_=' +
+                    Date.now(),
                 {
                     cache: 'no-store',
                 }
             );
 
             if (!response.ok) {
-                sawOffline = true;
+                throw new Error(
+                    'HTTP ' + response.status
+                );
+            }
 
-            } else if (sawOffline) {
+            const data = await response.json();
+
+            consecutiveErrors = 0;
+
+            if (
+                data.action === action &&
+                data.state !== 'idle'
+            ) {
+                sawLifecycleState = true;
+                updateLifecycleProgress(data);
+            }
+
+            if (
+                data.action === action &&
+                data.state === 'completed'
+            ) {
+                updateLifecycleProgress(data);
+
+                await new Promise(
+                    resolve =>
+                        setTimeout(resolve, 700)
+                );
+
                 window.location.reload();
                 return;
             }
 
+            if (
+                data.action === action &&
+                data.state === 'failed'
+            ) {
+                updateLifecycleProgress(data);
+
+                showLifecycleFailure(
+                    data.error ||
+                    data.message ||
+                    'Unbekannter Fehler'
+                );
+
+                return;
+            }
+
         } catch (error) {
-            sawOffline = true;
+            /*
+             * restart-all intentionally restarts the
+             * agent. During that window the lifecycle
+             * endpoint is temporarily unavailable.
+             *
+             * This is expected and must not turn the
+             * modal into an error state.
+             */
+            consecutiveErrors += 1;
+
+            if (
+                sawLifecycleState &&
+                consecutiveErrors < 40
+            ) {
+                const phase =
+                    document.getElementById(
+                        'lifecycleProgressPhase'
+                    );
+
+                if (phase) {
+                    phase.textContent =
+                        'Dienste werden neu gestartet …';
+                }
+            }
         }
 
         await new Promise(
@@ -2670,10 +2827,16 @@ async function waitForLifecycleRecovery(action) {
         );
     }
 
-    // Last-resort recovery if the expected transition could not
-    // be observed but the action itself was accepted.
+    /*
+     * Recovery fallback:
+     * lifecycle polling should normally reach
+     * "completed". If the agent transition caused us
+     * to miss it, reload once and let the recovered
+     * application establish the final state.
+     */
     window.location.reload();
 }
+
 
 function showLifecycleBusyModal(title, message) {
     const modal =
@@ -2694,13 +2857,34 @@ function showLifecycleBusyModal(title, message) {
     const busyText =
         document.getElementById('confirmModalBusyText');
 
+    const progress =
+        document.getElementById('lifecycleProgress');
+
+    const progressBar =
+        document.getElementById('lifecycleProgressBar');
+
+    const progressText =
+        document.getElementById('lifecycleProgressText');
+
+    const progressPhase =
+        document.getElementById('lifecycleProgressPhase');
+
+    const progressPercent =
+        document.getElementById('lifecycleProgressPercent');
+
+    const progressTrack =
+        progress?.querySelector(
+            '.lifecycle-progress-track'
+        );
+
     if (
         !modal ||
         !titleElement ||
         !messageElement ||
         !actions ||
         !busy ||
-        !busyText
+        !busyText ||
+        !progress
     ) {
         return;
     }
@@ -2712,6 +2896,31 @@ function showLifecycleBusyModal(title, message) {
 
     busy.hidden = false;
     busyText.textContent = message;
+
+    progress.hidden = false;
+
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
+
+    if (progressText) {
+        progressText.textContent = '';
+    }
+
+    if (progressPhase) {
+        progressPhase.textContent = 'Vorbereitung …';
+    }
+
+    if (progressPercent) {
+        progressPercent.textContent = '0 %';
+    }
+
+    if (progressTrack) {
+        progressTrack.setAttribute(
+            'aria-valuenow',
+            '0'
+        );
+    }
 
     modal.hidden = false;
 }
@@ -2805,7 +3014,7 @@ async function runLifecycleAction(action) {
             );
         }
 
-        waitForLifecycleRecovery(action);
+        waitForLifecycleProgress(action);
 
     } catch (error) {
         const modal =

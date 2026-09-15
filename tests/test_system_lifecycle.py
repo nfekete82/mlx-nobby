@@ -163,6 +163,46 @@ class LifecycleScriptContractTests(unittest.TestCase):
             source,
         )
 
+    def test_restart_script_reports_lifecycle_progress(self):
+        text = Path(
+            "scripts/restart-all.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "/api/system/lifecycle/progress",
+            text,
+        )
+        self.assertIn(
+            '"restart-services"',
+            text,
+        )
+        self.assertIn(
+            '"completed"',
+            text,
+        )
+
+    def test_rebuild_script_reports_lifecycle_progress(self):
+        text = Path(
+            "scripts/rebuild-all.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "/api/system/lifecycle/progress",
+            text,
+        )
+        self.assertIn(
+            '"rebuild-web"',
+            text,
+        )
+        self.assertIn(
+            '"restart-services"',
+            text,
+        )
+        self.assertIn(
+            '"completed"',
+            text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

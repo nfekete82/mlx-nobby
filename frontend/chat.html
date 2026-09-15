@@ -1240,6 +1240,46 @@
             </div>
         </div>
 
+            <div
+                id="lifecycleProgress"
+                class="lifecycle-progress"
+                hidden
+            >
+                <div class="lifecycle-progress-header">
+                    <span id="lifecycleProgressPhase">
+                        Vorbereitung …
+                    </span>
+
+                    <span id="lifecycleProgressPercent">
+                        0 %
+                    </span>
+                </div>
+
+                <div
+                    class="lifecycle-progress-track"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow="0"
+                >
+                    <div
+                        id="lifecycleProgressBar"
+                        class="lifecycle-progress-bar"
+                    ></div>
+                </div>
+
+                <div
+                    id="lifecycleProgressText"
+                    class="lifecycle-progress-message"
+                ></div>
+
+                <div
+                    id="lifecycleStatusText"
+                    class="lifecycle-progress-message"
+                    aria-live="polite"
+                ></div>
+            </div>
+
         <div class="app-modal-actions">
             <button
                 id="confirmModalCancel"

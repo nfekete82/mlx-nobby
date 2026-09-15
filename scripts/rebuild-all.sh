@@ -12,6 +12,68 @@ DOCKER_BIN="${DOCKER_BIN:-$(command -v docker || true)}"
 
 exec >>"$LOG_FILE" 2>&1
 
+ACTION="rebuild-all"
+
+AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
+
+report_lifecycle() {
+    local state="$1"
+    local phase="$2"
+    local current="$3"
+    local total="$4"
+    local message="$5"
+    local error="${6:-}"
+
+    python3 - \
+        "$AGENT_URL" \
+        "$ACTION" \
+        "$state" \
+        "$phase" \
+        "$current" \
+        "$total" \
+        "$message" \
+        "$error" <<'PYREPORT' || true
+import json
+import sys
+import urllib.request
+
+(
+    agent_url,
+    action,
+    state,
+    phase,
+    current,
+    total,
+    message,
+    error,
+) = sys.argv[1:]
+
+payload = {
+    "action": action,
+    "state": state,
+    "phase": phase,
+    "current": int(current),
+    "total": int(total),
+    "message": message,
+    "error": error or None,
+}
+
+request = urllib.request.Request(
+    agent_url.rstrip("/")
+    + "/api/system/lifecycle/progress",
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+
+with urllib.request.urlopen(
+    request,
+    timeout=2,
+) as response:
+    response.read()
+PYREPORT
+}
+
 echo
 echo "============================================================"
 echo "MLX NOBBY — REBUILD ALL"
@@ -43,6 +105,13 @@ sleep 1
 echo
 echo "===== REBUILD WEB ====="
 
+report_lifecycle \
+    "running" \
+    "rebuild-web" \
+    1 \
+    3 \
+    "Web-Anwendung wird neu gebaut."
+
 "$DOCKER_BIN" compose up -d \
     --build \
     --force-recreate \
@@ -51,7 +120,21 @@ echo "===== REBUILD WEB ====="
 echo
 echo "===== RESTART LOCAL SERVICES ====="
 
+report_lifecycle \
+    "running" \
+    "restart-services" \
+    2 \
+    3 \
+    "MLX-Dienste werden neu gestartet."
+
 "$MLX_BIN" restart-all
+
+report_lifecycle \
+    "completed" \
+    "completed" \
+    3 \
+    3 \
+    "MLX Nobby wurde vollständig neu gebaut."
 
 echo
 echo "===== COMPLETE ====="
