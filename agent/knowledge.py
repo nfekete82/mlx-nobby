@@ -646,7 +646,7 @@ def get_uploaded_document_page(document_id, page):
         # Index chunks overlap. Remove the largest identical suffix/prefix
         # region so page text is not reconstructed twice.
         max_overlap = min(
-            500,
+            250,
             len(previous),
             len(text),
         )

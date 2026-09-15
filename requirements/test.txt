@@ -3,3 +3,4 @@
 -r web.txt
 httpx==0.28.1
 pillow==12.3.0
+coverage==7.10.7
