@@ -37,7 +37,7 @@ class RuntimePolicy:
 
 @dataclass(frozen=True)
 class RuntimeHooks:
-    """Existing prompts, evidence rules and approval storage stay with the host."""
+    """Bindings for extracted prompts/evidence and the existing approval service."""
 
     coding_read_only_fast_final_requested: Callable
     ambiguous_delete_reference: Callable
@@ -56,6 +56,8 @@ class RuntimeHooks:
     boost_orchestrator_research_query: Callable
     degraded_empty_web_search_count: Callable
     canonical_github_repo_from_goal: Callable
+    execute_agent_approved_action: Callable | None = None
+    verify_agent_action: Callable | None = None
 
 
 _CURRENT_RUNTIME = ContextVar("mlx_agent_runtime", default=None)
@@ -127,6 +129,90 @@ class AgentRuntime:
                     "Agent progress callback failed (status=%s, current_step=%r)",
                     status, current_step,
                 )
+
+    def resume_approval(self, pending, approved):
+        """Continue the consumed approval with the original dependencies and run state."""
+        if pending.get("run_context") is not None and pending["run_context"] is not self.context:
+            raise ValueError("APPROVAL_RUN_CONTEXT_CHANGED")
+        if pending.get("runtime") is not None and pending["runtime"] is not self:
+            raise ValueError("APPROVAL_RUNTIME_CHANGED")
+        observations = list(pending["observations"])
+        step = int(pending["step"])
+        callback = pending.get("progress_callback")
+        operation = pending["operation"]
+        target = pending["target"]
+        token = _CURRENT_RUNTIME.set(self)
+        try:
+            with run_state.bind_run_context(self.context):
+                try:
+                    self._check_cancelled()
+                    self._publish(callback, "running", observations)
+                    verification = None
+                    if not approved:
+                        observations.append({
+                            "step": step, "action": operation, "target": target,
+                            "status": "rejected_by_user",
+                        })
+                    else:
+                        try:
+                            self._check_cancelled()
+                            result = self.hooks.execute_agent_approved_action(pending)
+                            observation = {
+                                "step": step, "action": operation, "target": target,
+                                "status": "completed" if result["returncode"] == 0 else "failed",
+                                "result": result.get("tool_result") if "tool_arguments" in pending else result,
+                            }
+                            if "tool_arguments" in pending:
+                                arguments = pending["tool_arguments"]
+                                observation.update(
+                                    query=arguments.get("query"),
+                                    options=arguments.get("options") or None,
+                                    instruction=arguments.get("instruction") or None,
+                                    reason=pending["reason"],
+                                )
+                            observations.append(observation)
+                            self._check_cancelled()
+                            if result["returncode"] == 0 and "tool_arguments" not in pending:
+                                verification = self.hooks.verify_agent_action(pending)
+                                observations.append({
+                                    "step": step, "action": "verify_change", "target": target,
+                                    "status": "completed" if verification.get("verified") else "failed",
+                                    "result": verification,
+                                })
+                                self._check_cancelled()
+                        except _RunCancelled:
+                            raise
+                        except Exception as exc:
+                            observation = {
+                                "step": step, "action": operation, "target": target,
+                                "status": "failed", "error": str(exc),
+                            }
+                            if isinstance(exc, ToolPermissionError):
+                                observation["permission_decision"] = exc.decision.as_dict()
+                            observations.append(observation)
+                            self._check_cancelled()
+                    self._publish(callback, "running", observations)
+                    if operation == "code_apply" and verification and verification.get("verified") is True:
+                        result = {
+                            "status": "completed", "goal": pending["goal"], "steps": observations,
+                            "pending_action": None,
+                            "answer": "Änderung erfolgreich angewendet und verifiziert.",
+                        }
+                        self._publish(callback, "completed", observations)
+                        return result
+                    return self.run(
+                        pending["goal"], observations, step + 1,
+                        mode=pending.get("mode", "diagnostic"),
+                        conversation_context=pending.get("conversation_context"),
+                        progress_callback=callback,
+                    )
+                except _RunCancelled:
+                    result = {"status": "cancelled", "goal": pending["goal"],
+                              "steps": observations, "pending_action": None, "answer": ""}
+                    self._publish(callback, "cancelled", observations)
+                    return result
+        finally:
+            _CURRENT_RUNTIME.reset(token)
 
     def run(self, goal, observations=None, start_step=1, mode="diagnostic",
             conversation_context=None, progress_callback=None, allow_approval=True):
@@ -540,6 +626,7 @@ class AgentRuntime:
                         target=target,
                         reason=reason,
                         conversation_context=conversation_context,
+                        runtime=self, progress_callback=progress_callback,
                     )
 
                 except _RunCancelled:
@@ -1493,6 +1580,10 @@ class AgentRuntime:
                             operation=action, target=query,
                             reason=exc.decision.reason,
                             conversation_context=conversation_context,
+                            runtime=self, progress_callback=progress_callback,
+                            tool_request={"goal": goal, "query": query or None,
+                                          "instruction": instruction or None, "files": files,
+                                          "options": tool_options},
                         )
                     except _RunCancelled:
                         raise

@@ -99,6 +99,18 @@ class ToolRegistry:
         return [tool.definition() for tool in self._tools.values()]
 
     def execute(self, name: str, *, run_context=None, **arguments):
+        return self._execute(name, run_context=run_context, arguments=arguments)
+
+    def execute_approved(self, name: str, *, run_context, expected_tool: Tool, **arguments):
+        """Execute a consumed approval after rechecking the tool and current policy."""
+        if run_context is None or self.permission_engine is None:
+            raise ValueError("APPROVAL_CONTEXT_REQUIRED")
+        if not isinstance(expected_tool, Tool) or self.get(name) != expected_tool:
+            raise ValueError("APPROVED_TOOL_CHANGED")
+        return self._execute(name, run_context=run_context, arguments=arguments,
+                             approved_tool=expected_tool)
+
+    def _execute(self, name, *, run_context, arguments, approved_tool=None):
         tool = self.get(name)
         if self.permission_engine is None:
             return tool.execute(**arguments)
@@ -108,6 +120,8 @@ class ToolRegistry:
         context = run_context or current_run_context() or RunContext.start()
         with bind_run_context(context):
             decision = self.permission_engine.evaluate(tool, context, arguments)
-            if decision.decision != Decision.ALLOW:
+            if decision.decision != Decision.ALLOW and not (
+                decision.decision == Decision.CONFIRM and tool == approved_tool
+            ):
                 raise ToolPermissionError(name, decision)
             return tool.execute(**arguments)

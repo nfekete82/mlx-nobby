@@ -284,10 +284,19 @@ class PermissionAndRunTests(unittest.TestCase):
     def test_approval_resume_uses_original_binding(self):
         approval = self.approval()
         code_workspaces.set_active_workspace(self.b["workspace_id"])
-        with mock.patch.object(self.agent, "run_agent_v2", side_effect=lambda *args, **kwargs: current_run_context()) as resume:
+        contexts = []
+        def final(*args, **kwargs):
+            contexts.append(current_run_context())
+            return {"action": "final", "answer": "Rejected"}
+        with (
+            mock.patch.object(self.agent, "agent_choose_next_step_v2", side_effect=final) as resume,
+            mock.patch.object(self.agent, "agent_v2_final_answer", return_value="Rejected"),
+        ):
             result = self.agent.api_agent_approve(approval["approval_id"], self.agent.AgentApprovalRequest(approved=False))
         resume.assert_called_once()
-        self.assertIs(result, self.context)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(contexts, [self.context])
+        self.assertIs(contexts[0], self.context)
         self.assertIsNone(current_run_context())
 
     def test_approval_rechecks_cancellation_before_mutation(self):

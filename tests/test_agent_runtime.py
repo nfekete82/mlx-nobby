@@ -7,7 +7,7 @@ from unittest import mock
 
 from agent import code_workspaces, run_state
 from agent.model_provider import ModelRequest, ModelResponse, ProviderError
-from agent.permissions import PermissionEngine
+from agent.permissions import Decision, PermissionDecision, PermissionEngine, ToolPermissionError
 from agent.runtime import AgentRuntime, RuntimeHooks, RuntimePolicy, current_runtime
 from agent.tool_registry import Tool, ToolRegistry
 
@@ -358,6 +358,191 @@ class RuntimeAPICompatibilityTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "failed")
         self.assertEqual(response.json()["error"]["code"], "unavailable")
         self.assertEqual(self.client.get("/api/agent/runs/" + self.run_id).json()["status"], "failed")
+
+    def start_confirmed_tool(self, handler=None, replies=None):
+        self.registry = ToolRegistry(permission_engine=PermissionEngine())
+        self.tool_handler = handler or mock.Mock(return_value={"evidence": "result"})
+        self.registry.register(Tool(
+            "guarded", "Existing tool requiring confirmation", {"type": "object"},
+            self.tool_handler, "READ", ("EXECUTE",),
+        ))
+        self.provider = FakeProvider([
+            {"action": "guarded", "query": "bound.txt", "instruction": "Inspect",
+             "options": {"limit": 2}},
+            *(replies if replies is not None else [{"action": "final", "answer": "Done"}]),
+        ])
+        with (
+            mock.patch.object(self.agent, "AGENT_TOOL_REGISTRY", self.registry),
+            mock.patch.object(self.agent, "agent_model_provider", return_value=self.provider),
+        ):
+            response = self.client.post("/api/agent/run", json={
+                "goal": "Inspect", "run_id": self.run_id, "chat_id": "chat-one",
+            })
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "approval_required")
+        approval = response.json()["pending_action"]
+        self.assertEqual(approval["permission_decision"]["decision"], "CONFIRM")
+        self.assertNotIn("tool_arguments", approval)
+        self.assertNotIn("runtime", approval)
+        self.pending = self.agent.PENDING_AGENT_ACTIONS[approval["approval_id"]]
+        self.approval_url = "/api/agent/approve/" + approval["approval_id"]
+        return self.pending
+
+    def resume_confirmed_tool(self, approved=True):
+        with mock.patch.object(self.agent, "agent_model_provider", side_effect=AssertionError("Must reuse provider")):
+            response = self.client.post(self.approval_url, json={"approved": approved})
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_confirm_resume_preserves_runtime_context_arguments_workspace_and_progress(self):
+        (self.workspace / "bound.txt").write_text("original")
+        seen = []
+        def handler(**arguments):
+            context = run_state.current_run_context()
+            seen.append((context, current_runtime(), arguments))
+            return {"content": context.resolve_path("bound.txt").read_text()}
+        pending = self.start_confirmed_tool(handler)
+        self.assertEqual(seen, [])
+        runtime = pending["runtime"]
+        other = self.base / "other"
+        other.mkdir()
+        (other / "bound.txt").write_text("wrong workspace")
+        code_workspaces.add_workspace(str(other))
+        with mock.patch.object(self.registry.permission_engine, "evaluate", wraps=self.registry.permission_engine.evaluate) as evaluate:
+            result = self.resume_confirmed_tool()
+        evaluate.assert_called_once()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["steps"][1]["result"], {"content": "original"})
+        self.assertIs(seen[0][0], pending["run_context"])
+        self.assertIs(seen[0][1], runtime)
+        self.assertEqual(seen[0][2], pending["tool_arguments"])
+        self.assertEqual(seen[0][2]["options"], {"limit": 2})
+        self.assertEqual(runtime.context.chat_id, "chat-one")
+        self.assertTrue(all(context is runtime.context for _, context in self.provider.calls))
+        self.assertEqual(self.client.get("/api/agent/runs/" + self.run_id).json()["status"], "completed")
+        self.assertEqual(self.client.post(self.approval_url, json={"approved": True}).status_code, 404)
+        self.assertEqual(len(seen), 1)
+        with self.assertRaises(ToolPermissionError):
+            self.registry.execute("guarded", run_context=runtime.context, **pending["tool_arguments"])
+        self.assertIsNone(run_state.current_run_context())
+        self.assertIsNone(current_runtime())
+
+    def test_rejected_tool_approval_resumes_without_execution(self):
+        self.start_confirmed_tool()
+        result = self.resume_confirmed_tool(False)
+        self.tool_handler.assert_not_called()
+        self.assertEqual(result["steps"][-1]["status"], "rejected_by_user")
+        self.assertEqual(result["status"], "completed")
+
+    def test_cancelled_approval_does_not_execute_or_resume_model(self):
+        pending = self.start_confirmed_tool()
+        pending["run_context"].cancel()
+        result = self.resume_confirmed_tool()
+        self.tool_handler.assert_not_called()
+        self.assertEqual(result["status"], "cancelled")
+        self.assertEqual(len(self.provider.calls), 1)
+        self.assertEqual(self.client.get("/api/agent/runs/" + self.run_id).json()["status"], "cancelled")
+
+    def test_policy_deny_at_resume_cannot_be_overridden_by_approval(self):
+        self.start_confirmed_tool()
+        with mock.patch.object(self.registry.permission_engine, "evaluate", return_value=PermissionDecision(Decision.DENY, "POLICY_CHANGED")):
+            result = self.resume_confirmed_tool()
+        self.tool_handler.assert_not_called()
+        self.assertEqual(result["steps"][-1]["permission_decision"], {"decision": "DENY", "reason": "POLICY_CHANGED"})
+
+    def test_changed_tool_definition_invalidates_approval(self):
+        self.start_confirmed_tool()
+        self.registry._tools["guarded"] = replace(self.registry.get("guarded"), risks=("PRIVILEGED",))
+        result = self.resume_confirmed_tool()
+        self.tool_handler.assert_not_called()
+        self.assertEqual(result["steps"][-1]["error"], "APPROVED_TOOL_CHANGED")
+
+    def test_approved_tool_error_returns_to_original_planner(self):
+        self.start_confirmed_tool(mock.Mock(side_effect=ValueError("Tool unavailable")))
+        result = self.resume_confirmed_tool()
+        self.assertEqual(result["steps"][-1]["error"], "Tool unavailable")
+        self.assertEqual(result["status"], "completed")
+
+    def test_provider_failure_after_approved_tool_retains_completed_result(self):
+        self.start_confirmed_tool(replies=[ProviderError("unavailable", "Offline")])
+        result = self.resume_confirmed_tool()
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["steps"][-1]["result"], {"evidence": "result"})
+        self.assertEqual(self.client.get("/api/agent/runs/" + self.run_id).json()["status"], "failed")
+
+    def test_expired_approval_is_consumed_without_execution(self):
+        pending = self.start_confirmed_tool()
+        pending["expires_at"] = 0
+        self.assertEqual(self.client.post(self.approval_url, json={"approved": True}).status_code, 410)
+        self.assertEqual(self.client.post(self.approval_url, json={"approved": True}).status_code, 404)
+        self.tool_handler.assert_not_called()
+
+    def test_cancellation_after_approved_tool_retains_evidence(self):
+        def handler(**arguments):
+            run_state.current_run_context().cancel()
+            return {"completed": True}
+        self.start_confirmed_tool(handler)
+        result = self.resume_confirmed_tool()
+        self.assertEqual(result["status"], "cancelled")
+        self.assertEqual(result["steps"][-1]["result"], {"completed": True})
+        self.assertEqual(len(self.provider.calls), 1)
+
+    def test_existing_docker_approval_executes_verifies_and_resumes_same_runtime(self):
+        provider = FakeProvider([
+            {"action": "request_approval", "operation": "docker_restart", "target": "service"},
+            {"action": "final", "answer": "Restarted"},
+        ])
+        contexts = []
+        def execute(pending):
+            contexts.append(run_state.current_run_context())
+            return {"returncode": 0, "stdout": "service", "stderr": ""}
+        def verify(pending):
+            contexts.append(run_state.current_run_context())
+            return {"verified": True, "checks": []}
+        with (
+            mock.patch.object(self.agent, "agent_model_provider", return_value=provider),
+            mock.patch.object(self.agent, "execute_agent_approved_action", side_effect=execute) as action,
+            mock.patch.object(self.agent, "verify_agent_action", side_effect=verify) as verification,
+        ):
+            response = self.client.post("/api/agent/run", json={"goal": "Inspect", "run_id": self.run_id})
+        self.approval_url = "/api/agent/approve/" + response.json()["pending_action"]["approval_id"]
+        result = self.resume_confirmed_tool()
+        action.assert_called_once()
+        verification.assert_called_once()
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["steps"][-1]["action"], "verify_change")
+        self.assertTrue(all(context is provider.calls[0][1] for context in contexts))
+        self.assertIs(provider.calls[0][1], provider.calls[1][1])
+
+    def test_approved_patch_is_applied_verified_and_terminal_without_planner(self):
+        import sys
+        workspace = code_workspaces.add_workspace(
+            str(self.workspace), test_commands=[[sys.executable, "-c", "raise SystemExit(0)"]],
+        )
+        context = run_state.RunContext.start(run_id=self.run_id)
+        provider = FakeProvider([])
+        runtime = self.agent.agent_runtime(context, provider=provider)
+        patch = code_workspaces.create_patch(workspace["workspace_id"], "Create", [
+            {"path": "new.txt", "operation": "CREATE", "proposed_content": "new"},
+        ])
+        patch_id = patch["patch_id"]
+        tests = code_workspaces.test(patch_id)
+        events = []
+        with run_state.bind_run_context(context):
+            approval = self.agent.create_agent_approval(
+                "Create", [
+                    {"action": "code_diff", "query": patch_id, "status": "completed", "result": patch},
+                    {"action": "code_test", "query": patch_id, "status": "completed", "result": tests},
+                ], 3, "coding", "code_apply", patch_id, "Apply", runtime=runtime,
+                progress_callback=lambda status, *args: events.append(status),
+            )
+        self.approval_url = "/api/agent/approve/" + approval["approval_id"]
+        result = self.resume_confirmed_tool()
+        self.assertEqual(result["status"], "completed")
+        self.assertTrue(result["steps"][-1]["result"]["verified"])
+        self.assertEqual((self.workspace / "new.txt").read_text(), "new")
+        self.assertEqual(provider.calls, [])
+        self.assertEqual(events[-1], "completed")
 
 
 if __name__ == "__main__":
