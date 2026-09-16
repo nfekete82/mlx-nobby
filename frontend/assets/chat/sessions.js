@@ -152,6 +152,17 @@ function sessionT(key, fallback = '', variables = {}) {
 
     }
 
+    function updateFromServer(session, serverSession, keepMessages) {
+        const messages = session.messages;
+        const { _runtime_revision, ...serverFields } = serverSession;
+
+        Object.assign(session, serverFields);
+
+        if (keepMessages) {
+            session.messages = messages;
+        }
+    }
+
 
     async function persistSession(session) {
         if (!serverReady || !validSession(session)) {
@@ -159,6 +170,8 @@ function sessionT(key, fallback = '', variables = {}) {
         }
 
         try {
+            const sentSession = withoutStreamingFields(session);
+            const sentMessages = JSON.stringify(sentSession.messages);
             const {
                 response,
                 data
@@ -166,7 +179,7 @@ function sessionT(key, fallback = '', variables = {}) {
                 '/api/mlx/chats/' + encodeURIComponent(session.id),
                 MLXCommon.jsonRequest(
                     'PUT',
-                    withoutStreamingFields(session)
+                    sentSession
                 )
             );
 
@@ -175,12 +188,19 @@ function sessionT(key, fallback = '', variables = {}) {
             }
 
             if (data.chat.updated > session.updated) {
-                const index = state.sessions.findIndex(
+                const current = state.sessions.find(
                     item => item.id === session.id
                 );
 
-                if (index !== -1) {
-                    state.sessions[index] = data.chat;
+                if (current === session) {
+                    updateFromServer(
+                        session,
+                        data.chat,
+                        (isGenerating() && state.activeId === session.id) ||
+                            JSON.stringify(
+                                withoutStreamingFields(session.messages)
+                            ) !== sentMessages
+                    );
                     cacheSessions();
                     renderAll();
                 }
@@ -271,7 +291,14 @@ function sessionT(key, fallback = '', variables = {}) {
                     return;
                 }
 
-                merged.set(id, server);
+                if (local) {
+                    updateFromServer(
+                        local,
+                        server,
+                        isGenerating() && state.activeId === id
+                    );
+                }
+                merged.set(id, local || server);
             });
 
             state.sessions = Array.from(merged.values())
