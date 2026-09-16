@@ -8788,8 +8788,8 @@ def run_chat_action(request: ChatActionRequest):
         ))
     ):
         routing = {
-            "intent": "diagnostic_agent", "confidence": 1.0,
-            "requires_tools": True, "reason": "Gebundenes Chat-Bild",
+            "intent": "normal_chat", "confidence": 1.0,
+            "requires_tools": False, "reason": "Gebundenes Chat-Bild",
             "method": "deterministic_vision",
         }
 

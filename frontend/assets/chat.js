@@ -1298,20 +1298,24 @@ const activeWorkspaceHeaderClose = document.getElementById(
     'activeWorkspaceHeaderClose'
 );
 
+async function deactivateWorkspace() {
+    await workspaceRequest(
+        '/api/mlx/code/workspaces/active',
+        {
+            method: 'DELETE',
+        }
+    );
+
+    await loadWorkspaces();
+}
+
 if (activeWorkspaceHeaderClose) {
     activeWorkspaceHeaderClose.addEventListener('click', async event => {
         event.stopPropagation();
         activeWorkspaceHeaderClose.disabled = true;
 
         try {
-            await workspaceRequest(
-                '/api/mlx/code/workspaces/active',
-                {
-                    method: 'DELETE',
-                }
-            );
-
-            await loadWorkspaces();
+            await deactivateWorkspace();
 
         } catch (error) {
             showWorkspaceFeedback(
@@ -1486,6 +1490,7 @@ function openWorkspaceTestConfiguration() {
 
 window.MLXChatWorkspace = {
     load: loadWorkspaces,
+    deactivate: deactivateWorkspace,
     openTestConfiguration: openWorkspaceTestConfiguration,
     __test: {
         parseWorkspaceTestCommands,

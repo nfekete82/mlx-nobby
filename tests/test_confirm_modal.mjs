@@ -89,6 +89,31 @@ assert.match(
     /session\.revision = revision/,
 );
 
+
+assert.match(
+    deleteMessagesBlock,
+    /await window\.MLXChatWorkspace\?\.deactivate\?\.\(\)/,
+    'clearing a chat must deactivate the active workspace',
+);
+
+assert.match(
+    chatJs,
+    /async function deactivateWorkspace\(\)/,
+    'chat runtime must expose workspace deactivation',
+);
+
+assert.match(
+    chatJs,
+    /method:\s*['"]DELETE['"]/,
+    'workspace deactivation must use DELETE',
+);
+
+assert.match(
+    chatJs,
+    /deactivate:\s*deactivateWorkspace/,
+    'workspace deactivation must be exported for chat reset',
+);
+
 console.log(
     'Confirm modal: markup, helper, async clear-chat flow, and native confirm removal passed.'
 );

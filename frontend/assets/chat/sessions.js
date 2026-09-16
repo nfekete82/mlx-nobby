@@ -556,6 +556,17 @@ function sessionT(key, fallback = '', variables = {}) {
             }
         }
 
+        // A cleared chat starts without an active code workspace.
+        // The workspace remains registered and can be selected again.
+        try {
+            await window.MLXChatWorkspace?.deactivate?.();
+        } catch (error) {
+            console.warn(
+                'Workspace deactivation during chat reset failed:',
+                error
+            );
+        }
+
         // Clear transient frontend files/images.
         window.MLXChatAttachments?.clearAttachments?.();
 

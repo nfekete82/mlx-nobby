@@ -55,6 +55,47 @@ class ChatRuntimeIntegrationTests(unittest.TestCase):
             web = self.app.run_chat_action(self.app.ChatActionRequest(prompt="Suche im Web nach MLX"))
         self.assertEqual(web["tool"], "research_agent")
 
+    def test_plain_image_analysis_stays_normal_chat_without_agent(self):
+        route = self.app.run_chat_action(
+            self.app.ChatActionRequest(
+                prompt="Beschreibe dieses Bild.",
+                file_context={
+                    "kind": "image",
+                    "stored_path": "/tmp/test-image.png",
+                },
+            )
+        )
+
+        self.assertEqual(route["tool"], "normal_chat")
+        self.assertEqual(route["status"], "not_applicable")
+        self.assertEqual(route["data"]["routing"]["intent"], "normal_chat")
+        self.assertEqual(
+            route["data"]["routing"]["method"],
+            "deterministic_vision",
+        )
+        self.assertFalse(
+            route["data"]["routing"]["requires_tools"]
+        )
+
+    def test_plain_image_analysis_beats_active_workspace_routing(self):
+        route = self.app.run_chat_action(
+            self.app.ChatActionRequest(
+                prompt="Was ist auf dem Bild?",
+                file_context={
+                    "kind": "image",
+                    "stored_path": "/tmp/test-image.png",
+                },
+            )
+        )
+
+        self.assertEqual(route["tool"], "normal_chat")
+        self.assertNotEqual(route["tool"], "coding_agent")
+        self.assertNotEqual(route["tool"], "diagnostic_agent")
+        self.assertEqual(
+            route["data"]["routing"]["method"],
+            "deterministic_vision",
+        )
+
     def test_workspace_read_write_git_and_tests_route_to_runtime(self):
         for prompt in (
             "Lies example.py und ändere sie.",
