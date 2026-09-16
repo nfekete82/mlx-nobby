@@ -1280,10 +1280,14 @@ async function runAgent(
     assistantMessage,
     mode = 'diagnostic',
     conversationContext = [],
-    traceId = newTraceId()
+    traceId = newTraceId(),
+    resources = {}
 ) {
     setGenerating(true);
-    setAbortController(null);
+
+    const agentAbortController = new AbortController();
+    setAbortController(agentAbortController);
+
     const runId = globalThis.crypto?.randomUUID
         ? globalThis.crypto.randomUUID()
         : 'run-' + Date.now().toString(16) +
@@ -1306,10 +1310,14 @@ async function runAgent(
         const pollProgress = async () => {
             try {
                 const response = await fetch(
-                    '/api/mlx/agent/runs/' + encodeURIComponent(runId)
+                    '/api/mlx/agent/runs/' + encodeURIComponent(runId),
+                    {
+                        signal: agentAbortController.signal
+                    }
                 );
                 if (!response.ok) return;
                 const progress = await response.json();
+                if (!session.messages.includes(assistantMessage)) return;
                 const liveSteps = Array.isArray(progress.steps)
                     ? [...progress.steps]
                     : [];
@@ -1334,6 +1342,9 @@ async function runAgent(
         progressTimer = setInterval(pollProgress, 800);
         pollProgress();
 
+        await MLXChatSessions.persistSession(session);
+        if (!session.messages.includes(assistantMessage)) return;
+
         const response = await fetch(
             '/api/mlx/agent/run',
             {
@@ -1346,9 +1357,16 @@ async function runAgent(
                     mode: mode,
                     run_id: runId,
                     trace_id: traceId,
+                    chat_id: session.id,
+                    chat_revision: persistentChatRevision(session),
+                    attachments: resources.attachments || [],
+                    active_artifact_id: resources.activeArtifactId || null,
+                    workspace_id: resources.workspaceId || null,
+                    workspace_bound: true,
                     conversation_context:
                         conversationContext
-                })
+                }),
+                signal: agentAbortController.signal
             }
         );
 
@@ -1359,6 +1377,7 @@ async function runAgent(
         }
 
         const data = await response.json();
+        if (!session.messages.includes(assistantMessage)) return;
 
         assistantMessage.agent_run = {
             status: data.status || 'completed',
@@ -1376,27 +1395,36 @@ async function runAgent(
             data.model_metrics || null;
 
     } catch (error) {
-        console.error(
-            '[MLX Agent]',
-            error
-        );
+        if (error?.name === 'AbortError') {
+            assistantMessage.agent_run = {
+                ...(assistantMessage.agent_run || {}),
+                status: 'cancelled',
+                goal: goal,
+                pending_action: null
+            };
+        } else {
+            console.error(
+                '[MLX Agent]',
+                error
+            );
 
-        assistantMessage.agent_run = {
-            status: 'failed',
-            goal: goal,
-            steps: [],
-            pending_action: null
-        };
+            assistantMessage.agent_run = {
+                status: 'failed',
+                goal: goal,
+                steps: [],
+                pending_action: null
+            };
 
-        assistantMessage.content = gt(
-            'agent_error',
-            'Agent error: {message}',
-            {
-                message:
-                    error?.message ||
-                    String(error)
-            }
-        );
+            assistantMessage.content = gt(
+                'agent_error',
+                'Agent error: {message}',
+                {
+                    message:
+                        error?.message ||
+                        String(error)
+                }
+            );
+        }
 
     } finally {
         if (progressTimer) {
@@ -2014,8 +2042,8 @@ const imageFiles =
 
     const routesCurrentImageToVision =
         (
-            imageFiles.length > 0 ||
-            visionImages.length > 0
+            imageFiles.length > 1 ||
+            visionImages.length > 1
         ) &&
         !explicitImageCreationRequest &&
         !explicitImageEditRequest;
@@ -2041,7 +2069,6 @@ const imageFiles =
             let currentImageContext = null;
 
             if (
-                explicitImageEditRequest &&
                 imageFiles.length === 1
             ) {
                 const image = imageFiles[0];
@@ -2102,16 +2129,16 @@ const imageFiles =
             }
 
             const fileContext =
-                explicitImageEditRequest
-                    ? currentImageContext
-                    : priorFileAttachments[0] || null;
+                currentImageContext ||
+                documentFiles[0] ||
+                priorFileAttachments[0] || null;
 
             // Always expose the active image artifact to the semantic
             // router. This lets the router resolve natural image follow-ups
             // from conversation context even when the deterministic edit
             // patterns do not recognize the wording.
             const activeArtifactIdForEdit =
-                !currentImageContext
+                !currentImageContext && (refersToExistingImage || explicitImageEditRequest)
                     ? (
                         activeImageArtifact?.artifact_id ||
                         session?.workspace?.active_artifact_id ||
@@ -2315,7 +2342,20 @@ const imageFiles =
                     toolResult.mode ||
                     'diagnostic',
                     conversationContext,
-                    userMessage.trace_id
+                    userMessage.trace_id,
+                    {
+                        attachments: [
+                            ...(currentImageContext
+                                ? [{ kind: 'image', stored_path: currentImageContext.stored_path }]
+                                : []),
+                            ...documentFiles.map(file => ({
+                                kind: 'document',
+                                document_id: file.document_id
+                            }))
+                        ],
+                        activeArtifactId: activeArtifactIdForEdit,
+                        workspaceId: toolResult.data?.workspace_id || null
+                    }
                 );
 
                 return;
@@ -2499,7 +2539,8 @@ const imageFiles =
                             ? item.attachment.extension : 'text',
                         chunk_tokens: 12000,
                         attachment_id: item.upload.stored_name || item.attachment.file_id || null,
-                        trace_id: userMessage.trace_id
+                        trace_id: userMessage.trace_id,
+                        chat_id: session.id
                     })
                 });
                 if (!response.ok) throw new Error(await response.text());
@@ -3143,6 +3184,8 @@ function watchBatchJob(session, jobId) {
                     artifact_id: crypto.randomUUID(),
                     source_attachment_id: job.attachment_id || null,
                     source_job_id: job.id,
+                    chat_id: job.chat_id || session.id,
+                    run_id: job.run_id || null,
                     kind: 'text',
                     stored_path: job.output_path,
                     file_id: job.id + '-output',
@@ -3169,6 +3212,7 @@ function watchBatchJob(session, jobId) {
                             instruction: 'Summarize the generated file.',
                             file_type: message.file_artifact.extension === 'md' ? 'text' : message.file_artifact.extension,
                             attachment_id: message.file_artifact.file_id,
+                            chat_id: session.id,
                             trace_id: job.trace_id
                         })
                     });
