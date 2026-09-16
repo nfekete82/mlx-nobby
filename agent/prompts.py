@@ -122,7 +122,7 @@ def parse_agent_json(value):
 
 
 
-def agent_tool_description(include_prepare=False, *, capability_text):
+def agent_tool_description(include_prepare=False, *, capability_text, include_extended=True):
     prepare_tools = """
 
 Verfügbare PREPARE-Tools (nur im Coding-Modus):
@@ -140,6 +140,33 @@ code_patch
 - Nach code_patch müssen code_diff und code_test ausgeführt werden.
 - Das spätere code_apply benötigt eine ausdrückliche Benutzerfreigabe.
 """.rstrip() if include_prepare else ""
+    runtime_tools_text = """
+
+Weitere Registry-Tools:
+- workspace_status: Status des gebundenen Code-Workspaces.
+- shell_workspace: Freigegebene Workspace-Befehle (pwd, ls, rg,
+  python3 -m pytest DATEI, node --check DATEI); "query" ist der Befehl.
+  Jede Ausführung benötigt eine Freigabe. Keine Shell-Verknüpfungen.
+- git_status, git_diff, git_log: lesender Git-Zugriff im gebundenen Workspace.
+  git_diff kann einen relativen Pfad in "query" und cached=true in "options" nutzen.
+- git_stage: gezieltes Staging mit options.paths als Liste relativer Pfade.
+- git_commit: nur exakt diese zuvor gestagten Pfade mit
+  options.paths und options.message. Staging und Commit benötigen Freigaben.
+  Kein Push, Reset oder Force-Befehl.
+- vision_analyze: Bild im gebundenen Workspace per relativem Pfad in "query"
+  analysieren; alternativ options.artifact_id für ein verwaltetes Bild.
+- image_generate: Bildjob für den gebundenen Chat anlegen; Bildbeschreibung
+  in "query". image_edit benötigt options.artifact_id. Beide benötigen
+  Freigabe und liefern zunächst einen Job, kein fertiges Bild.
+- image_job_status: Bildjob-ID in "query" abfragen.
+- document_search: "query" ist Suchtext, options.document_id das bereits
+  indexierte Dokument. document_page: options.document_id und options.page.
+- file_inspect: Struktur einer Workspace-Textdatei lesen. file_pii_audit:
+  bestehende PII-Prüfung einer Workspace-Textdatei. Pfad in "query".
+- file_analyze: Textdatei im Workspace in "query", Aufgabe in "instruction";
+  startet einen Analysejob nach Freigabe. PDFs über die bestehende
+  Dokumentindexierung lesen. file_analysis_status: Job-ID in "query".
+""".rstrip() if include_extended else ""
 
     return f"""
 Zentrale MLX-Nobby-Fähigkeiten:
@@ -234,6 +261,8 @@ fetch_url
 - Öffne bevorzugt relevante Primärquellen und seriöse Quellen.
 - Du darfst mehrere Quellen nacheinander laden.
 
+{runtime_tools_text}
+
 Bei Fragen, die aktuelle Webinformationen benötigen:
 1. search_web verwenden.
 2. Relevante Treffer auswählen.
@@ -284,7 +313,7 @@ Sicherheitsmodell:
   Benutzerfreigabe.
 """.strip()
         approval_context = """
-Als einzige schreibende Aktion kannst du code_apply vorschlagen:
+Für Änderungen an Code-Dateien verwendest du den bestehenden code_apply-Pfad:
 
 code_apply
 - Wendet einen bereits vorbereiteten und geprüften Code-Patch an.
@@ -377,6 +406,11 @@ Bei Coding-Aufträgen gilt zwingend:
     benötigte Bilder, Fonts, PDFs oder Archive transparent.
 18. Nach freigegebenem code_apply wird die vorhandene verify_change-Prüfung
     ausgeführt; melde Erfolg nur bei verified=true.
+
+18a. Für ausdrücklich angefragtes Git-Staging oder einen Commit verwende
+     git_status, git_diff und anschließend git_stage/git_commit mit konkreten
+     options.paths. Prüfe vor git_commit den staged Diff mit
+     git_diff und options.cached=true. Git-Aktionen sind kein code_patch.
 
 19. EVIDENCE-GRUNDREGEL: Behaupte einen Defekt, eine Schwäche, ein fehlendes
     Sicherheitsmerkmal oder ein Robustheitsproblem nur dann als Tatsache,
@@ -652,7 +686,7 @@ PLAN -> TOOL -> OBSERVATION -> PLAN -> ...
 
 {approval_context}
 
-Für einen automatisch erlaubten Tool-Aufruf:
+Für einen Registry-Tool-Aufruf (CONFIRM wird vom System angefordert):
 
 {{
   "action": "tool_name",
@@ -680,7 +714,8 @@ Regeln:
 - Kein rm.
 - Kein kill oder pkill.
 - Kein docker stop, rm oder compose down.
-- Zustandsverändernde Aktionen ausschließlich über request_approval.
+- code_apply und docker_restart ausschließlich über request_approval.
+- Registry-Tools mit CONFIRM lösen ihre Freigabe automatisch aus.
 
 - Nutze shell_read bei passenden lokalen Diagnose-, Inventar- und Systemfragen aktiv und selbstständig.
 - Nutze für Speicherplatzanalysen ausschließlich disk_usage. Wenn der Scan

@@ -54,7 +54,7 @@ _RISK_ALIASES = {
     "writes_patch_metadata": Risk.CREATE,
     "destructive": Risk.DELETE,
 }
-_LEGACY_READ_EXECUTION = {"shell_read", "process_usage", "code_test"}
+_LEGACY_READ_EXECUTION = {"shell_read", "process_usage", "code_test", "git_status", "git_diff", "git_log"}
 
 
 class PermissionEngine:
@@ -93,6 +93,28 @@ class PermissionEngine:
                 paths.append(re.sub(r":\d+(?:-\d+)?$", "", str(arguments["query"])))
             if tool_name == "code_patch" and isinstance(arguments.get("files"), list):
                 paths.extend(entry["path"] for entry in arguments["files"] if isinstance(entry, dict) and "path" in entry)
+            options = arguments.get("options")
+            if tool_name == "shell_workspace":
+                from agent.runtime_tools import workspace_shell_arguments
+                from agent.run_state import bind_run_context
+                with bind_run_context(context):
+                    workspace_shell_arguments(arguments.get("query"))
+            if tool_name in {"git_stage", "git_commit"}:
+                if not isinstance(options, dict) or not isinstance(options.get("paths"), list) or not 0 < len(options["paths"]) <= 30:
+                    raise ValueError("GIT_PATHS_REQUIRED")
+                if any(not isinstance(path, str) or path.startswith(":") or any(char in path for char in "*?[]") for path in options["paths"]):
+                    raise ValueError("GIT_LITERAL_FILE_PATHS_REQUIRED")
+                if tool_name == "git_commit":
+                    message = options.get("message")
+                    if not isinstance(message, str) or not message.strip() or len(message) > 200 or "\n" in message:
+                        raise ValueError("INVALID_COMMIT_MESSAGE")
+                paths.extend(options["paths"])
+            if tool_name == "vision_analyze" and not (isinstance(options, dict) and options.get("artifact_id")):
+                paths.append(arguments.get("query"))
+            if tool_name in {"file_inspect", "file_pii_audit", "file_analyze"}:
+                paths.append(arguments.get("query"))
+            if tool_name == "git_diff" and arguments.get("query"):
+                paths.append(arguments["query"])
 
             patch_id = arguments.get("patch_id")
             if tool_name in {"code_diff", "code_test"}:
@@ -115,7 +137,9 @@ class PermissionEngine:
             if tool_name in {"code_files", "code_search", "code_test"}:
                 context.resolve_path(".")
             for path in paths:
-                context.resolve_path(path, write=bool(categories & {Risk.WRITE, Risk.CREATE, Risk.DELETE}))
+                target = context.resolve_path(path, write=bool(categories & {Risk.WRITE, Risk.CREATE, Risk.DELETE}))
+                if tool_name in {"git_stage", "git_commit"} and target.is_dir():
+                    raise ValueError("GIT_LITERAL_FILE_PATHS_REQUIRED")
         except (ValueError, OSError, TypeError, KeyError) as exc:
             return PermissionDecision(Decision.DENY, str(exc))
 

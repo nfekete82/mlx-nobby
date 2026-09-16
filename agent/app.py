@@ -11226,9 +11226,10 @@ def allowed_agent_tools(mode):
 
 
 
-def agent_tool_description(include_prepare=False):
+def agent_tool_description(include_prepare=False, *, include_extended=True):
     return agent_prompts.agent_tool_description(
         include_prepare, capability_text=capability_model_text(),
+        include_extended=include_extended,
     )
 
 
@@ -11250,7 +11251,7 @@ PLAN -> TOOL -> OBSERVATION -> PLAN -> TOOL -> ...
 
 Du hast ausschließlich READ-ONLY-Zugriff.
 
-{agent_tool_description()}
+{agent_tool_description(include_extended=False)}
 
 Regeln:
 - Verändere niemals das System.
@@ -11610,8 +11611,9 @@ def _execute_legacy_agent_tool(
 
 
 def _build_agent_tool_registry():
+    from agent import runtime_tools
     registry = ToolRegistry(permission_engine=PermissionEngine())
-    # READ/PREPARE preserve the existing mode gates, not a security sandbox.
+    # Existing handlers retain their validation; the Runtime gates all tools.
     # None means no declared overall limit; handlers keep their own bounds.
     specs = (
         ("disk_usage", "Inspect disk usage within allowed roots.", "READ", (), None, None),
@@ -11630,6 +11632,23 @@ def _build_agent_tool_registry():
         ("search_web", "Search the web for titles, URLs and snippets.", "READ", ("network",), None, None),
         ("fetch_url", "Fetch a bounded excerpt from a public web page.", "READ", ("network",), None, None),
         ("code_patch", "Prepare a change set without modifying workspace files.", "PREPARE", ("writes_patch_metadata",), None, None),
+        ("workspace_status", "Inspect the bound code workspace.", "READ", ("workspace",), None, 12000),
+        ("shell_workspace", "Run a vetted command in the bound workspace after approval.", "EXECUTE", ("workspace", "host_process"), 30, 12000),
+        ("git_status", "Inspect Git status in the bound workspace.", "READ", ("workspace", "host_process"), 20, 12000),
+        ("git_diff", "Inspect a Git diff in the bound workspace.", "READ", ("workspace", "host_process"), 20, 12000),
+        ("git_log", "Inspect recent Git commits in the bound workspace.", "READ", ("workspace", "host_process"), 20, 12000),
+        ("git_stage", "Stage selected workspace paths after approval.", "WRITE", ("workspace", "host_process"), 20, 12000),
+        ("git_commit", "Commit exactly the selected staged paths after approval.", "WRITE", ("workspace", "host_process"), 20, 12000),
+        ("vision_analyze", "Analyze a workspace image or managed image artifact with the vision role.", "READ", (), 900, 12000),
+        ("image_generate", "Queue an image generation job for the bound chat.", "CREATE", (), 10, 12000),
+        ("image_edit", "Queue an edit of a managed image artifact for the bound chat.", "WRITE", (), 10, 12000),
+        ("image_job_status", "Inspect an image job owned by the bound chat.", "READ", (), 15, 12000),
+        ("document_search", "Search an already indexed uploaded document.", "READ", (), None, 12000),
+        ("document_page", "Read a page of an already indexed uploaded document.", "READ", (), None, 12000),
+        ("file_inspect", "Inspect a text file in the bound workspace.", "READ", ("workspace",), None, 12000),
+        ("file_pii_audit", "Run the existing deterministic PII audit on a workspace text file.", "READ", ("workspace",), None, 12000),
+        ("file_analyze", "Queue analysis of a text file in the bound workspace.", "CREATE", ("workspace",), 10, 12000),
+        ("file_analysis_status", "Inspect a workspace file analysis job.", "READ", (), None, 12000),
     )
     parameters = {
         "type": "object",
@@ -11656,9 +11675,35 @@ def _build_agent_tool_registry():
     }
     for name, description, permission, risks, timeout, output_limit in specs:
         schema = deepcopy(parameters)
-        if name in {"code_read", "code_diff", "code_test", "shell_read"}:
+        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit"}:
             schema["required"].append("query")
             schema["properties"]["query"].update(type="string", minLength=1)
+        if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit"}:
+            schema["required"].append("options")
+            schema["properties"]["options"].update(type="object")
+        if name in {"git_stage", "git_commit"}:
+            schema["properties"]["options"].update(
+                properties={
+                    "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 30},
+                    **({"message": {"type": "string", "minLength": 1, "maxLength": 200}} if name == "git_commit" else {}),
+                },
+                required=["paths", *(["message"] if name == "git_commit" else [])],
+                additionalProperties=False,
+            )
+        if name in {"document_search", "document_page"}:
+            schema["properties"]["options"].update(
+                properties={
+                    "document_id": {"type": "string", "minLength": 1},
+                    **({"page": {"type": "integer", "minimum": 1}} if name == "document_page" else {}),
+                },
+                required=["document_id", *(["page"] if name == "document_page" else [])],
+                additionalProperties=False,
+            )
+        if name == "image_edit":
+            schema["properties"]["options"].update(
+                properties={"artifact_id": {"type": "string"}, "image_options": {"type": "object"}},
+                required=["artifact_id"], additionalProperties=False,
+            )
         if name == "code_patch":
             schema["required"].append("files")
             schema["properties"]["files"].update(type="array", minItems=1)
@@ -11666,7 +11711,13 @@ def _build_agent_tool_registry():
             name=name,
             description=description,
             parameters=schema,
-            execute=partial(_execute_legacy_agent_tool, name),
+            execute=partial(runtime_tools.execute if name in {
+                "workspace_status", "shell_workspace", "git_status", "git_diff",
+                "git_log", "git_stage", "git_commit", "vision_analyze",
+                "image_generate", "image_edit", "image_job_status",
+                "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
+                "file_analysis_status",
+            } else _execute_legacy_agent_tool, name),
             permission=permission,
             risks=risks + (("workspace",) if name.startswith("code_") else ()),
             timeout_seconds=timeout,
@@ -11677,7 +11728,12 @@ def _build_agent_tool_registry():
 
 
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
-READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ")
+_RUNTIME_ONLY_READ_TOOLS = {
+    "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
+    "image_job_status", "document_search", "document_page", "file_inspect",
+    "file_pii_audit", "file_analysis_status",
+}
+READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ") - _RUNTIME_ONLY_READ_TOOLS
 PREPARE_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="PREPARE")
 
 

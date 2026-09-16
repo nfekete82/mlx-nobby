@@ -234,8 +234,13 @@ class AgentApprovals:
         if runtime is None or runtime.registry is not self.registry:
             raise ValueError("APPROVAL_RUNTIME_REQUIRED")
         allowed = self.registry.names(permission="READ")
+        allowed |= self.registry.names(permission="EXECUTE")
+        allowed |= self.registry.names(permission="CREATE")
+        if "image_edit" in self.registry.names(permission="WRITE"):
+            allowed |= {"image_edit"}
         if mode == "coding":
             allowed |= self.registry.names(permission="PREPARE")
+            allowed |= self.registry.names(permission="WRITE")
         if operation not in allowed:
             raise ValueError("TOOL_NOT_ALLOWED_IN_MODE")
         tool = self.registry.get(operation)
@@ -243,6 +248,20 @@ class AgentApprovals:
         decision = self.registry.permission_engine.evaluate(tool, context, arguments)
         if decision.decision == Decision.DENY:
             raise ToolPermissionError(operation, decision)
+        staged_fingerprint = None
+        worktree_fingerprint = None
+        if operation == "git_commit":
+            from agent import runtime_tools
+            with run_state.bind_run_context(context):
+                staged_fingerprint = runtime_tools.git_staged_fingerprint(
+                    arguments["options"]["paths"]
+                )
+        elif operation == "git_stage":
+            from agent import runtime_tools
+            with run_state.bind_run_context(context):
+                worktree_fingerprint = runtime_tools.git_worktree_fingerprint(
+                    arguments["options"]["paths"]
+                )
         approval_id = _agent_uuid.uuid4().hex
         now = _agent_time.time()
         pending = {
@@ -254,13 +273,26 @@ class AgentApprovals:
             "observations": deepcopy(observations), "step": step,
             "created_at": now, "expires_at": now + self.ttl,
             "tool_arguments": arguments, "approved_tool": tool,
+            "git_staged_fingerprint": staged_fingerprint,
+            "git_worktree_fingerprint": worktree_fingerprint,
         }
         with self.lock:
             self.pending[approval_id] = pending
+        public_details = {}
+        options = arguments.get("options")
+        if isinstance(options, dict):
+            if operation in {"git_stage", "git_commit"}:
+                public_details["paths"] = list(options.get("paths") or [])
+                if operation == "git_commit":
+                    public_details["message"] = options.get("message")
+            elif operation == "image_edit":
+                public_details["artifact_id"] = options.get("artifact_id")
+            elif operation == "file_analyze":
+                public_details["file_operation"] = options.get("operation", "analyze")
         return {
             "approval_id": approval_id, "permission_decision": decision.as_dict(),
             "operation": operation, "target": target, "reason": pending["reason"],
-            "expires_in": self.ttl,
+            "expires_in": self.ttl, **public_details,
         }
 
     def execute(self, pending):
@@ -272,6 +304,18 @@ class AgentApprovals:
         operation = pending["operation"]
         target = pending["target"]
         if "tool_arguments" in pending:
+            if operation == "git_stage":
+                from agent import runtime_tools
+                if runtime_tools.git_worktree_fingerprint(
+                    pending["tool_arguments"]["options"]["paths"]
+                ) != pending.get("git_worktree_fingerprint"):
+                    raise ValueError("GIT_WORKTREE_CONTENT_CHANGED")
+            if operation == "git_commit":
+                from agent import runtime_tools
+                if runtime_tools.git_staged_fingerprint(
+                    pending["tool_arguments"]["options"]["paths"]
+                ) != pending.get("git_staged_fingerprint"):
+                    raise ValueError("GIT_STAGED_CONTENT_CHANGED")
             result = self.registry.execute_approved(
                 operation, run_context=context, expected_tool=pending["approved_tool"],
                 **pending["tool_arguments"],

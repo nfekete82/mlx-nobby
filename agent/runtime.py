@@ -116,8 +116,13 @@ class AgentRuntime:
 
     def _allowed_tools(self, mode):
         allowed = set(self.registry.names(permission="READ"))
+        allowed.update(self.registry.names(permission="EXECUTE"))
+        allowed.update(self.registry.names(permission="CREATE"))
+        if "image_edit" in self.registry.names(permission="WRITE"):
+            allowed.add("image_edit")
         if mode == "coding":
             allowed.update(self.registry.names(permission="PREPARE"))
+            allowed.update(self.registry.names(permission="WRITE"))
         return allowed
 
     def _publish(self, callback, status, observations, current_step=None, pending_action=None):
@@ -1464,7 +1469,11 @@ class AgentRuntime:
                     if str(item.get("action") or "").strip() == action
                     and str(item.get("query") or "").strip() == query
                     and (
-                        action != "disk_usage"
+                        action not in {
+                            "disk_usage", "git_stage", "git_commit", "git_diff",
+                            "document_search", "document_page", "vision_analyze",
+                            "image_edit", "file_analyze",
+                        }
                         or item.get("options") == (tool_options or None)
                     )
                     and (
@@ -1478,7 +1487,9 @@ class AgentRuntime:
                     )
                 )
 
-                if same_call_count >= 1:
+                if same_call_count >= 1 and action not in {
+                    "image_job_status", "file_analysis_status",
+                }:
                     observations.append({
                         "step": step,
                         "action": "repeat_guard",

@@ -175,6 +175,28 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result["steps"][1]["action"], "repeat_guard")
         self.assertEqual(self.planner_limits, [24, 24, 24])
 
+    def test_coding_document_pages_with_distinct_options_are_not_repeats(self):
+        page = mock.Mock(return_value={"text": "page"})
+        self.add_tool("document_page", page)
+        result = self.runtime([
+            {"action": "document_page", "options": {"document_id": "doc", "page": 1}},
+            {"action": "document_page", "options": {"document_id": "doc", "page": 2}},
+            {"action": "final"}, "Two pages read",
+        ]).run("Read two pages", mode="coding")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(page.call_count, 2)
+
+    def test_coding_can_poll_the_same_job_after_queued_result(self):
+        status = mock.Mock(side_effect=[{"status": "queued"}, {"status": "completed"}])
+        self.add_tool("image_job_status", status)
+        result = self.runtime([
+            {"action": "image_job_status", "query": "job-one"},
+            {"action": "image_job_status", "query": "job-one"},
+            {"action": "final"}, "Job complete",
+        ]).run("Check image job", mode="coding")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(status.call_count, 2)
+
     def test_research_search_limit_is_preserved(self):
         search = mock.Mock(return_value={"results": [{"url": "https://example.org/docs"}]})
         self.add_tool("search_web", search)

@@ -134,10 +134,18 @@ class AgentToolRegistryTests(unittest.TestCase):
             "search_web", "fetch_url",
         }
         registry = self.agent.AGENT_TOOL_REGISTRY
-        self.assertEqual(registry.names(), expected_read | {"code_patch"})
+        expected_new = {
+            "workspace_status", "shell_workspace", "git_status", "git_diff",
+            "git_log", "git_stage", "git_commit", "vision_analyze",
+            "image_generate", "image_edit", "image_job_status",
+            "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
+            "file_analysis_status",
+        }
+        self.assertEqual(registry.names(), expected_read | {"code_patch"} | expected_new)
+        expected_automatic = expected_read
         for mode in ("diagnostic", "research", "orchestrator"):
-            self.assertEqual(self.agent.allowed_agent_tools(mode), expected_read)
-        self.assertEqual(self.agent.allowed_agent_tools("coding"), registry.names())
+            self.assertEqual(self.agent.allowed_agent_tools(mode), expected_automatic)
+        self.assertEqual(self.agent.allowed_agent_tools("coding"), expected_automatic | {"code_patch"})
         self.assertNotIn("code_apply", registry.names())
         self.assertIn("executes_project_code", registry.get("code_test").risks)
 
@@ -152,7 +160,12 @@ class AgentToolRegistryTests(unittest.TestCase):
                 mock.patch.object(self.agent, "AGENT_TOOL_REGISTRY", registry),
                 mock.patch.object(registry.permission_engine, "evaluate", return_value=PermissionDecision(Decision.ALLOW, "adapter contract")),
             ):
-                for name in registry.names():
+                for name in {
+                    "disk_usage", "shell_read", "process_usage", "system_status",
+                    "logs_query", "batch_status", "knowledge_search", "code_search",
+                    "code_files", "code_read", "code_test", "code_diff", "web_search",
+                    "search_web", "fetch_url", "code_patch",
+                }:
                     with self.subTest(name=name):
                         handler.reset_mock()
                         result = self.agent.execute_read_only_agent_tool(name, **arguments)
@@ -168,6 +181,10 @@ class AgentToolRegistryTests(unittest.TestCase):
         patch_schema = registry.get("code_patch").parameters
         self.assertEqual(patch_schema["required"], ["goal", "files"])
         self.assertEqual(patch_schema["properties"]["files"]["minItems"], 1)
+        self.assertEqual(registry.get("git_commit").parameters["properties"]["options"]["required"], ["paths", "message"])
+        self.assertEqual(registry.get("document_page").parameters["properties"]["options"]["required"], ["document_id", "page"])
+        self.assertEqual(registry.get("shell_workspace").timeout_seconds, 30)
+        self.assertEqual(registry.get("shell_workspace").output_limit_chars, 12000)
         self.assertEqual(registry.get("system_status").parameters["required"], ["goal"])
 
     def test_existing_unknown_tool_error_is_preserved(self):
