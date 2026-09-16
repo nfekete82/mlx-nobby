@@ -4603,6 +4603,7 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
                 r"öffne|oeffne|"
                 r"prüf|prüfe|pruef|pruefe|"
                 r"analysier|analysiere|"
+                r"check|checke|review|reviewe|"
                 r"änder|ändere|aender|aendere|"
                 r"verbesser|verbessere|"
                 r"fix|fixe|"
@@ -5573,12 +5574,19 @@ def _looks_like_coding_action(prompt, conversation_context=None):
         r"ergaenze|erstelle|erstell|erstellen|erzeuge|lege|schreibe|baue|bau|"
         r"refaktoriere|refaktorier|überarbeite|ueberarbeite|lösche|loesche|"
         r"remove|delete|analysiere|analysier|suche|such|prüfe|pruefe|"
-        r"bewerte|bewert|verbessere|verbesser|mach|mache)\b",
+        r"bewerte|bewert|verbessere|verbesser|mach|mache|"
+        r"check|checke|review|reviewe|reviewen)\b",
         value,
     )) or bool(
         re.search(r"\bschau(?:e)?\s+(?:dir\s+)?(?:das|die|den|diese[nrsm]?|.+?)\s+an\b", value)
     ) or bool(
         re.search(r"\bkann\s+man\b.*\bbesser\s+machen\b", value)
+    ) or bool(
+        re.search(
+            r"\b(?:gib|gebe)\b.*\bfeedback\b"
+            r"|\bfeedback\b.*\b(?:code|datei|projekt|webseite|web-app|webapp)\b",
+            value,
+        )
     ) or bool(re.search(r"\bstell(?:e)?\b.*\bum\b", value)) or "kann weg" in value
 
     context_text=_router_context_text(conversation_context).lower()

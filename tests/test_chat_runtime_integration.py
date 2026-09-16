@@ -218,5 +218,51 @@ class ChatRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual((job["chat_id"], job["run_id"]), ("chat-one", "run-one"))
 
 
+    def test_natural_workspace_review_prompts_route_to_coding_agent(self):
+        prompts = (
+            "check mal das blackjack spiel, also die html datei und gib feedback",
+            "check die html datei",
+            "checke die datei",
+            "review die datei",
+            "analysiere die html datei",
+            "prüfe die datei",
+            "schau dir die datei an",
+            "prüfe mal die datei blackjack.html und ob man das spiel verbessern kann?",
+        )
+
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(
+                    self.app._looks_like_coding_action(prompt, [])
+                )
+                self.assertEqual(
+                    self.app._deterministic_chat_action(
+                        prompt,
+                        None,
+                        [],
+                    ),
+                    "coding_agent",
+                )
+
+    def test_generic_programming_questions_do_not_route_to_coding_agent(self):
+        prompts = (
+            "Was ist HTML?",
+            "Erkläre mir JavaScript.",
+            "Wie funktioniert CSS?",
+            "Was ist eine PHP Session?",
+        )
+
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertNotEqual(
+                    self.app._deterministic_chat_action(
+                        prompt,
+                        None,
+                        [],
+                    ),
+                    "coding_agent",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
