@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from local_security import LocalRequestGuard
 
 # mlx-embeddings >=0.1.0 uses the public huggingface_hub.errors module.
-from mlx_embeddings.utils import generate, load
+from mlx_embeddings.utils import _get_model_arch, generate, load
 
 MODEL_ID = "mlx-community/bge-m3-mlx-4bit"
 MODEL_PATH = Path(
@@ -34,12 +34,8 @@ if not 1 <= MAX_LENGTH <= 8192 or not 1 <= MAX_BATCH_SIZE <= 128:
 logger = logging.getLogger("mlx_embeddings")
 
 
-def selected_embedding_model() -> tuple[str, Path]:
-    """Read the existing role preference and registered local model path."""
-    roles = json.loads(MODEL_ROLES_FILE.read_text()) if MODEL_ROLES_FILE.is_file() else {}
-    if not isinstance(roles, dict):
-        raise RuntimeError("Ungültige Modellrollen")
-    alias = str(roles.get("embedding", "auto")).strip() or "auto"
+def registered_embedding_model(alias: str) -> tuple[str, Path]:
+    """Resolve an alias through the existing model registry."""
     if alias == "auto":
         return MODEL_ID, MODEL_PATH.resolve()
     if REGISTERED_MODELS_FILE.is_file():
@@ -60,6 +56,32 @@ def selected_embedding_model() -> tuple[str, Path]:
                         raise RuntimeError("Embedding-Modell ist nicht lokal zwischengespeichert") from exc
                 raise RuntimeError("Embedding-Rolle benötigt einen registrierten lokalen Modellpfad")
     raise RuntimeError(f"Embedding-Modellalias nicht registriert: {alias}")
+
+
+def selected_embedding_model() -> tuple[str, Path]:
+    """Read the existing role preference and registered local model path."""
+    roles = json.loads(MODEL_ROLES_FILE.read_text()) if MODEL_ROLES_FILE.is_file() else {}
+    if not isinstance(roles, dict):
+        raise RuntimeError("Ungültige Modellrollen")
+    alias = str(roles.get("embedding", "auto")).strip() or "auto"
+    return registered_embedding_model(alias)
+
+
+def embedding_model_compatible(alias: str) -> bool:
+    """Check local config against architectures supported by this service."""
+    try:
+        _, path = registered_embedding_model(alias)
+        config = json.loads((path / "config.json").read_text())
+        architectures = config.get("architectures") or []
+        if not architectures or any(
+            "ForCausalLM" in name or "ForConditionalGeneration" in name
+            for name in architectures
+        ):
+            return False
+        _get_model_arch(config)
+        return True
+    except (OSError, ValueError, KeyError, RuntimeError, TypeError):
+        return False
 
 
 class EmbeddingRequest(BaseModel):
@@ -84,6 +106,8 @@ class Embedder:
     def load(self) -> None:
         try:
             model_id, model_path = selected_embedding_model()
+            if not embedding_model_compatible("auto" if model_id == MODEL_ID else model_id):
+                raise RuntimeError("Modell ist für den lokalen Embedding-Service nicht geeignet")
         except Exception as exc:
             self.model = self.tokenizer = None
             self.model_id = None
@@ -196,6 +220,17 @@ async def health() -> dict:
         "batch_size": MAX_BATCH_SIZE,
         **({"error": embedder.error} if embedder.error else {}),
     }
+
+
+@app.get("/compatible-models")
+async def compatible_models() -> dict:
+    aliases = []
+    if REGISTERED_MODELS_FILE.is_file():
+        for line in REGISTERED_MODELS_FILE.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                aliases.append(line.split("=", 1)[0].strip())
+    return {"aliases": [alias for alias in aliases if embedding_model_compatible(alias)]}
 
 
 async def make_embeddings(texts: list[str]) -> dict:

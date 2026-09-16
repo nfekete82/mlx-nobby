@@ -2658,13 +2658,15 @@ def resolve_model_role(role):
         health = knowledge.embedding_health()
         service_model = (health or {}).get("model")
         selected = next((item for item in load_models() if item.get("alias") == configured), None)
-        active = bool(health and (configured == "auto" or service_model == configured))
+        compatible = configured == "auto" or configured in knowledge.compatible_embedding_models()
+        active = bool(compatible and health and (configured == "auto" or service_model == configured))
         return {
             "role": role, "configured": configured,
             "alias": service_model if configured == "auto" else configured,
             "repo": service_model if configured == "auto" else (selected or {}).get("repo"),
             "available": active, "active": active, "requires_switch": False,
             "backend": "mlx_embeddings",
+            "compatible": compatible,
         }
 
     config = load_config()
@@ -2817,6 +2819,9 @@ def set_model_role(role: str, request: dict):
                 ),
             )
 
+        if role == "embedding" and alias not in knowledge.compatible_embedding_models():
+            raise HTTPException(409, "Modell ist für den lokalen Embedding-Service nicht geeignet oder nicht lokal verfügbar")
+
     roles = load_model_roles()
     roles[role] = alias
 
@@ -2835,9 +2840,11 @@ def models():
     current_model = config.get("MODEL")
 
     items = load_models()
+    compatible_embeddings = knowledge.compatible_embedding_models()
 
     for item in items:
         item["active"] = item["repo"] == current_model
+        item["embedding_compatible"] = item["alias"] in compatible_embeddings
 
     return {
         "current": current_model,

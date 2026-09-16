@@ -80,6 +80,12 @@ def embedding_health():
         h=_request("/health")
         return h if h.get("ok") else None
     except (urllib.error.URLError, TimeoutError, ValueError): return None
+
+def compatible_embedding_models():
+    try:
+        return set(_request("/compatible-models")["aliases"])
+    except (urllib.error.URLError, TimeoutError, ValueError, KeyError):
+        return set()
 def _pack(v): return struct.pack("<%sf" % len(v), *v)
 def _unpack(blob): return struct.unpack("<%sf" % (len(blob)//4), blob)
 
@@ -100,7 +106,9 @@ def index_source(root_path, name=None, force=False):
                 real=path.resolve(); real.relative_to(root); raw=real.read_text(encoding="utf-8",errors="replace")
             except (OSError, ValueError): continue
             digest=_hash(raw); seen.add(str(real)); stat=real.stat(); old=con.execute("SELECT document_id,content_hash FROM knowledge_documents WHERE absolute_path=?",(str(real),)).fetchone()
-            if old and old["content_hash"]==digest and not force: skipped+=1; continue
+            indexed = con.execute("SELECT count(*) FROM knowledge_chunks c JOIN knowledge_embeddings e ON e.chunk_id=c.chunk_id WHERE c.document_id=? AND e.model=? AND e.dimensions=?",(old["document_id"],model,dimensions)).fetchone()[0] if old and health else 0
+            chunk_count = con.execute("SELECT count(*) FROM knowledge_chunks WHERE document_id=?",(old["document_id"],)).fetchone()[0] if old else 0
+            if old and old["content_hash"]==digest and not force and (not health or indexed == chunk_count): skipped+=1; continue
             did=_hash(str(real))[:24]
             con.execute("DELETE FROM knowledge_fts WHERE chunk_id IN (SELECT chunk_id FROM knowledge_chunks WHERE document_id=?)",(did,))
             con.execute("DELETE FROM knowledge_documents WHERE document_id=?",(did,))
@@ -114,7 +122,10 @@ def index_source(root_path, name=None, force=False):
             con.execute("DELETE FROM knowledge_fts WHERE chunk_id IN (SELECT chunk_id FROM knowledge_chunks WHERE document_id=?)",(row["document_id"],)); con.execute("DELETE FROM knowledge_documents WHERE document_id=?",(row["document_id"],))
     if health and changed:
         for offset in range(0,len(changed),8):
-            group=changed[offset:offset+8]; vectors=_request("/embeddings",{"texts":[x[1] for x in group]})["vectors"]
+            group=changed[offset:offset+8]; response=_request("/embeddings",{"texts":[x[1] for x in group]})
+            vectors=response["vectors"]
+            if response.get("model") != model or response.get("dimensions") != dimensions or len(vectors) != len(group):
+                con.close(); raise RuntimeError("Embedding-Modell während der Indexierung gewechselt")
             for (cid,_,ch),vector in zip(group,vectors): con.execute("INSERT OR REPLACE INTO knowledge_embeddings VALUES(?,?,?,?,?,?)",(cid,model,dimensions,_pack(vector),now,ch))
     con.execute("UPDATE knowledge_sources SET last_indexed_at=?,updated_at=? WHERE source_id=?",(now,now,sid)); con.commit(); con.close()
     return {"source_id":sid,"name":name,"indexed":len(changed),"skipped":skipped,"mode":"hybrid" if health else "fts_fallback"}
@@ -507,6 +518,9 @@ def index_uploaded_document(
         )
 
         vectors = response["vectors"]
+        if response.get("model") != model or response.get("dimensions") != dimensions or len(vectors) != len(group):
+            con.close()
+            raise RuntimeError("Embedding-Modell während der Indexierung gewechselt")
 
         for item, vector in zip(group, vectors):
             chunk_id = _hash(

@@ -49,6 +49,7 @@ class ModelRoleRoutingTests(unittest.TestCase):
         models = [{"alias": alias, "repo": f"/models/{alias}"} for alias in roles.values() if alias != "auto"]
         with mock.patch.object(self.app, "load_model_roles", return_value=roles), \
              mock.patch.object(self.app, "load_models", return_value=models), \
+             mock.patch.object(self.app.knowledge, "compatible_embedding_models", return_value={"embedding-alias"}), \
              mock.patch.object(self.app, "load_config", return_value={"MODEL": "/models/chat-alias"}), \
              mock.patch.object(self.app.knowledge, "embedding_health", return_value={"ok": True, "model": "embedding-alias"}):
             for role in ("chat", "agent", "coding", "vision"):
@@ -59,6 +60,7 @@ class ModelRoleRoutingTests(unittest.TestCase):
         self.assertFalse(embedding["switched"])
         with mock.patch.object(self.app, "load_model_roles", return_value=roles), \
              mock.patch.object(self.app, "load_models", return_value=models), \
+             mock.patch.object(self.app.knowledge, "compatible_embedding_models", return_value={"embedding-alias"}), \
              mock.patch.object(self.app.knowledge, "embedding_health", return_value={"ok": True, "model": "previous-alias"}):
             with self.assertRaisesRegex(RuntimeError, "nicht verfügbar"):
                 self.app.ensure_model_for_role("embedding")
@@ -114,6 +116,14 @@ class ModelRoleRoutingTests(unittest.TestCase):
             selected = image_service._edit_model("auto")
         self.assertEqual(selected["id"], "edit-capable")
 
+    def test_embedding_role_rejects_incompatible_alias_without_saving(self):
+        with mock.patch.object(self.app, "load_models", return_value=[{"alias": "generative"}]), \
+             mock.patch.object(self.app.knowledge, "compatible_embedding_models", return_value=set()), \
+             mock.patch.object(self.app, "save_model_roles") as save:
+            with self.assertRaisesRegex(Exception, "Embedding-Service"):
+                self.app.set_model_role.__wrapped__("embedding", {"alias": "generative"})
+        save.assert_not_called()
+
 
 class EmbeddingRoleTests(unittest.TestCase):
     def test_document_search_does_not_mix_embedding_roles(self):
@@ -139,6 +149,7 @@ class EmbeddingRoleTests(unittest.TestCase):
         fake_utils = types.ModuleType("mlx_embeddings.utils")
         fake_utils.generate = mock.Mock()
         fake_utils.load = mock.Mock(return_value=(object(), object()))
+        fake_utils._get_model_arch = mock.Mock()
         with mock.patch.dict(sys.modules, {
             "mlx": fake_mx, "mlx.core": fake_mx.core,
             "mlx_embeddings": fake_embeddings, "mlx_embeddings.utils": fake_utils,
@@ -149,6 +160,7 @@ class EmbeddingRoleTests(unittest.TestCase):
             root = Path(directory)
             model = root / "embedding-model"
             model.mkdir()
+            (model / "config.json").write_text('{"model_type":"xlm-roberta","architectures":["XLMRobertaModel"]}')
             roles = root / "model-roles.json"
             roles.write_text('{"embedding":"selected-alias"}')
             registered = root / "models"
@@ -161,6 +173,10 @@ class EmbeddingRoleTests(unittest.TestCase):
                 self.assertEqual(embedder.model_id, "selected-alias")
                 self.assertEqual(embedder.dimensions, 3)
                 fake_utils.load.assert_called_once_with(str(model.resolve()))
+                self.assertTrue(service.embedding_model_compatible("selected-alias"))
+                (model / "config.json").write_text('{"model_type":"qwen3_5_moe","architectures":["Qwen3_5MoeForCausalLM"]}')
+                self.assertFalse(service.embedding_model_compatible("selected-alias"))
+                (model / "config.json").write_text('{"model_type":"xlm-roberta","architectures":["XLMRobertaModel"]}')
                 registered.write_text("selected-alias=owner/embedding-model\n")
                 fake_hub = types.ModuleType("huggingface_hub")
                 fake_hub.snapshot_download = mock.Mock(return_value=str(model))

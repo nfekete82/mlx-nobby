@@ -322,6 +322,8 @@ class UploadedDocumentKnowledgeTests(KnowledgeTestCase):
     def _fake_request(path, payload=None):
         if path == "/embeddings":
             return {
+                "model": "test-embedding",
+                "dimensions": 3,
                 "vectors": [
                     [1.0, 0.0, 0.0]
                     for _ in payload["texts"]
@@ -506,7 +508,7 @@ class UploadedDocumentKnowledgeTests(KnowledgeTestCase):
                             [0.0, 1.0, 0.0]
                         )
 
-                return {"vectors": vectors}
+                return {"model": "test-embedding", "dimensions": 3, "vectors": vectors}
 
             if path == "/embedding":
                 return {
@@ -948,7 +950,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         ), patch.object(
             knowledge,
             "_request",
-            return_value={"vectors": [[1.0, 0.0]]},
+            return_value={"model": "test", "dimensions": 2, "vectors": [[1.0, 0.0]]},
         ):
             result = knowledge.index_uploaded_document(
                 "invalid-pages-document",
@@ -974,7 +976,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         ), patch.object(
             knowledge,
             "_request",
-            return_value={"vectors": [[1.0, 0.0]]},
+            return_value={"model": "test", "dimensions": 2, "vectors": [[1.0, 0.0]]},
         ):
             knowledge.index_uploaded_document(
                 "page-range-document",
@@ -997,7 +999,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         ), patch.object(
             knowledge,
             "_request",
-            return_value={"vectors": [[1.0, 0.0]]},
+            return_value={"model": "test", "dimensions": 2, "vectors": [[1.0, 0.0]]},
         ):
             knowledge.index_uploaded_document(
                 "empty-page-document",
@@ -1049,7 +1051,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         ), patch.object(
             knowledge,
             "_request",
-            return_value={"vectors": vectors},
+            return_value={"model": "test", "dimensions": 2, "vectors": vectors},
         ):
             knowledge.index_uploaded_document(
                 "overlap-document",
@@ -1237,6 +1239,8 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
             self.assertEqual(path, "/embeddings")
             texts = payload["texts"]
             return {
+                "model": "fixture-model",
+                "dimensions": 2,
                 "vectors": [
                     [float(i + 1), 0.5]
                     for i, _ in enumerate(texts)
@@ -1269,6 +1273,29 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         self.assertGreaterEqual(len(rows), 1)
         self.assertEqual(rows[0]["model"], "fixture-model")
         self.assertEqual(rows[0]["dimensions"], 2)
+
+    def test_index_source_reembeds_unchanged_file_after_model_change(self):
+        source = self.root / "model-change"
+        source.mkdir()
+        (source / "example.txt").write_text("A small knowledge source")
+        active = {"model": "first", "dimensions": 2}
+
+        def fake_request(path, payload=None):
+            self.assertEqual(path, "/embeddings")
+            return {**active, "vectors": [[1.0, 0.0] for _ in payload["texts"]]}
+
+        with patch.object(knowledge, "embedding_health", side_effect=lambda: {"ok": True, **active}), \
+             patch.object(knowledge, "_request", side_effect=fake_request):
+            first = knowledge.index_source(source)
+            active["model"] = "second"
+            second = knowledge.index_source(source)
+
+        self.assertEqual(first["indexed"], 1)
+        self.assertEqual(second["indexed"], 1)
+        con = knowledge._db()
+        models = {row[0] for row in con.execute("SELECT model FROM knowledge_embeddings")}
+        con.close()
+        self.assertEqual(models, {"second"})
 
     def test_search_handles_fts_operational_error(self):
         source = self.root / "fts-error"
@@ -1332,7 +1359,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
         ), patch.object(
             knowledge,
             "_request",
-            return_value={"vectors": [[1.0, 0.0]]},
+            return_value={"model": "fixture", "dimensions": 2, "vectors": [[1.0, 0.0]]},
         ):
             knowledge.index_uploaded_document(
                 "empty-chunk-document",

@@ -832,6 +832,7 @@ async function loadModelRoles() {
             select.appendChild(automatic);
 
             for (const model of models) {
+                if (role === 'embedding' && !model.embedding_compatible) continue;
                 const option =
                     document.createElement('option');
 
@@ -847,11 +848,15 @@ async function loadModelRoles() {
                 select.appendChild(option);
             }
 
-            select.value = current;
-
-            if (select.value !== current) {
-                select.value = 'auto';
+            if (current !== 'auto' && !Array.from(select.options).some(option => option.value === current)) {
+                const incompatible = document.createElement('option');
+                incompatible.value = current;
+                incompatible.textContent = current + ' (incompatible)';
+                incompatible.disabled = true;
+                select.appendChild(incompatible);
             }
+
+            select.value = current;
         }
 
         status.textContent = chatT(
