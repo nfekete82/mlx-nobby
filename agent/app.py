@@ -2654,6 +2654,19 @@ def resolve_model_role(role):
                     "available": False, "active": False, "requires_switch": False,
                     "error": "Image-Service nicht erreichbar"}
 
+    if role == "embedding":
+        health = knowledge.embedding_health()
+        service_model = (health or {}).get("model")
+        selected = next((item for item in load_models() if item.get("alias") == configured), None)
+        active = bool(health and (configured == "auto" or service_model == configured))
+        return {
+            "role": role, "configured": configured,
+            "alias": service_model if configured == "auto" else configured,
+            "repo": service_model if configured == "auto" else (selected or {}).get("repo"),
+            "available": active, "active": active, "requires_switch": False,
+            "backend": "mlx_embeddings",
+        }
+
     config = load_config()
     current_repo = config.get("MODEL")
 
@@ -7846,7 +7859,7 @@ def _image_edit_payload(request):
             else optimize_image_edit_prompt(request.prompt)
         ),
         "source_path": str(source),
-        "model": "mflux-qwen-image-edit-2511",
+        "model": load_model_roles()["image"],
     }
 
     payload.update(options)
@@ -10107,6 +10120,12 @@ def ensure_model_for_role(role: str):
     Ensure that the model configured for a logical role
     is loaded in the shared MLX runtime.
     """
+    if role == "embedding":
+        resolved = resolve_model_role(role)
+        if not resolved["available"]:
+            raise RuntimeError("Das konfigurierte Embedding-Modell ist nicht verfügbar")
+        return {"ok": True, "role": role, "switched": False, "resolved": resolved}
+
     with MODEL_RUNTIME_LOCK:
         resolved = resolve_model_role(role)
 
@@ -10266,8 +10285,11 @@ def agent_model_provider() -> ModelProvider:
 
 def agent_llm(messages, max_tokens=1200, temperature=0.1):
     """Compatibility facade: agent callers still receive JSON-action text."""
-    request = ModelRequest(messages=messages, max_tokens=max_tokens, temperature=temperature)
     runtime = current_runtime()
+    request = ModelRequest(
+        messages=messages, max_tokens=max_tokens, temperature=temperature,
+        role=runtime.model_role if runtime is not None else "agent",
+    )
     if runtime is not None:
         return runtime.complete_model(request).text
     response = agent_model_provider().complete(

@@ -304,6 +304,21 @@ def _generation_model(model_id, prompt):
     return _auto_generation_model(prompt)
 
 
+def _edit_model(model_id):
+    if model_id != "auto":
+        return registry_call(registry.get_model, model_id)
+    data = registry_call(registry.load_registry)
+    candidates = sorted(
+        data["models"], key=lambda item: item["id"] != data["default_model"],
+    )
+    for model in candidates:
+        if model["enabled"] and "image_edit" in model.get("capabilities", []):
+            ready, _ = availability(model)
+            if ready:
+                return model
+    raise HTTPException(503, "Kein verfügbares Modell für Bildbearbeitung")
+
+
 def _generate_result(
     request,
     *,
@@ -366,7 +381,7 @@ def _edit_result(
 ):
     global _running
 
-    model = registry_call(registry.get_model, request.model)
+    model = _edit_model(request.model)
 
     if "image_edit" not in model.get("capabilities", []):
         raise HTTPException(

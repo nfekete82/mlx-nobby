@@ -82,6 +82,7 @@ class AgentRuntime:
         self.hooks = hooks
         self.policy = policy or RuntimePolicy()
         self.logger = logger or logging.getLogger(__name__)
+        self.model_role = "agent"
 
     def _check_cancelled(self):
         if self.context.cancelled:
@@ -247,6 +248,18 @@ class AgentRuntime:
 
     def _run_loop(self, goal, observations, start_step, mode, conversation_context,
                   progress_callback, allow_approval):
+        previous_role = self.model_role
+        self.model_role = "coding" if str(mode).strip().lower() == "coding" else "agent"
+        try:
+            return self._run_loop_body(
+                goal, observations, start_step, mode, conversation_context,
+                progress_callback, allow_approval,
+            )
+        finally:
+            self.model_role = previous_role
+
+    def _run_loop_body(self, goal, observations, start_step, mode, conversation_context,
+                       progress_callback, allow_approval):
         goal = str(goal or "").strip()
         mode = str(mode or "diagnostic").strip().lower()
 
@@ -272,6 +285,7 @@ class AgentRuntime:
                     pass
                 else:
                     mode = "coding"
+                    self.model_role = "coding"
 
         max_steps = self.policy.max_steps(mode)
         research_continuation_steps = self.policy.research_continuation_steps if mode == "research" else 0

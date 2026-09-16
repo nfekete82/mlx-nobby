@@ -182,10 +182,11 @@ def search(query, scope=None, limit=6):
 
     if health:
         try:
-            q = _request(
+            embedded_query = _request(
                 "/embedding",
                 {"text": query},
-            )["vectors"][0]
+            )
+            q = embedded_query["vectors"][0]
 
             rows = con.execute(
                 "SELECT "
@@ -195,9 +196,9 @@ def search(query, scope=None, limit=6):
                 "JOIN knowledge_chunks c ON c.chunk_id=e.chunk_id "
                 "JOIN knowledge_documents d ON d.document_id=c.document_id "
                 "JOIN knowledge_sources s ON s.source_id=d.source_id "
-                "WHERE s.enabled=1"
+                "WHERE s.enabled=1 AND e.model=? AND e.dimensions=?"
                 + (" AND s.name LIKE ?" if scope else ""),
-                (["%" + scope + "%"] if scope else []),
+                [embedded_query["model"], embedded_query["dimensions"], *(["%" + scope + "%"] if scope else [])],
             ).fetchall()
 
             sims = sorted(
@@ -685,10 +686,11 @@ def search_uploaded_document(
     if not query:
         raise ValueError("Suchanfrage fehlt")
 
-    q = _request(
+    embedded_query = _request(
         "/embedding",
         {"text": query},
-    )["vectors"][0]
+    )
+    q = embedded_query["vectors"][0]
 
     con = _db()
     _ensure_uploaded_document_tables(con)
@@ -704,8 +706,10 @@ def search_uploaded_document(
         FROM uploaded_document_chunks
         WHERE document_id=?
           AND vector IS NOT NULL
+          AND model=?
+          AND dimensions=?
         """,
-        (document_id,),
+        (document_id, embedded_query["model"], embedded_query["dimensions"]),
     ).fetchall()
 
     ranked = []

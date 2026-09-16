@@ -2630,7 +2630,7 @@ class ImageRuntimeTests(unittest.TestCase):
         ), patch.object(
             agent,
             "load_model_roles",
-            return_value={"image": "FLUX.1-schnell"},
+            return_value={"image": "configured-image-model"},
         ), patch.object(
             agent.image_api,
             "request",
@@ -2657,12 +2657,12 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(generate_call.args[2]["operation"], "generate")
         self.assertEqual(
             generate_call.args[2]["payload"]["model"],
-            "FLUX.1-schnell",
+            "configured-image-model",
         )
         self.assertEqual(edit_call.args[2]["operation"], "edit")
         self.assertEqual(
             edit_call.args[2]["payload"]["model"],
-            "mflux-qwen-image-edit-2511",
+            "configured-image-model",
         )
         self.assertEqual(edit_call.args[2]["payload"]["steps"], 12)
 
