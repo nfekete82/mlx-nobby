@@ -8246,6 +8246,79 @@ def _image_job_tool_result(job):
     )
 
 
+
+
+@app.post("/api/mlx/audio/speech")
+def mlx_audio_speech_proxy(payload: dict):
+    """Proxy local chat TTS requests to the MLX speech service."""
+    upstream_url = "http://127.0.0.1:8050/v1/audio/speech"
+
+    request = urllib.request.Request(
+        upstream_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=900,
+        ) as response:
+            body = response.read()
+            content_type = (
+                response.headers.get(
+                    "Content-Type",
+                    "audio/mpeg",
+                )
+                .split(";", 1)[0]
+                .strip()
+            )
+
+            headers = {
+                "Cache-Control": "no-store",
+                "Content-Disposition":
+                    'inline; filename="mlx-nobby-speech.mp3"',
+            }
+
+            return Response(
+                content=body,
+                status_code=response.status,
+                media_type=content_type,
+                headers=headers,
+            )
+
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+
+        try:
+            upstream_error = json.loads(body)
+            detail = upstream_error.get("detail", body)
+        except Exception:
+            detail = body
+
+        raise HTTPException(
+            status_code=exc.code,
+            detail=detail or "TTS generation failed",
+        ) from exc
+
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+    ) as exc:
+        reason = getattr(exc, "reason", exc)
+
+        raise HTTPException(
+            status_code=503,
+            detail=f"Speech service not reachable: {reason}",
+        ) from exc
+
 @app.get("/api/image/health")
 def image_health_api():
     return image_api.request("GET", "/health")

@@ -415,6 +415,68 @@ def document_status_proxy(document_id: str):
     )
 
 
+
+@app.post("/api/mlx/audio/speech")
+def speech_synthesis(request: dict):
+    """Proxy local TTS generation through the agent."""
+
+    upstream = urllib.request.Request(
+        f"{AGENT_URL}/api/mlx/audio/speech",
+        data=json.dumps(request).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            upstream,
+            timeout=300,
+        ) as response:
+            payload = response.read()
+
+            headers = {
+                "Cache-Control": "no-store",
+            }
+
+            disposition = response.headers.get(
+                "Content-Disposition"
+            )
+
+            if disposition:
+                headers["Content-Disposition"] = disposition
+
+            return Response(
+                content=payload,
+                status_code=response.status,
+                media_type=response.headers.get(
+                    "Content-Type",
+                    "audio/mpeg",
+                ),
+                headers=headers,
+            )
+
+    except urllib.error.HTTPError as exc:
+        payload = exc.read()
+
+        return Response(
+            content=payload,
+            status_code=exc.code,
+            media_type=exc.headers.get(
+                "Content-Type",
+                "application/json",
+            ),
+        )
+
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"TTS-Service nicht erreichbar: {exc}",
+        ) from exc
+
+
 @app.post("/api/mlx/audio/transcriptions")
 async def speech_transcription(file: UploadFile = File(...)):
     audio = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)

@@ -6,7 +6,10 @@ import threading
 import shutil
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel
 from mlx_audio.stt import load
+from mlx_audio.tts.utils import load_model as load_tts_model
 from local_security import LocalRequestGuard, read_upload
 
 
@@ -24,6 +27,40 @@ app.add_middleware(LocalRequestGuard)
 _model = None
 _model_lock = threading.Lock()
 
+TTS_MODEL_NAME = os.environ.get(
+    "MLX_TTS_MODEL",
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit",
+)
+
+TTS_DEFAULT_VOICE = os.environ.get(
+    "MLX_TTS_VOICE",
+    "Serena",
+)
+
+TTS_DEFAULT_LANGUAGE = os.environ.get(
+    "MLX_TTS_LANGUAGE",
+    "de",
+)
+
+TTS_DEFAULT_INSTRUCT = os.environ.get(
+    "MLX_TTS_INSTRUCT",
+    (
+        "Speak in a warm, soft, feminine and natural voice. "
+        "Calm, friendly and slightly playful."
+    ),
+)
+
+_tts_model = None
+_tts_model_lock = threading.Lock()
+
+
+class SpeechRequest(BaseModel):
+    input: str
+    voice: str = TTS_DEFAULT_VOICE
+    language: str = TTS_DEFAULT_LANGUAGE
+    instruct: str = TTS_DEFAULT_INSTRUCT
+    speed: float = 1.0
+
 
 def get_model():
     global _model
@@ -38,12 +75,34 @@ def get_model():
     return _model
 
 
+def get_tts_model():
+    global _tts_model
+
+    if _tts_model is None:
+        with _tts_model_lock:
+            if _tts_model is None:
+                print(
+                    f"[speech] Lade TTS-Modell: {TTS_MODEL_NAME}",
+                    flush=True,
+                )
+                _tts_model = load_tts_model(TTS_MODEL_NAME)
+                print(
+                    "[speech] TTS-Modell bereit",
+                    flush=True,
+                )
+
+    return _tts_model
+
+
 @app.get("/health")
 def health():
     return {
         "status": "ok",
         "model": MODEL_NAME,
         "loaded": _model is not None,
+        "tts_model": TTS_MODEL_NAME,
+        "tts_loaded": _tts_model is not None,
+        "tts_voice": TTS_DEFAULT_VOICE,
     }
 
 
@@ -137,3 +196,155 @@ async def transcribe(file: UploadFile = File(...)):
                     os.unlink(path)
                 except FileNotFoundError:
                     pass
+
+
+@app.post("/v1/audio/speech")
+def synthesize_speech(request: SpeechRequest):
+    text = request.input.strip()
+
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="Leerer Text",
+        )
+
+    if len(text) > 20000:
+        raise HTTPException(
+            status_code=413,
+            detail="Text zu lang",
+        )
+
+    if not 0.5 <= request.speed <= 2.0:
+        raise HTTPException(
+            status_code=400,
+            detail="Ungültige Geschwindigkeit",
+        )
+
+    wav_path = None
+
+    try:
+        model = get_tts_model()
+
+        results = list(
+            model.generate_custom_voice(
+                text=text,
+                speaker=request.voice,
+                language=request.language,
+                instruct=request.instruct,
+            )
+        )
+
+        if not results:
+            raise RuntimeError(
+                "TTS hat keine Audiodaten erzeugt"
+            )
+
+        result = results[0]
+        audio = result.audio
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".wav",
+            delete=False,
+        ) as tmp:
+            wav_path = tmp.name
+
+        import soundfile as sf
+
+        sample_rate = getattr(
+            result,
+            "sample_rate",
+            None,
+        )
+
+        if not sample_rate:
+            sample_rate = getattr(
+                model,
+                "sample_rate",
+                24000,
+            )
+
+        if hasattr(audio, "tolist"):
+            audio = audio.tolist()
+
+        sf.write(
+            wav_path,
+            audio,
+            sample_rate,
+        )
+
+        process = subprocess.run(
+            [
+                FFMPEG,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                wav_path,
+                "-codec:a",
+                "libmp3lame",
+                "-b:a",
+                "192k",
+                "-f",
+                "mp3",
+                "pipe:1",
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+
+        if process.returncode != 0:
+            error = process.stderr.decode(
+                "utf-8",
+                errors="replace",
+            ).strip()
+
+            raise RuntimeError(
+                "MP3-Konvertierung fehlgeschlagen: "
+                + error
+            )
+
+        if not process.stdout:
+            raise RuntimeError(
+                "Leere MP3-Ausgabe"
+            )
+
+        return Response(
+            content=process.stdout,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition":
+                    'inline; filename="mlx-nobby-speech.mp3"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "MP3-Konvertierung hat "
+                "zu lange gedauert"
+            ),
+        ) from exc
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        print(
+            f"[speech] TTS-Fehler: {exc!r}",
+            flush=True,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+    finally:
+        if wav_path:
+            try:
+                os.unlink(wav_path)
+            except FileNotFoundError:
+                pass

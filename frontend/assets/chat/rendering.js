@@ -2113,6 +2113,176 @@ function renderMessages(options = {}) {
 
             actions.appendChild(copy);
 
+            const speech =
+                document.createElement('button');
+
+            speech.className =
+                'message-action-btn message-action-icon mlx-message-speech-button';
+
+            speech.type = 'button';
+            speech.title = 'Vorlesen';
+            speech.setAttribute(
+                'aria-label',
+                'Vorlesen'
+            );
+
+            const speechIcon = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M11 5 6 9H3v6h3l5 4Z"></path>
+                    <path d="M15 9.5a4 4 0 0 1 0 5"></path>
+                    <path d="M17.5 7a7 7 0 0 1 0 10"></path>
+                </svg>
+            `;
+
+            const loadingIcon = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3a9 9 0 1 1-6.36 2.64"></path>
+                </svg>
+            `;
+
+            const stopIcon = `
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+                </svg>
+            `;
+
+            speech.innerHTML = speechIcon;
+
+            let speechAudio = null;
+            let speechUrl = null;
+
+            const resetSpeechButton = () => {
+                speech.disabled = false;
+                speech.innerHTML = speechIcon;
+                speech.title = 'Vorlesen';
+                speech.setAttribute(
+                    'aria-label',
+                    'Vorlesen'
+                );
+            };
+
+            const cleanupSpeech = () => {
+                if (speechAudio) {
+                    speechAudio.pause();
+                    speechAudio.src = '';
+                    speechAudio = null;
+                }
+
+                if (speechUrl) {
+                    URL.revokeObjectURL(speechUrl);
+                    speechUrl = null;
+                }
+
+                resetSpeechButton();
+            };
+
+            speech.addEventListener(
+                'click',
+                async () => {
+                    if (speechAudio) {
+                        cleanupSpeech();
+                        return;
+                    }
+
+                    const text =
+                        String(message.content || '').trim();
+
+                    if (!text) {
+                        return;
+                    }
+
+                    speech.disabled = true;
+                    speech.innerHTML = loadingIcon;
+                    speech.title = 'Audio wird erzeugt…';
+
+                    try {
+                        const response = await fetch(
+                            '/api/mlx/audio/speech',
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type':
+                                        'application/json'
+                                },
+                                body: JSON.stringify({
+                                    input: text,
+                                    voice: 'Serena',
+                                    language: 'de',
+                                    instruct:
+                                        'Speak in a warm, soft, feminine and natural voice. Calm, friendly and slightly playful.',
+                                    speed: 1.0
+                                })
+                            }
+                        );
+
+                        if (!response.ok) {
+                            let detail =
+                                `TTS fehlgeschlagen (${response.status})`;
+
+                            try {
+                                const data =
+                                    await response.json();
+
+                                detail =
+                                    data?.detail || detail;
+                            } catch {}
+
+                            throw new Error(detail);
+                        }
+
+                        const blob = await response.blob();
+
+                        if (!blob.size) {
+                            throw new Error(
+                                'Leere Audioantwort'
+                            );
+                        }
+
+                        speechUrl =
+                            URL.createObjectURL(blob);
+
+                        speechAudio =
+                            new Audio(speechUrl);
+
+                        speech.disabled = false;
+                        speech.innerHTML = stopIcon;
+                        speech.title = 'Wiedergabe stoppen';
+                        speech.setAttribute(
+                            'aria-label',
+                            'Wiedergabe stoppen'
+                        );
+
+                        speechAudio.addEventListener(
+                            'ended',
+                            cleanupSpeech,
+                            { once: true }
+                        );
+
+                        speechAudio.addEventListener(
+                            'error',
+                            cleanupSpeech,
+                            { once: true }
+                        );
+
+                        await speechAudio.play();
+                    } catch (error) {
+                        console.error(
+                            '[speech]',
+                            error
+                        );
+
+                        cleanupSpeech();
+
+                        alert(
+                            'Sprachausgabe fehlgeschlagen: ' +
+                            error.message
+                        );
+                    }
+                }
+            );
+
+            actions.appendChild(speech);
+
             const info =
                 document.createElement('button');
 
