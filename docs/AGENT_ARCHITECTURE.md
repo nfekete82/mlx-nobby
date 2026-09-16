@@ -112,12 +112,16 @@ die Metadaten selbst nicht als allgemeine Timeout-/Trunkierungs-Engine ausführt
 Freigaben für Git zeigen Pfade und Commit-Nachricht öffentlich an; interne
 Tool-Argumente bleiben im Pending-Speicher.
 
-Die normale Chat-Oberfläche verwendet weiterhin eigene Routing-Pfade für
-Anhänge, Vision, Bildjobs und PDF-Uploads. `AgentRunRequest` transportiert
-noch keine gebundene Anhangs-/Dokumentauswahl; Runtime-Tools erhalten dafür
-explizite Artifact- oder Dokument-IDs. Bild- und Datei-Analysejobs bleiben
-asynchron. Die Adapter starten Jobs und lesen ihren Status, warten aber nicht
-im Modell-/Tool-Zyklus auf rechenintensive Fertigstellung.
+Die normale Chat-Oberfläche leitet Workspace-Agentaufträge, Webrecherche,
+einzelne angehängte Bilder und Dokumentfragen über den bestehenden Router an
+die Runtime. `AgentRunRequest` bindet Chat-Revision, Workspace-Auswahl,
+Conversation-Auszug, Upload-Pfade, Dokument-IDs und Bildartefakte vor der
+Planung an den RunContext. Runtime-Tools prüfen diese Auswahl zusätzlich zum
+Permission-Gate. Mehrbild-Vision, direkte Bildbearbeitungsjobs und die
+Datei-Transformationspipeline behalten ihre spezialisierten Chat-Pfade.
+Bild- und Datei-Jobs bleiben asynchron und tragen Chat- und Run-ID; die
+Adapter starten Jobs und lesen ihren Status, warten aber nicht im Modell-/Tool-
+Zyklus auf rechenintensive Fertigstellung.
 
 ## Approval → Resume
 
@@ -155,8 +159,9 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
 
 ## Workspace-Binding und Sicherheitsregeln
 
-- `RunContext` bindet Run-ID, Chat-ID, Workspace-ID, aufgelöste Workspace-Wurzel,
-  erlaubte Wurzeln und ein gemeinsames Cancellation-Event.
+- `RunContext` bindet Run-ID, Chat-ID, Chat-Revision, Workspace-ID, aufgelöste
+  Workspace-Wurzel, erlaubte Wurzeln, Conversation-Auszug, ausgewählte Uploads,
+  Dokumente und Bildartefakte sowie ein gemeinsames Cancellation-Event.
 - `RunContext.start()` übernimmt die Auswahl zu Run-Beginn. Ein späterer globaler
   Workspace-Wechsel darf den laufenden Run nicht umleiten.
 - `workspace()` und `resolve_path()` prüfen die Bindung und vorhandene Pfadregeln.

@@ -916,6 +916,19 @@ class AgentRuntime:
             tool_options = decision.get("options")
             if not isinstance(tool_options, dict):
                 tool_options = {}
+            else:
+                tool_options = dict(tool_options)
+            if self.context.resources_bound:
+                if action in {"vision_analyze", "image_edit"} and not (
+                    tool_options.get("artifact_id") or tool_options.get("upload_path")
+                ):
+                    if len(self.context.upload_paths) == 1:
+                        tool_options["upload_path"] = str(self.context.upload_paths[0])
+                    elif len(self.context.artifact_ids) == 1:
+                        tool_options["artifact_id"] = self.context.artifact_ids[0]
+                if action in {"document_search", "document_page"} and not tool_options.get("document_id"):
+                    if len(self.context.document_ids) == 1:
+                        tool_options["document_id"] = self.context.document_ids[0]
 
             # -------------------------------------------------
             # Research search-loop guard

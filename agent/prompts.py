@@ -154,9 +154,11 @@ Weitere Registry-Tools:
   options.paths und options.message. Staging und Commit benötigen Freigaben.
   Kein Push, Reset oder Force-Befehl.
 - vision_analyze: Bild im gebundenen Workspace per relativem Pfad in "query"
-  analysieren; alternativ options.artifact_id für ein verwaltetes Bild.
+  analysieren; alternativ options.artifact_id für ein verwaltetes Bild oder
+  options.upload_path für einen an diesen Run gebundenen Chat-Upload.
 - image_generate: Bildjob für den gebundenen Chat anlegen; Bildbeschreibung
-  in "query". image_edit benötigt options.artifact_id. Beide benötigen
+  in "query". image_edit benötigt options.artifact_id oder
+  options.upload_path aus den gebundenen Run-Ressourcen. Beide benötigen
   Freigabe und liefern zunächst einen Job, kein fertiges Bild.
 - image_job_status: Bildjob-ID in "query" abfragen.
 - document_search: "query" ist Suchtext, options.document_id das bereits

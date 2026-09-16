@@ -217,7 +217,12 @@ def _vision(query, goal, options):
     from agent import app
     context = _context()
     artifact_id = options.get("artifact_id")
-    if artifact_id:
+    upload_path = options.get("upload_path")
+    if upload_path:
+        source = Path(str(upload_path)).resolve()
+        if source not in context.upload_paths:
+            raise ValueError("UPLOAD_OUTSIDE_RUN")
+    elif artifact_id:
         _chat_artifact(artifact_id)
         source = app._resolve_image_artifact_source(artifact_id)
     else:
@@ -267,11 +272,18 @@ def _image_tool(action, query, goal, options):
     if chat is None:
         raise ValueError("CHAT_NOT_FOUND")
     if action == "image_edit":
-        _chat_artifact(options.get("artifact_id"))
+        if options.get("upload_path"):
+            if Path(str(options["upload_path"])).resolve() not in context.upload_paths:
+                raise ValueError("UPLOAD_OUTSIDE_RUN")
+        else:
+            _chat_artifact(options.get("artifact_id"))
     request = app.ChatActionRequest(
         prompt=str(query or goal), action=action, chat_id=context.chat_id,
-        chat_revision=chat.get("revision", 0),
+        run_id=context.run_id,
+        chat_revision=context.chat_revision if context.chat_revision is not None else chat.get("revision", 0),
         active_artifact_id=options.get("artifact_id"),
+        file_context={"stored_path": str(Path(str(options["upload_path"])).resolve())}
+        if options.get("upload_path") else None,
         image_options=options.get("image_options"),
     )
     return app._start_chat_image_job(action, request)
@@ -287,6 +299,8 @@ def _document_tool(action, query, instruction, options):
             return _limited_structure(app.analyze_file_structure(str(source)))
         return app.deterministic_pii_audit(source.read_text(encoding="utf-8", errors="replace"))
     if action == "document_search":
+        if _context().resources_bound and options.get("document_id") not in _context().document_ids:
+            raise ValueError("DOCUMENT_OUTSIDE_RUN")
         result = knowledge.search_uploaded_document(options.get("document_id"), query, limit=6)
         result = dict(result)
         original_results = result.get("results", [])[:6]
@@ -300,6 +314,8 @@ def _document_tool(action, query, instruction, options):
         )
         return result
     if action == "document_page":
+        if _context().resources_bound and options.get("document_id") not in _context().document_ids:
+            raise ValueError("DOCUMENT_OUTSIDE_RUN")
         page = options.get("page")
         if type(page) is not int or page < 1:
             raise ValueError("INVALID_DOCUMENT_PAGE")
@@ -318,7 +334,7 @@ def _document_tool(action, query, instruction, options):
             raise ValueError("INVALID_FILE_OPERATION")
         job = app.create_file_analysis_job(
             str(source), str(instruction or "Analyze this file"), source.suffix.lstrip("."),
-            3000, operation,
+            3000, operation, chat_id=_context().chat_id, run_id=_context().run_id,
         )
         app.start_file_analysis_job(job["id"])
         return {"job_id": job["id"], "status": job["status"], "operation": operation}
@@ -329,9 +345,14 @@ def _document_tool(action, query, instruction, options):
             job = app.load_batch_jobs().get(query)
         if not job or job.get("kind") != "file_analysis":
             raise ValueError("FILE_JOB_NOT_FOUND")
-        source = _context().resolve_path(job["input_path"])
-        if str(source) != job["input_path"]:
-            raise ValueError("FILE_JOB_OUTSIDE_WORKSPACE")
+        context = _context()
+        if job.get("chat_id") and job["chat_id"] != context.chat_id:
+            raise ValueError("FILE_JOB_OUTSIDE_CHAT")
+        source = Path(job["input_path"]).resolve()
+        if source not in context.upload_paths:
+            source = context.resolve_path(job["input_path"])
+            if str(source) != job["input_path"]:
+                raise ValueError("FILE_JOB_OUTSIDE_WORKSPACE")
         return {key: value for key, value in job.items() if key not in {"input_path", "result"}} | {
             "result": str(job.get("result") or "")[:OUTPUT_LIMIT]
         }

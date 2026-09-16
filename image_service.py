@@ -76,6 +76,7 @@ class ImageJobCreate(BaseModel):
     operation: Literal["generate", "edit", "upscale"]
     payload: dict
     chat_id: str = Field(min_length=1)
+    run_id: str | None = None
     chat_revision: int = Field(
         ge=0,
         strict=True,
@@ -825,6 +826,7 @@ def create_image_job(request: ImageJobCreate):
         "id": job_id,
         "operation": request.operation,
         "chat_id": request.chat_id,
+        "run_id": request.run_id or job_id,
         "chat_revision": request.chat_revision,
         "status": "queued",
         "model": None,

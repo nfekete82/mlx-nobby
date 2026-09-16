@@ -697,6 +697,7 @@ function sessionT(key, fallback = '', variables = {}) {
         loadSessions: loadSessions,
         syncWithServer: syncWithServer,
         saveSessions: saveSessions,
+        persistSession: persistSession,
         currentSession: currentSession,
         runtimeRevision: runtimeRevision,
         bumpRuntimeRevision: bumpRuntimeRevision,

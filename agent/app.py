@@ -3866,6 +3866,8 @@ class BatchTransformRequest(BaseModel):
     chunk_tokens: int = 12000
     execution_mode: str = "automatic"
     trace_id: str | None = None
+    chat_id: str | None = None
+    run_id: str | None = None
 
 
 class ChatFileRouteRequest(BaseModel):
@@ -3875,6 +3877,8 @@ class ChatFileRouteRequest(BaseModel):
     chunk_tokens: int = 12000
     attachment_id: str | None = None
     trace_id: str | None = None
+    chat_id: str | None = None
+    run_id: str | None = None
 
 
 class ChatActionRequest(BaseModel):
@@ -3887,6 +3891,7 @@ class ChatActionRequest(BaseModel):
     instruction: str | None = None
     trace_id: str | None = None
     chat_id: str | None = None
+    run_id: str | None = None
     chat_revision: int | None = Field(
         default=None,
         ge=0,
@@ -4140,6 +4145,8 @@ def create_batch_job(request: BatchTransformRequest):
     job = {
         "id": job_id,
         "trace_id": observability.ensure_trace_id(request.trace_id),
+        "chat_id": request.chat_id,
+        "run_id": request.run_id or uuid.uuid4().hex,
         "input_path": str(input_path),
         "output_path": str(output_path),
         "instruction": instruction,
@@ -4195,6 +4202,8 @@ def route_chat_file(request: ChatFileRouteRequest):
             request.input_path, instruction, request.file_type,
             request.chunk_tokens, operation, request.attachment_id,
             request.trace_id,
+            chat_id=validate_chat_id(request.chat_id) if request.chat_id else None,
+            run_id=request.run_id,
         )
         start_file_analysis_job(job["id"])
         return {"intent": operation, "job": job}
@@ -4224,6 +4233,8 @@ def route_chat_file(request: ChatFileRouteRequest):
         chunk_tokens=request.chunk_tokens,
         execution_mode=execution_mode,
         trace_id=request.trace_id,
+        chat_id=validate_chat_id(request.chat_id) if request.chat_id else None,
+        run_id=request.run_id,
     ))
 
     job = created["job"]
@@ -4548,6 +4559,12 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
             )
             or re.search(
                 r"\b(?:workspace|projekt)struktur\b",
+                value,
+            )
+            or re.search(
+                r"\b(?:git[ -]?(?:diff|status|log)|git\s+diff)\b"
+                r"|\b(?:führe|fuehre|starte|run)\b.*\btests?\b"
+                r"|\btests?\b.*\b(?:ausführen|ausfuehren|starten|laufen\s+lassen)\b",
                 value,
             )
             or re.search(
@@ -8173,6 +8190,7 @@ def _start_chat_image_job(action, request):
             "payload": payload,
             "chat_id": chat_id,
             "chat_revision": chat_revision,
+            **({"run_id": request.run_id} if request.run_id else {}),
         },
         timeout=10,
     )
@@ -8186,6 +8204,8 @@ def _image_job_tool_result(job):
 
     if status == "completed":
         artifact = _image_artifact(job.get("result") or {}, action)
+        artifact["chat_id"] = job.get("chat_id")
+        artifact["run_id"] = job.get("run_id")
         data["image"] = artifact
         artifacts.append(artifact)
 
@@ -8546,6 +8566,11 @@ def _semantic_agent_route_allowed(
     if not requires_tools:
         return False
 
+    if routing.get("method") in {"deterministic_document", "deterministic_vision"}:
+        return True
+    if routing.get("reason") == "Webrecherche im Agent-Run":
+        return True
+
     deterministic = _deterministic_chat_action(
         prompt,
         file_context,
@@ -8728,6 +8753,26 @@ def run_chat_action(request: ChatActionRequest):
             "method": "deterministic_image_edit",
         }
 
+    elif isinstance(routing_file_context, dict) and routing_file_context.get("document_id"):
+        routing = {
+            "intent": "research_agent", "confidence": 1.0,
+            "requires_tools": True, "reason": "Gebundenes Chat-Dokument",
+            "method": "deterministic_document",
+        }
+
+    elif (
+        _file_context_is_image(request.file_context)
+        or (request.active_artifact_id and re.search(
+            r"\b(?:bild|foto|image|picture|darauf|dieses bild|das bild)\b",
+            request.prompt, re.IGNORECASE,
+        ))
+    ):
+        routing = {
+            "intent": "diagnostic_agent", "confidence": 1.0,
+            "requires_tools": True, "reason": "Gebundenes Chat-Bild",
+            "method": "deterministic_vision",
+        }
+
     else:
         trusted_workspace_action = _trusted_workspace_chat_action(
             request.prompt,
@@ -8751,6 +8796,10 @@ def run_chat_action(request: ChatActionRequest):
             )
 
     action = routing["intent"]
+
+    if action == "web_search":
+        routing = {**routing, "intent": "research_agent", "reason": "Webrecherche im Agent-Run"}
+        action = "research_agent"
 
     if (
         action in SEMANTIC_ROUTER_AGENT_INTENTS
@@ -8794,6 +8843,7 @@ def run_chat_action(request: ChatActionRequest):
                 "mode": action.removesuffix("_agent"),
                 "automatic": True,
                 "routing": routing,
+                "workspace_id": (code_workspaces.active_workspace(validate=False) or {}).get("workspace_id"),
             },
         )
 
@@ -9880,7 +9930,7 @@ def parse_file_excerpt_selection(instruction):
     return None
 
 
-def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None, trace_id=None):
+def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None, trace_id=None, *, chat_id=None, run_id=None):
     path = Path(input_path).expanduser()
     if not path.is_file(): raise HTTPException(status_code=404, detail="Eingabedatei nicht gefunden")
     job_id = uuid.uuid4().hex[:12]
@@ -9888,6 +9938,7 @@ def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, o
     job = {
         "id": job_id, "kind": "file_analysis", "operation": operation,
         "trace_id": observability.ensure_trace_id(trace_id),
+        "chat_id": chat_id, "run_id": run_id or uuid.uuid4().hex,
         "attachment_id": attachment_id, "input_path": str(path), "instruction": instruction,
         "file_type": file_type, "chunk_tokens": max(500, min(int(chunk_tokens), 20000)),
         "selection": selection,
@@ -11701,8 +11752,9 @@ def _build_agent_tool_registry():
             )
         if name == "image_edit":
             schema["properties"]["options"].update(
-                properties={"artifact_id": {"type": "string"}, "image_options": {"type": "object"}},
-                required=["artifact_id"], additionalProperties=False,
+                properties={"artifact_id": {"type": "string"}, "upload_path": {"type": "string"},
+                            "image_options": {"type": "object"}},
+                additionalProperties=False,
             )
         if name == "code_patch":
             schema["required"].append("files")
@@ -11871,12 +11923,72 @@ class AgentRunRequest(BaseModel):
     run_id: str | None = None
     trace_id: str | None = None
     chat_id: str | None = None
+    chat_revision: int | None = Field(default=None, ge=0, strict=True)
+    attachments: list[dict] = Field(default_factory=list)
+    active_artifact_id: str | None = None
+    workspace_id: str | None = None
+    workspace_bound: bool = False
+
+
+def _chat_run_context(request, run_id):
+    chat_id = validate_chat_id(request.chat_id) if request.chat_id else None
+    if (request.attachments or request.active_artifact_id) and not chat_id:
+        raise ValueError("CHAT_ID_REQUIRED")
+    if len(request.attachments) > 12:
+        raise ValueError("TOO_MANY_RUN_ATTACHMENTS")
+    uploads, documents, artifacts = [], [], []
+    upload_root = BATCH_UPLOAD_DIRECTORY.resolve()
+    for item in request.attachments:
+        if not isinstance(item, dict):
+            raise ValueError("INVALID_RUN_ATTACHMENT")
+        path = item.get("stored_path")
+        if path:
+            source = Path(str(path)).resolve()
+            if source.parent != upload_root or not source.is_file():
+                raise ValueError("UPLOAD_OUTSIDE_RUN")
+            uploads.append(source)
+        document_id = item.get("document_id")
+        if document_id:
+            documents.append(str(document_id))
+        artifact_id = item.get("artifact_id")
+        if artifact_id:
+            artifacts.append(str(artifact_id))
+    if request.active_artifact_id:
+        artifacts.append(request.active_artifact_id)
+    if chat_id and (artifacts or request.chat_revision is not None):
+        with CHATS_LOCK:
+            chat = read_chat(chat_id)
+        if chat is None and artifacts:
+            raise ValueError("CHAT_NOT_FOUND")
+        if chat is not None and request.chat_revision is not None and chat.get("revision", 0) != request.chat_revision:
+            raise ValueError("CHAT_REVISION_CHANGED")
+        known_images = collect_chat_image_ids(chat) if chat is not None else set()
+        for artifact_id in artifacts:
+            match = IMAGE_ARTIFACT_ID_PATTERN.fullmatch(artifact_id)
+            if match is None or match.group("image_id") not in known_images:
+                raise ValueError("IMAGE_ARTIFACT_OUTSIDE_CHAT")
+    return run_state.RunContext.start(
+        run_id=run_id, chat_id=chat_id,
+        upload_paths=tuple(dict.fromkeys(uploads)),
+        document_ids=tuple(dict.fromkeys(documents)),
+        artifact_ids=tuple(dict.fromkeys(artifacts)),
+        resources_bound=True, chat_revision=request.chat_revision,
+        workspace_id=request.workspace_id, workspace_bound=request.workspace_bound,
+        conversation=tuple(
+            (str(item.get("role")), str(item.get("content"))[:2000])
+            for item in (request.conversation_context or [])[-8:]
+            if isinstance(item, dict)
+            and item.get("role") in {"user", "assistant"}
+            and isinstance(item.get("content"), str)
+        ),
+    )
 
 
 @app.post("/api/agent/run")
 @observability.observed_turn
 def api_agent_run(request: AgentRunRequest):
     run_id = validate_agent_run_id(request.run_id) if request.run_id else None
+    context = _chat_run_context(request, run_id)
 
     def progress(status, steps, current_step=None, pending_action=None):
         if run_id:
@@ -11899,14 +12011,23 @@ def api_agent_run(request: AgentRunRequest):
         },
     )
     try:
+        conversation_context = [
+            {"role": role, "content": content}
+            for role, content in context.conversation
+        ]
+        resources = []
+        if context.workspace_root:
+            resources.append(f"Workspace: {context.workspace_root.name}")
+        resources.extend(f"Upload: {path.name} (options.upload_path={path})" for path in context.upload_paths)
+        resources.extend(f"Dokument: options.document_id={document_id}" for document_id in context.document_ids)
+        resources.extend(f"Bildartefakt: options.artifact_id={artifact_id}" for artifact_id in context.artifact_ids)
+        if resources:
+            conversation_context.append({"role": "assistant", "content": "Für diesen Run gebundene Ressourcen: " + "; ".join(resources)[:1600]})
         result = run_agent_v2(
             request.goal,
-            run_context=run_state.RunContext.start(
-                run_id=run_id,
-                chat_id=validate_chat_id(request.chat_id) if request.chat_id else None,
-            ),
+            run_context=context,
             mode=request.mode,
-            conversation_context=request.conversation_context,
+            conversation_context=conversation_context,
             progress_callback=progress,
         )
         progress(

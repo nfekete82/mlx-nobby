@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 import re
 
 from agent import code_workspaces
@@ -109,8 +110,18 @@ class PermissionEngine:
                     if not isinstance(message, str) or not message.strip() or len(message) > 200 or "\n" in message:
                         raise ValueError("INVALID_COMMIT_MESSAGE")
                 paths.extend(options["paths"])
-            if tool_name == "vision_analyze" and not (isinstance(options, dict) and options.get("artifact_id")):
-                paths.append(arguments.get("query"))
+            if tool_name in {"vision_analyze", "image_edit"} and isinstance(options, dict) and options.get("upload_path"):
+                if Path(str(options["upload_path"])).resolve() not in context.upload_paths:
+                    raise ValueError("UPLOAD_OUTSIDE_RUN")
+            if tool_name == "vision_analyze":
+                if not (isinstance(options, dict) and (options.get("artifact_id") or options.get("upload_path"))):
+                    paths.append(arguments.get("query"))
+            if isinstance(options, dict) and options.get("artifact_id") and context.resources_bound:
+                if options["artifact_id"] not in context.artifact_ids:
+                    raise ValueError("IMAGE_ARTIFACT_OUTSIDE_RUN")
+            if tool_name in {"document_search", "document_page"} and context.resources_bound:
+                if not isinstance(options, dict) or options.get("document_id") not in context.document_ids:
+                    raise ValueError("DOCUMENT_OUTSIDE_RUN")
             if tool_name in {"file_inspect", "file_pii_audit", "file_analyze"}:
                 paths.append(arguments.get("query"))
             if tool_name == "git_diff" and arguments.get("query"):
