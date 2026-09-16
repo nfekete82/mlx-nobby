@@ -28,6 +28,7 @@ from agent import model_cleanup
 from agent.tool_registry import Tool, ToolRegistry
 from agent import run_state
 from agent.permissions import Decision, PermissionEngine, ToolPermissionError
+from agent.model_provider import MLXProvider, ModelProvider, ModelRequest
 from agent.batch_processing import (
     BATCH_LARGE_CHUNK_TOKENS,
     BATCH_LARGE_FILE_TOKENS,
@@ -10173,127 +10174,22 @@ def router_llm(messages, max_tokens=220, temperature=0.0):
     return output
 
 
-def agent_llm(messages, max_tokens=1200, temperature=0.1):
-    """
-    Direct MLX call for the autonomous agent loop.
-
-    Hold the runtime lock throughout the model switch and the LLM request.
-    """
-    call_metrics = observability.ModelCallMetrics(
-        purpose=observability.current_call_purpose("agent.call"),
-        role="agent",
-        messages=messages,
-        context_sources=observability.current_context_sources(
-            observability.message_context_counts(
-                messages,
-                "tool_agent",
-            )
-        ),
+def agent_model_provider() -> ModelProvider:
+    return MLXProvider(
+        runtime_lock=MODEL_RUNTIME_LOCK,
+        ensure_model_for_role=ensure_model_for_role,
+        load_config=load_config,
     )
-    wait_started = time.monotonic()
-    with MODEL_RUNTIME_LOCK:
-        queue_wait_ms = (time.monotonic() - wait_started) * 1000
-        call_metrics.set_queue_wait(queue_wait_ms)
-        try:
-            runtime = ensure_model_for_role("agent")
-            role = runtime["resolved"]
-            model = role.get("repo")
-        except Exception as exc:
-            call_metrics.fail(type(exc).__name__)
-            raise
 
-        if not model:
-            call_metrics.fail("model_unavailable")
-            raise RuntimeError(
-                "Für die Agent-Rolle ist kein verfügbares "
-                "MLX-Modell konfiguriert"
-            )
 
-        call_metrics.set_model(
-            model=model,
-            role="agent",
-            alias=role.get("alias"),
-            backend=role.get("backend"),
-        )
+def agent_llm(messages, max_tokens=1200, temperature=0.1):
+    """Compatibility facade: agent callers still receive JSON-action text."""
+    response = agent_model_provider().complete(
+        ModelRequest(messages=messages, max_tokens=max_tokens, temperature=temperature),
+        run_context=run_state.current_run_context(),
+    )
+    return response.text
 
-        # Reload the configuration after a possible model switch.
-        try:
-            config = load_config()
-            port = int(config.get("PORT", 8000))
-        except Exception as exc:
-            call_metrics.fail(type(exc).__name__)
-            raise
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "chat_template_kwargs": {
-                "enable_thinking": False,
-            },
-        }
-
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            connect_started = time.monotonic()
-            with urllib.request.urlopen(
-                request,
-                timeout=900,
-            ) as response:
-                call_metrics.set_upstream_connect(
-                    (time.monotonic() - connect_started) * 1000
-                )
-                result = json.loads(
-                    response.read().decode("utf-8")
-                )
-
-        except urllib.error.HTTPError as exc:
-            call_metrics.fail("http_error")
-            body = exc.read().decode(
-                "utf-8",
-                errors="replace",
-            )
-            raise RuntimeError(
-                f"Agent-LLM HTTP {exc.code}: {body}"
-            ) from exc
-
-        except urllib.error.URLError as exc:
-            call_metrics.fail(type(exc).__name__)
-            raise RuntimeError(
-                "Agent-LLM nicht erreichbar: "
-                f"{exc.reason}"
-            ) from exc
-
-        except Exception as exc:
-            call_metrics.fail(type(exc).__name__)
-            raise
-
-        try:
-            choice = result["choices"][0]
-            message = choice["message"]
-        except (KeyError, IndexError, TypeError):
-            call_metrics.fail("invalid_response")
-            raise
-
-        output = (
-            message.get("content")
-            or message.get("reasoning")
-            or ""
-        ).strip()
-        call_metrics.finish(
-            usage=result.get("usage"),
-            output_text=output,
-            finish_reason=choice.get("finish_reason"),
-        )
-        return output
 
 
 def observed_agent_llm(
