@@ -1,0 +1,248 @@
+# MLX Nobby: Agent-Handoff
+
+## Ziel und Arbeitsumfang
+
+MLX Nobby führt lokale, modellgestützte Agent-Aufgaben mit MLX aus:
+Diagnose, Recherche, Coding im ausgewählten Workspace und kontrollierte Delegation.
+Bestehende Tools, nachvollziehbare Ergebnisse und explizite Freigaben für
+zustandsändernde Aktionen bilden die Grundlage.
+
+Dieses Dokument beschreibt den zuletzt implementierten Stand. Für Folgearbeiten
+nur betroffene Symbole und Ausschnitte prüfen; keine vollständige Neuanalyse von
+`agent/app.py` oder des Repositorys beginnen.
+
+## Architektur und Invarianten
+
+```text
+API / Integration in app.py
+  → AgentRuntime
+      → ModelProvider → lokaler MLX-Provider
+      → ToolRegistry → PermissionEngine → bestehender Tool-Handler
+      → bestehende Approval-Infrastruktur → dieselbe Runtime bei Resume
+```
+
+- Modellaufrufe der migrierten Runtime laufen über `ModelProvider`.
+- Tool-Aufrufe der Runtime laufen über `ToolRegistry`.
+- `PermissionEngine` entscheidet `ALLOW`, `CONFIRM` oder `DENY`.
+- Der Workspace wird einmal pro Run im `RunContext` gebunden.
+- Delegation und Approval-Resume behalten denselben relevanten RunContext.
+- Approval-Resume behält außerdem Runtime, Provider, Registry und Progress-Callback.
+- Es gibt keinen automatischen Cloud-Fallback.
+- Vorhandene Sicherheitsprüfungen in Tool-Handlern bleiben verbindlich.
+- Legacy-Mutationen `code_apply` und `docker_restart` haben weiterhin eigene
+  Approval-Handler; sie sind kein allgemeiner Registry-Bypass für neue Tools.
+
+## Relevante Module
+
+Alle folgenden Pfade liegen unter `agent/`.
+
+| Modul | Verantwortung |
+| --- | --- |
+| `runtime.py` | `AgentRuntime`, bestehender Agent-Loop, Limits, Guards, Delegation, Progress, Cancellation und Approval-Resume. |
+| `tool_registry.py` | `Tool`-Metadaten, Katalog, Dispatch und Permission-Gate; gesonderte Ausführung einer konsumierten Freigabe. |
+| `permissions.py` | `PermissionEngine`, Policy, Risiken, Entscheidungen und strukturierter `ToolPermissionError`; prüft auch Kontext und Pfadgrenzen. |
+| `run_state.py` | Fester `RunContext`, Run-/Chat-/Workspace-Identität, erlaubte Wurzeln, Cancellation und ContextVar-Bindung. |
+| `model_provider.py` | `ModelProvider`, `ModelRequest`, `ModelResponse`, `ProviderError` und lokaler `MLXProvider`. |
+| `prompts.py` | Bestehende Planungs-/Abschluss-Prompts, JSON-Parsing und Format-Reparatur, Subagent-Berichte; Modellzugriff wird injiziert. |
+| `evidence.py` | Evidence-Verträge, Kompaktierung, Coding-Antwortregeln, Quellenbewertung und Delegations-/Research-Helfer. |
+| `approvals.py` | `AgentApprovals`: bestehender Freigabespeicher, TTL, einmalige Entnahme, Validierung, Ausführung und Verifikation. |
+| `code_workspaces.py` | Workspace-Verwaltung, sichere Dateioperationen und bestehender Patch-/Diff-/Test-/Apply-/Verify-Workflow. |
+| `app.py` | FastAPI-Endpunkte, Zusammensetzen der Abhängigkeiten, lokale Modellintegration, Progress-Speicher und Compatibility-Funktionen. Enthält weiterhin andere Anwendungslogik. |
+
+## Ablauf eines Runs
+
+1. `POST /api/agent/run` validiert Eingaben und erzeugt den RunContext vor der Planung.
+2. `run_agent_v2(...)` ist der Compatibility-Einstieg zur Runtime.
+3. `agent_runtime(context, ...)` verbindet Provider, Registry und `RuntimeHooks`.
+4. `AgentRuntime.run(...)` bindet RunContext und aktuelle Runtime per ContextVar.
+5. Der bestehende Loop plant, verarbeitet JSON-Aktionen und führt Tools,
+   Delegation, Approval-Anfragen oder eine Abschlussantwort aus.
+6. Beobachtungen gehen in weitere Planung und Evidence-Prüfung ein.
+7. Ergebnis und Progress verwenden weiterhin die bestehenden API-Verträge.
+
+`agent_llm()` liefert weiterhin Text, verwendet innerhalb einer Runtime aber
+deren Provider. `observed_agent_llm()` erhält die Observability-Zweckzuordnung.
+Prompt-Helfer enthalten keine eigene MLX-/HTTP-Anbindung.
+
+`RuntimePolicy` erhält die bisherigen Schrittbudgets:
+Diagnose 6, Recherche 6, Coding 24, Orchestrator 12.
+Recherche kann bis zu 3 zusätzliche Schritte zur Fortsetzung einer bereits
+geladenen, gekürzten Quelle nutzen. Bestehende Wiederholungs-, Such-,
+Evidence- und Delegationsgrenzen bleiben zusätzlich aktiv.
+
+## Tool- und Permission-Ablauf
+
+```text
+Modellantwort → Aktion → Modus-/Loop-Guards → Registry
+  → PermissionEngine.evaluate(tool, context, arguments)
+      ALLOW   → Handler → Beobachtung → weitere Planung
+      DENY    → strukturierter Fehler → weitere Planung
+      CONFIRM → bestehende Freigabe → Pause bis zur Entscheidung
+```
+
+- Die Runtime akzeptiert keine Registry ohne Permission Engine.
+- Automatische Tool-Auswahl nutzt registrierte READ-Tools und im Coding-Modus
+  zusätzlich PREPARE-Tools.
+- PREPARE für `code_patch` erlaubt nur Patch-Vorbereitung, keine Anwendung.
+- `DENY` und `CONFIRM` führen im normalen Registry-Dispatch keinen Handler aus.
+- Delegierte Runs mit `allow_approval=False` dürfen keine Freigaben anfordern.
+- Tool-Fehler werden als Beobachtungen an die weitere Planung zurückgegeben.
+
+## Approval → Resume
+
+1. Eine explizite bestehende Approval-Aktion oder ein Registry-`CONFIRM` erzeugt
+   über `AgentApprovals` einen Eintrag im vorhandenen Pending-Speicher.
+2. Intern gespeichert werden RunContext, ursprüngliche Runtime, Progress-Callback,
+   Beobachtungen, Schritt, Modus, Ziel und Gesprächskontext.
+3. Bei Registry-Aufrufen werden zusätzlich die konkreten Argumente kopiert und
+   die freizugebende Tool-Definition gespeichert.
+4. Die API liefert weiterhin `approval_required` und die bisherigen öffentlichen
+   `pending_action`-Felder. Runtime-Objekte und interne Argumente werden nicht exponiert.
+5. `POST /api/agent/approve/{approval_id}` entnimmt den Eintrag einmalig.
+   Fehlende/verwendete IDs ergeben 404, abgelaufene Freigaben 410; TTL: 300 Sekunden.
+6. `AgentRuntime.resume_approval(...)` verwendet die gespeicherte Runtime und prüft
+   Kontextidentität sowie Cancellation vor der Ausführung.
+7. Ablehnung wird als `rejected_by_user` protokolliert; die Planung kann fortsetzen.
+8. Bei Zustimmung prüft `execute_approved(...)` für Registry-Tools erneut Policy
+   und Tool-Definition. Ein aktuelles DENY oder eine geänderte Definition blockiert.
+9. Die Zustimmung gilt nur für den gespeicherten Aufruf; sie schaltet keine
+   dauerhafte Berechtigung im RunContext oder in der Registry frei.
+10. Nach Ausführung geht der Run ab dem nächsten Schritt mit seinen Beobachtungen
+    weiter. Progress wird unter der ursprünglichen Run-ID aktualisiert.
+
+Legacy-Aktionen behalten ihre Spezialprüfungen:
+
+- `code_apply`: nur Coding-Modus, gültiger vorgeschlagener Patch, passende
+  erfolgreiche `code_diff`- und danach `code_test`-Beobachtungen mit ausgeführten Checks.
+- `docker_restart`: nur Diagnose-Modus und validierter Containername.
+- Beide prüfen die Permission vor der Mutation erneut und nutzen ihre bestehenden
+  Verifikationsroutinen.
+- Ein erfolgreich angewendeter und verifizierter Patch beendet den Run ohne
+  zusätzliche Planung.
+- Direkte Legacy-Aufrufe ohne gespeicherte Runtime verwenden den vorhandenen
+  RunContext zur Erzeugung einer Runtime beim Resume.
+
+## Workspace-Binding und Sicherheitsregeln
+
+- `RunContext` bindet Run-ID, Chat-ID, Workspace-ID, aufgelöste Workspace-Wurzel,
+  erlaubte Wurzeln und ein gemeinsames Cancellation-Event.
+- `RunContext.start()` übernimmt die Auswahl zu Run-Beginn. Ein späterer globaler
+  Workspace-Wechsel darf den laufenden Run nicht umleiten.
+- `workspace()` und `resolve_path()` prüfen die Bindung und vorhandene Pfadregeln.
+  Verschobene/entfernte Workspaces und Pfade außerhalb der Grenzen werden blockiert.
+- Ein Run ohne Workspace erhält durch eine spätere globale Auswahl keinen Workspace.
+- Delegation verwendet denselben Kontext, Provider und dieselbe Registry;
+  untergeordnete Beobachtungen und Schrittbudgets bleiben getrennt.
+- ContextVar-Bindungen werden auch bei Fehlern und verschachtelten Runs zurückgesetzt.
+- Traversal-, Symlink-, Secret-/Ignore-, Patch- und Workspace-Prüfungen nicht umgehen.
+- Insbesondere bleibt der bestehende Active-Workspace-Guard beim Patch-Anwenden
+  erhalten: Nach globalem Workspace-Wechsel kann Apply mit `WORKSPACE_CHANGED` scheitern.
+- Freigaben heben weder DENY noch Cancellation oder bestehende Handler-Prüfungen auf.
+- Keine direkte Tool-Ausführung aus Prompt-Helfern oder neue Modell-HTTP-Aufrufe in der Runtime.
+
+## Compatibility-Pfade und technische Grenzen
+
+- Der ältere Read-only-Loop bleibt vorerst in `app.py`; keine pauschale Migration nötig.
+- Dünne Funktionen in `app.py` erhalten bisherige Aufrufstellen und binden die
+  ausgelagerten Prompt-, Evidence- und Approval-Module an.
+- Rollen-/Modellauflösung, Modell-Lock und Progress-/Pending-Speicher bleiben in der
+  bestehenden Integration. Es wurde keine neue Event-Plattform eingeführt.
+- Freigaben und Progress sind weiterhin prozesslokal; keine neue dauerhafte
+  Speicherung oder Wiederaufnahme nach einem Prozessneustart implementiert.
+- Cancellation ist kooperativ: vor Modell-/Tool-Aufrufen und neuen Schritten.
+  Bereits laufende HTTP-Anfragen und Prozesse werden nicht aktiv unterbrochen.
+- Bereits abgeschlossene Tool-Ergebnisse bleiben bei Cancellation erhalten.
+- Provider-Fehler ergeben strukturierte fehlgeschlagene Runs; Cancellation ergibt
+  `cancelled`. Bestehende JSON-Fehlerbehandlung und Format-Reparatur bleiben bestehen.
+- Tool-Schemas, Timeout- und Output-Metadaten ersetzen keine Handler-Validierung;
+  die Registry führt daraus keine allgemeine neue Ausführungs-/Timeout-Engine ab.
+- Die automatisierten Tests verwenden Fake/Mock Provider; echte MLX-Inferenz wurde
+  für diese Extraktion nicht benötigt und damit nicht als Integrationstest bestätigt.
+
+## Relevante Tests
+
+| Datei unter `tests/` | Schwerpunkt |
+| --- | --- |
+| `test_agent_runtime.py` | Loop, ALLOW/DENY/CONFIRM, Delegation, Limits, Cancellation, Fehler, API und Approval-Resume. |
+| `test_permissions.py` | Policy, Pfad-/Workspace-Grenzen, Kontextbindung und Approval-Sicherheitsprüfungen. |
+| `test_tool_registry.py` | Registry-Metadaten und Dispatch. |
+| `test_model_provider.py` | Lokaler Provider, Fehler- und Kontextverhalten. |
+| `test_code_workspaces.py` | Workspace-/Patch-/Approval-Workflow sowie bestehende Coding-/Agent-Regressionsfälle. |
+| `test_model_runtime_api.py` | Modell-Runtime/API-Integration. |
+| `test_observability.py` | Bestehende Mess-/Kontextintegration. |
+| `test_disk_usage.py`, `test_service_bridge.py` | Relevante bestehende Tool-/Integrationsregressionen. |
+| `test_sse_stream.mjs`, `test_agent_card.mjs`, `test_code_evidence_ui.mjs` | SSE-, Agent-Card- und Evidence-/Approval-UI-Verträge. |
+
+Zuletzt bestanden: 38 Runtime-/API-Tests, 224 relevante Regressionstests und die
+drei genannten JavaScript-Prüfungen. Ein Resume-Test wurde an den neuen Runtime-Einstieg
+angepasst und gezielt nachgetestet. Syntax und `git diff --check` waren sauber.
+
+## Bekannte Testbefehle
+
+Vom Repository-Wurzelverzeichnis aus arbeiten. `agent-venv/bin/python` verwendet
+die passende Umgebung; das allgemeine `python3` kann eine ältere Version sein.
+Für Subprozesse ebenfalls den venv-Pfad voranstellen.
+
+Wichtig: Einige Tests importieren Anwendungscode mit benutzerspezifischen
+Konfigurationspfaden. `Path.home()` vor Test-Discovery/Imports isolieren,
+damit insbesondere Modell-Runtime-Tests keine echte `jobs.json` verändern.
+
+```sh
+PATH="$PWD/agent-venv/bin:$PATH" agent-venv/bin/python - <<'PY'
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+patterns = ["test_agent_runtime.py", "test_permissions.py"]
+with tempfile.TemporaryDirectory() as directory:
+    with mock.patch.object(Path, "home", return_value=Path(directory)):
+        loader = unittest.TestLoader()
+        suite = unittest.TestSuite(
+            loader.discover("tests", pattern=pattern) for pattern in patterns
+        )
+        result = unittest.TextTestRunner(verbosity=1).run(suite)
+        raise SystemExit(not result.wasSuccessful())
+PY
+```
+
+`patterns` nur um die für die Änderung relevanten Testdateien erweitern.
+Nicht mehrfach pauschal die vollständige Suite starten.
+
+```sh
+node tests/test_sse_stream.mjs
+node tests/test_agent_card.mjs
+node tests/test_code_evidence_ui.mjs
+git diff --check
+```
+
+Syntaxprüfungen sind mit `ast.parse(Path(datei).read_text(), filename=datei)` möglich.
+
+## Git- und Architekturstand bei Erstellung
+
+- Foundation und erste Runtime-Extraktion waren beim letzten Implementierungsschritt
+  bereits committed; die anschließende Fertigstellung der Runtime-Grenze wurde nicht committed.
+- Zuletzt neu/ungetrackt: `agent/prompts.py`, `agent/evidence.py`, `agent/approvals.py`.
+- Zuletzt geändert: `agent/app.py`, `agent/runtime.py`, `agent/tool_registry.py`,
+  `tests/test_agent_runtime.py`, `tests/test_permissions.py`.
+- `app.py` wurde in diesem letzten Schritt netto um 3.304 Zeilen reduziert.
+- Bestehende Benutzeränderung: `frontend/assets/chat/generation.js`.
+  Diese wurde nicht verändert, gestagt oder zurückgesetzt und muss erhalten bleiben.
+- Vor Folgeänderungen `git status --short` prüfen; diese Liste ist eine Momentaufnahme.
+- Keine pauschalen Git-Operationen, kein `git add .`, kein Hard Reset und kein Force Push.
+- Dieses Handoff wurde ohne erneute Repository-Analyse erstellt.
+
+## Nächste Arbeiten, priorisiert
+
+1. Gezielter lokaler Integrationstest mit echtem MLX: Run, bestehende Tools,
+   Freigabe, Resume, Progress und verifizierter Abschluss.
+   Zustandsändernde Aktionen nur mit ausdrücklich autorisiertem Testziel ausführen.
+2. Dabei auftretende Abweichungen gezielt beheben; vorhandene Unit-/API-Tests
+   nur um konkrete fehlende Fälle ergänzen.
+3. Den älteren Read-only-Loop nur bei einem klaren, kleinen Migrationsbedarf anfassen;
+   ansonsten den dokumentierten Compatibility-Pfad erhalten.
+4. Aktive Unterbrechung laufender Operationen oder dauerhafte Run-Wiederaufnahme
+   nur als separat beauftragte Arbeiten planen.
+
+Keine neuen Tools, Cloud-Provider, Routing-/Planning-Architektur oder Frontend-Umbauten
+aus diesem Handoff ableiten. Weitere Umsetzung benötigt einen konkreten Auftrag.
