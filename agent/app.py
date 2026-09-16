@@ -1,7 +1,8 @@
 import asyncio
+from copy import deepcopy
 from pathlib import Path
 
-from functools import wraps
+from functools import partial, wraps
 from typing import Literal
 import hashlib
 import json
@@ -24,6 +25,9 @@ from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
 from agent import model_cleanup
+from agent.tool_registry import Tool, ToolRegistry
+from agent import run_state
+from agent.permissions import Decision, PermissionEngine, ToolPermissionError
 from agent.batch_processing import (
     BATCH_LARGE_CHUNK_TOKENS,
     BATCH_LARGE_FILE_TOKENS,
@@ -6194,7 +6198,7 @@ def tool_knowledge_add(request):
 
 def tool_code_search(request):
     try:
-        workspace_id = code_workspaces.active_workspace_id()
+        workspace_id = run_state.workspace_id_for_run()
         return code_workspaces.search(workspace_id, request.prompt)
     except ValueError as exc:
         raise code_http_error(exc)
@@ -11261,7 +11265,11 @@ def tool_disk_usage(options=None):
     """Scan approved local roots with the native read-only disk tool."""
     allowed_roots = []
     try:
-        workspace = code_workspaces.active_workspace(validate=False)
+        context = run_state.current_run_context()
+        if context is None:
+            workspace = code_workspaces.active_workspace(validate=False)
+        else:
+            workspace = context.workspace() if context.workspace_id else None
     except (OSError, ValueError):
         workspace = None
     if isinstance(workspace, dict) and workspace.get("root_path"):
@@ -11272,31 +11280,6 @@ def tool_disk_usage(options=None):
         home=Path.home(),
         allowed_roots=allowed_roots,
     )
-
-
-READ_ONLY_AGENT_TOOLS = {
-    "disk_usage",
-    "shell_read",
-    "process_usage",
-    "system_status",
-    "logs_query",
-    "batch_status",
-    "knowledge_search",
-    "code_search",
-    "code_files",
-    "code_read",
-    "code_test",
-    "code_diff",
-    "web_search",
-    "search_web",
-    "fetch_url",
-}
-
-        # PREPARE tools may create patch metadata, but they must never
-        # modify workspace source code directly.
-PREPARE_AGENT_TOOLS = {
-    "code_patch",
-}
 
 
 def allowed_agent_tools(mode):
@@ -11631,6 +11614,16 @@ def execute_read_only_agent_tool(
             f"Tool nicht für Agent-Ausführung freigegeben: {action}"
         )
 
+    return AGENT_TOOL_REGISTRY.execute(
+        action, goal=goal, query=query, instruction=instruction,
+        files=files, options=options,
+    )
+
+
+def _execute_legacy_agent_tool(
+    action, goal, query=None, instruction=None, files=None, options=None,
+):
+    """Compatibility adapter retaining the existing tool-specific validation."""
     request = ChatActionRequest(
         prompt=query or goal,
         file_context=None,
@@ -11638,7 +11631,7 @@ def execute_read_only_agent_tool(
     )
 
     if action == "code_files":
-        workspace_id = code_workspaces.active_workspace_id()
+        workspace_id = run_state.workspace_id_for_run()
 
         return code_workspaces.list_files(
             workspace_id,
@@ -11651,7 +11644,7 @@ def execute_read_only_agent_tool(
                 "code_read benötigt einen Dateipfad"
             )
 
-        workspace_id = code_workspaces.active_workspace_id()
+        workspace_id = run_state.workspace_id_for_run()
 
         read_query = str(query).strip()
 
@@ -11777,7 +11770,7 @@ def execute_read_only_agent_tool(
         )
 
     if action == "code_patch":
-        workspace_id = code_workspaces.active_workspace_id()
+        workspace_id = run_state.workspace_id_for_run()
 
         if not isinstance(files, list) or not files:
             raise ValueError(
@@ -11903,7 +11896,80 @@ def execute_read_only_agent_tool(
     )
 
 
-def run_read_only_agent(goal):
+def _build_agent_tool_registry():
+    registry = ToolRegistry(permission_engine=PermissionEngine())
+    # READ/PREPARE preserve the existing mode gates, not a security sandbox.
+    # None means no declared overall limit; handlers keep their own bounds.
+    specs = (
+        ("disk_usage", "Inspect disk usage within allowed roots.", "READ", (), None, None),
+        ("shell_read", "Run an allowlisted diagnostic command without a shell.", "READ", ("host_process", "network"), 20, SHELL_READ_MAX_OUTPUT),
+        ("process_usage", "List process CPU and memory usage.", "READ", ("host_process",), 20, None),
+        ("system_status", "Inspect system and MLX runtime status.", "READ", (), None, None),
+        ("logs_query", "Read recent service logs.", "READ", (), None, None),
+        ("batch_status", "Inspect batch job status.", "READ", (), None, None),
+        ("knowledge_search", "Search the local knowledge index.", "READ", (), None, None),
+        ("code_search", "Search the active code workspace.", "READ", (), None, None),
+        ("code_files", "Find files in the active code workspace.", "READ", (), None, None),
+        ("code_read", "Read a workspace file, optionally with a line range.", "READ", (), None, None),
+        ("code_test", "Test a proposed patch in a temporary project copy.", "READ", ("executes_project_code", "writes_test_copy"), None, None),
+        ("code_diff", "Show the diff for a proposed patch.", "READ", (), None, None),
+        ("web_search", "Search the web and fetch relevant pages.", "READ", ("network",), None, None),
+        ("search_web", "Search the web for titles, URLs and snippets.", "READ", ("network",), None, None),
+        ("fetch_url", "Fetch a bounded excerpt from a public web page.", "READ", ("network",), None, None),
+        ("code_patch", "Prepare a change set without modifying workspace files.", "PREPARE", ("writes_patch_metadata",), None, None),
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "goal": {"type": "string", "description": "The current agent goal."},
+            "query": {"type": ["string", "null"], "description": "Tool query, relative file path, patch ID, command or URL."},
+            "instruction": {"type": ["string", "null"]},
+            "files": {
+                "type": ["array", "null"],
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "operation": {"type": "string", "enum": ["CREATE", "MODIFY", "DELETE"]},
+                        "proposed_content": {"type": ["string", "null"]},
+                    },
+                    "required": ["path"],
+                },
+            },
+            "options": {"type": ["object", "null"], "description": "Disk usage scan options."},
+        },
+        "required": ["goal"],
+        "additionalProperties": False,
+    }
+    for name, description, permission, risks, timeout, output_limit in specs:
+        schema = deepcopy(parameters)
+        if name in {"code_read", "code_diff", "code_test", "shell_read"}:
+            schema["required"].append("query")
+            schema["properties"]["query"].update(type="string", minLength=1)
+        if name == "code_patch":
+            schema["required"].append("files")
+            schema["properties"]["files"].update(type="array", minItems=1)
+        registry.register(Tool(
+            name=name,
+            description=description,
+            parameters=schema,
+            execute=partial(_execute_legacy_agent_tool, name),
+            permission=permission,
+            risks=risks + (("workspace",) if name.startswith("code_") else ()),
+            timeout_seconds=timeout,
+            # For shell_read this is the existing per-stdout/stderr cap.
+            output_limit_chars=output_limit,
+        ))
+    return registry
+
+
+AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
+READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ")
+PREPARE_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="PREPARE")
+
+
+@run_state.with_run_context
+def run_read_only_agent(goal, *, run_context=None):
     goal = str(goal or "").strip()
 
     if not goal:
@@ -12035,6 +12101,7 @@ class AgentRunRequest(BaseModel):
     conversation_context: list[dict] | None = None
     run_id: str | None = None
     trace_id: str | None = None
+    chat_id: str | None = None
 
 
 @app.post("/api/agent/run")
@@ -12065,6 +12132,10 @@ def api_agent_run(request: AgentRunRequest):
     try:
         result = run_agent_v2(
             request.goal,
+            run_context=run_state.RunContext.start(
+                run_id=run_id,
+                chat_id=validate_chat_id(request.chat_id) if request.chat_id else None,
+            ),
             mode=request.mode,
             conversation_context=request.conversation_context,
             progress_callback=progress,
@@ -15067,6 +15138,21 @@ def validate_agent_patch_id(target):
     return target
 
 
+def agent_action_permission(operation, target, context):
+    if operation == "code_apply":
+        permission, risks, arguments = "WRITE", ("workspace",), {"patch_id": target}
+    elif operation == "docker_restart":
+        permission, risks, arguments = "EXECUTE", (), {}
+    else:
+        raise ValueError(f"Nicht freigegebene Agent-Aktion: {operation}")
+    decision = AGENT_TOOL_REGISTRY.permission_engine.decide(
+        permission, risks, context, arguments, tool_name=operation,
+    )
+    if decision.decision == Decision.DENY:
+        raise ToolPermissionError(operation, decision)
+    return decision
+
+
 def create_agent_approval(
     goal,
     observations,
@@ -15102,6 +15188,10 @@ def create_agent_approval(
     elif operation == "code_apply":
         target = validate_agent_patch_id(target)
 
+    context = run_state.current_run_context() or run_state.RunContext.start()
+    permission_decision = agent_action_permission(operation, target, context)
+
+    if operation == "code_apply":
     # Approve only a patch that actually exists.
         patch_state = code_workspaces.diff(target)
         if patch_state.get("status") != "proposed":
@@ -15153,6 +15243,7 @@ def create_agent_approval(
 
     pending = {
         "id": approval_id,
+        "run_context": context,
         "operation": operation,
         "target": target,
         "reason": str(reason or "").strip(),
@@ -15172,6 +15263,7 @@ def create_agent_approval(
 
     return {
         "approval_id": approval_id,
+        "permission_decision": permission_decision.as_dict(),
         "operation": operation,
         "target": target,
         "reason": pending["reason"],
@@ -15199,6 +15291,8 @@ def create_agent_approval(
 def execute_agent_approved_action(pending):
     operation = pending["operation"]
     target = pending["target"]
+    context = pending.get("run_context") or run_state.current_run_context() or run_state.RunContext.start()
+    agent_action_permission(operation, target, context)
 
     if operation == "code_apply":
         patch_id = validate_agent_patch_id(target)
@@ -17096,6 +17190,7 @@ def degraded_empty_web_search_count(observations):
     return count
 
 
+@run_state.with_run_context
 def run_agent_v2(
     goal,
     observations=None,
@@ -17104,6 +17199,8 @@ def run_agent_v2(
     conversation_context=None,
     progress_callback=None,
     allow_approval=True,
+    *,
+    run_context=None,
 ):
     goal = str(goal or "").strip()
     mode = str(mode or "diagnostic").strip().lower()
@@ -17126,8 +17223,9 @@ def run_agent_v2(
         if explicit_file_match:
             try:
                 active_workspace_id = (
-                    code_workspaces.active_workspace_id()
+                    run_state.workspace_id_for_run()
                 )
+                run_state.current_run_context().resolve_path(explicit_file_match.group(1))
                 code_workspaces.read(
                     active_workspace_id,
                     explicit_file_match.group(1),
@@ -17283,8 +17381,9 @@ def run_agent_v2(
 
                 try:
                     active_workspace_id = (
-                        code_workspaces.active_workspace_id()
+                        run_state.workspace_id_for_run()
                     )
+                    run_state.current_run_context().resolve_path(explicit_file)
                     direct_read = code_workspaces.read(
                         active_workspace_id,
                         explicit_file,
@@ -18827,6 +18926,12 @@ def api_agent_approve(
             detail="Freigabe ist abgelaufen",
         )
 
+    context = pending.get("run_context") or run_state.RunContext.start()
+    with run_state.bind_run_context(context):
+        return _resume_agent_approval(pending, request)
+
+
+def _resume_agent_approval(pending, request):
     observations = list(
         pending["observations"]
     )

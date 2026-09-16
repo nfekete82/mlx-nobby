@@ -1,0 +1,133 @@
+"""Additional policy gate; tool handlers retain all existing safety checks."""
+
+from dataclasses import dataclass
+from enum import Enum
+import re
+
+from agent import code_workspaces
+
+
+class Decision(str, Enum):
+    ALLOW = "ALLOW"
+    CONFIRM = "CONFIRM"
+    DENY = "DENY"
+
+
+class Risk(str, Enum):
+    READ = "READ"
+    WRITE = "WRITE"
+    CREATE = "CREATE"
+    DELETE = "DELETE"
+    EXECUTE = "EXECUTE"
+    EXTERNAL = "EXTERNAL"
+    PRIVILEGED = "PRIVILEGED"
+
+
+@dataclass(frozen=True)
+class PermissionDecision:
+    decision: Decision
+    reason: str
+
+    def as_dict(self):
+        return {"decision": self.decision.value, "reason": self.reason}
+
+
+class ToolPermissionError(ValueError):
+    def __init__(self, tool_name, decision):
+        self.tool_name = tool_name
+        self.decision = decision
+        super().__init__(f"{decision.decision.value}: {decision.reason}")
+
+
+@dataclass(frozen=True)
+class PermissionPolicy:
+    allow_workspace_writes: bool = False
+
+
+_RISK_ALIASES = {
+    "workspace": Risk.READ,
+    "filesystem": Risk.READ,
+    "network": Risk.EXTERNAL,
+    "host_process": Risk.EXECUTE,
+    "executes_project_code": Risk.EXECUTE,
+    "writes_test_copy": Risk.EXECUTE,
+    "writes_patch_metadata": Risk.CREATE,
+    "destructive": Risk.DELETE,
+}
+_LEGACY_READ_EXECUTION = {"shell_read", "process_usage", "code_test"}
+
+
+class PermissionEngine:
+    def __init__(self, policy=None):
+        self.policy = policy or PermissionPolicy()
+
+    def evaluate(self, tool, context, arguments):
+        return self.decide(tool.permission, tool.risks, context, arguments, tool_name=tool.name)
+
+    def decide(self, permission, risks, context, arguments, *, tool_name=""):
+        if permission == "PREPARE" and tool_name != "code_patch":
+            return PermissionDecision(Decision.DENY, "UNKNOWN_PREPARE_ACTION")
+        try:
+            if not isinstance(risks, tuple) or not all(isinstance(risk, str) for risk in risks):
+                raise ValueError("INVALID_PERMISSION_METADATA")
+            categories = {Risk.READ if permission == "PREPARE" else Risk(permission)}
+            for risk in risks:
+                categories.add(_RISK_ALIASES[risk] if risk in _RISK_ALIASES else Risk(risk))
+        except (ValueError, TypeError):
+            return PermissionDecision(Decision.DENY, "INVALID_PERMISSION_METADATA")
+
+        if context is None:
+            return PermissionDecision(Decision.DENY, "RUN_CONTEXT_REQUIRED")
+        if context.cancelled:
+            return PermissionDecision(Decision.DENY, "RUN_CANCELLED")
+        if Risk.PRIVILEGED in categories:
+            return PermissionDecision(Decision.DENY, "PRIVILEGED_ACTION_BLOCKED")
+
+        workspace_required = bool({"workspace", "filesystem"}.intersection(risks))
+        paths = []
+        try:
+            for key in ("path", "source_path", "destination_path"):
+                if arguments.get(key) is not None:
+                    paths.append(arguments[key])
+            if tool_name == "code_read" and arguments.get("query"):
+                paths.append(re.sub(r":\d+(?:-\d+)?$", "", str(arguments["query"])))
+            if tool_name == "code_patch" and isinstance(arguments.get("files"), list):
+                paths.extend(entry["path"] for entry in arguments["files"] if isinstance(entry, dict) and "path" in entry)
+
+            patch_id = arguments.get("patch_id")
+            if tool_name in {"code_diff", "code_test"}:
+                patch_id = arguments.get("query")
+            if patch_id is not None:
+                if not isinstance(patch_id, str) or not re.fullmatch(r"[a-fA-F0-9]{16}", patch_id):
+                    raise ValueError("INVALID_PATCH_ID")
+                patch = code_workspaces._patch(patch_id)
+                if patch["workspace_id"] != context.workspace()["workspace_id"]:
+                    raise ValueError("PATCH_OUTSIDE_WORKSPACE")
+                paths.extend(entry["path"] for entry in patch["files"])
+                if tool_name == "code_apply" and any(
+                    entry.get("operation") == "DELETE" for entry in patch["files"]
+                ):
+                    categories.add(Risk.DELETE)
+                workspace_required = True
+
+            if workspace_required or paths:
+                context.workspace()
+            if tool_name in {"code_files", "code_search", "code_test"}:
+                context.resolve_path(".")
+            for path in paths:
+                context.resolve_path(path, write=bool(categories & {Risk.WRITE, Risk.CREATE, Risk.DELETE}))
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            return PermissionDecision(Decision.DENY, str(exc))
+
+        if Risk.DELETE in categories:
+            return PermissionDecision(Decision.CONFIRM, "DELETE_REQUIRES_APPROVAL")
+        if Risk.EXECUTE in categories:
+            if not (permission == "READ" and tool_name in _LEGACY_READ_EXECUTION):
+                return PermissionDecision(Decision.CONFIRM, "EXECUTION_REQUIRES_APPROVAL")
+        if categories & {Risk.WRITE, Risk.CREATE}:
+            if permission == "PREPARE" and set(risks) == {"writes_patch_metadata", "workspace"}:
+                return PermissionDecision(Decision.ALLOW, "PATCH_PREPARATION_ONLY")
+            if self.policy.allow_workspace_writes and paths:
+                return PermissionDecision(Decision.ALLOW, "WORKSPACE_WRITE_POLICY")
+            return PermissionDecision(Decision.CONFIRM, "WRITE_REQUIRES_APPROVAL")
+        return PermissionDecision(Decision.ALLOW, "EXISTING_READ_POLICY")
