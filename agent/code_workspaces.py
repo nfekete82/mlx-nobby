@@ -620,11 +620,46 @@ def status(workspace_id):
     return {**item,"files":files,"empty":files == 0,"knowledge":knowledge.status()}
 def refresh(workspace_id):
     item=_workspace(workspace_id); result=knowledge.index_source(item['root_path'],item['name']); item['updated_at']=_now(); items=_load(); items[items.index(next(x for x in items if x['workspace_id']==workspace_id))]=item; _save(items); return result
-def read(workspace_id,path,start_line=None,end_line=None):
-    item=_workspace(workspace_id); target=_safe(item,path)
-    if not target.is_file(): raise ValueError("FILE_NOT_FOUND")
-    lines=target.read_text(encoding='utf-8',errors='replace').splitlines(); a=max(1,int(start_line or 1)); b=min(len(lines),int(end_line or a+240));
-    return {"path":_rel(item,target),"start_line":a,"end_line":b,"content":"\n".join(lines[a-1:b])}
+CODE_READ_DEFAULT_MAX_LINES = 1200
+CODE_READ_RANGE_MAX_LINES = 240
+
+
+def read(workspace_id, path, start_line=None, end_line=None):
+    item = _workspace(workspace_id)
+    target = _safe(item, path)
+
+    if not target.is_file():
+        raise ValueError("FILE_NOT_FOUND")
+
+    lines = target.read_text(
+        encoding="utf-8",
+        errors="replace",
+    ).splitlines()
+
+    start = max(1, int(start_line or 1))
+
+    if end_line is not None:
+        end = min(
+            len(lines),
+            int(end_line),
+        )
+    elif start_line is not None:
+        end = min(
+            len(lines),
+            start + CODE_READ_RANGE_MAX_LINES - 1,
+        )
+    else:
+        end = min(
+            len(lines),
+            CODE_READ_DEFAULT_MAX_LINES,
+        )
+
+    return {
+        "path": _rel(item, target),
+        "start_line": start,
+        "end_line": end,
+        "content": "\n".join(lines[start - 1:end]),
+    }
 def list_files(workspace_id,query=None,limit=200):
     item=_workspace(workspace_id)
     root=_root(item)

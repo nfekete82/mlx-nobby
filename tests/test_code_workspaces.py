@@ -2523,3 +2523,99 @@ class FolderPickerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CodeReadLargeFileRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.workspace = code_workspaces.add_workspace(
+            str(self.root),
+            activate=True,
+        )
+        self.workspace_id = self.workspace["workspace_id"]
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def test_default_read_returns_medium_file_in_one_call(self):
+        target = self.root / "blackjack.html"
+        target.write_text(
+            "\n".join(
+                f"line {number}"
+                for number in range(1, 761)
+            ),
+            encoding="utf-8",
+        )
+
+        result = code_workspaces.read(
+            self.workspace_id,
+            "blackjack.html",
+        )
+
+        self.assertEqual(result["start_line"], 1)
+        self.assertEqual(result["end_line"], 760)
+        self.assertIn("line 1", result["content"])
+        self.assertIn("line 760", result["content"])
+
+    def test_default_read_still_caps_very_large_files(self):
+        target = self.root / "large.txt"
+        target.write_text(
+            "\n".join(
+                f"line {number}"
+                for number in range(1, 1501)
+            ),
+            encoding="utf-8",
+        )
+
+        result = code_workspaces.read(
+            self.workspace_id,
+            "large.txt",
+        )
+
+        self.assertEqual(result["start_line"], 1)
+        self.assertEqual(
+            result["end_line"],
+            code_workspaces.CODE_READ_DEFAULT_MAX_LINES,
+        )
+
+    def test_explicit_start_keeps_small_read_window(self):
+        target = self.root / "large.txt"
+        target.write_text(
+            "\n".join(
+                f"line {number}"
+                for number in range(1, 1501)
+            ),
+            encoding="utf-8",
+        )
+
+        result = code_workspaces.read(
+            self.workspace_id,
+            "large.txt",
+            start_line=500,
+        )
+
+        self.assertEqual(result["start_line"], 500)
+        self.assertLessEqual(
+            result["end_line"] - result["start_line"],
+            code_workspaces.CODE_READ_RANGE_MAX_LINES,
+        )
+
+    def test_explicit_range_is_preserved(self):
+        target = self.root / "large.txt"
+        target.write_text(
+            "\n".join(
+                f"line {number}"
+                for number in range(1, 1501)
+            ),
+            encoding="utf-8",
+        )
+
+        result = code_workspaces.read(
+            self.workspace_id,
+            "large.txt",
+            start_line=700,
+            end_line=760,
+        )
+
+        self.assertEqual(result["start_line"], 700)
+        self.assertEqual(result["end_line"], 760)
