@@ -14404,9 +14404,10 @@ def compact_agent_observations(observations):
             continue
         result=dict(result)
         if entry.get("action") == "code_read" and isinstance(result.get("content"), str):
-            content=result["content"]
-            result["content"]=content[:16000]
-            result["content_truncated"]=len(content) > 16000
+            content = result["content"]
+            content_limit = FILE_EXCERPT_MAX_CHARS
+            result["content"] = content[:content_limit]
+            result["content_truncated"] = len(content) > content_limit
         elif entry.get("action") == "code_files" and isinstance(result.get("files"), list):
             files=result["files"]
             result["files"]=files[:100]
@@ -14451,6 +14452,46 @@ def ambiguous_delete_reference(goal, conversation_context):
         return False
     return not normalize_agent_conversation_context(conversation_context)
 
+
+
+def coding_read_only_fast_final_requested(goal):
+    """Detect explicit read-only analysis/review requests."""
+    value = str(goal or "").strip().lower()
+
+    if not value:
+        return False
+
+    normalized = (
+        value
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
+
+    markers = (
+        "aendere noch nichts",
+        "noch nichts aendern",
+        "nichts aendern",
+        "nicht aendern",
+        "ohne aenderungen",
+        "ohne etwas zu aendern",
+        "nur analysieren",
+        "nur pruefen",
+        "nur untersuchen",
+        "read only",
+        "read-only",
+        "do not change",
+        "don't change",
+        "do not modify",
+        "don't modify",
+        "without changing",
+    )
+
+    return any(
+        marker in normalized
+        for marker in markers
+    )
 
 def agent_choose_next_step_v2(
     goal,
@@ -14534,15 +14575,22 @@ code_patch-Aufruf. Erzeuge nicht pro Datei einen eigenen Patch.
 Bei Coding-Aufträgen gilt zwingend:
 
 1. Verwende ausschließlich den aktiven registrierten Workspace.
-2. Untersuche bei Projektaufträgen zuerst gezielt die Struktur mit code_files.
-   Ein leeres Ergebnis bedeutet Greenfield und ist kein Fehler. Plane dann
-   eine zum Auftrag passende kleine Projektstruktur. Lade niemals blind das
-   gesamte Projekt in den Kontext.
+2. Wenn der Nutzer einen konkreten relativen Dateipfad oder einen
+   eindeutigen Dateinamen nennt, lies diese Datei DIREKT mit code_read.
+   Verwende in diesem Fall NICHT zuerst code_files oder code_search.
+   code_files/code_search sind nur nötig, wenn die relevante Datei unbekannt,
+   mehrdeutig oder erst zu ermitteln ist.
+   Bei allgemeinen Projektaufträgen ohne konkrete Zieldatei untersuche die
+   Struktur gezielt mit code_files. Ein leeres Ergebnis bedeutet Greenfield
+   und ist kein Fehler. Lade niemals blind das gesamte Projekt in den Kontext.
 3. Erzeuge intern einen kurzen, anpassbaren Implementierungsplan. Du darfst
    ihn im JSON-Feld "plan" als kurze String-Liste mitsenden. Für triviale
    Ein-Datei-Aufträge genügt ein sehr kurzer Plan.
-4. Nutze progressive Discovery: Dateiliste, gezielte Suche, relevante Dateien
-   lesen, bei neu entdeckten Referenzen weiter lesen, dann erst patchen.
+4. Nutze progressive Discovery nur soweit erforderlich. Bei einer eindeutig
+   genannten Datei gilt der Fast Path: code_read -> analysieren -> final.
+   Weitere code_files/code_search/code_read-Aufrufe sind nur erlaubt, wenn
+   der gelesene Code konkrete Referenzen enthält, die für die Aufgabe
+   tatsächlich benötigt werden.
 5. Für CREATE einer eindeutig neuen Datei darfst du direkt code_patch verwenden.
    code_read auf die noch nicht existierende Zieldatei ist nicht erlaubt.
 6. Für MODIFY musst du jede vorhandene Zieldatei zuerst mit code_read lesen.
@@ -15669,6 +15717,293 @@ def coding_final_answer_requires_repair(answer, observations):
     return reasons
 
 
+
+
+def compact_coding_inline_paragraphs(value):
+    """Join model-created paragraph breaks around inline code."""
+
+    text = str(value or "").replace("\r\n", "\n")
+
+    # Qwen occasionally emits:
+    #
+    #   In
+    #
+    #   `startNewGame()`
+    #
+    #   wird ...
+    #
+    # Inline code is semantic sentence content, not a paragraph.
+    # Collapse blank lines around standalone inline-code fragments.
+    inline_only = re.compile(
+        r"(?m)"
+        r"[ \t]*\n[ \t]*\n[ \t]*"
+        r"(`[^`\n]+`)"
+        r"[ \t]*\n[ \t]*\n[ \t]*"
+    )
+
+    previous = None
+
+    while previous != text:
+        previous = text
+        text = inline_only.sub(r" \1 ", text)
+
+    # Also handle a line break without an empty line around inline code.
+    inline_line = re.compile(
+        r"(?m)"
+        r"(?<=\S)[ \t]*\n[ \t]*"
+        r"(`[^`\n]+`)"
+        r"[ \t]*\n[ \t]*"
+        r"(?=\S)"
+    )
+
+    previous = None
+
+    while previous != text:
+        previous = text
+        text = inline_line.sub(r" \1 ", text)
+
+    # Markdown may put the dash separating title/explanation on its own line.
+    text = re.sub(
+        r"(?m)"
+        r"(\*\*[^\n]+\*\*)[ \t]*\n+[ \t]*"
+        r"(?:\\?-|–|—)[ \t]*",
+        r"\1 - ",
+        text,
+    )
+
+    # Avoid excessive vertical whitespace while preserving finding separation.
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
+
+
+def compact_coding_answer_markdown(value):
+    """Compact accidental paragraph breaks around inline code."""
+    value = str(value or "")
+
+    if not value.strip():
+        return ""
+
+    # Never rewrite fenced code blocks.
+    # Normalize model output BEFORE splitting Markdown into protected
+    # blocks. Qwen occasionally splits a numbered bold finding title
+    # around an inline-code identifier:
+    #
+    #   3. **Fehlende Validierung bei**
+    #
+    #   **`setBet`**
+    #
+    #   - Die Funktion ...
+    #
+    # Convert that shape first so the normal compacting rules see one
+    # coherent finding title.
+    value = re.sub(
+        r"(?m)^(\s*\d+[.)]\s+)\*\*([^\n*]+?)\*\*"
+        r"[ \t]*\n(?:[ \t]*\n)*[ \t]*"
+        r"\*\*(`[^`\n]+`)\*\*",
+        r"\1**\2 \3**",
+        value,
+    )
+
+    # Also join a numbered bold title with a dash placed on a later line.
+    value = re.sub(
+        r"(?m)^(\s*\d+[.)]\s+\*\*[^\n]+\*\*)"
+        r"[ \t]*\n(?:[ \t]*\n)*[ \t]*"
+        r"(?:\\?-|–|—)[ \t]*",
+        r"\1 - ",
+        value,
+    )
+
+    text = compact_coding_inline_paragraphs(value).strip()
+
+    parts = re.split(
+        r"(```[\s\S]*?```)",
+        text,
+    )
+
+    inline_code = r"`[^`\\n]+`"
+
+    for index in range(0, len(parts), 2):
+        part = parts[index]
+
+        # Convert:
+        #
+        # 1. **Finding**
+        #    Explanation ...
+        #
+        # into:
+        #
+        # 1. **Finding** - Explanation ...
+        part = re.sub(
+            r"(?m)^(\s*\d+[.)]\s+\*\*[^\n]+\*\*)"
+            r"[ \t]*\n[ \t]+(?=\S)",
+            r"\1 - ",
+            part,
+        )
+
+        # "In\n\n`startNewGame()`" -> "In `startNewGame()`"
+        part = re.sub(
+            rf"([^\n])\n[ \t]*\n[ \t]*({inline_code})",
+            r"\1 \2",
+            part,
+        )
+
+        # Join a numbered bold finding title with its explanation,
+        # even when the explanation starts after an empty line.
+        part = re.sub(
+            r"(?m)^(\s*\d+[.)]\s+\*\*[^\n]+\*\*)"
+            r"[ \t]*\n(?:[ \t]*\n)+[ \t]*(?=\S)",
+            r"\1 - ",
+            part,
+        )
+
+        # "`foo()`\n\n," -> "`foo()`,"
+        part = re.sub(
+            rf"({inline_code})\n[ \t]*\n[ \t]*([,.;:!?])",
+            r"\1\2",
+            part,
+        )
+
+        # "`undefined`\n\n-Werten" -> "`undefined`-Werten"
+        part = re.sub(
+            rf"({inline_code})\n[ \t]*\n[ \t]*"
+            r"-([A-Za-zÄÖÜäöüß])",
+            r"\1-\2",
+            part,
+        )
+
+        # "`foo()`\n\nwird" -> "`foo()` wird"
+        # Do not merge into headings, quotes or new list items.
+        part = re.sub(
+            rf"({inline_code})\n[ \t]*\n[ \t]*"
+            r"(?!#|>|[-*+]\s|\d+[.)]\s)(\S)",
+            r"\1 \2",
+            part,
+        )
+
+        # Remove whitespace between inline code and punctuation:
+        # "`bankroll` ," -> "`bankroll`,"
+        part = re.sub(
+            rf"({inline_code})[ \t]+([,.;:!?])",
+            r"\1\2",
+            part,
+        )
+
+        parts[index] = part
+
+    result = "".join(parts)
+
+    # Final Markdown cleanup: inline code must attach directly to
+    # following punctuation.
+    result = re.sub(
+        r"(`[^`\n]+`)[ \t]+([,.;:!?])",
+        r"\1\2",
+        result,
+    )
+
+    return result
+
+
+
+def agent_coding_read_only_final_answer(goal, observations):
+    """Fast final synthesis for a completed read-only code analysis."""
+    completed_reads = [
+        item
+        for item in observations
+        if isinstance(item, dict)
+        and item.get("action") == "code_read"
+        and item.get("status") == "completed"
+        and isinstance(item.get("result"), dict)
+        and isinstance(
+            item.get("result", {}).get("content"),
+            str,
+        )
+        and bool(item.get("result", {}).get("content"))
+    ]
+
+    if not completed_reads:
+        return agent_v2_final_answer(
+            goal,
+            observations,
+        )
+
+    read_step = completed_reads[-1]
+    result = read_step["result"]
+
+    file_path = str(
+        result.get("path")
+        or read_step.get("query")
+        or "Datei"
+    ).strip()
+
+    content = str(
+        result.get("content") or ""
+    )
+
+    # Keep this path deliberately small. The normal finalizer contains
+    # generic web/research/orchestrator rules that are unnecessary once
+    # a concrete workspace file has already been read.
+    answer = observed_agent_llm(
+        "agent.coding_readonly_final",
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Du bist ein präziser Coding-Reviewer. "
+                    "Beantworte das Nutzerziel ausschließlich anhand des "
+                    "bereitgestellten Codes. "
+                    "Dies ist nur eine statische Codeanalyse; es wurden keine "
+                    "Tests ausgeführt. Behaupte daher keine verifizierten "
+                    "Laufzeitergebnisse. "
+                    "Nenne nur Probleme oder Verbesserungen, die sich konkret "
+                    "aus dem gelesenen Code ableiten lassen. "
+                    "Wenn der Nutzer eine Anzahl von Findings nennt, halte "
+                    "diese Anzahl exakt ein. "
+                    "Formatiere kompakt: jedes Finding als genau einen "
+                    "nummerierten Absatz im Format "
+                    "'1. **Kurzer Titel** - Erklärung'. "
+                    "Funktionsnamen, Variablen, Dateinamen und kurze "
+                    "Code-Ausdrücke bleiben als Inline-Code im laufenden Satz. "
+                    "Keine separaten Absätze nur für Code-Bezeichner. "
+                    "Keine unnötigen Leerzeilen innerhalb eines Findings. "
+                    "Priorisiere echte Bugs und Logikprobleme vor "
+                    "kosmetischen Verbesserungsvorschlägen. "
+                    "Jedes Finding MUSS einen eigenständigen Root Cause "
+                    "beschreiben. Nenne denselben Fehler nicht mehrfach "
+                    "unter verschiedenen Überschriften. "
+                    "Prüfe vor der Ausgabe jedes Finding gegen den "
+                    "bereitgestellten Code und verwerfe Behauptungen, die "
+                    "dem Code widersprechen oder nicht konkret daraus "
+                    "ableitbar sind. Erfinde keine Laufzeitfehler. "
+                    "Schreibe jedes Finding als EINEN kompakten Absatz. "
+                    "Inline-Code darf niemals allein in einer eigenen "
+                    "Zeile oder einem eigenen Absatz stehen. "
+                    "Beginne direkt mit der Antwort."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "NUTZERZIEL:\n"
+                    + str(goal or "")
+                    + "\n\nDATEI:\n"
+                    + file_path
+                    + "\n\nCODE:\n"
+                    + content
+                ),
+            },
+        ],
+        max_tokens=1400,
+        temperature=0.05,
+    )
+
+    compacted_answer = compact_coding_answer_markdown(
+        answer
+    )
+
+    return compacted_answer
+
+
 def agent_v2_final_answer(goal, observations):
     coding_contract = coding_evidence_contract(observations)
 
@@ -15762,6 +16097,20 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                     "entsprechend ausführlich und sinnvoll strukturiert sein. "
                     "Explizite Wünsche des Nutzers nach kurzer oder ausführlicher "
                     "Darstellung haben Vorrang. "
+                    "DARSTELLUNGSREGELN FÜR CODING-ANALYSEN: "
+                    "Formatiere technische Analysen kompakt und gut scanbar. "
+                    "Inline-Code wie Funktionsnamen, Variablen, Dateinamen und "
+                    "kurze Code-Ausdrücke MUSS innerhalb des laufenden Satzes "
+                    "stehen und darf niemals als eigener Absatz ausgegeben werden. "
+                    "Wenn mehrere Findings verlangt werden, nutze bevorzugt das "
+                    "Format '1. **Kurzer Titel** - Erklärung ...'. "
+                    "Innerhalb eines Findings keine unnötigen Leerzeilen und keine "
+                    "separaten Absätze nur für Bezeichner oder Code-Fragmente. "
+                    "Halte jedes Finding normalerweise bei einem kompakten Absatz "
+                    "mit ungefähr 2 bis 4 Sätzen, sofern der Nutzer nicht ausdrücklich "
+                    "mehr Details verlangt. "
+                    "Wenn der Nutzer eine konkrete Anzahl von Findings verlangt, "
+                    "halte diese Anzahl exakt ein. "
                     "Wiederhole keine Tool-Ergebnisse, die für die konkrete "
                     "Antwort nicht relevant sind. "
                     "Unterscheide weiterhin sachlich zwischen beobachteten "
@@ -15928,6 +16277,10 @@ WICHTIGE CODING-EVIDENCE-REGELN:
             max_tokens=2400,
             temperature=0.0,
         )
+
+    if has_coding_evidence:
+        answer = compact_coding_answer_markdown(answer)
+
 
     return answer
 
@@ -16755,6 +17108,35 @@ def run_agent_v2(
     goal = str(goal or "").strip()
     mode = str(mode or "diagnostic").strip().lower()
 
+    # Explicit read-only analysis of a named workspace file is a coding
+    # task even if the caller omitted mode="coding". This keeps simple
+    # file analysis independent from model-based routing decisions.
+    if (
+        mode == "diagnostic"
+        and coding_read_only_fast_final_requested(goal)
+    ):
+        explicit_file_match = re.search(
+            r"(?<![A-Za-z0-9_.-])"
+            r"([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*"
+            r"\.[A-Za-z0-9]{1,12})"
+            r"(?![A-Za-z0-9_.-])",
+            goal,
+        )
+
+        if explicit_file_match:
+            try:
+                active_workspace_id = (
+                    code_workspaces.active_workspace_id()
+                )
+                code_workspaces.read(
+                    active_workspace_id,
+                    explicit_file_match.group(1),
+                )
+            except (OSError, ValueError):
+                pass
+            else:
+                mode = "coding"
+
     max_steps = {
         "research": 6,
         "diagnostic": 6,
@@ -16830,19 +17212,108 @@ def run_agent_v2(
 
             if not continuation_available:
                 break
+        # ---------------------------------------------------------
+        # Read-only coding fast final
+        # ---------------------------------------------------------
+        # For an explicit analysis/review request without writes, a
+        # successfully completed code_read already provides all evidence
+        # needed for final synthesis. Skip another planner LLM round.
+        if (
+            mode == "coding"
+            and coding_read_only_fast_final_requested(goal)
+        ):
+            completed_code_reads = [
+                item
+                for item in observations
+                if isinstance(item, dict)
+                and item.get("action") == "code_read"
+                and item.get("status") == "completed"
+                and isinstance(item.get("result"), dict)
+                and isinstance(
+                    item.get("result", {}).get("content"),
+                    str,
+                )
+                and bool(
+                    item.get("result", {}).get("content")
+                )
+            ]
+
+            if completed_code_reads:
+                final_answer = agent_coding_read_only_final_answer(
+                    goal,
+                    observations,
+                )
+
+                result = {
+                    "status": "completed",
+                    "goal": goal,
+                    "steps": observations,
+                    "answer": final_answer,
+                }
+
+                publish("completed")
+                return result
+
         publish("running", {
             "step": step,
             "action": "agent_plan",
             "reason": "Nächsten sicheren Schritt planen",
             "status": "running",
         })
-        decision = agent_choose_next_step_v2(
-            goal,
-            observations,
-            max_steps=max_steps,
-            mode=mode,
-            conversation_context=conversation_context,
-        )
+        # ---------------------------------------------------------
+        # Deterministic coding fast path for an explicitly named file
+        # ---------------------------------------------------------
+        # Do not spend a model planning round deciding whether an
+        # explicitly named workspace file should be read. On the first
+        # coding step we can safely route that request directly to
+        # code_read. After the read, normal model reasoning resumes.
+        decision = None
+
+        if mode == "coding" and not observations:
+            explicit_file_match = re.search(
+                r"(?<![A-Za-z0-9_.-])"
+                r"([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*"
+                r"\.[A-Za-z0-9]{1,12})"
+                r"(?![A-Za-z0-9_.-])",
+                str(goal or ""),
+            )
+
+            if explicit_file_match:
+                explicit_file = explicit_file_match.group(1)
+
+                try:
+                    active_workspace_id = (
+                        code_workspaces.active_workspace_id()
+                    )
+                    direct_read = code_workspaces.read(
+                        active_workspace_id,
+                        explicit_file,
+                    )
+                except (OSError, ValueError):
+                    # Unknown, ambiguous or unavailable file:
+                    # fall back to normal model-driven discovery.
+                    pass
+                else:
+                    decision = {
+                        "action": "code_read",
+                        "query": explicit_file,
+                        "reason": (
+                            "Explizit genannte Datei direkt lesen"
+                        ),
+                        "plan": [
+                            "Datei vollständig lesen",
+                            "Aufgabe anhand des Dateiinhalts bearbeiten",
+                        ],
+                    }
+
+        if decision is None:
+            decision = agent_choose_next_step_v2(
+                goal,
+                observations,
+                max_steps=max_steps,
+                mode=mode,
+                conversation_context=conversation_context,
+            )
 
         action = str(
             decision.get("action", "")
@@ -17816,9 +18287,30 @@ def run_agent_v2(
                     except (TypeError, ValueError):
                         last_end = 0
 
-                    if last_end > 0:
+                    last_content = str(
+                        last_result.get("content") or ""
+                    )
+                    returned_lines = (
+                        len(last_content.splitlines())
+                        if last_content
+                        else 0
+                    )
+
+                    # A default code_read may already contain the complete
+                    # source file. Do not paginate a completed read.
+                    read_complete = (
+                        returned_lines > 0
+                        and returned_lines
+                        < code_workspaces.CODE_READ_DEFAULT_MAX_LINES
+                    )
+
+                    if last_end > 0 and not read_complete:
                         next_start = last_end + 1
-                        next_end = next_start + 240
+                        next_end = (
+                            next_start
+                            + code_workspaces.CODE_READ_RANGE_MAX_LINES
+                            - 1
+                        )
                         query = (
                             f"{requested_query}:"
                             f"{next_start}-{next_end}"
@@ -17845,7 +18337,10 @@ def run_agent_v2(
         # -------------------------------------------------
         # Repeat and loop guard for agent tool calls
         # -------------------------------------------------
-        if mode == "orchestrator":
+        # Coding agents need the same protection as the general
+        # orchestrator. Otherwise a model can repeatedly request
+        # an already completed code_read and waste inference time.
+        if mode in {"orchestrator", "coding"}:
 
             completed_tool_calls = [
                 item

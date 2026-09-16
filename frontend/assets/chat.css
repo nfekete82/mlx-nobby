@@ -7391,3 +7391,131 @@ body.mlx-empty-chat .composer-disclaimer {
     font-size: .78rem;
     text-align: center;
 }
+
+/* ============================================================
+   Compact assistant response typography
+   ============================================================ */
+
+.message.assistant .message-content {
+    line-height: 1.58;
+}
+
+.message.assistant .message-content p {
+    margin: 0 0 10px;
+}
+
+.message.assistant .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message.assistant .message-content h1,
+.message.assistant .message-content h2,
+.message.assistant .message-content h3,
+.message.assistant .message-content h4 {
+    margin: 20px 0 8px;
+    line-height: 1.3;
+}
+
+.message.assistant .message-content h1:first-child,
+.message.assistant .message-content h2:first-child,
+.message.assistant .message-content h3:first-child {
+    margin-top: 0;
+}
+
+.message.assistant .message-content ul,
+.message.assistant .message-content ol {
+    margin: 8px 0 12px;
+    padding-left: 24px;
+}
+
+.message.assistant .message-content li {
+    margin: 4px 0;
+}
+
+.message.assistant .message-content li > p {
+    margin: 4px 0;
+}
+
+.message.assistant .message-content li > p:first-child {
+    margin-top: 0;
+}
+
+.message.assistant .message-content code:not(pre code) {
+    padding: 1px 5px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   Compact agent activity card
+   ============================================================ */
+
+.agent-card {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+}
+
+.agent-card-header {
+    min-height: 22px;
+}
+
+.agent-card-summary {
+    display: none;
+}
+
+.agent-card-toggle {
+    margin-top: 4px;
+    padding: 2px 0;
+    font-size: 11px;
+}
+
+.agent-card-details {
+    margin-top: 7px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.agent-step {
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 5px;
+    padding: 5px 0;
+}
+
+.agent-step-icon {
+    font-size: 12px;
+}
+
+.agent-step-title {
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.agent-step-reason {
+    margin-top: 1px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.agent-step-plan {
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.agent-step-details {
+    margin-top: 4px;
+}
+
+.agent-step-details summary {
+    font-size: 10px;
+    opacity: .75;
+}
+
+.agent-step-details pre {
+    max-height: 220px;
+    margin-top: 5px;
+    padding: 8px;
+    font-size: 10px;
+    line-height: 1.45;
+}

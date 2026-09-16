@@ -392,7 +392,7 @@ function markdownHtml(text) {
     prepared = prepared.replace(
         /`[^`\n]+`/g,
         match => protect({
-            type: 'raw',
+            type: 'inline_code',
             value: match,
         }),
     );
@@ -456,6 +456,10 @@ function markdownHtml(text) {
         if (entry.type === 'raw') {
             replacement = DOMPurify.sanitize(
                 marked.parse(entry.value)
+            );
+        } else if (entry.type === 'inline_code') {
+            replacement = DOMPurify.sanitize(
+                marked.parseInline(entry.value)
             );
         } else {
             try {
@@ -960,10 +964,14 @@ function renderAgentCard(message) {
             body.appendChild(reason);
         }
 
-        if (Array.isArray(step.plan) && step.plan.length) {
+        if (
+            Array.isArray(step.plan) &&
+            step.plan.length &&
+            step.status === 'running'
+        ) {
             const plan = document.createElement('div');
             plan.className = 'agent-step-plan';
-            plan.textContent = 'Plan: ' + step.plan.join(' · ');
+            plan.textContent = step.plan.join(' → ');
             body.appendChild(plan);
         }
 
@@ -982,7 +990,7 @@ function renderAgentCard(message) {
                 document.createElement('summary');
 
             summary.textContent =
-                rt('technical_details', 'Technical details');
+                rt('technical_details', 'Technical details') + ' ›';
 
             const pre =
                 document.createElement('pre');

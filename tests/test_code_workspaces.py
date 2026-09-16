@@ -2075,6 +2075,69 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertIn("Welche konkrete", result["answer"])
         self.assertEqual(result["steps"], [])
 
+    def test_complete_code_read_does_not_auto_paginate_on_repeat(self):
+        workspace = self.add_workspace()
+        target = Path(workspace["root_path"]) / "blackjack.html"
+        target.write_text(
+            "\n".join(
+                f"line {number}"
+                for number in range(1, 761)
+            ),
+            encoding="utf-8",
+        )
+
+        calls = 0
+
+        def planner(messages, **kwargs):
+            nonlocal calls
+            calls += 1
+
+            if calls <= 2:
+                return json.dumps({
+                    "action": "code_read",
+                    "reason": "Read blackjack source",
+                    "query": "blackjack.html",
+                })
+
+            return json.dumps({
+                "action": "final",
+                "answer": "Analyse abgeschlossen.",
+            })
+
+        with mock.patch.object(
+            agent_app,
+            "agent_llm",
+            side_effect=planner,
+        ):
+            result = agent_app.run_agent_v2(
+                "Analysiere blackjack.html",
+                mode="coding",
+            )
+
+        self.assertEqual(result["status"], "completed")
+
+        reads = [
+            step
+            for step in result["steps"]
+            if step.get("action") == "code_read"
+        ]
+        pagination = [
+            step
+            for step in result["steps"]
+            if step.get("action") == "code_read_pagination"
+        ]
+
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(pagination, [])
+
+        read_result = reads[0]["result"]
+        self.assertEqual(read_result["start_line"], 1)
+        self.assertEqual(read_result["end_line"], 760)
+        self.assertEqual(
+            len(read_result["content"].splitlines()),
+            760,
+        )
+
     def test_coding_agent_has_24_step_budget_and_reports_max_steps(self):
         self.add_workspace()
         calls = 0
@@ -2527,7 +2590,22 @@ if __name__ == "__main__":
 class CodeReadLargeFileRegressionTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
-        self.root = Path(self.tempdir.name)
+        self.base = Path(self.tempdir.name)
+        self.root = self.base / "workspace"
+        self.config = self.base / "config"
+        self.root.mkdir()
+
+        self.constant_patch = mock.patch.multiple(
+            code_workspaces,
+            ROOT=self.config,
+            WORKSPACES=self.config / "workspaces.json",
+            PATCHES=self.config / "patches",
+            SNAPSHOTS=self.config / "snapshots",
+            TESTS=self.config / "tests",
+            AUDIT=self.config / "audit" / "changes.jsonl",
+        )
+        self.constant_patch.start()
+
         self.workspace = code_workspaces.add_workspace(
             str(self.root),
             activate=True,
@@ -2535,6 +2613,7 @@ class CodeReadLargeFileRegressionTests(unittest.TestCase):
         self.workspace_id = self.workspace["workspace_id"]
 
     def tearDown(self):
+        self.constant_patch.stop()
         self.tempdir.cleanup()
 
     def test_default_read_returns_medium_file_in_one_call(self):
