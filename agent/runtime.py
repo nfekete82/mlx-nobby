@@ -199,10 +199,16 @@ class AgentRuntime:
                             self._check_cancelled()
                     self._publish(callback, "running", observations)
                     if operation == "code_apply" and verification and verification.get("verified") is True:
+                        untested = any(item.get("action") == "code_test"
+                            and item.get("query") == target
+                            and (item.get("result") or {}).get("test_status") == "no_checks"
+                            for item in observations)
                         result = {
                             "status": "completed", "goal": pending["goal"], "steps": observations,
                             "pending_action": None,
-                            "answer": "Änderung erfolgreich angewendet und verifiziert.",
+                            "answer": ("Änderung angewendet und Dateien verifiziert; "
+                                       "nicht getestet (keine geeigneten Tests)." if untested else
+                                       "Änderung erfolgreich angewendet und verifiziert."),
                         }
                         self._publish(callback, "completed", observations)
                         return result
@@ -374,12 +380,47 @@ class AgentRuntime:
                     publish("completed")
                     return result
 
-            publish("running", {
-                "step": step,
-                "action": "agent_plan",
-                "reason": "Nächsten sicheren Schritt planen",
-                "status": "running",
-            })
+            # A prepared change set has a fixed, cheap next step. Keep the
+            # patch in the existing approval workflow without another model
+            # round for diff, test, or the final apply request.
+            prepared = next((item for item in reversed(observations)
+                if item.get("action") == "code_patch"
+                and item.get("status") == "completed"
+                and isinstance(item.get("result"), dict)
+                and item["result"].get("patch_id")), None) if mode == "coding" else None
+            workflow_decision = None
+            if prepared:
+                patch_id = prepared["result"]["patch_id"]
+                patch_index = observations.index(prepared)
+                subsequent = observations[patch_index + 1:]
+                if any(item.get("action") == "code_apply"
+                       and item.get("target") == patch_id
+                       and item.get("status") in {"rejected_by_user", "completed"}
+                       for item in subsequent):
+                    prepared = None
+            if prepared:
+                diff_done = any(item.get("action") == "code_diff"
+                    and item.get("status") == "completed"
+                    and item.get("query") == patch_id for item in subsequent)
+                tested = next((item for item in reversed(subsequent)
+                    if item.get("action") == "code_test"
+                    and item.get("status") == "completed"
+                    and item.get("query") == patch_id), None)
+                if not diff_done:
+                    workflow_decision = {"action": "code_diff", "query": patch_id}
+                elif tested is None:
+                    workflow_decision = {"action": "code_test", "query": patch_id}
+                elif tested.get("result", {}).get("test_status") in {"passed", "no_checks"} and allow_approval:
+                    workflow_decision = {
+                        "action": "request_approval", "operation": "code_apply",
+                        "target": patch_id,
+                        "reason": "Patch geprüft; Anwendung benötigt Zustimmung"
+                    }
+            if workflow_decision is None:
+                publish("running", {
+                    "step": step, "action": "agent_plan",
+                    "reason": "Nächsten sicheren Schritt planen", "status": "running",
+                })
             # ---------------------------------------------------------
             # Deterministic coding fast path for an explicitly named file
             # ---------------------------------------------------------
@@ -387,7 +428,8 @@ class AgentRuntime:
             # explicitly named workspace file should be read. On the first
             # coding step we can safely route that request directly to
             # code_read. After the read, normal model reasoning resumes.
-            decision = None
+            decision = workflow_decision
+            prefetched_read = None
 
             if mode == "coding" and not observations:
                 explicit_file_match = re.search(
@@ -402,7 +444,7 @@ class AgentRuntime:
                     explicit_file = explicit_file_match.group(1)
 
                     try:
-                        self._execute_tool("code_read", goal, query=explicit_file)
+                        prefetched_read = self._execute_tool("code_read", goal, query=explicit_file)
                     except (OSError, ValueError):
                         # Unknown, ambiguous or unavailable file:
                         # fall back to normal model-driven discovery.
@@ -443,6 +485,22 @@ class AgentRuntime:
                 plan = None
 
             if action == "final":
+                if (mode == "coding" and not prepared and
+                    not any(item.get("action") == "code_apply" and
+                            item.get("status") == "rejected_by_user"
+                            for item in observations) and
+                    re.search(r"\b(?:ändere|aendere|implementiere|repariere|"
+                              r"behebe|fixe|ersetze|entferne|füge|fuege|"
+                              r"erstelle|erzeuge|refaktoriere|überarbeite|"
+                              r"ueberarbeite|lösche|loesche|verbessere|"
+                              r"optimiere)\b", goal, re.IGNORECASE)):
+                    observations.append({
+                        "step": step, "action": "patch_required",
+                        "status": "rejected",
+                        "reason": "Änderungsauftrag benötigt einen vorbereiteten code_patch."
+                    })
+                    publish("running", observations[-1])
+                    continue
 
                 # For explicit cross-capability goals, the orchestrator may finish
                 # only after the required data sources have been used successfully.
@@ -1577,14 +1635,13 @@ class AgentRuntime:
             })
 
             try:
-                result = self._execute_tool(
-                    action,
-                    goal,
-                    query=query or None,
-                    instruction=instruction or None,
-                    files=files,
-                    options=tool_options,
-                )
+                result = (prefetched_read if prefetched_read is not None
+                          and action == "code_read" and query == explicit_file
+                          else self._execute_tool(
+                              action, goal, query=query or None,
+                              instruction=instruction or None,
+                              files=files, options=tool_options,
+                          ))
 
                 observations.append({
                     "step": step,

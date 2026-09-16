@@ -1274,6 +1274,16 @@ function buildAgentConversationContext(
 }
 
 
+let agentRunActive = false;
+
+function renderAgentSafely() {
+    try {
+        MLXChatRendering.renderAll({ contentUpdated: true });
+    } catch (error) {
+        console.error('[MLX Agent rendering]', error);
+    }
+}
+
 async function runAgent(
     session,
     goal,
@@ -1283,7 +1293,9 @@ async function runAgent(
     traceId = newTraceId(),
     resources = {}
 ) {
+    agentRunActive = true;
     setGenerating(true);
+    MLXChatRuntime.updateSendButton();
 
     const agentAbortController = new AbortController();
     setAbortController(agentAbortController);
@@ -1302,9 +1314,7 @@ async function runAgent(
     };
 
     MLXChatSessions.saveSessions();
-    MLXChatRendering.renderAll({
-        contentUpdated: true
-    });
+    renderAgentSafely();
 
     try {
         const pollProgress = async () => {
@@ -1331,9 +1341,7 @@ async function runAgent(
                     pending_action: progress.pending_action || null
                 };
                 MLXChatSessions.saveSessions();
-                MLXChatRendering.renderAll({
-                    contentUpdated: true
-                });
+                renderAgentSafely();
             } catch (_error) {
                 // The synchronous endpoint remains the authoritative response.
             }
@@ -1430,13 +1438,13 @@ async function runAgent(
         if (progressTimer) {
             clearInterval(progressTimer);
         }
+        agentRunActive = false;
         setGenerating(false);
         setAbortController(null);
+        MLXChatRuntime.updateSendButton();
 
         MLXChatSessions.saveSessions();
-        MLXChatRendering.renderAll({
-            contentUpdated: true
-        });
+        renderAgentSafely();
     }
 }
 
@@ -1469,12 +1477,12 @@ async function approveAgentAction(
     message.agent_run.pending_action =
         null;
 
+    agentRunActive = true;
     setGenerating(true);
+    MLXChatRuntime.updateSendButton();
 
     MLXChatSessions.saveSessions();
-    MLXChatRendering.renderAll({
-        contentUpdated: true
-    });
+    renderAgentSafely();
 
     try {
         const response = await fetch(
@@ -1529,17 +1537,18 @@ async function approveAgentAction(
         );
 
     } finally {
+        agentRunActive = false;
         setGenerating(false);
+        MLXChatRuntime.updateSendButton();
 
         MLXChatSessions.saveSessions();
-        MLXChatRendering.renderAll({
-            contentUpdated: true
-        });
+        renderAgentSafely();
     }
 }
 
 
 async function sendMessage(options = {}) {
+    if (agentRunActive) return;
 if (MLXChatRuntime.isSwitching()) {
 return;
     }
@@ -3239,6 +3248,7 @@ function watchBatchJob(session, jobId) {
 
 
     window.MLXChatGeneration = {
+        isAgentRunning: () => agentRunActive,
         configure: configure,
         regenerateLastAnswer: regenerateLastAnswer,
         generateAssistant: generateAssistant,

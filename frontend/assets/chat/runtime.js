@@ -472,7 +472,11 @@ function autoResize() {
 
 
 function updateSendButton() {
-    if (isSwitching()) {
+    if (window.MLXChatGeneration?.isAgentRunning?.()) {
+        sendButton.textContent = '…';
+        sendButton.disabled = true;
+        sendButton.classList.remove('stop');
+    } else if (isSwitching()) {
         sendButton.textContent = '…';
         sendButton.disabled = true;
         sendButton.classList.remove('stop');

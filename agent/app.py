@@ -5303,19 +5303,15 @@ def _trusted_workspace_chat_action(
     file_context=None,
     conversation_context=None,
 ):
-    """Return a trusted deterministic route for explicit active-workspace work.
+    """Route project work through the coding agent when a workspace is active.
 
-    Only coding_agent is trusted here. Other agent intents continue through
-    the semantic router and its existing confidence/safety gate.
+    An active workspace is treated as the primary local project context.
+    Requests to inspect, analyse, review, test, debug, improve or modify
+    something in that context should enter the coding agent even when the
+    user does not explicitly mention a file, source code or the workspace.
+
+    Pure knowledge/explanation questions remain normal chat.
     """
-    candidate = _deterministic_chat_action(
-        prompt,
-        file_context,
-        conversation_context,
-    )
-    if candidate != "coding_agent":
-        return None
-
     try:
         active_workspace = code_workspaces.active_workspace()
     except ValueError:
@@ -5324,7 +5320,64 @@ def _trusted_workspace_chat_action(
     if active_workspace is None:
         return None
 
-    return "coding_agent"
+    candidate = _deterministic_chat_action(
+        prompt,
+        file_context,
+        conversation_context,
+    )
+
+    if candidate == "coding_agent":
+        return "coding_agent"
+
+    value = str(prompt or "").strip().lower()
+
+    # Explicit knowledge/explanation questions must not become workspace work.
+    if candidate == "normal_chat":
+        return None
+
+    workspace_action = bool(
+        re.search(
+            r"\b(?:"
+            r"analysier\w*|untersuch\w*|prüf\w*|pruef\w*|"
+            r"bewert\w*|review\w*|test\w*|debug\w*|"
+            r"verbesser\w*|optimier\w*|überarbeit\w*|ueberarbeit\w*|"
+            r"änder\w*|aender\w*|bearbeit\w*|fix\w*|"
+            r"reparier\w*|implementier\w*|erweiter\w*|"
+            r"schau\w*|sieh\w*"
+            r")\b",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+    project_reference = bool(
+        re.search(
+            r"\b(?:"
+            r"spiel|game|website|webseite|web-app|webapp|"
+            r"app|anwendung|projekt|code|source|frontend|backend|"
+            r"login|seite|funktion|feature|datei|ordner|"
+            r"html|css|javascript|typescript|python|php"
+            r")\b",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+    # Natural follow-ups such as "analysiere mal das spiel" may omit the
+    # explicit project noun because the active workspace supplies the context.
+    generic_workspace_review = bool(
+        re.search(
+            r"\b(?:analysier\w*|untersuch\w*|prüf\w*|pruef\w*|"
+            r"review\w*|test\w*|debug\w*|verbesser\w*|optimier\w*)\b",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+    if workspace_action and (project_reference or generic_workspace_review):
+        return "coding_agent"
+
+    return None
 
 
 def _direct_chat_action(prompt, file_context=None, conversation_context=None):

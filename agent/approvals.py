@@ -155,10 +155,13 @@ class AgentApprovals:
                     checks_run = result.get("checks_run")
                     if (
                         result.get("patch_id") == target
-                        and result.get("passed") is True
-                        and result.get("test_status") == "passed"
-                        and type(checks_run) is int
-                        and checks_run > 0
+                        and (
+                            (result.get("passed") is True
+                             and result.get("test_status") == "passed"
+                             and type(checks_run) is int and checks_run > 0)
+                            or (result.get("test_status") == "no_checks"
+                                and checks_run == 0)
+                        )
                     ):
                         test_step = index
                         test_result = result
@@ -170,7 +173,7 @@ class AgentApprovals:
             ):
                 raise ValueError(
                     "code_apply benötigt vorher code_diff und danach einen "
-                    "erfolgreichen code_test"
+                    "code_test ohne fehlgeschlagene Checks"
                 )
 
         approval_id = _agent_uuid.uuid4().hex
@@ -386,7 +389,7 @@ class AgentApprovals:
                 files = code_workspaces.verify(patch_id)
 
                 patch_status = patch_diff.get("status")
-                tests_ok = tests.get("passed") is True
+                tests_ok = tests.get("passed") is True or tests.get("test_status") == "no_checks"
                 files_ok = files.get("verified") is True
 
                 verified = (
@@ -405,7 +408,7 @@ class AgentApprovals:
                         },
                         {
                             "check": "code_test",
-                            "ok": tests_ok,
+                            "ok": tests.get("passed") is True,
                             "result": tests,
                         },
                         {

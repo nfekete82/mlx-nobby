@@ -983,6 +983,17 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(routed["tool"], "coding_agent")
         self.assertEqual(routed["data"]["mode"], "coding")
 
+    def test_workspace_routing_skips_semantic_router_for_clear_requests(self):
+        self.add_workspace()
+        with mock.patch.object(agent_app, "semantic_intent_classifier") as semantic:
+            for prompt in ("Analysiere das Spiel", "Prüfe die Website",
+                           "Teste die App", "Debugge das Backend",
+                           "Verbessere Grafik und Animationen"):
+                with self.subTest(prompt=prompt):
+                    self.assertEqual(agent_app.classify_chat_action(prompt), "coding_agent")
+            self.assertEqual(agent_app.classify_chat_action("Was ist Python?"), "normal_chat")
+            semantic.assert_not_called()
+
     def test_workspace_file_review_routes_to_coding_agent(self):
         self.add_workspace()
 
@@ -1084,6 +1095,23 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(result["pending_action"]["operation"], "code_apply")
         self.assertIn("PREPARE-Operationen wie code_patch", seen_system_prompts[0])
         self.assertIn("code_patch verändert den Workspace NICHT", seen_system_prompts[0])
+
+    def test_no_tests_still_reaches_approval_without_extra_planning(self):
+        self.add_workspace()
+        decisions = [
+            '{"action":"final","answer":"Done"}',
+            json.dumps({"action": "code_patch", "instruction": "Create note",
+                        "files": [{"path": "note.txt", "operation": "CREATE",
+                                   "proposed_content": "hello\n"}]}),
+        ]
+        with mock.patch.object(agent_app, "agent_llm", side_effect=decisions) as llm:
+            result = agent_app.run_agent_v2("Erstelle note.txt", mode="coding")
+        self.assertEqual(result["status"], "approval_required")
+        self.assertEqual([item["action"] for item in result["steps"]],
+                         ["patch_required", "code_patch", "code_diff", "code_test"])
+        self.assertEqual(result["pending_action"]["tests"]["test_status"], "no_checks")
+        self.assertFalse((self.workspace_one / "note.txt").exists())
+        self.assertEqual(llm.call_count, 2)
 
     def test_followup_delete_resolves_file_from_conversation_context(self):
         target = self.workspace_one / "test.txt"
@@ -1472,7 +1500,7 @@ class CodeWorkspaceTests(unittest.TestCase):
             result = code_workspaces.test(patch["patch_id"])
 
         self.assertFalse(result["passed"])
-        self.assertEqual(result["test_status"], "no_checks")
+        self.assertEqual(result["test_status"], "failed")
         self.assertEqual(result["checks_run"], 0)
         self.assertEqual(result["results"][0]["status"], "unavailable")
 
@@ -1527,7 +1555,7 @@ class CodeWorkspaceTests(unittest.TestCase):
         self.assertEqual(approval["tests"]["checks_run"], 1)
         self.assertEqual(len(approval["files"]), 2)
 
-    def test_approval_rejects_code_test_without_executed_checks(self):
+    def test_approval_allows_code_test_without_available_checks(self):
         workspace = self.add_workspace()
         patch = code_workspaces.create_patch(
             workspace["workspace_id"],
@@ -1536,10 +1564,7 @@ class CodeWorkspaceTests(unittest.TestCase):
         )
         patch_id = patch["patch_id"]
         tests = code_workspaces.test(patch_id)
-        tests["passed"] = True
-
-        with self.assertRaisesRegex(ValueError, "erfolgreichen code_test"):
-            agent_app.create_agent_approval(
+        approval = agent_app.create_agent_approval(
                 goal="Create text",
                 observations=[
                     {"action": "code_diff", "query": patch_id, "status": "completed", "result": patch},
@@ -1551,6 +1576,8 @@ class CodeWorkspaceTests(unittest.TestCase):
                 target=patch_id,
                 reason="Ready",
             )
+        self.assertEqual(approval["tests"]["test_status"], "no_checks")
+        self.assertEqual(approval["operation"], "code_apply")
 
     def test_project_and_followup_routing_and_programming_question(self):
         self.add_workspace()

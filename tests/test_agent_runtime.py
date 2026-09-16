@@ -574,6 +574,32 @@ class RuntimeAPICompatibilityTests(unittest.TestCase):
         self.assertEqual(provider.calls, [])
         self.assertEqual(events[-1], "completed")
 
+    def test_untested_patch_applies_only_after_approval(self):
+        workspace = code_workspaces.add_workspace(str(self.workspace))
+        context = run_state.RunContext.start(run_id=self.run_id)
+        runtime = self.agent.agent_runtime(context, provider=FakeProvider([]))
+        patch = code_workspaces.create_patch(workspace["workspace_id"], "Create", [
+            {"path": "untested.txt", "operation": "CREATE", "proposed_content": "new"},
+        ])
+        patch_id = patch["patch_id"]
+        diff = code_workspaces.diff(patch_id)
+        tests = code_workspaces.test(patch_id)
+        with run_state.bind_run_context(context):
+            approval = self.agent.create_agent_approval(
+                "Create", [
+                    {"action": "code_diff", "query": patch_id, "status": "completed", "result": diff},
+                    {"action": "code_test", "query": patch_id, "status": "completed", "result": tests},
+                ], 3, "coding", "code_apply", patch_id, "Apply", runtime=runtime,
+            )
+        target = self.workspace / "untested.txt"
+        self.assertFalse(target.exists())
+        response = self.client.post("/api/agent/approve/" + approval["approval_id"],
+                                    json={"approved": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "completed")
+        self.assertIn("nicht getestet", response.json()["answer"])
+        self.assertEqual(target.read_text(), "new")
+
 
 if __name__ == "__main__":
     unittest.main()

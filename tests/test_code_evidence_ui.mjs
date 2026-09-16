@@ -144,7 +144,7 @@ assert.equal(
 );
 const noChecksPanel = evidence.renderCodeTestEvidence(noChecks);
 assert.ok(allText(noChecksPanel).includes(
-    'This change cannot be applied yet because no real test could be run.'
+    'No suitable test ran. Review the diff before applying.'
 ));
 assert.ok(allText(noChecksPanel).includes('Configure tests'));
 
@@ -159,7 +159,7 @@ assert.equal(
         operation: 'code_apply',
         tests: noChecks,
     }),
-    false,
+    true,
 );
 assert.equal(
     evidence.codeApplyEvidenceValid({

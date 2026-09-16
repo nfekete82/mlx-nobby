@@ -485,14 +485,29 @@ function markdownHtml(text) {
 
 
 function enhanceCodeBlocks(container) {
+    if (!container) return;
+
     container.querySelectorAll(
         'pre code'
     ).forEach(code => {
+        // Capture the <pre> before highlight.js touches the DOM.
+        // Some malformed/unsafe code blocks can be detached while
+        // highlightElement() processes them.
+        const pre = code.parentElement;
+
+        if (!pre || pre.tagName !== 'PRE') {
+            return;
+        }
+
         try {
             hljs.highlightElement(code);
         } catch {}
 
-        const pre = code.parentElement;
+        // highlight.js may have detached/replaced the code node.
+        // Never let code enhancement break the whole chat renderer.
+        if (!pre.isConnected && !container.contains(pre)) {
+            return;
+        }
 
         if (
             pre.querySelector('.copy-code')
@@ -659,7 +674,9 @@ function codeTestEvidenceLabel(result = {}) {
 
 function codeApplyEvidenceValid(pending = {}) {
     if (pending.operation !== 'code_apply') return true;
-    return codeTestEvidence(pending.tests || {}).status === 'passed';
+    return ['passed', 'no_checks'].includes(
+        codeTestEvidence(pending.tests || {}).status
+    );
 }
 
 function renderCodeTestEvidence(result = {}) {
@@ -677,7 +694,7 @@ function renderCodeTestEvidence(result = {}) {
         explanation.className = 'agent-test-evidence-message';
         explanation.textContent = rt(
             'tests_no_checks_apply_blocked',
-            'This change cannot be applied yet because no real test could be run.'
+            'No suitable test ran. Review the diff before applying.'
         );
         panel.appendChild(explanation);
 
@@ -1208,14 +1225,14 @@ function renderAgentCard(message) {
 
         execute.textContent =
             pending.operation === 'code_apply'
-                ? rt('approve', 'Approve')
+                ? rt('apply_changes', 'Apply changes')
                 : rt('execute', 'Run');
 
         if (!codeApplyEvidenceValid(pending)) {
             execute.disabled = true;
             execute.title = rt(
                 'apply_blocked_without_tests',
-                'Apply is blocked until a real test has passed.'
+                'A test failed or test evidence is missing.'
             );
         }
 

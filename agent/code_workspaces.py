@@ -1182,10 +1182,10 @@ def test(patch_id):
         entry.get("status") not in {"passed", "skipped"}
         for entry in results
     )
-    if checks_run == 0:
-        test_status="no_checks"
-    elif has_blocking_result:
+    if has_blocking_result:
         test_status="failed"
+    elif checks_run == 0:
+        test_status="no_checks"
     else:
         test_status="passed"
 
