@@ -800,5 +800,11 @@
   "image_edit_prompt_placeholder": "z. B. Hintergrund entfernen und das Licht wärmer machen",
   "image_edit_submit": "Bild ändern",
   "image_describe_action": "Bild beschreiben",
-  "image_edit_unexpected_action": "Die Bildbearbeitung wurde nicht angenommen."
+  "image_edit_unexpected_action": "Die Bildbearbeitung wurde nicht angenommen.",
+  "rendering.speech_read_aloud": "Vorlesen",
+  "rendering.speech_generating": "Audio wird erzeugt…",
+  "rendering.speech_request_failed": "TTS fehlgeschlagen ({status})",
+  "rendering.speech_empty_response": "Leere Audioantwort",
+  "rendering.speech_stop": "Wiedergabe stoppen",
+  "rendering.speech_failed": "Sprachausgabe fehlgeschlagen: {message}"
 }

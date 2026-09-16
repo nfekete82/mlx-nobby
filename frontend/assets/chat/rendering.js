@@ -2137,10 +2137,10 @@ function renderMessages(options = {}) {
                 'message-action-btn message-action-icon mlx-message-speech-button';
 
             speech.type = 'button';
-            speech.title = 'Vorlesen';
+            speech.title = rt('speech_read_aloud', 'Read aloud');
             speech.setAttribute(
                 'aria-label',
-                'Vorlesen'
+                rt('speech_read_aloud', 'Read aloud')
             );
 
             const speechIcon = `
@@ -2171,10 +2171,10 @@ function renderMessages(options = {}) {
             const resetSpeechButton = () => {
                 speech.disabled = false;
                 speech.innerHTML = speechIcon;
-                speech.title = 'Vorlesen';
+                speech.title = rt('speech_read_aloud', 'Read aloud');
                 speech.setAttribute(
                     'aria-label',
-                    'Vorlesen'
+                    rt('speech_read_aloud', 'Read aloud')
                 );
             };
 
@@ -2210,7 +2210,7 @@ function renderMessages(options = {}) {
 
                     speech.disabled = true;
                     speech.innerHTML = loadingIcon;
-                    speech.title = 'Audio wird erzeugt…';
+                    speech.title = rt('speech_generating', 'Generating audio…');
 
                     try {
                         const response = await fetch(
@@ -2234,7 +2234,7 @@ function renderMessages(options = {}) {
 
                         if (!response.ok) {
                             let detail =
-                                `TTS fehlgeschlagen (${response.status})`;
+                                rt('speech_request_failed', 'TTS failed ({status})', { status: response.status });
 
                             try {
                                 const data =
@@ -2251,7 +2251,7 @@ function renderMessages(options = {}) {
 
                         if (!blob.size) {
                             throw new Error(
-                                'Leere Audioantwort'
+                                rt('speech_empty_response', 'Empty audio response')
                             );
                         }
 
@@ -2263,10 +2263,10 @@ function renderMessages(options = {}) {
 
                         speech.disabled = false;
                         speech.innerHTML = stopIcon;
-                        speech.title = 'Wiedergabe stoppen';
+                        speech.title = rt('speech_stop', 'Stop playback');
                         speech.setAttribute(
                             'aria-label',
-                            'Wiedergabe stoppen'
+                            rt('speech_stop', 'Stop playback')
                         );
 
                         speechAudio.addEventListener(
@@ -2291,8 +2291,11 @@ function renderMessages(options = {}) {
                         cleanupSpeech();
 
                         alert(
-                            'Sprachausgabe fehlgeschlagen: ' +
-                            error.message
+                            rt(
+                                'speech_failed',
+                                'Speech playback failed: {message}',
+                                { message: error.message }
+                            )
                         );
                     }
                 }

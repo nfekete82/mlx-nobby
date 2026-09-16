@@ -800,5 +800,11 @@
   "image_edit_prompt_placeholder": "e.g. Remove the background and make the lighting warmer",
   "image_edit_submit": "Edit image",
   "image_describe_action": "Describe image",
-  "image_edit_unexpected_action": "The image edit action was not accepted."
+  "image_edit_unexpected_action": "The image edit action was not accepted.",
+  "rendering.speech_read_aloud": "Read aloud",
+  "rendering.speech_generating": "Generating audio…",
+  "rendering.speech_request_failed": "TTS failed ({status})",
+  "rendering.speech_empty_response": "Empty audio response",
+  "rendering.speech_stop": "Stop playback",
+  "rendering.speech_failed": "Speech playback failed: {message}"
 }
