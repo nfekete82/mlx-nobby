@@ -42,11 +42,36 @@ class ServiceBridgeTests(unittest.TestCase):
 
     def test_audio_route_through_agent_and_native_handler(self):
         # Load the real speech HTTP handler without importing any MLX package.
+        mlx_audio = types.ModuleType('mlx_audio')
+        mlx_audio.__path__ = []
+
         stt = types.ModuleType('mlx_audio.stt')
-        stt.load = Mock(side_effect=AssertionError('Real model loading is forbidden'))
-        spec = importlib.util.spec_from_file_location('speech_test_service', Path(__file__).parents[1] / 'speech/app.py')
+        stt.load = Mock(
+            side_effect=AssertionError('Real model loading is forbidden')
+        )
+
+        tts = types.ModuleType('mlx_audio.tts')
+        tts.__path__ = []
+
+        tts_utils = types.ModuleType('mlx_audio.tts.utils')
+        tts_utils.load_model = Mock(
+            side_effect=AssertionError('Real TTS model loading is forbidden')
+        )
+
+        spec = importlib.util.spec_from_file_location(
+            'speech_test_service',
+            Path(__file__).parents[1] / 'speech/app.py'
+        )
         speech = importlib.util.module_from_spec(spec)
-        with patch.dict(sys.modules, {'mlx_audio': types.ModuleType('mlx_audio'), 'mlx_audio.stt': stt}):
+
+        mlx_modules = {
+            'mlx_audio': mlx_audio,
+            'mlx_audio.stt': stt,
+            'mlx_audio.tts': tts,
+            'mlx_audio.tts.utils': tts_utils,
+        }
+
+        with patch.dict(sys.modules, mlx_modules):
             spec.loader.exec_module(speech)
         native_client = TestClient(speech.app, base_url='http://localhost')
         self.addCleanup(native_client.close)
