@@ -26,6 +26,9 @@ jobs:
         run: |
           git ls-files -z '*.py' | xargs -0 python -m py_compile
 
+      - name: Install ripgrep
+        run: brew install ripgrep
+
       - name: Python tests
         run: |
           python -m unittest discover -s tests -p 'test_*.py'
