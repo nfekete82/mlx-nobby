@@ -183,6 +183,9 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   ausgelagerten Prompt-, Evidence- und Approval-Module an.
 - Rollen-/Modellauflösung, Modell-Lock und Progress-/Pending-Speicher bleiben in der
   bestehenden Integration. Es wurde keine neue Event-Plattform eingeführt.
+- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `image` und `embedding`
+  werden in der bestehenden Integration aufgelöst. BGE-M3 ist für die
+  Embedding-Rolle kompatibel.
 - Freigaben und Progress sind weiterhin prozesslokal; keine neue dauerhafte
   Speicherung oder Wiederaufnahme nach einem Prozessneustart implementiert.
 - Cancellation ist kooperativ: vor Modell-/Tool-Aufrufen und neuen Schritten.
@@ -192,8 +195,8 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   `cancelled`. Bestehende JSON-Fehlerbehandlung und Format-Reparatur bleiben bestehen.
 - Tool-Schemas, Timeout- und Output-Metadaten ersetzen keine Handler-Validierung;
   die Registry führt daraus keine allgemeine neue Ausführungs-/Timeout-Engine ab.
-- Die automatisierten Tests verwenden Fake/Mock Provider; echte MLX-Inferenz wurde
-  für diese Extraktion nicht benötigt und damit nicht als Integrationstest bestätigt.
+- Die automatisierten Tests verwenden überwiegend Fake/Mock Provider. Zusätzlich
+  wurde der Release-Stand lokal mit echter MLX-Inferenz Ende zu Ende validiert.
 
 ## Relevante Tests
 
@@ -210,7 +213,6 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
 | `test_disk_usage.py`, `test_service_bridge.py` | Relevante bestehende Tool-/Integrationsregressionen. |
 | `test_sse_stream.mjs`, `test_agent_card.mjs`, `test_code_evidence_ui.mjs` | SSE-, Agent-Card- und Evidence-/Approval-UI-Verträge. |
 
-Der obige historische Teststand beschreibt die ursprüngliche Runtime-Extraktion.
 Die Adapter-Erweiterung wird durch gezielte Python- und JavaScript-Tests geprüft.
 
 ## Bekannte Testbefehle
@@ -253,32 +255,3 @@ git diff --check
 ```
 
 Syntaxprüfungen sind mit `ast.parse(Path(datei).read_text(), filename=datei)` möglich.
-
-## Git- und Architekturstand bei Erstellung
-
-- Foundation und erste Runtime-Extraktion waren beim letzten Implementierungsschritt
-  bereits committed; die anschließende Fertigstellung der Runtime-Grenze wurde nicht committed.
-- Zuletzt neu/ungetrackt: `agent/prompts.py`, `agent/evidence.py`, `agent/approvals.py`.
-- Zuletzt geändert: `agent/app.py`, `agent/runtime.py`, `agent/tool_registry.py`,
-  `tests/test_agent_runtime.py`, `tests/test_permissions.py`.
-- `app.py` wurde in diesem letzten Schritt netto um 3.304 Zeilen reduziert.
-- Bestehende Benutzeränderung: `frontend/assets/chat/generation.js`.
-  Diese wurde nicht verändert, gestagt oder zurückgesetzt und muss erhalten bleiben.
-- Vor Folgeänderungen `git status --short` prüfen; diese Liste ist eine Momentaufnahme.
-- Keine pauschalen Git-Operationen, kein `git add .`, kein Hard Reset und kein Force Push.
-- Dieses Handoff wurde ohne erneute Repository-Analyse erstellt.
-
-## Nächste Arbeiten, priorisiert
-
-1. Gezielter lokaler Integrationstest mit echtem MLX: Run, bestehende Tools,
-   Freigabe, Resume, Progress und verifizierter Abschluss.
-   Zustandsändernde Aktionen nur mit ausdrücklich autorisiertem Testziel ausführen.
-2. Dabei auftretende Abweichungen gezielt beheben; vorhandene Unit-/API-Tests
-   nur um konkrete fehlende Fälle ergänzen.
-3. Den älteren Read-only-Loop nur bei einem klaren, kleinen Migrationsbedarf anfassen;
-   ansonsten den dokumentierten Compatibility-Pfad erhalten.
-4. Aktive Unterbrechung laufender Operationen oder dauerhafte Run-Wiederaufnahme
-   nur als separat beauftragte Arbeiten planen.
-
-Über die hier dokumentierten Adapter hinaus sind Cloud-Provider,
-Routing-/Planning-Architektur und Frontend-Umbauten nicht Teil dieses Stands.

@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.0.0-informational)
+![Release](https://img.shields.io/badge/release-v1.1.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -19,7 +19,10 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
   conversations
 - Model aliases, Hugging Face downloads, cache inspection, and background jobs
 - Coding workspaces with bounded file search, reviewable patches, and test runs
-- Diagnostic, research, and file-processing agents with approval checkpoints
+- Diagnostic, research, and file-processing agents using the central AgentRuntime
+  with workspace-bound tools, permission checks, and approval/resume
+- Role-based local model selection for chat, agent, coding, vision, image, and
+  embeddings, including compatible BGE-M3 embeddings
 - Local embeddings, knowledge sources, and retrieval-augmented generation (RAG)
 - Hierarchical semantic routing for chat, multimodal, research, coding, and
   creative requests
