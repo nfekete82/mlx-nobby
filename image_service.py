@@ -781,14 +781,17 @@ def _run_image_job(job_id, operation, request):
     except Exception as exc:
         if output_path is not None:
             output_path.unlink(missing_ok=True)
-        detail = str(exc.detail) if isinstance(exc, HTTPException) else _provider_failure(exc)
-        _update_job(
-            job_id,
-            status="failed",
-            result=None,
-            error=detail,
-            finished_at=time.time(),
-        )
+        if cancel_event.is_set():
+            _update_job(
+                job_id, status="cancelled", result=None,
+                error=None, finished_at=time.time(),
+            )
+        else:
+            detail = str(exc.detail) if isinstance(exc, HTTPException) else _provider_failure(exc)
+            _update_job(
+                job_id, status="failed", result=None,
+                error=detail, finished_at=time.time(),
+            )
     finally:
         _update_job(job_id, _process=None)
         with _jobs_lock:

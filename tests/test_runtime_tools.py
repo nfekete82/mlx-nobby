@@ -101,6 +101,8 @@ class RuntimeToolAdapterTests(unittest.TestCase):
         code_workspaces.add_workspace(str(other))
         self.assertIn("selected.txt", self.execute("git_status")["stdout"])
         self.assertEqual(self.execute("git_diff")["returncode"], 0)
+        subprocess.run(["git", "-C", str(self.workspace), "add", "-N", "--", "selected.txt"], check=True)
+        self.assertIn("selected", self.execute("git_diff", query="None")["stdout"])
         self.assertEqual(self.execute("git_log")["returncode"], 128)
         with self.assertRaises(ToolPermissionError) as error:
             self.execute("git_stage", options={"paths": ["../other/other.txt"]})

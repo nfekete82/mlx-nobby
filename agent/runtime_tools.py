@@ -161,7 +161,10 @@ def _git_tool(action, query, options):
     if action == "git_status":
         return _git(["status", "--short", "--untracked-files=normal"])
     if action == "git_diff":
-        path = _relative_path(query) if query else None
+        no_path = not query or (
+            isinstance(query, str) and query.strip().lower() in {"none", "null"}
+        )
+        path = None if no_path else _relative_path(query)
         return _git(["diff", "--no-ext-diff", "--no-textconv", *(["--cached"] if options.get("cached") is True else []),
                      "--", *([path] if path else [])])
     if action == "git_log":

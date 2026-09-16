@@ -510,6 +510,8 @@ class UploadedDocumentKnowledgeTests(KnowledgeTestCase):
 
             if path == "/embedding":
                 return {
+                    "model": self._health()["model"],
+                    "dimensions": self._health()["dimensions"],
                     "vectors": [
                         [1.0, 0.0, 0.0]
                     ]
@@ -771,22 +773,24 @@ class KnowledgeSearchTests(KnowledgeTestCase):
         con = knowledge._db()
         con.execute(
             """
-            INSERT INTO knowledge_embeddings(chunk_id, vector)
-            VALUES (?, ?)
+            INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector)
+            VALUES (?, ?, ?, ?)
             """,
-            ("chunk-1", knowledge._pack([1.0, 0.0])),
+            ("chunk-1", "test-embedding", 2, knowledge._pack([1.0, 0.0])),
         )
         con.execute(
             """
-            INSERT INTO knowledge_embeddings(chunk_id, vector)
-            VALUES (?, ?)
+            INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector)
+            VALUES (?, ?, ?, ?)
             """,
-            ("chunk-2", knowledge._pack([0.0, 1.0])),
+            ("chunk-2", "test-embedding", 2, knowledge._pack([0.0, 1.0])),
         )
         con.commit()
         con.close()
 
         request_mock.return_value = {
+            "model": "test-embedding",
+            "dimensions": 2,
             "vectors": [[1.0, 0.0]]
         }
 
@@ -808,28 +812,56 @@ class KnowledgeSearchTests(KnowledgeTestCase):
 
     @patch("agent.knowledge.embedding_health", return_value={"ok": True})
     @patch("agent.knowledge._request")
+    def test_search_excludes_vectors_from_other_models(self, request_mock, _health):
+        self._seed_search_data()
+        con = knowledge._db()
+        con.execute(
+            "INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector) VALUES (?, ?, ?, ?)",
+            ("chunk-1", "current-model", 2, knowledge._pack([1.0, 0.0])),
+        )
+        con.execute(
+            "INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector) VALUES (?, ?, ?, ?)",
+            ("chunk-2", "other-model", 2, knowledge._pack([0.0, 1.0])),
+        )
+        con.commit()
+        con.close()
+        request_mock.return_value = {
+            "model": "current-model", "dimensions": 2,
+            "vectors": [[1.0, 0.0]],
+        }
+
+        result = knowledge.search("term-that-does-not-exist", limit=10)
+
+        self.assertEqual(result["mode"], "vector")
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["results"][0]["source"], "Alpha Workspace")
+
+    @patch("agent.knowledge.embedding_health", return_value={"ok": True})
+    @patch("agent.knowledge._request")
     def test_search_hybrid_mode(self, request_mock, _health):
         self._seed_search_data()
 
         con = knowledge._db()
         con.execute(
             """
-            INSERT INTO knowledge_embeddings(chunk_id, vector)
-            VALUES (?, ?)
+            INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector)
+            VALUES (?, ?, ?, ?)
             """,
-            ("chunk-1", knowledge._pack([1.0, 0.0])),
+            ("chunk-1", "test-embedding", 2, knowledge._pack([1.0, 0.0])),
         )
         con.execute(
             """
-            INSERT INTO knowledge_embeddings(chunk_id, vector)
-            VALUES (?, ?)
+            INSERT INTO knowledge_embeddings(chunk_id, model, dimensions, vector)
+            VALUES (?, ?, ?, ?)
             """,
-            ("chunk-2", knowledge._pack([0.0, 1.0])),
+            ("chunk-2", "test-embedding", 2, knowledge._pack([0.0, 1.0])),
         )
         con.commit()
         con.close()
 
         request_mock.return_value = {
+            "model": "test-embedding",
+            "dimensions": 2,
             "vectors": [[1.0, 0.0]]
         }
 

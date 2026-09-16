@@ -2221,6 +2221,30 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertIsNotNone(completed["result"])
 
+    def test_image_job_cancel_after_worker_exit_is_cancelled(self):
+        started = threading.Event()
+
+        def worker_exit(_model, _params, output, **options):
+            output.write_bytes(b"partial")
+            options["process_callback"](Mock(pid=4321))
+            started.set()
+            self.assertTrue(options["cancel_event"].wait(timeout=2))
+            raise RuntimeError("Worker exited after termination")
+
+        with patch.object(service, "run_provider", side_effect=worker_exit), patch.object(
+            service, "terminate_process_tree",
+        ):
+            created = self.client.post(
+                "/jobs", json={"operation": "generate", "payload": {"prompt": "A red square"}},
+            )
+            self.assertTrue(started.wait(timeout=2))
+            response = self.client.post(f"/jobs/{created.json()['id']}/cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "cancelled")
+        self.assertIsNone(response.json()["error"])
+        self.assertIsNone(response.json()["result"])
+
     def test_image_followup_shorthand_routes_to_edit(self):
         for prompt in (
             "bitte ganzkörper",

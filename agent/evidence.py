@@ -108,6 +108,9 @@ def coding_read_only_fast_final_requested(goal):
         .replace("ß", "ss")
     )
 
+    if "file_analyze" in normalized:
+        return False
+
     markers = (
         "aendere noch nichts",
         "noch nichts aendern",

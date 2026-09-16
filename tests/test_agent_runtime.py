@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from agent import code_workspaces, run_state
+from agent import code_workspaces, evidence, run_state
 from agent.model_provider import ModelRequest, ModelResponse, ProviderError
 from agent.permissions import Decision, PermissionDecision, PermissionEngine, ToolPermissionError
 from agent.runtime import AgentRuntime, RuntimeHooks, RuntimePolicy, current_runtime
@@ -27,6 +27,14 @@ class FakeProvider:
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    def test_explicit_file_analysis_job_does_not_take_read_only_code_shortcut(self):
+        self.assertFalse(evidence.coding_read_only_fast_final_requested(
+            "Use file_analyze on hello.py. Do not modify files."
+        ))
+        self.assertTrue(evidence.coding_read_only_fast_final_requested(
+            "Review hello.py. Do not modify files."
+        ))
+
     def setUp(self):
         self.context = run_state.RunContext("runtime-test-run", "chat-one", None, None, ())
         self.registry = ToolRegistry(permission_engine=PermissionEngine())
