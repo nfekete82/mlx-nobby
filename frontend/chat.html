@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260914-image-ui-final">
+<link rel="stylesheet" href="/assets/chat.css?v=20260917-notes-confirm-modal-v1">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -1085,116 +1085,197 @@
 <script src="/assets/chat/generation.js?v=20260914-image-ui-final"></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
 <script src="/assets/chat/models.js?v=20260906-runtime-console&amp;settings=20260909-cleanup"></script>
+
+<!-- MLX-NOBBY-NOTES-BROWSER-V2 -->
+
+<div
+    id="notesBackdrop"
+    class="notes-backdrop"
+    hidden
+></div>
+
 <div
     id="notesPanel"
-    style="
-        display:none;
-        position:fixed;
-        right:24px;
-        bottom:95px;
-        width:420px;
-        max-height:70vh;
-        overflow:auto;
-        background:#0f172a;
-        border:1px solid #334155;
-        border-radius:16px;
-        box-shadow:0 20px 50px rgba(0,0,0,.45);
-        padding:18px;
-        z-index:9999;
-    "
+    class="notes-panel"
+    style="display:none;"
+    role="dialog"
+    aria-modal="true"
+    aria-hidden="true"
+    aria-labelledby="notesModalTitle"
 >
-    <div style="
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        margin-bottom:14px;
-    ">
-        <strong style="font-size:16px;" data-i18n="ui.notes">Notizen</strong>
+    <header class="notes-modal-header">
+
+        <div class="notes-modal-title">
+            <strong
+                id="notesModalTitle"
+                data-i18n="ui.notes"
+            >Notizen</strong>
+
+            <span>
+                Ordner & Notizen
+            </span>
+        </div>
 
         <button
             id="notesClose"
+            class="notes-modal-close"
             type="button"
-            style="
-                background:none;
-                border:0;
-                color:#94a3b8;
-                font-size:22px;
-                cursor:pointer;
-            "
+            aria-label="Schließen"
+            title="Schließen"
         >
             ×
         </button>
+
+    </header>
+
+    <div class="notes-browser">
+
+        <aside class="notes-sidebar">
+
+            <div class="notes-sidebar-search">
+
+                <span
+                    class="notes-search-icon"
+                    aria-hidden="true"
+                >⌕</span>
+
+                <input
+                    id="notesSearch"
+                    type="search"
+                    placeholder="Notizen durchsuchen…"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="Notizen durchsuchen"
+                >
+
+                <button
+                    id="notesSearchClear"
+                    class="notes-search-clear"
+                    type="button"
+                    aria-label="Suche löschen"
+                    title="Suche löschen"
+                    hidden
+                >
+                    ×
+                </button>
+
+            </div>
+
+            <div
+                id="notesList"
+                class="notes-tree"
+            ></div>
+
+        </aside>
+
+        <div
+            id="notesSidebarResizer"
+            class="notes-sidebar-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Breite der Ordnerleiste ändern"
+            title="Ziehen zum Ändern · Doppelklick zum Zurücksetzen"
+        ></div>
+
+        <section class="notes-workspace">
+
+            <div
+                id="notePreview"
+                class="notes-preview-pane"
+            >
+                <div class="note-preview-empty">
+                    <div class="note-preview-empty-icon">📝</div>
+
+                    <strong>
+                        Notiz auswählen
+                    </strong>
+
+                    <span>
+                        Wähle links eine Notiz aus oder erstelle eine neue.
+                    </span>
+                </div>
+            </div>
+
+            <div
+                id="noteEditor"
+                class="notes-editor-pane"
+                hidden
+            >
+                <div class="note-editor-heading">
+
+                    <div>
+                        <span>Notiz</span>
+                        <strong>
+                            Erstellen oder bearbeiten
+                        </strong>
+                    </div>
+
+                </div>
+
+                <label class="note-editor-field">
+                    <span>Ordner</span>
+
+                    <select
+                        id="noteFolder"
+                        class="note-folder-select"
+                    ></select>
+                </label>
+
+                <label class="note-editor-field">
+                    <span>Name</span>
+
+                    <input
+                        id="noteName"
+                        type="text"
+                        placeholder="Name der Notiz"
+                        data-i18n-placeholder="ui.note_name"
+                        autocomplete="off"
+                    >
+                </label>
+
+                <label class="note-editor-field note-editor-content-field">
+                    <span>Notiztext</span>
+
+                    <textarea
+                        id="noteContent"
+                        placeholder="Notiztext..."
+                        data-i18n-placeholder="ui.note_content"
+                        rows="14"
+                    ></textarea>
+                </label>
+
+                <div class="note-editor-actions">
+
+                    <button
+                        id="noteEditCancel"
+                        class="notes-secondary-button"
+                        type="button"
+                    >
+                        Abbrechen
+                    </button>
+
+                    <button
+                        id="noteSave"
+                        class="notes-primary-button"
+                        type="button"
+                    >
+                        <span data-i18n="notes.save_note">
+                            Notiz speichern
+                        </span>
+                    </button>
+
+                </div>
+
+            </div>
+
+        </section>
+
     </div>
-
-    <div
-        id="notesList"
-        style="
-            display:flex;
-            flex-direction:column;
-            gap:10px;
-        "
-    ></div>
-
-    <hr style="
-        border:0;
-        border-top:1px solid #334155;
-        margin:16px 0;
-    ">
-
-    <input
-        id="noteName"
-        type="text"
-        placeholder="Name der Notiz" data-i18n-placeholder="ui.note_name"
-        style="
-            width:100%;
-            box-sizing:border-box;
-            background:#020617;
-            color:#e2e8f0;
-            border:1px solid #334155;
-            border-radius:10px;
-            padding:10px 12px;
-            margin-bottom:10px;
-        "
-    >
-
-    <textarea
-        id="noteContent"
-        placeholder="Notiztext..." data-i18n-placeholder="ui.note_content"
-        rows="7"
-        style="
-            width:100%;
-            box-sizing:border-box;
-            resize:vertical;
-            background:#020617;
-            color:#e2e8f0;
-            border:1px solid #334155;
-            border-radius:10px;
-            padding:10px 12px;
-            margin-bottom:10px;
-        "
-    ></textarea>
-
-    <button
-        id="noteSave"
-        type="button"
-        style="
-            width:100%;
-            background:#2563eb;
-            color:white;
-            border:0;
-            border-radius:10px;
-            padding:10px 12px;
-            cursor:pointer;
-            font-weight:600;
-        "
-    >
-        <span data-i18n="notes.save_note">Notiz speichern</span>
-    </button>
 </div>
 
 <script src="/assets/chat/knowledge.js?v=20260910-source-management"></script>
 <script src="/assets/chat/profile.js?v=20260910-profile-v1"></script>
-<script src="/assets/chat/notes.js?v=1788548196"></script>
+<script src="/assets/chat/notes.js?v=20260917-notes-confirm-modal-v1"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20260911-code-evidence"></script>

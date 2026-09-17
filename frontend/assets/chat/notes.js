@@ -21,6 +21,8 @@ function notesT(key, fallback = '', variables = {}) {
 
     let folderSelect = null;
     let editingNoteId = null;
+    let selectedNoteId = null;
+    let searchTerm = '';
     let dragPayload = null;
     let contextMenu = null;
 
@@ -85,6 +87,1119 @@ function notesT(key, fallback = '', variables = {}) {
             note => note.id === id
         );
     }
+
+    // MLX-NOBBY-NOTES-BROWSER-V2
+
+    function folderBreadcrumb(folderId) {
+
+        if (!folderId) {
+            return notesT(
+                'notes.no_folder',
+                'Ohne Ordner'
+            );
+        }
+
+        const parts = [];
+        const seen = new Set();
+
+        let folder =
+            getFolder(folderId);
+
+        while (
+            folder &&
+            !seen.has(folder.id)
+        ) {
+            seen.add(folder.id);
+            parts.push(folder.name);
+
+            folder =
+                folder.parent_id
+                    ? getFolder(folder.parent_id)
+                    : null;
+        }
+
+        return parts.length
+            ? parts.reverse().join(' / ')
+            : notesT(
+                'notes.no_folder',
+                'Ohne Ordner'
+            );
+    }
+
+
+
+    // MLX-NOBBY-NOTES-POLISH-V1
+
+    function normalizeNoteSearch(value) {
+        return String(value || '')
+            .normalize('NFKD')
+            .toLocaleLowerCase('de');
+    }
+
+
+    function noteMatchesSearch(note) {
+
+        if (!searchTerm) {
+            return true;
+        }
+
+        const haystack =
+            normalizeNoteSearch(
+                [
+                    note.name || '',
+                    note.content || ''
+                ].join('\n')
+            );
+
+        return haystack.includes(
+            searchTerm
+        );
+    }
+
+
+    function folderMatchesSearch(
+        folder,
+        seen = new Set()
+    ) {
+
+        if (!searchTerm) {
+            return true;
+        }
+
+        if (
+            !folder ||
+            seen.has(folder.id)
+        ) {
+            return false;
+        }
+
+        seen.add(folder.id);
+
+
+        if (
+            normalizeNoteSearch(
+                folder.name
+            ).includes(searchTerm)
+        ) {
+            return true;
+        }
+
+
+        if (
+            folderNotes(folder.id)
+                .some(noteMatchesSearch)
+        ) {
+            return true;
+        }
+
+
+        return childFolders(folder.id)
+            .some(child =>
+                folderMatchesSearch(
+                    child,
+                    new Set(seen)
+                )
+            );
+    }
+
+
+    function rememberSelectedNoteId(id) {
+
+        try {
+            if (id) {
+                localStorage.setItem(
+                    'mlxNotesSelectedId',
+                    String(id)
+                );
+            } else {
+                localStorage.removeItem(
+                    'mlxNotesSelectedId'
+                );
+            }
+        } catch (error) {
+            console.debug(
+                'Could not persist selected note.',
+                error
+            );
+        }
+    }
+
+
+    function restoreSelectedNoteId() {
+
+        if (selectedNoteId) {
+            return;
+        }
+
+        try {
+            const saved =
+                localStorage.getItem(
+                    'mlxNotesSelectedId'
+                );
+
+            if (
+                saved &&
+                getNote(saved)
+            ) {
+                selectedNoteId =
+                    saved;
+            }
+        } catch (error) {
+            console.debug(
+                'Could not restore selected note.',
+                error
+            );
+        }
+    }
+
+
+    function initNotesSearch() {
+
+        const input =
+            document.getElementById(
+                'notesSearch'
+            );
+
+        const clearButton =
+            document.getElementById(
+                'notesSearchClear'
+            );
+
+        if (
+            !input ||
+            !clearButton
+        ) {
+            return;
+        }
+
+
+        const updateClearButton =
+            () => {
+
+                clearButton.hidden =
+                    !input.value;
+            };
+
+
+        input.addEventListener(
+            'input',
+            () => {
+
+                searchTerm =
+                    normalizeNoteSearch(
+                        input.value.trim()
+                    );
+
+                updateClearButton();
+
+                renderNotes();
+            }
+        );
+
+
+        clearButton.addEventListener(
+            'click',
+            () => {
+
+                input.value = '';
+                searchTerm = '';
+
+                updateClearButton();
+
+                renderNotes();
+
+                input.focus();
+            }
+        );
+
+
+        input.addEventListener(
+            'keydown',
+            event => {
+
+                if (
+                    event.key ===
+                    'Escape' &&
+                    input.value
+                ) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    input.value = '';
+                    searchTerm = '';
+
+                    updateClearButton();
+
+                    renderNotes();
+                }
+            }
+        );
+    }
+
+
+    function initSidebarResize() {
+
+        const browser =
+            panel.querySelector(
+                '.notes-browser'
+            );
+
+        const sidebar =
+            panel.querySelector(
+                '.notes-sidebar'
+            );
+
+        const resizer =
+            document.getElementById(
+                'notesSidebarResizer'
+            );
+
+        if (
+            !browser ||
+            !sidebar ||
+            !resizer
+        ) {
+            return;
+        }
+
+
+        const MIN_WIDTH = 240;
+        const MAX_WIDTH = 480;
+        const DEFAULT_WIDTH = 300;
+
+
+        const clamp =
+            value =>
+                Math.min(
+                    MAX_WIDTH,
+                    Math.max(
+                        MIN_WIDTH,
+                        value
+                    )
+                );
+
+
+        const applyWidth =
+            width => {
+
+                browser.style.setProperty(
+                    '--notes-sidebar-width',
+                    clamp(width) + 'px'
+                );
+            };
+
+
+        try {
+
+            const saved =
+                Number(
+                    localStorage.getItem(
+                        'mlxNotesSidebarWidth'
+                    )
+                );
+
+            if (Number.isFinite(saved)) {
+                applyWidth(saved);
+            }
+
+        } catch (error) {
+            console.debug(
+                'Could not restore sidebar width.',
+                error
+            );
+        }
+
+
+        let active = false;
+        let startX = 0;
+        let startWidth = 0;
+
+
+        const stopResize =
+            () => {
+
+                if (!active) {
+                    return;
+                }
+
+                active = false;
+
+                document.body.classList.remove(
+                    'notes-resizing'
+                );
+
+                const width =
+                    sidebar.getBoundingClientRect()
+                        .width;
+
+                try {
+                    localStorage.setItem(
+                        'mlxNotesSidebarWidth',
+                        String(
+                            Math.round(width)
+                        )
+                    );
+                } catch (error) {
+                    console.debug(
+                        'Could not persist sidebar width.',
+                        error
+                    );
+                }
+            };
+
+
+        resizer.addEventListener(
+            'pointerdown',
+            event => {
+
+                if (
+                    window.matchMedia(
+                        '(max-width: 760px)'
+                    ).matches
+                ) {
+                    return;
+                }
+
+                active = true;
+
+                startX =
+                    event.clientX;
+
+                startWidth =
+                    sidebar
+                        .getBoundingClientRect()
+                        .width;
+
+                document.body.classList.add(
+                    'notes-resizing'
+                );
+
+                event.preventDefault();
+            }
+        );
+
+
+        window.addEventListener(
+            'pointermove',
+            event => {
+
+                if (!active) {
+                    return;
+                }
+
+                const width =
+                    startWidth +
+                    (
+                        event.clientX -
+                        startX
+                    );
+
+                applyWidth(width);
+            }
+        );
+
+
+        window.addEventListener(
+            'pointerup',
+            stopResize
+        );
+
+
+        window.addEventListener(
+            'pointercancel',
+            stopResize
+        );
+
+
+        resizer.addEventListener(
+            'dblclick',
+            () => {
+
+                applyWidth(
+                    DEFAULT_WIDTH
+                );
+
+                try {
+                    localStorage.removeItem(
+                        'mlxNotesSidebarWidth'
+                    );
+                } catch (error) {
+                    console.debug(
+                        'Could not reset sidebar width.',
+                        error
+                    );
+                }
+            }
+        );
+    }
+
+
+
+    // MLX-NOBBY-NOTES-CONFIRM-MODAL-V1
+
+    function notesConfirm({
+        title = 'Löschen?',
+        message = '',
+        confirmLabel = 'Löschen',
+        cancelLabel = 'Abbrechen'
+    } = {}) {
+
+        return new Promise(resolve => {
+
+            const existing =
+                document.querySelector(
+                    '.notes-confirm-overlay'
+                );
+
+            if (existing) {
+                existing.remove();
+            }
+
+
+            const previousFocus =
+                document.activeElement;
+
+
+            const overlay =
+                document.createElement('div');
+
+            overlay.className =
+                'notes-confirm-overlay';
+
+
+            const dialog =
+                document.createElement('div');
+
+            dialog.className =
+                'notes-confirm-dialog';
+
+            dialog.setAttribute(
+                'role',
+                'alertdialog'
+            );
+
+            dialog.setAttribute(
+                'aria-modal',
+                'true'
+            );
+
+
+            const icon =
+                document.createElement('div');
+
+            icon.className =
+                'notes-confirm-icon';
+
+            icon.innerHTML = `
+                <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M9 6V4h6v2"></path>
+                </svg>
+            `;
+
+
+            const copy =
+                document.createElement('div');
+
+            copy.className =
+                'notes-confirm-copy';
+
+
+            const heading =
+                document.createElement('h3');
+
+            heading.className =
+                'notes-confirm-title';
+
+            heading.textContent =
+                title;
+
+
+            const text =
+                document.createElement('p');
+
+            text.className =
+                'notes-confirm-message';
+
+            text.textContent =
+                message;
+
+
+            copy.appendChild(
+                heading
+            );
+
+            copy.appendChild(
+                text
+            );
+
+
+            const head =
+                document.createElement('div');
+
+            head.className =
+                'notes-confirm-head';
+
+            head.appendChild(
+                icon
+            );
+
+            head.appendChild(
+                copy
+            );
+
+
+            const actions =
+                document.createElement('div');
+
+            actions.className =
+                'notes-confirm-actions';
+
+
+            const cancelButton =
+                document.createElement('button');
+
+            cancelButton.type =
+                'button';
+
+            cancelButton.className =
+                'notes-confirm-cancel';
+
+            cancelButton.textContent =
+                cancelLabel;
+
+
+            const confirmButton =
+                document.createElement('button');
+
+            confirmButton.type =
+                'button';
+
+            confirmButton.className =
+                'notes-confirm-delete';
+
+            confirmButton.textContent =
+                confirmLabel;
+
+
+            actions.appendChild(
+                cancelButton
+            );
+
+            actions.appendChild(
+                confirmButton
+            );
+
+
+            dialog.appendChild(
+                head
+            );
+
+            dialog.appendChild(
+                actions
+            );
+
+            overlay.appendChild(
+                dialog
+            );
+
+            document.body.appendChild(
+                overlay
+            );
+
+
+            let finished = false;
+
+
+            const cleanup =
+                result => {
+
+                    if (finished) {
+                        return;
+                    }
+
+                    finished = true;
+
+                    document.removeEventListener(
+                        'keydown',
+                        onKeyDown,
+                        true
+                    );
+
+                    overlay.classList.add(
+                        'is-closing'
+                    );
+
+                    window.setTimeout(
+                        () => {
+                            overlay.remove();
+
+                            if (
+                                previousFocus &&
+                                typeof previousFocus.focus ===
+                                'function'
+                            ) {
+                                previousFocus.focus();
+                            }
+
+                            resolve(result);
+                        },
+                        120
+                    );
+                };
+
+
+            const onKeyDown =
+                event => {
+
+                    if (
+                        event.key ===
+                        'Escape'
+                    ) {
+                        event.preventDefault();
+                        event.stopPropagation();
+
+                        cleanup(false);
+                    }
+
+                    if (
+                        event.key ===
+                        'Enter' &&
+                        document.activeElement ===
+                        confirmButton
+                    ) {
+                        event.preventDefault();
+
+                        cleanup(true);
+                    }
+                };
+
+
+            cancelButton.addEventListener(
+                'click',
+                () => cleanup(false)
+            );
+
+
+            confirmButton.addEventListener(
+                'click',
+                () => cleanup(true)
+            );
+
+
+            overlay.addEventListener(
+                'click',
+                event => {
+
+                    if (
+                        event.target ===
+                        overlay
+                    ) {
+                        cleanup(false);
+                    }
+                }
+            );
+
+
+            dialog.addEventListener(
+                'click',
+                event =>
+                    event.stopPropagation()
+            );
+
+
+            document.addEventListener(
+                'keydown',
+                onKeyDown,
+                true
+            );
+
+
+            requestAnimationFrame(
+                () => {
+
+                    overlay.classList.add(
+                        'is-visible'
+                    );
+
+                    cancelButton.focus();
+                }
+            );
+        });
+    }
+
+
+    function showPreviewMode() {
+
+        const preview =
+            document.getElementById(
+                'notePreview'
+            );
+
+        const editor =
+            document.getElementById(
+                'noteEditor'
+            );
+
+        if (preview) {
+            preview.hidden = false;
+        }
+
+        if (editor) {
+            editor.hidden = true;
+        }
+    }
+
+
+    function showEditorMode() {
+
+        const preview =
+            document.getElementById(
+                'notePreview'
+            );
+
+        const editor =
+            document.getElementById(
+                'noteEditor'
+            );
+
+        if (preview) {
+            preview.hidden = true;
+        }
+
+        if (editor) {
+            editor.hidden = false;
+        }
+    }
+
+
+    function selectNote(note) {
+
+        if (!note) {
+            return;
+        }
+
+        selectedNoteId =
+            note.id;
+
+        rememberSelectedNoteId(
+            note.id
+        );
+
+        showPreviewMode();
+        renderNotes();
+    }
+
+
+    function renderPreview() {
+
+        const preview =
+            document.getElementById(
+                'notePreview'
+            );
+
+        if (!preview) {
+            return;
+        }
+
+        const note =
+            getNote(selectedNoteId);
+
+        preview.innerHTML = '';
+
+        if (!note) {
+
+            const empty =
+                document.createElement('div');
+
+            empty.className =
+                'note-preview-empty';
+
+            const icon =
+                document.createElement('div');
+
+            icon.className =
+                'note-preview-empty-icon';
+
+            icon.textContent = '📝';
+
+            const title =
+                document.createElement('strong');
+
+            title.textContent =
+                'Notiz auswählen';
+
+            const text =
+                document.createElement('span');
+
+            text.textContent =
+                'Wähle links eine Notiz aus oder erstelle eine neue.';
+
+            empty.appendChild(icon);
+            empty.appendChild(title);
+            empty.appendChild(text);
+
+            preview.appendChild(empty);
+
+            return;
+        }
+
+
+        const wrapper =
+            document.createElement('div');
+
+        wrapper.className =
+            'note-preview-document';
+
+
+        const header =
+            document.createElement('div');
+
+        header.className =
+            'note-preview-header';
+
+
+        const headerCopy =
+            document.createElement('div');
+
+        headerCopy.className =
+            'note-preview-header-copy';
+
+
+        const breadcrumb =
+            document.createElement('div');
+
+        breadcrumb.className =
+            'note-preview-path';
+
+        breadcrumb.textContent =
+            folderBreadcrumb(
+                note.folder_id
+            );
+
+
+        const title =
+            document.createElement('h2');
+
+        title.className =
+            'note-preview-title';
+
+        title.textContent =
+            note.name || 'Notiz';
+
+
+        headerCopy.appendChild(
+            breadcrumb
+        );
+
+        headerCopy.appendChild(
+            title
+        );
+
+
+        const menu =
+            document.createElement('button');
+
+        menu.type = 'button';
+        menu.className =
+            'note-preview-menu';
+
+        menu.textContent = '⋯';
+
+        menu.title = 'Weitere Aktionen';
+
+        menu.addEventListener(
+            'click',
+            event =>
+                showContextMenu(
+                    event,
+                    [
+                        {
+                            label:
+                                notesT(
+                                    'notes.insert_chat',
+                                    'In Chat einfügen'
+                                ),
+                            action:
+                                () =>
+                                    insertIntoChat(
+                                        note
+                                    )
+                        },
+                        {
+                            label:
+                                notesT(
+                                    'notes.edit',
+                                    'Bearbeiten'
+                                ),
+                            action:
+                                () =>
+                                    editNote(
+                                        note
+                                    )
+                        },
+                        {
+                            separator: true
+                        },
+                        {
+                            label:
+                                notesT(
+                                    'notes.delete',
+                                    'Löschen'
+                                ),
+                            danger: true,
+                            action:
+                                () =>
+                                    deleteNote(
+                                        note
+                                    )
+                        }
+                    ]
+                )
+        );
+
+
+        header.appendChild(
+            headerCopy
+        );
+
+        header.appendChild(
+            menu
+        );
+
+
+        const content =
+            document.createElement('div');
+
+        content.className =
+            'note-preview-content';
+
+        content.textContent =
+            note.content || '';
+
+
+        const actions =
+            document.createElement('div');
+
+        actions.className =
+            'note-preview-actions';
+
+
+        const insertButton =
+            document.createElement('button');
+
+        insertButton.type =
+            'button';
+
+        insertButton.className =
+            'notes-primary-button';
+
+        insertButton.textContent =
+            notesT(
+                'notes.insert',
+                'Einfügen'
+            );
+
+        insertButton.addEventListener(
+            'click',
+            () =>
+                insertIntoChat(
+                    note
+                )
+        );
+
+
+        const editButton =
+            document.createElement('button');
+
+        editButton.type =
+            'button';
+
+        editButton.className =
+            'notes-secondary-button';
+
+        editButton.textContent =
+            notesT(
+                'notes.edit',
+                'Bearbeiten'
+            );
+
+        editButton.addEventListener(
+            'click',
+            () =>
+                editNote(
+                    note
+                )
+        );
+
+
+        const deleteButton =
+            document.createElement('button');
+
+        deleteButton.type =
+            'button';
+
+        deleteButton.className =
+            'notes-danger-button';
+
+        deleteButton.textContent =
+            notesT(
+                'notes.delete',
+                'Löschen'
+            );
+
+        deleteButton.addEventListener(
+            'click',
+            () =>
+                deleteNote(
+                    note
+                )
+        );
+
+
+        actions.appendChild(
+            insertButton
+        );
+
+        actions.appendChild(
+            editButton
+        );
+
+        actions.appendChild(
+            deleteButton
+        );
+
+
+        wrapper.appendChild(
+            header
+        );
+
+        wrapper.appendChild(
+            content
+        );
+
+        wrapper.appendChild(
+            actions
+        );
+
+        preview.appendChild(
+            wrapper
+        );
+    }
+
 
 
     function childFolders(parentId) {
@@ -161,7 +1276,9 @@ function notesT(key, fallback = '', variables = {}) {
     }
 
 
-    function resetEditor() {
+    function resetEditor(
+        showPreview = true
+    ) {
         editingNoteId = null;
 
         nameInput.value = '';
@@ -172,24 +1289,35 @@ function notesT(key, fallback = '', variables = {}) {
         }
 
         saveButton.textContent =
-            notesT('notes.save_note', 'Save note');
-
-        const cancel =
-            document.getElementById(
-                'noteEditCancel'
+            notesT(
+                'notes.save_note',
+                'Notiz speichern'
             );
 
-        if (cancel) {
-            cancel.style.display = 'none';
+        if (showPreview) {
+            showPreviewMode();
+            renderPreview();
         }
     }
 
 
     function editNote(note) {
-        editingNoteId = note.id;
 
-        nameInput.value = note.name || '';
-        contentInput.value = note.content || '';
+        if (!note) {
+            return;
+        }
+
+        selectedNoteId =
+            note.id;
+
+        editingNoteId =
+            note.id;
+
+        nameInput.value =
+            note.name || '';
+
+        contentInput.value =
+            note.content || '';
 
         if (folderSelect) {
             folderSelect.value =
@@ -197,27 +1325,20 @@ function notesT(key, fallback = '', variables = {}) {
         }
 
         saveButton.textContent =
-            notesT('notes.save_changes', 'Save changes');
-
-        const cancel =
-            document.getElementById(
-                'noteEditCancel'
+            notesT(
+                'notes.save_changes',
+                'Änderungen speichern'
             );
 
-        if (cancel) {
-            cancel.style.display = 'block';
-        }
+        showEditorMode();
 
         nameInput.focus();
-
-        panel.scrollTo({
-            top: panel.scrollHeight,
-            behavior: 'smooth'
-        });
+        nameInput.select();
     }
 
 
     async function saveNote() {
+
         const name =
             nameInput.value.trim();
 
@@ -225,77 +1346,182 @@ function notesT(key, fallback = '', variables = {}) {
             contentInput.value.trim();
 
         if (!name) {
-            alert(notesT('notes.enter_name', 'Enter a name.'));
+            alert(
+                notesT(
+                    'notes.enter_name',
+                    'Bitte einen Namen eingeben.'
+                )
+            );
+
             nameInput.focus();
             return;
         }
 
         if (!content) {
-            alert(notesT('notes.enter_content', 'Enter note text.'));
+            alert(
+                notesT(
+                    'notes.enter_content',
+                    'Bitte einen Notiztext eingeben.'
+                )
+            );
+
             contentInput.focus();
             return;
         }
+
+
+        const folderId =
+            folderSelect &&
+            folderSelect.value
+                ? folderSelect.value
+                : null;
+
 
         const payload = {
             name,
             content,
             folder_id:
-                folderSelect &&
-                folderSelect.value
-                    ? folderSelect.value
-                    : null
+                folderId
         };
 
+
+        const previousEditingId =
+            editingNoteId;
+
+        let result = null;
+
+
         if (editingNoteId) {
-            await api(
-                '/api/mlx/notes/' +
-                encodeURIComponent(
-                    editingNoteId
-                ),
-                jsonOptions(
-                    'PUT',
-                    payload
-                )
-            );
+
+            result =
+                await api(
+                    '/api/mlx/notes/' +
+                    encodeURIComponent(
+                        editingNoteId
+                    ),
+                    jsonOptions(
+                        'PUT',
+                        payload
+                    )
+                );
+
         } else {
-            await api(
-                '/api/mlx/notes',
-                jsonOptions(
-                    'POST',
-                    payload
-                )
+
+            result =
+                await api(
+                    '/api/mlx/notes',
+                    jsonOptions(
+                        'POST',
+                        payload
+                    )
+                );
+        }
+
+
+        const returnedId =
+            result?.note?.id ||
+            result?.id ||
+            previousEditingId ||
+            null;
+
+
+        resetEditor(false);
+
+        if (returnedId) {
+            selectedNoteId =
+                returnedId;
+
+            rememberSelectedNoteId(
+                returnedId
             );
         }
 
-        resetEditor();
+
+        showPreviewMode();
+
         await loadNotes();
+
+
+        if (!returnedId) {
+
+            const candidates =
+                notes.filter(note =>
+                    note.name === name &&
+                    note.content === content &&
+                    (note.folder_id || null) ===
+                    (folderId || null)
+                );
+
+            if (candidates.length) {
+                selectedNoteId =
+                    candidates[
+                        candidates.length - 1
+                    ].id;
+
+                renderNotes();
+            }
+        }
     }
 
 
-    async function deleteNote(note) {
-        if (
-            !confirm(
-                notesT(
-                'notes.confirm_delete_note',
-                'Really delete note "{name}"?',
-                { name: note.name }
-            )
-            )
-        ) {
+async function deleteNote(note) {
+
+        const confirmed =
+            await notesConfirm({
+                title:
+                    'Notiz löschen?',
+                message:
+                    `„${note.name || 'Notiz'}“ wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`,
+                confirmLabel:
+                    'Notiz löschen',
+                cancelLabel:
+                    'Abbrechen'
+            });
+
+
+        if (!confirmed) {
             return;
         }
 
+
         await api(
             '/api/mlx/notes/' +
-            encodeURIComponent(note.id),
+            encodeURIComponent(
+                note.id
+            ),
             {
                 method: 'DELETE'
             }
         );
 
-        if (editingNoteId === note.id) {
-            resetEditor();
+
+        if (
+            selectedNoteId ===
+            note.id
+        ) {
+            selectedNoteId =
+                null;
+
+            if (
+                typeof rememberSelectedNoteId ===
+                'function'
+            ) {
+                rememberSelectedNoteId(
+                    null
+                );
+            }
         }
+
+
+        if (
+            editingNoteId ===
+            note.id
+        ) {
+            resetEditor(false);
+        }
+
+
+        showPreviewMode();
 
         await loadNotes();
     }
@@ -401,26 +1627,36 @@ function notesT(key, fallback = '', variables = {}) {
     }
 
 
-    async function deleteFolder(folder) {
-        if (
-            !confirm(
-                notesT(
-                'notes.confirm_delete_folder',
-                'Delete folder "{name}"?\n\nThe notes will not be deleted.',
-                { name: folder.name }
-            )
-            )
-        ) {
+async function deleteFolder(folder) {
+
+        const confirmed =
+            await notesConfirm({
+                title:
+                    'Ordner löschen?',
+                message:
+                    `Der Ordner „${folder.name || 'Ordner'}“ wird gelöscht. Die enthaltenen Notizen bleiben erhalten und werden nicht gelöscht.`,
+                confirmLabel:
+                    'Ordner löschen',
+                cancelLabel:
+                    'Abbrechen'
+            });
+
+
+        if (!confirmed) {
             return;
         }
 
+
         await api(
             '/api/mlx/note-folders/' +
-            encodeURIComponent(folder.id),
+            encodeURIComponent(
+                folder.id
+            ),
             {
                 method: 'DELETE'
             }
         );
+
 
         await loadNotes();
     }
@@ -506,19 +1742,17 @@ function notesT(key, fallback = '', variables = {}) {
 
 
     function newNoteInFolder(folderId) {
-        resetEditor();
+
+        resetEditor(false);
 
         if (folderSelect) {
             folderSelect.value =
                 folderId || '';
         }
 
-        nameInput.focus();
+        showEditorMode();
 
-        panel.scrollTo({
-            top: panel.scrollHeight,
-            behavior: 'smooth'
-        });
+        nameInput.focus();
     }
 
 
@@ -748,13 +1982,27 @@ function notesT(key, fallback = '', variables = {}) {
 
 
     function createNoteCard(note) {
+
         const card =
             document.createElement('div');
 
         card.className =
-            'note-card';
+            'note-card note-tree-item';
+
+        if (
+            selectedNoteId ===
+            note.id
+        ) {
+            card.classList.add(
+                'is-selected'
+            );
+        }
 
         card.draggable = true;
+
+        card.title =
+            note.name || '';
+
 
         card.addEventListener(
             'dragstart',
@@ -772,6 +2020,42 @@ function notesT(key, fallback = '', variables = {}) {
         );
 
 
+        card.addEventListener(
+            'click',
+            event => {
+
+                if (
+                    event.target.closest(
+                        'button'
+                    )
+                ) {
+                    return;
+                }
+
+                selectNote(note);
+            }
+        );
+
+
+        card.addEventListener(
+            'dblclick',
+            event => {
+
+                if (
+                    event.target.closest(
+                        'button'
+                    )
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                editNote(note);
+            }
+        );
+
+
         const top =
             document.createElement('div');
 
@@ -785,43 +2069,87 @@ function notesT(key, fallback = '', variables = {}) {
         title.className =
             'note-card-title';
 
-        title.innerHTML =
-            '<span class="note-drag-handle">⋮⋮</span>' +
-            '<strong>' +
-            escapeHtml(note.name) +
-            '</strong>';
+
+        const handle =
+            document.createElement('span');
+
+        handle.className =
+            'note-drag-handle';
+
+        handle.textContent =
+            '⋮⋮';
+
+
+        const titleText =
+            document.createElement('strong');
+
+        titleText.textContent =
+            note.name || 'Notiz';
+
+
+        title.appendChild(
+            handle
+        );
+
+        title.appendChild(
+            titleText
+        );
 
 
         const menu =
             document.createElement('button');
 
         menu.type = 'button';
+
         menu.className =
             'note-item-menu';
 
         menu.textContent = '⋯';
 
+
         const menuItems = [
             {
-                label: notesT('notes.insert_chat', 'Insert into chat'),
-                action: () =>
-                    insertIntoChat(note)
+                label:
+                    notesT(
+                        'notes.insert_chat',
+                        'In Chat einfügen'
+                    ),
+                action:
+                    () =>
+                        insertIntoChat(
+                            note
+                        )
             },
             {
-                label: notesT('notes.edit', 'Edit'),
-                action: () =>
-                    editNote(note)
+                label:
+                    notesT(
+                        'notes.edit',
+                        'Bearbeiten'
+                    ),
+                action:
+                    () =>
+                        editNote(
+                            note
+                        )
             },
             {
                 separator: true
             },
             {
-                label: notesT('notes.delete', 'Delete'),
+                label:
+                    notesT(
+                        'notes.delete',
+                        'Löschen'
+                    ),
                 danger: true,
-                action: () =>
-                    deleteNote(note)
+                action:
+                    () =>
+                        deleteNote(
+                            note
+                        )
             }
         ];
+
 
         menu.addEventListener(
             'click',
@@ -831,6 +2159,7 @@ function notesT(key, fallback = '', variables = {}) {
                     menuItems
                 )
         );
+
 
         card.addEventListener(
             'contextmenu',
@@ -842,45 +2171,17 @@ function notesT(key, fallback = '', variables = {}) {
         );
 
 
-        top.appendChild(title);
-        top.appendChild(menu);
-
-
-        const preview =
-            document.createElement('div');
-
-        preview.className =
-            'note-card-preview';
-
-        preview.textContent =
-            note.content.length > 180
-                ? note.content.slice(
-                    0,
-                    180
-                ) + '…'
-                : note.content;
-
-
-        const insertButton =
-            document.createElement('button');
-
-        insertButton.type = 'button';
-
-        insertButton.className =
-            'note-action-primary';
-
-        insertButton.textContent =
-            notesT('notes.insert', 'Insert');
-
-        insertButton.addEventListener(
-            'click',
-            () => insertIntoChat(note)
+        top.appendChild(
+            title
         );
 
+        top.appendChild(
+            menu
+        );
 
-        card.appendChild(top);
-        card.appendChild(preview);
-        card.appendChild(insertButton);
+        card.appendChild(
+            top
+        );
 
         return card;
     }
@@ -953,7 +2254,8 @@ function notesT(key, fallback = '', variables = {}) {
             'note-folder-toggle';
 
         toggle.textContent =
-            folder.collapsed
+            folder.collapsed &&
+            !searchTerm
                 ? '▸'
                 : '▾';
 
@@ -973,7 +2275,8 @@ function notesT(key, fallback = '', variables = {}) {
             'note-folder-icon';
 
         icon.textContent =
-            folder.collapsed
+            folder.collapsed &&
+            !searchTerm
                 ? '📁'
                 : '📂';
 
@@ -1066,7 +2369,10 @@ function notesT(key, fallback = '', variables = {}) {
         wrapper.appendChild(header);
 
 
-        if (!folder.collapsed) {
+        if (
+            !folder.collapsed ||
+            searchTerm
+        ) {
 
             const body =
                 document.createElement('div');
@@ -1079,6 +2385,16 @@ function notesT(key, fallback = '', variables = {}) {
                 const child
                 of childFolders(folder.id)
             ) {
+
+                if (
+                    searchTerm &&
+                    !folderMatchesSearch(
+                        child
+                    )
+                ) {
+                    continue;
+                }
+
                 body.appendChild(
                     renderFolder(
                         child,
@@ -1092,6 +2408,16 @@ function notesT(key, fallback = '', variables = {}) {
                 const note
                 of folderNotes(folder.id)
             ) {
+
+                if (
+                    searchTerm &&
+                    !noteMatchesSearch(
+                        note
+                    )
+                ) {
+                    continue;
+                }
+
                 body.appendChild(
                     createNoteCard(note)
                 );
@@ -1123,23 +2449,43 @@ function notesT(key, fallback = '', variables = {}) {
 
 
     function createRootDropZone() {
+
         const root =
             document.createElement('div');
 
         root.className =
             'note-root-drop';
 
-        root.innerHTML =
-            '<span>⌂</span>' +
-            '<strong>' +
-            notesT('notes.no_folder', 'No folder') +
-            '</strong>' +
-            '<small>' +
+        const icon =
+            document.createElement('span');
+
+        icon.textContent = '⌂';
+
+
+        const name =
+            document.createElement('strong');
+
+        name.textContent =
+            notesT(
+                'notes.no_folder',
+                'Ohne Ordner'
+            );
+
+
+        const hint =
+            document.createElement('small');
+
+        hint.textContent =
             notesT(
                 'notes.drop_remove_folder',
-                'Drop here to remove from folder'
-            ) +
-            '</small>';
+                'Hierher ziehen'
+            );
+
+
+        root.appendChild(icon);
+        root.appendChild(name);
+        root.appendChild(hint);
+
 
         root.addEventListener(
             'dragover',
@@ -1150,6 +2496,7 @@ function notesT(key, fallback = '', variables = {}) {
                 )
         );
 
+
         root.addEventListener(
             'drop',
             event =>
@@ -1159,12 +2506,55 @@ function notesT(key, fallback = '', variables = {}) {
                 )
         );
 
+
         return root;
     }
 
 
     function renderNotes() {
+
         list.innerHTML = '';
+
+
+        restoreSelectedNoteId();
+
+
+        if (
+            selectedNoteId &&
+            !getNote(selectedNoteId)
+        ) {
+            selectedNoteId =
+                null;
+
+            rememberSelectedNoteId(
+                null
+            );
+        }
+
+
+        if (
+            !selectedNoteId &&
+            notes.length
+        ) {
+            const first =
+                [...notes]
+                    .sort(
+                        (a, b) =>
+                            String(a.name)
+                                .localeCompare(
+                                    String(b.name),
+                                    'de'
+                                )
+                    )[0];
+
+            selectedNoteId =
+                first?.id || null;
+
+            rememberSelectedNoteId(
+                selectedNoteId
+            );
+        }
+
 
         const toolbar =
             document.createElement('div');
@@ -1172,29 +2562,48 @@ function notesT(key, fallback = '', variables = {}) {
         toolbar.className =
             'notes-tree-toolbar';
 
+
         const rootNewNote =
             document.createElement('button');
 
-        rootNewNote.type = 'button';
+        rootNewNote.type =
+            'button';
+
         rootNewNote.textContent =
-            notesT('notes.add_note', '+ Note');
+            notesT(
+                'notes.add_note',
+                '+ Notiz'
+            );
 
         rootNewNote.addEventListener(
             'click',
-            () => newNoteInFolder(null)
+            () =>
+                newNoteInFolder(
+                    null
+                )
         );
+
 
         const rootNewFolder =
             document.createElement('button');
 
-        rootNewFolder.type = 'button';
+        rootNewFolder.type =
+            'button';
+
         rootNewFolder.textContent =
-            notesT('notes.add_folder', '+ Folder');
+            notesT(
+                'notes.add_folder',
+                '+ Ordner'
+            );
 
         rootNewFolder.addEventListener(
             'click',
-            () => createFolder(null)
+            () =>
+                createFolder(
+                    null
+                )
         );
+
 
         toolbar.appendChild(
             rootNewNote
@@ -1204,14 +2613,33 @@ function notesT(key, fallback = '', variables = {}) {
             rootNewFolder
         );
 
-        list.appendChild(toolbar);
+        list.appendChild(
+            toolbar
+        );
+
+
+        const tree =
+            document.createElement('div');
+
+        tree.className =
+            'notes-tree-content';
+
+
+        const visibleFolders =
+            childFolders(null)
+                .filter(folder =>
+                    !searchTerm ||
+                    folderMatchesSearch(
+                        folder
+                    )
+                );
 
 
         for (
             const folder
-            of childFolders(null)
+            of visibleFolders
         ) {
-            list.appendChild(
+            tree.appendChild(
                 renderFolder(
                     folder,
                     0
@@ -1220,20 +2648,54 @@ function notesT(key, fallback = '', variables = {}) {
         }
 
 
-        const rootDrop =
-            createRootDropZone();
+        const rootSection =
+            document.createElement('div');
 
-        list.appendChild(rootDrop);
+        rootSection.className =
+            'note-root-section';
+
+
+        rootSection.appendChild(
+            createRootDropZone()
+        );
 
 
         const rootNotes =
-            folderNotes(null);
+            document.createElement('div');
 
-        for (const note of rootNotes) {
-            list.appendChild(
-                createNoteCard(note)
+        rootNotes.className =
+            'note-root-notes';
+
+
+        const visibleRootNotes =
+            folderNotes(null)
+                .filter(note =>
+                    !searchTerm ||
+                    noteMatchesSearch(
+                        note
+                    )
+                );
+
+
+        for (
+            const note
+            of visibleRootNotes
+        ) {
+            rootNotes.appendChild(
+                createNoteCard(
+                    note
+                )
             );
         }
+
+
+        rootSection.appendChild(
+            rootNotes
+        );
+
+        tree.appendChild(
+            rootSection
+        );
 
 
         if (
@@ -1247,10 +2709,41 @@ function notesT(key, fallback = '', variables = {}) {
                 'note-empty-state';
 
             empty.textContent =
-                notesT('notes.no_notes', 'No notes yet.');
+                notesT(
+                    'notes.no_notes',
+                    'Noch keine Notizen vorhanden.'
+                );
 
-            list.appendChild(empty);
+            tree.appendChild(
+                empty
+            );
+
+        } else if (
+            searchTerm &&
+            !visibleFolders.length &&
+            !visibleRootNotes.length
+        ) {
+
+            const empty =
+                document.createElement('div');
+
+            empty.className =
+                'note-empty-state notes-search-empty';
+
+            empty.textContent =
+                'Keine passenden Notizen gefunden.';
+
+            tree.appendChild(
+                empty
+            );
         }
+
+
+        list.appendChild(
+            tree
+        );
+
+        renderPreview();
     }
 
 
@@ -1325,15 +2818,6 @@ function notesT(key, fallback = '', variables = {}) {
 
 
     function installFolderUi() {
-        const existingTopButton =
-            document.getElementById(
-                'noteFolderAdd'
-            );
-
-        if (existingTopButton) {
-            existingTopButton.remove();
-        }
-
 
         folderSelect =
             document.getElementById(
@@ -1341,99 +2825,117 @@ function notesT(key, fallback = '', variables = {}) {
             );
 
         if (!folderSelect) {
-            folderSelect =
-                document.createElement(
-                    'select'
-                );
-
-            folderSelect.id =
-                'noteFolder';
-
-            folderSelect.className =
-                'note-folder-select';
-
-            nameInput.parentNode.insertBefore(
-                folderSelect,
-                nameInput
+            throw new Error(
+                '#noteFolder fehlt.'
             );
         }
 
 
-        let cancel =
+        const cancel =
             document.getElementById(
                 'noteEditCancel'
             );
 
-        if (!cancel) {
-            cancel =
-                document.createElement(
-                    'button'
-                );
-
-            cancel.id =
-                'noteEditCancel';
-
-            cancel.type =
-                'button';
-
-            cancel.className =
-                'note-edit-cancel';
-
-            cancel.textContent =
-                notesT('notes.cancel_edit', 'Cancel editing');
-
-            cancel.style.display =
-                'none';
+        if (cancel) {
 
             cancel.addEventListener(
                 'click',
-                resetEditor
-            );
-
-            saveButton.parentNode.insertBefore(
-                cancel,
-                saveButton.nextSibling
+                () =>
+                    resetEditor(true)
             );
         }
     }
 
 
     async function openPanel() {
-        panel.style.display = 'block';
+
+        const backdrop =
+            document.getElementById(
+                'notesBackdrop'
+            );
+
+        if (backdrop) {
+            backdrop.hidden = false;
+        }
+
+        panel.style.display =
+            'flex';
+
+        panel.setAttribute(
+            'aria-hidden',
+            'false'
+        );
+
 
         document
-            .getElementById('notesButton')
-            .classList.add('active');
+            .getElementById(
+                'notesButton'
+            )
+            .classList.add(
+                'active'
+            );
+
+
+        showPreviewMode();
+
 
         try {
+
             await loadNotes();
+
         } catch (error) {
+
             console.error(error);
 
             alert(
-                notesT('notes.load_failed', 'Notes could not be loaded.')
+                notesT(
+                    'notes.load_failed',
+                    'Notizen konnten nicht geladen werden.'
+                )
             );
         }
     }
 
 
     function closePanel() {
+
         closeContextMenu();
+
+        const backdrop =
+            document.getElementById(
+                'notesBackdrop'
+            );
+
+        if (backdrop) {
+            backdrop.hidden = true;
+        }
 
         panel.style.display =
             'none';
 
+        panel.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+
+
         document
-            .getElementById('notesButton')
-            .classList.remove('active');
+            .getElementById(
+                'notesButton'
+            )
+            .classList.remove(
+                'active'
+            );
     }
 
 
     function togglePanel() {
-        if (
-            panel.style.display ===
-            'block'
-        ) {
+
+        const visible =
+            panel.style.display !==
+            'none';
+
+        if (visible) {
             closePanel();
         } else {
             openPanel();
@@ -1442,30 +2944,57 @@ function notesT(key, fallback = '', variables = {}) {
 
 
     function init() {
+
         installFolderUi();
 
+        initNotesSearch();
+        initSidebarResize();
+
+
         document
-            .getElementById('notesButton')
+            .getElementById(
+                'notesButton'
+            )
             .addEventListener(
                 'click',
                 togglePanel
             );
 
+
         document
-            .getElementById('notesClose')
+            .getElementById(
+                'notesClose'
+            )
             .addEventListener(
                 'click',
                 closePanel
             );
+
+
+        const backdrop =
+            document.getElementById(
+                'notesBackdrop'
+            );
+
+        if (backdrop) {
+
+            backdrop.addEventListener(
+                'click',
+                closePanel
+            );
+        }
+
 
         saveButton.addEventListener(
             'click',
             saveNote
         );
 
+
         document.addEventListener(
             'click',
             event => {
+
                 if (
                     contextMenu &&
                     !contextMenu.contains(
@@ -1477,13 +3006,55 @@ function notesT(key, fallback = '', variables = {}) {
             }
         );
 
+
         document.addEventListener(
             'keydown',
             event => {
+
                 if (
-                    event.key === 'Escape'
+                    (
+                        event.metaKey ||
+                        event.ctrlKey
+                    ) &&
+                    event.key.toLowerCase() ===
+                    'f' &&
+                    panel.style.display !==
+                    'none'
                 ) {
+                    const search =
+                        document.getElementById(
+                            'notesSearch'
+                        );
+
+                    if (search) {
+                        event.preventDefault();
+                        search.focus();
+                        search.select();
+                    }
+
+                    return;
+                }
+
+
+                if (
+                    event.key !==
+                    'Escape'
+                ) {
+                    return;
+                }
+
+
+                if (contextMenu) {
                     closeContextMenu();
+                    return;
+                }
+
+
+                if (
+                    panel.style.display !==
+                    'none'
+                ) {
+                    closePanel();
                 }
             }
         );
