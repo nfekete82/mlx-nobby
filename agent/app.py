@@ -2552,6 +2552,7 @@ MODEL_ROLE_NAMES = (
     "agent",
     "coding",
     "vision",
+    "vision_uncensored",
     "embedding",
     "image",
 )
@@ -2684,7 +2685,7 @@ def resolve_model_role(role):
     )
 
     if configured == "auto":
-        if role == "vision":
+        if role in {"vision", "vision_uncensored"}:
             selected = next(
                 (
                     item
@@ -10232,6 +10233,173 @@ def switch_model_runtime(alias: str):
         "stdout": result.stdout.strip(),
         "stderr": result.stderr.strip(),
         "runtime": ready,
+    }
+
+
+
+def _decode_vision_data_url(value):
+    """Decode a bounded local vision data URL."""
+
+    import base64
+    import binascii
+
+    if not isinstance(value, str):
+        raise ValueError(
+            "INVALID_VISION_IMAGE_URL"
+        )
+
+    try:
+        header, payload = value.split(
+            ",",
+            1,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "INVALID_VISION_IMAGE_URL"
+        ) from exc
+
+    allowed_headers = {
+        "data:image/png;base64",
+        "data:image/jpeg;base64",
+        "data:image/webp;base64",
+    }
+
+    if header.lower() not in allowed_headers:
+        raise ValueError(
+            "UNSUPPORTED_VISION_IMAGE"
+        )
+
+    try:
+        data = base64.b64decode(
+            payload,
+            validate=True,
+        )
+    except (
+        binascii.Error,
+        ValueError,
+    ) as exc:
+        raise ValueError(
+            "INVALID_VISION_IMAGE_DATA"
+        ) from exc
+
+    if (
+        not data
+        or len(data) > 10_000_000
+    ):
+        raise ValueError(
+            "UNSUPPORTED_VISION_IMAGE"
+        )
+
+    return data
+
+
+@app.post("/api/runtime/vision-route")
+def route_vision_runtime(request: dict):
+    """Classify chat images and activate the matching logical VLM role."""
+
+    from agent.vision_classifier import (
+        VisionClassifierError,
+        classify_image_bytes,
+    )
+    from agent.vision_routing import (
+        select_vision_role,
+    )
+
+    images = request.get("images")
+
+    if (
+        not isinstance(images, list)
+        or not images
+        or len(images) > 12
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Ungültige Vision-Bildliste",
+        )
+
+    try:
+        uncensored = resolve_model_role(
+            "vision_uncensored"
+        )
+
+        uncensored_role_available = bool(
+            uncensored.get("repo")
+            and uncensored.get("available")
+            is not False
+        )
+
+    except Exception:
+        uncensored_role_available = False
+
+    selected_role = "vision"
+    classifications = []
+
+    for index, image_url in enumerate(
+        images
+    ):
+        try:
+            data = _decode_vision_data_url(
+                image_url
+            )
+
+            classification = (
+                classify_image_bytes(data)
+            )
+
+            candidate = select_vision_role(
+                classification,
+                uncensored_role_available=(
+                    uncensored_role_available
+                ),
+            )
+
+            classifications.append({
+                "index": index,
+                "label": (
+                    classification.label
+                ),
+                "confidence": (
+                    classification.confidence
+                ),
+                "scores": dict(
+                    classification.scores
+                    or {}
+                ),
+                "role": candidate,
+            })
+
+            # One confidently adult image is
+            # enough to select the uncensored-capable
+            # VLM for the complete multimodal turn.
+            if candidate == "vision_uncensored":
+                selected_role = (
+                    "vision_uncensored"
+                )
+
+        except (
+            VisionClassifierError,
+            ValueError,
+        ) as exc:
+            classifications.append({
+                "index": index,
+                "label": "unknown",
+                "confidence": 0.0,
+                "role": "vision",
+                "error": str(exc),
+            })
+
+    # Classification is routing metadata,
+    # never a hard dependency. If it fails,
+    # normal vision remains available.
+    runtime = ensure_model_for_role(
+        selected_role
+    )
+
+    return {
+        "ok": True,
+        "role": selected_role,
+        "classifications": classifications,
+        "runtime": runtime,
     }
 
 

@@ -218,34 +218,149 @@ def git_worktree_fingerprint(paths):
 
 def _vision(query, goal, options):
     from agent import app
+    from agent.vision_classifier import (
+        VisionClassifierError,
+        classify_image,
+    )
+    from agent.vision_routing import select_vision_role
+
     context = _context()
     artifact_id = options.get("artifact_id")
     upload_path = options.get("upload_path")
+
     if upload_path:
         source = Path(str(upload_path)).resolve()
+
         if source not in context.upload_paths:
             raise ValueError("UPLOAD_OUTSIDE_RUN")
+
     elif artifact_id:
         _chat_artifact(artifact_id)
-        source = app._resolve_image_artifact_source(artifact_id)
+        source = app._resolve_image_artifact_source(
+            artifact_id
+        )
+
     else:
         source = context.resolve_path(query)
-    mime = mimetypes.guess_type(source.name)[0]
-    if mime not in {"image/png", "image/jpeg", "image/webp"} or not source.is_file() or source.stat().st_size > 10_000_000:
-        raise ValueError("UNSUPPORTED_VISION_IMAGE")
-    image = base64.b64encode(source.read_bytes()).decode("ascii")
-    request = ModelRequest(
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": str(options.get("prompt") or goal)[:4000]},
-            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image}"}},
-        ]}], max_tokens=1000, role="vision",
-    )
-    runtime = current_runtime()
-    if runtime is None:
-        raise ValueError("AGENT_RUNTIME_REQUIRED")
-    response = runtime.provider.complete(request, run_context=context)
-    return {"answer": response.text, "model": response.model, "source": source.name}
 
+    mime = mimetypes.guess_type(source.name)[0]
+
+    if (
+        mime not in {
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+        }
+        or not source.is_file()
+        or source.stat().st_size > 10_000_000
+    ):
+        raise ValueError(
+            "UNSUPPORTED_VISION_IMAGE"
+        )
+
+    classification = None
+    classification_error = None
+
+    try:
+        classification = classify_image(source)
+
+    except VisionClassifierError as exc:
+        # Safety classification is routing metadata, not a hard
+        # dependency for image understanding. Keep normal vision
+        # available if the classifier is temporarily unavailable.
+        classification_error = str(exc)
+
+    uncensored_role_available = False
+
+    if classification is not None:
+        try:
+            uncensored_runtime = app.resolve_model_role(
+                "vision_uncensored"
+            )
+
+            uncensored_role_available = bool(
+                uncensored_runtime.get("repo")
+                and uncensored_runtime.get(
+                    "available"
+                ) is not False
+            )
+
+        except Exception:
+            uncensored_role_available = False
+
+    vision_role = select_vision_role(
+        classification,
+        uncensored_role_available=uncensored_role_available,
+    )
+
+    image = base64.b64encode(
+        source.read_bytes()
+    ).decode("ascii")
+
+    request = ModelRequest(
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": str(
+                            options.get("prompt")
+                            or goal
+                        )[:4000],
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": (
+                                f"data:{mime};"
+                                f"base64,{image}"
+                            )
+                        },
+                    },
+                ],
+            }
+        ],
+        max_tokens=1000,
+        role=vision_role,
+    )
+
+    runtime = current_runtime()
+
+    if runtime is None:
+        raise ValueError(
+            "AGENT_RUNTIME_REQUIRED"
+        )
+
+    response = runtime.provider.complete(
+        request,
+        run_context=context,
+    )
+
+    result = {
+        "answer": response.text,
+        "model": response.model,
+        "source": source.name,
+        "vision_role": vision_role,
+    }
+
+    if classification is not None:
+        result["classification"] = {
+            "label": classification.label,
+            "confidence": (
+                classification.confidence
+            ),
+            "scores": dict(
+                classification.scores or {}
+            ),
+        }
+
+    if classification_error:
+        result["classification_error"] = (
+            classification_error
+        )
+
+    return result
 
 def _chat_artifact(artifact_id):
     from agent import app

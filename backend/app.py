@@ -779,27 +779,77 @@ def mlx_chat_stream(request: ChatRequest):
         min(int(request.max_tokens), 32000),
     )
 
-    has_vision = any(
-        isinstance(message, dict)
-        and isinstance(message.get("content"), list)
-        and any(
-            isinstance(part, dict)
-            and part.get("type") == "image_url"
-            for part in message.get("content", [])
-        )
-        for message in messages
+    vision_images = []
+
+    for message in messages:
+        if (
+            not isinstance(message, dict)
+            or not isinstance(
+                message.get("content"),
+                list,
+            )
+        ):
+            continue
+
+        for part in message.get(
+            "content",
+            [],
+        ):
+            if (
+                not isinstance(part, dict)
+                or part.get("type")
+                != "image_url"
+            ):
+                continue
+
+            image_url = part.get(
+                "image_url"
+            )
+
+            if isinstance(
+                image_url,
+                dict,
+            ):
+                url = image_url.get("url")
+            else:
+                url = image_url
+
+            if isinstance(url, str):
+                vision_images.append(url)
+
+    # Preserve image ordering but avoid
+    # classifying identical history images
+    # more than once per request.
+    vision_images = list(
+        dict.fromkeys(vision_images)
     )
 
-    # Vision uses the dedicated logical vision role. The active chat model
-    # may remain text-only; the agent switches to the configured VLM here.
+    has_vision = bool(vision_images)
+
+    # The agent owns content classification and
+    # role selection so ONNX remains outside the
+    # backend container.
     if has_vision:
 
-        agent_json_request(
+        vision_route = agent_json_request(
             "POST",
-            "/api/runtime/ensure-role/vision",
-            {},
+            "/api/runtime/vision-route",
+            {
+                "images": vision_images,
+            },
             timeout=300,
         )
+
+        vision_role = str(
+            vision_route.get("role")
+            or "vision"
+        )
+
+        if vision_role not in {
+            "vision",
+            "vision_uncensored",
+        }:
+            vision_role = "vision"
 
         status = get_json(
             f"{AGENT_URL}/api/status",
@@ -829,7 +879,7 @@ def mlx_chat_stream(request: ChatRequest):
             "_mlx_observability": {
                 "trace_id": trace_id,
                 "purpose": "chat.vision",
-                "role": "vision",
+                "role": vision_role,
                 "backend": "mlx_vlm",
                 "context_sources": context_sources,
             },
