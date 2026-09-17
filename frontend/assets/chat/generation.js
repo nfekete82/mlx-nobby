@@ -2540,10 +2540,19 @@ const imageFiles =
                     messageContent +
                     '\n\n' +
                     '--- LIVE-WEBSUCHE ---\n' +
-                    'Aktuelles Datum: ' +
+                    gt(
+                        'web_search_current_date',
+                        'Current date:'
+                    ) +
+                    ' ' +
                     (toolResult.data?.current_date ||
                         new Date().toLocaleDateString('sv-SE')) +
-                    '. Interpretiere relative Zeitangaben wie "heute" ausschließlich anhand dieses Datums. ' +
+                    '. ' +
+                    gt(
+                        'web_search_relative_date_instruction',
+                        'Interpret relative date expressions such as "today" exclusively using this date.'
+                    ) +
+                    ' ' +
                     'The following information comes from a current web search. ' +
                     'For some results, the actual webpage content was loaded as well. ' +
                     'Prefer the loaded webpage content over the search snippet. ' +
