@@ -5405,6 +5405,26 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if candidate == "orchestrator":
         return candidate
 
+    # A clearly current news request must stay on the deterministic
+    # web-search path. Previous coding/workspace context must not turn
+    # "news today" into a cross-capability request.
+    current_prompt = str(prompt or "").strip().lower()
+
+    explicit_current_news = (
+        bool(re.search(
+            r"\b(?:news|nachrichten|neuigkeiten|meldungen?|entwicklungen?)\b",
+            current_prompt,
+        ))
+        and bool(re.search(
+            r"\b(?:heute|aktuell\w*|neueste\w*|derzeit|momentan|gerade|"
+            r"today|current|latest)\b|\bstand\s+heute\b",
+            current_prompt,
+        ))
+    )
+
+    if candidate == "web_search" and explicit_current_news:
+        return candidate
+
     if (
         candidate == "web_search"
         and _looks_like_creative_chat_request(prompt)
@@ -7570,6 +7590,15 @@ def tool_web_search(request):
             fetched_count += 1
 
     result["fetched_count"] = fetched_count
+
+    from datetime import datetime as _datetime
+
+    current_now = _datetime.now().astimezone()
+
+    result["current_date"] = current_now.date().isoformat()
+    result["current_time"] = current_now.isoformat(
+        timespec="seconds"
+    )
 
     return result
 
