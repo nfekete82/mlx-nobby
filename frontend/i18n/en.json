@@ -515,6 +515,7 @@
   "ui.manage_models": "Manage models …",
   "ui.coding_description": "Programming and code analysis",
   "ui.vision_description": "Image analysis and multimodal tasks",
+  "ui.uncensored_vision_description": "Unfiltered image analysis for content rejected by the standard vision model",
   "ui.embeddings_description": "Knowledge base and semantic search",
   "ui": {
     "general": "General",
