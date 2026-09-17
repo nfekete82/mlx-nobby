@@ -380,6 +380,51 @@ def _generate_result(
     }
 
 
+def _prepare_fast_edit_source(source, model):
+    """Create an aspect-preserving working copy for large Qwen edits."""
+    if model.get("model_family") != "qwen-image-edit":
+        return source, None
+
+    from PIL import Image
+
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    target_pixels = 512 * 768
+
+    with Image.open(source) as image:
+        width, height = image.size
+
+        if width * height <= target_pixels:
+            return source, None
+
+        scale = (target_pixels / (width * height)) ** 0.5
+
+        # Round down to multiples of 16 so the pixel budget is not exceeded.
+        resized_width = max(256, int((width * scale) // 16) * 16)
+        resized_height = max(256, int((height * scale) // 16) * 16)
+
+        working = OUTPUT / (
+            f".edit-source-{int(time.time())}-"
+            f"{secrets.token_hex(6)}.png"
+        )
+
+        converted = image.convert("RGB")
+        converted.thumbnail(
+            (resized_width, resized_height),
+            Image.Resampling.LANCZOS,
+        )
+        converted.save(working, "PNG")
+
+        print(
+            f"[image-edit] source={source} "
+            f"original={width}x{height} "
+            f"working={converted.width}x{converted.height} "
+            f"pixels={converted.width * converted.height}",
+            flush=True,
+        )
+
+    return working, working
+
+
 def _edit_result(
     request,
     *,
@@ -398,8 +443,22 @@ def _edit_result(
         )
 
     source = validate_edit_source(request.source_path)
+    edit_source, temporary_edit_source = _prepare_fast_edit_source(
+        source,
+        model,
+    )
     params = request.model_dump()
-    params["source_path"] = str(source)
+    params["source_path"] = str(edit_source)
+
+    # Qwen must render at the prepared working resolution too. Resizing only
+    # the source image is not enough because MFLUX may otherwise select a
+    # substantially larger output canvas.
+    if model.get("model_family") == "qwen-image-edit":
+        from PIL import Image
+
+        with Image.open(edit_source) as prepared_image:
+            params["width"], params["height"] = prepared_image.size
+
     params["steps"] = request.steps if request.steps is not None else model["default_steps"]
     params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
@@ -413,6 +472,8 @@ def _edit_result(
         run_provider(model, params, path, **(provider_options or {}))
     finally:
         _running = None
+        if temporary_edit_source is not None:
+            temporary_edit_source.unlink(missing_ok=True)
     if saving_callback:
         saving_callback()
 

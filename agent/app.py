@@ -7653,6 +7653,23 @@ def normalize_image_edit_prompt(prompt):
         ),
         (
             (
+                "hintergrund dunkler",
+                "hintergrund noch dunkler",
+                "hintergrund abdunkeln",
+                "mach den hintergrund dunkler",
+                "mach den hintergrund noch dunkler",
+                "background darker",
+                "darken background",
+            ),
+            (
+                "Make only the background darker while preserving the "
+                "subject's identity, face, skin tones, body, clothing, pose, "
+                "exposure and brightness. Do not darken the subject. Keep "
+                "every other image detail unchanged."
+            ),
+        ),
+        (
+            (
                 "hintergrund unscharf",
                 "hintergrund unscharf machen",
                 "mach den hintergrund unscharf",
@@ -7925,10 +7942,14 @@ def _image_edit_payload(request):
         )
 
     payload = {
+        # Image editing must not start the large chat runtime merely to
+        # rewrite the user's instruction. This keeps Qwen Image Edit from
+        # competing with the chat model for unified memory and removes the
+        # model-start latency before an edit.
         "prompt": (
             options["prompt"]
             if "prompt" in options
-            else optimize_image_edit_prompt(request.prompt)
+            else normalize_image_edit_prompt(request.prompt)
         ),
         "source_path": str(source),
         "model": load_model_roles()["image"],

@@ -266,8 +266,8 @@ def sdxl_files(model):
 def mflux_command(model, params, output):
     family = model["model_family"]
 
-    # Qwen Image Edit has its own CLI contract. Do not pass the generic
-    # text-to-image width/height/base-model/quantize arguments here.
+    # Qwen Image Edit has its own CLI contract. Pass its edit canvas
+    # explicitly, but do not pass generic base-model/quantize arguments.
     if family == "qwen-image-edit":
         source_path = params.get("source_path")
 
@@ -284,6 +284,12 @@ def mflux_command(model, params, output):
             source_path,
             "--prompt",
             params["prompt"],
+            "--width",
+            str(params["width"]),
+            "--height",
+            str(params["height"]),
+            "--canvas-policy",
+            "source-aspect",
             "--steps",
             str(params["steps"]),
             "--guidance",

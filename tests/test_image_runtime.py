@@ -1723,6 +1723,8 @@ class ImageRuntimeTests(unittest.TestCase):
         params = {
             "prompt": "Keep the person and darken the background.",
             "source_path": "/uploads/source image.png",
+            "width": 416,
+            "height": 904,
             "steps": 20,
             "guidance": 3.5,
             "seed": 17,
@@ -1750,13 +1752,20 @@ class ImageRuntimeTests(unittest.TestCase):
             command[command.index("--model") + 1],
             "/models/qwen-edit",
         )
-        for option in (
-            "--base-model",
-            "--width",
-            "--height",
-            "--quantize",
-        ):
-            self.assertNotIn(option, command)
+        self.assertNotIn("--base-model", command)
+        self.assertNotIn("--quantize", command)
+        self.assertEqual(
+            command[command.index("--width") + 1],
+            "416",
+        )
+        self.assertEqual(
+            command[command.index("--height") + 1],
+            "904",
+        )
+        self.assertEqual(
+            command[command.index("--canvas-policy") + 1],
+            "source-aspect",
+        )
 
     def test_provider_timeout_terminates_the_entire_process_group(self):
         model = registry.get_model(
@@ -1776,6 +1785,8 @@ class ImageRuntimeTests(unittest.TestCase):
         params = {
             "prompt": "Edit the image",
             "source_path": "/uploads/source.png",
+            "width": 512,
+            "height": 512,
             "steps": 4,
             "guidance": 3.5,
             "seed": 17,
@@ -1844,6 +1855,8 @@ class ImageRuntimeTests(unittest.TestCase):
         params = {
             "prompt": "Edit the image",
             "source_path": "/uploads/source.png",
+            "width": 512,
+            "height": 512,
             "steps": 8,
             "guidance": 3.5,
             "seed": 17,
@@ -1927,6 +1940,8 @@ class ImageRuntimeTests(unittest.TestCase):
         params = {
             "prompt": "Edit the image",
             "source_path": "/uploads/source.png",
+            "width": 512,
+            "height": 512,
             "steps": 4,
             "guidance": 3.5,
             "seed": 17,
@@ -4010,6 +4025,8 @@ def test_qwen_image_edit_command_includes_enabled_loras(tmp_path, monkeypatch):
 
     params = {
         "source_path": "/tmp/source.png",
+        "width": 512,
+        "height": 512,
         "prompt": "test edit",
         "steps": 8,
         "guidance": 3.5,
@@ -4064,6 +4081,8 @@ def test_qwen_image_edit_command_omits_disabled_loras(tmp_path, monkeypatch):
 
     params = {
         "source_path": "/tmp/source.png",
+        "width": 512,
+        "height": 512,
         "prompt": "test edit",
         "steps": 8,
         "guidance": 3.5,
@@ -4123,6 +4142,8 @@ def test_qwen_image_edit_command_uses_registry_quantization(
         model,
         {
             "source_path": "/tmp/source.png",
+            "width": 512,
+            "height": 512,
             "prompt": "test edit",
             "steps": 8,
             "guidance": 3.5,
@@ -4422,6 +4443,8 @@ def test_image_job_create_accepts_upscale():
 
     job = service.ImageJobCreate(
         operation="upscale",
+        chat_id="test-chat",
+        chat_revision=1,
         payload={
             "source_path": "/tmp/source.png",
             "preset": "photo-2x",
@@ -4718,78 +4741,36 @@ def test_image_edit_prompt_optimizer_falls_back_on_network_error():
     assert result == agent.normalize_image_edit_prompt(original)
 
 
-def test_image_edit_payload_uses_optimizer_result(tmp_path):
-    import agent.app as agent
-
-    source = tmp_path / "source.png"
-    source.write_bytes(
-        b"\x89PNG\r\n\x1a\n"
-        b"\x00\x00\x00\rIHDR"
-        b"\x00\x00\x00\x01"
-        b"\x00\x00\x00\x01"
-        b"\x08\x02\x00\x00\x00"
-        b"\x90wS\xde"
-    )
-
-    request = agent.ChatActionRequest(
-        prompt="Tattoos entfernen",
-        file_context={
-            "stored_path": str(source),
-        },
-    )
-
-    with patch.object(
-        agent,
-        "optimize_image_edit_prompt",
-        return_value="Remove the requested tattoos and preserve all else.",
-    ) as optimizer:
-        payload = agent._image_edit_payload(request)
-
-    assert payload["source_path"] == str(source)
-    assert payload["prompt"] == (
-        "Remove the requested tattoos and preserve all else."
-    )
-    assert payload["model"] == "mflux-qwen-image-edit-2511"
-    optimizer.assert_called_once_with("Tattoos entfernen")
-
-
-def test_image_edit_payload_never_forwards_optimizer_refusal(tmp_path):
+def test_image_edit_payload_uses_normalizer_without_chat_runtime(tmp_path):
     import agent.app as agent
 
     source = tmp_path / "source.png"
     source.write_bytes(b"image")
+
     request = agent.ChatActionRequest(
         prompt="Tattoos entfernen",
         file_context={"stored_path": str(source)},
     )
-    refusal = "I can't comply with that request."
-    runtime = {
-        "resolved": {
-            "repo": "owner/chat-model",
-            "alias": "chat",
-            "backend": "mlx_lm",
-        },
-    }
 
     with patch.object(
         agent,
-        "ensure_model_for_role",
-        return_value=runtime,
+        "load_model_roles",
+        return_value={"image": "mflux-qwen-image-edit-2511"},
     ), patch.object(
         agent,
-        "load_config",
-        return_value={"PORT": 8000},
-    ), patch.object(
-        agent.urllib.request,
-        "urlopen",
-        return_value=_optimizer_response(refusal),
-    ):
+        "optimize_image_edit_prompt",
+        side_effect=AssertionError(
+            "Image edit must not start the chat prompt optimizer"
+        ),
+    ) as optimizer:
         payload = agent._image_edit_payload(request)
 
+    optimizer.assert_not_called()
+    assert payload["source_path"] == str(source)
     assert payload["prompt"] == agent.normalize_image_edit_prompt(
         request.prompt
     )
-    assert refusal not in payload["prompt"]
+    assert payload["model"] == "mflux-qwen-image-edit-2511"
 
 
 def test_image_edit_payload_preserves_explicit_prompt_override(tmp_path):
@@ -4819,3 +4800,79 @@ def test_image_edit_payload_preserves_explicit_prompt_override(tmp_path):
     assert payload["prompt"] == "Exact low-level edit instruction"
     assert payload["source_path"] == str(source)
     assert payload["model"] == "custom-edit-model"
+
+
+def test_fast_qwen_edit_source_preserves_aspect_ratio_and_budget(tmp_path):
+    import image_service
+    from PIL import Image
+
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (832, 1248), "white").save(source)
+
+    old_output = image_service.OUTPUT
+    image_service.OUTPUT = tmp_path
+
+    try:
+        prepared, temporary = image_service._prepare_fast_edit_source(
+            source,
+            {"model_family": "qwen-image-edit"},
+        )
+
+        assert temporary == prepared
+        assert prepared != source
+
+        with Image.open(prepared) as image:
+            width, height = image.size
+
+        assert width * height <= 512 * 768
+        assert abs((width / height) - (832 / 1248)) < 0.03
+        assert width % 16 == 0
+        assert height % 16 == 0
+    finally:
+        image_service.OUTPUT = old_output
+        if "temporary" in locals() and temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def test_fast_qwen_edit_source_keeps_small_source(tmp_path):
+    import image_service
+    from PIL import Image
+
+    source = tmp_path / "small.png"
+    Image.new("RGB", (512, 512), "white").save(source)
+
+    prepared, temporary = image_service._prepare_fast_edit_source(
+        source,
+        {"model_family": "qwen-image-edit"},
+    )
+
+    assert prepared == source
+    assert temporary is None
+
+
+def test_fast_edit_source_does_not_resize_other_models(tmp_path):
+    import image_service
+    from PIL import Image
+
+    source = tmp_path / "large.png"
+    Image.new("RGB", (1200, 1800), "white").save(source)
+
+    prepared, temporary = image_service._prepare_fast_edit_source(
+        source,
+        {"model_family": "other-model"},
+    )
+
+    assert prepared == source
+    assert temporary is None
+
+
+def test_normalize_image_edit_prompt_darkens_only_background():
+    import agent.app as agent
+
+    result = agent.normalize_image_edit_prompt(
+        "Mach den Hintergrund noch dunkler."
+    )
+
+    assert "Make only the background darker" in result
+    assert "Do not darken the subject" in result
+    assert "exposure and brightness" in result
