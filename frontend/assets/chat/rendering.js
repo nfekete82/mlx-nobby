@@ -2157,6 +2157,35 @@ function renderMessages(options = {}) {
                 </svg>
             `;
 
+            const playIcon = `
+                <svg viewBox="0 0 24 24"
+                     width="16"
+                     height="16"
+                     aria-hidden="true"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round">
+                    <polygon points="6 3 20 12 6 21 6 3"></polygon>
+                </svg>
+            `;
+
+            const pauseIcon = `
+                <svg viewBox="0 0 24 24"
+                     width="16"
+                     height="16"
+                     aria-hidden="true"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round">
+                    <line x1="8" y1="5" x2="8" y2="19"></line>
+                    <line x1="16" y1="5" x2="16" y2="19"></line>
+                </svg>
+            `;
+
             const stopIcon = `
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="6" y="6" width="12" height="12" rx="2"></rect>
@@ -2204,6 +2233,8 @@ function renderMessages(options = {}) {
             };
 
             const cleanupSpeech = () => {
+                speechPaused = false;
+
                 if (speechAudio) {
                     speechAudio.pause();
                     speechAudio.src = '';
@@ -2310,6 +2341,7 @@ function renderMessages(options = {}) {
             let speechRunId = 0;
             let cancelSpeechWait = null;
             let speechAbortController = null;
+            let speechPaused = false;
 
             const cancelSpeechPlayback = () => {
                 speechRunId += 1;
@@ -2326,6 +2358,60 @@ function renderMessages(options = {}) {
                 }
 
                 cleanupSpeech();
+            };
+
+            const toggleSpeechPause = async () => {
+                if (!speechAudio) return;
+
+                if (speechAudio.paused) {
+                    try {
+                        await speechAudio.play();
+                        speechPaused = false;
+                        speech.innerHTML = pauseIcon;
+                        speech.title = rt(
+                            'speech_pause',
+                            'Pause playback'
+                        );
+                        speech.setAttribute(
+                            'aria-label',
+                            speech.title
+                        );
+                        speechStatus.hidden = false;
+                        speechStatus.classList.remove(
+                            'is-error'
+                        );
+                        speechStatus.textContent = rt(
+                            'speech_playing',
+                            'Serena · playing'
+                        );
+                    } catch (error) {
+                        console.error(
+                            'Speech resume failed:',
+                            error
+                        );
+                    }
+                    return;
+                }
+
+                speechAudio.pause();
+                speechPaused = true;
+                speech.innerHTML = playIcon;
+                speech.title = rt(
+                    'speech_resume',
+                    'Resume playback'
+                );
+                speech.setAttribute(
+                    'aria-label',
+                    speech.title
+                );
+                speechStatus.hidden = false;
+                speechStatus.classList.remove(
+                    'is-error'
+                );
+                speechStatus.textContent = rt(
+                    'speech_paused',
+                    'Serena · paused'
+                );
             };
 
             const playSpeechBlob = async (blob, runId) => {
@@ -2346,10 +2432,11 @@ function renderMessages(options = {}) {
                 speechAudio = new Audio(speechUrl);
 
                 speech.disabled = false;
-                speech.innerHTML = stopIcon;
+                speechPaused = false;
+                speech.innerHTML = pauseIcon;
                 speech.title = rt(
-                    'speech_stop',
-                    'Stop playback'
+                    'speech_pause',
+                    'Pause playback'
                 );
 
                 speech.setAttribute(
@@ -2429,7 +2516,7 @@ function renderMessages(options = {}) {
                 'click',
                 async () => {
                     if (speechAudio) {
-                        cancelSpeechPlayback();
+                        await toggleSpeechPause();
                         return;
                     }
 

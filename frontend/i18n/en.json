@@ -810,5 +810,8 @@
   "rendering.speech_generating_progress": "Generating audio {current}/{total}…",
   "rendering.speech_progress": "Serena · {current}/{total}",
   "rendering.speech_playing": "Serena · playing",
-  "rendering.speech_failed_inline": "Speech failed · try again"
+  "rendering.speech_failed_inline": "Speech failed · try again",
+  "rendering.speech_pause": "Pause playback",
+  "rendering.speech_resume": "Resume playback",
+  "rendering.speech_paused": "Serena · paused"
 }

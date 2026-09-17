@@ -107,7 +107,7 @@ test('speech progress uses inline status instead of alert', () => {
 });
 
 
-test('speech stop cancels the active chunk run', () => {
+test('speech cancellation infrastructure protects the active chunk run', () => {
     assert.match(
         rendering,
         /let speechRunId = 0/
@@ -121,11 +121,6 @@ test('speech stop cancels the active chunk run', () => {
     assert.match(
         rendering,
         /speechRunId \+= 1/
-    );
-
-    assert.match(
-        rendering,
-        /cancelSpeechPlayback\(\)/
     );
 
     assert.match(
@@ -174,5 +169,49 @@ test('speech stop aborts active TTS request', () => {
     assert.match(
         rendering,
         /error\?\.name === 'AbortError'/
+    );
+});
+
+test('speech playback supports pause and resume without cancellation', () => {
+    assert.match(
+        rendering,
+        /const toggleSpeechPause = async \(\) =>/
+    );
+
+    assert.match(
+        rendering,
+        /speechAudio\.pause\(\)/
+    );
+
+    assert.match(
+        rendering,
+        /await speechAudio\.play\(\)/
+    );
+
+    assert.match(
+        rendering,
+        /speechPaused = true/
+    );
+
+    assert.match(
+        rendering,
+        /speechPaused = false/
+    );
+
+    assert.match(
+        rendering,
+        /speech_paused/
+    );
+
+    assert.match(
+        rendering,
+        /if \(speechAudio\) \{\s*await toggleSpeechPause\(\);\s*return;\s*\}/
+    );
+});
+
+test('speech cleanup resets pause state', () => {
+    assert.match(
+        rendering,
+        /const cleanupSpeech = \(\) => \{\s*speechPaused = false;/
     );
 });
