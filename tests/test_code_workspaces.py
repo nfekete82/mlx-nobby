@@ -1797,7 +1797,7 @@ class CodeWorkspaceTests(unittest.TestCase):
     def test_run_chat_action_routes_before_normal_chat_answer(self):
         with mock.patch.object(
             agent_app,
-            "semantic_intent_classifier",
+            "semantic_manager_classifier",
             return_value={
                 "intent": "diagnostic_agent",
                 "confidence": 0.98,
