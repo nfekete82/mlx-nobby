@@ -53,7 +53,7 @@ class ChatRuntimeIntegrationTests(unittest.TestCase):
             "method": "semantic_manager",
         }):
             web = self.app.run_chat_action(self.app.ChatActionRequest(prompt="Suche im Web nach MLX"))
-        self.assertEqual(web["tool"], "research_agent")
+        self.assertEqual(web["tool"], "web_search")
 
     def test_plain_image_analysis_stays_normal_chat_without_agent(self):
         route = self.app.run_chat_action(
