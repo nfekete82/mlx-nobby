@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260917-notes-confirm-modal-v1">
+<link rel="stylesheet" href="/assets/chat.css?v=20260917-personality-v1">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -470,23 +470,257 @@
             </p>
         </section>
 
-        <section class="settings-card">
-            <h4 class="settings-group-title" data-i18n="profile.preferences">Antwortpräferenzen</h4>
+        <section class="settings-card personality-settings-card">
+            <h4
+                class="settings-group-title"
+                data-i18n="profile.preferences"
+            >Response preferences</h4>
 
-            <div class="field">
-                <label for="profileResponsePreferences">
-                    <span data-i18n="profile.preferences_question">Wie soll MLX nobby antworten?</span>
-                </label>
-                <textarea
-                    id="profileResponsePreferences"
-                    rows="3"
-                    placeholder="z. B. direkt, technisch und kompakt" data-i18n-placeholder="profile.preferences_placeholder"
-                ></textarea>
-            </div>
+            <label class="settings-toggle personality-master-toggle">
+                <input
+                    id="profileStyleEnabled"
+                    type="checkbox"
+                    checked
+                >
+                <span data-i18n="profile.style_enabled">
+                    Use personality and response style
+                </span>
+            </label>
 
-            <p class="settings-hint" data-i18n="profile.preferences_hint">
-                Stil, Ton, Detailgrad und weitere Vorgaben für Antworten.
+            <p
+                class="settings-hint"
+                data-i18n="profile.style_enabled_hint"
+            >
+                These settings control tone and presentation independently of the active model.
             </p>
+
+            <fieldset
+                id="profileStyleControls"
+                class="personality-controls"
+            >
+                <div class="field">
+                    <label
+                        for="profilePersonality"
+                        data-i18n="profile.personality_label"
+                    >Personality</label>
+
+                    <select id="profilePersonality">
+                        <option
+                            value="standard"
+                            data-i18n="profile.personality_standard"
+                        >Standard</option>
+
+                        <option
+                            value="friendly"
+                            data-i18n="profile.personality_friendly"
+                        >Friendly</option>
+
+                        <option
+                            value="neutral"
+                            data-i18n="profile.personality_neutral"
+                        >Neutral</option>
+
+                        <option
+                            value="formal"
+                            data-i18n="profile.personality_formal"
+                        >Reserved</option>
+
+                        <option
+                            value="coach"
+                            data-i18n="profile.personality_coach"
+                        >Coach</option>
+
+                        <option
+                            value="expert"
+                            data-i18n="profile.personality_expert"
+                        >Expert</option>
+
+                        <option
+                            value="creative"
+                            data-i18n="profile.personality_creative"
+                        >Creative</option>
+
+                        <option
+                            value="custom"
+                            data-i18n="profile.personality_custom"
+                        >Custom</option>
+                    </select>
+                </div>
+
+                <p
+                    class="settings-hint personality-preset-hint"
+                    data-i18n="profile.personality_hint"
+                >
+                    The selected personality stays active when the model changes.
+                </p>
+
+                <div
+                    id="profilePersonalityCustomWrap"
+                    class="field"
+                    hidden
+                >
+                    <label
+                        for="profilePersonalityCustom"
+                        data-i18n="profile.personality_custom_label"
+                    >Custom personality</label>
+
+                    <textarea
+                        id="profilePersonalityCustom"
+                        rows="4"
+                        maxlength="4000"
+                        placeholder="Describe tone, behavior, and communication style…"
+                        data-i18n-placeholder="profile.personality_custom_placeholder"
+                    ></textarea>
+
+                    <p
+                        class="settings-hint"
+                        data-i18n="profile.personality_custom_hint"
+                    >
+                        This is added as a trusted local style preference.
+                    </p>
+                </div>
+
+                <div class="personality-fine-tuning">
+                    <div class="personality-section-title">
+                        <span data-i18n="profile.fine_tuning">
+                            Fine tuning
+                        </span>
+
+                        <small data-i18n="profile.fine_tuning_hint">
+                            50 is neutral.
+                        </small>
+                    </div>
+
+                    <div class="personality-slider-grid">
+
+                        <div class="personality-range">
+                            <label for="profileStyleBrevity">
+                                <span data-i18n="profile.style_brevity">
+                                    Brevity
+                                </span>
+                                <strong id="profileStyleBrevityValue">50</strong>
+                            </label>
+
+                            <input
+                                id="profileStyleBrevity"
+                                class="profile-style-range"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="50"
+                            >
+                        </div>
+
+                        <div class="personality-range">
+                            <label for="profileStyleHumor">
+                                <span data-i18n="profile.style_humor">
+                                    Humor
+                                </span>
+                                <strong id="profileStyleHumorValue">50</strong>
+                            </label>
+
+                            <input
+                                id="profileStyleHumor"
+                                class="profile-style-range"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="50"
+                            >
+                        </div>
+
+                        <div class="personality-range">
+                            <label for="profileStyleDirectness">
+                                <span data-i18n="profile.style_directness">
+                                    Directness
+                                </span>
+                                <strong id="profileStyleDirectnessValue">50</strong>
+                            </label>
+
+                            <input
+                                id="profileStyleDirectness"
+                                class="profile-style-range"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="50"
+                            >
+                        </div>
+
+                        <div class="personality-range">
+                            <label for="profileStyleFormality">
+                                <span data-i18n="profile.style_formality">
+                                    Formality
+                                </span>
+                                <strong id="profileStyleFormalityValue">50</strong>
+                            </label>
+
+                            <input
+                                id="profileStyleFormality"
+                                class="profile-style-range"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="50"
+                            >
+                        </div>
+
+                        <div class="personality-range">
+                            <label for="profileStyleExplanation">
+                                <span data-i18n="profile.style_explanation">
+                                    Explanation level
+                                </span>
+                                <strong id="profileStyleExplanationValue">50</strong>
+                            </label>
+
+                            <input
+                                id="profileStyleExplanation"
+                                class="profile-style-range"
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value="50"
+                            >
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="personality-preview">
+                    <span data-i18n="profile.active_mix">
+                        Active mix
+                    </span>
+
+                    <strong id="profilePersonalityPreview"></strong>
+                </div>
+
+                <div class="field personality-freeform">
+                    <label for="profileResponsePreferences">
+                        <span data-i18n="profile.preferences_question">
+                            Additional response preferences
+                        </span>
+                    </label>
+
+                    <textarea
+                        id="profileResponsePreferences"
+                        rows="3"
+                        placeholder="e.g. direct, technical, and concise"
+                        data-i18n-placeholder="profile.preferences_placeholder"
+                    ></textarea>
+                </div>
+
+                <p
+                    class="settings-hint"
+                    data-i18n="profile.preferences_hint"
+                >
+                    Add any extra style, tone, or detail preferences here.
+                </p>
+            </fieldset>
         </section>
 
 
@@ -1292,7 +1526,7 @@
 </div>
 
 <script src="/assets/chat/knowledge.js?v=20260910-source-management"></script>
-<script src="/assets/chat/profile.js?v=20260910-profile-v1"></script>
+<script src="/assets/chat/profile.js?v=20260917-personality-v1"></script>
 <script src="/assets/chat/notes.js?v=20260917-notes-i18n-v2"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>

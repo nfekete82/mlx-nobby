@@ -16,6 +16,259 @@ function profileT(key, fallback = '', variables = {}) {
 
     let customFields = [];
 
+    // MLX-NOBBY-PERSONALITY-V1
+
+    const STYLE_CONTROLS = [
+        {
+            field: 'style_brevity',
+            input: 'profileStyleBrevity',
+            value: 'profileStyleBrevityValue',
+            label: 'profile.style_brevity',
+            fallback: 'Brevity'
+        },
+        {
+            field: 'style_humor',
+            input: 'profileStyleHumor',
+            value: 'profileStyleHumorValue',
+            label: 'profile.style_humor',
+            fallback: 'Humor'
+        },
+        {
+            field: 'style_directness',
+            input: 'profileStyleDirectness',
+            value: 'profileStyleDirectnessValue',
+            label: 'profile.style_directness',
+            fallback: 'Directness'
+        },
+        {
+            field: 'style_formality',
+            input: 'profileStyleFormality',
+            value: 'profileStyleFormalityValue',
+            label: 'profile.style_formality',
+            fallback: 'Formality'
+        },
+        {
+            field: 'style_explanation',
+            input: 'profileStyleExplanation',
+            value: 'profileStyleExplanationValue',
+            label: 'profile.style_explanation',
+            fallback: 'Explanation'
+        }
+    ];
+
+    function normalizeStyleValue(value) {
+        const number =
+            Math.round(
+                Number(value)
+            );
+
+        if (!Number.isFinite(number)) {
+            return 50;
+        }
+
+        return Math.max(
+            0,
+            Math.min(
+                number,
+                100
+            )
+        );
+    }
+
+    function updatePersonalityUi() {
+        const enabled =
+            $('profileStyleEnabled')
+                ?.checked !== false;
+
+        const controls =
+            $('profileStyleControls');
+
+        if (controls) {
+            controls.disabled =
+                !enabled;
+        }
+
+        const personality =
+            $('profilePersonality');
+
+        const preset =
+            personality?.value ||
+            'standard';
+
+        const customWrap =
+            $('profilePersonalityCustomWrap');
+
+        if (customWrap) {
+            customWrap.hidden =
+                preset !== 'custom';
+        }
+
+        for (const item of STYLE_CONTROLS) {
+            const input =
+                $(item.input);
+
+            const output =
+                $(item.value);
+
+            if (!input) {
+                continue;
+            }
+
+            const value =
+                normalizeStyleValue(
+                    input.value
+                );
+
+            input.value =
+                String(value);
+
+            if (output) {
+                output.textContent =
+                    String(value);
+            }
+        }
+
+        const preview =
+            $('profilePersonalityPreview');
+
+        if (!preview) {
+            return;
+        }
+
+        if (!enabled) {
+            preview.textContent =
+                profileT(
+                    'profile.style_disabled',
+                    'Disabled'
+                );
+
+            return;
+        }
+
+        const personalityLabel =
+            personality
+                ?.selectedOptions?.[0]
+                ?.textContent
+                ?.trim()
+            || profileT(
+                'profile.personality_standard',
+                'Standard'
+            );
+
+        const pieces = [
+            personalityLabel
+        ];
+
+        for (const item of STYLE_CONTROLS) {
+            const input =
+                $(item.input);
+
+            pieces.push(
+                profileT(
+                    item.label,
+                    item.fallback
+                )
+                + ' '
+                + normalizeStyleValue(
+                    input?.value
+                )
+            );
+        }
+
+        preview.textContent =
+            pieces.join(' · ');
+    }
+
+    function loadStyleFields(fields) {
+        const enabled =
+            $('profileStyleEnabled');
+
+        if (enabled) {
+            enabled.checked =
+                fields.style_enabled !== false;
+        }
+
+        const personality =
+            $('profilePersonality');
+
+        if (personality) {
+            const requested =
+                String(
+                    fields.personality_preset ||
+                    'standard'
+                );
+
+            const valid =
+                [...personality.options]
+                    .some(
+                        option =>
+                            option.value ===
+                            requested
+                    );
+
+            personality.value =
+                valid
+                    ? requested
+                    : 'standard';
+        }
+
+        const custom =
+            $('profilePersonalityCustom');
+
+        if (custom) {
+            custom.value =
+                fields.personality_custom ||
+                '';
+        }
+
+        for (const item of STYLE_CONTROLS) {
+            const input =
+                $(item.input);
+
+            if (!input) {
+                continue;
+            }
+
+            input.value =
+                String(
+                    normalizeStyleValue(
+                        fields[item.field]
+                    )
+                );
+        }
+
+        updatePersonalityUi();
+    }
+
+    function stylePayload() {
+        const result = {
+            style_enabled:
+                $('profileStyleEnabled')
+                    ?.checked !== false,
+
+            personality_preset:
+                $('profilePersonality')
+                    ?.value ||
+                'standard',
+
+            personality_custom:
+                $('profilePersonalityCustom')
+                    ?.value
+                    ?.trim() ||
+                ''
+        };
+
+        for (const item of STYLE_CONTROLS) {
+            result[item.field] =
+                normalizeStyleValue(
+                    $(item.input)?.value
+                );
+        }
+
+        return result;
+    }
+
+
     async function request(path, options = {}) {
         const response = await fetch(path, options);
         let data = {};
@@ -226,12 +479,17 @@ function profileT(key, fallback = '', variables = {}) {
             const data = await request('/api/mlx/profile');
             const fields = data.fields || {};
 
-            $('profileEnabled').checked = data.enabled !== false;
+            $('profileEnabled').checked =
+                data.enabled !== false;
 
             $('profileResponsePreferences').value =
                 fields.response_preferences || '';
 
-            renderCustomFields(data.custom_fields || []);
+            loadStyleFields(fields);
+
+            renderCustomFields(
+                data.custom_fields || []
+            );
 
             if (status) {
                 status.textContent = '';
@@ -250,13 +508,23 @@ function profileT(key, fallback = '', variables = {}) {
         const status = $('profileSaveStatus');
 
         if (button) button.disabled = true;
-        if (status) status.textContent = 'Speichere…';
+        if (status) {
+            status.textContent =
+                profileT(
+                    'profile.saving',
+                    'Saving…'
+                );
+        }
 
         const payload = {
             enabled: $('profileEnabled')?.checked !== false,
             fields: {
                 response_preferences:
-                    $('profileResponsePreferences')?.value.trim() || ''
+                    $('profileResponsePreferences')
+                        ?.value
+                        .trim() || '',
+
+                ...stylePayload()
             },
             custom_fields: customFields
                 .map(field => ({
@@ -305,6 +573,30 @@ function profileT(key, fallback = '', variables = {}) {
             'click',
             save
         );
+
+        $('profileStyleEnabled')?.addEventListener(
+            'change',
+            updatePersonalityUi
+        );
+
+        $('profilePersonality')?.addEventListener(
+            'change',
+            updatePersonalityUi
+        );
+
+        $('profilePersonalityCustom')?.addEventListener(
+            'input',
+            updatePersonalityUi
+        );
+
+        for (const item of STYLE_CONTROLS) {
+            $(item.input)?.addEventListener(
+                'input',
+                updatePersonalityUi
+            );
+        }
+
+        updatePersonalityUi();
     }
 
     if (document.readyState === 'loading') {

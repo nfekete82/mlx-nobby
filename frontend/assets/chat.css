@@ -9460,3 +9460,156 @@ body.notes-resizing * {
             100%;
     }
 }
+/* ==========================================================
+   MLX-NOBBY-PERSONALITY-V1
+   ========================================================== */
+
+.personality-master-toggle {
+    margin-bottom: 7px;
+}
+
+.personality-controls {
+    min-inline-size: 0;
+
+    margin: 16px 0 0;
+    padding: 0;
+
+    border: 0;
+
+    display: grid;
+    gap: 14px;
+
+    transition:
+        opacity .15s ease;
+}
+
+.personality-controls[disabled] {
+    opacity: .5;
+}
+
+.personality-preset-hint {
+    margin-top: -7px;
+}
+
+#profilePersonalityCustomWrap[hidden] {
+    display: none !important;
+}
+
+.personality-fine-tuning {
+    padding-top: 4px;
+}
+
+.personality-section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+
+    margin-bottom: 10px;
+}
+
+.personality-section-title > span {
+    color: var(--muted);
+
+    font-size: 11px;
+    font-weight: 700;
+
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.personality-section-title small {
+    color: #667285;
+    font-size: 10px;
+}
+
+.personality-slider-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+
+    gap: 14px 18px;
+}
+
+.personality-range {
+    min-width: 0;
+}
+
+.personality-range label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    color: #cbd5e1;
+    font-size: 12px;
+}
+
+.personality-range label strong {
+    min-width: 28px;
+
+    color: var(--muted);
+
+    font-size: 11px;
+    font-weight: 600;
+
+    text-align: right;
+}
+
+.profile-style-range {
+    width: 100%;
+
+    margin-top: 8px;
+
+    cursor: pointer;
+    accent-color: var(--blue);
+}
+
+.personality-preview {
+    display: grid;
+    gap: 5px;
+
+    padding: 12px 13px;
+
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    background: #0d1118;
+}
+
+.personality-preview > span {
+    color: #667285;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.personality-preview > strong {
+    color: #b9c4d3;
+
+    font-size: 11px;
+    font-weight: 500;
+
+    line-height: 1.55;
+}
+
+.personality-freeform {
+    padding-top: 2px;
+}
+
+@media (max-width: 700px) {
+    .personality-slider-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .personality-section-title {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 3px;
+    }
+}

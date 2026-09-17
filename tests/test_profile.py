@@ -354,5 +354,139 @@ class ProfileTests(unittest.TestCase):
         )
 
 
+    def test_personality_style_normalization(self):
+        result = profile._normalize(
+            {
+                "fields": {
+                    "personality_preset": "friendly",
+                    "personality_custom": "  custom text  ",
+                    "style_brevity": 140,
+                    "style_humor": -20,
+                    "style_directness": "75",
+                    "style_formality": None,
+                    "style_explanation": 65.4,
+                }
+            }
+        )
+
+        fields = result["fields"]
+
+        self.assertEqual(
+            fields["personality_preset"],
+            "friendly",
+        )
+        self.assertEqual(
+            fields["personality_custom"],
+            "custom text",
+        )
+        self.assertEqual(
+            fields["style_brevity"],
+            100,
+        )
+        self.assertEqual(
+            fields["style_humor"],
+            0,
+        )
+        self.assertEqual(
+            fields["style_directness"],
+            75,
+        )
+        self.assertEqual(
+            fields["style_formality"],
+            50,
+        )
+        self.assertEqual(
+            fields["style_explanation"],
+            65,
+        )
+
+    def test_invalid_personality_falls_back_to_standard(self):
+        result = profile._normalize(
+            {
+                "fields": {
+                    "personality_preset":
+                        "does-not-exist",
+                }
+            }
+        )
+
+        self.assertEqual(
+            result["fields"]["personality_preset"],
+            "standard",
+        )
+
+    def test_context_contains_personality_and_style(self):
+        profile.save(
+            {
+                "enabled": False,
+                "fields": {
+                    "style_enabled": True,
+                    "personality_preset": "friendly",
+                    "style_brevity": 80,
+                    "style_humor": 75,
+                    "style_directness": 85,
+                    "style_formality": 20,
+                    "style_explanation": 50,
+                },
+                "custom_fields": [
+                    {
+                        "label": "Hidden",
+                        "value": "Personal data",
+                    }
+                ],
+            }
+        )
+
+        result = profile.context()
+
+        self.assertIn(
+            "RESPONSE STYLE PREFERENCES",
+            result,
+        )
+        self.assertIn(
+            "warm, informal, conversational tone",
+            result,
+        )
+        self.assertIn(
+            "Prefer concise answers",
+            result,
+        )
+        self.assertIn(
+            "Use light, natural humor",
+            result,
+        )
+        self.assertIn(
+            "Be direct and clear",
+            result,
+        )
+        self.assertIn(
+            "Use casual and conversational language",
+            result,
+        )
+
+        self.assertNotIn(
+            "Hidden: Personal data",
+            result,
+        )
+
+    def test_custom_personality_context(self):
+        profile.save(
+            {
+                "fields": {
+                    "personality_preset": "custom",
+                    "personality_custom":
+                        "Write like a calm technical colleague.",
+                }
+            }
+        )
+
+        result = profile.context()
+
+        self.assertIn(
+            "Custom personality instructions: "
+            "Write like a calm technical colleague.",
+            result,
+        )
+
 if __name__ == "__main__":
     unittest.main()
