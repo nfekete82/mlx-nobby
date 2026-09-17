@@ -806,5 +806,9 @@
   "rendering.speech_request_failed": "TTS failed ({status})",
   "rendering.speech_empty_response": "Empty audio response",
   "rendering.speech_stop": "Stop playback",
-  "rendering.speech_failed": "Speech playback failed: {message}"
+  "rendering.speech_failed": "Speech playback failed: {message}",
+  "rendering.speech_generating_progress": "Generating audio {current}/{total}…",
+  "rendering.speech_progress": "Serena · {current}/{total}",
+  "rendering.speech_playing": "Serena · playing",
+  "rendering.speech_failed_inline": "Speech failed · try again"
 }

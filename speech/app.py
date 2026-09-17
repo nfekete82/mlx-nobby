@@ -85,7 +85,49 @@ def get_tts_model():
                     f"[speech] Lade TTS-Modell: {TTS_MODEL_NAME}",
                     flush=True,
                 )
-                _tts_model = load_tts_model(TTS_MODEL_NAME)
+                # Prefer an already downloaded Hugging Face snapshot.
+                # Passing the repository ID to mlx_audio causes
+                # snapshot_download() to contact Hugging Face even when the
+                # model is already cached. A broken/slow network connection
+                # can therefore block TTS startup for minutes.
+                tts_model_path = TTS_MODEL_NAME
+
+                if TTS_MODEL_NAME.startswith("mlx-community/"):
+                    repo_cache_name = (
+                        "models--"
+                        + TTS_MODEL_NAME.replace("/", "--")
+                    )
+                    snapshots_dir = (
+                        Path.home()
+                        / ".cache"
+                        / "huggingface"
+                        / "hub"
+                        / repo_cache_name
+                        / "snapshots"
+                    )
+
+                    if snapshots_dir.is_dir():
+                        snapshots = sorted(
+                            (
+                                candidate
+                                for candidate in snapshots_dir.iterdir()
+                                if candidate.is_dir()
+                            ),
+                            key=lambda candidate: (
+                                candidate.stat().st_mtime
+                            ),
+                            reverse=True,
+                        )
+
+                        if snapshots:
+                            tts_model_path = snapshots[0]
+                            print(
+                                "[speech] Nutze lokalen TTS-Snapshot: "
+                                f"{tts_model_path}",
+                                flush=True,
+                            )
+
+                _tts_model = load_tts_model(tts_model_path)
                 print(
                     "[speech] TTS-Modell bereit",
                     flush=True,

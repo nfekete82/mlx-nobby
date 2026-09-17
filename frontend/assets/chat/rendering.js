@@ -2165,6 +2165,23 @@ function renderMessages(options = {}) {
 
             speech.innerHTML = speechIcon;
 
+            const speechStatus =
+                document.createElement('span');
+
+            speechStatus.className =
+                'mlx-message-speech-status';
+
+            speechStatus.hidden = true;
+            speechStatus.setAttribute(
+                'role',
+                'status'
+            );
+            speechStatus.setAttribute(
+                'aria-live',
+                'polite'
+            );
+
+
             let speechAudio = null;
             let speechUrl = null;
 
@@ -2176,6 +2193,14 @@ function renderMessages(options = {}) {
                     'aria-label',
                     rt('speech_read_aloud', 'Read aloud')
                 );
+
+                speechStatus.hidden = true;
+                speechStatus.textContent = '';
+                speechStatus.classList.remove(
+                    'is-error'
+                );
+                delete speech.dataset.progress;
+
             };
 
             const cleanupSpeech = () => {
@@ -2193,96 +2218,336 @@ function renderMessages(options = {}) {
                 resetSpeechButton();
             };
 
+            const splitSpeechText = (
+                value,
+                maxChars = 1500
+            ) => {
+                const source = String(value || '').trim();
+
+                if (!source) return [];
+                if (source.length <= maxChars) return [source];
+
+                const chunks = [];
+                let remaining = source;
+
+                while (remaining.length > maxChars) {
+                    let cut = -1;
+                    const window = remaining.slice(0, maxChars + 1);
+
+                    // Prefer natural sentence/paragraph boundaries.
+                    for (const pattern of [
+                        /[.!?]["'”’)]?\s+(?=[A-ZÄÖÜ0-9])/g,
+                        /\n\s*\n/g,
+                        /\n/g,
+                        /[,;:]\s+/g,
+                        /\s+/g,
+                    ]) {
+                        let match;
+                        let last = -1;
+
+                        while ((match = pattern.exec(window)) !== null) {
+                            last = match.index + match[0].length;
+                        }
+
+                        if (last >= Math.floor(maxChars * 0.55)) {
+                            cut = last;
+                            break;
+                        }
+                    }
+
+                    if (cut < 1) cut = maxChars;
+
+                    chunks.push(remaining.slice(0, cut).trim());
+                    remaining = remaining.slice(cut).trim();
+                }
+
+                if (remaining) chunks.push(remaining);
+
+                return chunks.filter(Boolean);
+            };
+
+            const setSpeechProgress = (
+                current,
+                total
+            ) => {
+                speech.innerHTML = loadingIcon;
+
+                const progress =
+                    total > 1
+                        ? ` ${current}/${total}`
+                        : '';
+
+                speech.title = rt(
+                    'speech_generating_progress',
+                    'Generating audio {current}/{total}…',
+                    {
+                        current,
+                        total
+                    }
+                );
+
+                speech.setAttribute(
+                    'aria-label',
+                    speech.title
+                );
+
+                speech.dataset.progress = progress.trim();
+
+                speechStatus.hidden = false;
+                speechStatus.classList.remove(
+                    'is-error'
+                );
+                speechStatus.textContent = rt(
+                    'speech_progress',
+                    'Serena · {current}/{total}',
+                    {
+                        current,
+                        total
+                    }
+                );
+            };
+
+            let speechRunId = 0;
+            let cancelSpeechWait = null;
+            let speechAbortController = null;
+
+            const cancelSpeechPlayback = () => {
+                speechRunId += 1;
+
+                if (speechAbortController) {
+                    speechAbortController.abort();
+                    speechAbortController = null;
+                }
+
+                if (cancelSpeechWait) {
+                    const cancel = cancelSpeechWait;
+                    cancelSpeechWait = null;
+                    cancel();
+                }
+
+                cleanupSpeech();
+            };
+
+            const playSpeechBlob = async (blob, runId) => {
+                if (!blob.size) {
+                    throw new Error(
+                        rt(
+                            'speech_empty_response',
+                            'Empty audio response'
+                        )
+                    );
+                }
+
+                if (speechUrl) {
+                    URL.revokeObjectURL(speechUrl);
+                }
+
+                speechUrl = URL.createObjectURL(blob);
+                speechAudio = new Audio(speechUrl);
+
+                speech.disabled = false;
+                speech.innerHTML = stopIcon;
+                speech.title = rt(
+                    'speech_stop',
+                    'Stop playback'
+                );
+
+                speech.setAttribute(
+                    'aria-label',
+                    speech.title
+                );
+
+                speechStatus.hidden = false;
+                speechStatus.classList.remove(
+                    'is-error'
+                );
+                speechStatus.textContent = rt(
+                    'speech_playing',
+                    'Serena · playing'
+                );
+
+                const completed = await new Promise(
+                    (resolve, reject) => {
+                        let settled = false;
+
+                        const finish = value => {
+                            if (settled) return;
+                            settled = true;
+                            cancelSpeechWait = null;
+                            resolve(value);
+                        };
+
+                        cancelSpeechWait = () => {
+                            finish(false);
+                        };
+
+                        speechAudio.addEventListener(
+                            'ended',
+                            () => finish(true),
+                            { once: true }
+                        );
+
+                        speechAudio.addEventListener(
+                            'error',
+                            () => {
+                                if (settled) return;
+                                settled = true;
+                                cancelSpeechWait = null;
+                                reject(
+                                    new Error(
+                                        'Audio playback failed'
+                                    )
+                                );
+                            },
+                            { once: true }
+                        );
+
+                        speechAudio.play().catch(error => {
+                            if (settled) return;
+                            settled = true;
+                            cancelSpeechWait = null;
+                            reject(error);
+                        });
+                    }
+                );
+
+                if (runId !== speechRunId) {
+                    return false;
+                }
+
+                speechAudio = null;
+
+                if (speechUrl) {
+                    URL.revokeObjectURL(speechUrl);
+                    speechUrl = null;
+                }
+
+                return completed;
+            };
+
             speech.addEventListener(
                 'click',
                 async () => {
                     if (speechAudio) {
-                        cleanupSpeech();
+                        cancelSpeechPlayback();
                         return;
                     }
 
                     const text =
                         String(message.content || '').trim();
 
-                    if (!text) {
-                        return;
-                    }
+                    if (!text) return;
 
+                    const chunks = splitSpeechText(text);
+
+                    if (!chunks.length) return;
+
+                    const runId = ++speechRunId;
                     speech.disabled = true;
-                    speech.innerHTML = loadingIcon;
-                    speech.title = rt('speech_generating', 'Generating audio…');
 
                     try {
-                        const response = await fetch(
-                            '/api/mlx/audio/speech',
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type':
-                                        'application/json'
-                                },
-                                body: JSON.stringify({
-                                    input: text,
-                                    voice: 'Serena',
-                                    language: 'de',
-                                    instruct:
-                                        'Speak in a warm, soft, feminine and natural voice. Calm, friendly and slightly playful.',
-                                    speed: 1.0
-                                })
+                        for (
+                            let index = 0;
+                            index < chunks.length;
+                            index += 1
+                        ) {
+                            if (runId !== speechRunId) {
+                                return;
                             }
-                        );
 
-                        if (!response.ok) {
-                            let detail =
-                                rt('speech_request_failed', 'TTS failed ({status})', { status: response.status });
-
-                            try {
-                                const data =
-                                    await response.json();
-
-                                detail =
-                                    data?.detail || detail;
-                            } catch {}
-
-                            throw new Error(detail);
-                        }
-
-                        const blob = await response.blob();
-
-                        if (!blob.size) {
-                            throw new Error(
-                                rt('speech_empty_response', 'Empty audio response')
+                            setSpeechProgress(
+                                index + 1,
+                                chunks.length
                             );
+
+                            speechAbortController =
+                                new AbortController();
+
+                            const response = await fetch(
+                                '/api/mlx/audio/speech',
+                                {
+                                    method: 'POST',
+                                    signal:
+                                        speechAbortController.signal,
+                                    headers: {
+                                        'Content-Type':
+                                            'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        input: chunks[index],
+                                        voice: 'Serena',
+                                        language: 'de',
+                                        instruct:
+                                            'Speak in a warm, soft, feminine and natural voice. Calm, friendly and slightly playful.',
+                                        speed: 1.0
+                                    })
+                                }
+                            );
+
+                            speechAbortController = null;
+
+                            if (runId !== speechRunId) {
+                                return;
+                            }
+
+                            if (!response.ok) {
+                                let detail = rt(
+                                    'speech_request_failed',
+                                    'TTS failed ({status})',
+                                    {
+                                        status:
+                                            response.status
+                                    }
+                                );
+
+                                try {
+                                    const data =
+                                        await response.json();
+
+                                    detail =
+                                        data?.detail || detail;
+                                } catch {}
+
+                                throw new Error(detail);
+                            }
+
+                            const blob =
+                                await response.blob();
+
+                            if (runId !== speechRunId) {
+                                return;
+                            }
+
+                            const completed =
+                                await playSpeechBlob(
+                                    blob,
+                                    runId
+                                );
+
+                            if (
+                                !completed ||
+                                runId !== speechRunId
+                            ) {
+                                return;
+                            }
+
+                            // Disable briefly while the next
+                            // chunk is being generated.
+                            speech.disabled = true;
                         }
 
-                        speechUrl =
-                            URL.createObjectURL(blob);
-
-                        speechAudio =
-                            new Audio(speechUrl);
-
-                        speech.disabled = false;
-                        speech.innerHTML = stopIcon;
-                        speech.title = rt('speech_stop', 'Stop playback');
-                        speech.setAttribute(
-                            'aria-label',
-                            rt('speech_stop', 'Stop playback')
-                        );
-
-                        speechAudio.addEventListener(
-                            'ended',
-                            cleanupSpeech,
-                            { once: true }
-                        );
-
-                        speechAudio.addEventListener(
-                            'error',
-                            cleanupSpeech,
-                            { once: true }
-                        );
-
-                        await speechAudio.play();
+                        cleanupSpeech();
                     } catch (error) {
+                        speechAbortController = null;
+
+                        if (
+                            error?.name === 'AbortError' ||
+                            runId !== speechRunId
+                        ) {
+                            cleanupSpeech();
+                            return;
+                        }
+
                         console.error(
                             '[speech]',
                             error
@@ -2290,18 +2555,29 @@ function renderMessages(options = {}) {
 
                         cleanupSpeech();
 
-                        alert(
-                            rt(
-                                'speech_failed',
-                                'Speech playback failed: {message}',
-                                { message: error.message }
-                            )
+                        speechStatus.hidden = false;
+                        speechStatus.classList.add(
+                            'is-error'
+                        );
+                        speechStatus.textContent = rt(
+                            'speech_failed_inline',
+                            'Speech failed · try again'
+                        );
+
+                        speech.title = rt(
+                            'speech_failed',
+                            'Speech playback failed: {message}',
+                            {
+                                message:
+                                    error.message
+                            }
                         );
                     }
                 }
             );
 
             actions.appendChild(speech);
+            actions.appendChild(speechStatus);
 
             const info =
                 document.createElement('button');

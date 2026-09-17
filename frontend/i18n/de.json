@@ -806,5 +806,9 @@
   "rendering.speech_request_failed": "TTS fehlgeschlagen ({status})",
   "rendering.speech_empty_response": "Leere Audioantwort",
   "rendering.speech_stop": "Wiedergabe stoppen",
-  "rendering.speech_failed": "Sprachausgabe fehlgeschlagen: {message}"
+  "rendering.speech_failed": "Sprachausgabe fehlgeschlagen: {message}",
+  "rendering.speech_generating_progress": "Audio wird erzeugt {current}/{total}…",
+  "rendering.speech_progress": "Serena · {current}/{total}",
+  "rendering.speech_playing": "Serena · Wiedergabe",
+  "rendering.speech_failed_inline": "Sprachausgabe fehlgeschlagen · Erneut versuchen"
 }

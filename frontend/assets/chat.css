@@ -7519,3 +7519,25 @@ body.mlx-empty-chat .composer-disclaimer {
     font-size: 10px;
     line-height: 1.45;
 }
+
+/* MLX nobby Serena TTS status */
+.mlx-message-speech-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    margin-left: 2px;
+    padding: 0 5px;
+    font-size: 11px;
+    line-height: 1;
+    color: #8d98a8;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.mlx-message-speech-status[hidden] {
+    display: none;
+}
+
+.mlx-message-speech-status.is-error {
+    color: #d98d8d;
+}
