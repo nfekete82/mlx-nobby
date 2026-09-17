@@ -10,7 +10,7 @@ agent :8010  -- /api/image/* -->  image service :8030
                                       |
                          image-models.json registry
                                       |
-                   diffusionkit or mflux provider
+                   diffusionkit, mflux or local SDXL provider
                                       |
                          PNG on local disk
 ```
@@ -28,6 +28,13 @@ does not download weights. MFLUX 0.19.1 is called through the installed native C
 keeps the image runtime isolated from the normal chat/agent Python process and
 allows MLX/Metal memory to be released after each request.
 
+The optional `juggernaut-xl` entry uses a local SDXL checkpoint under
+`~/Models/JuggernautXL` and an offline Diffusers configuration. Its worker is
+reused between requests and shuts down after an idle period (10 minutes by
+default, controlled by `MLX_IMAGE_SDXL_IDLE_TIMEOUT`). Real-ESRGAN upscaling
+uses a separately installed native binary and local model files; it supports
+photo 2x/4x and anime 4x presets. Neither path downloads model weights.
+
 The registry is persisted at `~/.config/mlx-web/image-models.json`. Built-in
 entries are migrated into an existing registry without overwriting user
 choices. The `image` model role in `model-roles.json` stores an image-registry
@@ -42,6 +49,7 @@ Supported MFLUX command families are selected explicitly by `model_family`:
 | Z-Image | `mflux-generate-z-image` |
 | Z-Image Turbo | `mflux-generate-z-image-turbo` |
 | Qwen Image | `mflux-generate-qwen` |
+| Qwen Image Edit | `mflux-generate-qwen-edit` |
 
 Model-specific guidance/step limits and up to eight LoRAs are validated by
 the registry before a provider process is started. No prompt keyword filter is
@@ -49,7 +57,7 @@ added by the runtime.
 
 ## Image jobs and iterative editing
 
-Image generation and image editing use the same asynchronous lifecycle:
+Image generation, editing, and upscaling use the same asynchronous lifecycle:
 
 `queued -> loading -> running -> saving -> completed`
 

@@ -72,12 +72,17 @@ import them directly.
 
 ### Speech
 
-`requirements/speech.txt` installs `mlx-audio[stt]==0.5.1`. The package
+`requirements/speech.txt` installs `mlx-audio[stt,tts]==0.5.1`. The package
 metadata for the STT extra declares `sentencepiece>=0.2.0` and
 `zstandard>=0.23.0`. The fresh install contained both (0.2.2 and 0.25.0), so no
 manual duplicate entries are needed. The tested Python 3.13 resolver selected
 NumPy 2.5.3 and SciPy 1.18.1, whose package metadata requires Python 3.12 or
 later. Python 3.13 is therefore the tested recommendation.
+
+The speech service also loads a Qwen3 TTS voice model on demand for chat
+playback. `MLX_TTS_MODEL`, `MLX_TTS_VOICE`, `MLX_TTS_LANGUAGE`, and
+`MLX_TTS_INSTRUCT` configure its defaults. FFmpeg converts generated audio to
+MP3. The TTS model may be downloaded if it is not cached locally.
 
 ### Images and optional MFLUX
 
@@ -90,10 +95,34 @@ its scikit-learn conversion support with scikit-learn 1.9.0. The application
 uses the MLX pipeline rather than those conversion paths. DiffusionKit remains a
 fragile legacy provider and is isolated for that reason.
 
+The image manifest also includes Diffusers and Accelerate for the optional
+local SDXL provider. Real-ESRGAN uses an external native binary and model files;
+the image service looks for them under `~/.local/bin` and
+`~/.local/share/realesrgan/models` unless `MLX_IMAGE_REALESRGAN_BIN` and
+`MLX_IMAGE_REALESRGAN_MODELS` override those paths.
+
 The optional standalone CLI is `mflux==0.19.1`. It is installed separately
-because the image adapter invokes its console commands. All five commands used
+because the image adapter invokes its console commands. The commands used
 by the repository were present and accepted the adapter's arguments. Package
 installation and help checks downloaded no model weights.
+
+### Vision classifier
+
+The agent's `vision_uncensored` routing uses a separate ONNX image classifier.
+Its `numpy` and `onnxruntime` requirements are listed in
+`requirements/vision-classifier.txt`; the default installer does not install
+that manifest into `agent-venv`. Install it there to enable classification:
+
+```sh
+agent-venv/bin/python -m pip install -r requirements/vision-classifier.txt
+```
+
+The classifier downloads its ONNX model to
+`~/.cache/mlx-web/vision/image-safety-classifier-l.onnx` on first use. Set
+`MLX_VISION_CLASSIFIER_MODEL` to an existing local model file to avoid that
+download. Missing classifier dependencies, download errors, and uncertain
+classifications fall back to the regular `vision` role. Configure a local model
+for `vision_uncensored` separately to use that role.
 
 ## Installation
 
@@ -201,6 +230,10 @@ file.
 | `MLX_EMBEDDING_BATCH_SIZE` | Embedding batch size from 1 to 128; default 8. |
 | `FFMPEG_PATH` | Explicit FFmpeg executable; otherwise PATH and Homebrew locations are checked. |
 | `MLX_IMAGE_MFLUX_BIN` | Optional directory containing the MFLUX CLI commands. |
+| `MLX_IMAGE_SDXL_IDLE_TIMEOUT` | Seconds the local SDXL worker remains warm after a request; default 600. |
+| `MLX_IMAGE_REALESRGAN_BIN`, `MLX_IMAGE_REALESRGAN_MODELS` | Optional Real-ESRGAN binary and model directories. |
+| `MLX_TTS_MODEL`, `MLX_TTS_VOICE`, `MLX_TTS_LANGUAGE`, `MLX_TTS_INSTRUCT` | Speech service text-to-speech defaults. |
+| `MLX_VISION_CLASSIFIER_MODEL` | Optional local ONNX classifier file for vision role routing. |
 
 The old web variables `MLX_URL`, `SPEECH_URL`, and `IMAGE_URL` are no longer
 read by the web backend. MLX and speech requests cross `AGENT_URL`; the agent

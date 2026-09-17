@@ -28,8 +28,9 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
   creative requests
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
+- Local text-to-speech with Serena voice and pause/resume playback in chat
 - Image generation and Qwen image editing through DiffusionKit and optional
-  MFLUX providers
+  MFLUX providers; optional local SDXL generation and Real-ESRGAN upscaling
 - Asynchronous image jobs with real progress, cancellation, reload recovery,
   and persistent chat artifacts
 - Iterative image editing that continues from the active image artifact
@@ -37,6 +38,8 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
   newly created chats
 - System metrics, service health, logs, and runtime controls
 - English and German chat UI with a persisted language setting
+- Optional `vision_uncensored` model role selected for confidently classified
+  adult images; ordinary and unclassified images use the `vision` role
 
 ## Screenshots
 
@@ -204,7 +207,8 @@ Do not merge these requirements into one environment.
 | `speech-venv` | 3.13 | `requirements/speech.txt` |
 
 See [Dependency setup](docs/DEPENDENCIES.md) for manual installation,
-constraints, tested versions, optional MFLUX setup, and offline import checks.
+constraints, tested versions, optional MFLUX and vision classifier setup, and
+offline import checks.
 
 ## Configuration
 
@@ -234,6 +238,10 @@ Generation parameters such as system prompt, preset, temperature, and maximum
 token count belong to the active chat. Changes are persisted automatically as
 defaults for newly created chats.
 
+For frontend development, `./scripts/dev-web.sh` starts the Compose web
+container with a read-only live mount of `frontend/`. Changes to those files
+then appear without rebuilding the container.
+
 ## RAG and embeddings
 
 Knowledge sources are indexed by the native agent through the embedding service
@@ -248,8 +256,10 @@ already cached. Use local model paths and the offline variables documented in
 ## Images and speech
 
 The image service supports the repository's DiffusionKit provider and an
-optional, separately installed MFLUX CLI. Image model weights and generated
-outputs remain local. MFLUX is not installed by the default installer.
+optional, separately installed MFLUX CLI. An opt-in SDXL provider uses a local
+checkpoint, and optional Real-ESRGAN presets upscale images. Image model
+weights and generated outputs remain local. MFLUX and Real-ESRGAN are not
+installed by the default installer.
 
 Image generation and image editing use asynchronous jobs with explicit
 `queued`, `loading`, `running`, `saving`, `completed`, `failed`, and
@@ -265,8 +275,10 @@ iterative editing from the active image artifact of the current session, so a
 generated or edited image can be refined in subsequent prompts without
 re-uploading it.
 
-The speech service uses `mlx-audio[stt]` and FFmpeg. Uploaded audio is relayed
+The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
+Chat messages can also be read aloud with the local Qwen3 TTS model and Serena
+voice; playback can be paused and resumed.
 
 See `IMAGE_RUNTIME.md` and `docs/DEPENDENCIES.md` for provider and runtime
 details.
@@ -295,6 +307,9 @@ loopback by default and the web port is published on localhost.
 MLX nobby is not completely offline by default:
 
 - Model download and cache actions can contact Hugging Face.
+- The optional vision classifier downloads its ONNX model from Hugging Face on
+  first use unless it is already cached or a local model path is configured.
+- The local text-to-speech model can also download weights on first use.
 - Research actions can query the configured SearXNG instance and fetch selected
   external pages.
 - The current web pages load Tailwind CSS, Marked, DOMPurify, and Highlight.js

@@ -1,4 +1,4 @@
-# MLX Nobby: Agent-Handoff
+# MLX Nobby: Agent-Architektur
 
 ## Ziel und Arbeitsumfang
 
@@ -7,9 +7,8 @@ Diagnose, Recherche, Coding im ausgewählten Workspace und kontrollierte Delegat
 Bestehende Tools, nachvollziehbare Ergebnisse und explizite Freigaben für
 zustandsändernde Aktionen bilden die Grundlage.
 
-Dieses Dokument beschreibt den zuletzt implementierten Stand. Für Folgearbeiten
-nur betroffene Symbole und Ausschnitte prüfen; keine vollständige Neuanalyse von
-`agent/app.py` oder des Repositorys beginnen.
+Dieses Dokument beschreibt die implementierte Agent-Architektur. Änderungen an
+angrenzenden Diensten sind nur beschrieben, soweit sie den Agenten betreffen.
 
 ## Architektur und Invarianten
 
@@ -47,6 +46,7 @@ Alle folgenden Pfade liegen unter `agent/`.
 | `evidence.py` | Evidence-Verträge, Kompaktierung, Coding-Antwortregeln, Quellenbewertung und Delegations-/Research-Helfer. |
 | `approvals.py` | `AgentApprovals`: bestehender Freigabespeicher, TTL, einmalige Entnahme, Validierung, Ausführung und Verifikation. |
 | `code_workspaces.py` | Workspace-Verwaltung, sichere Dateioperationen und bestehender Patch-/Diff-/Test-/Apply-/Verify-Workflow. |
+| `vision_classifier.py`, `vision_routing.py` | Lokale ONNX-Bildklassifikation und Auswahl zwischen `vision` und `vision_uncensored` für den normalen multimodalen Chat-Pfad. |
 | `app.py` | FastAPI-Endpunkte, Zusammensetzen der Abhängigkeiten, lokale Modellintegration, Progress-Speicher und Compatibility-Funktionen. Enthält weiterhin andere Anwendungslogik. |
 
 ## Ablauf eines Runs
@@ -183,9 +183,15 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   ausgelagerten Prompt-, Evidence- und Approval-Module an.
 - Rollen-/Modellauflösung, Modell-Lock und Progress-/Pending-Speicher bleiben in der
   bestehenden Integration. Es wurde keine neue Event-Plattform eingeführt.
-- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `image` und `embedding`
-  werden in der bestehenden Integration aufgelöst. BGE-M3 ist für die
-  Embedding-Rolle kompatibel.
+- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `vision_uncensored`,
+  `image` und `embedding` werden in der bestehenden Integration aufgelöst.
+  BGE-M3 ist für die Embedding-Rolle kompatibel.
+- Der Web-Backend-Chat-Pfad fragt bei Bildnachrichten die Vision-Route des
+  Agenten ab. Ein lokaler ONNX-Klassifikator wählt `vision_uncensored` nur bei
+  ausreichend sicher erkannter Adult-Klasse und verfügbarer Rolle. Bei
+  Klassifikationsfehlern oder unklaren Bildern bleibt `vision` aktiv. Das
+  Klassifikatormodell wird bei Bedarf heruntergeladen; seine separaten
+  Python-Abhängigkeiten installiert der Standardinstaller nicht.
 - Freigaben und Progress sind weiterhin prozesslokal; keine neue dauerhafte
   Speicherung oder Wiederaufnahme nach einem Prozessneustart implementiert.
 - Cancellation ist kooperativ: vor Modell-/Tool-Aufrufen und neuen Schritten.
