@@ -827,6 +827,84 @@ async function regenerateLastAnswer() {
 }
 
 
+function stripTrailingSvgStreamArtifact(text) {
+    const value = String(text ?? '');
+
+    if (!value.trim()) {
+        return value;
+    }
+
+    const lines = value.split(/\r?\n/);
+
+    let start = lines.length;
+    let artifactLines = 0;
+    let svgOccurrences = 0;
+
+    while (start > 0) {
+        const line = lines[start - 1].trim();
+
+        // Leerzeilen direkt innerhalb/vor dem Artefakt-Tail mitnehmen.
+        if (!line) {
+            if (artifactLines > 0) {
+                start -= 1;
+                continue;
+            }
+
+            break;
+        }
+
+        const compact = line.replace(/\s+/g, '');
+
+        if (!/^(?:svg)+$/i.test(compact)) {
+            break;
+        }
+
+        artifactLines += 1;
+        svgOccurrences += (
+            compact.match(/svg/gi) || []
+        ).length;
+
+        start -= 1;
+    }
+
+    // Zu wenig Evidenz:
+    // Eine einzelne SVG-Zeile oder "SVG SVG" bleibt legitimer Inhalt.
+    if (
+        artifactLines === 0 ||
+        (artifactLines < 2 && svgOccurrences < 3)
+    ) {
+        return value;
+    }
+
+    const prefix = lines
+        .slice(0, start)
+        .join('\n')
+        .trimEnd();
+
+    // Wenn praktisch die komplette Antwort nur aus SVG besteht,
+    // nichts verändern.
+    if (!prefix.trim()) {
+        return value;
+    }
+
+    // Nicht innerhalb eines offenen Markdown-Codeblocks eingreifen.
+    const backtickFences =
+        (prefix.match(/```/g) || []).length;
+
+    const tildeFences =
+        (prefix.match(/~~~/g) || []).length;
+
+    if (
+        backtickFences % 2 !== 0 ||
+        tildeFences % 2 !== 0
+    ) {
+        return value;
+    }
+
+    return prefix;
+}
+
+
 async function generateAssistant(session) {
 if (
         getGenerating() ||
@@ -1124,6 +1202,23 @@ try {
                     performance.now() -
                     assistantMessage._thinkingStarted
                 ) / 1000;
+        }
+
+        const cleanedAssistantContent =
+            stripTrailingSvgStreamArtifact(
+                assistantMessage.content
+            );
+
+        if (
+            cleanedAssistantContent !==
+            assistantMessage.content
+        ) {
+            console.warn(
+                '[MLX Chat] Removed trailing SVG stream artifact'
+            );
+
+            assistantMessage.content =
+                cleanedAssistantContent;
         }
 
         delete assistantMessage._thinkingStarted;
@@ -3268,6 +3363,7 @@ resetSessionRuntime: resetSessionRuntime,
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
             readSseEvents: readSseEvents,
+            stripTrailingSvgStreamArtifact: stripTrailingSvgStreamArtifact,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments,
             imageConversationState: imageConversationState,

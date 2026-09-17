@@ -447,3 +447,74 @@ assert.equal(assistant.model_metrics.model_calls_in_turn, 1);
 console.log(
     'SSE finalization: final metrics, arbitrary chunks, Unicode, and event behavior passed.',
 );
+
+
+
+// ============================================================
+// TRAILING SVG STREAM ARTIFACT
+// ============================================================
+
+const stripTrailingSvgStreamArtifact =
+    window.MLXChatGeneration.__test
+        .stripTrailingSvgStreamArtifact;
+
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Hier ist die eigentliche Antwort.\n\nsvg\n\nsvgsvgsvg\n\nsvg'
+    ),
+    'Hier ist die eigentliche Antwort.'
+);
+
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Hier ist die eigentliche Antwort.\nsvg\nsvg'
+    ),
+    'Hier ist die eigentliche Antwort.'
+);
+
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Hier ist die eigentliche Antwort.\n\nsvgsvgsvg'
+    ),
+    'Hier ist die eigentliche Antwort.'
+);
+
+// Normale Erwähnungen dürfen niemals verschwinden.
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Für Icons solltest du SVG verwenden.'
+    ),
+    'Für Icons solltest du SVG verwenden.'
+);
+
+// Eine einzelne SVG-Zeile ist nicht genug Evidenz für ein Artefakt.
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Empfohlenes Format:\n\nSVG'
+    ),
+    'Empfohlenes Format:\n\nSVG'
+);
+
+// Auch "SVG SVG" allein wird nicht aggressiv entfernt.
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'Ausgabe:\n\nSVG SVG'
+    ),
+    'Ausgabe:\n\nSVG SVG'
+);
+
+// Wenn die komplette Antwort SVG lautet, darf sie nicht verschwinden.
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        'svg\nsvgsvg'
+    ),
+    'svg\nsvgsvg'
+);
+
+// Offene Code-Fences dürfen nicht verändert werden.
+assert.equal(
+    stripTrailingSvgStreamArtifact(
+        '```text\nfoo\nsvg\nsvgsvgsvg'
+    ),
+    '```text\nfoo\nsvg\nsvgsvgsvg'
+);
