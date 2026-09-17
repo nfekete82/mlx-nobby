@@ -1,0 +1,4 @@
+services:
+  mlx-web:
+    volumes:
+      - ./frontend:/app/frontend:ro
