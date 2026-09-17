@@ -124,11 +124,19 @@ def describe(model):
 def health():
     data = registry_call(registry.load_registry)
     model = registry_call(registry.get_model)
+    sdxl_loaded = sdxl_worker_running()
+    loaded = bool(_running) or sdxl_loaded
+    running_model = _running
+    if running_model is None and sdxl_loaded:
+        running_model = registry.JUGGERNAUT_XL_ID
+
     return {
         "ok": True,
         "status": "busy" if _running or _active_job_id else "ready",
         "models": [m["id"] for m in data["models"] if m["enabled"]],
-        "loaded": bool(_running), "running_model": _running,
+        "loaded": loaded,
+        "running_model": running_model,
+        "sdxl_worker_loaded": sdxl_loaded,
         "backend": model["provider"] + "-mlx",
         "runtime_model": model.get("repository"),
         "default_model": data["default_model"], "offline": True,
