@@ -6597,21 +6597,24 @@ def translate_image_prompt_to_english(prompt):
             }
 
             if final_prompt and layout in layouts:
-                # The small router is authoritative only for composition.
-                # Translation quality is handled by the configured chat model.
-                translated_prompt = _retry_image_prompt_translation(
-                    value
-                )
-
+                # Fast path: the router already translates the prompt and
+                # classifies its layout in one call. Only involve the larger
+                # chat model when the router output still appears non-English.
                 if _image_prompt_needs_english_retry(
                     value,
-                    translated_prompt,
+                    final_prompt,
                 ):
-                    raise ValueError(
-                        "chat image translation still appears non-English"
+                    final_prompt = _retry_image_prompt_translation(
+                        value
                     )
+                    if _image_prompt_needs_english_retry(
+                        value,
+                        final_prompt,
+                    ):
+                        raise ValueError(
+                            "chat image translation still appears non-English"
+                        )
 
-                final_prompt = translated_prompt
                 width, height = layouts[layout]
 
                 print(
