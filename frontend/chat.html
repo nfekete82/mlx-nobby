@@ -1109,10 +1109,10 @@
             <strong
                 id="notesModalTitle"
                 data-i18n="ui.notes"
-            >Notizen</strong>
+            >Notes</strong>
 
-            <span>
-                Ordner & Notizen
+            <span data-i18n="notes.browser_subtitle">
+                Folders &amp; notes
             </span>
         </div>
 
@@ -1120,8 +1120,10 @@
             id="notesClose"
             class="notes-modal-close"
             type="button"
-            aria-label="Schließen"
-            title="Schließen"
+            aria-label="Close"
+            data-i18n-aria-label="notes.close"
+            title="Close"
+            data-i18n-title="notes.close"
         >
             ×
         </button>
@@ -1142,18 +1144,22 @@
                 <input
                     id="notesSearch"
                     type="search"
-                    placeholder="Notizen durchsuchen…"
+                    placeholder="Search notes…"
+                    data-i18n-placeholder="notes.search_placeholder"
                     autocomplete="off"
                     spellcheck="false"
-                    aria-label="Notizen durchsuchen"
+                    aria-label="Search notes"
+                    data-i18n-aria-label="notes.search_label"
                 >
 
                 <button
                     id="notesSearchClear"
                     class="notes-search-clear"
                     type="button"
-                    aria-label="Suche löschen"
-                    title="Suche löschen"
+                    aria-label="Clear search"
+                    data-i18n-aria-label="notes.clear_search"
+                    title="Clear search"
+                    data-i18n-title="notes.clear_search"
                     hidden
                 >
                     ×
@@ -1173,8 +1179,10 @@
             class="notes-sidebar-resizer"
             role="separator"
             aria-orientation="vertical"
-            aria-label="Breite der Ordnerleiste ändern"
-            title="Ziehen zum Ändern · Doppelklick zum Zurücksetzen"
+            aria-label="Resize folder sidebar"
+            data-i18n-aria-label="notes.sidebar_resize_label"
+            title="Drag to resize · double-click to reset"
+            data-i18n-title="notes.sidebar_resize_title"
         ></div>
 
         <section class="notes-workspace">
@@ -1186,12 +1194,12 @@
                 <div class="note-preview-empty">
                     <div class="note-preview-empty-icon">📝</div>
 
-                    <strong>
-                        Notiz auswählen
+                    <strong data-i18n="notes.select_note">
+                        Select a note
                     </strong>
 
-                    <span>
-                        Wähle links eine Notiz aus oder erstelle eine neue.
+                    <span data-i18n="notes.select_note_hint">
+                        Select a note on the left or create a new one.
                     </span>
                 </div>
             </div>
@@ -1204,16 +1212,21 @@
                 <div class="note-editor-heading">
 
                     <div>
-                        <span>Notiz</span>
-                        <strong>
-                            Erstellen oder bearbeiten
+                        <span data-i18n="notes.editor_label">
+                            Note
+                        </span>
+
+                        <strong data-i18n="notes.editor_heading">
+                            Create or edit
                         </strong>
                     </div>
 
                 </div>
 
                 <label class="note-editor-field">
-                    <span>Ordner</span>
+                    <span data-i18n="notes.folder_label">
+                        Folder
+                    </span>
 
                     <select
                         id="noteFolder"
@@ -1222,24 +1235,28 @@
                 </label>
 
                 <label class="note-editor-field">
-                    <span>Name</span>
+                    <span data-i18n="notes.name_label">
+                        Name
+                    </span>
 
                     <input
                         id="noteName"
                         type="text"
-                        placeholder="Name der Notiz"
-                        data-i18n-placeholder="ui.note_name"
+                        placeholder="Note name"
+                        data-i18n-placeholder="notes.note_name_placeholder"
                         autocomplete="off"
                     >
                 </label>
 
                 <label class="note-editor-field note-editor-content-field">
-                    <span>Notiztext</span>
+                    <span data-i18n="notes.content_label">
+                        Note text
+                    </span>
 
                     <textarea
                         id="noteContent"
-                        placeholder="Notiztext..."
-                        data-i18n-placeholder="ui.note_content"
+                        placeholder="Note text..."
+                        data-i18n-placeholder="notes.note_content_placeholder"
                         rows="14"
                     ></textarea>
                 </label>
@@ -1250,8 +1267,9 @@
                         id="noteEditCancel"
                         class="notes-secondary-button"
                         type="button"
+                        data-i18n="notes.cancel"
                     >
-                        Abbrechen
+                        Cancel
                     </button>
 
                     <button
@@ -1260,7 +1278,7 @@
                         type="button"
                     >
                         <span data-i18n="notes.save_note">
-                            Notiz speichern
+                            Save note
                         </span>
                     </button>
 
@@ -1275,7 +1293,7 @@
 
 <script src="/assets/chat/knowledge.js?v=20260910-source-management"></script>
 <script src="/assets/chat/profile.js?v=20260910-profile-v1"></script>
-<script src="/assets/chat/notes.js?v=20260917-notes-confirm-modal-v1"></script>
+<script src="/assets/chat/notes.js?v=20260917-notes-i18n-v2"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20260911-code-evidence"></script>

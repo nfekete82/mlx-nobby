@@ -95,7 +95,7 @@ function notesT(key, fallback = '', variables = {}) {
         if (!folderId) {
             return notesT(
                 'notes.no_folder',
-                'Ohne Ordner'
+                'No folder'
             );
         }
 
@@ -122,7 +122,7 @@ function notesT(key, fallback = '', variables = {}) {
             ? parts.reverse().join(' / ')
             : notesT(
                 'notes.no_folder',
-                'Ohne Ordner'
+                'No folder'
             );
     }
 
@@ -537,11 +537,11 @@ function notesT(key, fallback = '', variables = {}) {
 
     // MLX-NOBBY-NOTES-CONFIRM-MODAL-V1
 
-    function notesConfirm({
-        title = 'Löschen?',
+function notesConfirm({
+        title = 'Delete?',
         message = '',
-        confirmLabel = 'Löschen',
-        cancelLabel = 'Abbrechen'
+        confirmLabel = 'Delete',
+        cancelLabel = 'Cancel'
     } = {}) {
 
         return new Promise(resolve => {
@@ -940,13 +940,19 @@ function notesT(key, fallback = '', variables = {}) {
                 document.createElement('strong');
 
             title.textContent =
-                'Notiz auswählen';
+                notesT(
+                    'notes.select_note',
+                    'Select a note'
+                );
 
             const text =
                 document.createElement('span');
 
             text.textContent =
-                'Wähle links eine Notiz aus oder erstelle eine neue.';
+                notesT(
+                    'notes.select_note_hint',
+                    'Select a note on the left or create a new one.'
+                );
 
             empty.appendChild(icon);
             empty.appendChild(title);
@@ -998,7 +1004,11 @@ function notesT(key, fallback = '', variables = {}) {
             'note-preview-title';
 
         title.textContent =
-            note.name || 'Notiz';
+            note.name ||
+            notesT(
+                'notes.note_label',
+                'Note'
+            );
 
 
         headerCopy.appendChild(
@@ -1019,7 +1029,11 @@ function notesT(key, fallback = '', variables = {}) {
 
         menu.textContent = '⋯';
 
-        menu.title = 'Weitere Aktionen';
+        menu.title =
+            notesT(
+                'notes.more_actions',
+                'More actions'
+            );
 
         menu.addEventListener(
             'click',
@@ -1031,7 +1045,7 @@ function notesT(key, fallback = '', variables = {}) {
                             label:
                                 notesT(
                                     'notes.insert_chat',
-                                    'In Chat einfügen'
+                                    'Insert into chat'
                                 ),
                             action:
                                 () =>
@@ -1043,7 +1057,7 @@ function notesT(key, fallback = '', variables = {}) {
                             label:
                                 notesT(
                                     'notes.edit',
-                                    'Bearbeiten'
+                                    'Edit'
                                 ),
                             action:
                                 () =>
@@ -1058,7 +1072,7 @@ function notesT(key, fallback = '', variables = {}) {
                             label:
                                 notesT(
                                     'notes.delete',
-                                    'Löschen'
+                                    'Delete'
                                 ),
                             danger: true,
                             action:
@@ -1110,7 +1124,7 @@ function notesT(key, fallback = '', variables = {}) {
         insertButton.textContent =
             notesT(
                 'notes.insert',
-                'Einfügen'
+                'Insert'
             );
 
         insertButton.addEventListener(
@@ -1134,7 +1148,7 @@ function notesT(key, fallback = '', variables = {}) {
         editButton.textContent =
             notesT(
                 'notes.edit',
-                'Bearbeiten'
+                'Edit'
             );
 
         editButton.addEventListener(
@@ -1158,7 +1172,7 @@ function notesT(key, fallback = '', variables = {}) {
         deleteButton.textContent =
             notesT(
                 'notes.delete',
-                'Löschen'
+                'Delete'
             );
 
         deleteButton.addEventListener(
@@ -1291,7 +1305,7 @@ function notesT(key, fallback = '', variables = {}) {
         saveButton.textContent =
             notesT(
                 'notes.save_note',
-                'Notiz speichern'
+                'Save note'
             );
 
         if (showPreview) {
@@ -1327,7 +1341,7 @@ function notesT(key, fallback = '', variables = {}) {
         saveButton.textContent =
             notesT(
                 'notes.save_changes',
-                'Änderungen speichern'
+                'Save changes'
             );
 
         showEditorMode();
@@ -1349,7 +1363,7 @@ function notesT(key, fallback = '', variables = {}) {
             alert(
                 notesT(
                     'notes.enter_name',
-                    'Bitte einen Namen eingeben.'
+                    'Enter a name.'
                 )
             );
 
@@ -1361,7 +1375,7 @@ function notesT(key, fallback = '', variables = {}) {
             alert(
                 notesT(
                     'notes.enter_content',
-                    'Bitte einen Notiztext eingeben.'
+                    'Enter note text.'
                 )
             );
 
@@ -1466,23 +1480,43 @@ function notesT(key, fallback = '', variables = {}) {
 
 async function deleteNote(note) {
 
+        const fallbackName =
+            note.name ||
+            notesT(
+                'notes.note_label',
+                'Note'
+            );
+
         const confirmed =
             await notesConfirm({
                 title:
-                    'Notiz löschen?',
+                    notesT(
+                        'notes.delete_note_title',
+                        'Delete note?'
+                    ),
                 message:
-                    `„${note.name || 'Notiz'}“ wird dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`,
+                    notesT(
+                        'notes.delete_note_message',
+                        '“{name}” will be permanently deleted. This action cannot be undone.',
+                        {
+                            name: fallbackName
+                        }
+                    ),
                 confirmLabel:
-                    'Notiz löschen',
+                    notesT(
+                        'notes.delete_note_confirm',
+                        'Delete note'
+                    ),
                 cancelLabel:
-                    'Abbrechen'
+                    notesT(
+                        'notes.cancel',
+                        'Cancel'
+                    )
             });
-
 
         if (!confirmed) {
             return;
         }
-
 
         await api(
             '/api/mlx/notes/' +
@@ -1494,7 +1528,6 @@ async function deleteNote(note) {
             }
         );
 
-
         if (
             selectedNoteId ===
             note.id
@@ -1502,16 +1535,10 @@ async function deleteNote(note) {
             selectedNoteId =
                 null;
 
-            if (
-                typeof rememberSelectedNoteId ===
-                'function'
-            ) {
-                rememberSelectedNoteId(
-                    null
-                );
-            }
+            rememberSelectedNoteId(
+                null
+            );
         }
-
 
         if (
             editingNoteId ===
@@ -1519,7 +1546,6 @@ async function deleteNote(note) {
         ) {
             resetEditor(false);
         }
-
 
         showPreviewMode();
 
@@ -1629,23 +1655,43 @@ async function deleteNote(note) {
 
 async function deleteFolder(folder) {
 
+        const fallbackName =
+            folder.name ||
+            notesT(
+                'notes.folder_label',
+                'Folder'
+            );
+
         const confirmed =
             await notesConfirm({
                 title:
-                    'Ordner löschen?',
+                    notesT(
+                        'notes.delete_folder_title',
+                        'Delete folder?'
+                    ),
                 message:
-                    `Der Ordner „${folder.name || 'Ordner'}“ wird gelöscht. Die enthaltenen Notizen bleiben erhalten und werden nicht gelöscht.`,
+                    notesT(
+                        'notes.delete_folder_message',
+                        'The folder “{name}” will be deleted. The notes inside it will be kept.',
+                        {
+                            name: fallbackName
+                        }
+                    ),
                 confirmLabel:
-                    'Ordner löschen',
+                    notesT(
+                        'notes.delete_folder_confirm',
+                        'Delete folder'
+                    ),
                 cancelLabel:
-                    'Abbrechen'
+                    notesT(
+                        'notes.cancel',
+                        'Cancel'
+                    )
             });
-
 
         if (!confirmed) {
             return;
         }
-
 
         await api(
             '/api/mlx/note-folders/' +
@@ -1656,7 +1702,6 @@ async function deleteFolder(folder) {
                 method: 'DELETE'
             }
         );
-
 
         await loadNotes();
     }
@@ -2084,7 +2129,11 @@ async function deleteFolder(folder) {
             document.createElement('strong');
 
         titleText.textContent =
-            note.name || 'Notiz';
+            note.name ||
+            notesT(
+                'notes.note_label',
+                'Note'
+            );
 
 
         title.appendChild(
@@ -2112,7 +2161,7 @@ async function deleteFolder(folder) {
                 label:
                     notesT(
                         'notes.insert_chat',
-                        'In Chat einfügen'
+                        'Insert into chat'
                     ),
                 action:
                     () =>
@@ -2124,7 +2173,7 @@ async function deleteFolder(folder) {
                 label:
                     notesT(
                         'notes.edit',
-                        'Bearbeiten'
+                        'Edit'
                     ),
                 action:
                     () =>
@@ -2139,7 +2188,7 @@ async function deleteFolder(folder) {
                 label:
                     notesT(
                         'notes.delete',
-                        'Löschen'
+                        'Delete'
                     ),
                 danger: true,
                 action:
@@ -2320,7 +2369,11 @@ async function deleteFolder(folder) {
                     )
             },
             {
-                label: 'Unterordner anlegen',
+                label:
+                    notesT(
+                        'notes.new_subfolder',
+                        'New subfolder'
+                    ),
                 action: () =>
                     createFolder(
                         folder.id
@@ -2330,7 +2383,11 @@ async function deleteFolder(folder) {
                 separator: true
             },
             {
-                label: 'Umbenennen',
+                label:
+                    notesT(
+                        'notes.rename',
+                        'Rename'
+                    ),
                 action: () =>
                     renameFolder(folder)
             },
@@ -2468,7 +2525,7 @@ async function deleteFolder(folder) {
         name.textContent =
             notesT(
                 'notes.no_folder',
-                'Ohne Ordner'
+                'No folder'
             );
 
 
@@ -2478,7 +2535,7 @@ async function deleteFolder(folder) {
         hint.textContent =
             notesT(
                 'notes.drop_remove_folder',
-                'Hierher ziehen'
+                'Drop here'
             );
 
 
@@ -2572,7 +2629,7 @@ async function deleteFolder(folder) {
         rootNewNote.textContent =
             notesT(
                 'notes.add_note',
-                '+ Notiz'
+                '+ Note'
             );
 
         rootNewNote.addEventListener(
@@ -2593,7 +2650,7 @@ async function deleteFolder(folder) {
         rootNewFolder.textContent =
             notesT(
                 'notes.add_folder',
-                '+ Ordner'
+                '+ Folder'
             );
 
         rootNewFolder.addEventListener(
@@ -2711,7 +2768,7 @@ async function deleteFolder(folder) {
             empty.textContent =
                 notesT(
                     'notes.no_notes',
-                    'Noch keine Notizen vorhanden.'
+                    'No notes yet.'
                 );
 
             tree.appendChild(
@@ -2731,7 +2788,10 @@ async function deleteFolder(folder) {
                 'note-empty-state notes-search-empty';
 
             empty.textContent =
-                'Keine passenden Notizen gefunden.';
+                notesT(
+                    'notes.search_empty',
+                    'No matching notes found.'
+                );
 
             tree.appendChild(
                 empty
@@ -2890,7 +2950,7 @@ async function deleteFolder(folder) {
             alert(
                 notesT(
                     'notes.load_failed',
-                    'Notizen konnten nicht geladen werden.'
+                    'Notes could not be loaded.'
                 )
             );
         }
