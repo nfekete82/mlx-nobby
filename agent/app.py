@@ -8776,9 +8776,6 @@ def _semantic_agent_route_allowed(
 
     if routing.get("method") in {"deterministic_document", "deterministic_vision"}:
         return True
-    if routing.get("reason") == "Webrecherche im Agent-Run":
-        return True
-
     deterministic = _deterministic_chat_action(
         prompt,
         file_context,
@@ -9004,10 +9001,6 @@ def run_chat_action(request: ChatActionRequest):
             )
 
     action = routing["intent"]
-
-    if action == "web_search":
-        routing = {**routing, "intent": "research_agent", "reason": "Webrecherche im Agent-Run"}
-        action = "research_agent"
 
     if (
         action in SEMANTIC_ROUTER_AGENT_INTENTS
