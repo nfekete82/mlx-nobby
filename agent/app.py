@@ -6411,7 +6411,7 @@ def _image_prompt_needs_english_retry(source, translated):
 
 
 def _retry_image_prompt_translation(prompt):
-    """Translate an image prompt with the configured chat model."""
+    """Compile an image-generation prompt with the configured chat model."""
 
     value = str(prompt or "").strip()
 
@@ -6422,11 +6422,25 @@ def _retry_image_prompt_translation(prompt):
         {
             "role": "system",
             "content": (
-                "Translate the user's image-generation prompt literally "
-                "into English. Preserve every concrete fact exactly. "
-                "Do not describe, expand, improve, shorten, censor, "
-                "reinterpret or sanitize the prompt. "
-                "Return ONLY the English translation. "
+                "You are an image-generation prompt compiler. Convert the "
+                "user's request into fluent, precise English optimized for a "
+                "text-to-image model. Preserve every concrete fact exactly, "
+                "including people, number of people, age when specified, "
+                "gender when specified, objects, brands, colors, clothing, "
+                "actions, poses, spatial relationships, environment, style, "
+                "camera instructions, orientation, negations and constraints. "
+                "Never invent additional people, objects, scenery, brands, "
+                "colors, actions, story elements or factual scene details. "
+                "You may improve visual phrasing with concise photographic or "
+                "artistic terminology for composition, perspective, lighting, "
+                "materials, texture and realism only when it is consistent "
+                "with the user's requested scene. If the user already specifies "
+                "lighting, camera, composition or style, preserve it instead "
+                "of replacing it. Text that must visibly appear in the image "
+                "must retain its exact original spelling and language unless "
+                "the user explicitly asks to translate it. Do not omit small "
+                "details. Avoid generic quality-word spam and repetition. "
+                "Return ONLY the final English image-generation prompt. "
                 "No JSON. No markdown. No explanation."
             ),
         },
@@ -6472,7 +6486,7 @@ def _retry_image_prompt_translation(prompt):
             "model": model,
             "messages": messages,
             "temperature": 0.0,
-            "max_tokens": 220,
+            "max_tokens": 650,
             "stream": False,
             "chat_template_kwargs": {
                 "enable_thinking": False,
@@ -6620,20 +6634,36 @@ def translate_image_prompt_to_english(prompt):
                 # Fast path: the router already translates the prompt and
                 # classifies its layout in one call. Only involve the larger
                 # chat model when the router output still appears non-English.
-                if _image_prompt_needs_english_retry(
-                    value,
-                    final_prompt,
-                ):
-                    final_prompt = _retry_image_prompt_translation(
-                        value
-                    )
-                    if _image_prompt_needs_english_retry(
-                        value,
-                        final_prompt,
-                    ):
-                        raise ValueError(
-                            "chat image translation still appears non-English"
+                # The small router determines layout and provides a cheap
+                # translated fallback. The configured chat model always
+                # compiles the final image-generation prompt because prompt
+                # quality matters much more than the cost of this small call.
+                router_prompt = final_prompt
+                try:
+                    optimized_prompt = _retry_image_prompt_translation(value)
+
+                    if (
+                        optimized_prompt
+                        and not _image_prompt_needs_english_retry(
+                            value,
+                            optimized_prompt,
                         )
+                    ):
+                        final_prompt = optimized_prompt
+                    else:
+                        final_prompt = router_prompt
+                        print(
+                            "[image-prompt] optimizer output invalid, "
+                            "using router fallback",
+                            flush=True,
+                        )
+                except Exception as exc:
+                    final_prompt = router_prompt
+                    print(
+                        "[image-prompt] optimizer failed, using router fallback "
+                        f"error_type={type(exc).__name__}",
+                        flush=True,
+                    )
 
                 width, height = layouts[layout]
 
