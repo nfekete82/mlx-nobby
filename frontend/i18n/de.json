@@ -596,6 +596,7 @@
     "status_loading": "Status wird geladen …",
     "language_description": "Ändert die Sprache der Benutzeroberfläche.",
     "coding_workspace": "Coding-Workspace auswählen",
+    "workspace_tests_title": "Workspace-Tests",
     "workspace_tests_description": "Konfiguriere echte Testbefehle für den aktiven Workspace. Jeder Befehl wird ohne Shell in einer isolierten Workspace-Kopie ausgeführt.",
     "workspace_path_placeholder": "/Pfad/zum/Workspace",
     "workspace_add": "Workspace hinzufügen",

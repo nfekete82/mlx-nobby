@@ -596,6 +596,7 @@
     "status_loading": "Loading status …",
     "language_description": "Changes the interface language.",
     "coding_workspace": "Select coding workspace",
+    "workspace_tests_title": "Workspace tests",
     "workspace_tests_description": "Configure real test commands for the active workspace. Each command runs without a shell in an isolated workspace copy.",
     "workspace_path_placeholder": "/path/to/workspace",
     "workspace_add": "Add workspace",

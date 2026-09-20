@@ -1192,79 +1192,31 @@ function renderActiveWorkspace(workspace) {
     headerClose.hidden = false;
 }
 
-function workspaceActionButton(label, action, workspaceId) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'message-action-btn';
-    button.textContent = label;
-    button.addEventListener('click', async () => {
-        button.disabled = true;
-        showWorkspaceFeedback('');
-        try {
-            await workspaceRequest(
-                '/api/mlx/code/workspaces/' + encodeURIComponent(workspaceId) + action,
-                { method: action === '' ? 'DELETE' : 'POST' }
-            );
-            await loadWorkspaces();
-        } catch (error) {
-            showWorkspaceFeedback(workspaceErrorMessage(error));
-        } finally {
-            button.disabled = false;
-        }
-    });
-    return button;
-}
-
 async function loadWorkspaces() {
-    const target = document.getElementById('workspaceList');
-
     try {
         const data = await workspaceRequest('/api/mlx/code/workspaces');
-        const spaces = data.workspaces || [];
+
         renderActiveWorkspace(data.active_workspace || null);
         renderWorkspaceTestCommands(data.active_workspace || null);
-        if (data.active_workspace && data.active_workspace.available === false) {
-            showWorkspaceFeedback(WORKSPACE_ERRORS.WORKSPACE_ROOT_UNAVAILABLE);
+
+        if (
+            data.active_workspace &&
+            data.active_workspace.available === false
+        ) {
+            showWorkspaceFeedback(
+                WORKSPACE_ERRORS.WORKSPACE_ROOT_UNAVAILABLE
+            );
         }
-        if (!target) return;
-
-        target.replaceChildren();
-        if (!spaces.length) {
-            target.textContent = chatT('ui.no_workspaces', 'No code workspaces yet.');
-            return;
-        }
-
-        spaces.forEach(space => {
-            const item = document.createElement('div');
-            item.className = 'jobs-panel-item';
-            const name = document.createElement('strong');
-            name.textContent = space.name + (space.active ? chatT('ui.active_suffix', ' · active') : '');
-            const path = document.createElement('span');
-            path.textContent = space.root_path;
-            path.title = space.root_path;
-            const actions = document.createElement('span');
-
-            if (!space.active) {
-                actions.appendChild(workspaceActionButton(chatT('ui.enable', 'Enable'), '/activate', space.workspace_id));
-                actions.append(' ');
-            }
-            actions.appendChild(workspaceActionButton(chatT('ui.workspace_reindex', 'Reindex'), '/refresh', space.workspace_id));
-            actions.append(' ');
-            actions.appendChild(workspaceActionButton(chatT('ui.workspace_remove', 'Remove'), '', space.workspace_id));
-            item.append(name, path, actions);
-            target.appendChild(item);
-        });
     } catch (error) {
         renderActiveWorkspace(null);
-        if (target) target.textContent = chatT('ui.workspaces_unavailable', 'Code workspaces are currently unavailable.');
+        renderWorkspaceTestCommands(null);
         showWorkspaceFeedback(workspaceErrorMessage(error));
     }
 }
 
 async function openWorkspacePicker() {
     const buttons = [
-        document.getElementById('workspacePickerButton'),
-        document.getElementById('workspacePickerSettings')
+        document.getElementById('workspacePickerButton')
     ].filter(Boolean);
     buttons.forEach(button => { button.disabled = true; });
     showWorkspaceFeedback('');
@@ -1332,38 +1284,6 @@ if (activeWorkspaceHeaderClose) {
 const workspacePickerButton = document.getElementById('workspacePickerButton');
 if (workspacePickerButton) {
     workspacePickerButton.addEventListener('click', openWorkspacePicker);
-}
-
-const workspacePickerSettings = document.getElementById('workspacePickerSettings');
-if (workspacePickerSettings) {
-    workspacePickerSettings.addEventListener('click', openWorkspacePicker);
-}
-
-const workspaceAdd = document.getElementById('workspaceAdd');
-if (workspaceAdd) {
-    workspaceAdd.addEventListener('click', async () => {
-        const input = document.getElementById('workspacePath');
-        if (!input) return;
-
-        const path = input.value.trim();
-        if (!path) return;
-
-        showWorkspaceFeedback('');
-
-        try {
-            await workspaceRequest('/api/mlx/code/workspaces', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({path})
-            });
-
-            input.value = '';
-            await loadWorkspaces();
-
-        } catch (error) {
-            showWorkspaceFeedback(workspaceErrorMessage(error));
-        }
-    });
 }
 
 const workspaceTestsDetect = document.getElementById('workspaceTestsDetect');
