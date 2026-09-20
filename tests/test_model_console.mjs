@@ -30,7 +30,7 @@ vm.runInNewContext(source, sandbox, { filename: 'models.js' });
 
 const test = sandbox.window.MLXModelConsole.__test;
 
-assert.match(html, /data-model-console-tab="models"/);
+assert.match(html, /data-settings-tab="models"/);
 assert.match(html, /data-model-console-tab="runtime"/);
 assert.match(html, /data-model-console-tab="storage"/);
 assert.match(html, /id="modelConsoleDialog"/);
