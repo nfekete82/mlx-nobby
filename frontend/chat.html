@@ -377,20 +377,77 @@
         </div>
         <button id="settingsClose" class="icon-btn" type="button" aria-label="Einstellungen schließen" data-i18n-aria-label="ui.close_settings">×</button>
     </div>
-    <nav class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche" data-i18n-aria-label="ui.settings_sections">
-        <button type="button" data-settings-tab="general" class="active" aria-selected="true" data-i18n="ui.general">Allgemein</button>
-        <button type="button" data-settings-tab="models-system" aria-selected="false" data-i18n="ui.models_system">Modelle &amp; System</button>
-        <button type="button" data-settings-tab="knowledge" aria-selected="false" data-i18n="ui.knowledge_base">Wissensbasis</button>
-        <button type="button" data-settings-tab="profile" aria-selected="false" data-i18n="ui.personal_profile">Persönliches Profil</button>
-        <button type="button" data-settings-tab="appearance" aria-selected="false" data-i18n="ui.appearance">Darstellung</button>
+    <nav class="settings-tabs" role="tablist"
+         aria-label="Einstellungsbereiche"
+         data-i18n-aria-label="ui.settings_sections">
+
+        <button type="button"
+                data-settings-tab="general"
+                class="active"
+                aria-selected="true"
+                data-i18n="ui.general">Allgemein</button>
+
+        <button type="button"
+                data-settings-tab="models"
+                aria-selected="false"
+                data-i18n="ui.models">Modelle</button>
+
+        <button type="button"
+                data-settings-tab="functions"
+                aria-selected="false"
+                data-i18n="ui.functions">Funktionen</button>
+
+        <button type="button"
+                data-settings-tab="knowledge"
+                aria-selected="false"
+                data-i18n="ui.knowledge_short">Wissen</button>
+
+        <button type="button"
+                data-settings-tab="profile"
+                aria-selected="false"
+                data-i18n="ui.personal_short">Persönlich</button>
+
+        <button type="button"
+                data-settings-tab="appearance"
+                aria-selected="false"
+                data-i18n="ui.appearance">Darstellung</button>
+
+        <button type="button"
+                data-settings-tab="advanced"
+                aria-selected="false"
+                data-i18n="ui.advanced">Erweitert</button>
     </nav>
-    <nav class="settings-subtabs" role="tablist" aria-label="Modelle und System" data-i18n-aria-label="ui.models_system_label" hidden>
-        <button type="button" data-settings-system-tab="models" data-model-console-tab="models" class="active" aria-selected="true" data-i18n="ui.models">Modelle</button>
-        <button type="button" data-settings-system-tab="generation" aria-selected="false" data-i18n="ui.generation">Generation</button>
-        <button type="button" data-settings-system-tab="runtime" data-model-console-tab="runtime" aria-selected="false" data-i18n="ui.runtime">Runtime</button>
-        <button type="button" data-settings-system-tab="storage" data-model-console-tab="storage" aria-selected="false" data-i18n="ui.storage">Speicher</button>
-        <button type="button" data-settings-system-tab="server" aria-selected="false">Server</button>
-        <button type="button" data-settings-system-tab="logs" aria-selected="false">Logs</button>
+
+    <nav class="settings-subtabs"
+         role="tablist"
+         aria-label="Erweiterte Einstellungen"
+         data-i18n-aria-label="ui.advanced_settings_label"
+         hidden>
+
+        <button type="button"
+                data-settings-system-tab="generation"
+                aria-selected="false"
+                data-i18n="ui.generation">Generation</button>
+
+        <button type="button"
+                data-settings-system-tab="runtime"
+                data-model-console-tab="runtime"
+                aria-selected="false"
+                data-i18n="ui.runtime">Runtime</button>
+
+        <button type="button"
+                data-settings-system-tab="storage"
+                data-model-console-tab="storage"
+                aria-selected="false"
+                data-i18n="ui.storage">Speicher</button>
+
+        <button type="button"
+                data-settings-system-tab="server"
+                aria-selected="false">Server</button>
+
+        <button type="button"
+                data-settings-system-tab="logs"
+                aria-selected="false">Logs</button>
     </nav>
     <div class="settings-pane" data-settings-pane="general">
         <div class="settings-page-intro">
@@ -412,7 +469,77 @@
             <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
         </section>
 
-        <section id="workspaceTestSettings" class="settings-card">
+
+
+        <section class="settings-card">
+            <h4 class="settings-group-title">Export &amp; Import</h4>
+            <div class="settings-hint" data-i18n="ui.backup_description">Chats lokal sichern oder ein vorhandenes JSON-Backup einlesen.</div>
+            <div class="settings-export-row">
+                <button id="exportChatJson" class="message-action-btn" type="button" data-i18n="ui.current_chat_json">Aktueller Chat JSON</button>
+                <button id="exportChatMarkdown" class="message-action-btn" type="button" data-i18n="ui.current_chat_markdown">Aktueller Chat Markdown</button>
+            </div>
+            <div class="settings-export-row">
+                <button id="exportAllChats" class="message-action-btn" type="button" data-i18n="ui.backup_all_chats">Alle Chats sichern</button>
+                <button id="importChatsButton" class="message-action-btn" type="button">Backup importieren</button>
+            </div>
+            <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
+        </section>
+    </div>
+    <div class="settings-pane" data-settings-pane="functions" hidden>
+        <div class="settings-page-intro">
+            <h4 data-i18n="ui.functions">Funktionen</h4>
+            <p data-i18n="ui.functions_description">
+                Was MLX nobby tun kann. Technische Details bleiben im Hintergrund.
+            </p>
+        </div>
+
+        <div class="settings-feature-grid">
+            <section class="settings-card settings-feature-card">
+                <div class="settings-feature-card-head">
+                    <strong data-i18n="ui.feature_web_search">Websuche</strong>
+                    <span class="settings-feature-badge"
+                          data-i18n="ui.feature_status_automatic">Automatisch</span>
+                </div>
+                <p data-i18n="ui.feature_web_search_desc">
+                    Wird bei aktuellen Informationen und Webrecherchen automatisch verwendet.
+                </p>
+            </section>
+
+            <section class="settings-card settings-feature-card">
+                <div class="settings-feature-card-head">
+                    <strong data-i18n="ui.feature_coding">Coding-Agent</strong>
+                    <span class="settings-feature-badge"
+                          data-i18n="ui.feature_status_automatic">Automatisch</span>
+                </div>
+                <p data-i18n="ui.feature_coding_desc">
+                    Arbeitet mit dem im Chat ausgewählten Workspace und den Coding-Werkzeugen.
+                </p>
+            </section>
+
+            <section class="settings-card settings-feature-card">
+                <div class="settings-feature-card-head">
+                    <strong data-i18n="ui.feature_vision">Bildanalyse</strong>
+                    <span class="settings-feature-badge"
+                          data-i18n="ui.feature_status_automatic">Automatisch</span>
+                </div>
+                <p data-i18n="ui.feature_vision_desc">
+                    Analysiert Bilder und multimodale Inhalte mit dem zugewiesenen Vision-Modell.
+                </p>
+            </section>
+
+            <section class="settings-card settings-feature-card">
+                <div class="settings-feature-card-head">
+                    <strong data-i18n="ui.feature_images">Bildgenerierung</strong>
+                    <span class="settings-feature-badge"
+                          data-i18n="ui.feature_status_automatic">Automatisch</span>
+                </div>
+                <p data-i18n="ui.feature_images_desc">
+                    Erstellt Bilder mit dem für Bildgenerierung ausgewählten Modell.
+                </p>
+            </section>
+        </div>
+
+<section id="workspaceTestSettings" class="settings-card">
             <h4 class="settings-group-title" data-i18n="ui.workspace_tests_title">Workspace-Tests</h4>
             <p class="settings-hint" data-i18n="ui.workspace_tests_description">Konfiguriere echte Testbefehle für den aktiven Workspace. Jeder Befehl wird ohne Shell in einer isolierten Workspace-Kopie ausgeführt.</p>
 
@@ -437,21 +564,8 @@
 
             <div id="workspaceSettingsFeedback" class="workspace-feedback" role="status" aria-live="polite"></div>
         </section>
-
-        <section class="settings-card">
-            <h4 class="settings-group-title">Export &amp; Import</h4>
-            <div class="settings-hint" data-i18n="ui.backup_description">Chats lokal sichern oder ein vorhandenes JSON-Backup einlesen.</div>
-            <div class="settings-export-row">
-                <button id="exportChatJson" class="message-action-btn" type="button" data-i18n="ui.current_chat_json">Aktueller Chat JSON</button>
-                <button id="exportChatMarkdown" class="message-action-btn" type="button" data-i18n="ui.current_chat_markdown">Aktueller Chat Markdown</button>
-            </div>
-            <div class="settings-export-row">
-                <button id="exportAllChats" class="message-action-btn" type="button" data-i18n="ui.backup_all_chats">Alle Chats sichern</button>
-                <button id="importChatsButton" class="message-action-btn" type="button">Backup importieren</button>
-            </div>
-            <input id="importChatsFile" type="file" accept="application/json,.json" hidden>
-        </section>
     </div>
+
     <div class="settings-pane" data-settings-pane="profile" hidden>
         <div class="settings-page-intro">
             <h4 data-i18n="profile.title">Persönliches Profil</h4>
@@ -930,11 +1044,10 @@
             </header>
 
             <div id="modelConsoleStatus" class="model-console-live" role="status" aria-live="polite"></div>
-            <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
-
             <div id="modelConsoleAssignments" class="model-console-secondary">
-                <details>
-                    <summary data-i18n="ui.model_roles">Modellrollen</summary>
+                <section class="settings-card settings-model-roles">
+<h4 class="settings-group-title"
+        data-i18n="ui.model_assignment">Modell-Zuordnung</h4>
                     <p class="settings-hint" data-i18n="ui.model_roles_hint">„Automatisch“ verwendet das aktive LLM. Eine Zuordnung startet kein Modell neu.</p>
                     <div id="modelRolesStatus" class="settings-hint" data-i18n="ui.loading_model_roles">Modellrollen werden geladen…</div>
                     <div class="model-role-list">
@@ -946,7 +1059,7 @@
                         <div class="model-role-item"><div class="model-role-info"><strong>Embeddings</strong><span data-i18n="ui.embeddings_description">Wissensbasis und semantische Suche</span></div><select data-model-role="embedding"></select></div>
                         <div class="model-role-item"><div class="model-role-info"><strong data-i18n="ui.image_generation">Bildgenerierung</strong><span data-i18n="ui.local_image_generation">Lokale Bildgenerierung</span></div><select id="imageRole" aria-label="Modell für Bildgenerierung" data-i18n-aria-label="ui.image_model"></select></div>
                     </div>
-                </details>
+</section>
                 <details>
                     <summary data-i18n="ui.image_generation_models">Bildgenerierungsmodelle</summary>
                     <div id="imageModelsStatus" class="settings-hint" role="status"></div>
@@ -954,6 +1067,10 @@
                     <div id="imageModelList" class="image-model-list"></div>
                 </details>
             </div>
+
+            <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
+
+
         </section>
     </div>
     <div class="settings-pane" data-settings-pane="knowledge" hidden>

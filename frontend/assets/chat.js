@@ -596,10 +596,12 @@ railSettings?.addEventListener(
     const settings = document.getElementById('settings');
     const mainTabs = new Set([
         'general',
-        'models-system',
+        'models',
+        'functions',
         'knowledge',
         'profile',
         'appearance',
+        'advanced',
     ]);
     const systemTabs = new Set([
         'models',
@@ -640,8 +642,8 @@ railSettings?.addEventListener(
     }
 
     function updateLocation() {
-        const path = activeMainTab === 'models-system'
-            ? '/settings/models-system/' + activeSystemTab
+        const path = activeMainTab === 'advanced'
+            ? '/settings/advanced/' + activeSystemTab
             : '/settings/' + activeMainTab;
         history.replaceState(null, '', path);
     }
@@ -669,13 +671,13 @@ railSettings?.addEventListener(
 
     function selectSystem(tab, updateHistory = true) {
         if (!systemTabs.has(tab)) tab = 'models';
-        activeMainTab = 'models-system';
+        activeMainTab = tab === 'models' ? 'models' : 'advanced';
         activeSystemTab = tab;
 
         showPane(systemPane[tab]);
-        settings.querySelector('.settings-subtabs').hidden = false;
+        settings.querySelector('.settings-subtabs').hidden = tab === 'models';
         settings.querySelectorAll('[data-settings-tab]').forEach(button => {
-            setSelected(button, button.dataset.settingsTab === 'models-system');
+            setSelected(button, button.dataset.settingsTab === activeMainTab);
         });
         settings.querySelectorAll('[data-settings-system-tab]').forEach(button => {
             setSelected(button, button.dataset.settingsSystemTab === tab);
@@ -698,8 +700,18 @@ railSettings?.addEventListener(
 
     function selectMain(tab, updateHistory = true) {
         if (!mainTabs.has(tab)) tab = 'general';
-        if (tab === 'models-system') {
-            selectSystem(activeSystemTab, updateHistory);
+        if (tab === 'models') {
+            selectSystem('models', updateHistory);
+            return;
+        }
+
+        if (tab === 'advanced') {
+            selectSystem(
+                activeSystemTab === 'models'
+                    ? 'generation'
+                    : activeSystemTab,
+                updateHistory
+            );
             return;
         }
 
@@ -753,9 +765,23 @@ railSettings?.addEventListener(
 
         settings.classList.add('open');
         if (first === 'models-system') {
-            selectSystem(legacySystemTab[parts[1]] || 'models');
+            selectSystem(
+                legacySystemTab[parts[1]] || 'models'
+            );
+        } else if (first === 'advanced') {
+            const requested =
+                legacySystemTab[parts[1]] || 'generation';
+
+            selectSystem(
+                requested === 'models'
+                    ? 'generation'
+                    : requested
+            );
         } else if (legacySystemTab[first]) {
-            selectSystem(legacySystemTab[parts[1]] || legacySystemTab[first]);
+            selectSystem(
+                legacySystemTab[parts[1]] ||
+                legacySystemTab[first]
+            );
         } else {
             selectMain(first);
         }

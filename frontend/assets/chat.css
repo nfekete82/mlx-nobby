@@ -9613,3 +9613,66 @@ body.notes-resizing * {
         gap: 3px;
     }
 }
+
+
+/* MLX-NOBBY-SETTINGS-IA-V2
+   Simplified settings information architecture */
+
+.settings-tabs {
+    overflow-x: auto;
+}
+
+.settings-tabs > button,
+.settings-subtabs > button {
+    white-space: nowrap;
+}
+
+.settings-feature-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.settings-feature-card {
+    min-height: 118px;
+}
+
+.settings-feature-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.settings-feature-card p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.settings-feature-badge {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.settings-model-roles {
+    margin-top: 16px;
+    margin-bottom: 16px;
+}
+
+.settings-model-roles .model-role-list {
+    margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+    .settings-feature-grid {
+        grid-template-columns: 1fr;
+    }
+}
