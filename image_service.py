@@ -283,8 +283,16 @@ def _auto_generation_model(prompt):
         r"\b(?:complex prompt|high prompt fidelity|komplexer prompt|hohe prompttreue)\b",
         value,
     )
+    fast_request = re.search(
+        r"\b(?:fast|quick|preview|draft|schnell|vorschau|entwurf)\b",
+        value,
+    )
+
     preferred_ids = []
-    if text_image:
+    if fast_request:
+        preferred_ids.append(registry.Z_IMAGE_TURBO_ID)
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
+    elif text_image:
         preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
     elif realistic_style and human_subject:
         preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
