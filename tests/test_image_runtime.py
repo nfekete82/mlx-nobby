@@ -1435,10 +1435,12 @@ class ImageRuntimeTests(unittest.TestCase):
     def test_auto_generation_uses_capabilities_and_availability(self):
         for model_id in (
             registry.JUGGERNAUT_XL_ID,
-            "mflux-qwen-image",
-            "mflux-z-image-turbo",
+            registry.Z_IMAGE_TURBO_ID,
+            registry.MLXSERVE_QWEN_IMAGE21_ID,
         ):
             registry.update_model(model_id, {"enabled": True})
+
+        registry.set_default(registry.MLXSERVE_QWEN_IMAGE21_ID)
 
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
@@ -1446,72 +1448,83 @@ class ImageRuntimeTests(unittest.TestCase):
                     "auto",
                     "A photorealistic studio portrait of a woman",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A realistic person in natural light",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A poster with clear typography and text",
                 )["id"],
-                "mflux-qwen-image",
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
-            self.assertEqual(
-                service._generation_model("auto", "A red apple")["id"],
-                "mflux-z-image-turbo",
-            )
-            self.assertEqual(
-                service._generation_model(
-                    "mflux-qwen-image",
-                    "A photorealistic portrait",
-                )["id"],
-                "mflux-qwen-image",
-            )
-
-        def without_juggernaut(model):
-            return (model["id"] != registry.JUGGERNAUT_XL_ID, "test")
-
-        with patch.object(service, "availability", side_effect=without_juggernaut):
             self.assertEqual(
                 service._generation_model(
                     "auto",
-                    "A photorealistic studio portrait of a woman",
+                    "Create a quick preview of a red apple",
                 )["id"],
-                "mflux-z-image-turbo",
+                registry.Z_IMAGE_TURBO_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A generic landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    registry.MLXSERVE_QWEN_IMAGE21_ID,
+                    "A photorealistic portrait",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
         def without_qwen(model):
-            return (model["id"] != "mflux-qwen-image", "test")
+            return (
+                model["id"] != registry.MLXSERVE_QWEN_IMAGE21_ID,
+                "test",
+            )
 
         with patch.object(service, "availability", side_effect=without_qwen):
             self.assertEqual(
                 service._generation_model(
                     "auto",
-                    "A typography poster with text",
+                    "A photorealistic studio portrait of a woman",
                 )["id"],
-                "mflux-z-image-turbo",
+                registry.JUGGERNAUT_XL_ID,
             )
 
         def without_turbo(model):
-            return (model["id"] != "mflux-z-image-turbo", "test")
+            return (
+                model["id"] != registry.Z_IMAGE_TURBO_ID,
+                "test",
+            )
 
         with patch.object(service, "availability", side_effect=without_turbo):
             self.assertEqual(
-                service._generation_model("auto", "A generic landscape")["id"],
-                registry.LEGACY_ID,
+                service._generation_model(
+                    "auto",
+                    "Create a fast preview of a landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
-        registry.update_model("mflux-z-image-turbo", {"enabled": False})
+        registry.update_model(registry.Z_IMAGE_TURBO_ID, {"enabled": False})
+
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
-                service._generation_model("auto", "A generic landscape")["id"],
-                registry.LEGACY_ID,
+                service._generation_model(
+                    "auto",
+                    "Create a fast preview of a landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
     def test_agent_preserves_auto_image_role_for_service_routing(self):
