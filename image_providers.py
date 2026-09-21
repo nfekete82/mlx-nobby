@@ -12,10 +12,18 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from image_registry import FAMILIES, MODEL_ROOTS, validate_path
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
+
+MLXSERVE_URL = os.environ.get(
+    "MLX_IMAGE_MLXSERVE_URL",
+    "http://" + "127.0.0.1:11234",
+).rstrip("/")
+MLXSERVE_HEALTH_TIMEOUT = 3
 
 REALESRGAN_BIN = Path(
     os.environ.get(
@@ -207,7 +215,54 @@ def repository_is_available(repository):
     return any(root.rglob("*.safetensors"))
 
 
+def _mlxserve_json(path, *, timeout=MLXSERVE_HEALTH_TIMEOUT):
+    request = urllib.request.Request(
+        MLXSERVE_URL + path,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"MLX-Serve antwortete mit HTTP {response.status}"
+            )
+        return json.loads(response.read().decode("utf-8"))
+
+
 def availability(model):
+    if model["provider"] == "mlxserve":
+        try:
+            health = _mlxserve_json("/health")
+            if health.get("status") != "ok":
+                return False, "MLX-Serve meldet keinen betriebsbereiten Status"
+
+            payload = _mlxserve_json("/v1/models")
+            models = payload.get("data", [])
+            model_id = model.get("repository")
+
+            if not any(
+                isinstance(item, dict)
+                and item.get("id") == model_id
+                for item in models
+            ):
+                return (
+                    False,
+                    "Qwen Image 2.1 ist in MLX-Serve nicht verfügbar",
+                )
+        except (
+            OSError,
+            TimeoutError,
+            ValueError,
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+        ):
+            return (
+                False,
+                f"MLX-Serve ist unter {MLXSERVE_URL} nicht erreichbar",
+            )
+
+        return True, "Qwen Image 2.1 ist über den lokalen MLX-Serve verfügbar"
+
     if model["provider"] == "sdxl":
         if not importlib.util.find_spec("diffusers"):
             return False, "Diffusers ist in der Image-Umgebung nicht installiert"
@@ -758,7 +813,18 @@ def run_provider(
         )
         _validate_provider_output(params, output)
         return
-    if model["provider"] == "diffusionkit":
+    if model["provider"] == "mlxserve":
+        command = [
+            sys.executable,
+            str(Path(__file__).with_name("mlxserve_image_worker.py")),
+        ]
+        worker_input = json.dumps({
+            "params": params,
+            "output": str(output),
+            "repository": model["repository"],
+            "base_url": MLXSERVE_URL,
+        })
+    elif model["provider"] == "diffusionkit":
         command = [sys.executable, str(Path(__file__).with_name("image_worker.py"))]
         worker_input = json.dumps({"params": params, "output": str(output), "repository": model["repository"]})
     else:

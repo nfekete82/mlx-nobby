@@ -21,9 +21,12 @@ LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 QWEN_IMAGE_EDIT_ID = "mflux-qwen-image-edit-2511"
 QWEN_IMAGE_EDIT_DEFAULT_STEPS = 8
+MLXSERVE_QWEN_IMAGE21_ID = "mlxserve-qwen-image-2.1"
+MLXSERVE_QWEN_IMAGE21_REPO = "ddalcu/Qwen-Image-2.1-MLX-Serve-4bit"
+MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS = 20
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 2
+BUILTIN_DEFAULTS_REVISION = 3
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -124,7 +127,7 @@ class ImageModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str
     name: str = Field(min_length=1, max_length=120)
-    provider: Literal["diffusionkit", "mflux", "sdxl"]
+    provider: Literal["diffusionkit", "mflux", "sdxl", "mlxserve"]
     repository: str | None = None
     local_path: str | None = None
     model_family: str
@@ -153,6 +156,24 @@ class ImageModel(BaseModel):
                 raise ValueError("Der DiffusionKit-Fallback unterstützt keine LoRAs")
             if self.default_steps > 8:
                 raise ValueError("DiffusionKit schnell: maximal 8 Steps")
+        elif self.provider == "mlxserve":
+            if (
+                self.repository != MLXSERVE_QWEN_IMAGE21_REPO
+                or self.local_path
+                or self.model_family != "qwen-image21"
+                or self.base_model != "qwen-image-2.1"
+                or self.quantization != "q4"
+                or self.quantize_on_load
+                or any(lora.enabled for lora in self.loras)
+            ):
+                raise ValueError(
+                    "Qwen Image 2.1/MLX-Serve benötigt den vorgesehenen "
+                    "4-bit-Repository-Eintrag ohne LoRAs"
+                )
+            if self.default_guidance != 0:
+                raise ValueError(
+                    "Qwen Image 2.1/MLX-Serve verwendet standardmäßig Guidance 0"
+                )
         elif self.provider == "sdxl":
             if (
                 self.repository
@@ -168,7 +189,11 @@ class ImageModel(BaseModel):
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
             raise ValueError("FLUX.2 Klein distilled benötigt Guidance 1")
         # Capabilities describe adapter support, never arbitrary HTTP claims.
-        if self.model_family == "qwen-image-edit":
+        if self.provider == "mlxserve":
+            self.capabilities = [
+                "text_to_image",
+            ]
+        elif self.model_family == "qwen-image-edit":
             self.capabilities = [
                 "image_edit",
                 "multi_image_edit",
@@ -266,6 +291,19 @@ def builtin_models():
         models.append(
             ImageModel(**model_kwargs).model_dump()
         )
+    models.append(ImageModel(
+        id=MLXSERVE_QWEN_IMAGE21_ID,
+        name="Qwen Image 2.1 · MLX-Serve · 4-bit",
+        provider="mlxserve",
+        repository=MLXSERVE_QWEN_IMAGE21_REPO,
+        model_family="qwen-image21",
+        base_model="qwen-image-2.1",
+        quantization="q4",
+        enabled=False,
+        default_steps=MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS,
+        default_guidance=0.0,
+    ).model_dump())
+
     models.append(ImageModel(
         id=JUGGERNAUT_XL_ID,
         name="Juggernaut XL",
