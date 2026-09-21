@@ -24,9 +24,12 @@ QWEN_IMAGE_EDIT_DEFAULT_STEPS = 8
 MLXSERVE_QWEN_IMAGE21_ID = "mlxserve-qwen-image-2.1"
 MLXSERVE_QWEN_IMAGE21_REPO = "ddalcu/Qwen-Image-2.1-MLX-Serve-4bit"
 MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS = 20
+Z_IMAGE_TURBO_ID = "mflux-z-image-turbo"
+Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
+Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 3
+BUILTIN_DEFAULTS_REVISION = 4
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -251,7 +254,7 @@ def builtin_models():
         ("mflux-flux1-dev", "FLUX.1-dev · MFLUX", "black-forest-labs/FLUX.1-dev", "flux1", "dev", 28, 3.5),
         ("mflux-flux2-klein-4b", "FLUX.2 Klein 4B", "black-forest-labs/FLUX.2-klein-4B", "flux2-klein", "flux2-klein-4b", 4, 1),
         ("mflux-z-image", "Z-Image", "Tongyi-MAI/Z-Image", "z-image", "z-image", 30, 4),
-        ("mflux-z-image-turbo", "Z-Image Turbo", "Tongyi-MAI/Z-Image-Turbo", "z-image-turbo", "z-image-turbo", 9, 0),
+        (Z_IMAGE_TURBO_ID, "Z-Image Turbo", Z_IMAGE_TURBO_REPO, "z-image-turbo", "z-image-turbo", 9, 0),
         ("mflux-qwen-image", "Qwen Image 2512", "Qwen/Qwen-Image-2512", "qwen-image", "qwen-image", 30, 3.5),
         (
             QWEN_IMAGE_EDIT_ID,
@@ -364,6 +367,13 @@ def load_registry():
                     and model["default_steps"] == 30
                 ):
                     model["default_steps"] = QWEN_IMAGE_EDIT_DEFAULT_STEPS
+
+                if (
+                    model["id"] == Z_IMAGE_TURBO_ID
+                    and model.get("repository") == Z_IMAGE_TURBO_LEGACY_REPO
+                ):
+                    model["repository"] = Z_IMAGE_TURBO_REPO
+
             data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while
         # preserving all user edits (enabled flags, LoRAs and custom entries).
