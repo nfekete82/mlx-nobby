@@ -285,12 +285,12 @@ def _auto_generation_model(prompt):
     )
     preferred_ids = []
     if text_image:
-        preferred_ids.append("mflux-qwen-image")
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
     elif realistic_style and human_subject:
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
         preferred_ids.append(registry.JUGGERNAUT_XL_ID)
     elif complex_prompt:
-        preferred_ids.append("mflux-qwen-image")
-    preferred_ids.append("mflux-z-image-turbo")
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
 
     for model_id in preferred_ids:
         model = candidate(model_id)
