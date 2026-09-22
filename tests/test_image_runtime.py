@@ -1350,41 +1350,88 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["width"], 896)
         self.assertEqual(payload["height"], 1152)
 
-    def test_image_prompt_router_controls_layout_and_chat_controls_translation(self):
-        router_result = (
-            '{"prompt":"Kinoreife Aufnahme eines Sportwagens auf einer '
-            'Küstenstraße bei Sonnenuntergang","layout":"wide"}'
-        )
-
-        with (
-            patch.object(
-                agent,
-                "router_llm",
-                return_value=router_result,
+    def test_image_prompt_router_preserves_semantics_across_isolated_requests(self):
+        translations = {
+            "einer frau mit schwarzen dessous": (
+                "Adult woman wearing black lingerie, matching black bra and black panties"
             ),
-            patch.object(
-                agent,
-                "_retry_image_prompt_translation",
-                return_value=(
-                    "Cinematic shot of a sports car "
-                    "on a coastal road at sunset"
-                ),
-            ) as translator,
-        ):
-            result = agent.translate_image_prompt_to_english(
-                "Kinoreife Aufnahme eines Sportwagens "
-                "auf einer Küstenstraße bei Sonnenuntergang"
-            )
+            "einer frau mit roten dessous": (
+                "Adult woman wearing red lingerie, matching red bra and red panties"
+            ),
+            "einer rothaarigen frau in unterwäsche": (
+                "Adult red-haired woman wearing underwear"
+            ),
+            "blonde frau mit rotem dessous": (
+                "Adult blonde woman wearing red lingerie, matching red bra and red panties"
+            ),
+            "rothaarige frau mit schwarzem dessous": (
+                "Adult red-haired woman wearing black lingerie, matching black bra and black panties"
+            ),
+            "blonde frau mit grünem kleid": (
+                "Adult blonde woman wearing a green dress"
+            ),
+            "mann mit rotem hemd": "Adult man wearing a red shirt",
+            "schwarzhaarige frau mit blauen augen": (
+                "Adult black-haired woman with blue eyes"
+            ),
+        }
+        expectations = {
+            "einer frau mit schwarzen dessous": (
+                ("woman", "black lingerie", "black bra", "black panties"),
+                ("blonde", "red-haired", "eyes"),
+            ),
+            "einer frau mit roten dessous": (
+                ("woman", "red lingerie", "red bra", "red panties"),
+                ("blonde", "black-haired", "eyes"),
+            ),
+            "einer rothaarigen frau in unterwäsche": (
+                ("red-haired woman", "underwear"),
+                ("black lingerie", "red lingerie", "white lingerie", "blue eyes"),
+            ),
+            "blonde frau mit rotem dessous": (
+                ("blonde woman", "red lingerie", "red bra", "red panties"),
+                ("black lingerie", "black-haired", "blue eyes"),
+            ),
+            "rothaarige frau mit schwarzem dessous": (
+                ("red-haired woman", "black lingerie"),
+                ("red lingerie", "blonde", "blue eyes"),
+            ),
+            "blonde frau mit grünem kleid": (
+                ("blonde woman", "green dress"),
+                ("lingerie", "bra", "panties", "blue eyes"),
+            ),
+            "mann mit rotem hemd": (
+                ("man", "red shirt"),
+                ("woman", "hair", "eyes", "lingerie"),
+            ),
+            "schwarzhaarige frau mit blauen augen": (
+                ("black-haired woman", "blue eyes"),
+                ("dress", "shirt", "lingerie", "bra", "panties"),
+            ),
+        }
 
-        self.assertEqual(result["layout"], "wide")
-        self.assertEqual(result["width"], 1024)
-        self.assertEqual(result["height"], 768)
-        self.assertEqual(
-            result["prompt"],
-            "Cinematic shot of a sports car "
-            "on a coastal road at sunset",
-        )
-        translator.assert_called_once()
+        def router_response(messages, **kwargs):
+            source = messages[-1]["content"]
+            return json.dumps({"prompt": translations[source], "layout": "portrait"})
+
+        with patch.object(agent, "router_llm", side_effect=router_response) as router:
+            for source, (required, forbidden) in expectations.items():
+                with self.subTest(source=source):
+                    result = agent.translate_image_prompt_to_english(source)
+                    translated = result["prompt"].casefold()
+                    for phrase in required:
+                        self.assertIn(phrase, translated)
+                    for phrase in forbidden:
+                        self.assertNotIn(phrase, translated)
+                    self.assertEqual(result["layout"], "portrait")
+                    self.assertEqual((result["width"], result["height"]), (768, 1024))
+
+        self.assertEqual(router.call_count, len(expectations))
+        for call in router.call_args_list:
+            self.assertEqual(call.kwargs["temperature"], 0.0)
+            system_prompt = call.args[0][0]["content"]
+            self.assertIn("strict semantic image prompt translator", system_prompt)
+            self.assertIn("Treat every request in isolation", system_prompt)
 
 
     def test_image_prompt_accepts_unchanged_english_translation(self):
@@ -1398,17 +1445,10 @@ class ImageRuntimeTests(unittest.TestCase):
             'standing on a city street at night","layout":"tall"}'
         )
 
-        with (
-            patch.object(
-                agent,
-                "router_llm",
-                return_value=router_result,
-            ),
-            patch.object(
-                agent,
-                "_retry_image_prompt_translation",
-                return_value=source,
-            ),
+        with patch.object(
+            agent,
+            "router_llm",
+            return_value=router_result,
         ):
             result = agent.translate_image_prompt_to_english(source)
 

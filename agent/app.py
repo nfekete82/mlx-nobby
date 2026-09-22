@@ -6373,246 +6373,8 @@ def image_prompt_from_request(prompt):
 
 
 
-def _image_prompt_needs_english_retry(source, translated):
-    """Detect obvious cases where image translation was skipped."""
-    source = str(source or "").strip()
-    translated = str(translated or "").strip()
-
-    if not translated:
-        return True
-
-    german_markers = (
-        " einer ",
-        " eines ",
-        " einen ",
-        " einem ",
-        " erwachsenen ",
-        " schwarzen ",
-        " weißen ",
-        " weißem ",
-        " küstenstraße",
-        " sonnenuntergang",
-        " ganzkörper",
-        " nahaufnahme",
-        " berglandschaft",
-        " hintergrund",
-        " natürlichem ",
-        " natürlichen ",
-        " professionelles ",
-        " studioporträt",
-    )
-
-    value = f" {translated.casefold()} "
-
-    return any(
-        marker in value
-        for marker in german_markers
-    )
-
-
-def _retry_image_prompt_translation(prompt):
-    """Compile an image-generation prompt with the configured chat model."""
-
-    value = str(prompt or "").strip()
-
-    if not value:
-        return value
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are an image-generation prompt compiler. Convert the "
-                "user's request into fluent, precise English optimized for a "
-                "text-to-image model. Preserve every concrete fact exactly, "
-                "including people, number of people, age when specified, "
-                "gender when specified, objects, brands, colors, clothing, "
-                "actions, poses, spatial relationships, environment, style, "
-                "camera instructions, orientation, negations and constraints. "
-                "Never invent additional people, objects, scenery, brands, "
-                "colors, actions, story elements or factual scene details. "
-                "You may improve visual phrasing with concise photographic or "
-                "artistic terminology for composition, perspective, lighting, "
-                "materials, texture and realism only when it is consistent "
-                "with the user's requested scene. If the user already specifies "
-                "lighting, camera, composition or style, preserve it instead "
-                "of replacing it. Text that must visibly appear in the image "
-                "must retain its exact original spelling and language unless "
-                "the user explicitly asks to translate it. Do not omit small "
-                "details. Avoid generic quality-word spam and repetition. "
-                "Return ONLY the final English image-generation prompt. "
-                "No JSON. No markdown. No explanation."
-            ),
-        },
-        {
-            "role": "user",
-            "content": value,
-        },
-    ]
-
-    call_metrics = observability.ModelCallMetrics(
-        purpose="image.prompt_translate",
-        role="chat",
-        messages=messages,
-        context_sources=observability.message_context_counts(messages),
-    )
-
-    wait_started = time.monotonic()
-
-    try:
-        runtime = ensure_model_for_role("chat")
-
-        call_metrics.set_queue_wait(
-            (time.monotonic() - wait_started) * 1000
-        )
-
-        role = runtime["resolved"]
-        model = role.get("repo")
-
-        if not model:
-            raise RuntimeError("chat model unavailable")
-
-        call_metrics.set_model(
-            model=model,
-            role="chat",
-            alias=role.get("alias"),
-            backend=role.get("backend"),
-        )
-
-        config = load_config()
-        port = int(config.get("PORT", 8000))
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 650,
-            "stream": False,
-            "chat_template_kwargs": {
-                "enable_thinking": False,
-            },
-        }
-
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-
-        connect_started = time.monotonic()
-
-        with urllib.request.urlopen(
-            request,
-            timeout=180,
-        ) as response:
-            call_metrics.set_upstream_connect(
-                (time.monotonic() - connect_started) * 1000
-            )
-
-            result = json.loads(
-                response.read().decode("utf-8")
-            )
-
-        choice = result.get("choices", [{}])[0]
-
-        translated = str(
-            choice.get("message", {}).get("content") or ""
-        ).strip()
-
-        call_metrics.finish(
-            usage=result.get("usage"),
-            output_text=translated,
-            finish_reason=choice.get("finish_reason"),
-        )
-
-    except Exception as exc:
-        if call_metrics.metric["status"] == "running":
-            call_metrics.fail(type(exc).__name__)
-        raise
-
-    translated = translated.strip()
-
-    if (
-        len(translated) >= 2
-        and translated[0] == translated[-1]
-        and translated[0] in {'"', "'"}
-    ):
-        translated = translated[1:-1].strip()
-
-    if not translated:
-        raise ValueError("empty image translation")
-
-    return translated
-
-
-def _compile_translated_image_prompt(source_prompt, translated_prompt):
-    """Deterministically normalize sensitive image prompts like lingerie requests."""
-    source = str(source_prompt or "").strip()
-    translated = str(translated_prompt or "").strip()
-
-    if not translated:
-        return translated
-
-    source_normalized = f" {source.casefold()} "
-
-    def has_any(*needles):
-        return any(needle in source_normalized for needle in needles)
-
-    lingerie_requested = has_any(
-        " dessous ",
-        " unterwäsche ",
-        " lingerie ",
-        " underwear ",
-    )
-
-    if not lingerie_requested:
-        return translated
-
-    # Subject / person
-    if has_any(" frau ", " woman ", " weiblich ", " female "):
-        subject = "Adult woman"
-    else:
-        subject = "Adult person"
-
-    # Hair color
-    hair_prefix = ""
-    if has_any(" rothaar", " red-haired ", " red hair "):
-        hair_prefix = "red-haired "
-    elif has_any(" blondhaar", " blonde-haired ", " blonde hair ", " blond "):
-        hair_prefix = "blonde-haired "
-    elif has_any(" braunhaar", " brown-haired ", " brown hair "):
-        hair_prefix = "brown-haired "
-    elif has_any(" schwarzhhaar", " schwarzhaar", " black-haired ", " black hair "):
-        hair_prefix = "black-haired "
-
-    if subject == "Adult woman" and hair_prefix:
-        subject = f"Adult {hair_prefix}woman"
-
-    # Lingerie color
-    color = ""
-    if has_any(" schwarzen dessous", " schwarze dessous", " black lingerie", " black underwear", " black bra", " black panties"):
-        color = "black"
-    elif has_any(" roten dessous", " rote dessous", " red lingerie", " red underwear", " red bra", " red panties"):
-        color = "red"
-    elif has_any(" weißen dessous", " weisse dessous", " weiße dessous", " white lingerie", " white underwear", " white bra", " white panties"):
-        color = "white"
-
-    if color:
-        lingerie = f"clearly visible {color} lingerie, matching {color} bra and {color} panties"
-    else:
-        lingerie = "clearly visible lingerie, matching bra and panties"
-
-    return (
-        f"{subject} wearing {lingerie}, "
-        f"lingerie only, no shirt, no dress, no sweater, no outerwear"
-    )
-
-
 def translate_image_prompt_to_english(prompt):
-    """Translate an image prompt and select its layout using the small router."""
+    """Translate an image prompt and select its layout using the router."""
 
     value = str(prompt or "").strip()
 
@@ -6623,59 +6385,67 @@ def translate_image_prompt_to_english(prompt):
         {
             "role": "system",
             "content": (
-                "You are an image prompt compiler. "
-                "OUTPUT ONLY JSON. "
-                "Translate German to English and make the prompt visually explicit enough for an image model. "
-                "Preserve EVERY user-specified fact exactly: people, colors, hair color, clothing, objects and setting. "
-                "Never replace or contradict an attribute. "
-                "You MAY clarify clothing and composition when needed, but do not invent unrelated details. "
-                "The prompt value MUST be English. "
+                "You are a strict semantic image prompt translator, not a "
+                "creative image-prompt author. Treat every request in isolation. "
+                "Translate the request into natural English and preserve every "
+                "explicit visual fact exactly, including the number and kind of "
+                "people, hair and eye attributes, clothing and its colors, objects, "
+                "setting, pose, composition, and style. Never infer an attribute "
+                "from an example or a previous request. Never add or change hair "
+                "color, eye color, skin color, clothing, clothing color, people, "
+                "setting, pose, or style. You may normalize grammar and make terse "
+                "wording natural. You may make an obviously implicit image term "
+                "concrete: for example, lingerie may be rendered as a matching bra "
+                "and panties. Describe every person as an adult and include the word "
+                "'Adult' in the English prompt. "
 
-                "IMPORTANT German vocabulary: "
-                "rothaarig / rothaarige / rothaarigen = red-haired. "
-                "rote Haare = red hair. "
-                "Dessous = lingerie. "
-                "Unterwäsche = underwear or lingerie depending on context. "
-                "schwarze Dessous = black lingerie. "
-                "rote Dessous = red lingerie. "
-                "schwarzes Kleid = black dress. "
-                "rotes Hemd = red shirt. "
-                "blondhaarig = blonde-haired. "
-                "blauäugig = blue-eyed. "
+                "Bind every adjective only to the German noun it modifies. German "
+                "case endings do not change meaning: rothaarig, rothaarige, and "
+                "rothaarigen all mean red-haired; blond and blonde mean blonde; "
+                "schwarzhaarig means black-haired. These are hair attributes only, "
+                "never clothing colors. Dessous means lingerie and Unterwäsche means "
+                "underwear or lingerie. When the user specifies a lingerie color, "
+                "repeat that color explicitly before all three terms: '<color> "
+                "lingerie, matching <color> bra and <color> panties'. Do not rely on "
+                "the word 'matching' to imply the colors. When no lingerie color is "
+                "specified, never derive one from hair or any other attribute. In "
+                "that case, translate Unterwäsche simply as 'underwear' and Dessous "
+                "simply as 'lingerie'; do not add a bra, panties, or any clothing "
+                "color. A hair color may appear only in the subject phrase and must "
+                "never reappear in the clothing phrase. "
+                "The prompt value must be English. "
 
-                "CRITICAL SEMANTIC RULES: "
-                "'rothaarige Frau' means 'red-haired woman' and NEVER 'woman in a red shirt'. "
-                "For an adult woman wearing Dessous/lingerie/underwear, explicitly describe the lingerie as "
-                "a clearly visible matching bra and panties set. Preserve the requested color. "
-                "Add 'lingerie only, no shirt, no dress, no sweater, no outerwear' so the image model "
-                "does not turn lingerie into normal clothing. "
-                "Do not add nudity. "
+                "Choose layout using these rules in priority order: "
+                "1. icon, logo, avatar, or explicit square: square. "
+                "2. full body, Ganzkörper, or a standing full person: tall. "
+                "3. face, headshot, or Nahaufnahme: portrait. "
+                "4. a single person, fashion portrait, or ordinary person photo: portrait. "
+                "5. panorama or cinematic wide scene: wide. "
+                "6. an ordinary horizontal scene: landscape. "
+                "7. otherwise: square. "
 
-                "LAYOUT RULES IN PRIORITY ORDER: "
-                "1. icon, logo, avatar, explicit square -> square. "
-                "2. full-body person, standing full person, vertical poster, Ganzkörper -> tall. "
-                "3. face, headshot, Nahaufnahme -> portrait. "
-                "4. single person, fashion portrait, ordinary person photo -> portrait. "
-                "5. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
-                "6. ordinary horizontal scene -> landscape. "
-                "7. otherwise -> square. "
+                "Return only one valid JSON object with exactly two fields and no "
+                "markdown, explanation, or additional text: "
+                "{\"prompt\":\"English image prompt\","
+                "\"layout\":\"square|portrait|tall|landscape|wide\"}. "
 
-                "Return ONLY valid JSON in exactly this format: "
-                "{\"prompt\":\"Optimized English image prompt\",\"layout\":\"square|portrait|tall|landscape|wide\"}. "
-
-                "Examples: "
-                "German: Eine rothaarige Frau in Unterwäsche "
-                "Output: {\"prompt\":\"Adult red-haired woman wearing clearly visible lingerie, matching bra and panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
-                "German: Eine Frau mit schwarzen Dessous "
-                "Output: {\"prompt\":\"Adult woman wearing clearly visible black lingerie, matching black bra and black panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
-                "German: Eine Frau mit roten Dessous "
-                "Output: {\"prompt\":\"Adult woman wearing clearly visible red lingerie, matching red bra and red panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
-                "German: Ein Mann mit einem roten Hemd "
-                "Output: {\"prompt\":\"A man wearing a red shirt\",\"layout\":\"portrait\"}. "
-                "German: Ganzkörperaufnahme einer blondhaarigen Frau in einem schwarzen Kleid "
-                "Output: {\"prompt\":\"Full-body shot of a blonde-haired woman wearing a black dress\",\"layout\":\"tall\"}. "
-                "German: Nahaufnahme einer rothaarigen Frau mit grünen Augen "
-                "Output: {\"prompt\":\"Close-up portrait of a red-haired woman with green eyes\",\"layout\":\"portrait\"}."
+                "Each example below is an isolated request. Never carry an attribute "
+                "from one example into another request. "
+                "Input: einer rothaarigen frau in unterwäsche. "
+                "Output: {\"prompt\":\"Adult red-haired woman wearing underwear\","
+                "\"layout\":\"portrait\"}. "
+                "Input: blonde frau mit rotem dessous. "
+                "Output: {\"prompt\":\"Adult blonde woman wearing red lingerie, "
+                "matching red bra and red panties\",\"layout\":\"portrait\"}. "
+                "Input: rothaarige frau mit schwarzem dessous. "
+                "Output: {\"prompt\":\"Adult red-haired woman wearing black lingerie, "
+                "matching black bra and black panties\",\"layout\":\"portrait\"}. "
+                "Input: blonde frau mit grünem kleid. "
+                "Output: {\"prompt\":\"Adult blonde woman wearing a green dress\","
+                "\"layout\":\"portrait\"}. "
+                "Input: schwarzhaarige frau mit blauen augen. "
+                "Output: {\"prompt\":\"Adult black-haired woman with blue eyes\","
+                "\"layout\":\"portrait\"}."
             ),
         },
         {
@@ -6694,15 +6464,20 @@ def translate_image_prompt_to_english(prompt):
         if not translated:
             return value
 
-        try:
-            structured = parse_agent_json(translated)
-        except Exception:
-            structured = json.loads(translated)
+        structured = json.loads(translated)
 
         if isinstance(structured, dict):
-            final_prompt = str(structured.get("prompt") or "").strip()
-            final_prompt = _compile_translated_image_prompt(value, final_prompt)
-            layout = str(structured.get("layout") or "").strip().lower()
+            final_prompt_value = structured.get("prompt")
+            layout_value = structured.get("layout")
+
+            if not isinstance(final_prompt_value, str):
+                raise ValueError("router image prompt must be a string")
+
+            if not isinstance(layout_value, str):
+                raise ValueError("router image layout must be a string")
+
+            final_prompt = final_prompt_value.strip()
+            layout = layout_value.strip().lower()
 
             layouts = {
                 "square": (1024, 1024),
@@ -6731,7 +6506,7 @@ def translate_image_prompt_to_english(prompt):
                     f"output_chars={len(final_prompt)} "
                     f"layout={layout} "
                     f"size={width}x{height} "
-                    "using small-router only",
+                    "using router only",
                     flush=True,
                 )
 
@@ -10626,7 +10401,7 @@ def ensure_model_for_role(role: str):
 
 ROUTER_MODEL = os.environ.get(
     "MLX_ROUTER_MODEL_PATH",
-    str(Path.home() / "Models/router/Qwen3.5-0.8B-MLX-4bit"),
+    str(Path.home() / "Models/router/Qwen3.5-4B-MLX-4bit"),
 )
 ROUTER_URL = "http://127.0.0.1:8040"
 

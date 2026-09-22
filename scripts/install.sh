@@ -335,7 +335,7 @@ if [ "$INSTALL_LAUNCHD_SERVICES" -eq 1 ]; then
 
     info "Installing LaunchAgents"
 
-    ROUTER_MODEL="${MLX_ROUTER_MODEL_PATH:-$HOME/Models/router/Qwen3.5-0.8B-MLX-4bit}"
+    ROUTER_MODEL="${MLX_ROUTER_MODEL_PATH:-$HOME/Models/router/Qwen3.5-4B-MLX-4bit}"
 
     if [ ! -d "$ROUTER_MODEL" ]; then
         warn "Router model not found: $ROUTER_MODEL"
