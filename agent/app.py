@@ -6552,6 +6552,7 @@ def translate_image_prompt_to_english(prompt):
     """Translate an image prompt and select its layout using the small router."""
 
     value = str(prompt or "").strip()
+
     if not value:
         return value
 
@@ -6559,37 +6560,47 @@ def translate_image_prompt_to_english(prompt):
         {
             "role": "system",
             "content": (
-                "TASK: translate to English and classify image layout. "
+                "You are a strict German-to-English translator for image prompts. "
                 "OUTPUT ONLY JSON. "
-                "Never describe, expand, improve or rewrite the scene. "
-                "Translate literally. Preserve all facts. Add zero new facts. "
+                "Translate literally and preserve EVERY visual attribute. "
+                "Do not reinterpret words. "
+                "Do not replace attributes with visually similar concepts. "
+                "Do not add or remove clothing, colors, objects or people. "
                 "The prompt value MUST be English. "
+
+                "IMPORTANT German vocabulary: "
+                "rothaarig / rothaarige / rothaarigen = red-haired. "
+                "rote Haare = red hair. "
+                "Unterwäsche = underwear. "
+                "schwarzes Kleid = black dress. "
+                "rotes Hemd = red shirt. "
+                "blondhaarig = blonde-haired. "
+                "blauäugig = blue-eyed. "
+
+                "CRITICAL: "
+                "'rothaarige Frau' means 'red-haired woman'. "
+                "It NEVER means 'woman in a red shirt'. "
 
                 "LAYOUT RULES IN PRIORITY ORDER: "
                 "1. icon, logo, avatar, square -> square. "
-                "2. full-body person, standing full person, vertical poster -> tall. "
-                "3. face, headshot, ordinary person portrait -> portrait. "
+                "2. full-body person, standing full person, vertical poster, Ganzkörper -> tall. "
+                "3. face, headshot, ordinary person portrait, Nahaufnahme -> portrait. "
                 "4. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
                 "5. ordinary horizontal scene -> landscape. "
                 "6. otherwise -> square. "
 
-                "IMPORTANT: full-body ALWAYS means tall unless the user explicitly "
-                "requests another orientation. "
-                "Panorama ALWAYS means wide. "
+                "Return ONLY valid JSON in exactly this format: "
+                "{\"prompt\":\"English translation\",\"layout\":\"square|portrait|tall|landscape|wide\"}. "
 
                 "Examples: "
-                "Ganzkörperaufnahme einer Frau -> "
-                "{\"prompt\":\"Full-body shot of a woman\",\"layout\":\"tall\"}. "
-                "Nahaufnahme eines Mannes -> "
-                "{\"prompt\":\"Close-up of a man\",\"layout\":\"portrait\"}. "
-                "Panorama einer Berglandschaft -> "
-                "{\"prompt\":\"Panorama of a mountain landscape\",\"layout\":\"wide\"}. "
-                "Minimalistisches App-Icon -> "
-                "{\"prompt\":\"Minimalist app icon\",\"layout\":\"square\"}. "
-
-                "Return exactly: "
-                "{\"prompt\":\"English translation\","
-                "\"layout\":\"square|portrait|tall|landscape|wide\"}"
+                "German: Eine rothaarige Frau in Unterwäsche "
+                "Output: {\"prompt\":\"A red-haired woman in underwear\",\"layout\":\"square\"}. "
+                "German: Ein Mann mit einem roten Hemd "
+                "Output: {\"prompt\":\"A man wearing a red shirt\",\"layout\":\"square\"}. "
+                "German: Ganzkörperaufnahme einer blondhaarigen Frau in einem schwarzen Kleid "
+                "Output: {\"prompt\":\"Full-body shot of a blonde-haired woman wearing a black dress\",\"layout\":\"tall\"}. "
+                "German: Nahaufnahme einer rothaarigen Frau mit grünen Augen "
+                "Output: {\"prompt\":\"Close-up portrait of a red-haired woman with green eyes\",\"layout\":\"portrait\"}."
             ),
         },
         {
@@ -6614,13 +6625,8 @@ def translate_image_prompt_to_english(prompt):
             structured = json.loads(translated)
 
         if isinstance(structured, dict):
-            final_prompt = str(
-                structured.get("prompt") or ""
-            ).strip()
-
-            layout = str(
-                structured.get("layout") or ""
-            ).strip().lower()
+            final_prompt = str(structured.get("prompt") or "").strip()
+            layout = str(structured.get("layout") or "").strip().lower()
 
             layouts = {
                 "square": (1024, 1024),
@@ -6630,41 +6636,17 @@ def translate_image_prompt_to_english(prompt):
                 "wide": (1024, 768),
             }
 
+            if final_prompt and layout not in layouts:
+                width, height = _automatic_image_dimensions(final_prompt)
+
+                if (width, height) == (1024, 1024):
+                    layout = "square"
+                elif (width, height) == (768, 1024):
+                    layout = "portrait"
+                else:
+                    layout = "landscape"
+
             if final_prompt and layout in layouts:
-                # Fast path: the router already translates the prompt and
-                # classifies its layout in one call. Only involve the larger
-                # chat model when the router output still appears non-English.
-                # The small router determines layout and provides a cheap
-                # translated fallback. The configured chat model always
-                # compiles the final image-generation prompt because prompt
-                # quality matters much more than the cost of this small call.
-                router_prompt = final_prompt
-                try:
-                    optimized_prompt = _retry_image_prompt_translation(value)
-
-                    if (
-                        optimized_prompt
-                        and not _image_prompt_needs_english_retry(
-                            value,
-                            optimized_prompt,
-                        )
-                    ):
-                        final_prompt = optimized_prompt
-                    else:
-                        final_prompt = router_prompt
-                        print(
-                            "[image-prompt] optimizer output invalid, "
-                            "using router fallback",
-                            flush=True,
-                        )
-                except Exception as exc:
-                    final_prompt = router_prompt
-                    print(
-                        "[image-prompt] optimizer failed, using router fallback "
-                        f"error_type={type(exc).__name__}",
-                        flush=True,
-                    )
-
                 width, height = layouts[layout]
 
                 print(
@@ -6672,7 +6654,8 @@ def translate_image_prompt_to_english(prompt):
                     f"source_chars={len(value)} "
                     f"output_chars={len(final_prompt)} "
                     f"layout={layout} "
-                    f"size={width}x{height}",
+                    f"size={width}x{height} "
+                    "using small-router only",
                     flush=True,
                 )
 
@@ -6695,8 +6678,8 @@ def translate_image_prompt_to_english(prompt):
         return value
 
 
-
 def web_search_query_from_prompt(prompt):
+
     """Remove common search-command wording but keep the real query."""
     value = str(prompt or "").strip()
 
