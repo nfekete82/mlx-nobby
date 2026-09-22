@@ -1342,6 +1342,9 @@ mlx_service_label() {
         images)
             echo "de.nobby.mlx-images"
             ;;
+        mlxserve)
+            echo "de.nobby.mlx-serve"
+            ;;
         *)
             return 1
             ;;
@@ -1357,6 +1360,7 @@ mlx_service_port() {
         images)     echo "8030" ;;
         router)     echo "8040" ;;
         speech)     echo "8050" ;;
+        mlxserve)   echo "11234" ;;
         *)          return 1 ;;
     esac
 }
@@ -1429,6 +1433,7 @@ services_status() {
     mlx_service_status_one embeddings
     mlx_service_status_one speech
     mlx_service_status_one images
+    mlx_service_status_one mlxserve
 
     echo "────────────────────────────────────────────────────────────"
     echo
@@ -1541,33 +1546,38 @@ restart_all() {
     echo "────────────────────────────────────────────────────────────"
 
     echo
-    echo "[1/6] MLX Server"
+    echo "[1/7] MLX Server"
     restart || return 1
 
     echo
-    echo "[2/6] Agent"
+    echo "[2/7] Agent"
     mlx_service_restart agent || return 1
     mlx_service_wait_ready agent 30 || return 1
 
     echo
-    echo "[3/6] Router"
+    echo "[3/7] Router"
     mlx_service_restart router || return 1
     mlx_service_wait_ready router 30 || return 1
 
     echo
-    echo "[4/6] Embeddings"
+    echo "[4/7] Embeddings"
     mlx_service_restart embeddings || return 1
     mlx_service_wait_ready embeddings 30 || return 1
 
     echo
-    echo "[5/6] Speech"
+    echo "[5/7] Speech"
     mlx_service_restart speech || return 1
     mlx_service_wait_ready speech 30 || return 1
 
     echo
-    echo "[6/6] Images"
+    echo "[6/7] Images"
     mlx_service_restart images || return 1
     mlx_service_wait_ready images 30 || return 1
+
+    echo
+    echo "[7/7] MLX-Serve"
+    mlx_service_restart mlxserve || return 1
+    mlx_service_wait_ready mlxserve 30 || return 1
 
     echo
     services_status

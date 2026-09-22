@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.nobby.mlx-serve</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__MLX_SERVE_BIN__</string>
+        <string>serve</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>11234</string>
+        <string>--idle-evict-secs</string>
+        <string>300</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__MLX_SERVE_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>__CONFIG_DIR__/mlx-serve.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__CONFIG_DIR__/mlx-serve-error.log</string>
+</dict>
+</plist>

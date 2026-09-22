@@ -6548,6 +6548,69 @@ def _retry_image_prompt_translation(prompt):
     return translated
 
 
+def _compile_translated_image_prompt(source_prompt, translated_prompt):
+    """Deterministically normalize sensitive image prompts like lingerie requests."""
+    source = str(source_prompt or "").strip()
+    translated = str(translated_prompt or "").strip()
+
+    if not translated:
+        return translated
+
+    source_normalized = f" {source.casefold()} "
+
+    def has_any(*needles):
+        return any(needle in source_normalized for needle in needles)
+
+    lingerie_requested = has_any(
+        " dessous ",
+        " unterwäsche ",
+        " lingerie ",
+        " underwear ",
+    )
+
+    if not lingerie_requested:
+        return translated
+
+    # Subject / person
+    if has_any(" frau ", " woman ", " weiblich ", " female "):
+        subject = "Adult woman"
+    else:
+        subject = "Adult person"
+
+    # Hair color
+    hair_prefix = ""
+    if has_any(" rothaar", " red-haired ", " red hair "):
+        hair_prefix = "red-haired "
+    elif has_any(" blondhaar", " blonde-haired ", " blonde hair ", " blond "):
+        hair_prefix = "blonde-haired "
+    elif has_any(" braunhaar", " brown-haired ", " brown hair "):
+        hair_prefix = "brown-haired "
+    elif has_any(" schwarzhhaar", " schwarzhaar", " black-haired ", " black hair "):
+        hair_prefix = "black-haired "
+
+    if subject == "Adult woman" and hair_prefix:
+        subject = f"Adult {hair_prefix}woman"
+
+    # Lingerie color
+    color = ""
+    if has_any(" schwarzen dessous", " schwarze dessous", " black lingerie", " black underwear", " black bra", " black panties"):
+        color = "black"
+    elif has_any(" roten dessous", " rote dessous", " red lingerie", " red underwear", " red bra", " red panties"):
+        color = "red"
+    elif has_any(" weißen dessous", " weisse dessous", " weiße dessous", " white lingerie", " white underwear", " white bra", " white panties"):
+        color = "white"
+
+    if color:
+        lingerie = f"clearly visible {color} lingerie, matching {color} bra and {color} panties"
+    else:
+        lingerie = "clearly visible lingerie, matching bra and panties"
+
+    return (
+        f"{subject} wearing {lingerie}, "
+        f"lingerie only, no shirt, no dress, no sweater, no outerwear"
+    )
+
+
 def translate_image_prompt_to_english(prompt):
     """Translate an image prompt and select its layout using the small router."""
 
@@ -6560,43 +6623,55 @@ def translate_image_prompt_to_english(prompt):
         {
             "role": "system",
             "content": (
-                "You are a strict German-to-English translator for image prompts. "
+                "You are an image prompt compiler. "
                 "OUTPUT ONLY JSON. "
-                "Translate literally and preserve EVERY visual attribute. "
-                "Do not reinterpret words. "
-                "Do not replace attributes with visually similar concepts. "
-                "Do not add or remove clothing, colors, objects or people. "
+                "Translate German to English and make the prompt visually explicit enough for an image model. "
+                "Preserve EVERY user-specified fact exactly: people, colors, hair color, clothing, objects and setting. "
+                "Never replace or contradict an attribute. "
+                "You MAY clarify clothing and composition when needed, but do not invent unrelated details. "
                 "The prompt value MUST be English. "
 
                 "IMPORTANT German vocabulary: "
                 "rothaarig / rothaarige / rothaarigen = red-haired. "
                 "rote Haare = red hair. "
-                "Unterwäsche = underwear. "
+                "Dessous = lingerie. "
+                "Unterwäsche = underwear or lingerie depending on context. "
+                "schwarze Dessous = black lingerie. "
+                "rote Dessous = red lingerie. "
                 "schwarzes Kleid = black dress. "
                 "rotes Hemd = red shirt. "
                 "blondhaarig = blonde-haired. "
                 "blauäugig = blue-eyed. "
 
-                "CRITICAL: "
-                "'rothaarige Frau' means 'red-haired woman'. "
-                "It NEVER means 'woman in a red shirt'. "
+                "CRITICAL SEMANTIC RULES: "
+                "'rothaarige Frau' means 'red-haired woman' and NEVER 'woman in a red shirt'. "
+                "For an adult woman wearing Dessous/lingerie/underwear, explicitly describe the lingerie as "
+                "a clearly visible matching bra and panties set. Preserve the requested color. "
+                "Add 'lingerie only, no shirt, no dress, no sweater, no outerwear' so the image model "
+                "does not turn lingerie into normal clothing. "
+                "Do not add nudity. "
 
                 "LAYOUT RULES IN PRIORITY ORDER: "
-                "1. icon, logo, avatar, square -> square. "
+                "1. icon, logo, avatar, explicit square -> square. "
                 "2. full-body person, standing full person, vertical poster, Ganzkörper -> tall. "
-                "3. face, headshot, ordinary person portrait, Nahaufnahme -> portrait. "
-                "4. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
-                "5. ordinary horizontal scene -> landscape. "
-                "6. otherwise -> square. "
+                "3. face, headshot, Nahaufnahme -> portrait. "
+                "4. single person, fashion portrait, ordinary person photo -> portrait. "
+                "5. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
+                "6. ordinary horizontal scene -> landscape. "
+                "7. otherwise -> square. "
 
                 "Return ONLY valid JSON in exactly this format: "
-                "{\"prompt\":\"English translation\",\"layout\":\"square|portrait|tall|landscape|wide\"}. "
+                "{\"prompt\":\"Optimized English image prompt\",\"layout\":\"square|portrait|tall|landscape|wide\"}. "
 
                 "Examples: "
                 "German: Eine rothaarige Frau in Unterwäsche "
-                "Output: {\"prompt\":\"A red-haired woman in underwear\",\"layout\":\"square\"}. "
+                "Output: {\"prompt\":\"Adult red-haired woman wearing clearly visible lingerie, matching bra and panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
+                "German: Eine Frau mit schwarzen Dessous "
+                "Output: {\"prompt\":\"Adult woman wearing clearly visible black lingerie, matching black bra and black panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
+                "German: Eine Frau mit roten Dessous "
+                "Output: {\"prompt\":\"Adult woman wearing clearly visible red lingerie, matching red bra and red panties, lingerie only, no shirt, no dress, no sweater, no outerwear\",\"layout\":\"portrait\"}. "
                 "German: Ein Mann mit einem roten Hemd "
-                "Output: {\"prompt\":\"A man wearing a red shirt\",\"layout\":\"square\"}. "
+                "Output: {\"prompt\":\"A man wearing a red shirt\",\"layout\":\"portrait\"}. "
                 "German: Ganzkörperaufnahme einer blondhaarigen Frau in einem schwarzen Kleid "
                 "Output: {\"prompt\":\"Full-body shot of a blonde-haired woman wearing a black dress\",\"layout\":\"tall\"}. "
                 "German: Nahaufnahme einer rothaarigen Frau mit grünen Augen "
@@ -6626,6 +6701,7 @@ def translate_image_prompt_to_english(prompt):
 
         if isinstance(structured, dict):
             final_prompt = str(structured.get("prompt") or "").strip()
+            final_prompt = _compile_translated_image_prompt(value, final_prompt)
             layout = str(structured.get("layout") or "").strip().lower()
 
             layouts = {

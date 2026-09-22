@@ -7,6 +7,8 @@ HOME_DIR="${HOME}"
 CONFIG_DIR="${HOME}/.config/mlx-web"
 RUNTIME_PYTHON="${MLX_RUNTIME_PYTHON:-${PROJECT_DIR}/runtime-venv/bin/python}"
 ROUTER_MODEL="${MLX_ROUTER_MODEL_PATH:-${HOME}/Models/router/Qwen3.5-0.8B-MLX-4bit}"
+MLX_SERVE_DIR="${MLX_SERVE_DIR:-${HOME}/mlx-serve-qwen21}"
+MLX_SERVE_BIN="${MLX_SERVE_BIN:-${MLX_SERVE_DIR}/zig-out/bin/mlx-serve}"
 TEMPLATE_DIR="${PROJECT_DIR}/launchd/templates"
 TARGET_DIR="${HOME}/Library/LaunchAgents"
 
@@ -46,6 +48,8 @@ render_template() {
         -e "s|__HOME__|${HOME_DIR}|g" \
         -e "s|__RUNTIME_PYTHON__|${RUNTIME_PYTHON}|g" \
         -e "s|__ROUTER_MODEL__|${ROUTER_MODEL}|g" \
+        -e "s|__MLX_SERVE_DIR__|${MLX_SERVE_DIR}|g" \
+        -e "s|__MLX_SERVE_BIN__|${MLX_SERVE_BIN}|g" \
         "${source}" > "${target}"
 
     plutil -lint "${target}" >/dev/null
@@ -56,6 +60,11 @@ for template in "${TEMPLATE_DIR}"/*.plist.template; do
 
     filename="$(basename "${template}" .template)"
     target="${TARGET_DIR}/${filename}"
+
+    if [ "${filename}" = "de.nobby.mlx-serve.plist" ] && [ ! -x "${MLX_SERVE_BIN}" ]; then
+        echo "Skipping: ${filename} (mlx-serve binary not found: ${MLX_SERVE_BIN})"
+        continue
+    fi
 
     render_template "${template}" "${target}"
     echo "Installed: ${target}"

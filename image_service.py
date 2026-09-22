@@ -1,8 +1,11 @@
 """Native, local image service. Images stay on disk, never in API payloads."""
+import json
+import os
 import re
 import secrets
 import threading
 import time
+import urllib.request
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Literal
@@ -12,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import image_registry as registry
 import subprocess
 from image_providers import (
+    MLXSERVE_URL,
     PROCESS_TERMINATION_TIMEOUT,
     ProviderCancelled,
     availability,
@@ -24,6 +28,9 @@ from image_providers import (
 from local_security import LocalRequestGuard
 
 OUTPUT = Path.home() / ".config/mlx-web/images"
+PROJECT_DIR = Path(__file__).resolve().parent
+MLX_MANAGER = PROJECT_DIR / "scripts" / "mlx"
+MLX_SERVER_LABEL = "de.nobby.mlx-server"
 MODEL = "FLUX.1-schnell"
 DIFFUSIONKIT_MODEL = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 _lock = threading.Lock()
@@ -118,6 +125,55 @@ def registry_call(function, *args, **kwargs):
 def describe(model):
     available, reason = availability(model)
     return model | {"available": available, "availability_note": reason}
+
+
+def _chat_server_loaded():
+    domain = f"gui/{os.getuid()}/{MLX_SERVER_LABEL}"
+    result = subprocess.run(
+        ["launchctl", "print", domain],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _chat_server_command(action):
+    result = subprocess.run(
+        ["/bin/bash", str(MLX_MANAGER), action],
+        cwd=PROJECT_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        message = result.stdout.strip() or f"mlx {action} fehlgeschlagen"
+        raise RuntimeError(message[-4000:])
+
+
+def _unload_mlxserve_model(model):
+    body = json.dumps({
+        "model": model["repository"],
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        MLXSERVE_URL + "/v1/unload-model",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=60) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"MLX-Serve unload lieferte HTTP {response.status}"
+            )
 
 
 @app.get("/health")
@@ -335,18 +391,15 @@ def _edit_model(model_id):
     raise HTTPException(503, "Kein verfügbares Modell für Bildbearbeitung")
 
 
-def _is_qwen_image_model(model):
-    family = str(model.get("model_family") or "")
-    model_id = str(model.get("id") or "")
-    return family in {"qwen-image", "qwen-image-edit"} or "qwen" in model_id.lower()
-
-
 def _resolved_steps(model, requested_steps):
     if requested_steps is not None:
         return requested_steps
+
     default_steps = int(model["default_steps"])
-    if _is_qwen_image_model(model):
+
+    if str(model.get("model_family") or "") == "qwen-image21":
         return max(40, default_steps)
+
     return default_steps
 
 
@@ -378,9 +431,49 @@ def _generate_result(
     if prepared_callback:
         prepared_callback(model, params, path)
     _running = model["id"]
+    chat_was_loaded = False
+
     try:
+        if model["provider"] == "mlxserve":
+            chat_was_loaded = _chat_server_loaded()
+
+            if chat_was_loaded:
+                print(
+                    "[image-memory] stopping chat server before MLX-Serve image generation",
+                    flush=True,
+                )
+                _chat_server_command("stop")
+                time.sleep(1)
+
         run_provider(model, params, path, **(provider_options or {}))
+
     finally:
+        if model["provider"] == "mlxserve":
+            try:
+                print(
+                    "[image-memory] unloading MLX-Serve image model",
+                    flush=True,
+                )
+                _unload_mlxserve_model(model)
+            except Exception as exc:
+                print(
+                    f"[image-memory] warning: image model unload failed: {exc}",
+                    flush=True,
+                )
+
+            if chat_was_loaded:
+                try:
+                    print(
+                        "[image-memory] restarting chat server",
+                        flush=True,
+                    )
+                    _chat_server_command("start")
+                except Exception as exc:
+                    print(
+                        f"[image-memory] ERROR: chat server restart failed: {exc}",
+                        flush=True,
+                    )
+
         _running = None
     if saving_callback:
         saving_callback()
