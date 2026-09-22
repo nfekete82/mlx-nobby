@@ -1044,6 +1044,48 @@ button {
     background: #0b1220;
 }
 
+.image-artifact-info {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #0f1724;
+}
+
+.image-artifact-info summary {
+    cursor: pointer;
+    color: #d7dee7;
+    font-size: 13px;
+    font-weight: 600;
+    user-select: none;
+    outline: none;
+}
+
+.image-artifact-info[open] summary {
+    margin-bottom: 10px;
+}
+
+.image-artifact-info strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+
+.image-artifact-prompt {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #263244;
+    border-radius: 6px;
+    background: #0b1220;
+    color: #e5edf6;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+}
+
 .attach-button {
     width: 34px;
     height: 34px;

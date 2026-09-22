@@ -2355,41 +2355,34 @@ const imageFiles =
 
             if (
                 isImageJobTool(toolResult.tool) &&
-                toolResult.status === 'completed' &&
-                Array.isArray(toolResult.artifacts) &&
-                toolResult.artifacts[0]?.artifact_id
-            ) {
-                session.workspace = {
-                    ...(session.workspace || {}),
-                    active_artifact_id:
-                        toolResult.artifacts[0].artifact_id
-                };
-            }
-
-            if (
-                isImageJobTool(toolResult.tool) &&
-                [
-                    'queued',
-                    'loading',
-                    'running',
-                    'saving'
-                ].includes(toolResult.status) &&
-                toolResult.data?.job?.id &&
-                pendingImageMessage
+                pendingImageMessage &&
+                toolResult.data?.job?.id
             ) {
                 updateImageJobMessage(
                     session,
                     pendingImageMessage,
                     toolResult
                 );
+
                 MLXChatSessions.saveSessions();
                 MLXChatRendering.renderAll({
                     contentUpdated: true
                 });
-                watchImageJob(
-                    session,
-                    pendingImageMessage
-                );
+
+                if (
+                    [
+                        'queued',
+                        'loading',
+                        'running',
+                        'saving'
+                    ].includes(toolResult.status)
+                ) {
+                    watchImageJob(
+                        session,
+                        pendingImageMessage
+                    );
+                }
+
                 return;
             }
 

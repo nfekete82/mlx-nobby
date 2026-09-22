@@ -1689,9 +1689,27 @@ function renderImageArtifactCard(message) {
     if (enhanceMenu) {
         controls.appendChild(enhanceMenu);
     }
+
+    const info = document.createElement('details');
+    info.className = 'image-artifact-info';
+
+    const infoSummary = document.createElement('summary');
+    infoSummary.textContent = 'Info';
+    info.appendChild(infoSummary);
+
+    const promptLabel = document.createElement('strong');
+    promptLabel.textContent = 'Verwendeter Prompt';
+    info.appendChild(promptLabel);
+
+    const promptText = document.createElement('pre');
+    promptText.className = 'image-artifact-prompt';
+    promptText.textContent = artifact.prompt || '—';
+    info.appendChild(promptText);
+
     card.appendChild(image);
     card.appendChild(details);
     card.appendChild(controls);
+    card.appendChild(info);
     return card;
 }
 
