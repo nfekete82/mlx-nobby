@@ -24,6 +24,7 @@ from agent import profile
 from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
+from agent import video_api
 from agent import model_cleanup
 from agent.tool_registry import Tool, ToolRegistry
 from agent import run_state
@@ -108,6 +109,9 @@ IMAGE_ID_PATTERN = re.compile(r"^\d{10}-[0-9a-f]{12}$")
 IMAGE_ARTIFACT_ID_PATTERN = re.compile(
     r"^image-(?P<image_id>\d{10}-[0-9a-f]{12})$"
 )
+VIDEO_DIRECTORY = Path.home() / ".config/mlx-web/videos"
+VIDEO_UPLOAD_DIRECTORY = Path.home() / ".config/mlx-web/batch/uploads"
+VIDEO_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 
 
 class AddModelRequest(BaseModel):
@@ -3904,10 +3908,14 @@ class ChatFileRouteRequest(BaseModel):
 
 class ChatActionRequest(BaseModel):
     prompt: str
-    action: Literal["image_generate", "image_edit", "image_upscale"] | None = None
+    action: Literal[
+        "image_generate", "image_edit", "image_upscale",
+        "video_generate", "video_animate",
+    ] | None = None
     file_context: dict | None = None
     active_artifact_id: str | None = None
     image_options: dict | None = None
+    video_options: dict | None = None
     quality: Literal["fast", "standard", "quality"] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
@@ -4325,6 +4333,14 @@ MLX_CAPABILITY_MODEL = {
         "description": "Ein angehängtes oder aktives Bild lokal mit Real-ESRGAN hochskalieren",
         "access": "spezialisierte Bild-Pipeline",
     },
+    "video_generate": {
+        "description": "Ein Video lokal aus einem Textprompt mit LTX 2.5 Fast erzeugen",
+        "access": "experimentelle lokale Video-Pipeline",
+    },
+    "video_animate": {
+        "description": "Ein verwaltetes Bildartefakt lokal mit LTX 2.5 Fast animieren",
+        "access": "experimentelle lokale Video-Pipeline",
+    },
     "vision": {
         "description": "Ein angehängtes oder aktives Bild mit einem Vision-Modell analysieren",
         "access": "Bildanalyse im normalen Chatpfad",
@@ -4546,10 +4562,28 @@ _IMAGE_NOUN_OF_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_VIDEO_ANIMATE_PATTERN = re.compile(
+    r"\b(?:animier(?:e|en)?\s+(?:dieses|das|mein)?\s*(?:bild|foto)|"
+    r"mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video|"
+    r"erzeug(?:e|en)?\s+(?:daraus|hieraus)\s+(?:eine\s+)?animation|"
+    r"turn\s+(?:this|that)\s+(?:image|picture)\s+into\s+(?:a\s+)?video|"
+    r"animate\s+(?:this|that)?\s*(?:image|picture))\b",
+    re.IGNORECASE,
+)
+_VIDEO_GENERATE_PATTERN = re.compile(
+    r"\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b"
+    r".{0,40}\b(?:video|clip)\b",
+    re.IGNORECASE,
+)
+
 
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
+    if _VIDEO_ANIMATE_PATTERN.search(value):
+        return "video_animate"
+    if _VIDEO_GENERATE_PATTERN.search(value):
+        return "video_generate"
     try:
         active_code_workspace = code_workspaces.active_workspace() is not None
     except ValueError:
@@ -8063,6 +8097,157 @@ def _image_generate_payload(request):
     return payload
 
 
+def video_prompt_from_request(prompt):
+    """Remove only the video command wrapper, preserving user attributes."""
+    value = str(prompt or "").strip()
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)"
+        r"(?:\s+mir)?\s+(?:ein(?:en)?|a)?\s*(?:video|clip)(?:\s+von|\s+of|\s+about)?\s*",
+        "", value, flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?(?:animier(?:e)?|animate)\s+(?:dieses|das|this|the)?\s*"
+        r"(?:bild|foto|image|picture)?\s*", "", cleaned, flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video\s*",
+        "", cleaned, flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" .:") or value
+
+
+def compile_video_prompt(prompt):
+    """Compile a local LTX prompt without inventing visual attributes."""
+    value = str(prompt or "").strip()
+    if not value:
+        return value
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a strict prompt compiler for a local text/image-to-video model. "
+                "Translate the request to concise natural English. Preserve every explicit "
+                "subject, count, appearance, clothing, color, setting, action, camera, style, "
+                "and sound attribute exactly. Never invent an attribute, person, object, "
+                "motion, camera move, visual detail, or sound. For image animation, describe "
+                "only the requested motion and camera behavior; do not redescribe unseen image "
+                "content. Return only JSON: {\"prompt\":\"...\"}."
+            ),
+        },
+        {"role": "user", "content": value},
+    ]
+    try:
+        compiled = json.loads(router_llm(messages, max_tokens=300, temperature=0.0).strip())
+        result = compiled.get("prompt") if isinstance(compiled, dict) else None
+        return result.strip() if isinstance(result, str) and result.strip() else value
+    except (RuntimeError, ValueError, TypeError, json.JSONDecodeError):
+        return value
+
+
+def _video_payload(request, operation):
+    prompt = compile_video_prompt(video_prompt_from_request(request.prompt))
+    if len(prompt) < 3:
+        raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
+    payload = {"prompt": prompt, "model": "auto"}
+    if request.quality is not None:
+        payload["quality"] = request.quality
+    options = dict(request.video_options or {})
+    allowed = {
+        "model", "resolution", "duration", "fps", "seed", "resize_mode",
+        "width", "height",
+    }
+    if set(options) - allowed:
+        raise HTTPException(422, "Unbekannte Videoparameter")
+    payload.update(options)
+    if operation == "i2v":
+        stored_path = str((request.file_context or {}).get("stored_path") or "").strip()
+        if not stored_path and not request.active_artifact_id:
+            raise HTTPException(
+                422,
+                "Bitte lade ein Bild hoch oder wähle ein vorhandenes Bild zum Animieren aus",
+            )
+        source = (
+            _resolve_video_upload_source(stored_path)
+            if stored_path
+            else _resolve_image_artifact_source(request.active_artifact_id)
+        )
+        payload["first_frame"] = str(source)
+    return payload
+
+
+def _resolve_video_upload_source(value):
+    """Resolve a server-managed chat upload, never an arbitrary client path."""
+    path = Path(str(value or "")).expanduser().resolve()
+    root = VIDEO_UPLOAD_DIRECTORY.resolve()
+    if (
+        path.parent != root
+        or not re.fullmatch(r"[0-9a-f]{12}\.(?:png|jpe?g|webp)", path.name, re.IGNORECASE)
+        or not path.is_file()
+    ):
+        raise HTTPException(422, "I2V benötigt ein verwaltetes Chat-Upload-Bild")
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(16)
+    except OSError as exc:
+        raise HTTPException(404, "Referenziertes Upload-Bild ist nicht verfügbar") from exc
+    valid = (
+        (path.suffix.lower() == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (path.suffix.lower() in {".jpg", ".jpeg"} and header.startswith(b"\xff\xd8\xff"))
+        or (path.suffix.lower() == ".webp" and header[:4] == b"RIFF" and header[8:12] == b"WEBP")
+    )
+    if not valid:
+        raise HTTPException(422, "I2V-Upload ist kein gültiges PNG-, JPEG- oder WebP-Bild")
+    return path
+
+
+def _video_artifact(result):
+    video_id = str(result.get("id", ""))
+    path = Path(str(result.get("path", ""))).resolve()
+    root = VIDEO_DIRECTORY.resolve()
+    if not VIDEO_ID_PATTERN.fullmatch(video_id) or path.parent != root or path.name != f"{video_id}.mp4":
+        raise HTTPException(502, "Ungültige Antwort vom Video-Service")
+    return {
+        "artifact_id": f"video-{video_id}", "video_id": video_id,
+        "name": path.name, "path": str(path), "mime_type": "video/mp4",
+        "prompt": result.get("prompt"), "model": result.get("model"),
+        "repository": result.get("repository"), "provider": result.get("provider"),
+        "quantization": result.get("quantization"), "operation": result.get("operation"),
+        "width": result.get("width"), "height": result.get("height"),
+        "frames": result.get("frames"), "fps": result.get("fps"),
+        "duration": result.get("duration"), "steps": result.get("steps"),
+        "resolution": result.get("resolution"), "pipeline": result.get("pipeline"),
+        "quality": result.get("quality"),
+        "seed": result.get("seed"),
+        "audio": result.get("audio"), "created_at": result.get("created_at", time.time()),
+        "source_width": result.get("source_width"), "source_height": result.get("source_height"),
+        "target_width": result.get("target_width"), "target_height": result.get("target_height"),
+        "resize_mode": result.get("resize_mode"),
+    }
+
+
+def _start_chat_video_job(action, request):
+    operation = "i2v" if action == "video_animate" else "t2v"
+    payload = _video_payload(request, operation)
+    chat_id, chat_revision = _validated_image_job_chat_identity(request)
+    return video_api.request("POST", "/jobs", {
+        "operation": operation, "payload": payload, "chat_id": chat_id,
+        "chat_revision": chat_revision,
+        **({"run_id": request.run_id} if request.run_id else {}),
+    }, timeout=15)
+
+
+def _video_job_tool_result(job):
+    action = "video_animate" if job.get("operation") == "i2v" else "video_generate"
+    status = str(job.get("status") or "failed")
+    data, artifacts = {"job": job}, []
+    if status == "completed":
+        artifact = _video_artifact(job.get("result") or {})
+        artifact.update(chat_id=job.get("chat_id"), run_id=job.get("run_id"))
+        data["video"] = artifact
+        artifacts.append(artifact)
+    return chat_tool_result(action, status, data, artifacts=artifacts, error=job.get("error"))
+
+
 def _image_artifact(result, action):
     image_id = str(result.get("id", ""))
     image_path = Path(str(result.get("path", "")))
@@ -8402,6 +8587,45 @@ def image_download(image_id: str, download: bool = False):
         media_type="image/png",
         filename=image_path.name if download else None,
     )
+
+
+@app.get("/api/video/health")
+def video_health_api():
+    return video_api.request("GET", "/health")
+
+
+@app.get("/api/video/models")
+def video_models_api():
+    return video_api.request("GET", "/models")
+
+
+@app.post("/api/video/jobs", status_code=202)
+def video_job_create_api(request: ChatActionRequest):
+    action = request.action or "video_generate"
+    if action not in {"video_generate", "video_animate"}:
+        raise HTTPException(422, "Ungültige Video-Aktion")
+    return _video_job_tool_result(_start_chat_video_job(action, request))
+
+
+@app.get("/api/video/jobs/{job_id}")
+def video_job_api(job_id: str):
+    return _video_job_tool_result(video_api.request("GET", "/jobs/" + video_api.job_id(job_id)))
+
+
+@app.post("/api/video/jobs/{job_id}/cancel")
+def video_job_cancel_api(job_id: str):
+    job = video_api.request("POST", "/jobs/" + video_api.job_id(job_id) + "/cancel", {}, timeout=30)
+    return _video_job_tool_result(job)
+
+
+@app.get("/api/videos/{video_id}")
+def video_download(video_id: str, download: bool = False):
+    if not VIDEO_ID_PATTERN.fullmatch(video_id):
+        raise HTTPException(404, "Video nicht gefunden")
+    path = VIDEO_DIRECTORY / f"{video_id}.mp4"
+    if not path.is_file():
+        raise HTTPException(404, "Video nicht gefunden")
+    return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
 
 
 TOOLS = {
@@ -8806,7 +9030,25 @@ def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
 
-    if request.action == "image_upscale":
+    if request.action in {"video_generate", "video_animate"}:
+        routing = {
+            "intent": request.action, "confidence": 1.0,
+            "requires_tools": True, "reason": "Explicit video action",
+            "method": "explicit_video",
+        }
+    elif _VIDEO_ANIMATE_PATTERN.search(request.prompt):
+        routing = {
+            "intent": "video_animate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic image animation request",
+            "method": "deterministic_video_animate",
+        }
+    elif _VIDEO_GENERATE_PATTERN.search(request.prompt):
+        routing = {
+            "intent": "video_generate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic video request",
+            "method": "deterministic_video_generate",
+        }
+    elif request.action == "image_upscale":
         routing = {
             "intent": "image_upscale",
             "confidence": 1.0,
@@ -8946,6 +9188,17 @@ def run_chat_action(request: ChatActionRequest):
                 "failed",
                 error=str(exc),
             )
+
+    if action in {"video_generate", "video_animate"}:
+        try:
+            job = _start_chat_video_job(action, request)
+            return chat_tool_result(action, job.get("status", "queued"), {"job": job})
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                raise
+            return chat_tool_result(action, "failed", error=str(exc.detail))
+        except Exception as exc:
+            return chat_tool_result(action, "failed", error=str(exc))
 
     handler = TOOLS.get(action)
     if not handler:
@@ -11943,6 +12196,9 @@ def _build_agent_tool_registry():
         ("image_generate", "Queue an image generation job for the bound chat.", "CREATE", (), 10, 12000),
         ("image_edit", "Queue an edit of a managed image artifact for the bound chat.", "WRITE", (), 10, 12000),
         ("image_job_status", "Inspect an image job owned by the bound chat.", "READ", (), 15, 12000),
+        ("video_generate", "Queue local LTX 2.5 Fast text-to-video for the bound chat.", "CREATE", (), 15, 12000),
+        ("video_animate", "Animate a managed image artifact with local LTX 2.5 Fast.", "WRITE", (), 15, 12000),
+        ("video_job_status", "Inspect a video job owned by the bound chat.", "READ", (), 15, 12000),
         ("document_search", "Search an already indexed uploaded document.", "READ", (), None, 12000),
         ("document_page", "Read a page of an already indexed uploaded document.", "READ", (), None, 12000),
         ("file_inspect", "Inspect a text file in the bound workspace.", "READ", ("workspace",), None, 12000),
@@ -11975,10 +12231,10 @@ def _build_agent_tool_registry():
     }
     for name, description, permission, risks, timeout, output_limit in specs:
         schema = deepcopy(parameters)
-        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit"}:
+        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status"}:
             schema["required"].append("query")
             schema["properties"]["query"].update(type="string", minLength=1)
-        if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit"}:
+        if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit", "video_animate"}:
             schema["required"].append("options")
             schema["properties"]["options"].update(type="object")
         if name in {"git_stage", "git_commit"}:
@@ -12005,6 +12261,13 @@ def _build_agent_tool_registry():
                             "image_options": {"type": "object"}},
                 additionalProperties=False,
             )
+        if name == "video_animate":
+            schema["properties"]["options"].update(
+                properties={"artifact_id": {"type": "string"}, "upload_path": {"type": "string"},
+                            "video_options": {"type": "object"},
+                            "quality": {"type": "string", "enum": ["fast", "standard", "quality"]}},
+                additionalProperties=False,
+            )
         if name == "code_patch":
             schema["required"].append("files")
             schema["properties"]["files"].update(type="array", minItems=1)
@@ -12016,6 +12279,7 @@ def _build_agent_tool_registry():
                 "workspace_status", "shell_workspace", "git_status", "git_diff",
                 "git_log", "git_stage", "git_commit", "vision_analyze",
                 "image_generate", "image_edit", "image_job_status",
+                "video_generate", "video_animate", "video_job_status",
                 "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
                 "file_analysis_status",
             } else _execute_legacy_agent_tool, name),
@@ -12031,7 +12295,7 @@ def _build_agent_tool_registry():
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
 _RUNTIME_ONLY_READ_TOOLS = {
     "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
-    "image_job_status", "document_search", "document_page", "file_inspect",
+    "image_job_status", "video_job_status", "document_search", "document_page", "file_inspect",
     "file_pii_audit", "file_analysis_status",
 }
 READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ") - _RUNTIME_ONLY_READ_TOOLS

@@ -1383,7 +1383,7 @@
 
 
             <div class="composer-actions">
-            <label class="media-quality-control">
+            <label class="media-quality-control" hidden>
                 <span data-i18n="ui.media_quality">Qualität</span>
                 <select id="mediaQuality" aria-label="Qualität" data-i18n-aria-label="ui.media_quality">
                     <option value="fast" data-i18n="ui.quality_fast">Schnell</option>
@@ -1754,6 +1754,102 @@
                 class="app-modal-button primary"
             >
                 OK
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<div
+    id="mediaQualityModal"
+    class="app-modal"
+    hidden
+    aria-hidden="true"
+>
+    <div
+        class="app-modal-backdrop"
+        data-media-quality-dismiss
+    ></div>
+
+    <div
+        class="app-modal-dialog media-quality-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mediaQualityModalTitle"
+        aria-describedby="mediaQualityModalMessage"
+    >
+        <h2 id="mediaQualityModalTitle">
+            Bildqualität wählen
+        </h2>
+
+        <p id="mediaQualityModalMessage">
+            Welche Qualität möchtest du verwenden?
+        </p>
+
+        <div
+            class="media-quality-options"
+            role="radiogroup"
+            aria-label="Qualität"
+        >
+            <button
+                type="button"
+                class="media-quality-option"
+                data-media-quality="fast"
+                aria-pressed="false"
+            >
+                <strong data-i18n="ui.quality_fast">
+                    Schnell
+                </strong>
+                <span>
+                    Weniger Wartezeit
+                </span>
+            </button>
+
+            <button
+                type="button"
+                class="media-quality-option is-selected"
+                data-media-quality="standard"
+                aria-pressed="true"
+            >
+                <strong data-i18n="ui.quality_standard">
+                    Standard
+                </strong>
+                <span>
+                    Gute Balance
+                </span>
+            </button>
+
+            <button
+                type="button"
+                class="media-quality-option"
+                data-media-quality="quality"
+                aria-pressed="false"
+            >
+                <strong data-i18n="ui.quality_quality">
+                    Qualität
+                </strong>
+                <span>
+                    Maximale Qualität
+                </span>
+            </button>
+        </div>
+
+        <div class="app-modal-actions">
+            <button
+                id="mediaQualityModalCancel"
+                type="button"
+                class="app-modal-button secondary"
+                data-i18n="common.cancel"
+            >
+                Abbrechen
+            </button>
+
+            <button
+                id="mediaQualityModalConfirm"
+                type="button"
+                class="app-modal-button primary"
+            >
+                Erstellen
             </button>
         </div>
     </div>

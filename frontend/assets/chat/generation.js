@@ -45,6 +45,14 @@ const IMAGE_NOUN_PATTERN =
 const IMAGE_NOUN_OF_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:bild|foto|illustration|image|photo|picture)\s+(?:von|of)(?=$|[^\p{L}\p{N}_])/iu;
 
+const VIDEO_ANIMATE_PATTERN = /\b(?:animier(?:e|en)?\s+(?:dieses|das|mein)?\s*(?:bild|foto)|mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video|erzeug(?:e|en)?\s+(?:daraus|hieraus)\s+(?:eine\s+)?animation|animate\s+(?:this|that)?\s*(?:image|picture)|turn\s+(?:this|that)\s+(?:image|picture)\s+into\s+(?:a\s+)?video)\b/iu;
+const VIDEO_GENERATE_PATTERN = /\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b.{0,40}\b(?:video|clip)\b/iu;
+
+function isVideoRequest(prompt) {
+    const value = String(prompt || '');
+    return VIDEO_ANIMATE_PATTERN.test(value) || VIDEO_GENERATE_PATTERN.test(value);
+}
+
 function isImageEditRequest(prompt, hasImage) {
     if (!hasImage) {
         return false;
@@ -611,6 +619,40 @@ function imageConversationState(session) {
         has_active_image: Boolean(active),
         has_parent_image: Boolean(parent)
     };
+}
+
+
+function latestSessionImageUpload(session) {
+    for (const message of [...(session?.messages || [])].reverse()) {
+        const candidates = [
+            ...(Array.isArray(message?.attachments) ? message.attachments : []),
+            ...(Array.isArray(message?.vision_images) ? message.vision_images : [])
+        ];
+        for (const image of candidates.reverse()) {
+            if (
+                image?.kind === 'image' &&
+                typeof image.stored_path === 'string' &&
+                image.stored_path
+            ) {
+                return image;
+            }
+        }
+    }
+    return null;
+}
+
+
+function preferredVideoImageSource(session, currentImages = []) {
+    const newestCurrent = [...currentImages]
+        .reverse()
+        .find(image => image?.kind === 'image');
+    if (newestCurrent) return { origin: 'current_upload', source: newestCurrent };
+    const active = activeSessionImageArtifact(session);
+    if (active) return { origin: 'active_artifact', source: active };
+    const previousUpload = latestSessionImageUpload(session);
+    return previousUpload
+        ? { origin: 'chat_upload', source: previousUpload }
+        : null;
 }
 
 
@@ -1701,6 +1743,10 @@ const imageFiles =
             imageFiles.length > 0 ||
                 Boolean(activeImageArtifact)
         );
+    const explicitVideoAnimateRequest = VIDEO_ANIMATE_PATTERN.test(prompt);
+    const preferredVideoSource = explicitVideoAnimateRequest
+        ? preferredVideoImageSource(session, imageFiles)
+        : null;
 
     const imageComparisonRequest =
         isImageComparisonRequest(
@@ -2009,7 +2055,8 @@ const imageFiles =
         !imageFiles.length &&
         activeImageArtifact &&
         refersToExistingImage &&
-        !explicitImageEditRequest
+        !explicitImageEditRequest &&
+        !explicitVideoAnimateRequest
     ) {
         try {
             const visionArtifacts =
@@ -2150,7 +2197,8 @@ const imageFiles =
             visionImages.length > 1
         ) &&
         !explicitImageCreationRequest &&
-        !explicitImageEditRequest;
+        !explicitImageEditRequest &&
+        !explicitVideoAnimateRequest;
 
     if (
         !routesFileOperation &&
@@ -2172,10 +2220,15 @@ const imageFiles =
         try {
             let currentImageContext = null;
 
-            if (
-                imageFiles.length === 1
-            ) {
-                const image = imageFiles[0];
+            const selectedCurrentImage =
+                preferredVideoSource?.origin === 'current_upload'
+                    ? preferredVideoSource.source
+                    : imageFiles.length === 1
+                        ? imageFiles[0]
+                        : null;
+
+            if (selectedCurrentImage) {
+                const image = selectedCurrentImage;
 
                 let storedPath =
                     image.stored_path ||
@@ -2218,6 +2271,14 @@ const imageFiles =
                         storedName;
                 }
 
+                const storedAttachment = [...(userMessage.attachments || [])]
+                    .reverse()
+                    .find(item => item.kind === 'image' && item.name === image.name);
+                if (storedAttachment && storedPath) {
+                    storedAttachment.stored_path = storedPath;
+                    storedAttachment.file_id = storedName;
+                }
+
                 currentImageContext = {
                     ...image,
                     kind: 'image',
@@ -2232,19 +2293,26 @@ const imageFiles =
                 };
             }
 
-            const fileContext =
-                currentImageContext ||
-                documentFiles[0] ||
-                priorFileAttachments[0] || null;
+            const historicalVideoUpload =
+                preferredVideoSource?.origin === 'chat_upload'
+                    ? preferredVideoSource.source
+                    : null;
+            const fileContext = currentImageContext || historicalVideoUpload ||
+                (explicitVideoAnimateRequest
+                    ? null
+                    : documentFiles[0] || priorFileAttachments[0] || null);
 
             // Always expose the active image artifact to the semantic
             // router. This lets the router resolve natural image follow-ups
             // from conversation context even when the deterministic edit
             // patterns do not recognize the wording.
             const activeArtifactIdForEdit =
-                !currentImageContext && (refersToExistingImage || explicitImageEditRequest)
+                !currentImageContext && !historicalVideoUpload &&
+                (refersToExistingImage || explicitImageEditRequest || explicitVideoAnimateRequest)
                     ? (
-                        activeImageArtifact?.artifact_id ||
+                        (preferredVideoSource?.origin === 'active_artifact'
+                            ? preferredVideoSource.source?.artifact_id
+                            : activeImageArtifact?.artifact_id) ||
                         session?.workspace?.active_artifact_id ||
                         null
                     )
@@ -2272,6 +2340,247 @@ const imageFiles =
                 );
             }
 
+            /*
+             * Ask for media quality only when this turn is actually
+             * creating/editing image or video content. Normal chat
+             * never sees this modal.
+             */
+            const explicitVideoCreationRequest =
+                /\b(?:erstelle|erzeuge|generiere|mach|create|generate|make)\b[\s\S]{0,100}\b(?:video|clip|animation)\b/i.test(prompt) ||
+                /\b(?:video|clip|animation)\b[\s\S]{0,100}\b(?:erstellen|erzeugen|generieren|create|generate)\b/i.test(prompt);
+
+            const mediaQualityKind =
+                (
+                    explicitVideoAnimateRequest ||
+                    explicitVideoCreationRequest ||
+                    Boolean(options?.video)
+                )
+                    ? 'video'
+                    : (
+                        explicitImageCreationRequest ||
+                        explicitImageEditRequest ||
+                        Boolean(options?.image)
+                    )
+                        ? 'image'
+                        : null;
+
+            let selectedMediaQuality =
+                MLXChatRuntime.getSessionMediaQuality?.() ||
+                'standard';
+
+            if (mediaQualityKind) {
+                const modal =
+                    document.getElementById('mediaQualityModal');
+                const title =
+                    document.getElementById('mediaQualityModalTitle');
+                const message =
+                    document.getElementById('mediaQualityModalMessage');
+                const cancel =
+                    document.getElementById('mediaQualityModalCancel');
+                const confirm =
+                    document.getElementById('mediaQualityModalConfirm');
+                const qualityButtons =
+                    typeof document.querySelectorAll === 'function'
+                        ? [
+                            ...document.querySelectorAll(
+                                '[data-media-quality]'
+                            )
+                        ]
+                        : [];
+
+                if (
+                    modal &&
+                    title &&
+                    message &&
+                    cancel &&
+                    confirm &&
+                    qualityButtons.length
+                ) {
+                    // Default is Standard; subsequent jobs reuse this session's choice.
+                    let choice = selectedMediaQuality;
+
+                    const renderChoice = () => {
+                        for (const button of qualityButtons) {
+                            const active =
+                                button.dataset.mediaQuality === choice;
+
+                            button.classList.toggle(
+                                'is-selected',
+                                active
+                            );
+
+                            button.setAttribute(
+                                'aria-pressed',
+                                active ? 'true' : 'false'
+                            );
+                        }
+                    };
+
+                    title.textContent =
+                        mediaQualityKind === 'video'
+                            ? 'Videoqualität wählen'
+                            : 'Bildqualität wählen';
+
+                    message.textContent =
+                        mediaQualityKind === 'video'
+                            ? 'Welche Qualität möchtest du für das Video verwenden?'
+                            : 'Welche Qualität möchtest du für das Bild verwenden?';
+
+                    renderChoice();
+
+                    const result = await new Promise(resolve => {
+                        let settled = false;
+
+                        const finish = value => {
+                            if (settled) return;
+                            settled = true;
+
+                            modal.hidden = true;
+                            modal.setAttribute(
+                                'aria-hidden',
+                                'true'
+                            );
+
+                            for (const button of qualityButtons) {
+                                button.removeEventListener(
+                                    'click',
+                                    onQuality
+                                );
+                            }
+
+                            cancel.removeEventListener(
+                                'click',
+                                onCancel
+                            );
+
+                            confirm.removeEventListener(
+                                'click',
+                                onConfirm
+                            );
+
+                            modal
+                                .querySelector(
+                                    '[data-media-quality-dismiss]'
+                                )
+                                ?.removeEventListener(
+                                    'click',
+                                    onCancel
+                                );
+
+                            document.removeEventListener(
+                                'keydown',
+                                onKeydown
+                            );
+
+                            resolve(value);
+                        };
+
+                        const onQuality = event => {
+                            choice =
+                                event.currentTarget
+                                    .dataset.mediaQuality ||
+                                'standard';
+
+                            renderChoice();
+                        };
+
+                        const onCancel = () => {
+                            finish(null);
+                        };
+
+                        const onConfirm = () => {
+                            finish(choice);
+                        };
+
+                        const onKeydown = event => {
+                            if (event.key === 'Escape') {
+                                event.preventDefault();
+                                onCancel();
+                            }
+
+                            if (
+                                event.key === 'Enter' &&
+                                !event.shiftKey
+                            ) {
+                                event.preventDefault();
+                                onConfirm();
+                            }
+                        };
+
+                        for (const button of qualityButtons) {
+                            button.addEventListener(
+                                'click',
+                                onQuality
+                            );
+                        }
+
+                        cancel.addEventListener(
+                            'click',
+                            onCancel
+                        );
+
+                        confirm.addEventListener(
+                            'click',
+                            onConfirm
+                        );
+
+                        modal
+                            .querySelector(
+                                '[data-media-quality-dismiss]'
+                            )
+                            ?.addEventListener(
+                                'click',
+                                onCancel
+                            );
+
+                        document.addEventListener(
+                            'keydown',
+                            onKeydown
+                        );
+
+                        modal.hidden = false;
+                        modal.setAttribute(
+                            'aria-hidden',
+                            'false'
+                        );
+
+                        requestAnimationFrame(() => {
+                            const standard =
+                                modal.querySelector(
+                                    '[data-media-quality="standard"]'
+                                );
+
+                            standard?.focus();
+                        });
+                    });
+
+                    /*
+                     * Cancel means exactly that: do not create a media
+                     * job and do not send the action request.
+                     */
+                    if (!result) {
+                        return;
+                    }
+
+                    selectedMediaQuality = result;
+
+                    /*
+                     * Keep the old session setting in sync for existing
+                     * backend/UI code without showing the composer control.
+                     */
+                    const legacySelect =
+                        document.getElementById('mediaQuality');
+
+                    if (legacySelect) {
+                        legacySelect.value =
+                            selectedMediaQuality;
+
+                        MLXChatRuntime
+                            .handleMediaQualityChange?.();
+                    }
+                }
+            }
+
             const conversationContext =
                 buildAgentConversationContext(
                     session,
@@ -2282,7 +2591,8 @@ const imageFiles =
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
                 image_options: options?.image || null,
-                quality: MLXChatRuntime.getSessionMediaQuality?.() || 'standard',
+                video_options: options?.video || null,
+                quality: selectedMediaQuality,
                 conversation_context: conversationContext,
                 trace_id: userMessage.trace_id,
                 chat_id: session.id,
@@ -2309,16 +2619,36 @@ const imageFiles =
                 if (
                     staleJob?.id &&
                     IMAGE_JOB_ID_PATTERN.test(String(staleJob.id)) &&
-                    ACTIVE_IMAGE_JOB_STATUSES.has(staleJob.status)
+                    (ACTIVE_IMAGE_JOB_STATUSES.has(staleJob.status) || ACTIVE_VIDEO_JOB_STATUSES.has(staleJob.status))
                 ) {
                     fetch(
-                        '/api/mlx/image-jobs/' +
+                        (['video_generate', 'video_animate'].includes(toolResult.tool)
+                            ? '/api/mlx/video-jobs/'
+                            : '/api/mlx/image-jobs/') +
                             encodeURIComponent(staleJob.id) +
                             '/cancel',
                         { method: 'POST' }
                     ).catch(() => {});
                 }
 
+                return;
+            }
+
+            if (
+                ['video_generate', 'video_animate'].includes(toolResult.tool) &&
+                toolResult.data?.job?.id
+            ) {
+                const pendingVideoMessage = {
+                    role: 'assistant', content: '',
+                    video_job: toolResult.data.job,
+                    tool_result: toolResult
+                };
+                session.messages.push(pendingVideoMessage);
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({ contentUpdated: true });
+                if (ACTIVE_VIDEO_JOB_STATUSES.has(toolResult.status)) {
+                    watchVideoJob(session, pendingVideoMessage);
+                }
                 return;
             }
 
@@ -2820,7 +3150,7 @@ function toolSummary(result) {
 
 function toolFailureSummary(result) {
     if (
-        ['image_edit', 'image_upscale'].includes(result?.tool) &&
+        ['image_edit', 'image_upscale', 'video_generate', 'video_animate'].includes(result?.tool) &&
         result.error
     ) {
         return gt(
@@ -2864,6 +3194,10 @@ const IMAGE_JOB_TOOLS = new Set([
     'image_upscale'
 ]);
 const imageJobWatchers = new Map();
+const ACTIVE_VIDEO_JOB_STATUSES = new Set([
+    'queued', 'loading', 'encoding', 'generating', 'decoding', 'muxing'
+]);
+const videoJobWatchers = new Map();
 
 function isImageJobTool(tool) {
     return IMAGE_JOB_TOOLS.has(tool);
@@ -3196,6 +3530,7 @@ async function resetSessionRuntime(session) {
     // Find every active image job belonging to this session before
     // deleteMessages() removes the messages containing the job IDs.
     const jobIds = new Set();
+    const videoJobIds = new Set();
 
     for (const message of session.messages || []) {
         const job = message?.image_job;
@@ -3206,6 +3541,10 @@ async function resetSessionRuntime(session) {
         ) {
             jobIds.add(job.id);
         }
+        const videoJob = message?.video_job;
+        if (ACTIVE_VIDEO_JOB_STATUSES.has(videoJob?.status) && IMAGE_JOB_ID_PATTERN.test(String(videoJob?.id || ''))) {
+            videoJobIds.add(videoJob.id);
+        }
     }
 
     // Stop browser-side polling immediately.
@@ -3213,6 +3552,9 @@ async function resetSessionRuntime(session) {
         if (watcher.session === session) {
             stopImageJobWatcher(watcher);
         }
+    }
+    for (const watcher of [...videoJobWatchers.values()]) {
+        if (watcher.session === session) stopVideoJobWatcher(watcher);
     }
 
     // Ask the image service to cancel the actual backend jobs.
@@ -3225,6 +3567,12 @@ async function resetSessionRuntime(session) {
                 { method: 'POST' }
             )
         )
+    );
+    await Promise.allSettled(
+        [...videoJobIds].map(jobId => fetch(
+            '/api/mlx/video-jobs/' + encodeURIComponent(jobId) + '/cancel',
+            { method: 'POST' }
+        ))
     );
 
     window.MLXChatRendering?.syncImageJobUiTimer?.();
@@ -3259,6 +3607,74 @@ function resumeImageJobsForSession(session) {
         }
     }
 
+    return started;
+}
+
+function updateVideoJobMessage(session, message, toolResult) {
+    const job = toolResult?.data?.job;
+    if (!job?.id) return true;
+    message.video_job = { ...job };
+    message.tool_result = toolResult;
+    if (toolResult.status === 'completed') {
+        message.content = '';
+    } else if (toolResult.status === 'cancelled') {
+        message.content = gt('video_job_cancelled', 'Video job cancelled.');
+    } else if (toolResult.status === 'failed') {
+        message.content = toolResult.error
+            ? gt('tool_error', '**Tool error:** {message}', { message: toolResult.error })
+            : toolFailureSummary(toolResult);
+    } else {
+        message.content = '';
+    }
+    return !ACTIVE_VIDEO_JOB_STATUSES.has(toolResult.status);
+}
+
+function stopVideoJobWatcher(watcher) {
+    if (!watcher || watcher.stopped) return;
+    watcher.stopped = true;
+    if (watcher.timerId != null) clearTimeout(watcher.timerId);
+    if (videoJobWatchers.get(watcher.jobId) === watcher) {
+        videoJobWatchers.delete(watcher.jobId);
+    }
+}
+
+function watchVideoJob(session, message) {
+    const jobId = String(message?.video_job?.id || '');
+    if (!IMAGE_JOB_ID_PATTERN.test(jobId) || videoJobWatchers.has(jobId)) return false;
+    const watcher = { jobId, session, message, stopped: false, timerId: null };
+    videoJobWatchers.set(jobId, watcher);
+    const poll = async () => {
+        if (watcher.stopped || MLXChatSessions.currentSession() !== session || !session.messages.includes(message)) {
+            stopVideoJobWatcher(watcher);
+            return;
+        }
+        try {
+            const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(jobId));
+            if (!response.ok) throw new Error(await response.text());
+            const result = await response.json();
+            const terminal = updateVideoJobMessage(session, message, result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderMessages({ contentUpdated: true });
+            if (terminal) stopVideoJobWatcher(watcher);
+            else watcher.timerId = setTimeout(poll, 1000);
+        } catch (error) {
+            console.warn('Could not load video job status', error);
+            watcher.timerId = setTimeout(poll, 4000);
+        }
+    };
+    poll();
+    return true;
+}
+
+function resumeVideoJobsForSession(session) {
+    for (const watcher of [...videoJobWatchers.values()]) {
+        if (watcher.session !== session) stopVideoJobWatcher(watcher);
+    }
+    if (!session || MLXChatSessions.currentSession() !== session) return 0;
+    let started = 0;
+    for (const message of session.messages) {
+        if (ACTIVE_VIDEO_JOB_STATUSES.has(message?.video_job?.status) && watchVideoJob(session, message)) started += 1;
+    }
     return started;
 }
 
@@ -3359,9 +3775,11 @@ function watchBatchJob(session, jobId) {
         createImageUpscaleMenu: createImageUpscaleMenu,
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
+        updateVideoJobMessage: updateVideoJobMessage,
         isWatchingImageJob: isWatchingImageJob,
 resetSessionRuntime: resetSessionRuntime,
         resumeImageJobsForSession: resumeImageJobsForSession,
+        resumeVideoJobsForSession: resumeVideoJobsForSession,
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
@@ -3370,6 +3788,8 @@ resetSessionRuntime: resetSessionRuntime,
             defaultVisionPrompt: defaultVisionPrompt,
             imageAttachments: imageAttachments,
             imageConversationState: imageConversationState,
+            latestSessionImageUpload: latestSessionImageUpload,
+            preferredVideoImageSource: preferredVideoImageSource,
             isImageComparisonRequest: isImageComparisonRequest,
             sessionImageArtifacts: sessionImageArtifacts,
             activeSessionImageArtifact: activeSessionImageArtifact,
@@ -3380,6 +3800,10 @@ resetSessionRuntime: resetSessionRuntime,
             updateImageJobMessage: updateImageJobMessage,
             isWatchingImageJob: isWatchingImageJob,
             resumeImageJobsForSession: resumeImageJobsForSession,
+            resumeVideoJobsForSession: resumeVideoJobsForSession,
+            updateVideoJobMessage: updateVideoJobMessage,
+            watchVideoJob: watchVideoJob,
+            isVideoRequest: isVideoRequest,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary,
             toolSummary: toolSummary

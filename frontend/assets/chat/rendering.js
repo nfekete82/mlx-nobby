@@ -34,6 +34,9 @@
         'running',
         'saving'
     ]);
+    const ACTIVE_VIDEO_JOB_STATUSES = new Set([
+        'queued', 'loading', 'encoding', 'generating', 'decoding', 'muxing'
+    ]);
     const IMAGE_JOB_STALE_SECONDS = 25;
     const IMAGE_JOB_UI_TICK_MS = 1000;
 
@@ -1791,6 +1794,117 @@ function renderImageJobCard(message) {
     return card;
 }
 
+function renderVideoArtifactCard(message) {
+    const artifact = ['video_generate', 'video_animate'].includes(message.tool_result?.tool)
+        ? message.tool_result.artifacts?.[0] : null;
+    if (!artifact?.video_id) return null;
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card video-artifact-card';
+    const video = document.createElement('video');
+    video.className = 'video-artifact-player';
+    video.src = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id);
+    video.controls = true;
+    video.preload = 'metadata';
+    card.appendChild(video);
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    details.textContent = [
+        artifact.model,
+        artifact.provider,
+        artifact.pipeline ? 'Pipeline: ' + artifact.pipeline : '',
+        artifact.resolution ? 'Profil: ' + artifact.resolution : '',
+        artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
+        artifact.frames ? artifact.frames + ' Frames' : '',
+        artifact.duration != null ? Number(artifact.duration).toFixed(2) + ' s' : '',
+        artifact.quality ? 'Qualität: ' + ({ fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
+        artifact.steps ? artifact.steps + ' Distilled Steps' : '',
+        artifact.seed != null ? 'Seed ' + artifact.seed : '',
+        artifact.audio ? 'Audio' : 'Kein Audio'
+    ].filter(Boolean).join(' · ');
+    card.appendChild(details);
+    const controls = document.createElement('div');
+    controls.className = 'batch-chat-controls';
+    const download = document.createElement('a');
+    download.className = 'message-action-btn';
+    download.textContent = 'Download';
+    download.href = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id) + '?download=1';
+    controls.appendChild(download);
+    card.appendChild(controls);
+    const info = document.createElement('details');
+    info.className = 'image-artifact-info';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Info';
+    info.appendChild(summary);
+    if (artifact.operation === 'i2v') {
+        const resize = document.createElement('div');
+        resize.className = 'batch-chat-details';
+        const resizeLabel = artifact.resize_mode === 'cover'
+            ? 'cover (crop)' : 'contain + padding';
+        resize.textContent = [
+            artifact.source_width && artifact.source_height
+                ? 'Source: ' + artifact.source_width + ' × ' + artifact.source_height : '',
+            artifact.target_width && artifact.target_height
+                ? 'Target: ' + artifact.target_width + ' × ' + artifact.target_height : '',
+            'Resize: ' + resizeLabel
+        ].filter(Boolean).join(' · ');
+        info.appendChild(resize);
+    }
+    const label = document.createElement('strong');
+    label.textContent = 'Finaler Prompt';
+    info.appendChild(label);
+    const prompt = document.createElement('pre');
+    prompt.className = 'image-artifact-prompt';
+    prompt.textContent = artifact.prompt || '—';
+    info.appendChild(prompt);
+    card.appendChild(info);
+    return card;
+}
+
+function renderVideoJobCard(message) {
+    const job = message.video_job;
+    if (!job || job.status === 'completed') return null;
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card video-job-card';
+    const title = document.createElement('strong');
+    const labels = {
+        queued: 'Video-Job wartet …', loading: 'Video-Modell wird geladen …',
+        encoding: 'Eingabe wird kodiert …', generating: 'Video wird erzeugt …',
+        decoding: 'Video wird dekodiert …', muxing: 'MP4 wird erstellt …',
+        cancelled: 'Video-Job abgebrochen', failed: 'Video-Job fehlgeschlagen'
+    };
+    title.textContent = labels[job.status] || job.status;
+    card.appendChild(title);
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    const step = Number(job.current_step), total = Number(job.total_steps);
+    details.textContent = Number.isInteger(step) && Number.isInteger(total) && step >= 0
+        ? 'Step ' + step + '/' + total : '';
+    card.appendChild(details);
+    if (ACTIVE_VIDEO_JOB_STATUSES.has(job.status)) {
+        const controls = document.createElement('div');
+        controls.className = 'batch-chat-controls';
+        const cancel = document.createElement('button');
+        cancel.type = 'button'; cancel.className = 'message-action-btn'; cancel.textContent = rt('cancel', 'Cancel');
+        cancel.addEventListener('click', async () => {
+            cancel.disabled = true;
+            try {
+                const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(job.id) + '/cancel', { method: 'POST' });
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+                window.MLXChatGeneration.updateVideoJobMessage(MLXChatSessions.currentSession(), message, result);
+                MLXChatSessions.saveSessions();
+                renderMessages({ contentUpdated: true });
+            } catch (error) {
+                console.warn('Video job cancellation failed', error);
+                cancel.disabled = false;
+            }
+        });
+        controls.appendChild(cancel);
+        card.appendChild(controls);
+    }
+    return card;
+}
+
 function renderArtifactChoice(message) {
     const choice = message.artifact_choice;
     if (!choice) return null;
@@ -2078,11 +2192,17 @@ function renderMessages(options = {}) {
             const imageJobCard = renderImageJobCard(message);
             if (imageJobCard) content.appendChild(imageJobCard);
 
+            const videoJobCard = renderVideoJobCard(message);
+            if (videoJobCard) content.appendChild(videoJobCard);
+
             const agentCard = renderAgentCard(message);
             if (agentCard) content.appendChild(agentCard);
 
             const imageArtifactCard = renderImageArtifactCard(message);
             if (imageArtifactCard) content.appendChild(imageArtifactCard);
+
+            const videoArtifactCard = renderVideoArtifactCard(message);
+            if (videoArtifactCard) content.appendChild(videoArtifactCard);
 
             const artifactCard = renderArtifactCard(message);
             if (artifactCard) content.appendChild(artifactCard);
@@ -3062,6 +3182,8 @@ function renderAll(options = {}) {
             syncImageJobUiTimer,
             renderImageArtifactCard,
             renderImageJobCard,
+            renderVideoArtifactCard,
+            renderVideoJobCard,
             renderAgentCard,
         }
     };

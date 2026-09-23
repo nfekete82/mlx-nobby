@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -249,6 +249,60 @@ def image_file(image_id: str, download: bool = False):
             disposition = response.headers.get('Content-Disposition')
         headers = {'Content-Disposition': disposition} if disposition else {}
         return Response(content=content, media_type=content_type, headers=headers)
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(status_code=exc.code, detail=exc.read().decode('utf-8', errors='replace'))
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=503, detail=f'Agent nicht erreichbar: {exc.reason}')
+
+
+@app.get('/api/mlx/video/models')
+def video_models():
+    return agent_json_request('GET', '/api/video/models', timeout=15)
+
+
+@app.post('/api/mlx/video/jobs', status_code=202)
+def video_job_create(request: dict):
+    return agent_json_request('POST', '/api/video/jobs', request, timeout=20)
+
+
+@app.get('/api/mlx/video-jobs/{job_id}')
+def video_job(job_id: str):
+    return agent_json_request('GET', '/api/video/jobs/' + urllib.parse.quote(job_id, safe=''), timeout=15)
+
+
+@app.post('/api/mlx/video-jobs/{job_id}/cancel')
+def video_job_cancel(job_id: str):
+    return agent_json_request('POST', '/api/video/jobs/' + urllib.parse.quote(job_id, safe='') + '/cancel', {}, timeout=35)
+
+
+@app.get('/api/mlx/videos/{video_id}')
+def video_file(video_id: str, request: Request, download: bool = False):
+    suffix = '?download=1' if download else ''
+    url = AGENT_URL + '/api/videos/' + urllib.parse.quote(video_id, safe='') + suffix
+    try:
+        headers = {}
+        if request.headers.get('range'):
+            headers['Range'] = request.headers['range']
+        upstream = urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60)
+        response_headers = {
+            key: value for key, value in {
+                'Accept-Ranges': upstream.headers.get('Accept-Ranges'),
+                'Content-Range': upstream.headers.get('Content-Range'),
+                'Content-Length': upstream.headers.get('Content-Length'),
+                'Content-Disposition': upstream.headers.get('Content-Disposition'),
+            }.items() if value
+        }
+        def chunks():
+            try:
+                while data := upstream.read(1024 * 1024):
+                    yield data
+            finally:
+                upstream.close()
+        return StreamingResponse(
+            chunks(), status_code=upstream.status,
+            media_type=upstream.headers.get('Content-Type', 'video/mp4'),
+            headers=response_headers,
+        )
     except urllib.error.HTTPError as exc:
         raise HTTPException(status_code=exc.code, detail=exc.read().decode('utf-8', errors='replace'))
     except urllib.error.URLError as exc:

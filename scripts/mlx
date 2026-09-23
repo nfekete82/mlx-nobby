@@ -1342,6 +1342,9 @@ mlx_service_label() {
         images)
             echo "de.nobby.mlx-images"
             ;;
+        video)
+            echo "de.nobby.mlx-video"
+            ;;
         mlxserve)
             echo "de.nobby.mlx-serve"
             ;;
@@ -1360,6 +1363,7 @@ mlx_service_port() {
         images)     echo "8030" ;;
         router)     echo "8040" ;;
         speech)     echo "8050" ;;
+        video)      echo "8060" ;;
         mlxserve)   echo "11234" ;;
         *)          return 1 ;;
     esac
@@ -1433,6 +1437,7 @@ services_status() {
     mlx_service_status_one embeddings
     mlx_service_status_one speech
     mlx_service_status_one images
+    mlx_service_status_one video
     mlx_service_status_one mlxserve
 
     echo "────────────────────────────────────────────────────────────"
@@ -1522,6 +1527,27 @@ agent_command() {
 }
 
 
+video_command() {
+    local action="${1:-status}"
+    case "$action" in
+        status)
+            mlx_service_status_one video
+            ;;
+        restart)
+            mlx_service_restart video || return 1
+            mlx_service_wait_ready video 30 || return 1
+            mlx_service_status_one video
+            ;;
+        *)
+            echo "Verwendung:"
+            echo "  mlx video status"
+            echo "  mlx video restart"
+            return 1
+            ;;
+    esac
+}
+
+
 services_command() {
     local action="${1:-status}"
 
@@ -1546,36 +1572,41 @@ restart_all() {
     echo "────────────────────────────────────────────────────────────"
 
     echo
-    echo "[1/7] MLX Server"
+    echo "[1/8] MLX Server"
     restart || return 1
 
     echo
-    echo "[2/7] Agent"
+    echo "[2/8] Agent"
     mlx_service_restart agent || return 1
     mlx_service_wait_ready agent 30 || return 1
 
     echo
-    echo "[3/7] Router"
+    echo "[3/8] Router"
     mlx_service_restart router || return 1
     mlx_service_wait_ready router 30 || return 1
 
     echo
-    echo "[4/7] Embeddings"
+    echo "[4/8] Embeddings"
     mlx_service_restart embeddings || return 1
     mlx_service_wait_ready embeddings 30 || return 1
 
     echo
-    echo "[5/7] Speech"
+    echo "[5/8] Speech"
     mlx_service_restart speech || return 1
     mlx_service_wait_ready speech 30 || return 1
 
     echo
-    echo "[6/7] Images"
+    echo "[6/8] Images"
     mlx_service_restart images || return 1
     mlx_service_wait_ready images 30 || return 1
 
     echo
-    echo "[7/7] MLX-Serve"
+    echo "[7/8] Video"
+    mlx_service_restart video || return 1
+    mlx_service_wait_ready video 30 || return 1
+
+    echo
+    echo "[8/8] MLX-Serve"
     mlx_service_restart mlxserve || return 1
     mlx_service_wait_ready mlxserve 30 || return 1
 
@@ -1600,6 +1631,8 @@ Server:
   mlx services
   mlx agent status
   mlx agent restart
+  mlx video status
+  mlx video restart
   mlx reset
   mlx status
   mlx memory
@@ -1675,6 +1708,11 @@ case "$1" in
     agent)
         shift
         agent_command "$@"
+        ;;
+
+    video)
+        shift
+        video_command "$@"
         ;;
 
     start)

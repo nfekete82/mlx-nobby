@@ -45,6 +45,7 @@ render_template() {
     sed \
         -e "s|__PROJECT_DIR__|${PROJECT_DIR}|g" \
         -e "s|__CONFIG_DIR__|${CONFIG_DIR}|g" \
+        -e "s|__HOME_DIR__|${HOME}|g" \
         -e "s|__HOME__|${HOME_DIR}|g" \
         -e "s|__RUNTIME_PYTHON__|${RUNTIME_PYTHON}|g" \
         -e "s|__ROUTER_MODEL__|${ROUTER_MODEL}|g" \

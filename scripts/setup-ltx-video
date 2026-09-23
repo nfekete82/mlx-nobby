@@ -1,0 +1,59 @@
+#!/bin/bash
+set -euo pipefail
+
+RUNTIME_ROOT="${LTX_RUNTIME_ROOT:-${HOME}/.local/share/mlx-nobby/LTX-Desktop}"
+APP_DATA="${LTX_APP_DATA_DIR:-${HOME}/Library/Application Support/LTXDesktop}"
+MODEL_FAMILY_DIR="${APP_DATA}/models/ltx-2.5"
+SOURCE_DIR="${MODEL_FAMILY_DIR}/.official"
+RELEASE_TAG="v1.2.7"
+RELEASE_COMMIT="68cd86c15e5fd25f56229ea63c0dbcb0338f7812"
+
+if [[ ! -d "${RUNTIME_ROOT}/.git" ]]; then
+    mkdir -p "$(dirname "${RUNTIME_ROOT}")"
+    git clone --branch "${RELEASE_TAG}" --depth 1 \
+        https://github.com/Lightricks/LTX-Desktop.git "${RUNTIME_ROOT}"
+fi
+
+actual_commit="$(git -C "${RUNTIME_ROOT}" rev-parse HEAD)"
+if [[ "${actual_commit}" != "${RELEASE_COMMIT}" ]]; then
+    echo "LTX-Runtime hat nicht den geprüften Stand ${RELEASE_TAG} (${RELEASE_COMMIT})." >&2
+    exit 1
+fi
+
+(cd "${RUNTIME_ROOT}/backend" && uv sync --frozen)
+
+mkdir -p "${SOURCE_DIR}"
+"${RUNTIME_ROOT}/backend/.venv/bin/hf" download Lightricks/LTX-2.5 \
+    diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors \
+    text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors \
+    vae/ltx-2.5-video-vae-conv-bf16.safetensors \
+    vae/ltx-2.5-audio-vae-bf16.safetensors \
+    latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors \
+    --local-dir "${SOURCE_DIR}"
+
+link_checkpoint() {
+    local source="$1"
+    local target="$2"
+    if [[ -e "${target}" ]]; then
+        return
+    fi
+    ln -s "${source}" "${target}"
+}
+
+link_checkpoint \
+    ".official/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors" \
+    "${MODEL_FAMILY_DIR}/ltx-2.5-22b-distilled-transformer-bf16.safetensors"
+link_checkpoint \
+    ".official/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors" \
+    "${MODEL_FAMILY_DIR}/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"
+link_checkpoint \
+    ".official/vae/ltx-2.5-video-vae-conv-bf16.safetensors" \
+    "${MODEL_FAMILY_DIR}/ltx-2.5-video-vae-conv-bf16.safetensors"
+link_checkpoint \
+    ".official/vae/ltx-2.5-audio-vae-bf16.safetensors" \
+    "${MODEL_FAMILY_DIR}/ltx-2.5-audio-vae-bf16.safetensors"
+link_checkpoint \
+    ".official/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors" \
+    "${MODEL_FAMILY_DIR}/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+
+echo "LTX 2.5 Fast Runtime und lokale Checkpoints sind bereit."

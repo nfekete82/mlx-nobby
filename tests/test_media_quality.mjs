@@ -13,7 +13,10 @@ assert.match(html, /value="quality"/);
 assert.match(runtime, /const DEFAULT_MEDIA_QUALITY = 'standard'/);
 assert.match(runtime, /media_quality: DEFAULT_MEDIA_QUALITY/);
 assert.match(runtime, /settings\.media_quality = normalizeMediaQuality/);
-assert.match(generation, /quality: MLXChatRuntime\.getSessionMediaQuality/);
+assert.match(html, /id="mediaQualityModal"/);
+assert.match(generation, /quality: selectedMediaQuality/);
+assert.match(generation, /const mediaQualityKind/);
+assert.match(generation, /if \(mediaQualityKind\)/);
 assert.match(rendering, /artifact\.quality \? 'Qualität: '/);
 
 console.log('Media quality default, session persistence, request forwarding, and artifact metadata passed.');

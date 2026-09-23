@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>de.nobby.mlx-video</string>
+  <key>ProgramArguments</key><array><string>__PROJECT_DIR__/image-venv/bin/python</string><string>-m</string><string>uvicorn</string><string>video_service:app</string><string>--host</string><string>127.0.0.1</string><string>--port</string><string>8060</string></array>
+  <key>WorkingDirectory</key><string>__PROJECT_DIR__</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LTX_RUNTIME_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/LTX-Desktop</string>
+    <key>LTX_APP_DATA_DIR</key><string>__HOME_DIR__/Library/Application Support/LTXDesktop</string>
+  </dict>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>__CONFIG_DIR__/video.log</string>
+  <key>StandardErrorPath</key><string>__CONFIG_DIR__/video-error.log</string>
+</dict></plist>
