@@ -2689,7 +2689,7 @@ def resolve_model_role(role):
             "alias": service_model if configured == "auto" else configured,
             "repo": service_model if configured == "auto" else (selected or {}).get("repo"),
             "available": active, "active": active, "requires_switch": False,
-            "backend": "mlx_embeddings",
+            "backend": "mlx_serve",
             "compatible": compatible,
         }
 

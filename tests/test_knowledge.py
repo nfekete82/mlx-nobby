@@ -1134,7 +1134,7 @@ class KnowledgeRemainingBranchTests(KnowledgeTestCase):
             )
 
         self.assertEqual(result, {"vectors": [[1.0, 2.0]]})
-        self.assertEqual(captured["timeout"], 20)
+        self.assertEqual(captured["timeout"], knowledge.EMBEDDINGS_TIMEOUT)
         self.assertEqual(
             captured["req"].get_method(),
             "POST",

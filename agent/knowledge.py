@@ -14,6 +14,37 @@ from pathlib import Path
 ROOT = Path.home() / ".config/mlx-web/knowledge"
 DB = ROOT / "knowledge.db"
 EMBEDDINGS_URL = os.environ.get("EMBEDDINGS_URL", "http://127.0.0.1:8020").rstrip("/")
+
+EMBEDDINGS_TIMEOUT = float(
+    os.environ.get(
+        "MLX_EMBEDDING_CLIENT_TIMEOUT",
+        "180",
+    )
+)
+
+EMBEDDING_QUERY_INSTRUCTION = os.environ.get(
+    "MLX_EMBEDDING_QUERY_INSTRUCTION",
+    (
+        "Given a user query, retrieve relevant "
+        "source-code and document passages "
+        "that answer the query"
+    ),
+).strip()
+
+
+def _embedding_query_text(query):
+    query = str(query or "").strip()
+
+    if not EMBEDDING_QUERY_INSTRUCTION:
+        return query
+
+    return (
+        "Instruct: "
+        + EMBEDDING_QUERY_INSTRUCTION
+        + "\nQuery:"
+        + query
+    )
+
 IGNORE_DIRS = {
     ".git",
     "node_modules",
@@ -74,7 +105,7 @@ def _chunks(text, language):
 def _request(path, payload=None):
     data=None if payload is None else json.dumps(payload).encode()
     req=urllib.request.Request(EMBEDDINGS_URL+path,data=data,headers={"Content-Type":"application/json"} if data else {},method="POST" if data else "GET")
-    with urllib.request.urlopen(req,timeout=20) as r: return json.loads(r.read().decode())
+    with urllib.request.urlopen(req, timeout=EMBEDDINGS_TIMEOUT) as r: return json.loads(r.read().decode())
 def embedding_health():
     try:
         h=_request("/health")
@@ -195,7 +226,7 @@ def search(query, scope=None, limit=6):
         try:
             embedded_query = _request(
                 "/embedding",
-                {"text": query},
+                {"text": _embedding_query_text(query)},
             )
             q = embedded_query["vectors"][0]
 
@@ -702,7 +733,7 @@ def search_uploaded_document(
 
     embedded_query = _request(
         "/embedding",
-        {"text": query},
+        {"text": _embedding_query_text(query)},
     )
     q = embedded_query["vectors"][0]
 

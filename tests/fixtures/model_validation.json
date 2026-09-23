@@ -4,7 +4,7 @@
   {"alias": ".local", "repo": "/Models/my_model", "valid": true},
   {"alias": "qwen38", "repo": "mlx-community/Qwen3.5-0.8B-MLX-4bit", "valid": true},
   {"alias": "mixed-6.4", "repo": "TheCluster/Qwen3.6-35B-A3B-Heretic-MLX-mixed-6.4bit", "valid": true},
-  {"alias": "bge_m3", "repo": "mlx-community/bge-m3-mlx-4bit", "valid": true},
+  {"alias": "qwen3_embed", "repo": "mlx-community/Qwen3-Embedding-4B-4bit-DWQ", "valid": true},
   {"alias": " local ", "repo": " owner/model ", "valid": true},
   {"alias": "", "repo": "owner/model", "valid": false},
   {"alias": "bad alias", "repo": "owner/model", "valid": false},

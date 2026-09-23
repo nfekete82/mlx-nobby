@@ -1,39 +1,42 @@
-"""Minimal, side-effect-free MLX Metal probe for the embedding LaunchAgent."""
+"""Health probe for the mlx-serve backed embedding adapter."""
 
 import json
-import os
-import platform
-import sys
-from importlib.metadata import version
+import urllib.request
 
 
-def main() -> None:
-    result = {
-        "python": sys.executable,
-        "python_version": sys.version,
-        "cwd": os.getcwd(),
-        "user": os.environ.get("USER"),
-        "home": os.environ.get("HOME"),
-        "path": os.environ.get("PATH"),
-        "tmpdir": os.environ.get("TMPDIR"),
-        "display": os.environ.get("DISPLAY"),
-        "platform": platform.platform(),
-    }
-    try:
-        import mlx.core as mx
+URL = "http://127.0.0.1:8020/health"
 
-        result.update(
-            {
-                "ok": True,
-                "mlx_version": version("mlx"),
-                "default_device": str(mx.default_device()),
-            }
+
+def main():
+    request = urllib.request.Request(
+        URL,
+        headers={
+            "Accept":
+                "application/json"
+        },
+        method="GET",
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=15,
+    ) as response:
+        payload = json.loads(
+            response
+            .read()
+            .decode("utf-8")
         )
-    except BaseException as exc:
-        result.update({"ok": False, "error_type": type(exc).__name__, "error": str(exc)})
-        print(json.dumps(result, ensure_ascii=False), flush=True)
-        raise
-    print(json.dumps(result, ensure_ascii=False), flush=True)
+
+    print(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+
+    if not payload.get("ok"):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

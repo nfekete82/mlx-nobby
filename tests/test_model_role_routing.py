@@ -142,54 +142,136 @@ class EmbeddingRoleTests(unittest.TestCase):
                 result = knowledge.search_uploaded_document("doc-one", "document")
         self.assertEqual(result["results"], [])
 
-    def test_service_loads_registered_local_embedding_role_and_rejects_stale_model(self):
-        fake_mx = types.ModuleType("mlx")
-        fake_mx.core = types.ModuleType("mlx.core")
-        fake_embeddings = types.ModuleType("mlx_embeddings")
-        fake_utils = types.ModuleType("mlx_embeddings.utils")
-        fake_utils.generate = mock.Mock()
-        fake_utils.load = mock.Mock(return_value=(object(), object()))
-        fake_utils._get_model_arch = mock.Mock()
-        with mock.patch.dict(sys.modules, {
-            "mlx": fake_mx, "mlx.core": fake_mx.core,
-            "mlx_embeddings": fake_embeddings, "mlx_embeddings.utils": fake_utils,
-        }), tempfile.TemporaryDirectory() as directory:
-            spec = importlib.util.spec_from_file_location("embedding_service_role_test", Path(__file__).resolve().parents[1] / "embedding_service.py")
+    def test_service_proxies_registered_embedding_role_to_mlxserve(self):
+        with tempfile.TemporaryDirectory() as directory:
+            spec = importlib.util.spec_from_file_location(
+                "embedding_service_role_test",
+                Path(__file__).resolve().parents[1] / "embedding_service.py",
+            )
             service = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(service)
+
             root = Path(directory)
-            model = root / "embedding-model"
-            model.mkdir()
-            (model / "config.json").write_text('{"model_type":"xlm-roberta","architectures":["XLMRobertaModel"]}')
+
             roles = root / "model-roles.json"
-            roles.write_text('{"embedding":"selected-alias"}')
+            roles.write_text(
+                '{"embedding":"selected-alias"}',
+                encoding="utf-8",
+            )
+
             registered = root / "models"
-            registered.write_text(f"selected-alias={model}\n")
-            with mock.patch.object(service, "MODEL_ROLES_FILE", roles), \
-                 mock.patch.object(service, "REGISTERED_MODELS_FILE", registered), \
-                 mock.patch.object(service.Embedder, "embed_sync", return_value=[[0.1, 0.2, 0.3]]):
-                embedder = service.Embedder()
-                embedder.load()
-                self.assertEqual(embedder.model_id, "selected-alias")
-                self.assertEqual(embedder.dimensions, 3)
-                fake_utils.load.assert_called_once_with(str(model.resolve()))
-                self.assertTrue(service.embedding_model_compatible("selected-alias"))
-                (model / "config.json").write_text('{"model_type":"qwen3_5_moe","architectures":["Qwen3_5MoeForCausalLM"]}')
-                self.assertFalse(service.embedding_model_compatible("selected-alias"))
-                (model / "config.json").write_text('{"model_type":"xlm-roberta","architectures":["XLMRobertaModel"]}')
-                registered.write_text("selected-alias=owner/embedding-model\n")
-                fake_hub = types.ModuleType("huggingface_hub")
-                fake_hub.snapshot_download = mock.Mock(return_value=str(model))
-                with mock.patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
-                    self.assertEqual(service.selected_embedding_model(), ("selected-alias", model.resolve()))
-                fake_hub.snapshot_download.assert_called_once_with(
-                    repo_id="owner/embedding-model", local_files_only=True,
+            registered.write_text(
+                "selected-alias=owner/embedding-model\n",
+                encoding="utf-8",
+            )
+
+            model_root = root / "mlx-models"
+            config = (
+                model_root
+                / "owner/embedding-model"
+                / "config.json"
+            )
+            config.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            config.write_text(
+                '{"hidden_size":3}',
+                encoding="utf-8",
+            )
+
+            def fake_mlxserve(path, payload=None, **_kwargs):
+                if path == "/v1/models":
+                    return {
+                        "data": [
+                            {
+                                "id": "owner/embedding-model",
+                                "capabilities": ["embeddings"],
+                            }
+                        ]
+                    }
+
+                if path == "/v1/embeddings":
+                    self.assertEqual(
+                        payload["model"],
+                        "owner/embedding-model",
+                    )
+                    self.assertEqual(
+                        payload["input"],
+                        ["hello"],
+                    )
+                    return {
+                        "model": "owner/embedding-model",
+                        "data": [
+                            {
+                                "index": 0,
+                                "embedding": [0.1, 0.2, 0.3],
+                            }
+                        ],
+                    }
+
+                raise AssertionError(path)
+
+            with mock.patch.object(
+                service,
+                "MODEL_ROLES_FILE",
+                roles,
+            ), mock.patch.object(
+                service,
+                "REGISTERED_MODELS_FILE",
+                registered,
+            ), mock.patch.object(
+                service,
+                "MLXSERVE_MODEL_ROOT",
+                model_root,
+            ), mock.patch.object(
+                service,
+                "_mlxserve_json",
+                side_effect=fake_mlxserve,
+            ):
+                self.assertEqual(
+                    service.selected_embedding_model(),
+                    (
+                        "selected-alias",
+                        "owner/embedding-model",
+                    ),
                 )
-                roles.write_text('{"embedding":"missing-alias"}')
-                with self.assertRaisesRegex(RuntimeError, "nicht registriert"):
-                    embedder.load()
-                self.assertEqual(embedder.status, "failed")
-                self.assertIsNone(embedder.model)
+
+                self.assertTrue(
+                    service.embedding_model_compatible(
+                        "selected-alias"
+                    )
+                )
+
+                result = (
+                    service._make_embeddings_sync(
+                        ["hello"]
+                    )
+                )
+
+                self.assertEqual(
+                    result["model"],
+                    "selected-alias",
+                )
+                self.assertEqual(
+                    result["upstream_model"],
+                    "owner/embedding-model",
+                )
+                self.assertEqual(
+                    result["dimensions"],
+                    3,
+                )
+
+                roles.write_text(
+                    '{"embedding":"missing-alias"}',
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "nicht registriert",
+                ):
+                    service.selected_embedding_model()
 
 
 if __name__ == "__main__":

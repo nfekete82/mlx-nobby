@@ -1,257 +1,801 @@
-"""Local MLX embedding API, intentionally separate from the chat LLM service."""
+"""Local embedding API backed by the shared mlx-serve runtime."""
 
 import asyncio
 import json
 import logging
 import os
-import re
-from contextlib import asynccontextmanager
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Annotated
 
-import mlx.core as mx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
 from local_security import LocalRequestGuard
 
-# mlx-embeddings >=0.1.0 uses the public huggingface_hub.errors module.
-from mlx_embeddings.utils import _get_model_arch, generate, load
 
-MODEL_ID = "mlx-community/bge-m3-mlx-4bit"
-MODEL_PATH = Path(
+MODEL_ID = os.environ.get(
+    "MLX_EMBEDDING_MODEL",
+    "mlx-community/Qwen3-Embedding-4B-4bit-DWQ",
+).strip()
+
+DEFAULT_DIMENSIONS = 2560
+
+MLXSERVE_URL = os.environ.get(
+    "MLXSERVE_URL",
+    "http://127.0.0.1:11234",
+).rstrip("/")
+
+MODEL_ROLES_FILE = (
+    Path.home()
+    / ".config/mlx-web/model-roles.json"
+)
+
+REGISTERED_MODELS_FILE = (
+    Path.home()
+    / ".config/mlx-server/models"
+)
+
+MLXSERVE_MODEL_ROOT = (
+    Path.home()
+    / ".mlx-serve/models"
+)
+
+REQUEST_TIMEOUT = float(
     os.environ.get(
-        "MLX_EMBEDDING_MODEL_PATH",
-        str(Path.home() / "Models/bge-m3-mlx-4bit"),
+        "MLX_EMBEDDING_REQUEST_TIMEOUT",
+        "180",
     )
-).expanduser()
-DIMENSIONS = 1024
-MODEL_ROLES_FILE = Path.home() / ".config/mlx-web/model-roles.json"
-REGISTERED_MODELS_FILE = Path.home() / ".config/mlx-server/models"
-MAX_LENGTH = int(os.environ.get("MLX_EMBEDDING_MAX_LENGTH", "8192"))
-MAX_BATCH_SIZE = int(os.environ.get("MLX_EMBEDDING_BATCH_SIZE", "8"))
-if not 1 <= MAX_LENGTH <= 8192 or not 1 <= MAX_BATCH_SIZE <= 128:
-    raise ValueError("Embedding max length must be 1..8192 and batch size 1..128")
-logger = logging.getLogger("mlx_embeddings")
+)
+
+MAX_BATCH_SIZE = int(
+    os.environ.get(
+        "MLX_EMBEDDING_BATCH_SIZE",
+        "64",
+    )
+)
+
+if not 1 <= MAX_BATCH_SIZE <= 128:
+    raise ValueError(
+        "Embedding batch size must be 1..128"
+    )
 
 
-def registered_embedding_model(alias: str) -> tuple[str, Path]:
-    """Resolve an alias through the existing model registry."""
-    if alias == "auto":
-        return MODEL_ID, MODEL_PATH.resolve()
-    if REGISTERED_MODELS_FILE.is_file():
-        for line in REGISTERED_MODELS_FILE.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            registered_alias, repo = (part.strip() for part in line.split("=", 1))
-            if registered_alias == alias:
-                path = Path(repo).expanduser()
-                if path.is_absolute():
-                    return alias, path.resolve()
-                if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-                    from huggingface_hub import snapshot_download
-                    try:
-                        return alias, Path(snapshot_download(repo_id=repo, local_files_only=True)).resolve()
-                    except Exception as exc:
-                        raise RuntimeError("Embedding-Modell ist nicht lokal zwischengespeichert") from exc
-                raise RuntimeError("Embedding-Rolle benötigt einen registrierten lokalen Modellpfad")
-    raise RuntimeError(f"Embedding-Modellalias nicht registriert: {alias}")
-
-
-def selected_embedding_model() -> tuple[str, Path]:
-    """Read the existing role preference and registered local model path."""
-    roles = json.loads(MODEL_ROLES_FILE.read_text()) if MODEL_ROLES_FILE.is_file() else {}
-    if not isinstance(roles, dict):
-        raise RuntimeError("Ungültige Modellrollen")
-    alias = str(roles.get("embedding", "auto")).strip() or "auto"
-    return registered_embedding_model(alias)
-
-
-def embedding_model_compatible(alias: str) -> bool:
-    """Check local config against architectures supported by this service."""
-    try:
-        _, path = registered_embedding_model(alias)
-        config = json.loads((path / "config.json").read_text())
-        architectures = config.get("architectures") or []
-        if not architectures or any(
-            "ForCausalLM" in name or "ForConditionalGeneration" in name
-            for name in architectures
-        ):
-            return False
-        _get_model_arch(config)
-        return True
-    except (OSError, ValueError, KeyError, RuntimeError, TypeError):
-        return False
+logger = logging.getLogger(
+    "mlx_embedding_proxy"
+)
 
 
 class EmbeddingRequest(BaseModel):
-    texts: Annotated[list[Annotated[str, Field(min_length=1, max_length=100_000)]], Field(min_length=1, max_length=128)]
+    texts: Annotated[
+        list[
+            Annotated[
+                str,
+                Field(
+                    min_length=1,
+                    max_length=100_000,
+                ),
+            ]
+        ],
+        Field(
+            min_length=1,
+            max_length=128,
+        ),
+    ]
 
 
 class SingleEmbeddingRequest(BaseModel):
-    text: Annotated[str, Field(min_length=1, max_length=100_000)]
+    text: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=100_000,
+        ),
+    ]
 
 
-class Embedder:
-    def __init__(self) -> None:
-        self.model = None
-        self.tokenizer = None
-        self.lock = asyncio.Lock()
-        self.status = "starting"
-        self.error: str | None = None
-        self.model_id: str | None = None
-        self.model_path: Path | None = None
-        self.dimensions: int | None = None
+def _registered_models() -> dict[str, str]:
+    models = {}
 
-    def load(self) -> None:
-        try:
-            model_id, model_path = selected_embedding_model()
-            if not embedding_model_compatible("auto" if model_id == MODEL_ID else model_id):
-                raise RuntimeError("Modell ist für den lokalen Embedding-Service nicht geeignet")
-        except Exception as exc:
-            self.model = self.tokenizer = None
-            self.model_id = None
-            self.model_path = None
-            self.dimensions = None
-            self.status = "failed"
-            self.error = str(exc)
-            raise
-        if self.status == "ready" and self.model_id == model_id and self.model_path == model_path:
-            return
-        self.status = "starting"
-        self.error = None
-        self.model = self.tokenizer = None
-        self.model_id = None
-        self.model_path = None
-        self.dimensions = None
-        try:
-            if not model_path.is_dir():
-                raise RuntimeError(f"Embedding model not found: {model_path}")
-            self.model, self.tokenizer = load(str(model_path))
-            dimensions = len(self.embed_sync(["MLX embedding service readiness check"])[0])
-            if dimensions < 1:
-                raise RuntimeError("Startup embedding did not have valid dimensions")
-            self.model_id = model_id
-            self.model_path = model_path
-            self.dimensions = dimensions
-            self.status = "ready"
-        except Exception as exc:
-            self.model = self.tokenizer = None
-            self.status = "failed"
-            self.error = str(exc)
-            raise
+    if not REGISTERED_MODELS_FILE.is_file():
+        return models
 
-    def embed_sync(self, texts: list[str]) -> list[list[float]]:
-        if self.model is None or self.tokenizer is None:
-            raise RuntimeError("Embedding model is not loaded")
-        vectors: list[list[float]] = []
-        for start in range(0, len(texts), MAX_BATCH_SIZE):
-            batch = texts[start : start + MAX_BATCH_SIZE]
-            outputs = generate(
-                self.model,
-                self.tokenizer,
-                batch,
-                max_length=MAX_LENGTH,
-                padding=True,
-                truncation=True,
+    for raw_line in (
+        REGISTERED_MODELS_FILE
+        .read_text(
+            encoding="utf-8",
+        )
+        .splitlines()
+    ):
+        line = raw_line.strip()
+
+        if (
+            not line
+            or line.startswith("#")
+            or "=" not in line
+        ):
+            continue
+
+        alias, model = (
+            part.strip()
+            for part in line.split(
+                "=",
+                1,
+            )
+        )
+
+        if alias and model:
+            models[alias] = model
+
+    return models
+
+
+def _configured_embedding_alias() -> str:
+    if not MODEL_ROLES_FILE.is_file():
+        return "auto"
+
+    try:
+        roles = json.loads(
+            MODEL_ROLES_FILE.read_text(
+                encoding="utf-8",
+            )
+        )
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+    ) as exc:
+        raise RuntimeError(
+            "Ungültige Modellrollen"
+        ) from exc
+
+    if not isinstance(roles, dict):
+        raise RuntimeError(
+            "Ungültige Modellrollen"
+        )
+
+    return (
+        str(
+            roles.get(
+                "embedding",
+                "auto",
+            )
+        ).strip()
+        or "auto"
+    )
+
+
+def selected_embedding_model() -> tuple[str, str]:
+    alias = _configured_embedding_alias()
+
+    if alias == "auto":
+        return MODEL_ID, MODEL_ID
+
+    registered = _registered_models()
+
+    if alias not in registered:
+        raise RuntimeError(
+            "Embedding-Modellalias "
+            f"nicht registriert: {alias}"
+        )
+
+    return (
+        alias,
+        registered[alias],
+    )
+
+
+def _mlxserve_json(
+    path: str,
+    payload=None,
+    *,
+    timeout=REQUEST_TIMEOUT,
+):
+    data = (
+        None
+        if payload is None
+        else json.dumps(
+            payload
+        ).encode("utf-8")
+    )
+
+    request = urllib.request.Request(
+        MLXSERVE_URL + path,
+        data=data,
+        headers={
+            "Accept": "application/json",
+            **(
+                {
+                    "Content-Type":
+                    "application/json"
+                }
+                if data is not None
+                else {}
+            ),
+        },
+        method=(
+            "POST"
+            if data is not None
+            else "GET"
+        ),
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=timeout,
+        ) as response:
+            return json.loads(
+                response
+                .read()
+                .decode("utf-8")
             )
 
-            if hasattr(outputs, "text_embeds") and outputs.text_embeds is not None:
-                pooled = outputs.text_embeds
-            else:
-                token_embeddings = (
-                    outputs.last_hidden_state
-                    if hasattr(outputs, "last_hidden_state")
-                    else outputs
+    except urllib.error.HTTPError as exc:
+        try:
+            body = (
+                exc.read()
+                .decode(
+                    "utf-8",
+                    errors="replace",
                 )
+            )
+        except Exception:
+            body = ""
 
-                encoded = self.tokenizer.batch_encode_plus(
-                    batch,
-                    return_tensors="mlx",
-                    padding=True,
-                    truncation=True,
-                    max_length=MAX_LENGTH,
+        raise RuntimeError(
+            "mlx-serve "
+            f"{path}: HTTP "
+            f"{exc.code}"
+            + (
+                f": {body[:500]}"
+                if body
+                else ""
+            )
+        ) from exc
+
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise RuntimeError(
+            "mlx-serve nicht erreichbar"
+        ) from exc
+
+
+def _mlxserve_models():
+    payload = _mlxserve_json(
+        "/v1/models",
+        timeout=10,
+    )
+
+    models = payload.get(
+        "data",
+        [],
+    )
+
+    if not isinstance(models, list):
+        return []
+
+    return [
+        item
+        for item in models
+        if isinstance(item, dict)
+    ]
+
+
+def _has_embedding_capability(
+    model,
+) -> bool:
+    capabilities = model.get(
+        "capabilities"
+    )
+
+    if isinstance(
+        capabilities,
+        list,
+    ):
+        values = {
+            str(value).lower()
+            for value in capabilities
+        }
+
+        if (
+            "embedding" in values
+            or "embeddings" in values
+        ):
+            return True
+
+    if isinstance(
+        capabilities,
+        dict,
+    ):
+        for key in (
+            "embedding",
+            "embeddings",
+        ):
+            if capabilities.get(key):
+                return True
+
+    model_id = str(
+        model.get("id") or ""
+    ).lower()
+
+    # mlx-serve advertises Qwen3 embedding
+    # checkpoints with the embeddings
+    # capability. Keep the name fallback
+    # for older compatible server builds.
+    return "embedding" in model_id
+
+
+def _model_entry(
+    model_id: str,
+):
+    return next(
+        (
+            item
+            for item in _mlxserve_models()
+            if item.get("id")
+            == model_id
+        ),
+        None,
+    )
+
+
+def _embedding_dimensions(
+    model_id: str,
+    model=None,
+):
+    model = model or {}
+
+    metadata = model.get(
+        "meta"
+    )
+
+    if not isinstance(
+        metadata,
+        dict,
+    ):
+        metadata = {}
+
+    candidates = [
+        model.get(
+            "embedding_dimensions"
+        ),
+        model.get(
+            "dimensions"
+        ),
+        metadata.get(
+            "embedding_dimensions"
+        ),
+        metadata.get(
+            "dimensions"
+        ),
+    ]
+
+    for value in candidates:
+        try:
+            dimensions = int(value)
+
+            if dimensions > 0:
+                return dimensions
+        except (
+            TypeError,
+            ValueError,
+        ):
+            pass
+
+    config_path = (
+        MLXSERVE_MODEL_ROOT
+        / model_id
+        / "config.json"
+    )
+
+    if config_path.is_file():
+        try:
+            config = json.loads(
+                config_path.read_text(
+                    encoding="utf-8",
                 )
+            )
 
-                mask = encoded["attention_mask"].astype(mx.float32)[..., None]
-                pooled = mx.sum(token_embeddings * mask, axis=1) / mx.maximum(
-                    mx.sum(mask, axis=1),
-                    1e-12,
+            text_config = (
+                config.get(
+                    "text_config"
                 )
-            normalized = pooled / mx.maximum(mx.linalg.norm(pooled, axis=1, keepdims=True), 1e-12)
-            mx.eval(normalized)
-            vectors.extend(normalized.tolist())
-        return vectors
+                if isinstance(
+                    config.get(
+                        "text_config"
+                    ),
+                    dict,
+                )
+                else {}
+            )
+
+            for value in (
+                config.get(
+                    "hidden_size"
+                ),
+                text_config.get(
+                    "hidden_size"
+                ),
+            ):
+                try:
+                    dimensions = int(
+                        value
+                    )
+
+                    if dimensions > 0:
+                        return dimensions
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    pass
+
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+        ):
+            pass
+
+    if model_id == MODEL_ID:
+        return DEFAULT_DIMENSIONS
+
+    return None
 
 
-embedder = Embedder()
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
+def embedding_model_compatible(
+    alias: str,
+) -> bool:
     try:
-        embedder.load()
-        logger.info("Embedding model ready: %s (%s dimensions)", embedder.model_id, embedder.dimensions)
+        if alias == "auto":
+            model_id = MODEL_ID
+        else:
+            model_id = (
+                _registered_models()
+                .get(alias)
+            )
+
+            if not model_id:
+                return False
+
+        model = _model_entry(
+            model_id
+        )
+
+        return bool(
+            model
+            and _has_embedding_capability(
+                model
+            )
+            and _embedding_dimensions(
+                model_id,
+                model,
+            )
+        )
+
+    except Exception:
+        return False
+
+
+def _make_embeddings_sync(
+    texts: list[str],
+) -> dict:
+    role_model, upstream_model = (
+        selected_embedding_model()
+    )
+
+    model = _model_entry(
+        upstream_model
+    )
+
+    if (
+        model is None
+        or not _has_embedding_capability(
+            model
+        )
+    ):
+        raise RuntimeError(
+            "Embedding-Modell ist in "
+            "mlx-serve nicht verfügbar "
+            "oder unterstützt keine "
+            "Embeddings"
+        )
+
+    response = _mlxserve_json(
+        "/v1/embeddings",
+        {
+            "model":
+                upstream_model,
+            "input":
+                texts,
+        },
+    )
+
+    items = response.get(
+        "data",
+        [],
+    )
+
+    if (
+        not isinstance(items, list)
+        or len(items) != len(texts)
+    ):
+        raise RuntimeError(
+            "mlx-serve lieferte eine "
+            "ungültige Anzahl Embeddings"
+        )
+
+    if all(
+        isinstance(item, dict)
+        and isinstance(
+            item.get("index"),
+            int,
+        )
+        for item in items
+    ):
+        items = sorted(
+            items,
+            key=lambda item:
+                item["index"],
+        )
+
+    vectors = []
+
+    for item in items:
+        if not isinstance(
+            item,
+            dict,
+        ):
+            raise RuntimeError(
+                "Ungültige "
+                "Embedding-Antwort"
+            )
+
+        vector = item.get(
+            "embedding"
+        )
+
+        if (
+            not isinstance(
+                vector,
+                list,
+            )
+            or not vector
+        ):
+            raise RuntimeError(
+                "Embedding-Vektor fehlt"
+            )
+
+        vectors.append(
+            vector
+        )
+
+    dimensions = len(
+        vectors[0]
+    )
+
+    if any(
+        len(vector)
+        != dimensions
+        for vector in vectors
+    ):
+        raise RuntimeError(
+            "Inkonsistente "
+            "Embedding-Dimensionen"
+        )
+
+    expected_dimensions = (
+        _embedding_dimensions(
+            upstream_model,
+            model,
+        )
+    )
+
+    if (
+        expected_dimensions
+        and dimensions
+        != expected_dimensions
+    ):
+        raise RuntimeError(
+            "Unerwartete "
+            "Embedding-Dimensionen: "
+            f"{dimensions}; erwartet "
+            f"{expected_dimensions}"
+        )
+
+    return {
+        "model":
+            role_model,
+        "upstream_model":
+            upstream_model,
+        "dimensions":
+            dimensions,
+        "vectors":
+            vectors,
+    }
+
+
+async def make_embeddings(
+    texts: list[str],
+) -> dict:
+    if any(
+        not text.strip()
+        for text in texts
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "texts must not "
+                "contain empty values"
+            ),
+        )
+
+    try:
+        return await asyncio.to_thread(
+            _make_embeddings_sync,
+            texts,
+        )
+
     except Exception as exc:
-        embedder.status = "failed"
-        embedder.error = str(exc)
-        logger.exception("Embedding model startup failed")
-    yield
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Embedding failed: "
+                f"{exc}"
+            ),
+        ) from exc
 
 
-app = FastAPI(title="MLX Local Embeddings", version="1.0", lifespan=lifespan)
-app.add_middleware(LocalRequestGuard)
+app = FastAPI(
+    title=(
+        "MLX nobby Embedding "
+        "Adapter"
+    ),
+    version="2.0",
+)
+
+app.add_middleware(
+    LocalRequestGuard
+)
 
 
 @app.get("/health")
 async def health() -> dict:
     try:
-        async with embedder.lock:
-            await asyncio.to_thread(embedder.load)
-    except Exception:
-        pass
-    return {
-        "ok": embedder.status == "ready",
-        "status": embedder.status,
-        "model": embedder.model_id,
-        "dimensions": embedder.dimensions,
-        "backend": "mlx",
-        "device": str(mx.default_device()),
-        "batch_size": MAX_BATCH_SIZE,
-        **({"error": embedder.error} if embedder.error else {}),
-    }
+        role_model, upstream_model = (
+            selected_embedding_model()
+        )
+
+        model = await asyncio.to_thread(
+            _model_entry,
+            upstream_model,
+        )
+
+        if (
+            model is None
+            or not _has_embedding_capability(
+                model
+            )
+        ):
+            raise RuntimeError(
+                "Embedding-Modell ist "
+                "in mlx-serve nicht "
+                "verfügbar"
+            )
+
+        dimensions = (
+            _embedding_dimensions(
+                upstream_model,
+                model,
+            )
+        )
+
+        if not dimensions:
+            raise RuntimeError(
+                "Embedding-Dimensionen "
+                "konnten nicht "
+                "ermittelt werden"
+            )
+
+        return {
+            "ok": True,
+            "status": "ready",
+            "model":
+                role_model,
+            "upstream_model":
+                upstream_model,
+            "dimensions":
+                dimensions,
+            "backend":
+                "mlx-serve",
+            "mlxserve_url":
+                MLXSERVE_URL,
+            "batch_size":
+                MAX_BATCH_SIZE,
+        }
+
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "model": None,
+            "dimensions": None,
+            "backend":
+                "mlx-serve",
+            "mlxserve_url":
+                MLXSERVE_URL,
+            "error":
+                str(exc),
+        }
 
 
 @app.get("/compatible-models")
 async def compatible_models() -> dict:
-    aliases = []
-    if REGISTERED_MODELS_FILE.is_file():
-        for line in REGISTERED_MODELS_FILE.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                aliases.append(line.split("=", 1)[0].strip())
-    return {"aliases": [alias for alias in aliases if embedding_model_compatible(alias)]}
+    try:
+        models = await asyncio.to_thread(
+            _mlxserve_models
+        )
 
+        available = {
+            str(
+                item.get("id")
+            ):
+                item
+            for item in models
+            if item.get("id")
+        }
 
-async def make_embeddings(texts: list[str]) -> dict:
-    if any(not text.strip() for text in texts):
-        raise HTTPException(status_code=422, detail="texts must not contain empty values")
-    async with embedder.lock:
-        try:
-            await asyncio.to_thread(embedder.load)
-            vectors = await asyncio.to_thread(embedder.embed_sync, texts)
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Embedding failed: {exc}") from exc
-    if len(vectors) != len(texts) or any(len(vector) != embedder.dimensions for vector in vectors):
-        raise HTTPException(status_code=503, detail="Unexpected embedding dimensions")
-    return {"model": embedder.model_id, "dimensions": embedder.dimensions, "vectors": vectors}
+        aliases = []
+
+        for alias, model_id in (
+            _registered_models()
+            .items()
+        ):
+            model = available.get(
+                model_id
+            )
+
+            if (
+                model
+                and
+                _has_embedding_capability(
+                    model
+                )
+            ):
+                aliases.append(
+                    alias
+                )
+
+        return {
+            "aliases":
+                sorted(aliases)
+        }
+
+    except Exception:
+        return {
+            "aliases": []
+        }
 
 
 @app.post("/embeddings")
-async def embeddings(request: EmbeddingRequest) -> dict:
-    return await make_embeddings(request.texts)
+async def embeddings(
+    request: EmbeddingRequest,
+) -> dict:
+    return await make_embeddings(
+        request.texts
+    )
 
 
 @app.post("/embedding")
-async def embedding(request: SingleEmbeddingRequest) -> dict:
-    return await make_embeddings([request.text])
+async def embedding(
+    request: SingleEmbeddingRequest,
+) -> dict:
+    return await make_embeddings(
+        [request.text]
+    )

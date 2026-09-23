@@ -1,7 +1,4 @@
-# Direct service dependencies; do not combine service environments.
--c constraints/embeddings.txt
-mlx-embeddings==0.1.0
-mlx==0.32.2
+# Thin local adapter; inference is provided by mlx-serve.
 fastapi==0.141.1
 pydantic==2.13.5
 uvicorn==0.39.0
