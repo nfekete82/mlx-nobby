@@ -301,6 +301,44 @@ class VideoServiceTests(unittest.TestCase):
                 payload={"prompt": "A red ball rolls", "duration": 7},
             )
 
+        fast_20 = video_service.JobCreate(
+            operation="t2v",
+            chat_id="chat",
+            chat_revision=0,
+            payload={
+                "prompt": "A red ball rolls",
+                "quality": "fast",
+                "duration": 20,
+            },
+        )
+        self.assertEqual(fast_20.payload.resolution, "540p")
+        self.assertEqual(fast_20.payload.duration, 20)
+        self.assertEqual(fast_20.payload.frames, 481)
+
+        with self.assertRaises(ValueError):
+            video_service.JobCreate(
+                operation="t2v",
+                chat_id="chat",
+                chat_revision=0,
+                payload={
+                    "prompt": "A red ball rolls",
+                    "quality": "standard",
+                    "duration": 20,
+                },
+            )
+
+        with self.assertRaises(ValueError):
+            video_service.JobCreate(
+                operation="t2v",
+                chat_id="chat",
+                chat_revision=0,
+                payload={
+                    "prompt": "A red ball rolls",
+                    "quality": "quality",
+                    "duration": 6,
+                },
+            )
+
     def test_quality_profiles_map_to_ltx_resolution(self):
         expected = {
             "fast": ("540p", (1024, 576)),

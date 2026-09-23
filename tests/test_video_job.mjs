@@ -29,10 +29,62 @@ assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
 assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ball'), true);
 assert.equal(api.__test.isImageGenerationRequest('Wie wird das Wetter?'), false);
+assert.deepEqual(
+    Array.from(api.__test.videoDurationsForQuality('fast')),
+    [5, 6, 8, 10, 20]
+);
+assert.deepEqual(
+    Array.from(api.__test.videoDurationsForQuality('standard')),
+    [5, 6, 8, 10]
+);
+assert.deepEqual(
+    Array.from(api.__test.videoDurationsForQuality('quality')),
+    [5]
+);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
-assert.equal(api.__test.videoOptionsForRequest({ video: { seed: 9 } }, 'video', 10).duration, 10);
-assert.equal(api.__test.videoOptionsForRequest({ video: { seed: 9 } }, 'video', 10).seed, 9);
-assert.equal(api.__test.videoOptionsForRequest({}, 'video', 7).duration, 5);
+assert.equal(
+    api.__test.videoOptionsForRequest(
+        { video: { seed: 9 } },
+        'video',
+        20,
+        'fast'
+    ).duration,
+    20
+);
+assert.equal(
+    api.__test.videoOptionsForRequest(
+        { video: { seed: 9 } },
+        'video',
+        20,
+        'standard'
+    ).duration,
+    10
+);
+assert.equal(
+    api.__test.videoOptionsForRequest(
+        {},
+        'video',
+        10,
+        'quality'
+    ).duration,
+    5
+);
+assert.equal(
+    api.__test.videoOptionsForRequest(
+        { video: { seed: 9 } },
+        'video',
+        10
+    ).seed,
+    9
+);
+assert.equal(
+    api.__test.videoOptionsForRequest(
+        {},
+        'video',
+        7
+    ).duration,
+    5
+);
 const activeArtifact = {
     artifact_id: 'image-1234567890-abcdef123456',
     image_id: '1234567890-abcdef123456',

@@ -53,15 +53,62 @@ function isVideoRequest(prompt) {
     return VIDEO_ANIMATE_PATTERN.test(value) || VIDEO_GENERATE_PATTERN.test(value);
 }
 
-const VIDEO_DURATIONS = new Set([5, 6, 8, 10]);
+const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
+    fast: Object.freeze([5, 6, 8, 10, 20]),
+    standard: Object.freeze([5, 6, 8, 10]),
+    quality: Object.freeze([5])
+});
 
-function videoOptionsForRequest(options, mediaKind, duration = 5) {
-    const existing = options?.video || null;
-    if (mediaKind !== 'video') return existing;
+const VIDEO_DURATIONS = new Set(
+    Object.values(VIDEO_DURATIONS_BY_QUALITY).flat()
+);
+
+function videoDurationsForQuality(quality = 'standard') {
+    return (
+        VIDEO_DURATIONS_BY_QUALITY[quality] ||
+        VIDEO_DURATIONS_BY_QUALITY.standard
+    );
+}
+
+function normalizeVideoDuration(duration, quality = 'standard') {
+    const allowed = videoDurationsForQuality(quality);
     const selected = Number(duration);
+
+    if (allowed.includes(selected)) {
+        return selected;
+    }
+
+    if (VIDEO_DURATIONS.has(selected)) {
+        const shorter = allowed.filter(
+            value => value < selected
+        );
+
+        if (shorter.length) {
+            return shorter[shorter.length - 1];
+        }
+    }
+
+    return allowed[0] || 5;
+}
+
+function videoOptionsForRequest(
+    options,
+    mediaKind,
+    duration = 5,
+    quality = 'standard'
+) {
+    const existing = options?.video || null;
+
+    if (mediaKind !== 'video') {
+        return existing;
+    }
+
     return {
         ...(existing || {}),
-        duration: VIDEO_DURATIONS.has(selected) ? selected : 5
+        duration: normalizeVideoDuration(
+            duration,
+            quality
+        )
     };
 }
 
@@ -2417,6 +2464,51 @@ const imageFiles =
                     // Default is Standard; subsequent jobs reuse this session's choice.
                     let choice = selectedMediaQuality;
 
+                    const renderDurationOptions = () => {
+                        if (!durationField || !durationSelect) {
+                            return;
+                        }
+
+                        durationField.hidden =
+                            mediaQualityKind !== 'video';
+
+                        if (mediaQualityKind !== 'video') {
+                            return;
+                        }
+
+                        const allowed =
+                            videoDurationsForQuality(choice);
+
+                        selectedVideoDuration =
+                            normalizeVideoDuration(
+                                selectedVideoDuration,
+                                choice
+                            );
+
+                        const durationOptions =
+                            allowed.map(duration => {
+                                const option =
+                                    document.createElement(
+                                        'option'
+                                    );
+
+                                option.value =
+                                    String(duration);
+
+                                option.textContent =
+                                    duration + ' s';
+
+                                return option;
+                            });
+
+                        durationSelect.replaceChildren(
+                            ...durationOptions
+                        );
+
+                        durationSelect.value =
+                            String(selectedVideoDuration);
+                    };
+
                     const renderChoice = () => {
                         for (const button of qualityButtons) {
                             const active =
@@ -2432,6 +2524,8 @@ const imageFiles =
                                 active ? 'true' : 'false'
                             );
                         }
+
+                        renderDurationOptions();
                     };
 
                     title.textContent =
@@ -2443,11 +2537,6 @@ const imageFiles =
                         mediaQualityKind === 'video'
                             ? 'Welche Qualität möchtest du für das Video verwenden?'
                             : 'Welche Qualität möchtest du für das Bild verwenden?';
-
-                    if (durationField && durationSelect) {
-                        durationField.hidden = mediaQualityKind !== 'video';
-                        durationSelect.value = String(selectedVideoDuration);
-                    }
 
                     renderChoice();
 
@@ -2514,9 +2603,11 @@ const imageFiles =
                         const onConfirm = () => {
                             if (mediaQualityKind === 'video' && durationSelect) {
                                 const duration = Number(durationSelect.value);
-                                selectedVideoDuration = VIDEO_DURATIONS.has(duration)
-                                    ? duration
-                                    : 5;
+                                selectedVideoDuration =
+                                    normalizeVideoDuration(
+                                        duration,
+                                        choice
+                                    );
                             }
                             finish(choice);
                         };
@@ -2623,7 +2714,8 @@ const imageFiles =
                 video_options: videoOptionsForRequest(
                     options,
                     mediaQualityKind,
-                    selectedVideoDuration
+                    selectedVideoDuration,
+                    selectedMediaQuality
                 ),
                 quality: selectedMediaQuality,
                 conversation_context: conversationContext,
@@ -3849,6 +3941,8 @@ resetSessionRuntime: resetSessionRuntime,
             watchVideoJob: watchVideoJob,
             isVideoRequest: isVideoRequest,
             videoOptionsForRequest: videoOptionsForRequest,
+            videoDurationsForQuality: videoDurationsForQuality,
+            normalizeVideoDuration: normalizeVideoDuration,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary,
             toolSummary: toolSummary

@@ -16,11 +16,14 @@ assert.match(runtime, /settings\.media_quality = normalizeMediaQuality/);
 assert.match(html, /id="mediaQualityModal"/);
 assert.match(html, /id="videoDurationField"/);
 assert.match(html, /id="videoDuration"/);
-for (const duration of [5, 6, 8, 10]) {
+for (const duration of [5, 6, 8, 10, 20]) {
     assert.match(html, new RegExp(`option value="${duration}"`));
 }
 assert.match(generation, /quality: selectedMediaQuality/);
 assert.match(generation, /videoOptionsForRequest/);
+assert.match(generation, /VIDEO_DURATIONS_BY_QUALITY/);
+assert.match(generation, /fast: Object\.freeze\(\[5, 6, 8, 10, 20\]\)/);
+assert.match(generation, /quality: Object\.freeze\(\[5\]\)/);
 assert.match(generation, /const mediaQualityKind/);
 assert.match(generation, /if \(mediaQualityKind\)/);
 assert.match(rendering, /artifact\.quality \? 'Qualität: '/);

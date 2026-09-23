@@ -40,7 +40,11 @@ QUALITY_PROFILES = {
 LANDSCAPE_SIZES = {
     "540p": (1024, 576), "720p": (1280, 704), "1080p": (1920, 1088),
 }
-SUPPORTED_DURATIONS = {5, 6, 8, 10}
+SUPPORTED_DURATIONS_BY_RESOLUTION = {
+    "540p": {5, 6, 8, 10, 20},
+    "720p": {5, 6, 8, 10},
+    "1080p": {5},
+}
 _lock = threading.Lock()
 _jobs_lock = threading.RLock()
 _jobs = {}
@@ -65,8 +69,24 @@ class VideoPayload(BaseModel):
 
     @model_validator(mode="after")
     def valid_ltx_options(self):
-        if self.duration not in SUPPORTED_DURATIONS:
-            raise ValueError("LTX-Dauer muss 5, 6, 8 oder 10 Sekunden sein")
+        effective_resolution = (
+            self.resolution
+            or QUALITY_PROFILES[self.quality or "standard"]["resolution"]
+        )
+        allowed_durations = SUPPORTED_DURATIONS_BY_RESOLUTION[
+            effective_resolution
+        ]
+
+        if self.duration not in allowed_durations:
+            allowed = ", ".join(
+                str(value)
+                for value in sorted(allowed_durations)
+            )
+            raise ValueError(
+                f"LTX-Dauer für {effective_resolution} "
+                f"muss {allowed} Sekunden sein"
+            )
+
         if self.width is not None and (self.width <= 0 or self.width % 32):
             raise ValueError("Video width muss positiv und durch 32 teilbar sein")
         if self.height is not None and (self.height <= 0 or self.height % 32):
