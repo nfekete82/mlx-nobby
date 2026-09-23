@@ -215,6 +215,57 @@ def repository_is_available(repository):
     return any(root.rglob("*.safetensors"))
 
 
+def resolve_lora_file(lora):
+    """Resolve one configured LoRA to an absolute local .safetensors path."""
+
+    local_path = lora.get("path")
+    if local_path:
+        candidate = Path(validate_path(local_path, file=True))
+        if not candidate.is_file():
+            raise RuntimeError("Eine aktivierte lokale LoRA-Datei fehlt")
+        return candidate
+
+    repository = str(lora.get("repository") or "")
+    repo, separator, filename = repository.partition(":")
+    if not repo:
+        raise ValueError("LoRA benötigt einen lokalen Pfad oder ein Repository")
+
+    cache = repository_cache(repo)
+    ref = cache / "refs/main"
+    if not ref.is_file():
+        raise RuntimeError(
+            "Eine aktivierte LoRA ist nicht im lokalen Hugging-Face-Cache vorhanden"
+        )
+
+    revision = ref.read_text(encoding="utf-8").strip()
+    if (
+        len(revision) != 40
+        or any(c not in "0123456789abcdef" for c in revision)
+    ):
+        raise RuntimeError("Ungültiger Hugging-Face-Cache für eine aktivierte LoRA")
+
+    root = cache / "snapshots" / revision
+    if not root.is_dir():
+        raise RuntimeError("Lokaler Hugging-Face-Snapshot einer LoRA fehlt")
+
+    if separator and filename:
+        candidate = root / filename
+        if not candidate.is_file():
+            raise RuntimeError(
+                "Die konfigurierte LoRA-Datei fehlt im lokalen Hugging-Face-Cache"
+            )
+        return candidate
+
+    candidates = sorted(root.rglob("*.safetensors"))
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "LoRA-Repository muss genau eine .safetensors-Datei enthalten "
+            "oder als org/model:datei.safetensors angegeben werden"
+        )
+
+    return candidates[0]
+
+
 def _mlxserve_json(path, *, timeout=MLXSERVE_HEALTH_TIMEOUT):
     request = urllib.request.Request(
         MLXSERVE_URL + path,
@@ -249,6 +300,14 @@ def availability(model):
                     False,
                     "Qwen Image 2.1 ist in MLX-Serve nicht verfügbar",
                 )
+
+            for lora in model.get("loras", []):
+                if not lora.get("enabled"):
+                    continue
+                try:
+                    resolve_lora_file(lora)
+                except (RuntimeError, ValueError) as exc:
+                    return False, str(exc)
         except (
             OSError,
             TimeoutError,
@@ -818,11 +877,22 @@ def run_provider(
             sys.executable,
             str(Path(__file__).with_name("mlxserve_image_worker.py")),
         ]
+
+        loras = []
+        for lora in model.get("loras", []):
+            if not lora.get("enabled"):
+                continue
+            loras.append({
+                "path": str(resolve_lora_file(lora)),
+                "scale": float(lora.get("scale", 1.0)),
+            })
+
         worker_input = json.dumps({
             "params": params,
             "output": str(output),
             "repository": model["repository"],
             "base_url": MLXSERVE_URL,
+            "loras": loras,
         })
     elif model["provider"] == "diffusionkit":
         command = [sys.executable, str(Path(__file__).with_name("image_worker.py"))]

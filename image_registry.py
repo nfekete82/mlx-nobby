@@ -167,11 +167,10 @@ class ImageModel(BaseModel):
                 or self.base_model != "qwen-image-2.1"
                 or self.quantization != "q4"
                 or self.quantize_on_load
-                or any(lora.enabled for lora in self.loras)
             ):
                 raise ValueError(
                     "Qwen Image 2.1/MLX-Serve benötigt den vorgesehenen "
-                    "4-bit-Repository-Eintrag ohne LoRAs"
+                    "4-bit-Repository-Eintrag"
                 )
             if self.default_guidance != 0:
                 raise ValueError(
@@ -195,6 +194,8 @@ class ImageModel(BaseModel):
         if self.provider == "mlxserve":
             self.capabilities = [
                 "text_to_image",
+                "lora",
+                "multi_lora",
             ]
         elif self.model_family == "qwen-image-edit":
             self.capabilities = [

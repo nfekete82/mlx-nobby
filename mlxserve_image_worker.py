@@ -59,6 +59,37 @@ def main():
     if negative_prompt:
         payload["negative_prompt"] = str(negative_prompt)
 
+    loras = request_data.get("loras") or []
+    if not isinstance(loras, list):
+        fail("Ungültige MLX-Serve-LoRA-Konfiguration")
+
+    lora_paths = []
+    lora_scales = []
+
+    for lora in loras:
+        if not isinstance(lora, dict):
+            fail("Ungültige MLX-Serve-LoRA-Konfiguration")
+
+        path = Path(str(lora.get("path") or ""))
+        if (
+            not path.is_absolute()
+            or path.suffix.lower() != ".safetensors"
+            or not path.is_file()
+        ):
+            fail("MLX-Serve-LoRA muss eine vorhandene absolute .safetensors-Datei sein")
+
+        try:
+            scale = float(lora.get("scale", 1.0))
+        except (TypeError, ValueError):
+            fail("Ungültiger MLX-Serve-LoRA-Scale")
+
+        lora_paths.append(str(path))
+        lora_scales.append(scale)
+
+    if lora_paths:
+        payload["lora_paths"] = lora_paths
+        payload["lora_scales"] = lora_scales
+
     body = json.dumps(payload).encode("utf-8")
 
     request = urllib.request.Request(
