@@ -2282,6 +2282,7 @@ const imageFiles =
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
                 image_options: options?.image || null,
+                quality: MLXChatRuntime.getSessionMediaQuality?.() || 'standard',
                 conversation_context: conversationContext,
                 trace_id: userMessage.trace_id,
                 chat_id: session.id,

@@ -4929,3 +4929,74 @@ def test_normalize_image_edit_prompt_darkens_only_background():
     assert "Make only the background darker" in result
     assert "Do not darken the subject" in result
     assert "exposure and brightness" in result
+
+
+def test_image_quality_profiles_and_legacy_default():
+    model = {
+        "provider": "mlxserve", "model_family": "qwen-image21",
+        "default_steps": 20,
+    }
+    assert service._resolved_steps(model, None, "fast") == 20
+    assert service._resolved_steps(model, None, "standard") == 40
+    assert service._resolved_steps(model, None, "quality") == 50
+    assert service._resolved_steps(model, None) == 40
+    assert service._resolved_steps({**model, "provider": "diffusionkit"}, None, "quality") == 8
+
+
+def test_agent_forwards_image_quality_for_generate_and_edit(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (32, 32), "white").save(source)
+    with patch.object(agent, "translate_image_prompt_to_english", return_value={
+        "prompt": "A red apple", "width": 768, "height": 1024,
+    }):
+        generated = agent._image_generate_payload(agent.ChatActionRequest(
+            prompt="Erstelle ein Bild", quality="fast",
+        ))
+    with patch.object(agent, "_image_source_path", return_value=source), \
+         patch.object(agent, "load_model_roles", return_value={"image": "edit-model"}):
+        edited = agent._image_edit_payload(agent.ChatActionRequest(
+            prompt="Mach es heller", quality="quality",
+        ))
+    assert generated["quality"] == "fast"
+    assert (generated["width"], generated["height"]) == (768, 1024)
+    assert edited["quality"] == "quality"
+    assert edited["source_path"] == str(source)
+
+
+def test_image_quality_reaches_provider_and_artifact(tmp_path):
+    model = {
+        "id": "test-image", "provider": "mflux", "model_family": "test-family",
+        "default_steps": 20, "default_guidance": 0, "quantization": "q4",
+        "loras": [], "capabilities": ["text_to_image", "image_edit"],
+    }
+    captured = []
+
+    def fake_provider(_model, params, path, **_options):
+        captured.append(dict(params))
+        Image.new("RGB", (params.get("width", 32), params.get("height", 32)), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    source = tmp_path / "1234567890-abcdef123456.png"
+    Image.new("RGB", (32, 32), "white").save(source)
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            generated = service._generate_result(service.Generate(
+                prompt="A red apple", width=256, height=256, quality="standard",
+            ))
+        with patch.object(service, "_edit_model", return_value=model), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            edited = service._edit_result(service.Edit(
+                prompt="Make it brighter", source_path=str(source), quality="quality",
+            ))
+    finally:
+        service.OUTPUT = old_output
+    assert captured[0]["quality"] == "standard"
+    assert captured[0]["steps"] == 40
+    assert generated["quality"] == "standard"
+    assert generated["steps"] == 40
+    assert captured[1]["quality"] == "quality"
+    assert captured[1]["steps"] == 50
+    assert edited["quality"] == "quality"
+    assert edited["steps"] == 50

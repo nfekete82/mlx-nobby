@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260917-personality-v1">
+<link rel="stylesheet" href="/assets/chat.css?v=20260923-media-quality">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -1383,6 +1383,14 @@
 
 
             <div class="composer-actions">
+            <label class="media-quality-control">
+                <span data-i18n="ui.media_quality">Qualität</span>
+                <select id="mediaQuality" aria-label="Qualität" data-i18n-aria-label="ui.media_quality">
+                    <option value="fast" data-i18n="ui.quality_fast">Schnell</option>
+                    <option value="standard" data-i18n="ui.quality_standard" selected>Standard</option>
+                    <option value="quality" data-i18n="ui.quality_quality">Qualität</option>
+                </select>
+            </label>
             <button
                 id="dictationButton"
                 class="dictation-button"
@@ -1428,11 +1436,11 @@
 <script src="/assets/chat/sessions.js?v=20260914-image-ui-final"></script>
 <script src="/assets/chat/attachments.js?v=20260913-image-upscale"></script>
 <script src="/assets/chat/i18n.js"></script>
-<script src="/assets/chat/rendering.js?v=20260916-tts"></script>
+<script src="/assets/chat/rendering.js?v=20260923-media-quality"></script>
 <script src="/assets/chat/compact.js"></script>
-<script src="/assets/chat/runtime.js?v=20260906-vision-fix"></script>
+<script src="/assets/chat/runtime.js?v=20260923-media-quality"></script>
 <script src="/assets/chat/appearance.js"></script>
-<script src="/assets/chat/generation.js?v=20260917-news-i18n"></script>
+<script src="/assets/chat/generation.js?v=20260923-media-quality"></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
 <script src="/assets/chat/models.js?v=20260906-runtime-console&amp;settings=20260909-cleanup"></script>
 
@@ -1646,7 +1654,7 @@
 <script src="/assets/chat/notes.js?v=20260917-notes-i18n-v2"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
-<script src="/assets/chat.js?v=20260911-code-evidence"></script>
+<script src="/assets/chat.js?v=20260923-media-quality"></script>
 
 <div
     id="confirmModal"

@@ -1473,6 +1473,11 @@ document.getElementById(
     MLXChatRuntime.handlePresetChange
 );
 
+document.getElementById('mediaQuality').addEventListener(
+    'change',
+    MLXChatRuntime.handleMediaQualityChange
+);
+
 
 document.getElementById('exportChatJson').addEventListener(
     'click',

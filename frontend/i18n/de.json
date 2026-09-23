@@ -544,6 +544,10 @@
   "ui.embeddings_description": "Wissensbasis und semantische Suche",
   "ui": {
     "general": "Allgemein",
+    "media_quality": "Qualität",
+    "quality_fast": "Schnell",
+    "quality_standard": "Standard",
+    "quality_quality": "Qualität",
     "global_settings_description": "Globale Einstellungen für Chat-Verhalten und lokale Datensicherung.",
     "chat_behavior": "Chat-Verhalten",
     "settings": "Einstellungen",

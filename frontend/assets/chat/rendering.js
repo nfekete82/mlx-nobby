@@ -1676,6 +1676,7 @@ function renderImageArtifactCard(message) {
         artifact.provider,
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.scale ? artifact.scale + '×' : '',
+        artifact.quality ? 'Qualität: ' + ({ fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');

@@ -3908,6 +3908,7 @@ class ChatActionRequest(BaseModel):
     file_context: dict | None = None
     active_artifact_id: str | None = None
     image_options: dict | None = None
+    quality: Literal["fast", "standard", "quality"] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
     trace_id: str | None = None
@@ -7848,6 +7849,9 @@ def _image_edit_payload(request):
         "model": load_model_roles()["image"],
     }
 
+    if request.quality is not None:
+        payload["quality"] = request.quality
+
     payload.update(options)
 
     return payload
@@ -8037,6 +8041,9 @@ def _image_generate_payload(request):
         "height": height,
     }
 
+    if request.quality is not None:
+        payload["quality"] = request.quality
+
     if request.image_options:
         if set(request.image_options) - {
             "prompt",
@@ -8082,6 +8089,7 @@ def _image_artifact(result, action):
         "model": result.get("model"),
         "seed": result.get("seed"),
         "steps": result.get("steps"),
+        "quality": result.get("quality"),
         "guidance": result.get("guidance"),
         "provider": result.get("provider"),
         "model_family": result.get("model_family"),

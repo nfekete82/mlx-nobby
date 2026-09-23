@@ -544,6 +544,10 @@
   "ui.embeddings_description": "Knowledge base and semantic search",
   "ui": {
     "general": "General",
+    "media_quality": "Quality",
+    "quality_fast": "Fast",
+    "quality_standard": "Standard",
+    "quality_quality": "Quality",
     "global_settings_description": "Global settings for chat behavior and local data backup.",
     "chat_behavior": "Chat behavior",
     "settings": "Settings",

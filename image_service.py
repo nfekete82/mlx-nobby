@@ -52,6 +52,7 @@ class Generate(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    quality: Literal["fast", "standard", "quality"] | None = None
 
 
 class Edit(BaseModel):
@@ -63,6 +64,7 @@ class Edit(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    quality: Literal["fast", "standard", "quality"] | None = None
 
 
 class Upscale(BaseModel):
@@ -391,9 +393,15 @@ def _edit_model(model_id):
     raise HTTPException(503, "Kein verfügbares Modell für Bildbearbeitung")
 
 
-def _resolved_steps(model, requested_steps):
+def _resolved_steps(model, requested_steps, quality=None):
     if requested_steps is not None:
         return requested_steps
+
+    if quality is not None:
+        steps = {"fast": 20, "standard": 40, "quality": 50}[quality]
+        if model["provider"] == "diffusionkit":
+            return min(steps, 8)
+        return steps
 
     default_steps = int(model["default_steps"])
 
@@ -416,7 +424,7 @@ def _generate_result(
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
     params = request.model_dump()
-    params["steps"] = _resolved_steps(model, request.steps)
+    params["steps"] = _resolved_steps(model, request.steps, request.quality)
     params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     if model["provider"] == "diffusionkit" and params["steps"] > 8:
@@ -492,6 +500,7 @@ def _generate_result(
         "guidance": params["guidance"],
         "seed": params["seed"],
         "steps": params["steps"],
+        "quality": request.quality,
         "created_at": time.time(),
     }
 
@@ -575,7 +584,7 @@ def _edit_result(
         with Image.open(edit_source) as prepared_image:
             params["width"], params["height"] = prepared_image.size
 
-    params["steps"] = _resolved_steps(model, request.steps)
+    params["steps"] = _resolved_steps(model, request.steps, request.quality)
     params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -614,6 +623,7 @@ def _edit_result(
         "guidance": params["guidance"],
         "seed": params["seed"],
         "steps": params["steps"],
+        "quality": request.quality,
         "created_at": time.time(),
     }
 

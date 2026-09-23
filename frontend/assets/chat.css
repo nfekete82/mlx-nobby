@@ -4854,6 +4854,32 @@ body > * {
     flex: 0 0 42px;
 }
 
+.media-quality-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.media-quality-control select {
+    height: 32px;
+    max-width: 104px;
+    padding: 0 24px 0 9px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+}
+
+@media (max-width: 620px) {
+    .media-quality-control > span {
+        display: none;
+    }
+}
+
 .composer-actions .dictation-button svg {
     width: 22px;
     height: 22px;
