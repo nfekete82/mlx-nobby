@@ -98,6 +98,17 @@ async def lifespan(app):
     try:
         yield
     finally:
+        with _jobs_lock:
+            active = [
+                _cancel_job(job)
+                for job in _jobs.values()
+                if job.get("status") in {"queued", "loading", "running", "saving"}
+            ]
+        for process, thread in active:
+            if process is not None:
+                terminate_process_tree(process)
+            if thread is not None:
+                thread.join(timeout=PROCESS_TERMINATION_TIMEOUT * 2 + 1)
         shutdown_sdxl_worker()
 
 

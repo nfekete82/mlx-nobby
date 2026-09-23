@@ -1480,6 +1480,41 @@ mlx_service_restart() {
 }
 
 
+mlx_service_stop() {
+    local service="$1"
+    local label
+    local domain
+    local port
+
+    label="$(mlx_service_label "$service")" || {
+        echo "Unbekannter Dienst: $service"
+        return 1
+    }
+    domain="$(mlx_service_domain)"
+    port="$(mlx_service_port "$service")" || return 1
+
+    if ! mlx_service_loaded "$service"; then
+        echo "$service ist bereits gestoppt."
+        return 0
+    fi
+
+    echo "$service wird gestoppt..."
+    launchctl bootout "$domain/$label" || return 1
+
+    local attempts=100
+    local i
+    for ((i = 1; i <= attempts; i++)); do
+        if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "✗ $service wurde nicht rechtzeitig gestoppt (Port $port)"
+    return 1
+}
+
+
 mlx_service_wait_ready() {
     local service="$1"
     local port
@@ -1500,6 +1535,19 @@ mlx_service_wait_ready() {
 
     echo "✗ $service wurde nicht rechtzeitig bereit (Port $port)"
     return 1
+}
+
+
+mlx_service_ensure_running() {
+    local service="$1"
+
+    if mlx_service_loaded "$service" && mlx_service_wait_ready "$service" 1; then
+        echo "$service läuft bereits und bleibt aktiv."
+        return 0
+    fi
+
+    mlx_service_restart "$service" || return 1
+    mlx_service_wait_ready "$service" 30
 }
 
 
@@ -1577,8 +1625,7 @@ restart_all() {
 
     echo
     echo "[2/8] Agent"
-    mlx_service_restart agent || return 1
-    mlx_service_wait_ready agent 30 || return 1
+    mlx_service_ensure_running agent || return 1
 
     echo
     echo "[3/8] Router"
@@ -1617,6 +1664,27 @@ restart_all() {
 }
 
 
+stop_ai() {
+    echo
+    echo "MLX Nobby – KI-System beenden"
+    echo "────────────────────────────────────────────────────────────"
+
+    # Stop only MLX Nobby model services. The agent and web UI remain online.
+    for service in video images speech embeddings router mlxserve server; do
+        mlx_service_stop "$service" || return 1
+    done
+
+    echo "✓ Alle MLX-Nobby-KI-Dienste wurden beendet."
+}
+
+
+stop_all() {
+    stop_ai || return 1
+    mlx_service_stop agent || return 1
+    echo "✓ Alle MLX-Nobby-Dienste wurden sauber beendet."
+}
+
+
 help() {
 cat <<'HELP'
 
@@ -1628,6 +1696,8 @@ Server:
   mlx stop
   mlx restart
   mlx restart-all
+  mlx stop-ai
+  mlx stop-all
   mlx services
   mlx agent status
   mlx agent restart
@@ -1696,6 +1766,14 @@ HELP
 load_config
 
 case "$1" in
+    stop-ai)
+        stop_ai
+        ;;
+
+    stop-all)
+        stop_all
+        ;;
+
     restart-all)
         restart_all
         ;;

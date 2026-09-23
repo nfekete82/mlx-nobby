@@ -1059,13 +1059,13 @@ def system_restart_all():
     }
 
 
-@app.post("/api/system/rebuild-all", status_code=202)
-def system_rebuild_all():
+@app.post("/api/system/reboot", status_code=202)
+def system_reboot():
     _set_system_lifecycle_state(
         state="accepted",
-        action="rebuild-all",
+        action="reboot",
         phase="accepted",
-        message="MLX Nobby wird neu gebaut.",
+        message="System Reboot wird vorbereitet.",
         current=0,
         total=0,
     )
@@ -1074,7 +1074,26 @@ def system_rebuild_all():
 
     return {
         "status": "accepted",
-        "action": "rebuild-all",
+        "action": "reboot",
+    }
+
+
+@app.post("/api/system/shutdown-ai", status_code=202)
+def system_shutdown_ai():
+    _set_system_lifecycle_state(
+        state="accepted",
+        action="shutdown-ai",
+        phase="accepted",
+        message="KI-System wird beendet.",
+        current=0,
+        total=0,
+    )
+
+    _launch_system_lifecycle_helper("shutdown-ai.sh")
+
+    return {
+        "status": "accepted",
+        "action": "shutdown-ai",
     }
 
 

@@ -2038,11 +2038,21 @@ def mlx_system_restart_all():
     )
 
 
-@app.post("/api/mlx/system/rebuild-all", status_code=202)
-def mlx_system_rebuild_all():
+@app.post("/api/mlx/system/reboot", status_code=202)
+def mlx_system_reboot():
     return agent_json_request(
         "POST",
-        "/api/system/rebuild-all",
+        "/api/system/reboot",
+        payload={},
+        timeout=10,
+    )
+
+
+@app.post("/api/mlx/system/shutdown-ai", status_code=202)
+def mlx_system_shutdown_ai():
+    return agent_json_request(
+        "POST",
+        "/api/system/shutdown-ai",
         payload={},
         timeout=10,
     )

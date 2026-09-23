@@ -158,7 +158,25 @@ def _load_jobs():
 async def lifespan(_app):
     registry.load_registry()
     _load_jobs()
-    yield
+    try:
+        yield
+    finally:
+        with _jobs_lock:
+            active = [
+                job for job in _jobs.values()
+                if job.get("status") in ACTIVE
+            ]
+            for job in active:
+                job["_cancel_event"].set()
+            runtimes = [job.get("_runtime") for job in active]
+            threads = [job.get("_thread") for job in active]
+            for job in active:
+                job["_runtime"] = None
+        for runtime in runtimes:
+            unload(runtime)
+        for thread in threads:
+            if thread is not None:
+                thread.join(timeout=25)
 
 
 app = FastAPI(title="MLX Nobby Video", lifespan=lifespan)
