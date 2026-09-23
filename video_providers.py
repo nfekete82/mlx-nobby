@@ -318,15 +318,11 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
                     try:
                         progress = _json_request("GET", "/api/generation/progress", timeout=5)
                         phase = str(progress.get("phase") or "")
-                        if phase_callback:
-                            if "load" in phase:
-                                phase_callback("loading")
-                            elif "encod" in phase:
-                                phase_callback("encoding")
-                            elif progress.get("status") == "running":
-                                phase_callback("generating")
+                        if phase_callback and phase:
+                            phase_callback(phase)
                         if progress_callback:
                             progress_callback({
+                                "phase": phase,
                                 "step": progress.get("currentStep"),
                                 "total_steps": progress.get("totalSteps"),
                                 "progress": progress.get("progress"),
@@ -341,9 +337,9 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
             if result.get("status") != "complete" or not source_output.is_file():
                 raise RuntimeError("LTX-Backend lieferte kein Video")
             if phase_callback:
-                phase_callback("decoding")
-            if phase_callback:
                 phase_callback("muxing")
+            if progress_callback:
+                progress_callback({"phase": "muxing", "progress": 98})
             _finalize_video(
                 source_output, output, width, height, runtime_width, runtime_height,
             )

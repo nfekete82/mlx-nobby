@@ -2170,6 +2170,7 @@ class ImageRuntimeTests(unittest.TestCase):
             self.assertEqual(running["current_step"], 2)
             self.assertEqual(running["total_steps"], 8)
             self.assertEqual(running["progress"], 0.25)
+            self.assertEqual(running["phase"], "progress")
             self.assertEqual(self.client.get("/health").json()["status"], "busy")
 
             busy = self.client.post(
@@ -2186,6 +2187,8 @@ class ImageRuntimeTests(unittest.TestCase):
 
         self.assertEqual(completed["operation"], "edit")
         self.assertEqual(completed["current_step"], 8)
+        self.assertEqual(completed["progress"], 1.0)
+        self.assertEqual(completed["phase"], "completed")
         self.assertEqual(completed["result"]["steps"], 8)
         self.assertTrue(Path(completed["result"]["path"]).is_file())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")

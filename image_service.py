@@ -863,6 +863,8 @@ def _job_snapshot(job):
         for key, value in job.items()
         if not key.startswith("_")
     }
+    if snapshot.get("status") == "completed":
+        snapshot["progress"] = 1.0
     step = snapshot.get("current_step")
     total = snapshot.get("total_steps")
     if isinstance(step, int) and isinstance(total, int) and total > 0:
@@ -896,6 +898,8 @@ def _update_job(job_id, **changes):
 def _provider_progress(job_id, event):
     changes = {}
     phase = event.get("phase")
+    if phase:
+        changes["phase"] = str(phase)
     if phase in {"save", "complete", "generated"}:
         changes["status"] = "saving"
     elif phase:
@@ -903,6 +907,11 @@ def _provider_progress(job_id, event):
     if event.get("step") is not None and event.get("total_steps") is not None:
         changes["current_step"] = event["step"]
         changes["total_steps"] = event["total_steps"]
+        if event["total_steps"] > 0:
+            changes["progress"] = min(1.0, max(0.0, event["step"] / event["total_steps"]))
+    elif isinstance(event.get("progress"), (int, float)):
+        progress = float(event["progress"])
+        changes["progress"] = min(1.0, max(0.0, progress / 100 if progress > 1 else progress))
     if changes:
         _update_job(job_id, **changes)
 
@@ -941,7 +950,7 @@ def _run_image_job(job_id, operation, request):
     try:
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
-        _update_job(job_id, status="loading", started_at=time.time())
+        _update_job(job_id, status="loading", phase="loading", progress=0.0, started_at=time.time())
         if operation == "edit":
             execute = _edit_result
         elif operation == "upscale":
@@ -953,13 +962,18 @@ def _run_image_job(job_id, operation, request):
             request,
             provider_options=provider_options,
             prepared_callback=prepared,
-            saving_callback=lambda: _update_job(job_id, status="saving"),
+            saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
         )
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
+        with _jobs_lock:
+            total_steps = _jobs.get(job_id, {}).get("total_steps")
         _update_job(
             job_id,
             status="completed",
+            phase="completed",
+            current_step=total_steps,
+            progress=1.0,
             result=result,
             finished_at=time.time(),
         )
@@ -1042,6 +1056,7 @@ def create_image_job(request: ImageJobCreate):
         "run_id": request.run_id or job_id,
         "chat_revision": request.chat_revision,
         "status": "queued",
+        "phase": "queued",
         "model": None,
         "current_step": None,
         "total_steps": (
@@ -1049,6 +1064,7 @@ def create_image_job(request: ImageJobCreate):
             if request.operation == "upscale"
             else image_request.steps
         ),
+        "progress": 0.0,
         "result": None,
         "error": None,
         "created_at": created_at,

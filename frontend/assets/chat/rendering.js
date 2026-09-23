@@ -35,7 +35,7 @@
         'saving'
     ]);
     const ACTIVE_VIDEO_JOB_STATUSES = new Set([
-        'queued', 'loading', 'encoding', 'generating', 'decoding', 'muxing'
+        'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
     ]);
     const IMAGE_JOB_STALE_SECONDS = 25;
     const IMAGE_JOB_UI_TICK_MS = 1000;
@@ -90,12 +90,104 @@
             String(remainder).padStart(2, '0');
     }
 
+    function normalizedMediaProgress(job) {
+        if (job?.status === 'completed') return 1;
+        const explicit = Number(job?.progress);
+        if (Number.isFinite(explicit)) {
+            return Math.min(1, Math.max(0, explicit > 1 ? explicit / 100 : explicit));
+        }
+        if (imageJobHasStep(job)) {
+            return Number(job.current_step) / Number(job.total_steps);
+        }
+        return 0;
+    }
+
+    function mediaPhaseLabel(job, kind) {
+        const status = String(job?.status || 'queued').toLowerCase();
+        const phase = ['completed', 'failed', 'cancelled'].includes(status)
+            ? status
+            : String(job?.phase || status).toLowerCase();
+        const labels = {
+            queued: 'Warten', starting: 'Laden', loading: 'Laden', loading_model: 'Laden',
+            encoding: 'Encoding', encoding_text: 'Encoding',
+            running: kind === 'image' && job?.operation === 'edit' ? 'Editing' : 'Generating',
+            progress: 'Generating', generate: 'Generating', generated: 'Speichern',
+            generating: 'Generating', inference: 'Generating', denoising: 'Generating',
+            upscaling: 'Upscaling', upscale: 'Upscaling', refining: 'Upscaling',
+            saving: 'Speichern', save: 'Speichern', decoding: 'Decoding', muxing: 'Muxing',
+            completed: 'Abgeschlossen', complete: 'Abgeschlossen',
+            cancelled: 'Abgebrochen', failed: 'Fehlgeschlagen', error: 'Fehlgeschlagen'
+        };
+        return labels[phase] || phase;
+    }
+
+    function mediaJobPresentation(job, kind, nowSeconds = Date.now() / 1000) {
+        const activeStatuses = kind === 'video'
+            ? ACTIVE_VIDEO_JOB_STATUSES
+            : ACTIVE_IMAGE_JOB_STATUSES;
+        const active = activeStatuses.has(String(job?.status || 'queued'));
+        const elapsed = active ? imageJobElapsedSeconds(job, nowSeconds) : null;
+        const progress = normalizedMediaProgress(job);
+        const current = Number(job?.current_step);
+        const total = Number(job?.total_steps);
+        const hasStepProgress = imageJobHasStep(job);
+        let etaSeconds = null;
+        if (
+            active && hasStepProgress && current >= 2 && current < total &&
+            elapsed >= 5
+        ) {
+            const estimate = elapsed * (total - current) / current;
+            if (Number.isFinite(estimate) && estimate > 0) {
+                etaSeconds = Math.round(estimate);
+            }
+        }
+        return {
+            active,
+            elapsed,
+            etaSeconds,
+            hasStepProgress,
+            phase: mediaPhaseLabel(job, kind),
+            progress,
+            percent: Math.round(progress * 100),
+        };
+    }
+
+    function appendMediaProgress(card, job, presentation) {
+        if (!presentation.active) return;
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'batch-progress-wrap';
+        const progressBar = document.createElement('div');
+        progressBar.className = 'batch-progress-bar';
+        progressBar.setAttribute?.('role', 'progressbar');
+        progressBar.setAttribute?.('aria-valuemin', '0');
+        progressBar.setAttribute?.('aria-valuemax', '100');
+        progressBar.setAttribute?.('aria-valuenow', String(presentation.percent));
+        const progressFill = document.createElement('div');
+        progressFill.className = 'batch-progress-fill';
+        progressFill.style.width = (presentation.progress * 100).toFixed(2) + '%';
+        progressBar.appendChild(progressFill);
+        progressWrap.appendChild(progressBar);
+        const progressText = document.createElement('div');
+        progressText.className = 'batch-progress-text';
+        const parts = [presentation.percent + '%'];
+        if (presentation.hasStepProgress) {
+            parts.push('Step ' + Number(job.current_step) + '/' + Number(job.total_steps));
+        }
+        if (presentation.etaSeconds != null) {
+            parts.push('Restzeit ca. ' + formatImageJobDuration(presentation.etaSeconds));
+        }
+        progressText.textContent = parts.join(' · ');
+        progressWrap.appendChild(progressText);
+        card.appendChild(progressWrap);
+    }
+
     function imageJobPresentation(
         job,
         nowSeconds = Date.now() / 1000
     ) {
         const status = String(job?.status || 'queued');
         const active = ACTIVE_IMAGE_JOB_STATUSES.has(status);
+        const media = mediaJobPresentation(job, 'image', nowSeconds);
         const hasStepProgress = imageJobHasStep(job);
         const statusFallback = {
             queued: 'Image job waiting …',
@@ -147,7 +239,7 @@
             );
         }
 
-        const details = [];
+        const details = ['Phase: ' + media.phase];
         if (status === 'running' && hasStepProgress) {
             details.push(rt(
                 stale ? 'image_step_last' : 'image_step',
@@ -165,6 +257,9 @@
                 statusFallback
             ));
         }
+        if (status === 'failed' && job?.error) {
+            details.push(String(job.error));
+        }
 
         const elapsed = active
             ? imageJobElapsedSeconds(job, nowSeconds)
@@ -178,6 +273,7 @@
         }
 
         return {
+            ...media,
             active,
             details: details.join('\n'),
             elapsed,
@@ -546,15 +642,15 @@ function enhanceCodeBlocks(container) {
 
 
 function renderToolCard(message) {
-    if (
-        message?.tool_result?.tool === 'image_generate' &&
-        message?.tool_result?.status === 'completed'
-    ) {
-        return null;
-    }
     const result = message?.tool_result;
 
     if (!result) {
+        return null;
+    }
+    if ([
+        'image_generate', 'image_edit', 'image_upscale',
+        'video_generate', 'video_animate'
+    ].includes(result.tool)) {
         return null;
     }
 
@@ -1730,24 +1826,9 @@ function renderImageJobCard(message) {
 
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
-    const currentStep = Number(job.current_step);
-    const totalSteps = Number(job.total_steps);
     details.textContent = presentation.details;
     card.appendChild(details);
-
-    if (presentation.hasStepProgress) {
-        const progressWrap = document.createElement('div');
-        progressWrap.className = 'batch-progress-wrap';
-        const progressBar = document.createElement('div');
-        progressBar.className = 'batch-progress-bar';
-        const progressFill = document.createElement('div');
-        progressFill.className = 'batch-progress-fill';
-        progressFill.style.width =
-            Math.min(100, (currentStep / totalSteps) * 100).toFixed(2) + '%';
-        progressBar.appendChild(progressFill);
-        progressWrap.appendChild(progressBar);
-        card.appendChild(progressWrap);
-    }
+    appendMediaProgress(card, job, presentation);
 
     if ([
         'queued',
@@ -1869,17 +1950,28 @@ function renderVideoJobCard(message) {
     const labels = {
         queued: 'Video-Job wartet …', loading: 'Video-Modell wird geladen …',
         encoding: 'Eingabe wird kodiert …', generating: 'Video wird erzeugt …',
+        upscaling: 'Video wird hochskaliert …',
         decoding: 'Video wird dekodiert …', muxing: 'MP4 wird erstellt …',
         cancelled: 'Video-Job abgebrochen', failed: 'Video-Job fehlgeschlagen'
     };
     title.textContent = labels[job.status] || job.status;
     card.appendChild(title);
+    const presentation = mediaJobPresentation(job, 'video');
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
-    const step = Number(job.current_step), total = Number(job.total_steps);
-    details.textContent = Number.isInteger(step) && Number.isInteger(total) && step >= 0
-        ? 'Step ' + step + '/' + total : '';
+    const detailLines = [
+        'Phase: ' + presentation.phase,
+        presentation.elapsed != null
+            ? 'Verstrichen: ' + formatImageJobDuration(presentation.elapsed)
+            : '',
+        job.status === 'failed' && job.error ? String(job.error) : ''
+    ].filter(Boolean);
+    if (job.status === 'generating' && !presentation.hasStepProgress) {
+        detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
+    }
+    details.textContent = detailLines.join('\n');
     card.appendChild(details);
+    appendMediaProgress(card, job, presentation);
     if (ACTIVE_VIDEO_JOB_STATUSES.has(job.status)) {
         const controls = document.createElement('div');
         controls.className = 'batch-chat-controls';
@@ -3178,12 +3270,14 @@ function renderAll(options = {}) {
             batchFailureDetail,
             formatImageJobDuration,
             imageJobPresentation,
+            mediaJobPresentation,
             sessionNeedsImageJobUiTimer,
             syncImageJobUiTimer,
             renderImageArtifactCard,
             renderImageJobCard,
             renderVideoArtifactCard,
             renderVideoJobCard,
+            renderToolCard,
             renderAgentCard,
         }
     };

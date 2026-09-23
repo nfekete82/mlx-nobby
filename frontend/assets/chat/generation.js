@@ -53,6 +53,18 @@ function isVideoRequest(prompt) {
     return VIDEO_ANIMATE_PATTERN.test(value) || VIDEO_GENERATE_PATTERN.test(value);
 }
 
+const VIDEO_DURATIONS = new Set([5, 6, 8, 10]);
+
+function videoOptionsForRequest(options, mediaKind, duration = 5) {
+    const existing = options?.video || null;
+    if (mediaKind !== 'video') return existing;
+    const selected = Number(duration);
+    return {
+        ...(existing || {}),
+        duration: VIDEO_DURATIONS.has(selected) ? selected : 5
+    };
+}
+
 function isImageEditRequest(prompt, hasImage) {
     if (!hasImage) {
         return false;
@@ -649,10 +661,7 @@ function preferredVideoImageSource(session, currentImages = []) {
     if (newestCurrent) return { origin: 'current_upload', source: newestCurrent };
     const active = activeSessionImageArtifact(session);
     if (active) return { origin: 'active_artifact', source: active };
-    const previousUpload = latestSessionImageUpload(session);
-    return previousUpload
-        ? { origin: 'chat_upload', source: previousUpload }
-        : null;
+    return null;
 }
 
 
@@ -2367,6 +2376,11 @@ const imageFiles =
             let selectedMediaQuality =
                 MLXChatRuntime.getSessionMediaQuality?.() ||
                 'standard';
+            let selectedVideoDuration = VIDEO_DURATIONS.has(
+                Number(options?.video?.duration)
+            )
+                ? Number(options.video.duration)
+                : 5;
 
             if (mediaQualityKind) {
                 const modal =
@@ -2379,6 +2393,10 @@ const imageFiles =
                     document.getElementById('mediaQualityModalCancel');
                 const confirm =
                     document.getElementById('mediaQualityModalConfirm');
+                const durationField =
+                    document.getElementById('videoDurationField');
+                const durationSelect =
+                    document.getElementById('videoDuration');
                 const qualityButtons =
                     typeof document.querySelectorAll === 'function'
                         ? [
@@ -2425,6 +2443,11 @@ const imageFiles =
                         mediaQualityKind === 'video'
                             ? 'Welche Qualität möchtest du für das Video verwenden?'
                             : 'Welche Qualität möchtest du für das Bild verwenden?';
+
+                    if (durationField && durationSelect) {
+                        durationField.hidden = mediaQualityKind !== 'video';
+                        durationSelect.value = String(selectedVideoDuration);
+                    }
 
                     renderChoice();
 
@@ -2489,6 +2512,12 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            if (mediaQualityKind === 'video' && durationSelect) {
+                                const duration = Number(durationSelect.value);
+                                selectedVideoDuration = VIDEO_DURATIONS.has(duration)
+                                    ? duration
+                                    : 5;
+                            }
                             finish(choice);
                         };
 
@@ -2591,7 +2620,11 @@ const imageFiles =
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
                 image_options: options?.image || null,
-                video_options: options?.video || null,
+                video_options: videoOptionsForRequest(
+                    options,
+                    mediaQualityKind,
+                    selectedVideoDuration
+                ),
                 quality: selectedMediaQuality,
                 conversation_context: conversationContext,
                 trace_id: userMessage.trace_id,
@@ -3195,7 +3228,7 @@ const IMAGE_JOB_TOOLS = new Set([
 ]);
 const imageJobWatchers = new Map();
 const ACTIVE_VIDEO_JOB_STATUSES = new Set([
-    'queued', 'loading', 'encoding', 'generating', 'decoding', 'muxing'
+    'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
 ]);
 const videoJobWatchers = new Map();
 
@@ -3610,10 +3643,21 @@ function resumeImageJobsForSession(session) {
     return started;
 }
 
-function updateVideoJobMessage(session, message, toolResult) {
+function updateVideoJobMessage(session, message, toolResult, nowSeconds = Date.now() / 1000) {
     const job = toolResult?.data?.job;
     if (!job?.id) return true;
-    message.video_job = { ...job };
+    const previous = message.video_job;
+    const next = { ...job };
+    if (
+        Number(previous?.progress) !== Number(next.progress) ||
+        Number(previous?.current_step) !== Number(next.current_step) ||
+        previous?.phase !== next.phase
+    ) {
+        next.progress_updated_at = nowSeconds;
+    } else if (previous?.progress_updated_at) {
+        next.progress_updated_at = previous.progress_updated_at;
+    }
+    message.video_job = next;
     message.tool_result = toolResult;
     if (toolResult.status === 'completed') {
         message.content = '';
@@ -3804,6 +3848,7 @@ resetSessionRuntime: resetSessionRuntime,
             updateVideoJobMessage: updateVideoJobMessage,
             watchVideoJob: watchVideoJob,
             isVideoRequest: isVideoRequest,
+            videoOptionsForRequest: videoOptionsForRequest,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary,
             toolSummary: toolSummary

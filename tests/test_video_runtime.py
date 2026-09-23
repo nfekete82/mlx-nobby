@@ -87,6 +87,50 @@ class VideoProviderTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"mp4")
             unload.assert_called_once()
 
+    def test_ltx_runtime_progress_and_phase_are_forwarded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source_output = Path(tmp) / "official.mp4"
+            source_output.write_bytes(b"mp4")
+            output = Path(tmp) / "artifact.mp4"
+            release = threading.Event()
+            progress_events, phases = [], []
+
+            def generate_request(_payload):
+                self.assertTrue(release.wait(timeout=2))
+                return {"status": "complete", "video_path": str(source_output)}
+
+            def runtime_request(_method, path, *_args, **_kwargs):
+                self.assertEqual(path, "/api/generation/progress")
+                release.set()
+                return {
+                    "status": "running", "phase": "inference", "progress": 50,
+                    "currentStep": 4, "totalSteps": 8,
+                }
+
+            with mock.patch.object(video_providers, "availability", return_value=(True, "ok")), \
+                 mock.patch.object(video_providers, "_start_runtime", return_value=(mock.Mock(), mock.Mock())), \
+                 mock.patch.object(video_providers, "unload"), \
+                 mock.patch.object(video_providers, "_generate_request", side_effect=generate_request), \
+                 mock.patch.object(video_providers, "_json_request", side_effect=runtime_request), \
+                 mock.patch.object(video_providers, "_probe_video", return_value={
+                     "frames": 121, "width": 1024, "height": 576, "fps": 24,
+                     "duration": 5, "audio": True,
+                 }):
+                video_providers.generate(
+                    video_registry.builtin_model(), {
+                        "prompt": "Red ball rolls", "resolution": "540p", "duration": 5,
+                        "fps": 24, "aspect_ratio": "16:9", "width": 1024, "height": 576,
+                        "seed": 7, "first_frame": None,
+                    }, output, cancel_event=threading.Event(),
+                    progress_callback=progress_events.append, phase_callback=phases.append,
+                )
+            self.assertIn({
+                "phase": "inference", "step": 4, "total_steps": 8, "progress": 50,
+            }, progress_events)
+            self.assertIn("inference", phases)
+            self.assertEqual(progress_events[-1]["phase"], "muxing")
+            self.assertEqual(progress_events[-1]["progress"], 98)
+
     def test_i2v_prepares_contained_first_frame_and_reports_geometry(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "portrait.png"
@@ -232,7 +276,7 @@ class VideoServiceTests(unittest.TestCase):
         return {
             "id": job_id, "status": "queued", "chat_id": "chat", "run_id": job_id,
             "chat_revision": 0, "operation": "t2v", "current_step": None,
-            "total_steps": 11, "result": None, "error": None, "created_at": 1,
+            "total_steps": 8, "result": None, "error": None, "created_at": 1,
             "started_at": None, "finished_at": None, "_cancel_event": threading.Event(),
             "_runtime": None, "_thread": None,
         }
@@ -244,6 +288,18 @@ class VideoServiceTests(unittest.TestCase):
                 payload={"prompt": "Animate gently"},
             )
         self.assertEqual(self.request("i2v", "/managed/image.png").operation, "i2v")
+        for duration in (5, 6, 8, 10):
+            request = video_service.JobCreate(
+                operation="t2v", chat_id="chat", chat_revision=0,
+                payload={"prompt": "A red ball rolls", "duration": duration},
+            )
+            self.assertEqual(request.payload.duration, duration)
+            self.assertEqual(request.payload.frames, duration * 24 + 1)
+        with self.assertRaises(ValueError):
+            video_service.JobCreate(
+                operation="t2v", chat_id="chat", chat_revision=0,
+                payload={"prompt": "A red ball rolls", "duration": 7},
+            )
 
     def test_quality_profiles_map_to_ltx_resolution(self):
         expected = {
@@ -301,6 +357,9 @@ class VideoServiceTests(unittest.TestCase):
             video_service._run(job_id, request)
         job = video_service._jobs[job_id]
         self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["progress"], 1.0)
+        self.assertEqual(job["current_step"], 8)
+        self.assertEqual(job["total_steps"], 8)
         self.assertTrue(Path(job["result"]["path"]).is_file())
         self.assertEqual(job["result"]["pipeline"], "fast")
         self.assertEqual(job["result"]["memory_peak"], snapshot)
@@ -347,6 +406,16 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(video_service._jobs[job_id]["status"], "failed")
         self.assertIn("Memory-Preflight", video_service._jobs[job_id]["error"])
 
+    def test_ltx_phase_and_percent_normalization(self):
+        self.assertEqual(video_service._phase_status("loading_model"), "loading")
+        self.assertEqual(video_service._phase_status("encoding_text"), "encoding")
+        self.assertEqual(video_service._phase_status("inference"), "generating")
+        self.assertEqual(video_service._phase_status("upscaling"), "upscaling")
+        self.assertEqual(video_service._phase_status("decoding"), "decoding")
+        self.assertEqual(video_service._phase_status("muxing"), "muxing")
+        self.assertEqual(video_service._normalized_progress(50), 0.5)
+        self.assertEqual(video_service._normalized_progress(1), 1.0)
+
 
 class VideoAgentTests(unittest.TestCase):
     def test_chat_routing_and_normal_chat(self):
@@ -371,6 +440,71 @@ class VideoAgentTests(unittest.TestCase):
         with mock.patch.object(agent, "compile_video_prompt", side_effect=lambda value: value):
             payload = agent._video_payload(request, "t2v")
         self.assertNotIn("first_frame", payload)
+
+    def test_current_image_upload_makes_video_request_i2v(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_root = agent.VIDEO_UPLOAD_DIRECTORY
+            agent.VIDEO_UPLOAD_DIRECTORY = Path(tmp)
+            upload = Path(tmp) / "123456abcdef.png"
+            upload.write_bytes(b"\x89PNG\r\n\x1a\nmanaged")
+            request = agent.ChatActionRequest(
+                prompt="Erstelle ein Video wie das Mädchen tanzt",
+                file_context={"kind": "image", "stored_path": str(upload)},
+            )
+            try:
+                with mock.patch.object(
+                    agent, "compile_video_prompt", side_effect=lambda value: value,
+                ), mock.patch.object(
+                    agent, "_validated_image_job_chat_identity", return_value=("chat", 0),
+                ), mock.patch.object(agent.video_api, "request", return_value={
+                    "id": "a" * 24, "operation": "i2v", "status": "queued",
+                }) as create:
+                    job = agent._start_chat_video_job("video_generate", request)
+            finally:
+                agent.VIDEO_UPLOAD_DIRECTORY = old_root
+        self.assertEqual(job["operation"], "i2v")
+        self.assertEqual(create.call_args.args[2]["operation"], "i2v")
+        self.assertEqual(
+            create.call_args.args[2]["payload"]["first_frame"],
+            str(upload.resolve()),
+        )
+
+    def test_active_image_artifact_makes_video_request_i2v(self):
+        request = agent.ChatActionRequest(
+            prompt="Erstelle ein Video mit Bewegung",
+            active_artifact_id="image-1234567890-abcdef123456",
+        )
+        source = Path("/managed/artifact.png")
+        with mock.patch.object(
+            agent, "compile_video_prompt", side_effect=lambda value: value,
+        ), mock.patch.object(
+            agent, "_resolve_image_artifact_source", return_value=source,
+        ), mock.patch.object(
+            agent, "_validated_image_job_chat_identity", return_value=("chat", 0),
+        ), mock.patch.object(agent.video_api, "request", return_value={
+            "id": "b" * 24, "operation": "i2v", "status": "queued",
+        }) as create:
+            job = agent._start_chat_video_job("video_generate", request)
+        self.assertEqual(job["operation"], "i2v")
+        self.assertEqual(create.call_args.args[2]["operation"], "i2v")
+        self.assertEqual(create.call_args.args[2]["payload"]["first_frame"], str(source))
+
+    def test_video_without_current_image_stays_t2v(self):
+        request = agent.ChatActionRequest(
+            prompt="Erstelle ein Video von einem roten Ball",
+            conversation_context=[{
+                "role": "user", "content": "Earlier I uploaded an image",
+            }],
+        )
+        with mock.patch.object(agent, "_video_payload", return_value={
+            "prompt": "a red ball",
+        }) as payload, mock.patch.object(
+            agent, "_validated_image_job_chat_identity", return_value=("chat", 0),
+        ), mock.patch.object(agent.video_api, "request", return_value={
+            "id": "c" * 24, "operation": "t2v", "status": "queued",
+        }):
+            agent._start_chat_video_job("video_generate", request)
+        payload.assert_called_once_with(request, "t2v")
 
     def test_video_quality_is_forwarded_by_agent(self):
         request = agent.ChatActionRequest(

@@ -8226,7 +8226,11 @@ def _video_artifact(result):
 
 
 def _start_chat_video_job(action, request):
-    operation = "i2v" if action == "video_animate" else "t2v"
+    has_bound_image = (
+        _file_context_is_image(request.file_context)
+        or bool(request.active_artifact_id)
+    )
+    operation = "i2v" if action == "video_animate" or has_bound_image else "t2v"
     payload = _video_payload(request, operation)
     chat_id, chat_revision = _validated_image_job_chat_identity(request)
     return video_api.request("POST", "/jobs", {
@@ -9192,7 +9196,7 @@ def run_chat_action(request: ChatActionRequest):
     if action in {"video_generate", "video_animate"}:
         try:
             job = _start_chat_video_job(action, request)
-            return chat_tool_result(action, job.get("status", "queued"), {"job": job})
+            return _video_job_tool_result(job)
         except HTTPException as exc:
             if exc.status_code == 409:
                 raise

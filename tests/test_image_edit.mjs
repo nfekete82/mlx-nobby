@@ -1200,21 +1200,24 @@ const noStep = imageJobPresentation({
 }, 1037);
 assert.equal(noStep.hasStepProgress, false);
 assert.equal(noStep.title, 'Image is being processed …');
-assert.equal(noStep.details, 'Elapsed: 00:37');
+assert.match(noStep.details, /Phase: Generating/);
+assert.match(noStep.details, /Elapsed: 00:37/);
 
 const loading = imageJobPresentation({
     status: 'loading',
     created_at: 1000,
 }, 1012);
 assert.equal(loading.title, 'Loading model …');
-assert.equal(loading.details, 'Elapsed: 00:12');
+assert.match(loading.details, /Phase: Laden/);
+assert.match(loading.details, /Elapsed: 00:12/);
 
 const saving = imageJobPresentation({
     status: 'saving',
     started_at: 1000,
 }, 1068);
 assert.equal(saving.title, 'Saving image …');
-assert.equal(saving.details, 'Elapsed: 01:08');
+assert.match(saving.details, /Phase: Speichern/);
+assert.match(saving.details, /Elapsed: 01:08/);
 
 const completed = imageJobPresentation({
     status: 'completed',
@@ -1222,6 +1225,7 @@ const completed = imageJobPresentation({
 }, 1068);
 assert.equal(completed.active, false);
 assert.equal(completed.elapsed, null);
+assert.equal(completed.percent, 100);
 
 const reloadMessage = {
     image_job: {
@@ -1351,13 +1355,13 @@ assert.equal(
     descendants(noProgressCard).some(
         element => element.className === 'batch-progress-wrap'
     ),
-    false,
+    true,
 );
 assert.equal(
     descendants(noProgressCard).find(
-        element => element.className === 'batch-chat-details'
+        element => element.className === 'batch-progress-text'
     ).textContent.includes('%'),
-    false,
+    true,
 );
 
 const editMessage = session.messages

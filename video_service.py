@@ -30,7 +30,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 MLX_MANAGER = PROJECT_DIR / "scripts/mlx"
 MLX_SERVER_LABEL = "de.nobby.mlx-server"
 IMAGE_HEALTH_URL = os.environ.get("IMAGE_SERVICE_URL", "http://127.0.0.1:8030").rstrip("/") + "/health"
-ACTIVE = {"queued", "loading", "encoding", "generating", "decoding", "muxing"}
+ACTIVE = {"queued", "loading", "encoding", "generating", "upscaling", "decoding", "muxing"}
 TERMINAL = {"completed", "failed", "cancelled"}
 QUALITY_PROFILES = {
     "fast": {"resolution": "540p", "steps": 11},
@@ -230,6 +230,32 @@ def _update(job_id, **changes):
         _persist(job)
 
 
+def _phase_status(phase):
+    value = str(phase or "").lower()
+    if value in {"starting", "loading", "loading_model", "validating_request"}:
+        return "loading"
+    if "encod" in value:
+        return "encoding"
+    if "upscal" in value or "refin" in value:
+        return "upscaling"
+    if "decod" in value:
+        return "decoding"
+    if "mux" in value or "final" in value:
+        return "muxing"
+    if value in {"inference", "denoising", "generating", "running"}:
+        return "generating"
+    return None
+
+
+def _normalized_progress(value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    value = float(value)
+    if value > 1:
+        value /= 100
+    return min(1.0, max(0.0, value))
+
+
 def _run(job_id, request):
     job = _jobs[job_id]
     cancel = job["_cancel_event"]
@@ -238,7 +264,10 @@ def _run(job_id, request):
     before = _memory_snapshot()
     peak = dict(before)
     try:
-        _update(job_id, status="loading", started_at=time.time(), memory_before=before)
+        _update(
+            job_id, status="loading", phase="loading", progress=0.0,
+            started_at=time.time(), memory_before=before,
+        )
         model = registry.get_model(request.payload.model)
         ready, reason = availability(model)
         if not ready:
@@ -264,16 +293,35 @@ def _run(job_id, request):
             for key in peak:
                 if current.get(key) is not None:
                     peak[key] = max(peak.get(key) or 0, current[key])
-            _update(
-                job_id, current_step=event.get("step"), total_steps=event.get("total_steps") or 11,
-                progress=event.get("progress"), memory_peak=peak,
-            )
+            changes = {"memory_peak": peak}
+            phase = str(event.get("phase") or "")
+            if phase:
+                changes["phase"] = phase
+                status = _phase_status(phase)
+                if status:
+                    changes["status"] = status
+            step, total = event.get("step"), event.get("total_steps")
+            if isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
+                changes.update(current_step=step, total_steps=total)
+            progress = _normalized_progress(event.get("progress"))
+            if progress is not None:
+                changes["progress"] = progress
+            elif isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
+                changes["progress"] = step / total
+            _update(job_id, **changes)
+
+        def phase_changed(phase):
+            changes = {"phase": phase}
+            status = _phase_status(phase)
+            if status:
+                changes["status"] = status
+            _update(job_id, **changes)
 
         media = generate(
             model, request.payload.model_dump(), output,
             cancel_event=cancel, response_callback=runtime_changed,
             progress_callback=progress_changed,
-            phase_callback=lambda phase: _update(job_id, status=phase),
+            phase_callback=phase_changed,
         )
         if cancel.is_set():
             raise ProviderCancelled("Video job was cancelled")
@@ -290,7 +338,11 @@ def _run(job_id, request):
             "created_at": time.time(), "memory_before": before, "memory_peak": peak,
             "memory_after": after, **media,
         }
-        _update(job_id, status="completed", result=result, error=None, finished_at=time.time(), memory_after=after)
+        _update(
+            job_id, status="completed", phase="completed", current_step=8,
+            total_steps=8, progress=1.0, result=result, error=None,
+            finished_at=time.time(), memory_after=after,
+        )
     except ProviderCancelled:
         if output:
             output.unlink(missing_ok=True)
@@ -340,8 +392,9 @@ def create_job(request: JobCreate):
     job = {
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,
         "run_id": request.run_id or job_id, "chat_revision": request.chat_revision,
-        "status": "queued", "model": request.payload.model, "current_step": None,
-        "total_steps": 11, "progress": 0, "result": None, "error": None,
+        "status": "queued", "phase": "queued", "model": request.payload.model,
+        "current_step": None, "total_steps": 8, "progress": 0.0,
+        "result": None, "error": None,
         "payload": request.payload.model_dump(), "created_at": time.time(),
         "started_at": None, "finished_at": None, "_cancel_event": threading.Event(),
         "_runtime": None, "_thread": None,

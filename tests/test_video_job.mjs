@@ -29,6 +29,10 @@ assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
 assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ball'), true);
 assert.equal(api.__test.isImageGenerationRequest('Wie wird das Wetter?'), false);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
+assert.equal(api.__test.videoOptionsForRequest({ video: { seed: 9 } }, 'video', 10).duration, 10);
+assert.equal(api.__test.videoOptionsForRequest({ video: { seed: 9 } }, 'video', 10).seed, 9);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video', 7).duration, 5);
 const activeArtifact = {
     artifact_id: 'image-1234567890-abcdef123456',
     image_id: '1234567890-abcdef123456',
@@ -58,8 +62,8 @@ const uploadOnlySession = {
     messages: [{ role: 'user', attachments: [oldUpload, newUpload] }],
 };
 assert.equal(
-    api.__test.preferredVideoImageSource(uploadOnlySession, []).source.name,
-    'new.png',
+    api.__test.preferredVideoImageSource(uploadOnlySession, []),
+    null,
 );
 const id = 'd'.repeat(24);
 const message = {
@@ -79,10 +83,38 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(message.video_job.status, 'completed');
 assert.equal(message.tool_result.artifacts[0].mime_type, 'video/mp4');
 
+const renderingWindow = { MLXI18n: { t(_key, fallback) { return fallback; } } };
+renderingWindow.window = renderingWindow;
+vm.runInNewContext(rendering, {
+    window: renderingWindow,
+    document: { getElementById() { return null; }, addEventListener() {} },
+    console, setInterval, clearInterval, Date,
+}, { filename: 'rendering.js' });
+const mediaProgress = renderingWindow.MLXChatRendering.__test.mediaJobPresentation;
+const renderToolCard = renderingWindow.MLXChatRendering.__test.renderToolCard;
+assert.equal(renderToolCard({ tool_result: { tool: 'video_animate', status: 'generating' } }), null);
+assert.equal(renderToolCard({ tool_result: { tool: 'image_generate', status: 'running' } }), null);
+const liveVideo = mediaProgress({
+    status: 'generating', phase: 'inference', progress: 50,
+    current_step: 4, total_steps: 8, started_at: 80,
+}, 'video', 100);
+assert.equal(liveVideo.percent, 50);
+assert.equal(liveVideo.phase, 'Generating');
+assert.equal(liveVideo.hasStepProgress, true);
+assert.equal(liveVideo.etaSeconds, 20);
+const completedVideo = mediaProgress({ status: 'completed', progress: 15 }, 'video', 100);
+assert.equal(completedVideo.percent, 100);
+assert.equal(
+    mediaProgress({ status: 'upscaling', phase: 'upscaling', progress: 85 }, 'video', 100).phase,
+    'Upscaling',
+);
+
 assert.match(rendering, /document\.createElement\('video'\)/);
 assert.match(rendering, /video\.controls = true/);
 assert.match(rendering, /\/api\/mlx\/videos\//);
 assert.match(rendering, /Source: /);
 assert.match(rendering, /Target: /);
 assert.match(rendering, /contain \+ padding/);
+assert.match(rendering, /batch-progress-text/);
+assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');

@@ -9826,6 +9826,18 @@ body.notes-resizing * {
     line-height: 1.35;
 }
 
+.media-duration-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 16px 0 8px;
+}
+
+.media-duration-field[hidden] {
+    display: none;
+}
+
 @media (max-width: 560px) {
     .media-quality-options {
         grid-template-columns: 1fr;
