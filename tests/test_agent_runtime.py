@@ -332,7 +332,15 @@ class RuntimeAPICompatibilityTests(unittest.TestCase):
         self.workspace = self.base / "workspace"
         self.workspace.mkdir()
         for patch in (
-            mock.patch.multiple(code_workspaces, ROOT=self.base, WORKSPACES=self.base / "workspaces.json"),
+            mock.patch.multiple(
+                code_workspaces,
+                ROOT=self.base,
+                WORKSPACES=self.base / "workspaces.json",
+                PATCHES=self.base / "patches",
+                SNAPSHOTS=self.base / "snapshots",
+                TESTS=self.base / "tests",
+                AUDIT=self.base / "audit" / "changes.jsonl",
+            ),
             mock.patch.object(self.agent, "ACTIVE_AGENT_RUNS", {}),
             mock.patch.object(self.agent, "PENDING_AGENT_ACTIONS", {}),
         ):

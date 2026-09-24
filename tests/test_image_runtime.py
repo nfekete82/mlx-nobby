@@ -1,4 +1,5 @@
 import copy
+from contextlib import nullcontext
 import io
 import json
 import os
@@ -80,6 +81,11 @@ class ImageRuntimeTests(unittest.TestCase):
                                 "status": "ready",
                                 "active_generation": False,
                             },
+                        ),
+                        patch.object(
+                            service.runtime_coordinator,
+                            "image_runtime",
+                            side_effect=lambda *_args, **_kwargs: nullcontext(),
                         )]
         for item in self.patches:
             item.start()
