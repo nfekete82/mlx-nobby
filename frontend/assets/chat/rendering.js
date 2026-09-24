@@ -1775,7 +1775,7 @@ function renderImageArtifactCard(message) {
         artifact.provider,
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.scale ? artifact.scale + '×' : '',
-        artifact.quality ? 'Qualität: ' + ({ fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
+        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');
@@ -1897,7 +1897,7 @@ function renderVideoArtifactCard(message) {
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.frames ? artifact.frames + ' Frames' : '',
         artifact.duration != null ? Number(artifact.duration).toFixed(2) + ' s' : '',
-        artifact.quality ? 'Qualität: ' + ({ fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
+        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Distilled Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : '',
         artifact.audio ? 'Audio' : 'Kein Audio'

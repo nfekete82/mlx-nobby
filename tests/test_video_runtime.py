@@ -254,10 +254,22 @@ class VideoServiceTests(unittest.TestCase):
         video_service.JOBS, video_service.OUTPUT = self.old_jobs, self.old_output
         self.tmp.cleanup()
 
-    def request(self, operation="t2v", first_frame=None, quality=None):
-        payload = {"prompt": "A red ball rolls", "seed": 1, "first_frame": first_frame}
+    def request(
+        self,
+        operation="t2v",
+        first_frame=None,
+        quality=None,
+        aspect_ratio=None,
+    ):
+        payload = {
+            "prompt": "A red ball rolls",
+            "seed": 1,
+            "first_frame": first_frame,
+        }
         if quality:
             payload["quality"] = quality
+        if aspect_ratio:
+            payload["aspect_ratio"] = aspect_ratio
         if operation == "i2v":
             validation = mock.patch.multiple(
                 video_service, validate_first_frame=mock.DEFAULT, i2v_source_size=mock.DEFAULT,
@@ -350,6 +362,54 @@ class VideoServiceTests(unittest.TestCase):
             self.assertEqual(request.payload.resolution, resolution)
             self.assertEqual((request.payload.width, request.payload.height), size)
             self.assertEqual(request.payload.steps, 11)
+
+    def test_preview_profile_is_small_t2v_only(self):
+        request = self.request(quality="preview")
+        self.assertEqual(request.payload.resolution, "preview")
+        self.assertEqual((request.payload.width, request.payload.height), (384, 256))
+        self.assertEqual(request.payload.duration, 2)
+        self.assertEqual(request.payload.fps, 8)
+        self.assertEqual(request.payload.frames, 17)
+        self.assertEqual(request.payload.steps, 2)
+
+        with self.assertRaises(ValueError):
+            self.request(
+                "i2v",
+                "/managed/image.png",
+                "preview",
+            )
+
+    def test_preview_portrait_uses_rotated_dimensions(self):
+        request = self.request(
+            quality="preview",
+            aspect_ratio="9:16",
+        )
+        self.assertEqual(request.payload.resolution, "preview")
+        self.assertEqual(
+            (request.payload.width, request.payload.height),
+            (256, 384),
+        )
+        self.assertEqual(request.payload.duration, 2)
+        self.assertEqual(request.payload.fps, 8)
+
+    def test_i2v_explicit_aspect_ratio_overrides_source_orientation(self):
+        request = self.request(
+            "i2v",
+            "/managed/image.png",
+            "fast",
+            aspect_ratio="16:9",
+        )
+        self.assertEqual(
+            request.payload.aspect_ratio,
+            "16:9",
+        )
+        self.assertEqual(
+            (
+                request.payload.width,
+                request.payload.height,
+            ),
+            (1024, 576),
+        )
 
     def test_default_is_standard(self):
         request = self.request()
@@ -548,6 +608,27 @@ class VideoAgentTests(unittest.TestCase):
         }):
             agent._start_chat_video_job("video_generate", request)
         payload.assert_called_once_with(request, "t2v")
+
+    def test_video_aspect_ratio_is_forwarded_by_agent(self):
+        request = agent.ChatActionRequest(
+            prompt="Erstelle ein Video von einem roten Ball",
+            video_options={
+                "aspect_ratio": "9:16",
+            },
+        )
+        with mock.patch.object(
+            agent,
+            "compile_video_prompt",
+            side_effect=lambda value: value,
+        ):
+            payload = agent._video_payload(
+                request,
+                "t2v",
+            )
+        self.assertEqual(
+            payload["aspect_ratio"],
+            "9:16",
+        )
 
     def test_video_quality_is_forwarded_by_agent(self):
         request = agent.ChatActionRequest(

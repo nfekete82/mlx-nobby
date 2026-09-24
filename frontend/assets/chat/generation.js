@@ -54,6 +54,7 @@ function isVideoRequest(prompt) {
 }
 
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
+    preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20]),
     standard: Object.freeze([5, 6, 8, 10]),
     quality: Object.freeze([5])
@@ -62,6 +63,81 @@ const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
 const VIDEO_DURATIONS = new Set(
     Object.values(VIDEO_DURATIONS_BY_QUALITY).flat()
 );
+
+const VIDEO_FORMATS = Object.freeze([
+    'landscape',
+    'portrait'
+]);
+
+const IMAGE_FORMATS = Object.freeze([
+    'landscape',
+    'portrait',
+    'square',
+    'landscape_4_3',
+    'portrait_3_4'
+]);
+
+const IMAGE_SIZES_BY_FORMAT = Object.freeze({
+    landscape: Object.freeze({
+        width: 768,
+        height: 432
+    }),
+    portrait: Object.freeze({
+        width: 432,
+        height: 768
+    }),
+    square: Object.freeze({
+        width: 512,
+        height: 512
+    }),
+    landscape_4_3: Object.freeze({
+        width: 576,
+        height: 432
+    }),
+    portrait_3_4: Object.freeze({
+        width: 432,
+        height: 576
+    })
+});
+
+function mediaFormatLabel(format) {
+    const labels = {
+        landscape: [
+            'ui.format_landscape',
+            'Querformat 16:9'
+        ],
+        portrait: [
+            'ui.format_portrait',
+            'Hochformat 9:16'
+        ],
+        square: [
+            'ui.format_square',
+            'Quadrat 1:1'
+        ],
+        landscape_4_3: [
+            'ui.format_landscape_4_3',
+            'Querformat 4:3'
+        ],
+        portrait_3_4: [
+            'ui.format_portrait_3_4',
+            'Hochformat 3:4'
+        ]
+    };
+
+    const [key, fallback] =
+        labels[format] || labels.square;
+
+    return window.MLXI18n?.t(
+        key,
+        fallback
+    ) || fallback;
+}
+
+function videoAspectRatioForFormat(format) {
+    return format === 'portrait'
+        ? '9:16'
+        : '16:9';
+}
 
 function videoDurationsForQuality(quality = 'standard') {
     return (
@@ -95,7 +171,8 @@ function videoOptionsForRequest(
     options,
     mediaKind,
     duration = 5,
-    quality = 'standard'
+    quality = 'standard',
+    format = 'landscape'
 ) {
     const existing = options?.video || null;
 
@@ -108,7 +185,35 @@ function videoOptionsForRequest(
         duration: normalizeVideoDuration(
             duration,
             quality
-        )
+        ),
+        aspect_ratio:
+            videoAspectRatioForFormat(format)
+    };
+}
+
+function imageOptionsForRequest(
+    options,
+    mediaKind,
+    format = 'square',
+    allowFormat = false
+) {
+    const existing = options?.image || null;
+
+    if (
+        mediaKind !== 'image' ||
+        !allowFormat
+    ) {
+        return existing;
+    }
+
+    const size =
+        IMAGE_SIZES_BY_FORMAT[format] ||
+        IMAGE_SIZES_BY_FORMAT.square;
+
+    return {
+        ...(existing || {}),
+        width: size.width,
+        height: size.height
     };
 }
 
@@ -2429,6 +2534,15 @@ const imageFiles =
                 ? Number(options.video.duration)
                 : 5;
 
+            let selectedMediaFormat =
+                mediaQualityKind === 'video'
+                    ? (
+                        options?.video?.aspect_ratio === '9:16'
+                            ? 'portrait'
+                            : 'landscape'
+                    )
+                    : 'square';
+
             if (mediaQualityKind) {
                 const modal =
                     document.getElementById('mediaQualityModal');
@@ -2440,6 +2554,10 @@ const imageFiles =
                     document.getElementById('mediaQualityModalCancel');
                 const confirm =
                     document.getElementById('mediaQualityModalConfirm');
+                const formatField =
+                    document.getElementById('mediaFormatField');
+                const formatSelect =
+                    document.getElementById('mediaFormat');
                 const durationField =
                     document.getElementById('videoDurationField');
                 const durationSelect =
@@ -2463,6 +2581,65 @@ const imageFiles =
                 ) {
                     // Default is Standard; subsequent jobs reuse this session's choice.
                     let choice = selectedMediaQuality;
+
+                    if (
+                        mediaQualityKind !== 'video' &&
+                        choice === 'preview'
+                    ) {
+                        choice = 'standard';
+                    }
+
+                    const renderFormatOptions = () => {
+                        if (!formatField || !formatSelect) {
+                            return;
+                        }
+
+                        const enabled =
+                            mediaQualityKind === 'video' ||
+                            (
+                                mediaQualityKind === 'image' &&
+                                !explicitImageEditRequest
+                            );
+
+                        formatField.hidden = !enabled;
+
+                        if (!enabled) {
+                            return;
+                        }
+
+                        const allowed =
+                            mediaQualityKind === 'video'
+                                ? VIDEO_FORMATS
+                                : IMAGE_FORMATS;
+
+                        if (!allowed.includes(selectedMediaFormat)) {
+                            selectedMediaFormat =
+                                mediaQualityKind === 'video'
+                                    ? 'landscape'
+                                    : 'square';
+                        }
+
+                        const formatOptions =
+                            allowed.map(format => {
+                                const option =
+                                    document.createElement(
+                                        'option'
+                                    );
+
+                                option.value = format;
+                                option.textContent =
+                                    mediaFormatLabel(format);
+
+                                return option;
+                            });
+
+                        formatSelect.replaceChildren(
+                            ...formatOptions
+                        );
+
+                        formatSelect.value =
+                            selectedMediaFormat;
+                    };
 
                     const renderDurationOptions = () => {
                         if (!durationField || !durationSelect) {
@@ -2511,7 +2688,15 @@ const imageFiles =
 
                     const renderChoice = () => {
                         for (const button of qualityButtons) {
+                            const isPreview =
+                                button.dataset.mediaQuality === 'preview';
+
+                            button.hidden =
+                                isPreview &&
+                                mediaQualityKind !== 'video';
+
                             const active =
+                                !button.hidden &&
                                 button.dataset.mediaQuality === choice;
 
                             button.classList.toggle(
@@ -2525,6 +2710,7 @@ const imageFiles =
                             );
                         }
 
+                        renderFormatOptions();
                         renderDurationOptions();
                     };
 
@@ -2542,6 +2728,7 @@ const imageFiles =
 
                     const result = await new Promise(resolve => {
                         let settled = false;
+                        let acceptEnter = false;
 
                         const finish = value => {
                             if (settled) return;
@@ -2601,6 +2788,15 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            if (
+                                formatField &&
+                                !formatField.hidden &&
+                                formatSelect
+                            ) {
+                                selectedMediaFormat =
+                                    formatSelect.value;
+                            }
+
                             if (mediaQualityKind === 'video' && durationSelect) {
                                 const duration = Number(durationSelect.value);
                                 selectedVideoDuration =
@@ -2619,6 +2815,7 @@ const imageFiles =
                             }
 
                             if (
+                                acceptEnter &&
                                 event.key === 'Enter' &&
                                 !event.shiftKey
                             ) {
@@ -2665,6 +2862,8 @@ const imageFiles =
                         );
 
                         requestAnimationFrame(() => {
+                            acceptEnter = true;
+
                             const standard =
                                 modal.querySelector(
                                     '[data-media-quality="standard"]'
@@ -2691,7 +2890,10 @@ const imageFiles =
                     const legacySelect =
                         document.getElementById('mediaQuality');
 
-                    if (legacySelect) {
+                    if (
+                        legacySelect &&
+                        selectedMediaQuality !== 'preview'
+                    ) {
                         legacySelect.value =
                             selectedMediaQuality;
 
@@ -2710,12 +2912,18 @@ const imageFiles =
                 prompt: prompt,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
-                image_options: options?.image || null,
+                image_options: imageOptionsForRequest(
+                    options,
+                    mediaQualityKind,
+                    selectedMediaFormat,
+                    !explicitImageEditRequest
+                ),
                 video_options: videoOptionsForRequest(
                     options,
                     mediaQualityKind,
                     selectedVideoDuration,
-                    selectedMediaQuality
+                    selectedMediaQuality,
+                    selectedMediaFormat
                 ),
                 quality: selectedMediaQuality,
                 conversation_context: conversationContext,

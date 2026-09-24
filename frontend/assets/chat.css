@@ -9769,14 +9769,18 @@ body.notes-resizing * {
    --------------------------------------------------------- */
 
 .media-quality-dialog {
-    width: min(520px, calc(100vw - 32px));
+    width: min(720px, calc(100vw - 32px));
 }
 
 .media-quality-options {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
     gap: 10px;
     margin: 22px 0 8px;
+}
+
+.media-quality-option[hidden] {
+    display: none !important;
 }
 
 .media-quality-option {
@@ -9827,11 +9831,16 @@ body.notes-resizing * {
 }
 
 .media-duration-field {
-    display: flex;
+    display: grid;
+    grid-template-columns: 110px minmax(180px, 240px);
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    justify-content: start;
+    gap: 12px;
     margin: 16px 0 8px;
+}
+
+.media-duration-field select {
+    width: 100%;
 }
 
 .media-duration-field[hidden] {

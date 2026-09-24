@@ -21,6 +21,9 @@ LTX_RUNTIME_ROOT = Path(os.environ.get(
 LTX_BACKEND = LTX_RUNTIME_ROOT / "backend"
 LTX_PYTHON = Path(os.environ.get("LTX_PYTHON", str(LTX_BACKEND / ".venv/bin/python"))).expanduser()
 LTX_SERVER = LTX_BACKEND / "ltx2_server.py"
+LTX_PREVIEW_WORKER = Path(__file__).resolve().with_name(
+    "video_preview_worker.py"
+)
 LTX_URL = os.environ.get("LTX_URL", "http://127.0.0.1:18060").rstrip("/")
 LTX_PORT = int(LTX_URL.rsplit(":", 1)[-1])
 LTX_AUTH_TOKEN = os.environ.get("LTX_AUTH_TOKEN", "mlx-nobby-video-local")
@@ -185,6 +188,16 @@ def _runtime_environment():
     return environment
 
 
+def _preview_environment():
+    environment = _runtime_environment()
+    existing = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = (
+        str(LTX_BACKEND)
+        + (os.pathsep + existing if existing else "")
+    )
+    return environment
+
+
 def _start_runtime(cancel_event):
     RUNTIME_LOG.parent.mkdir(parents=True, exist_ok=True)
     log = RUNTIME_LOG.open("ab", buffering=0)
@@ -239,6 +252,164 @@ def unload(runtime):
         _stop_runtime(*runtime)
 
 
+def _preview_log_tail():
+    try:
+        with RUNTIME_LOG.open("rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - 4000))
+            return handle.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+    except OSError:
+        return ""
+
+
+def _generate_preview(
+    params,
+    output,
+    *,
+    cancel_event,
+    response_callback=None,
+    progress_callback=None,
+    phase_callback=None,
+):
+    if not LTX_PREVIEW_WORKER.is_file():
+        raise RuntimeError(
+            "LTX Preview-Worker fehlt"
+        )
+
+    if cancel_event.is_set():
+        raise ProviderCancelled(
+            "Video job was cancelled"
+        )
+
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    RUNTIME_LOG.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    log = RUNTIME_LOG.open(
+        "ab",
+        buffering=0,
+    )
+
+    process = subprocess.Popen(
+        [
+            str(LTX_PYTHON),
+            str(LTX_PREVIEW_WORKER),
+            "--prompt",
+            str(params["prompt"]),
+            "--seed",
+            str(params["seed"]),
+            "--output",
+            str(output),
+            "--width",
+            str(params["width"]),
+            "--height",
+            str(params["height"]),
+            "--frames",
+            str(params["frames"]),
+            "--fps",
+            str(params["fps"]),
+        ],
+        cwd=LTX_BACKEND,
+        env=_preview_environment(),
+        stdout=log,
+        stderr=subprocess.STDOUT,
+    )
+
+    runtime = (process, log)
+
+    if response_callback:
+        response_callback(runtime)
+
+    try:
+        if phase_callback:
+            phase_callback("generating")
+
+        if progress_callback:
+            progress_callback({
+                "phase": "generating",
+                "total_steps": 2,
+                "progress": 5,
+            })
+
+        while process.poll() is None:
+            if cancel_event.is_set():
+                _stop_runtime(
+                    process,
+                    log,
+                )
+                raise ProviderCancelled(
+                    "Video job was cancelled"
+                )
+
+            time.sleep(0.5)
+
+        if not log.closed:
+            log.close()
+
+        if process.returncode != 0:
+            detail = _preview_log_tail()
+            raise RuntimeError(
+                "LTX Preview-Worker fehlgeschlagen"
+                + (
+                    ": " + detail[-3000:]
+                    if detail
+                    else ""
+                )
+            )
+
+        if not output.is_file():
+            raise RuntimeError(
+                "LTX Preview-Worker lieferte kein Video"
+            )
+
+        if phase_callback:
+            phase_callback("muxing")
+
+        if progress_callback:
+            progress_callback({
+                "phase": "muxing",
+                "step": 2,
+                "total_steps": 2,
+                "progress": 98,
+            })
+
+        return _probe_video(output) | {
+            "provider_payload": {
+                "mode": "preview",
+                "width": params["width"],
+                "height": params["height"],
+                "frames": params["frames"],
+                "fps": params["fps"],
+                "audio": False,
+                "stage_1_steps": 1,
+                "stage_2_steps": 1,
+                "aspect_ratio": params.get("aspect_ratio") or "16:9",
+            }
+        }
+
+    finally:
+        if process.poll() is None:
+            _stop_runtime(
+                process,
+                log,
+            )
+        elif not log.closed:
+            log.close()
+
+        if response_callback:
+            response_callback(None)
+
+
 def _probe_video(path):
     completed = subprocess.run(
         [FFPROBE, "-v", "error", "-show_entries",
@@ -274,6 +445,22 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
     if not ready:
         raise RuntimeError(reason)
     source = validate_first_frame(params.get("first_frame"))
+
+    if params.get("quality") == "preview":
+        if source is not None:
+            raise ValueError(
+                "Video-Vorschau ist nur für Text-zu-Video verfügbar"
+            )
+
+        return _generate_preview(
+            params,
+            output,
+            cancel_event=cancel_event,
+            response_callback=response_callback,
+            progress_callback=progress_callback,
+            phase_callback=phase_callback,
+        )
+
     runtime = _start_runtime(cancel_event)
     if response_callback:
         response_callback(runtime)

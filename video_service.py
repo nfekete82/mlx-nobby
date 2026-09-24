@@ -32,14 +32,31 @@ MLX_SERVER_LABEL = "de.nobby.mlx-server"
 ACTIVE = {"queued", "loading", "encoding", "generating", "upscaling", "decoding", "muxing"}
 TERMINAL = {"completed", "failed", "cancelled"}
 QUALITY_PROFILES = {
+    "preview": {"resolution": "preview", "steps": 2},
     "fast": {"resolution": "540p", "steps": 11},
     "standard": {"resolution": "720p", "steps": 11},
     "quality": {"resolution": "1080p", "steps": 11},
 }
-LANDSCAPE_SIZES = {
-    "540p": (1024, 576), "720p": (1280, 704), "1080p": (1920, 1088),
+RESOLUTION_SIZES = {
+    "preview": {
+        "16:9": (384, 256),
+        "9:16": (256, 384),
+    },
+    "540p": {
+        "16:9": (1024, 576),
+        "9:16": (576, 1024),
+    },
+    "720p": {
+        "16:9": (1280, 704),
+        "9:16": (704, 1280),
+    },
+    "1080p": {
+        "16:9": (1920, 1088),
+        "9:16": (1088, 1920),
+    },
 }
 SUPPORTED_DURATIONS_BY_RESOLUTION = {
+    "preview": {2},
     "540p": {5, 6, 8, 10, 20},
     "720p": {5, 6, 8, 10},
     "1080p": {5},
@@ -53,13 +70,13 @@ class VideoPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     prompt: str = Field(min_length=3, max_length=4000)
     model: str = "auto"
-    resolution: Literal["540p", "720p", "1080p"] | None = None
+    resolution: Literal["preview", "540p", "720p", "1080p"] | None = None
     duration: int = Field(default=5)
-    fps: Literal[24] = 24
+    fps: Literal[8, 24] = 24
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
     first_frame: str | None = None
     resize_mode: Literal["contain", "cover"] | None = None
-    quality: Literal["fast", "standard", "quality"] | None = None
+    quality: Literal["preview", "fast", "standard", "quality"] | None = None
     width: int | None = None
     height: int | None = None
     frames: int | None = None
@@ -68,6 +85,11 @@ class VideoPayload(BaseModel):
 
     @model_validator(mode="after")
     def valid_ltx_options(self):
+        if self.quality == "preview":
+            self.resolution = "preview"
+            self.duration = 2
+            self.fps = 8
+
         effective_resolution = (
             self.resolution
             or QUALITY_PROFILES[self.quality or "standard"]["resolution"]
@@ -106,6 +128,11 @@ class JobCreate(BaseModel):
         supplied = self.payload.model_fields_set
         quality = self.payload.quality or "standard"
         profile = QUALITY_PROFILES[quality]
+
+        if quality == "preview" and self.operation != "t2v":
+            raise ValueError(
+                "Video-Vorschau ist nur für Text-zu-Video verfügbar"
+            )
         if "resolution" not in supplied or self.payload.resolution is None:
             self.payload.resolution = profile["resolution"]
         self.payload.steps = profile["steps"]
@@ -118,8 +145,22 @@ class JobCreate(BaseModel):
         if self.operation == "i2v":
             source = validate_first_frame(self.payload.first_frame)
             source_width, source_height = i2v_source_size(source)
-            self.payload.aspect_ratio = i2v_aspect_ratio(source_width, source_height)
-            expected = i2v_target_size(source_width, source_height, quality)
+
+            if "aspect_ratio" not in supplied:
+                self.payload.aspect_ratio = i2v_aspect_ratio(
+                    source_width,
+                    source_height,
+                )
+                expected = i2v_target_size(
+                    source_width,
+                    source_height,
+                    quality,
+                )
+            else:
+                expected = _video_dimensions(
+                    self.payload.resolution,
+                    self.payload.aspect_ratio,
+                )
             if ("width" in supplied) != ("height" in supplied):
                 raise ValueError("I2V width und height müssen gemeinsam angegeben werden")
             if "width" not in supplied:
@@ -127,12 +168,24 @@ class JobCreate(BaseModel):
             if self.payload.resize_mode is None:
                 self.payload.resize_mode = "contain"
         else:
-            landscape = LANDSCAPE_SIZES[self.payload.resolution]
-            if "width" not in supplied:
-                self.payload.width, self.payload.height = landscape
+            width, height = _video_dimensions(
+                self.payload.resolution,
+                self.payload.aspect_ratio,
+            )
+            if quality == "preview" or "width" not in supplied:
+                self.payload.width, self.payload.height = width, height
             self.payload.aspect_ratio = "9:16" if self.payload.height > self.payload.width else "16:9"
         self.payload.frames = self.payload.duration * self.payload.fps + 1
         return self
+
+
+def _video_dimensions(resolution, aspect_ratio):
+    ratios = RESOLUTION_SIZES[resolution]
+    return ratios.get(aspect_ratio or "16:9", ratios["16:9"])
+
+
+def _job_total_steps(payload):
+    return 2 if payload.quality == "preview" else 8
 
 
 def _public(job):
@@ -371,7 +424,8 @@ def _run(job_id, request):
             }
             _update(
                 job_id, status="completed", phase="completed",
-                current_step=8, total_steps=8,
+                current_step=_job_total_steps(request.payload),
+                total_steps=_job_total_steps(request.payload),
                 progress=1.0, result=result, error=None,
                 finished_at=time.time(), memory_after=after,
             )
@@ -429,7 +483,9 @@ def create_job(request: JobCreate):
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,
         "run_id": request.run_id or job_id, "chat_revision": request.chat_revision,
         "status": "queued", "phase": "queued", "model": request.payload.model,
-        "current_step": None, "total_steps": 8, "progress": 0.0,
+        "current_step": None,
+        "total_steps": _job_total_steps(request.payload),
+        "progress": 0.0,
         "result": None, "error": None,
         "payload": request.payload.model_dump(), "created_at": time.time(),
         "started_at": None, "finished_at": None, "_cancel_event": threading.Event(),

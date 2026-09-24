@@ -3936,7 +3936,7 @@ class ChatActionRequest(BaseModel):
     active_artifact_id: str | None = None
     image_options: dict | None = None
     video_options: dict | None = None
-    quality: Literal["fast", "standard", "quality"] | None = None
+    quality: Literal["preview", "fast", "standard", "quality"] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
     trace_id: str | None = None
@@ -8174,7 +8174,7 @@ def _video_payload(request, operation):
     options = dict(request.video_options or {})
     allowed = {
         "model", "resolution", "duration", "fps", "seed", "resize_mode",
-        "width", "height",
+        "width", "height", "aspect_ratio",
     }
     if set(options) - allowed:
         raise HTTPException(422, "Unbekannte Videoparameter")
@@ -12304,7 +12304,7 @@ def _build_agent_tool_registry():
             schema["properties"]["options"].update(
                 properties={"artifact_id": {"type": "string"}, "upload_path": {"type": "string"},
                             "video_options": {"type": "object"},
-                            "quality": {"type": "string", "enum": ["fast", "standard", "quality"]}},
+                            "quality": {"type": "string", "enum": ["preview", "fast", "standard", "quality"]}},
                 additionalProperties=False,
             )
         if name == "code_patch":
