@@ -109,23 +109,23 @@ because the image adapter invokes its console commands. The commands used
 by the repository were present and accepted the adapter's arguments. Package
 installation and help checks downloaded no model weights.
 
-### Vision classifier
+### Vision routing
 
-The agent's `vision_uncensored` routing uses a separate ONNX image classifier.
-Its `numpy` and `onnxruntime` requirements are listed in
+An optional ONNX classifier can be used by the vision routing layer. Its
+`numpy` and `onnxruntime` requirements are listed in
 `requirements/vision-classifier.txt`; the default installer does not install
-that manifest into `agent-venv`. Install it there to enable classification:
+that manifest into `agent-venv`. Install it there only when this routing helper
+is needed:
 
 ```sh
 agent-venv/bin/python -m pip install -r requirements/vision-classifier.txt
 ```
 
-The classifier downloads its ONNX model to
+The classifier stores its ONNX model under
 `~/.cache/mlx-web/vision/image-safety-classifier-l.onnx` on first use. Set
 `MLX_VISION_CLASSIFIER_MODEL` to an existing local model file to avoid that
 download. Missing classifier dependencies, download errors, and uncertain
-classifications fall back to the regular `vision` role. Configure a local model
-for `vision_uncensored` separately to use that role.
+classifications fall back to the regular `vision` role.
 
 ## Installation
 
@@ -239,7 +239,7 @@ file.
 | `MLX_IMAGE_SDXL_IDLE_TIMEOUT` | Seconds the local SDXL worker remains warm after a request; default 600. |
 | `MLX_IMAGE_REALESRGAN_BIN`, `MLX_IMAGE_REALESRGAN_MODELS` | Optional Real-ESRGAN binary and model directories. |
 | `MLX_TTS_MODEL`, `MLX_TTS_VOICE`, `MLX_TTS_LANGUAGE`, `MLX_TTS_INSTRUCT` | Speech service text-to-speech defaults. |
-| `MLX_VISION_CLASSIFIER_MODEL` | Optional local ONNX classifier file for vision role routing. |
+| `MLX_VISION_CLASSIFIER_MODEL` | Optional local ONNX classifier file for vision routing. |
 
 The old web variables `MLX_URL`, `SPEECH_URL`, and `IMAGE_URL` are no longer
 read by the web backend. MLX and speech requests cross `AGENT_URL`; the agent
