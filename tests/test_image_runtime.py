@@ -1364,112 +1364,91 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["width"], 896)
         self.assertEqual(payload["height"], 1152)
 
-    def test_image_prompt_router_preserves_semantics_across_isolated_requests(self):
-        translations = {
-            "einer frau mit schwarzen dessous": (
-                "Adult woman wearing black lingerie, matching black bra and black panties"
-            ),
-            "einer frau mit roten dessous": (
-                "Adult woman wearing red lingerie, matching red bra and red panties"
-            ),
-            "einer rothaarigen frau in unterwäsche": (
-                "Adult red-haired woman wearing underwear"
-            ),
-            "blonde frau mit rotem dessous": (
-                "Adult blonde woman wearing red lingerie, matching red bra and red panties"
-            ),
-            "rothaarige frau mit schwarzem dessous": (
-                "Adult red-haired woman wearing black lingerie, matching black bra and black panties"
-            ),
-            "blonde frau mit grünem kleid": (
-                "Adult blonde woman wearing a green dress"
-            ),
-            "mann mit rotem hemd": "Adult man wearing a red shirt",
-            "schwarzhaarige frau mit blauen augen": (
-                "Adult black-haired woman with blue eyes"
-            ),
-        }
-        expectations = {
-            "einer frau mit schwarzen dessous": (
-                ("woman", "black lingerie", "black bra", "black panties"),
-                ("blonde", "red-haired", "eyes"),
-            ),
-            "einer frau mit roten dessous": (
-                ("woman", "red lingerie", "red bra", "red panties"),
-                ("blonde", "black-haired", "eyes"),
-            ),
-            "einer rothaarigen frau in unterwäsche": (
-                ("red-haired woman", "underwear"),
-                ("black lingerie", "red lingerie", "white lingerie", "blue eyes"),
-            ),
-            "blonde frau mit rotem dessous": (
-                ("blonde woman", "red lingerie", "red bra", "red panties"),
-                ("black lingerie", "black-haired", "blue eyes"),
-            ),
-            "rothaarige frau mit schwarzem dessous": (
-                ("red-haired woman", "black lingerie"),
-                ("red lingerie", "blonde", "blue eyes"),
-            ),
-            "blonde frau mit grünem kleid": (
-                ("blonde woman", "green dress"),
-                ("lingerie", "bra", "panties", "blue eyes"),
-            ),
-            "mann mit rotem hemd": (
-                ("man", "red shirt"),
-                ("woman", "hair", "eyes", "lingerie"),
-            ),
-            "schwarzhaarige frau mit blauen augen": (
-                ("black-haired woman", "blue eyes"),
-                ("dress", "shirt", "lingerie", "bra", "panties"),
-            ),
-        }
-
-        def router_response(messages, **kwargs):
-            source = messages[-1]["content"]
-            return json.dumps({"prompt": translations[source], "layout": "portrait"})
-
-        with patch.object(agent, "router_llm", side_effect=router_response) as router:
-            for source, (required, forbidden) in expectations.items():
-                with self.subTest(source=source):
-                    result = agent.translate_image_prompt_to_english(source)
-                    translated = result["prompt"].casefold()
-                    for phrase in required:
-                        self.assertIn(phrase, translated)
-                    for phrase in forbidden:
-                        self.assertNotIn(phrase, translated)
-                    self.assertEqual(result["layout"], "portrait")
-                    self.assertEqual((result["width"], result["height"]), (768, 1024))
-
-        self.assertEqual(router.call_count, len(expectations))
-        for call in router.call_args_list:
-            self.assertEqual(call.kwargs["temperature"], 0.0)
-            system_prompt = call.args[0][0]["content"]
-            self.assertIn("strict semantic image prompt translator", system_prompt)
-            self.assertIn("Treat every request in isolation", system_prompt)
-
-
-    def test_image_prompt_accepts_unchanged_english_translation(self):
+    def test_image_prompt_translation_is_literal_plain_text(self):
         source = (
-            "Full-body photograph of an adult man "
-            "standing on a city street at night"
+            'Erstelle ein Bild von einer Frau mit rotem Kleid, ohne Hut, '
+            'mit dem Text "70 GB für 4,99 €".'
         )
-
-        router_result = (
-            '{"prompt":"Full-body photograph of an adult man '
-            'standing on a city street at night","layout":"tall"}'
+        translated = (
+            'Create an image of a woman with a red dress, without a hat, '
+            'with the text "70 GB für 4,99 €".'
         )
 
         with patch.object(
             agent,
             "router_llm",
-            return_value=router_result,
+            return_value=translated,
+        ) as router:
+            result = agent.translate_image_prompt_to_english(source)
+
+        self.assertEqual(result, translated)
+
+        call = router.call_args
+        self.assertEqual(call.kwargs["temperature"], 0.0)
+        self.assertEqual(call.args[0][1]["content"], source)
+
+        system_prompt = call.args[0][0]["content"]
+        self.assertIn(
+            "literal translator for media prompts",
+            system_prompt,
+        )
+        self.assertIn(
+            "Do not add, remove, infer",
+            system_prompt,
+        )
+        self.assertIn(
+            "Preserve all text inside quotation marks",
+            system_prompt,
+        )
+        self.assertNotIn(
+            "matching bra",
+            system_prompt,
+        )
+        self.assertNotIn(
+            "Describe every person as an adult",
+            system_prompt,
+        )
+
+
+    def test_image_prompt_accepts_unchanged_english_translation(self):
+        source = (
+            "Full-body photograph of a man "
+            "standing on a city street at night"
+        )
+
+        with patch.object(
+            agent,
+            "router_llm",
+            return_value=source,
         ):
             result = agent.translate_image_prompt_to_english(source)
 
-        self.assertEqual(result["prompt"], source)
-        self.assertEqual(result["layout"], "tall")
-        self.assertEqual(result["width"], 768)
-        self.assertEqual(result["height"], 1024)
+        self.assertEqual(result, source)
+
+
+    def test_image_generation_translates_full_user_prompt_without_stripping(self):
+        source = (
+            "Erstelle ein fotorealistisches Bild von einem roten Auto "
+            "auf einer nassen Straße"
+        )
+        translated = (
+            "Create a photorealistic image of a red car "
+            "on a wet street"
+        )
+
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value=translated,
+        ) as translate:
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt=source,
+                )
+            )
+
+        translate.assert_called_once_with(source)
+        self.assertEqual(payload["prompt"], translated)
 
 
     def test_agent_forwards_sdxl_negative_prompt_option(self):
@@ -4927,35 +4906,35 @@ def test_image_edit_prompt_optimizer_falls_back_on_network_error():
     assert result == agent.normalize_image_edit_prompt(original)
 
 
-def test_image_edit_payload_uses_normalizer_without_chat_runtime(tmp_path):
+def test_image_edit_payload_uses_literal_translation(tmp_path):
     import agent.app as agent
 
     source = tmp_path / "source.png"
     source.write_bytes(b"image")
 
     request = agent.ChatActionRequest(
-        prompt="Tattoos entfernen",
-        file_context={"stored_path": str(source)},
+        prompt="Mach den Hintergrund dunkler",
+        file_context={
+            "stored_path": str(source),
+        },
     )
+
+    translated = "Make the background darker"
 
     with patch.object(
         agent,
-        "load_model_roles",
-        return_value={"image": "mflux-qwen-image-edit-2511"},
-    ), patch.object(
+        "translate_media_prompt_to_english",
+        return_value=translated,
+    ) as translate, patch.object(
         agent,
         "optimize_image_edit_prompt",
-        side_effect=AssertionError(
-            "Image edit must not start the chat prompt optimizer"
-        ),
     ) as optimizer:
         payload = agent._image_edit_payload(request)
 
+    translate.assert_called_once_with(request.prompt)
     optimizer.assert_not_called()
     assert payload["source_path"] == str(source)
-    assert payload["prompt"] == agent.normalize_image_edit_prompt(
-        request.prompt
-    )
+    assert payload["prompt"] == translated
     assert payload["model"] == "auto"
 
 

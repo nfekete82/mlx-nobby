@@ -540,6 +540,64 @@ class VideoAgentTests(unittest.TestCase):
         with mock.patch.object(agent, "router_llm", side_effect=RuntimeError("offline")):
             self.assertEqual(agent.compile_video_prompt("rote Kugel, statische Kamera"), "rote Kugel, statische Kamera")
 
+    def test_video_prompt_translation_is_literal_plain_text(self):
+        source = (
+            "Erstelle ein Video von einem roten Ball, "
+            "statische Kamera, kein Regen"
+        )
+        translated = (
+            "Create a video of a red ball, "
+            "static camera, no rain"
+        )
+
+        with mock.patch.object(
+            agent,
+            "router_llm",
+            return_value=translated,
+        ) as router:
+            result = agent.compile_video_prompt(source)
+
+        self.assertEqual(result, translated)
+        self.assertEqual(
+            router.call_args.args[0][1]["content"],
+            source,
+        )
+        self.assertEqual(
+            router.call_args.kwargs["temperature"],
+            0.0,
+        )
+
+
+    def test_video_payload_translates_full_prompt_without_stripping(self):
+        source = (
+            "Erstelle ein Video von einem roten Ball, "
+            "statische Kamera"
+        )
+        translated = (
+            "Create a video of a red ball, "
+            "static camera"
+        )
+        request = agent.ChatActionRequest(
+            prompt=source,
+        )
+
+        with mock.patch.object(
+            agent,
+            "compile_video_prompt",
+            return_value=translated,
+        ) as compiler:
+            payload = agent._video_payload(
+                request,
+                "t2v",
+            )
+
+        compiler.assert_called_once_with(source)
+        self.assertEqual(
+            payload["prompt"],
+            translated,
+        )
+
+
     def test_text_only_video_builds_t2v_without_first_frame(self):
         request = agent.ChatActionRequest(prompt="Erstelle ein Video von einem roten Ball")
         with mock.patch.object(agent, "compile_video_prompt", side_effect=lambda value: value):

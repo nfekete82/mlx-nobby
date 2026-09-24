@@ -6431,8 +6431,8 @@ def image_prompt_from_request(prompt):
 
 
 
-def translate_image_prompt_to_english(prompt):
-    """Translate an image prompt and select its layout using the router."""
+def translate_media_prompt_to_english(prompt):
+    """Translate a media prompt to English without changing its meaning."""
 
     value = str(prompt or "").strip()
 
@@ -6443,67 +6443,23 @@ def translate_image_prompt_to_english(prompt):
         {
             "role": "system",
             "content": (
-                "You are a strict semantic image prompt translator, not a "
-                "creative image-prompt author. Treat every request in isolation. "
-                "Translate the request into natural English and preserve every "
-                "explicit visual fact exactly, including the number and kind of "
-                "people, hair and eye attributes, clothing and its colors, objects, "
-                "setting, pose, composition, and style. Never infer an attribute "
-                "from an example or a previous request. Never add or change hair "
-                "color, eye color, skin color, clothing, clothing color, people, "
-                "setting, pose, or style. You may normalize grammar and make terse "
-                "wording natural. You may make an obviously implicit image term "
-                "concrete: for example, lingerie may be rendered as a matching bra "
-                "and panties. Describe every person as an adult and include the word "
-                "'Adult' in the English prompt. "
-
-                "Bind every adjective only to the German noun it modifies. German "
-                "case endings do not change meaning: rothaarig, rothaarige, and "
-                "rothaarigen all mean red-haired; blond and blonde mean blonde; "
-                "schwarzhaarig means black-haired. These are hair attributes only, "
-                "never clothing colors. Dessous means lingerie and Unterwäsche means "
-                "underwear or lingerie. When the user specifies a lingerie color, "
-                "repeat that color explicitly before all three terms: '<color> "
-                "lingerie, matching <color> bra and <color> panties'. Do not rely on "
-                "the word 'matching' to imply the colors. When no lingerie color is "
-                "specified, never derive one from hair or any other attribute. In "
-                "that case, translate Unterwäsche simply as 'underwear' and Dessous "
-                "simply as 'lingerie'; do not add a bra, panties, or any clothing "
-                "color. A hair color may appear only in the subject phrase and must "
-                "never reappear in the clothing phrase. "
-                "The prompt value must be English. "
-
-                "Choose layout using these rules in priority order: "
-                "1. icon, logo, avatar, or explicit square: square. "
-                "2. full body, Ganzkörper, or a standing full person: tall. "
-                "3. face, headshot, or Nahaufnahme: portrait. "
-                "4. a single person, fashion portrait, or ordinary person photo: portrait. "
-                "5. panorama or cinematic wide scene: wide. "
-                "6. an ordinary horizontal scene: landscape. "
-                "7. otherwise: square. "
-
-                "Return only one valid JSON object with exactly two fields and no "
-                "markdown, explanation, or additional text: "
-                "{\"prompt\":\"English image prompt\","
-                "\"layout\":\"square|portrait|tall|landscape|wide\"}. "
-
-                "Each example below is an isolated request. Never carry an attribute "
-                "from one example into another request. "
-                "Input: einer rothaarigen frau in unterwäsche. "
-                "Output: {\"prompt\":\"Adult red-haired woman wearing underwear\","
-                "\"layout\":\"portrait\"}. "
-                "Input: blonde frau mit rotem dessous. "
-                "Output: {\"prompt\":\"Adult blonde woman wearing red lingerie, "
-                "matching red bra and red panties\",\"layout\":\"portrait\"}. "
-                "Input: rothaarige frau mit schwarzem dessous. "
-                "Output: {\"prompt\":\"Adult red-haired woman wearing black lingerie, "
-                "matching black bra and black panties\",\"layout\":\"portrait\"}. "
-                "Input: blonde frau mit grünem kleid. "
-                "Output: {\"prompt\":\"Adult blonde woman wearing a green dress\","
-                "\"layout\":\"portrait\"}. "
-                "Input: schwarzhaarige frau mit blauen augen. "
-                "Output: {\"prompt\":\"Adult black-haired woman with blue eyes\","
-                "\"layout\":\"portrait\"}."
+                "You are a literal translator for media prompts. "
+                "Translate the user's prompt into English and nothing else. "
+                "Preserve the exact meaning and information content. "
+                "Do not add, remove, infer, expand, summarize, optimize, "
+                "simplify, embellish, sanitize, or creatively rewrite anything. "
+                "Do not introduce model-specific prompt terms. "
+                "Preserve every negation, count, color, name, brand, location, "
+                "object, person, attribute, clothing detail, action, camera "
+                "instruction, style term, sound instruction, and number. "
+                "Preserve all text inside quotation marks character-for-character "
+                "and do not translate quoted text. "
+                "Only change wording where required to express the same meaning "
+                "in grammatical English. "
+                "If the prompt is already English, return it unchanged. "
+                "Return only the English translation as plain text. "
+                "Do not output JSON, markdown, labels, commentary, explanations, "
+                "prefixes, or surrounding quotation marks."
             ),
         },
         {
@@ -6515,76 +6471,32 @@ def translate_image_prompt_to_english(prompt):
     try:
         translated = router_llm(
             messages,
-            max_tokens=220,
+            max_tokens=600,
             temperature=0.0,
         ).strip()
 
         if not translated:
             return value
 
-        structured = json.loads(translated)
+        if translated.startswith(("```", "{", "[")):
+            return value
 
-        if isinstance(structured, dict):
-            final_prompt_value = structured.get("prompt")
-            layout_value = structured.get("layout")
+        if re.match(
+            r"^(?:translation|translated prompt|english translation|prompt)\s*:",
+            translated,
+            re.IGNORECASE,
+        ):
+            return value
 
-            if not isinstance(final_prompt_value, str):
-                raise ValueError("router image prompt must be a string")
+        return translated
 
-            if not isinstance(layout_value, str):
-                raise ValueError("router image layout must be a string")
-
-            final_prompt = final_prompt_value.strip()
-            layout = layout_value.strip().lower()
-
-            layouts = {
-                "square": (1024, 1024),
-                "portrait": (768, 1024),
-                "tall": (768, 1024),
-                "landscape": (1024, 768),
-                "wide": (1024, 768),
-            }
-
-            if final_prompt and layout not in layouts:
-                width, height = _automatic_image_dimensions(final_prompt)
-
-                if (width, height) == (1024, 1024):
-                    layout = "square"
-                elif (width, height) == (768, 1024):
-                    layout = "portrait"
-                else:
-                    layout = "landscape"
-
-            if final_prompt and layout in layouts:
-                width, height = layouts[layout]
-
-                print(
-                    "[image-prompt] prepared "
-                    f"source_chars={len(value)} "
-                    f"output_chars={len(final_prompt)} "
-                    f"layout={layout} "
-                    f"size={width}x{height} "
-                    "using router only",
-                    flush=True,
-                )
-
-                return {
-                    "prompt": final_prompt,
-                    "layout": layout,
-                    "width": width,
-                    "height": height,
-                }
-
-        raise ValueError("invalid router image-prompt response")
-
-    except Exception as exc:
-        print(
-            "[image-prompt] router preparation failed, "
-            "using original prompt "
-            f"error_type={type(exc).__name__}",
-            flush=True,
-        )
+    except Exception:
         return value
+
+
+def translate_image_prompt_to_english(prompt):
+    """Compatibility wrapper for literal media translation."""
+    return translate_media_prompt_to_english(prompt)
 
 
 def web_search_query_from_prompt(prompt):
@@ -7900,7 +7812,7 @@ def _image_edit_payload(request):
         "prompt": (
             options["prompt"]
             if "prompt" in options
-            else normalize_image_edit_prompt(request.prompt)
+            else translate_media_prompt_to_english(request.prompt)
         ),
         "source_path": str(source),
         # Image editing needs an edit-capable model, which may differ from
@@ -8073,7 +7985,7 @@ def _automatic_image_dimensions(prompt):
 
 
 def _image_generate_payload(request):
-    source_prompt = image_prompt_from_request(request.prompt)
+    source_prompt = str(request.prompt or "").strip()
     prepared = translate_image_prompt_to_english(source_prompt)
 
     if isinstance(prepared, dict):
@@ -8149,35 +8061,12 @@ def video_prompt_from_request(prompt):
 
 
 def compile_video_prompt(prompt):
-    """Compile a local LTX prompt without inventing visual attributes."""
-    value = str(prompt or "").strip()
-    if not value:
-        return value
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a strict prompt compiler for a local text/image-to-video model. "
-                "Translate the request to concise natural English. Preserve every explicit "
-                "subject, count, appearance, clothing, color, setting, action, camera, style, "
-                "and sound attribute exactly. Never invent an attribute, person, object, "
-                "motion, camera move, visual detail, or sound. For image animation, describe "
-                "only the requested motion and camera behavior; do not redescribe unseen image "
-                "content. Return only JSON: {\"prompt\":\"...\"}."
-            ),
-        },
-        {"role": "user", "content": value},
-    ]
-    try:
-        compiled = json.loads(router_llm(messages, max_tokens=300, temperature=0.0).strip())
-        result = compiled.get("prompt") if isinstance(compiled, dict) else None
-        return result.strip() if isinstance(result, str) and result.strip() else value
-    except (RuntimeError, ValueError, TypeError, json.JSONDecodeError):
-        return value
+    """Translate a video prompt to English without optimizing it."""
+    return translate_media_prompt_to_english(prompt)
 
 
 def _video_payload(request, operation):
-    prompt = compile_video_prompt(video_prompt_from_request(request.prompt))
+    prompt = compile_video_prompt(request.prompt)
     if len(prompt) < 3:
         raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
     payload = {"prompt": prompt, "model": "auto"}
