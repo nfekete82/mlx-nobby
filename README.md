@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.2.0-informational)
+![Release](https://img.shields.io/badge/release-v1.2.1-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.

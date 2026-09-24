@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.1
+
+- Fixed internationalization for media generation quality dialogs, runtime
+  status labels, and video generation progress.
+- Updated media UI tests for the localized English-default interface.
+- Restored the GitHub Actions translation and JSON validation pipeline.
+
 ## v1.2.0
 
 - Added Qwen Image 2.1 generation through MLX-Serve, including LoRA support,
