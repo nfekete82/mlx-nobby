@@ -388,7 +388,7 @@ class VideoServiceTests(unittest.TestCase):
         snapshot = {"ram_used_bytes": 10, "swap_used_bytes": 2}
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
-             mock.patch.object(video_service, "_image_idle", return_value=True), \
+             mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=False), \
              mock.patch.object(video_service, "_memory_snapshot", return_value=snapshot), \
              mock.patch.object(video_service, "generate", side_effect=fake_generate):
@@ -417,7 +417,7 @@ class VideoServiceTests(unittest.TestCase):
         commands = []
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
-             mock.patch.object(video_service, "_image_idle", return_value=True), \
+             mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=True), \
              mock.patch.object(video_service, "_chat_command", side_effect=commands.append), \
              mock.patch.object(video_service, "_memory_snapshot", return_value={}), \
@@ -434,7 +434,7 @@ class VideoServiceTests(unittest.TestCase):
         video_service._lock.acquire()
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
-             mock.patch.object(video_service, "_image_idle", return_value=True), \
+             mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=False), \
              mock.patch.object(video_service, "_memory_snapshot", return_value={}), \
              mock.patch.object(video_service, "generate", side_effect=RuntimeError(
@@ -456,6 +456,11 @@ class VideoServiceTests(unittest.TestCase):
 
 
 class VideoAgentTests(unittest.TestCase):
+    def test_router_exposes_deterministic_runtime_targets(self):
+        self.assertEqual(agent._runtime_target("normal_chat"), "chat")
+        self.assertEqual(agent._runtime_target("image_generate"), "image")
+        self.assertEqual(agent._runtime_target("video_generate"), "video")
+
     def test_chat_routing_and_normal_chat(self):
         self.assertEqual(agent.classify_chat_action("Erstelle ein Video von einem roten Ball"), "video_generate")
         self.assertEqual(agent.classify_chat_action("Mach daraus ein Video"), "video_animate")

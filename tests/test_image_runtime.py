@@ -72,7 +72,15 @@ class ImageRuntimeTests(unittest.TestCase):
                         patch.object(service, "OUTPUT", self.root / "images"),
                         patch.object(agent, "IMAGE_DIRECTORY", self.root / "images"),
                         patch.object(agent, "CHAT_DIRECTORY", self.root / "chats"),
-                        patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json")]
+                        patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json"),
+                        patch.object(
+                            service.runtime_coordinator,
+                            "wait_for_idle",
+                            return_value={
+                                "status": "ready",
+                                "active_generation": False,
+                            },
+                        )]
         for item in self.patches:
             item.start()
         with service._jobs_lock:

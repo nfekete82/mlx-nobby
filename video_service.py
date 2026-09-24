@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 import threading
 import time
-import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -16,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import video_registry as registry
+import runtime_coordinator
 from local_security import LocalRequestGuard
 from video_providers import (
     ProviderCancelled, availability, generate, i2v_aspect_ratio, i2v_source_size,
@@ -29,7 +29,6 @@ JOBS = ROOT / "video-jobs"
 PROJECT_DIR = Path(__file__).resolve().parent
 MLX_MANAGER = PROJECT_DIR / "scripts/mlx"
 MLX_SERVER_LABEL = "de.nobby.mlx-server"
-IMAGE_HEALTH_URL = os.environ.get("IMAGE_SERVICE_URL", "http://127.0.0.1:8030").rstrip("/") + "/health"
 ACTIVE = {"queued", "loading", "encoding", "generating", "upscaling", "decoding", "muxing"}
 TERMINAL = {"completed", "failed", "cancelled"}
 QUALITY_PROFILES = {
@@ -220,15 +219,6 @@ def _chat_command(action):
         raise RuntimeError((result.stdout.strip() or f"mlx {action} fehlgeschlagen")[-4000:])
 
 
-def _image_idle():
-    try:
-        with urllib.request.urlopen(IMAGE_HEALTH_URL, timeout=10) as response:
-            health = json.loads(response.read())
-        return health.get("status") == "ready" and not health.get("loaded")
-    except Exception as exc:
-        raise RuntimeError("Image-Service-Zustand konnte nicht geprüft werden") from exc
-
-
 def _memory_snapshot():
     snapshot = {"ram_used_bytes": None, "swap_used_bytes": None}
     try:
@@ -298,90 +288,94 @@ def _run(job_id, request):
     job = _jobs[job_id]
     cancel = job["_cancel_event"]
     output = None
-    chat_was_loaded = False
     before = _memory_snapshot()
     peak = dict(before)
     try:
         _update(
-            job_id, status="loading", phase="loading", progress=0.0,
+            job_id, status="queued", phase="waiting_for_resources", progress=0.0,
             started_at=time.time(), memory_before=before,
         )
         model = registry.get_model(request.payload.model)
         ready, reason = availability(model)
         if not ready:
             raise RuntimeError(reason)
-        if not _image_idle():
-            raise RuntimeError("Qwen Image ist geladen oder ein Image-Job läuft; Video-Job sicher abgebrochen")
-        chat_was_loaded = _chat_loaded()
-        if chat_was_loaded:
-            _chat_command("stop")
-            time.sleep(1)
-        if cancel.is_set():
-            raise ProviderCancelled("Video job was cancelled")
-        video_id = secrets.token_hex(12)
-        output = OUTPUT / f"{video_id}.mp4"
+        with runtime_coordinator.video_runtime(
+            cancel,
+            chat_loaded=_chat_loaded,
+            chat_command=_chat_command,
+            restore_error=lambda exc: _update(
+                job_id,
+                restore_error=f"Chat-Restore fehlgeschlagen: {exc}",
+            ),
+        ):
+            _update(job_id, status="loading", phase="loading")
+            if cancel.is_set():
+                raise ProviderCancelled("Video job was cancelled")
+            video_id = secrets.token_hex(12)
+            output = OUTPUT / f"{video_id}.mp4"
 
-        def runtime_changed(runtime):
-            with _jobs_lock:
-                if job_id in _jobs:
-                    _jobs[job_id]["_runtime"] = runtime
+            def runtime_changed(runtime):
+                with _jobs_lock:
+                    if job_id in _jobs:
+                        _jobs[job_id]["_runtime"] = runtime
 
-        def progress_changed(event):
-            current = _memory_snapshot()
-            for key in peak:
-                if current.get(key) is not None:
-                    peak[key] = max(peak.get(key) or 0, current[key])
-            changes = {"memory_peak": peak}
-            phase = str(event.get("phase") or "")
-            if phase:
-                changes["phase"] = phase
+            def progress_changed(event):
+                current = _memory_snapshot()
+                for key in peak:
+                    if current.get(key) is not None:
+                        peak[key] = max(peak.get(key) or 0, current[key])
+                changes = {"memory_peak": peak}
+                phase = str(event.get("phase") or "")
+                if phase:
+                    changes["phase"] = phase
+                    status = _phase_status(phase)
+                    if status:
+                        changes["status"] = status
+                step, total = event.get("step"), event.get("total_steps")
+                if isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
+                    changes.update(current_step=step, total_steps=total)
+                progress = _normalized_progress(event.get("progress"))
+                if progress is not None:
+                    changes["progress"] = progress
+                elif isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
+                    changes["progress"] = step / total
+                _update(job_id, **changes)
+
+            def phase_changed(phase):
+                changes = {"phase": phase}
                 status = _phase_status(phase)
                 if status:
                     changes["status"] = status
-            step, total = event.get("step"), event.get("total_steps")
-            if isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
-                changes.update(current_step=step, total_steps=total)
-            progress = _normalized_progress(event.get("progress"))
-            if progress is not None:
-                changes["progress"] = progress
-            elif isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
-                changes["progress"] = step / total
-            _update(job_id, **changes)
+                _update(job_id, **changes)
 
-        def phase_changed(phase):
-            changes = {"phase": phase}
-            status = _phase_status(phase)
-            if status:
-                changes["status"] = status
-            _update(job_id, **changes)
-
-        media = generate(
-            model, request.payload.model_dump(), output,
-            cancel_event=cancel, response_callback=runtime_changed,
-            progress_callback=progress_changed,
-            phase_callback=phase_changed,
-        )
-        if cancel.is_set():
-            raise ProviderCancelled("Video job was cancelled")
-        after = _memory_snapshot()
-        result = {
-            "id": video_id, "path": str(output), "mime_type": "video/mp4",
-            "prompt": request.payload.prompt, "model": model["id"],
-            "repository": model["repository"], "provider": model["provider"],
-            "model_family": model["model_family"], "quantization": model["quantization"],
-            "pipeline": model["pipeline"], "steps": request.payload.steps,
-            "seed": request.payload.seed, "operation": request.operation,
-            "quality": request.payload.quality or "standard",
-            "resolution": request.payload.resolution, "first_frame": request.payload.first_frame,
-            "created_at": time.time(), "memory_before": before, "memory_peak": peak,
-            "memory_after": after, **media,
-        }
-        _update(
-            job_id, status="completed", phase="completed", current_step=8,
-            total_steps=8, progress=1.0, result=result, error=None,
-            finished_at=time.time(), memory_after=after,
-        )
-    except ProviderCancelled:
+            media = generate(
+                model, request.payload.model_dump(), output,
+                cancel_event=cancel, response_callback=runtime_changed,
+                progress_callback=progress_changed,
+                phase_callback=phase_changed,
+            )
+            if cancel.is_set():
+                raise ProviderCancelled("Video job was cancelled")
+            after = _memory_snapshot()
+            result = {
+                "id": video_id, "path": str(output), "mime_type": "video/mp4",
+                "prompt": request.payload.prompt, "model": model["id"],
+                "repository": model["repository"], "provider": model["provider"],
+                "model_family": model["model_family"], "quantization": model["quantization"],
+                "pipeline": model["pipeline"], "steps": request.payload.steps,
+                "seed": request.payload.seed, "operation": request.operation,
+                "quality": request.payload.quality or "standard",
+                "resolution": request.payload.resolution, "first_frame": request.payload.first_frame,
+                "created_at": time.time(), "memory_before": before, "memory_peak": peak,
+                "memory_after": after, **media,
+            }
+            _update(
+                job_id, status="completed", phase="completed",
+                current_step=8, total_steps=8,
+                progress=1.0, result=result, error=None,
+                finished_at=time.time(), memory_after=after,
+            )
+    except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output:
             output.unlink(missing_ok=True)
         _update(job_id, status="cancelled", result=None, error=None, finished_at=time.time(), memory_after=_memory_snapshot())
@@ -393,13 +387,6 @@ def _run(job_id, request):
         else:
             _update(job_id, status="failed", result=None, error=str(exc)[-4000:], finished_at=time.time(), memory_after=_memory_snapshot())
     finally:
-        if chat_was_loaded:
-            try:
-                _chat_command("start")
-            except Exception as exc:
-                current = _jobs.get(job_id)
-                if current:
-                    _update(job_id, restore_error=f"Chat-Restore fehlgeschlagen: {exc}")
         with _jobs_lock:
             if job_id in _jobs:
                 _jobs[job_id]["_runtime"] = None
@@ -409,7 +396,18 @@ def _run(job_id, request):
 @app.get("/health")
 def health():
     running = next((job["id"] for job in _jobs.values() if job.get("status") in ACTIVE), None)
-    return {"ok": True, "status": "busy" if running else "ready", "active_job_id": running, "offline": True}
+    active_generation = next((
+        job["id"] for job in _jobs.values()
+        if job.get("status") in ACTIVE
+        and job.get("phase") != "waiting_for_resources"
+    ), None)
+    return {
+        "ok": True,
+        "status": "busy" if running else "ready",
+        "active_job_id": running,
+        "active_generation": bool(active_generation),
+        "offline": True,
+    }
 
 
 @app.get("/models")

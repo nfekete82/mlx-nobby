@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+from contextlib import nullcontext
 from pathlib import Path
 import sys
 import tempfile
@@ -72,6 +73,7 @@ class ModelRoleRoutingTests(unittest.TestCase):
         with mock.patch.object(self.app, "ensure_model_for_role", return_value={
             "resolved": {"repo": "configured-chat-repo", "alias": "chat-alias"},
         }) as ensure, mock.patch.object(self.app, "load_config", return_value={"PORT": 8000}), \
+             mock.patch.object(self.app.runtime_coordinator, "chat_runtime", return_value=nullcontext()), \
              mock.patch.object(self.app.urllib.request, "urlopen", return_value=upstream) as urlopen:
             self.app.runtime_chat(self.app.RuntimeChatRequest(messages=[{"role": "user", "content": "Hi"}], stream=False))
         ensure.assert_called_once_with("chat")

@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import image_registry as registry
+import runtime_coordinator
 import subprocess
 from image_providers import (
     MLXSERVE_URL,
@@ -189,19 +190,58 @@ def _unload_mlxserve_model(model):
             )
 
 
+def _loaded_mlxserve_models():
+    """Return image models that MLX-Serve reports as actually resident."""
+    try:
+        with urllib.request.urlopen(
+            MLXSERVE_URL + "/v1/models",
+            timeout=3,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    repositories = {
+        model.get("repository"): model
+        for model in registry_call(registry.load_registry)["models"]
+        if model.get("provider") == "mlxserve"
+    }
+    return [
+        repositories[item.get("id")]
+        for item in payload.get("data", [])
+        if (
+            isinstance(item, dict)
+            and item.get("loaded") is True
+            and item.get("id") in repositories
+        )
+    ]
+
+
 @app.get("/health")
 def health():
     data = registry_call(registry.load_registry)
     model = registry_call(registry.get_model)
     sdxl_loaded = sdxl_worker_running()
-    loaded = bool(_running) or sdxl_loaded
+    mlxserve_loaded = _loaded_mlxserve_models()
+    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_loaded)
     running_model = _running
     if running_model is None and sdxl_loaded:
         running_model = registry.JUGGERNAUT_XL_ID
+    if running_model is None and mlxserve_loaded:
+        running_model = mlxserve_loaded[0]["id"]
+
+    with _jobs_lock:
+        active_job = _jobs.get(_active_job_id)
+        active_generation = bool(
+            active_job
+            and active_job.get("phase") != "waiting_for_resources"
+        )
 
     return {
         "ok": True,
         "status": "busy" if _running or _active_job_id else "ready",
+        "active_generation": active_generation,
+        "active_job_id": _active_job_id,
         "models": [m["id"] for m in data["models"] if m["enabled"]],
         "loaded": loaded,
         "running_model": running_model,
@@ -296,6 +336,8 @@ def unload():
     with exclusive():
         try:
             shutdown_sdxl_worker()
+            for model in _loaded_mlxserve_models():
+                _unload_mlxserve_model(model)
         except RuntimeError as exc:
             raise HTTPException(
                 500,
@@ -468,18 +510,6 @@ def _generate_result(
 
     finally:
         if model["provider"] == "mlxserve":
-            try:
-                print(
-                    "[image-memory] unloading MLX-Serve image model",
-                    flush=True,
-                )
-                _unload_mlxserve_model(model)
-            except Exception as exc:
-                print(
-                    f"[image-memory] warning: image model unload failed: {exc}",
-                    flush=True,
-                )
-
             if chat_was_loaded:
                 try:
                     print(
@@ -961,20 +991,25 @@ def _run_image_job(job_id, operation, request):
     try:
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
-        _update_job(job_id, status="loading", phase="loading", progress=0.0, started_at=time.time())
-        if operation == "edit":
-            execute = _edit_result
-        elif operation == "upscale":
-            execute = _upscale_result
-        else:
-            execute = _generate_result
-
-        result = execute(
-            request,
-            provider_options=provider_options,
-            prepared_callback=prepared,
-            saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+        _update_job(
+            job_id, status="queued", phase="waiting_for_resources",
+            progress=0.0, started_at=time.time(),
         )
+        with runtime_coordinator.image_runtime(cancel_event):
+            _update_job(job_id, status="loading", phase="loading")
+            if operation == "edit":
+                execute = _edit_result
+            elif operation == "upscale":
+                execute = _upscale_result
+            else:
+                execute = _generate_result
+
+            result = execute(
+                request,
+                provider_options=provider_options,
+                prepared_callback=prepared,
+                saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+            )
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
         with _jobs_lock:
@@ -988,7 +1023,7 @@ def _run_image_job(job_id, operation, request):
             result=result,
             finished_at=time.time(),
         )
-    except ProviderCancelled:
+    except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output_path is not None:
             output_path.unlink(missing_ok=True)
         _update_job(

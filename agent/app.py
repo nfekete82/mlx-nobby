@@ -26,6 +26,7 @@ from agent import disk_usage
 from agent import image_api
 from agent import video_api
 from agent import model_cleanup
+import runtime_coordinator
 from agent.tool_registry import Tool, ToolRegistry
 from agent import run_state
 from agent.approvals import (
@@ -8975,17 +8976,19 @@ def route_chat_action(request: ChatActionRequest):
     if direct is not None:
         return {
             "intent": direct,
+            "target": _runtime_target(direct),
             "confidence": 1.0,
             "requires_tools": direct != "normal_chat",
             "reason": "Eindeutige deterministische Route",
             "method": "deterministic_direct",
         }
 
-    return classify_chat_action_details(
+    routing = classify_chat_action_details(
         request.prompt,
         routing_file_context,
         request.conversation_context,
     )
+    return routing | {"target": _runtime_target(routing.get("intent"))}
 
 
 
@@ -9045,6 +9048,15 @@ def _looks_like_image_generation_request(prompt):
             and _IMAGE_NOUN_PATTERN.search(value)
         )
     )
+
+
+def _runtime_target(action):
+    value = str(action or "")
+    if value.startswith("image_"):
+        return "image"
+    if value.startswith("video_"):
+        return "video"
+    return "chat"
 
 
 @app.post("/api/chat/actions")
@@ -9138,6 +9150,8 @@ def run_chat_action(request: ChatActionRequest):
             )
 
     action = routing["intent"]
+    routing = dict(routing)
+    routing["target"] = _runtime_target(action)
 
     if (
         action in SEMANTIC_ROUTER_AGENT_INTENTS
@@ -10629,6 +10643,8 @@ def ensure_model_for_role(role: str):
             raise RuntimeError("Das konfigurierte Embedding-Modell ist nicht verfügbar")
         return {"ok": True, "role": role, "switched": False, "resolved": resolved}
 
+    runtime_coordinator.prepare_chat_runtime()
+
     with MODEL_RUNTIME_LOCK:
         resolved = resolve_model_role(role)
 
@@ -10851,7 +10867,7 @@ def runtime_chat(request: RuntimeChatRequest):
     )
     wait_started = time.monotonic()
 
-    with MODEL_RUNTIME_LOCK:
+    with runtime_coordinator.chat_runtime(), MODEL_RUNTIME_LOCK:
         call_metrics.set_queue_wait(
             (time.monotonic() - wait_started) * 1000
         )
@@ -11052,7 +11068,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             )
 
         try:
-            with MODEL_RUNTIME_LOCK:
+            with runtime_coordinator.chat_runtime(cancel_event), MODEL_RUNTIME_LOCK:
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
