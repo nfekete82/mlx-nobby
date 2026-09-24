@@ -41,8 +41,6 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
   newly created chats
 - System metrics, service health, logs, and runtime controls
 - English and German chat UI with a persisted language setting
-- Optional `vision_uncensored` model role selected for confidently classified
-  adult images; ordinary and unclassified images use the `vision` role
 
 ## Screenshots
 
@@ -210,8 +208,7 @@ Do not merge these requirements into one environment.
 | `speech-venv` | 3.13 | `requirements/speech.txt` |
 
 See [Dependency setup](docs/DEPENDENCIES.md) for manual installation,
-constraints, tested versions, optional MFLUX and vision classifier setup, and
-offline import checks.
+constraints, tested versions, optional MFLUX setup, and offline import checks.
 
 ## Configuration
 
@@ -310,8 +307,6 @@ loopback by default and the web port is published on localhost.
 MLX nobby is not completely offline by default:
 
 - Model download and cache actions can contact Hugging Face.
-- The optional vision classifier downloads its ONNX model from Hugging Face on
-  first use unless it is already cached or a local model path is configured.
 - The local text-to-speech model can also download weights on first use.
 - Research actions can query the configured SearXNG instance and fetch selected
   external pages.
