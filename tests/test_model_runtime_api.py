@@ -25,6 +25,15 @@ class BusyLock:
 class ModelRuntimeApiTests(unittest.TestCase):
     def setUp(self):
         observability.reset_metrics()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        jobs_file_patch = mock.patch.object(
+            agent_app,
+            "JOBS_FILE",
+            Path(directory.name) / "jobs.json",
+        )
+        jobs_file_patch.start()
+        self.addCleanup(jobs_file_patch.stop)
 
     def test_stream_metrics_include_ttft_usage_and_stable_trace(self):
         upstream = io.BytesIO(

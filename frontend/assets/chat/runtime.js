@@ -19,6 +19,7 @@
     const SETTINGS_KEY = 'mlx-web-chat-settings-v1';
     const DEFAULT_TEMPERATURE = 0.7;
     const DEFAULT_MAX_TOKENS = 3000;
+    const DEFAULT_MEDIA_QUALITY = 'standard';
     const MAX_TOKENS_LIMIT = 32000;
     const UI_SETTINGS_KEY = 'mlx-web-chat-ui-settings-v1';
     let globalSettings = {
@@ -93,6 +94,7 @@
     );
     const temperature = document.getElementById('temperature');
     const maxTokens = document.getElementById('maxTokens');
+    const mediaQuality = document.getElementById('mediaQuality');
     const showMetrics = document.getElementById('showMetrics');
     const autoScroll = document.getElementById('autoScroll');
     const showRuntimeThinking = document.getElementById('showRuntimeThinking');
@@ -1312,7 +1314,8 @@ function createSessionSettings() {
                 ? globalSettings.default_preset
                 : 'custom',
         temperature: globalSettings.default_temperature,
-        max_tokens: globalSettings.default_max_tokens
+        max_tokens: globalSettings.default_max_tokens,
+        media_quality: DEFAULT_MEDIA_QUALITY
     };
 }
 
@@ -1336,6 +1339,13 @@ function normalizeMaxTokens(value) {
         maxTokens <= MAX_TOKENS_LIMIT
         ? maxTokens
         : DEFAULT_MAX_TOKENS;
+}
+
+
+function normalizeMediaQuality(value) {
+    return ['fast', 'standard', 'quality'].includes(value)
+        ? value
+        : DEFAULT_MEDIA_QUALITY;
 }
 
 
@@ -1476,6 +1486,10 @@ function sessionSettings(session) {
                 session.settings.max_tokens
             );
 
+        const normalizedMediaQuality = normalizeMediaQuality(
+            session.settings.media_quality
+        );
+
         if (
             session.settings.temperature !==
             normalizedTemperature
@@ -1491,6 +1505,11 @@ function sessionSettings(session) {
         ) {
             session.settings.max_tokens =
                 normalizedMaxTokens;
+            changed = true;
+        }
+
+        if (session.settings.media_quality !== normalizedMediaQuality) {
+            session.settings.media_quality = normalizedMediaQuality;
             changed = true;
         }
 
@@ -1512,7 +1531,8 @@ function sessionSettings(session) {
         system_prompt: legacySystemPrompt,
         preset_id: preset ? preset[0] : 'custom',
         temperature: DEFAULT_TEMPERATURE,
-        max_tokens: DEFAULT_MAX_TOKENS
+        max_tokens: DEFAULT_MAX_TOKENS,
+        media_quality: DEFAULT_MEDIA_QUALITY
     };
 
     session.updated = Date.now();
@@ -1568,6 +1588,18 @@ function loadSessionSettings() {
             : 'custom';
     temperature.value = settings.temperature;
     maxTokens.value = settings.max_tokens;
+    mediaQuality.value = settings.media_quality;
+}
+
+
+function handleMediaQualityChange() {
+    const session = MLXChatSessions.currentSession();
+    if (!session) return;
+    const settings = sessionSettings(session);
+    settings.media_quality = normalizeMediaQuality(mediaQuality.value);
+    mediaQuality.value = settings.media_quality;
+    session.updated = Date.now();
+    MLXChatSessions.saveSessions();
 }
 
 
@@ -1659,6 +1691,14 @@ function getSessionGenerationSettings() {
 }
 
 
+function getSessionMediaQuality() {
+    const session = MLXChatSessions.currentSession();
+    return session
+        ? sessionSettings(session).media_quality
+        : DEFAULT_MEDIA_QUALITY;
+}
+
+
 function loadSettings() {
     try {
         globalSettings = normalizeGlobalSettings(
@@ -1731,9 +1771,11 @@ function saveSettings() {
         loadSessionSettings: loadSessionSettings,
         handlePresetChange: handlePresetChange,
         handleSystemPromptInput: handleSystemPromptInput,
+        handleMediaQualityChange: handleMediaQualityChange,
         getSessionSystemPrompt: getSessionSystemPrompt,
         getSessionGenerationSettings:
             getSessionGenerationSettings,
+        getSessionMediaQuality: getSessionMediaQuality,
         handleGlobalSettingsInput: handleGlobalSettingsInput,
         showGenerationMetrics: showGenerationMetrics,
         generationMetricsMode: generationMetricsMode,

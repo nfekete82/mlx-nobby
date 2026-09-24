@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260917-personality-v1">
+<link rel="stylesheet" href="/assets/chat.css?v=20260924-media-layout">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -331,16 +331,16 @@
                     >
                         <button
                             type="button"
-                            data-lifecycle-action="restart-all"
+                            data-lifecycle-action="reboot"
                         >
-                            <span data-i18n="ui.services_restart">↻ Dienste neu starten</span>
+                            <span data-i18n="ui.system_reboot">↻ System Reboot</span>
                         </button>
 
                         <button
                             type="button"
-                            data-lifecycle-action="rebuild-all"
+                            data-lifecycle-action="shutdown-ai"
                         >
-                            <span data-i18n="ui.rebuild_all">♻ Alles neu bauen</span>
+                            <span data-i18n="ui.shutdown_ai">■ KI-System beenden</span>
                         </button>
                     </div>
                 </div>
@@ -1383,6 +1383,14 @@
 
 
             <div class="composer-actions">
+            <label class="media-quality-control" hidden>
+                <span data-i18n="ui.media_quality">Qualität</span>
+                <select id="mediaQuality" aria-label="Qualität" data-i18n-aria-label="ui.media_quality">
+                    <option value="fast" data-i18n="ui.quality_fast">Schnell</option>
+                    <option value="standard" data-i18n="ui.quality_standard" selected>Standard</option>
+                    <option value="quality" data-i18n="ui.quality_quality">Qualität</option>
+                </select>
+            </label>
             <button
                 id="dictationButton"
                 class="dictation-button"
@@ -1428,11 +1436,11 @@
 <script src="/assets/chat/sessions.js?v=20260914-image-ui-final"></script>
 <script src="/assets/chat/attachments.js?v=20260913-image-upscale"></script>
 <script src="/assets/chat/i18n.js"></script>
-<script src="/assets/chat/rendering.js?v=20260916-tts"></script>
+<script src="/assets/chat/rendering.js?v=20260924-video-preview"></script>
 <script src="/assets/chat/compact.js"></script>
-<script src="/assets/chat/runtime.js?v=20260906-vision-fix"></script>
+<script src="/assets/chat/runtime.js?v=20260923-media-quality"></script>
 <script src="/assets/chat/appearance.js"></script>
-<script src="/assets/chat/generation.js?v=20260917-news-i18n"></script>
+<script src="/assets/chat/generation.js?v=20260924-media-preflight-v2"></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
 <script src="/assets/chat/models.js?v=20260906-runtime-console&amp;settings=20260909-cleanup"></script>
 
@@ -1646,7 +1654,7 @@
 <script src="/assets/chat/notes.js?v=20260917-notes-i18n-v2"></script>
 <script src="/assets/chat/image-settings.js?v=20260905"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
-<script src="/assets/chat.js?v=20260911-code-evidence"></script>
+<script src="/assets/chat.js?v=20260923-media-quality"></script>
 
 <div
     id="confirmModal"
@@ -1746,6 +1754,146 @@
                 class="app-modal-button primary"
             >
                 OK
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<div
+    id="mediaQualityModal"
+    class="app-modal"
+    hidden
+    aria-hidden="true"
+>
+    <div
+        class="app-modal-backdrop"
+        data-media-quality-dismiss
+    ></div>
+
+    <div
+        class="app-modal-dialog media-quality-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mediaQualityModalTitle"
+        aria-describedby="mediaQualityModalMessage"
+    >
+        <h2 id="mediaQualityModalTitle">
+            Bildqualität wählen
+        </h2>
+
+        <p id="mediaQualityModalMessage">
+            Welche Qualität möchtest du verwenden?
+        </p>
+
+        <div
+            class="media-quality-options"
+            role="radiogroup"
+            aria-label="Qualität"
+        >
+            <button
+                type="button"
+                class="media-quality-option"
+                data-media-quality="preview"
+                aria-pressed="false"
+            >
+                <strong data-i18n="ui.quality_preview">
+                    Vorschau
+                </strong>
+                <span data-i18n="ui.quality_preview_hint">
+                    Sehr schnell · 2 s · grob
+                </span>
+            </button>
+
+            <button
+                type="button"
+                class="media-quality-option"
+                data-media-quality="fast"
+                aria-pressed="false"
+            >
+                <strong data-i18n="ui.quality_fast">
+                    Schnell
+                </strong>
+                <span>
+                    Weniger Wartezeit
+                </span>
+            </button>
+
+            <button
+                type="button"
+                class="media-quality-option is-selected"
+                data-media-quality="standard"
+                aria-pressed="true"
+            >
+                <strong data-i18n="ui.quality_standard">
+                    Standard
+                </strong>
+                <span>
+                    Gute Balance
+                </span>
+            </button>
+
+            <button
+                type="button"
+                class="media-quality-option"
+                data-media-quality="quality"
+                aria-pressed="false"
+            >
+                <strong data-i18n="ui.quality_quality">
+                    Qualität
+                </strong>
+                <span>
+                    Maximale Qualität
+                </span>
+            </button>
+        </div>
+
+        <label
+            id="mediaFormatField"
+            class="media-duration-field"
+            hidden
+        >
+            <span data-i18n="ui.media_format">
+                Format
+            </span>
+            <select
+                id="mediaFormat"
+                aria-label="Format"
+                data-i18n-aria-label="ui.media_format"
+            ></select>
+        </label>
+
+        <label
+            id="videoDurationField"
+            class="media-duration-field"
+            hidden
+        >
+            <span>Videodauer</span>
+            <select id="videoDuration" aria-label="Videodauer">
+                <option value="5" selected>5 s</option>
+                <option value="6">6 s</option>
+                <option value="8">8 s</option>
+                <option value="10">10 s</option>
+                <option value="20">20 s</option>
+            </select>
+        </label>
+
+        <div class="app-modal-actions">
+            <button
+                id="mediaQualityModalCancel"
+                type="button"
+                class="app-modal-button secondary"
+                data-i18n="common.cancel"
+            >
+                Abbrechen
+            </button>
+
+            <button
+                id="mediaQualityModalConfirm"
+                type="button"
+                class="app-modal-button primary"
+            >
+                Erstellen
             </button>
         </div>
     </div>

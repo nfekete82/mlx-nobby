@@ -991,7 +991,7 @@ class AgentRuntime:
             else:
                 tool_options = dict(tool_options)
             if self.context.resources_bound:
-                if action in {"vision_analyze", "image_edit"} and not (
+                if action in {"vision_analyze", "image_edit", "video_animate"} and not (
                     tool_options.get("artifact_id") or tool_options.get("upload_path")
                 ):
                     if len(self.context.upload_paths) == 1:
@@ -1557,7 +1557,7 @@ class AgentRuntime:
                         action not in {
                             "disk_usage", "git_stage", "git_commit", "git_diff",
                             "document_search", "document_page", "vision_analyze",
-                            "image_edit", "file_analyze",
+                            "image_edit", "video_animate", "file_analyze",
                         }
                         or item.get("options") == (tool_options or None)
                     )
@@ -1573,7 +1573,7 @@ class AgentRuntime:
                 )
 
                 if same_call_count >= 1 and action not in {
-                    "image_job_status", "file_analysis_status",
+                    "image_job_status", "video_job_status", "file_analysis_status",
                 }:
                     observations.append({
                         "step": step,

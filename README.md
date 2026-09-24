@@ -149,7 +149,7 @@ aliases manually in:
     ~/.config/mlx-server/models
 
 The router defaults to
-`~/Models/router/Qwen3.5-0.8B-MLX-4bit`. To use another local router model,
+`~/Models/router/Qwen3.5-4B-MLX-4bit`. To use another local router model,
 install the LaunchAgents after setting its path:
 
 ```sh

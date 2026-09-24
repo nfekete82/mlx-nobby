@@ -18,6 +18,79 @@ const renderingSource = fs.readFileSync(
 const requests = [];
 const input = { value: '' };
 const scheduledCallbacks = [];
+const modalOpenEvents = [];
+
+class ModalTestElement {
+    constructor({ id = null, quality = null } = {}) {
+        this.id = id;
+        this.dataset = quality
+            ? { mediaQuality: quality }
+            : {};
+        this.hidden = true;
+        this.value = '';
+        this.listeners = new Map();
+        this.classList = { toggle() {} };
+    }
+
+    addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+    }
+
+    removeEventListener(type, listener) {
+        if (this.listeners.get(type) === listener) {
+            this.listeners.delete(type);
+        }
+    }
+
+    setAttribute(name, value) {
+        if (
+            this.id === 'mediaQualityModal' &&
+            name === 'aria-hidden' &&
+            value === 'false'
+        ) {
+            modalOpenEvents.push(
+                modalElements
+                    .get('mediaQualityModalTitle')
+                    .textContent
+            );
+        }
+    }
+    replaceChildren(...children) {
+        this.children = children;
+    }
+    focus() {}
+    querySelector(selector) {
+        if (selector === '[data-media-quality="standard"]') {
+            return qualityButtons[1];
+        }
+        if (selector === '[data-media-quality-dismiss]') {
+            return modalBackdrop;
+        }
+        return null;
+    }
+    click() {
+        this.listeners.get('click')?.({ currentTarget: this });
+    }
+}
+
+const qualityButtons = [
+    new ModalTestElement({ quality: 'fast' }),
+    new ModalTestElement({ quality: 'standard' }),
+    new ModalTestElement({ quality: 'quality' }),
+];
+const modalBackdrop = new ModalTestElement();
+const modalElements = new Map([
+    ['mediaQualityModal', new ModalTestElement({ id: 'mediaQualityModal' })],
+    ['mediaQualityModalTitle', new ModalTestElement({ id: 'mediaQualityModalTitle' })],
+    ['mediaQualityModalMessage', new ModalTestElement({ id: 'mediaQualityModalMessage' })],
+    ['mediaQualityModalCancel', new ModalTestElement({ id: 'mediaQualityModalCancel' })],
+    ['mediaQualityModalConfirm', new ModalTestElement({ id: 'mediaQualityModalConfirm' })],
+    ['mediaFormatField', new ModalTestElement({ id: 'mediaFormatField' })],
+    ['mediaFormat', new ModalTestElement({ id: 'mediaFormat' })],
+    ['videoDurationField', new ModalTestElement({ id: 'videoDurationField' })],
+    ['videoDuration', new ModalTestElement({ id: 'videoDuration' })],
+    ['mediaQuality', new ModalTestElement({ id: 'mediaQuality' })],
+]);
 
 class TestFormData {
     constructor() {
@@ -79,8 +152,19 @@ const context = {
     TextDecoder,
     document: {
         addEventListener() {},
+        removeEventListener() {},
         getElementById(id) {
-            return id === 'input' ? input : {};
+            return id === 'input'
+                ? input
+                : modalElements.get(id) || {};
+        },
+        querySelectorAll(selector) {
+            return selector === '[data-media-quality]'
+                ? qualityButtons
+                : [];
+        },
+        createElement() {
+            return new ModalTestElement();
         },
     },
     fetch: async (url, options) => {
@@ -105,6 +189,10 @@ const context = {
         if (index >= 0 && index < scheduledCallbacks.length) {
             scheduledCallbacks[index] = null;
         }
+    },
+    requestAnimationFrame(callback) {
+        callback();
+        modalElements.get('mediaQualityModalConfirm').click();
     },
     window,
 };
@@ -375,6 +463,15 @@ context.fetch = async (url, options) => {
         };
     }
 
+    if (url === '/api/mlx/chat/actions/route') {
+        return {
+            ok: true,
+            async json() {
+                return { target: 'image_edit' };
+            },
+        };
+    }
+
     if (url.startsWith('/api/mlx/image-jobs/')) {
         imageJobPolls += 1;
         return {
@@ -463,14 +560,15 @@ await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(visionChecks, 0);
 assert.deepEqual(
-    requests.slice(0, 3).map(request => request.url),
+    requests.slice(0, 4).map(request => request.url),
     [
         '/api/mlx/batch/upload',
+        '/api/mlx/chat/actions/route',
         '/api/mlx/chat/actions',
         '/api/mlx/image-jobs/' + 'a'.repeat(24),
     ],
 );
-const actionPayload = JSON.parse(requests[1].options.body);
+const actionPayload = JSON.parse(requests[2].options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
@@ -614,6 +712,14 @@ let followupActionCount = 0;
 selectedAttachments = [];
 context.fetch = async (url, options) => {
     requests.push({ url, options });
+    if (url === '/api/mlx/chat/actions/route') {
+        return {
+            ok: true,
+            async json() {
+                return { target: 'image_edit' };
+            },
+        };
+    }
     if (url.startsWith('/api/mlx/image-jobs/')) {
         const jobId = url.split('/').at(-1);
         const artifact = followupJobs.get(jobId);
@@ -670,7 +776,7 @@ input.value = 'Mach es noch dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
 const secondActionPayload = JSON.parse(
-    requests[followupRequestStart].options.body
+    requests[followupRequestStart + 1].options.body
 );
 assert.equal(secondActionPayload.file_context, null);
 assert.equal(
@@ -708,7 +814,7 @@ input.value = 'Mach das Bild etwas wärmer.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
 const thirdActionPayload = JSON.parse(
-    requests[thirdRequestStart].options.body
+    requests[thirdRequestStart + 1].options.body
 );
 assert.equal(thirdActionPayload.file_context, null);
 assert.equal(
@@ -815,6 +921,30 @@ let comparisonChatPayload = null;
 
 context.fetch = async (url, options) => {
     requests.push({ url, options });
+
+    if (url === '/api/mlx/chat/actions/route') {
+        return {
+            ok: true,
+            async json() {
+                return { target: 'image_edit' };
+            },
+        };
+    }
+
+    if (url === '/api/mlx/chat/actions') {
+        return {
+            ok: true,
+            async json() {
+                return {
+                    tool: 'image_edit',
+                    status: 'failed',
+                    data: {},
+                    artifacts: [],
+                    error: 'test provider unavailable',
+                };
+            },
+        };
+    }
 
     if (url.startsWith('/api/mlx/images/')) {
         const imageId = decodeURIComponent(
@@ -947,7 +1077,7 @@ input.value = 'Mach das Bild dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
 const uploadedPriorityPayload = JSON.parse(
-    requests[uploadedPriorityStart].options.body
+    requests[uploadedPriorityStart + 1].options.body
 );
 assert.equal(
     uploadedPriorityPayload.file_context.stored_path,
@@ -1200,21 +1330,24 @@ const noStep = imageJobPresentation({
 }, 1037);
 assert.equal(noStep.hasStepProgress, false);
 assert.equal(noStep.title, 'Image is being processed …');
-assert.equal(noStep.details, 'Elapsed: 00:37');
+assert.match(noStep.details, /Phase: Generating/);
+assert.match(noStep.details, /Elapsed: 00:37/);
 
 const loading = imageJobPresentation({
     status: 'loading',
     created_at: 1000,
 }, 1012);
 assert.equal(loading.title, 'Loading model …');
-assert.equal(loading.details, 'Elapsed: 00:12');
+assert.match(loading.details, /Phase: Laden/);
+assert.match(loading.details, /Elapsed: 00:12/);
 
 const saving = imageJobPresentation({
     status: 'saving',
     started_at: 1000,
 }, 1068);
 assert.equal(saving.title, 'Saving image …');
-assert.equal(saving.details, 'Elapsed: 01:08');
+assert.match(saving.details, /Phase: Speichern/);
+assert.match(saving.details, /Elapsed: 01:08/);
 
 const completed = imageJobPresentation({
     status: 'completed',
@@ -1222,6 +1355,7 @@ const completed = imageJobPresentation({
 }, 1068);
 assert.equal(completed.active, false);
 assert.equal(completed.elapsed, null);
+assert.equal(completed.percent, 100);
 
 const reloadMessage = {
     image_job: {
@@ -1351,13 +1485,13 @@ assert.equal(
     descendants(noProgressCard).some(
         element => element.className === 'batch-progress-wrap'
     ),
-    false,
+    true,
 );
 assert.equal(
     descendants(noProgressCard).find(
-        element => element.className === 'batch-chat-details'
+        element => element.className === 'batch-progress-text'
     ).textContent.includes('%'),
-    false,
+    true,
 );
 
 const editMessage = session.messages
@@ -1614,6 +1748,101 @@ assert.equal(
     '/uploads/stored.png',
 );
 assert.equal(uploadedUpscalePayload.image_options.preset, 'photo-4x');
+
+// The server preflight is the source of truth for modal selection, including
+// prompts that the local image regex does not recognize.
+session.messages = [];
+session.workspace = {};
+selectedAttachments = [];
+const routedActionPayloads = [];
+const routeTargets = new Map([
+    [
+        'Photorealistic portrait of a woman in natural window light',
+        'image',
+    ],
+    ['Erstelle ein Bild von einem Leuchtturm', 'image'],
+    ['Erkläre mir Rekursion', 'chat'],
+    ['Erstelle ein Video von einer Meeresküste', 'video'],
+]);
+
+context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    const payload = JSON.parse(options.body);
+
+    if (url === '/api/mlx/chat/actions/route') {
+        return {
+            ok: true,
+            async json() {
+                return { target: routeTargets.get(payload.prompt) };
+            },
+        };
+    }
+
+    assert.equal(url, '/api/mlx/chat/actions');
+    routedActionPayloads.push(payload);
+    return {
+        ok: true,
+        async json() {
+            return {
+                tool: payload.resolved_target === 'chat'
+                    ? 'system_status'
+                    : payload.resolved_target === 'video'
+                        ? 'video_generate'
+                        : 'image_generate',
+                status: 'failed',
+                data: {},
+                artifacts: [],
+                error: 'test action stopped after modal',
+            };
+        },
+    };
+};
+
+for (const [prompt, expectedTarget, expectedModal] of [
+    [
+        'Photorealistic portrait of a woman in natural window light',
+        'image',
+        'Bildqualität wählen',
+    ],
+    [
+        'Erstelle ein Bild von einem Leuchtturm',
+        'image',
+        'Bildqualität wählen',
+    ],
+    ['Erkläre mir Rekursion', 'chat', null],
+    [
+        'Erstelle ein Video von einer Meeresküste',
+        'video',
+        'Videoqualität wählen',
+    ],
+]) {
+    const modalCount = modalOpenEvents.length;
+    const requestCount = requests.length;
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+
+    assert.deepEqual(
+        requests.slice(requestCount, requestCount + 2).map(item => item.url),
+        [
+            '/api/mlx/chat/actions/route',
+            '/api/mlx/chat/actions',
+        ],
+        prompt,
+    );
+    assert.equal(
+        routedActionPayloads.at(-1).resolved_target,
+        expectedTarget,
+        prompt,
+    );
+    assert.equal(
+        modalOpenEvents.length,
+        modalCount + (expectedModal ? 1 : 0),
+        prompt,
+    );
+    if (expectedModal) {
+        assert.equal(modalOpenEvents.at(-1), expectedModal, prompt);
+    }
+}
 
 console.log(
     'Image jobs, routing, progress, cancellation, artifacts, and errors passed.',

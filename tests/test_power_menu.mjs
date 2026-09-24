@@ -30,15 +30,23 @@ assert.match(
 
 assert.match(
     html,
-    /data-lifecycle-action=["']restart-all["']/,
-    'power menu must offer service restart',
+    /data-lifecycle-action=["']reboot["']/,
+    'power menu must offer System Reboot',
 );
 
 assert.match(
     html,
-    /data-lifecycle-action=["']rebuild-all["']/,
-    'power menu must offer full rebuild',
+    /data-lifecycle-action=["']shutdown-ai["']/,
+    'power menu must offer AI shutdown',
 );
+
+assert.equal(
+    (html.match(/data-lifecycle-action=/g) || []).length,
+    2,
+    'power menu must expose exactly two actions',
+);
+
+assert.doesNotMatch(html, /Dienste neu starten|Alles neu bauen/);
 
 assert.match(
     js,
@@ -54,15 +62,18 @@ assert.match(
 
 assert.match(
     js,
-    /['"]restart-all['"]/,
-    'frontend must support restart-all',
+    /['"]reboot['"]/,
+    'frontend must support reboot',
 );
 
 assert.match(
     js,
-    /['"]rebuild-all['"]/,
-    'frontend must support rebuild-all',
+    /['"]shutdown-ai['"]/,
+    'frontend must support AI shutdown',
 );
+
+assert.match(js, /shutdown_ai_confirm_active/,
+    'AI shutdown must warn when jobs are active');
 
 assert.match(
     js,

@@ -90,6 +90,7 @@ backups/
 agent-e2e-test.txt
 test-controlled.txt
 test-batch.transformed.sql
+/:memory:.ses
 
 # Additional timestamped/labelled development backups
 *.bak-*

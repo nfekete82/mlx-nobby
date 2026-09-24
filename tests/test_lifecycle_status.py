@@ -74,13 +74,13 @@ class LifecycleStatusTests(unittest.TestCase):
             "accepted",
         )
 
-    def test_rebuild_marks_lifecycle_as_accepted(self):
+    def test_reboot_marks_lifecycle_as_accepted(self):
         with mock.patch.object(
             agent_app,
             "_launch_system_lifecycle_helper",
         ):
             response = self.client.post(
-                "/api/system/rebuild-all"
+                "/api/system/reboot"
             )
 
         self.assertEqual(
@@ -94,13 +94,22 @@ class LifecycleStatusTests(unittest.TestCase):
 
         self.assertEqual(
             status["action"],
-            "rebuild-all",
+            "reboot",
         )
 
         self.assertEqual(
             status["state"],
             "accepted",
         )
+
+    def test_shutdown_ai_marks_lifecycle_as_accepted(self):
+        with mock.patch.object(agent_app, "_launch_system_lifecycle_helper"):
+            response = self.client.post("/api/system/shutdown-ai")
+
+        self.assertEqual(response.status_code, 202)
+        status = self.client.get("/api/system/lifecycle").json()
+        self.assertEqual(status["action"], "shutdown-ai")
+        self.assertEqual(status["state"], "accepted")
 
     def test_lifecycle_status_contains_progress_contract(self):
         response = self.client.get(

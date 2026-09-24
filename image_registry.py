@@ -21,9 +21,15 @@ LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 QWEN_IMAGE_EDIT_ID = "mflux-qwen-image-edit-2511"
 QWEN_IMAGE_EDIT_DEFAULT_STEPS = 8
+MLXSERVE_QWEN_IMAGE21_ID = "mlxserve-qwen-image-2.1"
+MLXSERVE_QWEN_IMAGE21_REPO = "ddalcu/Qwen-Image-2.1-MLX-Serve-4bit"
+MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS = 20
+Z_IMAGE_TURBO_ID = "mflux-z-image-turbo"
+Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
+Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 2
+BUILTIN_DEFAULTS_REVISION = 4
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -124,7 +130,7 @@ class ImageModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str
     name: str = Field(min_length=1, max_length=120)
-    provider: Literal["diffusionkit", "mflux", "sdxl"]
+    provider: Literal["diffusionkit", "mflux", "sdxl", "mlxserve"]
     repository: str | None = None
     local_path: str | None = None
     model_family: str
@@ -153,6 +159,23 @@ class ImageModel(BaseModel):
                 raise ValueError("Der DiffusionKit-Fallback unterstützt keine LoRAs")
             if self.default_steps > 8:
                 raise ValueError("DiffusionKit schnell: maximal 8 Steps")
+        elif self.provider == "mlxserve":
+            if (
+                self.repository != MLXSERVE_QWEN_IMAGE21_REPO
+                or self.local_path
+                or self.model_family != "qwen-image21"
+                or self.base_model != "qwen-image-2.1"
+                or self.quantization != "q4"
+                or self.quantize_on_load
+            ):
+                raise ValueError(
+                    "Qwen Image 2.1/MLX-Serve benötigt den vorgesehenen "
+                    "4-bit-Repository-Eintrag"
+                )
+            if self.default_guidance != 0:
+                raise ValueError(
+                    "Qwen Image 2.1/MLX-Serve verwendet standardmäßig Guidance 0"
+                )
         elif self.provider == "sdxl":
             if (
                 self.repository
@@ -168,7 +191,13 @@ class ImageModel(BaseModel):
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
             raise ValueError("FLUX.2 Klein distilled benötigt Guidance 1")
         # Capabilities describe adapter support, never arbitrary HTTP claims.
-        if self.model_family == "qwen-image-edit":
+        if self.provider == "mlxserve":
+            self.capabilities = [
+                "text_to_image",
+                "lora",
+                "multi_lora",
+            ]
+        elif self.model_family == "qwen-image-edit":
             self.capabilities = [
                 "image_edit",
                 "multi_image_edit",
@@ -226,7 +255,7 @@ def builtin_models():
         ("mflux-flux1-dev", "FLUX.1-dev · MFLUX", "black-forest-labs/FLUX.1-dev", "flux1", "dev", 28, 3.5),
         ("mflux-flux2-klein-4b", "FLUX.2 Klein 4B", "black-forest-labs/FLUX.2-klein-4B", "flux2-klein", "flux2-klein-4b", 4, 1),
         ("mflux-z-image", "Z-Image", "Tongyi-MAI/Z-Image", "z-image", "z-image", 30, 4),
-        ("mflux-z-image-turbo", "Z-Image Turbo", "Tongyi-MAI/Z-Image-Turbo", "z-image-turbo", "z-image-turbo", 9, 0),
+        (Z_IMAGE_TURBO_ID, "Z-Image Turbo", Z_IMAGE_TURBO_REPO, "z-image-turbo", "z-image-turbo", 9, 0),
         ("mflux-qwen-image", "Qwen Image 2512", "Qwen/Qwen-Image-2512", "qwen-image", "qwen-image", 30, 3.5),
         (
             QWEN_IMAGE_EDIT_ID,
@@ -266,6 +295,19 @@ def builtin_models():
         models.append(
             ImageModel(**model_kwargs).model_dump()
         )
+    models.append(ImageModel(
+        id=MLXSERVE_QWEN_IMAGE21_ID,
+        name="Qwen Image 2.1 · MLX-Serve · 4-bit",
+        provider="mlxserve",
+        repository=MLXSERVE_QWEN_IMAGE21_REPO,
+        model_family="qwen-image21",
+        base_model="qwen-image-2.1",
+        quantization="q4",
+        enabled=False,
+        default_steps=MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS,
+        default_guidance=0.0,
+    ).model_dump())
+
     models.append(ImageModel(
         id=JUGGERNAUT_XL_ID,
         name="Juggernaut XL",
@@ -326,6 +368,13 @@ def load_registry():
                     and model["default_steps"] == 30
                 ):
                     model["default_steps"] = QWEN_IMAGE_EDIT_DEFAULT_STEPS
+
+                if (
+                    model["id"] == Z_IMAGE_TURBO_ID
+                    and model.get("repository") == Z_IMAGE_TURBO_LEGACY_REPO
+                ):
+                    model["repository"] = Z_IMAGE_TURBO_REPO
+
             data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while
         # preserving all user edits (enabled flags, LoRAs and custom entries).

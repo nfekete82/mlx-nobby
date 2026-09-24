@@ -407,6 +407,41 @@ def _image_tool(action, query, goal, options):
     return app._start_chat_image_job(action, request)
 
 
+def _video_tool(action, query, goal, options):
+    from agent import app
+    context = _context()
+    if action == "video_job_status":
+        job = app.video_api.request("GET", "/jobs/" + app.video_api.job_id(str(query or "")), timeout=15)
+        if not context.chat_id or job.get("chat_id") != context.chat_id:
+            raise ValueError("VIDEO_JOB_OUTSIDE_CHAT")
+        return app._video_job_tool_result(job)
+    if not context.chat_id:
+        raise ValueError("CHAT_ID_REQUIRED")
+    with app.CHATS_LOCK:
+        chat = app.read_chat(context.chat_id)
+    if chat is None:
+        raise ValueError("CHAT_NOT_FOUND")
+    artifact_id = options.get("artifact_id")
+    if action == "video_animate":
+        upload_path = options.get("upload_path")
+        if upload_path:
+            if Path(str(upload_path)).resolve() not in context.upload_paths:
+                raise ValueError("UPLOAD_OUTSIDE_RUN")
+        else:
+            _chat_artifact(artifact_id)
+    request = app.ChatActionRequest(
+        prompt=str(query or goal), action=action, chat_id=context.chat_id,
+        run_id=context.run_id,
+        chat_revision=context.chat_revision if context.chat_revision is not None else chat.get("revision", 0),
+        active_artifact_id=artifact_id,
+        file_context={"kind": "image", "stored_path": str(Path(str(options["upload_path"])).resolve())}
+        if options.get("upload_path") else None,
+        video_options=options.get("video_options"),
+        quality=options.get("quality"),
+    )
+    return app._start_chat_video_job(action, request)
+
+
 def _document_tool(action, query, instruction, options):
     from agent import app
     if action in {"file_inspect", "file_pii_audit"}:
@@ -490,6 +525,8 @@ def execute(action, goal, query=None, instruction=None, files=None, options=None
         return _vision(query, goal, options)
     if action in {"image_generate", "image_edit", "image_job_status"}:
         return _image_tool(action, query, goal, options)
+    if action in {"video_generate", "video_animate", "video_job_status"}:
+        return _video_tool(action, query, goal, options)
     if action in {"document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status"}:
         return _document_tool(action, query, instruction, options)
     raise ValueError("UNKNOWN_RUNTIME_TOOL")

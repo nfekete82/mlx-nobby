@@ -161,6 +161,9 @@ Weitere Registry-Tools:
   options.upload_path aus den gebundenen Run-Ressourcen. Beide benötigen
   Freigabe und liefern zunächst einen Job, kein fertiges Bild.
 - image_job_status: Bildjob-ID in "query" abfragen.
+- video_generate: lokalen T2V-Job mit Beschreibung in "query" starten.
+  video_animate benötigt options.artifact_id eines gebundenen verwalteten
+  Bildartefakts. video_job_status fragt eine Video-Job-ID in "query" ab.
 - document_search: "query" ist Suchtext, options.document_id das bereits
   indexierte Dokument. document_page: options.document_id und options.page.
 - file_inspect: Struktur einer Workspace-Textdatei lesen. file_pii_audit:

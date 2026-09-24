@@ -1,4 +1,5 @@
 import copy
+from contextlib import nullcontext
 import io
 import json
 import os
@@ -72,7 +73,20 @@ class ImageRuntimeTests(unittest.TestCase):
                         patch.object(service, "OUTPUT", self.root / "images"),
                         patch.object(agent, "IMAGE_DIRECTORY", self.root / "images"),
                         patch.object(agent, "CHAT_DIRECTORY", self.root / "chats"),
-                        patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json")]
+                        patch.object(agent, "MODEL_ROLES_FILE", self.root / "model-roles.json"),
+                        patch.object(
+                            service.runtime_coordinator,
+                            "wait_for_idle",
+                            return_value={
+                                "status": "ready",
+                                "active_generation": False,
+                            },
+                        ),
+                        patch.object(
+                            service.runtime_coordinator,
+                            "image_runtime",
+                            side_effect=lambda *_args, **_kwargs: nullcontext(),
+                        )]
         for item in self.patches:
             item.start()
         with service._jobs_lock:
@@ -1350,41 +1364,88 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(payload["width"], 896)
         self.assertEqual(payload["height"], 1152)
 
-    def test_image_prompt_router_controls_layout_and_chat_controls_translation(self):
-        router_result = (
-            '{"prompt":"Kinoreife Aufnahme eines Sportwagens auf einer '
-            'Küstenstraße bei Sonnenuntergang","layout":"wide"}'
-        )
-
-        with (
-            patch.object(
-                agent,
-                "router_llm",
-                return_value=router_result,
+    def test_image_prompt_router_preserves_semantics_across_isolated_requests(self):
+        translations = {
+            "einer frau mit schwarzen dessous": (
+                "Adult woman wearing black lingerie, matching black bra and black panties"
             ),
-            patch.object(
-                agent,
-                "_retry_image_prompt_translation",
-                return_value=(
-                    "Cinematic shot of a sports car "
-                    "on a coastal road at sunset"
-                ),
-            ) as translator,
-        ):
-            result = agent.translate_image_prompt_to_english(
-                "Kinoreife Aufnahme eines Sportwagens "
-                "auf einer Küstenstraße bei Sonnenuntergang"
-            )
+            "einer frau mit roten dessous": (
+                "Adult woman wearing red lingerie, matching red bra and red panties"
+            ),
+            "einer rothaarigen frau in unterwäsche": (
+                "Adult red-haired woman wearing underwear"
+            ),
+            "blonde frau mit rotem dessous": (
+                "Adult blonde woman wearing red lingerie, matching red bra and red panties"
+            ),
+            "rothaarige frau mit schwarzem dessous": (
+                "Adult red-haired woman wearing black lingerie, matching black bra and black panties"
+            ),
+            "blonde frau mit grünem kleid": (
+                "Adult blonde woman wearing a green dress"
+            ),
+            "mann mit rotem hemd": "Adult man wearing a red shirt",
+            "schwarzhaarige frau mit blauen augen": (
+                "Adult black-haired woman with blue eyes"
+            ),
+        }
+        expectations = {
+            "einer frau mit schwarzen dessous": (
+                ("woman", "black lingerie", "black bra", "black panties"),
+                ("blonde", "red-haired", "eyes"),
+            ),
+            "einer frau mit roten dessous": (
+                ("woman", "red lingerie", "red bra", "red panties"),
+                ("blonde", "black-haired", "eyes"),
+            ),
+            "einer rothaarigen frau in unterwäsche": (
+                ("red-haired woman", "underwear"),
+                ("black lingerie", "red lingerie", "white lingerie", "blue eyes"),
+            ),
+            "blonde frau mit rotem dessous": (
+                ("blonde woman", "red lingerie", "red bra", "red panties"),
+                ("black lingerie", "black-haired", "blue eyes"),
+            ),
+            "rothaarige frau mit schwarzem dessous": (
+                ("red-haired woman", "black lingerie"),
+                ("red lingerie", "blonde", "blue eyes"),
+            ),
+            "blonde frau mit grünem kleid": (
+                ("blonde woman", "green dress"),
+                ("lingerie", "bra", "panties", "blue eyes"),
+            ),
+            "mann mit rotem hemd": (
+                ("man", "red shirt"),
+                ("woman", "hair", "eyes", "lingerie"),
+            ),
+            "schwarzhaarige frau mit blauen augen": (
+                ("black-haired woman", "blue eyes"),
+                ("dress", "shirt", "lingerie", "bra", "panties"),
+            ),
+        }
 
-        self.assertEqual(result["layout"], "wide")
-        self.assertEqual(result["width"], 1024)
-        self.assertEqual(result["height"], 768)
-        self.assertEqual(
-            result["prompt"],
-            "Cinematic shot of a sports car "
-            "on a coastal road at sunset",
-        )
-        translator.assert_called_once()
+        def router_response(messages, **kwargs):
+            source = messages[-1]["content"]
+            return json.dumps({"prompt": translations[source], "layout": "portrait"})
+
+        with patch.object(agent, "router_llm", side_effect=router_response) as router:
+            for source, (required, forbidden) in expectations.items():
+                with self.subTest(source=source):
+                    result = agent.translate_image_prompt_to_english(source)
+                    translated = result["prompt"].casefold()
+                    for phrase in required:
+                        self.assertIn(phrase, translated)
+                    for phrase in forbidden:
+                        self.assertNotIn(phrase, translated)
+                    self.assertEqual(result["layout"], "portrait")
+                    self.assertEqual((result["width"], result["height"]), (768, 1024))
+
+        self.assertEqual(router.call_count, len(expectations))
+        for call in router.call_args_list:
+            self.assertEqual(call.kwargs["temperature"], 0.0)
+            system_prompt = call.args[0][0]["content"]
+            self.assertIn("strict semantic image prompt translator", system_prompt)
+            self.assertIn("Treat every request in isolation", system_prompt)
 
 
     def test_image_prompt_accepts_unchanged_english_translation(self):
@@ -1398,17 +1459,10 @@ class ImageRuntimeTests(unittest.TestCase):
             'standing on a city street at night","layout":"tall"}'
         )
 
-        with (
-            patch.object(
-                agent,
-                "router_llm",
-                return_value=router_result,
-            ),
-            patch.object(
-                agent,
-                "_retry_image_prompt_translation",
-                return_value=source,
-            ),
+        with patch.object(
+            agent,
+            "router_llm",
+            return_value=router_result,
         ):
             result = agent.translate_image_prompt_to_english(source)
 
@@ -1435,10 +1489,12 @@ class ImageRuntimeTests(unittest.TestCase):
     def test_auto_generation_uses_capabilities_and_availability(self):
         for model_id in (
             registry.JUGGERNAUT_XL_ID,
-            "mflux-qwen-image",
-            "mflux-z-image-turbo",
+            registry.Z_IMAGE_TURBO_ID,
+            registry.MLXSERVE_QWEN_IMAGE21_ID,
         ):
             registry.update_model(model_id, {"enabled": True})
+
+        registry.set_default(registry.MLXSERVE_QWEN_IMAGE21_ID)
 
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
@@ -1446,72 +1502,83 @@ class ImageRuntimeTests(unittest.TestCase):
                     "auto",
                     "A photorealistic studio portrait of a woman",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A realistic person in natural light",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A poster with clear typography and text",
                 )["id"],
-                "mflux-qwen-image",
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
-            self.assertEqual(
-                service._generation_model("auto", "A red apple")["id"],
-                "mflux-z-image-turbo",
-            )
-            self.assertEqual(
-                service._generation_model(
-                    "mflux-qwen-image",
-                    "A photorealistic portrait",
-                )["id"],
-                "mflux-qwen-image",
-            )
-
-        def without_juggernaut(model):
-            return (model["id"] != registry.JUGGERNAUT_XL_ID, "test")
-
-        with patch.object(service, "availability", side_effect=without_juggernaut):
             self.assertEqual(
                 service._generation_model(
                     "auto",
-                    "A photorealistic studio portrait of a woman",
+                    "Create a quick preview of a red apple",
                 )["id"],
-                "mflux-z-image-turbo",
+                registry.Z_IMAGE_TURBO_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    "auto",
+                    "A generic landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
+            )
+            self.assertEqual(
+                service._generation_model(
+                    registry.MLXSERVE_QWEN_IMAGE21_ID,
+                    "A photorealistic portrait",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
         def without_qwen(model):
-            return (model["id"] != "mflux-qwen-image", "test")
+            return (
+                model["id"] != registry.MLXSERVE_QWEN_IMAGE21_ID,
+                "test",
+            )
 
         with patch.object(service, "availability", side_effect=without_qwen):
             self.assertEqual(
                 service._generation_model(
                     "auto",
-                    "A typography poster with text",
+                    "A photorealistic studio portrait of a woman",
                 )["id"],
-                "mflux-z-image-turbo",
+                registry.JUGGERNAUT_XL_ID,
             )
 
         def without_turbo(model):
-            return (model["id"] != "mflux-z-image-turbo", "test")
+            return (
+                model["id"] != registry.Z_IMAGE_TURBO_ID,
+                "test",
+            )
 
         with patch.object(service, "availability", side_effect=without_turbo):
             self.assertEqual(
-                service._generation_model("auto", "A generic landscape")["id"],
-                registry.LEGACY_ID,
+                service._generation_model(
+                    "auto",
+                    "Create a fast preview of a landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
-        registry.update_model("mflux-z-image-turbo", {"enabled": False})
+        registry.update_model(registry.Z_IMAGE_TURBO_ID, {"enabled": False})
+
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
-                service._generation_model("auto", "A generic landscape")["id"],
-                registry.LEGACY_ID,
+                service._generation_model(
+                    "auto",
+                    "Create a fast preview of a landscape",
+                )["id"],
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
     def test_agent_preserves_auto_image_role_for_service_routing(self):
@@ -2117,6 +2184,7 @@ class ImageRuntimeTests(unittest.TestCase):
             self.assertEqual(running["current_step"], 2)
             self.assertEqual(running["total_steps"], 8)
             self.assertEqual(running["progress"], 0.25)
+            self.assertEqual(running["phase"], "progress")
             self.assertEqual(self.client.get("/health").json()["status"], "busy")
 
             busy = self.client.post(
@@ -2133,6 +2201,8 @@ class ImageRuntimeTests(unittest.TestCase):
 
         self.assertEqual(completed["operation"], "edit")
         self.assertEqual(completed["current_step"], 8)
+        self.assertEqual(completed["progress"], 1.0)
+        self.assertEqual(completed["phase"], "completed")
         self.assertEqual(completed["result"]["steps"], 8)
         self.assertTrue(Path(completed["result"]["path"]).is_file())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")
@@ -3154,6 +3224,122 @@ class ImageRuntimeTests(unittest.TestCase):
                 "normal_chat",
             )
         self.assertEqual(agent.classify_chat_action("Erstelle ein Bild von einem Apfel"), "image_generate")
+
+    def test_media_preflight_uses_router_and_never_starts_a_job(self):
+        image_prompts = (
+            "Photorealistic portrait of a woman in natural window light",
+            "beautiful sunset over the Alps",
+        )
+
+        with patch.object(
+            agent,
+            "semantic_intent_classifier",
+            return_value={
+                "intent": "image_generate",
+                "confidence": 0.99,
+                "requires_tools": True,
+                "reason": "image request",
+            },
+        ), patch.object(
+            agent,
+            "_start_chat_image_job",
+        ) as image_job, patch.object(
+            agent,
+            "_start_chat_video_job",
+        ) as video_job:
+            for prompt in image_prompts:
+                with self.subTest(prompt=prompt):
+                    result = agent.preflight_chat_action(
+                        agent.ChatActionRequest(prompt=prompt)
+                    )
+                    self.assertEqual(result, {"target": "image"})
+
+        image_job.assert_not_called()
+        video_job.assert_not_called()
+
+    def test_media_preflight_targets_chat_video_and_image_edit(self):
+        with patch.object(
+            agent,
+            "semantic_intent_classifier",
+            return_value={
+                "intent": "normal_chat",
+                "confidence": 0.99,
+                "requires_tools": False,
+                "reason": "ordinary chat",
+            },
+        ):
+            self.assertEqual(
+                agent.preflight_chat_action(
+                    agent.ChatActionRequest(prompt="Why is the sky blue?")
+                ),
+                {"target": "chat"},
+            )
+
+        self.assertEqual(
+            agent.preflight_chat_action(
+                agent.ChatActionRequest(
+                    prompt="Create a video of waves on a beach"
+                )
+            ),
+            {"target": "video"},
+        )
+        self.assertEqual(
+            agent.preflight_chat_action(
+                agent.ChatActionRequest(
+                    prompt="Make the background darker",
+                    file_context={
+                        "kind": "image",
+                        "mime_type": "image/png",
+                        "stored_path": "/tmp/source.png",
+                    },
+                )
+            ),
+            {"target": "image_edit"},
+        )
+
+    def test_resolved_media_target_skips_second_router_pass(self):
+        request = self.make_chat_action_request(
+            prompt="beautiful sunset over the Alps",
+            resolved_target="image",
+        )
+        queued_job = {
+            "id": "a" * 24,
+            "operation": "generate",
+            "status": "queued",
+        }
+
+        with patch.object(
+            agent,
+            "classify_chat_action_details",
+        ) as classify, patch.object(
+            agent,
+            "_start_chat_image_job",
+            return_value=queued_job,
+        ) as start_job:
+            result = agent.run_chat_action(request)
+
+        classify.assert_not_called()
+        start_job.assert_called_once_with("image_generate", request)
+        self.assertEqual(result["tool"], "image_generate")
+
+        with self.assertRaises(HTTPException) as mismatch:
+            agent.run_chat_action(
+                self.make_chat_action_request(
+                    prompt="Edit this",
+                    action="image_edit",
+                    resolved_target="image",
+                )
+            )
+        self.assertEqual(mismatch.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as missing_source:
+            agent.run_chat_action(
+                self.make_chat_action_request(
+                    prompt="Make it warmer",
+                    resolved_target="image_edit",
+                )
+            )
+        self.assertEqual(missing_source.exception.status_code, 422)
 
 
     def test_delete_chat_images_tolerates_file_disappearing_before_unlink(self):
@@ -4876,3 +5062,136 @@ def test_normalize_image_edit_prompt_darkens_only_background():
     assert "Make only the background darker" in result
     assert "Do not darken the subject" in result
     assert "exposure and brightness" in result
+
+
+def test_image_quality_profiles_and_legacy_default():
+    model = {
+        "provider": "mlxserve", "model_family": "qwen-image21",
+        "default_steps": 20,
+    }
+    assert service._resolved_steps(model, None, "fast") == 20
+    assert service._resolved_steps(model, None, "standard") == 30
+    assert service._resolved_steps(model, None, "quality") == 40
+    assert service._resolved_steps(model, None) == 40
+
+    juggernaut = {
+        "provider": "sdxl", "model_family": "sdxl", "base_model": "sdxl",
+        "default_steps": 30, "default_guidance": 7.0,
+    }
+    assert service._resolved_steps(juggernaut, None, "standard") == 30
+    assert service._resolved_steps(juggernaut, None, "quality") == 35
+
+    turbo = {
+        "provider": "mflux", "model_family": "z-image-turbo",
+        "base_model": "z-image-turbo", "default_steps": 9,
+        "default_guidance": 0,
+    }
+    assert service._resolved_steps(turbo, None, "quality") == 9
+
+    distilled = {
+        "provider": "mflux", "model_family": "flux2-klein",
+        "base_model": "flux2-klein-4b", "default_steps": 4,
+        "default_guidance": 1,
+    }
+    assert service._resolved_steps(distilled, None, "quality") == 4
+
+
+def test_agent_forwards_image_quality_for_generate_and_edit(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (32, 32), "white").save(source)
+    with patch.object(agent, "translate_image_prompt_to_english", return_value={
+        "prompt": "A red apple", "width": 768, "height": 1024,
+    }):
+        generated = agent._image_generate_payload(agent.ChatActionRequest(
+            prompt="Erstelle ein Bild", quality="fast",
+        ))
+    with patch.object(agent, "_image_source_path", return_value=source), \
+         patch.object(agent, "load_model_roles", return_value={"image": "edit-model"}):
+        edited = agent._image_edit_payload(agent.ChatActionRequest(
+            prompt="Mach es heller", quality="quality",
+        ))
+    assert generated["quality"] == "fast"
+    assert (generated["width"], generated["height"]) == (768, 1024)
+    assert edited["quality"] == "quality"
+    assert edited["source_path"] == str(source)
+
+
+def test_image_quality_reaches_provider_and_artifact(tmp_path):
+    model = {
+        "id": "test-image", "provider": "mflux", "model_family": "test-family",
+        "default_steps": 20, "default_guidance": 0, "quantization": "q4",
+        "loras": [], "capabilities": ["text_to_image", "image_edit"],
+    }
+    captured = []
+
+    def fake_provider(_model, params, path, **_options):
+        captured.append(dict(params))
+        Image.new("RGB", (params.get("width", 32), params.get("height", 32)), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    source = tmp_path / "1234567890-abcdef123456.png"
+    Image.new("RGB", (32, 32), "white").save(source)
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            generated = service._generate_result(service.Generate(
+                prompt="A red apple", width=256, height=256, quality="standard",
+            ))
+        with patch.object(service, "_edit_model", return_value=model), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            edited = service._edit_result(service.Edit(
+                prompt="Make it brighter", source_path=str(source), quality="quality",
+            ))
+    finally:
+        service.OUTPUT = old_output
+    assert captured[0]["quality"] == "standard"
+    assert captured[0]["steps"] == 20
+    assert generated["quality"] == "standard"
+    assert generated["steps"] == 20
+    assert captured[1]["quality"] == "quality"
+    assert captured[1]["steps"] == 20
+    assert edited["quality"] == "quality"
+    assert edited["steps"] == 20
+
+
+def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path):
+    model = {
+        "id": "qwen", "provider": "mlxserve", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    captured = []
+
+    def fake_provider(_model, params, path, **_options):
+        captured.append(dict(params))
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=False), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            standard = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="standard",
+                auto_size=True, seed=123,
+            ))
+            quality = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="quality",
+                auto_size=True, seed=123,
+            ))
+            explicit = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="quality",
+                steps=37, guidance=0, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert (standard["width"], standard["height"], standard["steps"]) == (768, 432, 30)
+    assert (quality["width"], quality["height"], quality["steps"]) == (1024, 576, 40)
+    assert standard["seed"] == quality["seed"] == 123
+    assert standard["guidance"] == quality["guidance"] == 0
+    assert (explicit["width"], explicit["height"]) == (768, 432)
+    assert explicit["steps"] == 37

@@ -1,8 +1,11 @@
 """Native, local image service. Images stay on disk, never in API payloads."""
+import json
+import os
 import re
 import secrets
 import threading
 import time
+import urllib.request
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Literal
@@ -10,8 +13,11 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import image_registry as registry
+from quality_profiles import dimensions_for_long_edge, resolve_image_profile
+import runtime_coordinator
 import subprocess
 from image_providers import (
+    MLXSERVE_URL,
     PROCESS_TERMINATION_TIMEOUT,
     ProviderCancelled,
     availability,
@@ -24,6 +30,9 @@ from image_providers import (
 from local_security import LocalRequestGuard
 
 OUTPUT = Path.home() / ".config/mlx-web/images"
+PROJECT_DIR = Path(__file__).resolve().parent
+MLX_MANAGER = PROJECT_DIR / "scripts" / "mlx"
+MLX_SERVER_LABEL = "de.nobby.mlx-server"
 MODEL = "FLUX.1-schnell"
 DIFFUSIONKIT_MODEL = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
 _lock = threading.Lock()
@@ -45,6 +54,8 @@ class Generate(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    quality: Literal["fast", "standard", "quality"] | None = None
+    auto_size: bool = False
 
 
 class Edit(BaseModel):
@@ -56,6 +67,7 @@ class Edit(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    quality: Literal["fast", "standard", "quality"] | None = None
 
 
 class Upscale(BaseModel):
@@ -89,6 +101,17 @@ async def lifespan(app):
     try:
         yield
     finally:
+        with _jobs_lock:
+            active = [
+                _cancel_job(job)
+                for job in _jobs.values()
+                if job.get("status") in {"queued", "loading", "running", "saving"}
+            ]
+        for process, thread in active:
+            if process is not None:
+                terminate_process_tree(process)
+            if thread is not None:
+                thread.join(timeout=PROCESS_TERMINATION_TIMEOUT * 2 + 1)
         shutdown_sdxl_worker()
 
 
@@ -120,19 +143,107 @@ def describe(model):
     return model | {"available": available, "availability_note": reason}
 
 
+def _chat_server_loaded():
+    domain = f"gui/{os.getuid()}/{MLX_SERVER_LABEL}"
+    result = subprocess.run(
+        ["launchctl", "print", domain],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _chat_server_command(action):
+    result = subprocess.run(
+        ["/bin/bash", str(MLX_MANAGER), action],
+        cwd=PROJECT_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        message = result.stdout.strip() or f"mlx {action} fehlgeschlagen"
+        raise RuntimeError(message[-4000:])
+
+
+def _unload_mlxserve_model(model):
+    body = json.dumps({
+        "model": model["repository"],
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        MLXSERVE_URL + "/v1/unload-model",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=60) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"MLX-Serve unload lieferte HTTP {response.status}"
+            )
+
+
+def _loaded_mlxserve_models():
+    """Return image models that MLX-Serve reports as actually resident."""
+    try:
+        with urllib.request.urlopen(
+            MLXSERVE_URL + "/v1/models",
+            timeout=3,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    repositories = {
+        model.get("repository"): model
+        for model in registry_call(registry.load_registry)["models"]
+        if model.get("provider") == "mlxserve"
+    }
+    return [
+        repositories[item.get("id")]
+        for item in payload.get("data", [])
+        if (
+            isinstance(item, dict)
+            and item.get("loaded") is True
+            and item.get("id") in repositories
+        )
+    ]
+
+
 @app.get("/health")
 def health():
     data = registry_call(registry.load_registry)
     model = registry_call(registry.get_model)
     sdxl_loaded = sdxl_worker_running()
-    loaded = bool(_running) or sdxl_loaded
+    mlxserve_loaded = _loaded_mlxserve_models()
+    loaded = bool(_running) or sdxl_loaded or bool(mlxserve_loaded)
     running_model = _running
     if running_model is None and sdxl_loaded:
         running_model = registry.JUGGERNAUT_XL_ID
+    if running_model is None and mlxserve_loaded:
+        running_model = mlxserve_loaded[0]["id"]
+
+    with _jobs_lock:
+        active_job = _jobs.get(_active_job_id)
+        active_generation = bool(
+            active_job
+            and active_job.get("phase") != "waiting_for_resources"
+        )
 
     return {
         "ok": True,
         "status": "busy" if _running or _active_job_id else "ready",
+        "active_generation": active_generation,
+        "active_job_id": _active_job_id,
         "models": [m["id"] for m in data["models"] if m["enabled"]],
         "loaded": loaded,
         "running_model": running_model,
@@ -227,6 +338,8 @@ def unload():
     with exclusive():
         try:
             shutdown_sdxl_worker()
+            for model in _loaded_mlxserve_models():
+                _unload_mlxserve_model(model)
         except RuntimeError as exc:
             raise HTTPException(
                 500,
@@ -283,14 +396,22 @@ def _auto_generation_model(prompt):
         r"\b(?:complex prompt|high prompt fidelity|komplexer prompt|hohe prompttreue)\b",
         value,
     )
+    fast_request = re.search(
+        r"\b(?:fast|quick|preview|draft|schnell|vorschau|entwurf)\b",
+        value,
+    )
+
     preferred_ids = []
-    if text_image:
-        preferred_ids.append("mflux-qwen-image")
+    if fast_request:
+        preferred_ids.append(registry.Z_IMAGE_TURBO_ID)
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
+    elif text_image:
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
     elif realistic_style and human_subject:
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
         preferred_ids.append(registry.JUGGERNAUT_XL_ID)
     elif complex_prompt:
-        preferred_ids.append("mflux-qwen-image")
-    preferred_ids.append("mflux-z-image-turbo")
+        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
 
     for model_id in preferred_ids:
         model = candidate(model_id)
@@ -327,6 +448,21 @@ def _edit_model(model_id):
     raise HTTPException(503, "Kein verfügbares Modell für Bildbearbeitung")
 
 
+def _resolved_steps(model, requested_steps, quality=None):
+    if requested_steps is not None:
+        return requested_steps
+
+    if quality is not None:
+        return resolve_image_profile(model, quality)["steps"]
+
+    default_steps = int(model["default_steps"])
+
+    if str(model.get("model_family") or "") == "qwen-image21":
+        return max(40, default_steps)
+
+    return default_steps
+
+
 def _generate_result(
     request,
     *,
@@ -340,8 +476,17 @@ def _generate_result(
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
     params = request.model_dump()
-    params["steps"] = request.steps if request.steps is not None else model["default_steps"]
-    params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
+    profile = resolve_image_profile(model, request.quality) if request.quality else None
+    params["steps"] = _resolved_steps(model, request.steps, request.quality)
+    params["guidance"] = (
+        request.guidance
+        if request.guidance is not None
+        else profile["guidance"] if profile else model["default_guidance"]
+    )
+    if request.auto_size and profile and profile.get("long_edge"):
+        params["width"], params["height"] = dimensions_for_long_edge(
+            request.width, request.height, profile["long_edge"],
+        )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     if model["provider"] == "diffusionkit" and params["steps"] > 8:
         raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
@@ -355,9 +500,37 @@ def _generate_result(
     if prepared_callback:
         prepared_callback(model, params, path)
     _running = model["id"]
+    chat_was_loaded = False
+
     try:
+        if model["provider"] == "mlxserve":
+            chat_was_loaded = _chat_server_loaded()
+
+            if chat_was_loaded:
+                print(
+                    "[image-memory] stopping chat server before MLX-Serve image generation",
+                    flush=True,
+                )
+                _chat_server_command("stop")
+                time.sleep(1)
+
         run_provider(model, params, path, **(provider_options or {}))
+
     finally:
+        if model["provider"] == "mlxserve":
+            if chat_was_loaded:
+                try:
+                    print(
+                        "[image-memory] restarting chat server",
+                        flush=True,
+                    )
+                    _chat_server_command("start")
+                except Exception as exc:
+                    print(
+                        f"[image-memory] ERROR: chat server restart failed: {exc}",
+                        flush=True,
+                    )
+
         _running = None
     if saving_callback:
         saving_callback()
@@ -365,8 +538,8 @@ def _generate_result(
         "id": image_id,
         "path": str(path),
         "mime_type": "image/png",
-        "width": request.width,
-        "height": request.height,
+        "width": params["width"],
+        "height": params["height"],
         "prompt": request.prompt,
         "model": model["id"],
         "provider": model["provider"],
@@ -376,6 +549,7 @@ def _generate_result(
         "guidance": params["guidance"],
         "seed": params["seed"],
         "steps": params["steps"],
+        "quality": request.quality,
         "created_at": time.time(),
     }
 
@@ -459,8 +633,13 @@ def _edit_result(
         with Image.open(edit_source) as prepared_image:
             params["width"], params["height"] = prepared_image.size
 
-    params["steps"] = request.steps if request.steps is not None else model["default_steps"]
-    params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
+    params["steps"] = _resolved_steps(model, request.steps, request.quality)
+    profile = resolve_image_profile(model, request.quality) if request.quality else None
+    params["guidance"] = (
+        request.guidance
+        if request.guidance is not None
+        else profile["guidance"] if profile else model["default_guidance"]
+    )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     image_id = f"{int(time.time())}-{secrets.token_hex(6)}"
@@ -498,6 +677,7 @@ def _edit_result(
         "guidance": params["guidance"],
         "seed": params["seed"],
         "steps": params["steps"],
+        "quality": request.quality,
         "created_at": time.time(),
     }
 
@@ -737,6 +917,8 @@ def _job_snapshot(job):
         for key, value in job.items()
         if not key.startswith("_")
     }
+    if snapshot.get("status") == "completed":
+        snapshot["progress"] = 1.0
     step = snapshot.get("current_step")
     total = snapshot.get("total_steps")
     if isinstance(step, int) and isinstance(total, int) and total > 0:
@@ -770,6 +952,8 @@ def _update_job(job_id, **changes):
 def _provider_progress(job_id, event):
     changes = {}
     phase = event.get("phase")
+    if phase:
+        changes["phase"] = str(phase)
     if phase in {"save", "complete", "generated"}:
         changes["status"] = "saving"
     elif phase:
@@ -777,6 +961,11 @@ def _provider_progress(job_id, event):
     if event.get("step") is not None and event.get("total_steps") is not None:
         changes["current_step"] = event["step"]
         changes["total_steps"] = event["total_steps"]
+        if event["total_steps"] > 0:
+            changes["progress"] = min(1.0, max(0.0, event["step"] / event["total_steps"]))
+    elif isinstance(event.get("progress"), (int, float)):
+        progress = float(event["progress"])
+        changes["progress"] = min(1.0, max(0.0, progress / 100 if progress > 1 else progress))
     if changes:
         _update_job(job_id, **changes)
 
@@ -815,29 +1004,39 @@ def _run_image_job(job_id, operation, request):
     try:
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
-        _update_job(job_id, status="loading", started_at=time.time())
-        if operation == "edit":
-            execute = _edit_result
-        elif operation == "upscale":
-            execute = _upscale_result
-        else:
-            execute = _generate_result
-
-        result = execute(
-            request,
-            provider_options=provider_options,
-            prepared_callback=prepared,
-            saving_callback=lambda: _update_job(job_id, status="saving"),
+        _update_job(
+            job_id, status="queued", phase="waiting_for_resources",
+            progress=0.0, started_at=time.time(),
         )
+        with runtime_coordinator.image_runtime(cancel_event):
+            _update_job(job_id, status="loading", phase="loading")
+            if operation == "edit":
+                execute = _edit_result
+            elif operation == "upscale":
+                execute = _upscale_result
+            else:
+                execute = _generate_result
+
+            result = execute(
+                request,
+                provider_options=provider_options,
+                prepared_callback=prepared,
+                saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+            )
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
+        with _jobs_lock:
+            total_steps = _jobs.get(job_id, {}).get("total_steps")
         _update_job(
             job_id,
             status="completed",
+            phase="completed",
+            current_step=total_steps,
+            progress=1.0,
             result=result,
             finished_at=time.time(),
         )
-    except ProviderCancelled:
+    except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output_path is not None:
             output_path.unlink(missing_ok=True)
         _update_job(
@@ -916,6 +1115,7 @@ def create_image_job(request: ImageJobCreate):
         "run_id": request.run_id or job_id,
         "chat_revision": request.chat_revision,
         "status": "queued",
+        "phase": "queued",
         "model": None,
         "current_step": None,
         "total_steps": (
@@ -923,6 +1123,7 @@ def create_image_job(request: ImageJobCreate):
             if request.operation == "upscale"
             else image_request.steps
         ),
+        "progress": 0.0,
         "result": None,
         "error": None,
         "created_at": created_at,

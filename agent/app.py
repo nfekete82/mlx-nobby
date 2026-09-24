@@ -24,7 +24,9 @@ from agent import profile
 from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
+from agent import video_api
 from agent import model_cleanup
+import runtime_coordinator
 from agent.tool_registry import Tool, ToolRegistry
 from agent import run_state
 from agent.approvals import (
@@ -108,6 +110,9 @@ IMAGE_ID_PATTERN = re.compile(r"^\d{10}-[0-9a-f]{12}$")
 IMAGE_ARTIFACT_ID_PATTERN = re.compile(
     r"^image-(?P<image_id>\d{10}-[0-9a-f]{12})$"
 )
+VIDEO_DIRECTORY = Path.home() / ".config/mlx-web/videos"
+VIDEO_UPLOAD_DIRECTORY = Path.home() / ".config/mlx-web/batch/uploads"
+VIDEO_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 
 
 class AddModelRequest(BaseModel):
@@ -1055,13 +1060,13 @@ def system_restart_all():
     }
 
 
-@app.post("/api/system/rebuild-all", status_code=202)
-def system_rebuild_all():
+@app.post("/api/system/reboot", status_code=202)
+def system_reboot():
     _set_system_lifecycle_state(
         state="accepted",
-        action="rebuild-all",
+        action="reboot",
         phase="accepted",
-        message="MLX Nobby wird neu gebaut.",
+        message="System Reboot wird vorbereitet.",
         current=0,
         total=0,
     )
@@ -1070,7 +1075,26 @@ def system_rebuild_all():
 
     return {
         "status": "accepted",
-        "action": "rebuild-all",
+        "action": "reboot",
+    }
+
+
+@app.post("/api/system/shutdown-ai", status_code=202)
+def system_shutdown_ai():
+    _set_system_lifecycle_state(
+        state="accepted",
+        action="shutdown-ai",
+        phase="accepted",
+        message="KI-System wird beendet.",
+        current=0,
+        total=0,
+    )
+
+    _launch_system_lifecycle_helper("shutdown-ai.sh")
+
+    return {
+        "status": "accepted",
+        "action": "shutdown-ai",
     }
 
 
@@ -2666,7 +2690,7 @@ def resolve_model_role(role):
             "alias": service_model if configured == "auto" else configured,
             "repo": service_model if configured == "auto" else (selected or {}).get("repo"),
             "available": active, "active": active, "requires_switch": False,
-            "backend": "mlx_embeddings",
+            "backend": "mlx_serve",
             "compatible": compatible,
         }
 
@@ -3904,10 +3928,18 @@ class ChatFileRouteRequest(BaseModel):
 
 class ChatActionRequest(BaseModel):
     prompt: str
-    action: Literal["image_generate", "image_edit", "image_upscale"] | None = None
+    action: Literal[
+        "image_generate", "image_edit", "image_upscale",
+        "video_generate", "video_animate",
+    ] | None = None
     file_context: dict | None = None
     active_artifact_id: str | None = None
     image_options: dict | None = None
+    video_options: dict | None = None
+    quality: Literal["preview", "fast", "standard", "quality"] | None = None
+    resolved_target: Literal[
+        "chat", "image", "image_edit", "video",
+    ] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
     trace_id: str | None = None
@@ -4324,6 +4356,14 @@ MLX_CAPABILITY_MODEL = {
         "description": "Ein angehängtes oder aktives Bild lokal mit Real-ESRGAN hochskalieren",
         "access": "spezialisierte Bild-Pipeline",
     },
+    "video_generate": {
+        "description": "Ein Video lokal aus einem Textprompt mit LTX 2.5 Fast erzeugen",
+        "access": "experimentelle lokale Video-Pipeline",
+    },
+    "video_animate": {
+        "description": "Ein verwaltetes Bildartefakt lokal mit LTX 2.5 Fast animieren",
+        "access": "experimentelle lokale Video-Pipeline",
+    },
     "vision": {
         "description": "Ein angehängtes oder aktives Bild mit einem Vision-Modell analysieren",
         "access": "Bildanalyse im normalen Chatpfad",
@@ -4545,10 +4585,28 @@ _IMAGE_NOUN_OF_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_VIDEO_ANIMATE_PATTERN = re.compile(
+    r"\b(?:animier(?:e|en)?\s+(?:dieses|das|mein)?\s*(?:bild|foto)|"
+    r"mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video|"
+    r"erzeug(?:e|en)?\s+(?:daraus|hieraus)\s+(?:eine\s+)?animation|"
+    r"turn\s+(?:this|that)\s+(?:image|picture)\s+into\s+(?:a\s+)?video|"
+    r"animate\s+(?:this|that)?\s*(?:image|picture))\b",
+    re.IGNORECASE,
+)
+_VIDEO_GENERATE_PATTERN = re.compile(
+    r"\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b"
+    r".{0,40}\b(?:video|clip)\b",
+    re.IGNORECASE,
+)
+
 
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
+    if _VIDEO_ANIMATE_PATTERN.search(value):
+        return "video_animate"
+    if _VIDEO_GENERATE_PATTERN.search(value):
+        return "video_generate"
     try:
         active_code_workspace = code_workspaces.active_workspace() is not None
     except ValueError:
@@ -6373,185 +6431,11 @@ def image_prompt_from_request(prompt):
 
 
 
-def _image_prompt_needs_english_retry(source, translated):
-    """Detect obvious cases where image translation was skipped."""
-    source = str(source or "").strip()
-    translated = str(translated or "").strip()
-
-    if not translated:
-        return True
-
-    german_markers = (
-        " einer ",
-        " eines ",
-        " einen ",
-        " einem ",
-        " erwachsenen ",
-        " schwarzen ",
-        " weißen ",
-        " weißem ",
-        " küstenstraße",
-        " sonnenuntergang",
-        " ganzkörper",
-        " nahaufnahme",
-        " berglandschaft",
-        " hintergrund",
-        " natürlichem ",
-        " natürlichen ",
-        " professionelles ",
-        " studioporträt",
-    )
-
-    value = f" {translated.casefold()} "
-
-    return any(
-        marker in value
-        for marker in german_markers
-    )
-
-
-def _retry_image_prompt_translation(prompt):
-    """Compile an image-generation prompt with the configured chat model."""
-
-    value = str(prompt or "").strip()
-
-    if not value:
-        return value
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are an image-generation prompt compiler. Convert the "
-                "user's request into fluent, precise English optimized for a "
-                "text-to-image model. Preserve every concrete fact exactly, "
-                "including people, number of people, age when specified, "
-                "gender when specified, objects, brands, colors, clothing, "
-                "actions, poses, spatial relationships, environment, style, "
-                "camera instructions, orientation, negations and constraints. "
-                "Never invent additional people, objects, scenery, brands, "
-                "colors, actions, story elements or factual scene details. "
-                "You may improve visual phrasing with concise photographic or "
-                "artistic terminology for composition, perspective, lighting, "
-                "materials, texture and realism only when it is consistent "
-                "with the user's requested scene. If the user already specifies "
-                "lighting, camera, composition or style, preserve it instead "
-                "of replacing it. Text that must visibly appear in the image "
-                "must retain its exact original spelling and language unless "
-                "the user explicitly asks to translate it. Do not omit small "
-                "details. Avoid generic quality-word spam and repetition. "
-                "Return ONLY the final English image-generation prompt. "
-                "No JSON. No markdown. No explanation."
-            ),
-        },
-        {
-            "role": "user",
-            "content": value,
-        },
-    ]
-
-    call_metrics = observability.ModelCallMetrics(
-        purpose="image.prompt_translate",
-        role="chat",
-        messages=messages,
-        context_sources=observability.message_context_counts(messages),
-    )
-
-    wait_started = time.monotonic()
-
-    try:
-        runtime = ensure_model_for_role("chat")
-
-        call_metrics.set_queue_wait(
-            (time.monotonic() - wait_started) * 1000
-        )
-
-        role = runtime["resolved"]
-        model = role.get("repo")
-
-        if not model:
-            raise RuntimeError("chat model unavailable")
-
-        call_metrics.set_model(
-            model=model,
-            role="chat",
-            alias=role.get("alias"),
-            backend=role.get("backend"),
-        )
-
-        config = load_config()
-        port = int(config.get("PORT", 8000))
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": 0.0,
-            "max_tokens": 650,
-            "stream": False,
-            "chat_template_kwargs": {
-                "enable_thinking": False,
-            },
-        }
-
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-
-        connect_started = time.monotonic()
-
-        with urllib.request.urlopen(
-            request,
-            timeout=180,
-        ) as response:
-            call_metrics.set_upstream_connect(
-                (time.monotonic() - connect_started) * 1000
-            )
-
-            result = json.loads(
-                response.read().decode("utf-8")
-            )
-
-        choice = result.get("choices", [{}])[0]
-
-        translated = str(
-            choice.get("message", {}).get("content") or ""
-        ).strip()
-
-        call_metrics.finish(
-            usage=result.get("usage"),
-            output_text=translated,
-            finish_reason=choice.get("finish_reason"),
-        )
-
-    except Exception as exc:
-        if call_metrics.metric["status"] == "running":
-            call_metrics.fail(type(exc).__name__)
-        raise
-
-    translated = translated.strip()
-
-    if (
-        len(translated) >= 2
-        and translated[0] == translated[-1]
-        and translated[0] in {'"', "'"}
-    ):
-        translated = translated[1:-1].strip()
-
-    if not translated:
-        raise ValueError("empty image translation")
-
-    return translated
-
-
 def translate_image_prompt_to_english(prompt):
-    """Translate an image prompt and select its layout using the small router."""
+    """Translate an image prompt and select its layout using the router."""
 
     value = str(prompt or "").strip()
+
     if not value:
         return value
 
@@ -6559,37 +6443,67 @@ def translate_image_prompt_to_english(prompt):
         {
             "role": "system",
             "content": (
-                "TASK: translate to English and classify image layout. "
-                "OUTPUT ONLY JSON. "
-                "Never describe, expand, improve or rewrite the scene. "
-                "Translate literally. Preserve all facts. Add zero new facts. "
-                "The prompt value MUST be English. "
+                "You are a strict semantic image prompt translator, not a "
+                "creative image-prompt author. Treat every request in isolation. "
+                "Translate the request into natural English and preserve every "
+                "explicit visual fact exactly, including the number and kind of "
+                "people, hair and eye attributes, clothing and its colors, objects, "
+                "setting, pose, composition, and style. Never infer an attribute "
+                "from an example or a previous request. Never add or change hair "
+                "color, eye color, skin color, clothing, clothing color, people, "
+                "setting, pose, or style. You may normalize grammar and make terse "
+                "wording natural. You may make an obviously implicit image term "
+                "concrete: for example, lingerie may be rendered as a matching bra "
+                "and panties. Describe every person as an adult and include the word "
+                "'Adult' in the English prompt. "
 
-                "LAYOUT RULES IN PRIORITY ORDER: "
-                "1. icon, logo, avatar, square -> square. "
-                "2. full-body person, standing full person, vertical poster -> tall. "
-                "3. face, headshot, ordinary person portrait -> portrait. "
-                "4. panorama, cinematic wide scene, strongly horizontal scene -> wide. "
-                "5. ordinary horizontal scene -> landscape. "
-                "6. otherwise -> square. "
+                "Bind every adjective only to the German noun it modifies. German "
+                "case endings do not change meaning: rothaarig, rothaarige, and "
+                "rothaarigen all mean red-haired; blond and blonde mean blonde; "
+                "schwarzhaarig means black-haired. These are hair attributes only, "
+                "never clothing colors. Dessous means lingerie and Unterwäsche means "
+                "underwear or lingerie. When the user specifies a lingerie color, "
+                "repeat that color explicitly before all three terms: '<color> "
+                "lingerie, matching <color> bra and <color> panties'. Do not rely on "
+                "the word 'matching' to imply the colors. When no lingerie color is "
+                "specified, never derive one from hair or any other attribute. In "
+                "that case, translate Unterwäsche simply as 'underwear' and Dessous "
+                "simply as 'lingerie'; do not add a bra, panties, or any clothing "
+                "color. A hair color may appear only in the subject phrase and must "
+                "never reappear in the clothing phrase. "
+                "The prompt value must be English. "
 
-                "IMPORTANT: full-body ALWAYS means tall unless the user explicitly "
-                "requests another orientation. "
-                "Panorama ALWAYS means wide. "
+                "Choose layout using these rules in priority order: "
+                "1. icon, logo, avatar, or explicit square: square. "
+                "2. full body, Ganzkörper, or a standing full person: tall. "
+                "3. face, headshot, or Nahaufnahme: portrait. "
+                "4. a single person, fashion portrait, or ordinary person photo: portrait. "
+                "5. panorama or cinematic wide scene: wide. "
+                "6. an ordinary horizontal scene: landscape. "
+                "7. otherwise: square. "
 
-                "Examples: "
-                "Ganzkörperaufnahme einer Frau -> "
-                "{\"prompt\":\"Full-body shot of a woman\",\"layout\":\"tall\"}. "
-                "Nahaufnahme eines Mannes -> "
-                "{\"prompt\":\"Close-up of a man\",\"layout\":\"portrait\"}. "
-                "Panorama einer Berglandschaft -> "
-                "{\"prompt\":\"Panorama of a mountain landscape\",\"layout\":\"wide\"}. "
-                "Minimalistisches App-Icon -> "
-                "{\"prompt\":\"Minimalist app icon\",\"layout\":\"square\"}. "
+                "Return only one valid JSON object with exactly two fields and no "
+                "markdown, explanation, or additional text: "
+                "{\"prompt\":\"English image prompt\","
+                "\"layout\":\"square|portrait|tall|landscape|wide\"}. "
 
-                "Return exactly: "
-                "{\"prompt\":\"English translation\","
-                "\"layout\":\"square|portrait|tall|landscape|wide\"}"
+                "Each example below is an isolated request. Never carry an attribute "
+                "from one example into another request. "
+                "Input: einer rothaarigen frau in unterwäsche. "
+                "Output: {\"prompt\":\"Adult red-haired woman wearing underwear\","
+                "\"layout\":\"portrait\"}. "
+                "Input: blonde frau mit rotem dessous. "
+                "Output: {\"prompt\":\"Adult blonde woman wearing red lingerie, "
+                "matching red bra and red panties\",\"layout\":\"portrait\"}. "
+                "Input: rothaarige frau mit schwarzem dessous. "
+                "Output: {\"prompt\":\"Adult red-haired woman wearing black lingerie, "
+                "matching black bra and black panties\",\"layout\":\"portrait\"}. "
+                "Input: blonde frau mit grünem kleid. "
+                "Output: {\"prompt\":\"Adult blonde woman wearing a green dress\","
+                "\"layout\":\"portrait\"}. "
+                "Input: schwarzhaarige frau mit blauen augen. "
+                "Output: {\"prompt\":\"Adult black-haired woman with blue eyes\","
+                "\"layout\":\"portrait\"}."
             ),
         },
         {
@@ -6608,19 +6522,20 @@ def translate_image_prompt_to_english(prompt):
         if not translated:
             return value
 
-        try:
-            structured = parse_agent_json(translated)
-        except Exception:
-            structured = json.loads(translated)
+        structured = json.loads(translated)
 
         if isinstance(structured, dict):
-            final_prompt = str(
-                structured.get("prompt") or ""
-            ).strip()
+            final_prompt_value = structured.get("prompt")
+            layout_value = structured.get("layout")
 
-            layout = str(
-                structured.get("layout") or ""
-            ).strip().lower()
+            if not isinstance(final_prompt_value, str):
+                raise ValueError("router image prompt must be a string")
+
+            if not isinstance(layout_value, str):
+                raise ValueError("router image layout must be a string")
+
+            final_prompt = final_prompt_value.strip()
+            layout = layout_value.strip().lower()
 
             layouts = {
                 "square": (1024, 1024),
@@ -6630,41 +6545,17 @@ def translate_image_prompt_to_english(prompt):
                 "wide": (1024, 768),
             }
 
+            if final_prompt and layout not in layouts:
+                width, height = _automatic_image_dimensions(final_prompt)
+
+                if (width, height) == (1024, 1024):
+                    layout = "square"
+                elif (width, height) == (768, 1024):
+                    layout = "portrait"
+                else:
+                    layout = "landscape"
+
             if final_prompt and layout in layouts:
-                # Fast path: the router already translates the prompt and
-                # classifies its layout in one call. Only involve the larger
-                # chat model when the router output still appears non-English.
-                # The small router determines layout and provides a cheap
-                # translated fallback. The configured chat model always
-                # compiles the final image-generation prompt because prompt
-                # quality matters much more than the cost of this small call.
-                router_prompt = final_prompt
-                try:
-                    optimized_prompt = _retry_image_prompt_translation(value)
-
-                    if (
-                        optimized_prompt
-                        and not _image_prompt_needs_english_retry(
-                            value,
-                            optimized_prompt,
-                        )
-                    ):
-                        final_prompt = optimized_prompt
-                    else:
-                        final_prompt = router_prompt
-                        print(
-                            "[image-prompt] optimizer output invalid, "
-                            "using router fallback",
-                            flush=True,
-                        )
-                except Exception as exc:
-                    final_prompt = router_prompt
-                    print(
-                        "[image-prompt] optimizer failed, using router fallback "
-                        f"error_type={type(exc).__name__}",
-                        flush=True,
-                    )
-
                 width, height = layouts[layout]
 
                 print(
@@ -6672,7 +6563,8 @@ def translate_image_prompt_to_english(prompt):
                     f"source_chars={len(value)} "
                     f"output_chars={len(final_prompt)} "
                     f"layout={layout} "
-                    f"size={width}x{height}",
+                    f"size={width}x{height} "
+                    "using router only",
                     flush=True,
                 )
 
@@ -6695,8 +6587,8 @@ def translate_image_prompt_to_english(prompt):
         return value
 
 
-
 def web_search_query_from_prompt(prompt):
+
     """Remove common search-command wording but keep the real query."""
     value = str(prompt or "").strip()
 
@@ -8014,6 +7906,9 @@ def _image_edit_payload(request):
         "model": load_model_roles()["image"],
     }
 
+    if request.quality is not None:
+        payload["quality"] = request.quality
+
     payload.update(options)
 
     return payload
@@ -8201,7 +8096,11 @@ def _image_generate_payload(request):
         "model": "auto",
         "width": width,
         "height": height,
+        "auto_size": True,
     }
+
+    if request.quality is not None:
+        payload["quality"] = request.quality
 
     if request.image_options:
         if set(request.image_options) - {
@@ -8213,13 +8112,174 @@ def _image_generate_payload(request):
             "steps",
             "guidance",
             "seed",
+            "auto_size",
         }:
             raise HTTPException(422, "Unbekannte Bildparameter")
 
         # Explicit user options always override automatic defaults.
         payload.update(request.image_options)
+        if (
+            ("width" in request.image_options or "height" in request.image_options)
+            and request.image_options.get("auto_size") is not True
+        ):
+            payload["auto_size"] = False
 
     return payload
+
+
+def video_prompt_from_request(prompt):
+    """Remove only the video command wrapper, preserving user attributes."""
+    value = str(prompt or "").strip()
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)"
+        r"(?:\s+mir)?\s+(?:ein(?:en)?|a)?\s*(?:video|clip)(?:\s+von|\s+of|\s+about)?\s*",
+        "", value, flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?(?:animier(?:e)?|animate)\s+(?:dieses|das|this|the)?\s*"
+        r"(?:bild|foto|image|picture)?\s*", "", cleaned, flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^\s*(?:bitte\s+)?mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video\s*",
+        "", cleaned, flags=re.IGNORECASE,
+    )
+    return cleaned.strip(" .:") or value
+
+
+def compile_video_prompt(prompt):
+    """Compile a local LTX prompt without inventing visual attributes."""
+    value = str(prompt or "").strip()
+    if not value:
+        return value
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a strict prompt compiler for a local text/image-to-video model. "
+                "Translate the request to concise natural English. Preserve every explicit "
+                "subject, count, appearance, clothing, color, setting, action, camera, style, "
+                "and sound attribute exactly. Never invent an attribute, person, object, "
+                "motion, camera move, visual detail, or sound. For image animation, describe "
+                "only the requested motion and camera behavior; do not redescribe unseen image "
+                "content. Return only JSON: {\"prompt\":\"...\"}."
+            ),
+        },
+        {"role": "user", "content": value},
+    ]
+    try:
+        compiled = json.loads(router_llm(messages, max_tokens=300, temperature=0.0).strip())
+        result = compiled.get("prompt") if isinstance(compiled, dict) else None
+        return result.strip() if isinstance(result, str) and result.strip() else value
+    except (RuntimeError, ValueError, TypeError, json.JSONDecodeError):
+        return value
+
+
+def _video_payload(request, operation):
+    prompt = compile_video_prompt(video_prompt_from_request(request.prompt))
+    if len(prompt) < 3:
+        raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
+    payload = {"prompt": prompt, "model": "auto"}
+    if request.quality is not None:
+        payload["quality"] = request.quality
+    options = dict(request.video_options or {})
+    allowed = {
+        "model", "resolution", "duration", "fps", "seed", "resize_mode",
+        "width", "height", "aspect_ratio",
+    }
+    if set(options) - allowed:
+        raise HTTPException(422, "Unbekannte Videoparameter")
+    payload.update(options)
+    if operation == "i2v":
+        stored_path = str((request.file_context or {}).get("stored_path") or "").strip()
+        if not stored_path and not request.active_artifact_id:
+            raise HTTPException(
+                422,
+                "Bitte lade ein Bild hoch oder wähle ein vorhandenes Bild zum Animieren aus",
+            )
+        source = (
+            _resolve_video_upload_source(stored_path)
+            if stored_path
+            else _resolve_image_artifact_source(request.active_artifact_id)
+        )
+        payload["first_frame"] = str(source)
+    return payload
+
+
+def _resolve_video_upload_source(value):
+    """Resolve a server-managed chat upload, never an arbitrary client path."""
+    path = Path(str(value or "")).expanduser().resolve()
+    root = VIDEO_UPLOAD_DIRECTORY.resolve()
+    if (
+        path.parent != root
+        or not re.fullmatch(r"[0-9a-f]{12}\.(?:png|jpe?g|webp)", path.name, re.IGNORECASE)
+        or not path.is_file()
+    ):
+        raise HTTPException(422, "I2V benötigt ein verwaltetes Chat-Upload-Bild")
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(16)
+    except OSError as exc:
+        raise HTTPException(404, "Referenziertes Upload-Bild ist nicht verfügbar") from exc
+    valid = (
+        (path.suffix.lower() == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (path.suffix.lower() in {".jpg", ".jpeg"} and header.startswith(b"\xff\xd8\xff"))
+        or (path.suffix.lower() == ".webp" and header[:4] == b"RIFF" and header[8:12] == b"WEBP")
+    )
+    if not valid:
+        raise HTTPException(422, "I2V-Upload ist kein gültiges PNG-, JPEG- oder WebP-Bild")
+    return path
+
+
+def _video_artifact(result):
+    video_id = str(result.get("id", ""))
+    path = Path(str(result.get("path", ""))).resolve()
+    root = VIDEO_DIRECTORY.resolve()
+    if not VIDEO_ID_PATTERN.fullmatch(video_id) or path.parent != root or path.name != f"{video_id}.mp4":
+        raise HTTPException(502, "Ungültige Antwort vom Video-Service")
+    return {
+        "artifact_id": f"video-{video_id}", "video_id": video_id,
+        "name": path.name, "path": str(path), "mime_type": "video/mp4",
+        "prompt": result.get("prompt"), "model": result.get("model"),
+        "repository": result.get("repository"), "provider": result.get("provider"),
+        "quantization": result.get("quantization"), "operation": result.get("operation"),
+        "width": result.get("width"), "height": result.get("height"),
+        "frames": result.get("frames"), "fps": result.get("fps"),
+        "duration": result.get("duration"), "steps": result.get("steps"),
+        "resolution": result.get("resolution"), "pipeline": result.get("pipeline"),
+        "quality": result.get("quality"),
+        "seed": result.get("seed"),
+        "audio": result.get("audio"), "created_at": result.get("created_at", time.time()),
+        "source_width": result.get("source_width"), "source_height": result.get("source_height"),
+        "target_width": result.get("target_width"), "target_height": result.get("target_height"),
+        "resize_mode": result.get("resize_mode"),
+    }
+
+
+def _start_chat_video_job(action, request):
+    has_bound_image = (
+        _file_context_is_image(request.file_context)
+        or bool(request.active_artifact_id)
+    )
+    operation = "i2v" if action == "video_animate" or has_bound_image else "t2v"
+    payload = _video_payload(request, operation)
+    chat_id, chat_revision = _validated_image_job_chat_identity(request)
+    return video_api.request("POST", "/jobs", {
+        "operation": operation, "payload": payload, "chat_id": chat_id,
+        "chat_revision": chat_revision,
+        **({"run_id": request.run_id} if request.run_id else {}),
+    }, timeout=15)
+
+
+def _video_job_tool_result(job):
+    action = "video_animate" if job.get("operation") == "i2v" else "video_generate"
+    status = str(job.get("status") or "failed")
+    data, artifacts = {"job": job}, []
+    if status == "completed":
+        artifact = _video_artifact(job.get("result") or {})
+        artifact.update(chat_id=job.get("chat_id"), run_id=job.get("run_id"))
+        data["video"] = artifact
+        artifacts.append(artifact)
+    return chat_tool_result(action, status, data, artifacts=artifacts, error=job.get("error"))
 
 
 def _image_artifact(result, action):
@@ -8248,6 +8308,7 @@ def _image_artifact(result, action):
         "model": result.get("model"),
         "seed": result.get("seed"),
         "steps": result.get("steps"),
+        "quality": result.get("quality"),
         "guidance": result.get("guidance"),
         "provider": result.get("provider"),
         "model_family": result.get("model_family"),
@@ -8560,6 +8621,45 @@ def image_download(image_id: str, download: bool = False):
         media_type="image/png",
         filename=image_path.name if download else None,
     )
+
+
+@app.get("/api/video/health")
+def video_health_api():
+    return video_api.request("GET", "/health")
+
+
+@app.get("/api/video/models")
+def video_models_api():
+    return video_api.request("GET", "/models")
+
+
+@app.post("/api/video/jobs", status_code=202)
+def video_job_create_api(request: ChatActionRequest):
+    action = request.action or "video_generate"
+    if action not in {"video_generate", "video_animate"}:
+        raise HTTPException(422, "Ungültige Video-Aktion")
+    return _video_job_tool_result(_start_chat_video_job(action, request))
+
+
+@app.get("/api/video/jobs/{job_id}")
+def video_job_api(job_id: str):
+    return _video_job_tool_result(video_api.request("GET", "/jobs/" + video_api.job_id(job_id)))
+
+
+@app.post("/api/video/jobs/{job_id}/cancel")
+def video_job_cancel_api(job_id: str):
+    job = video_api.request("POST", "/jobs/" + video_api.job_id(job_id) + "/cancel", {}, timeout=30)
+    return _video_job_tool_result(job)
+
+
+@app.get("/api/videos/{video_id}")
+def video_download(video_id: str, download: bool = False):
+    if not VIDEO_ID_PATTERN.fullmatch(video_id):
+        raise HTTPException(404, "Video nicht gefunden")
+    path = VIDEO_DIRECTORY / f"{video_id}.mp4"
+    if not path.is_file():
+        raise HTTPException(404, "Video nicht gefunden")
+    return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
 
 
 TOOLS = {
@@ -8886,17 +8986,19 @@ def route_chat_action(request: ChatActionRequest):
     if direct is not None:
         return {
             "intent": direct,
+            "target": _runtime_target(direct),
             "confidence": 1.0,
             "requires_tools": direct != "normal_chat",
             "reason": "Eindeutige deterministische Route",
             "method": "deterministic_direct",
         }
 
-    return classify_chat_action_details(
+    routing = classify_chat_action_details(
         request.prompt,
         routing_file_context,
         request.conversation_context,
     )
+    return routing | {"target": _runtime_target(routing.get("intent"))}
 
 
 
@@ -8958,13 +9060,112 @@ def _looks_like_image_generation_request(prompt):
     )
 
 
+def _runtime_target(action):
+    value = str(action or "")
+    if value.startswith("image_"):
+        return "image"
+    if value.startswith("video_"):
+        return "video"
+    return "chat"
+
+
+def _chat_preflight_target(action):
+    if action == "image_edit":
+        return "image_edit"
+    return _runtime_target(action)
+
+
+def _resolved_media_action(request, routing_file_context):
+    """Validate and expand a client-provided preflight media target."""
+    target = request.resolved_target
+    action_target = {
+        "image_generate": "image",
+        "image_edit": "image_edit",
+        "video_generate": "video",
+        "video_animate": "video",
+    }.get(request.action)
+
+    if target is not None and action_target is not None and action_target != target:
+        raise HTTPException(422, "Action passt nicht zum aufgelösten Ziel")
+
+    if target not in {"image", "image_edit", "video"}:
+        return None
+
+    if target == "image_edit":
+        if not _file_context_is_image(routing_file_context):
+            raise HTTPException(422, "Bildbearbeitung benötigt ein Quellbild")
+        return "image_edit"
+
+    if target == "image":
+        return "image_generate"
+
+    if request.action in {"video_generate", "video_animate"}:
+        return request.action
+
+    if (
+        _VIDEO_ANIMATE_PATTERN.search(request.prompt)
+        or _file_context_is_image(routing_file_context)
+    ):
+        return "video_animate"
+    return "video_generate"
+
+
+@app.post("/api/chat/actions/route")
+def preflight_chat_action(request: ChatActionRequest):
+    """Classify a turn without starting a job or changing model runtime."""
+    routing_file_context = _image_source_routing_context(request)
+    direct = _direct_chat_action(
+        request.prompt,
+        routing_file_context,
+        request.conversation_context,
+    )
+    if direct is None:
+        direct = classify_chat_action_details(
+            request.prompt,
+            routing_file_context,
+            request.conversation_context,
+        ).get("intent")
+    return {"target": _chat_preflight_target(direct)}
+
+
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
 
-    if request.action == "image_upscale":
+    resolved_media_action = _resolved_media_action(
+        request,
+        routing_file_context,
+    )
+
+    if resolved_media_action is not None:
+        routing = {
+            "intent": resolved_media_action,
+            "confidence": 1.0,
+            "requires_tools": True,
+            "reason": "Validated media preflight target",
+            "method": "preflight_target",
+        }
+    elif request.action in {"video_generate", "video_animate"}:
+        routing = {
+            "intent": request.action, "confidence": 1.0,
+            "requires_tools": True, "reason": "Explicit video action",
+            "method": "explicit_video",
+        }
+    elif _VIDEO_ANIMATE_PATTERN.search(request.prompt):
+        routing = {
+            "intent": "video_animate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic image animation request",
+            "method": "deterministic_video_animate",
+        }
+    elif _VIDEO_GENERATE_PATTERN.search(request.prompt):
+        routing = {
+            "intent": "video_generate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic video request",
+            "method": "deterministic_video_generate",
+        }
+    elif request.action == "image_upscale":
         routing = {
             "intent": "image_upscale",
             "confidence": 1.0,
@@ -9031,6 +9232,8 @@ def run_chat_action(request: ChatActionRequest):
             )
 
     action = routing["intent"]
+    routing = dict(routing)
+    routing["target"] = _runtime_target(action)
 
     if (
         action in SEMANTIC_ROUTER_AGENT_INTENTS
@@ -9104,6 +9307,17 @@ def run_chat_action(request: ChatActionRequest):
                 "failed",
                 error=str(exc),
             )
+
+    if action in {"video_generate", "video_animate"}:
+        try:
+            job = _start_chat_video_job(action, request)
+            return _video_job_tool_result(job)
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                raise
+            return chat_tool_result(action, "failed", error=str(exc.detail))
+        except Exception as exc:
+            return chat_tool_result(action, "failed", error=str(exc))
 
     handler = TOOLS.get(action)
     if not handler:
@@ -10511,6 +10725,8 @@ def ensure_model_for_role(role: str):
             raise RuntimeError("Das konfigurierte Embedding-Modell ist nicht verfügbar")
         return {"ok": True, "role": role, "switched": False, "resolved": resolved}
 
+    runtime_coordinator.prepare_chat_runtime()
+
     with MODEL_RUNTIME_LOCK:
         resolved = resolve_model_role(role)
 
@@ -10567,7 +10783,7 @@ def ensure_model_for_role(role: str):
 
 ROUTER_MODEL = os.environ.get(
     "MLX_ROUTER_MODEL_PATH",
-    str(Path.home() / "Models/router/Qwen3.5-0.8B-MLX-4bit"),
+    str(Path.home() / "Models/router/Qwen3.5-4B-MLX-4bit"),
 )
 ROUTER_URL = "http://127.0.0.1:8040"
 
@@ -10733,7 +10949,7 @@ def runtime_chat(request: RuntimeChatRequest):
     )
     wait_started = time.monotonic()
 
-    with MODEL_RUNTIME_LOCK:
+    with runtime_coordinator.chat_runtime(), MODEL_RUNTIME_LOCK:
         call_metrics.set_queue_wait(
             (time.monotonic() - wait_started) * 1000
         )
@@ -10934,7 +11150,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             )
 
         try:
-            with MODEL_RUNTIME_LOCK:
+            with runtime_coordinator.chat_runtime(cancel_event), MODEL_RUNTIME_LOCK:
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
@@ -12101,6 +12317,9 @@ def _build_agent_tool_registry():
         ("image_generate", "Queue an image generation job for the bound chat.", "CREATE", (), 10, 12000),
         ("image_edit", "Queue an edit of a managed image artifact for the bound chat.", "WRITE", (), 10, 12000),
         ("image_job_status", "Inspect an image job owned by the bound chat.", "READ", (), 15, 12000),
+        ("video_generate", "Queue local LTX 2.5 Fast text-to-video for the bound chat.", "CREATE", (), 15, 12000),
+        ("video_animate", "Animate a managed image artifact with local LTX 2.5 Fast.", "WRITE", (), 15, 12000),
+        ("video_job_status", "Inspect a video job owned by the bound chat.", "READ", (), 15, 12000),
         ("document_search", "Search an already indexed uploaded document.", "READ", (), None, 12000),
         ("document_page", "Read a page of an already indexed uploaded document.", "READ", (), None, 12000),
         ("file_inspect", "Inspect a text file in the bound workspace.", "READ", ("workspace",), None, 12000),
@@ -12133,10 +12352,10 @@ def _build_agent_tool_registry():
     }
     for name, description, permission, risks, timeout, output_limit in specs:
         schema = deepcopy(parameters)
-        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit"}:
+        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status"}:
             schema["required"].append("query")
             schema["properties"]["query"].update(type="string", minLength=1)
-        if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit"}:
+        if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit", "video_animate"}:
             schema["required"].append("options")
             schema["properties"]["options"].update(type="object")
         if name in {"git_stage", "git_commit"}:
@@ -12163,6 +12382,13 @@ def _build_agent_tool_registry():
                             "image_options": {"type": "object"}},
                 additionalProperties=False,
             )
+        if name == "video_animate":
+            schema["properties"]["options"].update(
+                properties={"artifact_id": {"type": "string"}, "upload_path": {"type": "string"},
+                            "video_options": {"type": "object"},
+                            "quality": {"type": "string", "enum": ["preview", "fast", "standard", "quality"]}},
+                additionalProperties=False,
+            )
         if name == "code_patch":
             schema["required"].append("files")
             schema["properties"]["files"].update(type="array", minItems=1)
@@ -12174,6 +12400,7 @@ def _build_agent_tool_registry():
                 "workspace_status", "shell_workspace", "git_status", "git_diff",
                 "git_log", "git_stage", "git_commit", "vision_analyze",
                 "image_generate", "image_edit", "image_job_status",
+                "video_generate", "video_animate", "video_job_status",
                 "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
                 "file_analysis_status",
             } else _execute_legacy_agent_tool, name),
@@ -12189,7 +12416,7 @@ def _build_agent_tool_registry():
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
 _RUNTIME_ONLY_READ_TOOLS = {
     "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
-    "image_job_status", "document_search", "document_page", "file_inspect",
+    "image_job_status", "video_job_status", "document_search", "document_page", "file_inspect",
     "file_pii_audit", "file_analysis_status",
 }
 READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ") - _RUNTIME_ONLY_READ_TOOLS

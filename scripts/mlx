@@ -1342,6 +1342,12 @@ mlx_service_label() {
         images)
             echo "de.nobby.mlx-images"
             ;;
+        video)
+            echo "de.nobby.mlx-video"
+            ;;
+        mlxserve)
+            echo "de.nobby.mlx-serve"
+            ;;
         *)
             return 1
             ;;
@@ -1357,6 +1363,8 @@ mlx_service_port() {
         images)     echo "8030" ;;
         router)     echo "8040" ;;
         speech)     echo "8050" ;;
+        video)      echo "8060" ;;
+        mlxserve)   echo "11234" ;;
         *)          return 1 ;;
     esac
 }
@@ -1429,6 +1437,8 @@ services_status() {
     mlx_service_status_one embeddings
     mlx_service_status_one speech
     mlx_service_status_one images
+    mlx_service_status_one video
+    mlx_service_status_one mlxserve
 
     echo "────────────────────────────────────────────────────────────"
     echo
@@ -1470,6 +1480,41 @@ mlx_service_restart() {
 }
 
 
+mlx_service_stop() {
+    local service="$1"
+    local label
+    local domain
+    local port
+
+    label="$(mlx_service_label "$service")" || {
+        echo "Unbekannter Dienst: $service"
+        return 1
+    }
+    domain="$(mlx_service_domain)"
+    port="$(mlx_service_port "$service")" || return 1
+
+    if ! mlx_service_loaded "$service"; then
+        echo "$service ist bereits gestoppt."
+        return 0
+    fi
+
+    echo "$service wird gestoppt..."
+    launchctl bootout "$domain/$label" || return 1
+
+    local attempts=100
+    local i
+    for ((i = 1; i <= attempts; i++)); do
+        if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "✗ $service wurde nicht rechtzeitig gestoppt (Port $port)"
+    return 1
+}
+
+
 mlx_service_wait_ready() {
     local service="$1"
     local port
@@ -1493,6 +1538,19 @@ mlx_service_wait_ready() {
 }
 
 
+mlx_service_ensure_running() {
+    local service="$1"
+
+    if mlx_service_loaded "$service" && mlx_service_wait_ready "$service" 1; then
+        echo "$service läuft bereits und bleibt aktiv."
+        return 0
+    fi
+
+    mlx_service_restart "$service" || return 1
+    mlx_service_wait_ready "$service" 30
+}
+
+
 agent_command() {
     local action="${1:-status}"
 
@@ -1511,6 +1569,27 @@ agent_command() {
             echo "Verwendung:"
             echo "  mlx agent status"
             echo "  mlx agent restart"
+            return 1
+            ;;
+    esac
+}
+
+
+video_command() {
+    local action="${1:-status}"
+    case "$action" in
+        status)
+            mlx_service_status_one video
+            ;;
+        restart)
+            mlx_service_restart video || return 1
+            mlx_service_wait_ready video 30 || return 1
+            mlx_service_status_one video
+            ;;
+        *)
+            echo "Verwendung:"
+            echo "  mlx video status"
+            echo "  mlx video restart"
             return 1
             ;;
     esac
@@ -1541,38 +1620,68 @@ restart_all() {
     echo "────────────────────────────────────────────────────────────"
 
     echo
-    echo "[1/6] MLX Server"
+    echo "[1/8] MLX Server"
     restart || return 1
 
     echo
-    echo "[2/6] Agent"
-    mlx_service_restart agent || return 1
-    mlx_service_wait_ready agent 30 || return 1
+    echo "[2/8] Agent"
+    mlx_service_ensure_running agent || return 1
 
     echo
-    echo "[3/6] Router"
+    echo "[3/8] Router"
     mlx_service_restart router || return 1
     mlx_service_wait_ready router 30 || return 1
 
     echo
-    echo "[4/6] Embeddings"
+    echo "[4/8] Embeddings"
     mlx_service_restart embeddings || return 1
     mlx_service_wait_ready embeddings 30 || return 1
 
     echo
-    echo "[5/6] Speech"
+    echo "[5/8] Speech"
     mlx_service_restart speech || return 1
     mlx_service_wait_ready speech 30 || return 1
 
     echo
-    echo "[6/6] Images"
+    echo "[6/8] Images"
     mlx_service_restart images || return 1
     mlx_service_wait_ready images 30 || return 1
+
+    echo
+    echo "[7/8] Video"
+    mlx_service_restart video || return 1
+    mlx_service_wait_ready video 30 || return 1
+
+    echo
+    echo "[8/8] MLX-Serve"
+    mlx_service_restart mlxserve || return 1
+    mlx_service_wait_ready mlxserve 30 || return 1
 
     echo
     services_status
 
     echo "✓ Alle MLX-Nobby-Dienste wurden neu gestartet."
+}
+
+
+stop_ai() {
+    echo
+    echo "MLX Nobby – KI-System beenden"
+    echo "────────────────────────────────────────────────────────────"
+
+    # Stop only MLX Nobby model services. The agent and web UI remain online.
+    for service in video images speech embeddings router mlxserve server; do
+        mlx_service_stop "$service" || return 1
+    done
+
+    echo "✓ Alle MLX-Nobby-KI-Dienste wurden beendet."
+}
+
+
+stop_all() {
+    stop_ai || return 1
+    mlx_service_stop agent || return 1
+    echo "✓ Alle MLX-Nobby-Dienste wurden sauber beendet."
 }
 
 
@@ -1587,9 +1696,13 @@ Server:
   mlx stop
   mlx restart
   mlx restart-all
+  mlx stop-ai
+  mlx stop-all
   mlx services
   mlx agent status
   mlx agent restart
+  mlx video status
+  mlx video restart
   mlx reset
   mlx status
   mlx memory
@@ -1653,6 +1766,14 @@ HELP
 load_config
 
 case "$1" in
+    stop-ai)
+        stop_ai
+        ;;
+
+    stop-all)
+        stop_all
+        ;;
+
     restart-all)
         restart_all
         ;;
@@ -1665,6 +1786,11 @@ case "$1" in
     agent)
         shift
         agent_command "$@"
+        ;;
+
+    video)
+        shift
+        video_command "$@"
         ;;
 
     start)

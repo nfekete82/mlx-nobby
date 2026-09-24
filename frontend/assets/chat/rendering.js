@@ -34,6 +34,9 @@
         'running',
         'saving'
     ]);
+    const ACTIVE_VIDEO_JOB_STATUSES = new Set([
+        'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
+    ]);
     const IMAGE_JOB_STALE_SECONDS = 25;
     const IMAGE_JOB_UI_TICK_MS = 1000;
 
@@ -87,12 +90,104 @@
             String(remainder).padStart(2, '0');
     }
 
+    function normalizedMediaProgress(job) {
+        if (job?.status === 'completed') return 1;
+        const explicit = Number(job?.progress);
+        if (Number.isFinite(explicit)) {
+            return Math.min(1, Math.max(0, explicit > 1 ? explicit / 100 : explicit));
+        }
+        if (imageJobHasStep(job)) {
+            return Number(job.current_step) / Number(job.total_steps);
+        }
+        return 0;
+    }
+
+    function mediaPhaseLabel(job, kind) {
+        const status = String(job?.status || 'queued').toLowerCase();
+        const phase = ['completed', 'failed', 'cancelled'].includes(status)
+            ? status
+            : String(job?.phase || status).toLowerCase();
+        const labels = {
+            queued: 'Warten', starting: 'Laden', loading: 'Laden', loading_model: 'Laden',
+            encoding: 'Encoding', encoding_text: 'Encoding',
+            running: kind === 'image' && job?.operation === 'edit' ? 'Editing' : 'Generating',
+            progress: 'Generating', generate: 'Generating', generated: 'Speichern',
+            generating: 'Generating', inference: 'Generating', denoising: 'Generating',
+            upscaling: 'Upscaling', upscale: 'Upscaling', refining: 'Upscaling',
+            saving: 'Speichern', save: 'Speichern', decoding: 'Decoding', muxing: 'Muxing',
+            completed: 'Abgeschlossen', complete: 'Abgeschlossen',
+            cancelled: 'Abgebrochen', failed: 'Fehlgeschlagen', error: 'Fehlgeschlagen'
+        };
+        return labels[phase] || phase;
+    }
+
+    function mediaJobPresentation(job, kind, nowSeconds = Date.now() / 1000) {
+        const activeStatuses = kind === 'video'
+            ? ACTIVE_VIDEO_JOB_STATUSES
+            : ACTIVE_IMAGE_JOB_STATUSES;
+        const active = activeStatuses.has(String(job?.status || 'queued'));
+        const elapsed = active ? imageJobElapsedSeconds(job, nowSeconds) : null;
+        const progress = normalizedMediaProgress(job);
+        const current = Number(job?.current_step);
+        const total = Number(job?.total_steps);
+        const hasStepProgress = imageJobHasStep(job);
+        let etaSeconds = null;
+        if (
+            active && hasStepProgress && current >= 2 && current < total &&
+            elapsed >= 5
+        ) {
+            const estimate = elapsed * (total - current) / current;
+            if (Number.isFinite(estimate) && estimate > 0) {
+                etaSeconds = Math.round(estimate);
+            }
+        }
+        return {
+            active,
+            elapsed,
+            etaSeconds,
+            hasStepProgress,
+            phase: mediaPhaseLabel(job, kind),
+            progress,
+            percent: Math.round(progress * 100),
+        };
+    }
+
+    function appendMediaProgress(card, job, presentation) {
+        if (!presentation.active) return;
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'batch-progress-wrap';
+        const progressBar = document.createElement('div');
+        progressBar.className = 'batch-progress-bar';
+        progressBar.setAttribute?.('role', 'progressbar');
+        progressBar.setAttribute?.('aria-valuemin', '0');
+        progressBar.setAttribute?.('aria-valuemax', '100');
+        progressBar.setAttribute?.('aria-valuenow', String(presentation.percent));
+        const progressFill = document.createElement('div');
+        progressFill.className = 'batch-progress-fill';
+        progressFill.style.width = (presentation.progress * 100).toFixed(2) + '%';
+        progressBar.appendChild(progressFill);
+        progressWrap.appendChild(progressBar);
+        const progressText = document.createElement('div');
+        progressText.className = 'batch-progress-text';
+        const parts = [presentation.percent + '%'];
+        if (presentation.hasStepProgress) {
+            parts.push('Step ' + Number(job.current_step) + '/' + Number(job.total_steps));
+        }
+        if (presentation.etaSeconds != null) {
+            parts.push('Restzeit ca. ' + formatImageJobDuration(presentation.etaSeconds));
+        }
+        progressText.textContent = parts.join(' · ');
+        progressWrap.appendChild(progressText);
+        card.appendChild(progressWrap);
+    }
+
     function imageJobPresentation(
         job,
         nowSeconds = Date.now() / 1000
     ) {
         const status = String(job?.status || 'queued');
         const active = ACTIVE_IMAGE_JOB_STATUSES.has(status);
+        const media = mediaJobPresentation(job, 'image', nowSeconds);
         const hasStepProgress = imageJobHasStep(job);
         const statusFallback = {
             queued: 'Image job waiting …',
@@ -144,7 +239,7 @@
             );
         }
 
-        const details = [];
+        const details = ['Phase: ' + media.phase];
         if (status === 'running' && hasStepProgress) {
             details.push(rt(
                 stale ? 'image_step_last' : 'image_step',
@@ -162,6 +257,9 @@
                 statusFallback
             ));
         }
+        if (status === 'failed' && job?.error) {
+            details.push(String(job.error));
+        }
 
         const elapsed = active
             ? imageJobElapsedSeconds(job, nowSeconds)
@@ -175,6 +273,7 @@
         }
 
         return {
+            ...media,
             active,
             details: details.join('\n'),
             elapsed,
@@ -543,15 +642,15 @@ function enhanceCodeBlocks(container) {
 
 
 function renderToolCard(message) {
-    if (
-        message?.tool_result?.tool === 'image_generate' &&
-        message?.tool_result?.status === 'completed'
-    ) {
-        return null;
-    }
     const result = message?.tool_result;
 
     if (!result) {
+        return null;
+    }
+    if ([
+        'image_generate', 'image_edit', 'image_upscale',
+        'video_generate', 'video_animate'
+    ].includes(result.tool)) {
         return null;
     }
 
@@ -1676,6 +1775,7 @@ function renderImageArtifactCard(message) {
         artifact.provider,
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.scale ? artifact.scale + '×' : '',
+        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');
@@ -1689,9 +1789,27 @@ function renderImageArtifactCard(message) {
     if (enhanceMenu) {
         controls.appendChild(enhanceMenu);
     }
+
+    const info = document.createElement('details');
+    info.className = 'image-artifact-info';
+
+    const infoSummary = document.createElement('summary');
+    infoSummary.textContent = 'Info';
+    info.appendChild(infoSummary);
+
+    const promptLabel = document.createElement('strong');
+    promptLabel.textContent = 'Verwendeter Prompt';
+    info.appendChild(promptLabel);
+
+    const promptText = document.createElement('pre');
+    promptText.className = 'image-artifact-prompt';
+    promptText.textContent = artifact.prompt || '—';
+    info.appendChild(promptText);
+
     card.appendChild(image);
     card.appendChild(details);
     card.appendChild(controls);
+    card.appendChild(info);
     return card;
 }
 
@@ -1708,24 +1826,9 @@ function renderImageJobCard(message) {
 
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
-    const currentStep = Number(job.current_step);
-    const totalSteps = Number(job.total_steps);
     details.textContent = presentation.details;
     card.appendChild(details);
-
-    if (presentation.hasStepProgress) {
-        const progressWrap = document.createElement('div');
-        progressWrap.className = 'batch-progress-wrap';
-        const progressBar = document.createElement('div');
-        progressBar.className = 'batch-progress-bar';
-        const progressFill = document.createElement('div');
-        progressFill.className = 'batch-progress-fill';
-        progressFill.style.width =
-            Math.min(100, (currentStep / totalSteps) * 100).toFixed(2) + '%';
-        progressBar.appendChild(progressFill);
-        progressWrap.appendChild(progressBar);
-        card.appendChild(progressWrap);
-    }
+    appendMediaProgress(card, job, presentation);
 
     if ([
         'queued',
@@ -1769,6 +1872,128 @@ function renderImageJobCard(message) {
         card.appendChild(controls);
     }
 
+    return card;
+}
+
+function renderVideoArtifactCard(message) {
+    const artifact = ['video_generate', 'video_animate'].includes(message.tool_result?.tool)
+        ? message.tool_result.artifacts?.[0] : null;
+    if (!artifact?.video_id) return null;
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card video-artifact-card';
+    const video = document.createElement('video');
+    video.className = 'video-artifact-player';
+    video.src = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id);
+    video.controls = true;
+    video.preload = 'metadata';
+    card.appendChild(video);
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    details.textContent = [
+        artifact.model,
+        artifact.provider,
+        artifact.pipeline ? 'Pipeline: ' + artifact.pipeline : '',
+        artifact.resolution ? 'Profil: ' + artifact.resolution : '',
+        artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
+        artifact.frames ? artifact.frames + ' Frames' : '',
+        artifact.duration != null ? Number(artifact.duration).toFixed(2) + ' s' : '',
+        artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
+        artifact.steps ? artifact.steps + ' Distilled Steps' : '',
+        artifact.seed != null ? 'Seed ' + artifact.seed : '',
+        artifact.audio ? 'Audio' : 'Kein Audio'
+    ].filter(Boolean).join(' · ');
+    card.appendChild(details);
+    const controls = document.createElement('div');
+    controls.className = 'batch-chat-controls';
+    const download = document.createElement('a');
+    download.className = 'message-action-btn';
+    download.textContent = 'Download';
+    download.href = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id) + '?download=1';
+    controls.appendChild(download);
+    card.appendChild(controls);
+    const info = document.createElement('details');
+    info.className = 'image-artifact-info';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Info';
+    info.appendChild(summary);
+    if (artifact.operation === 'i2v') {
+        const resize = document.createElement('div');
+        resize.className = 'batch-chat-details';
+        const resizeLabel = artifact.resize_mode === 'cover'
+            ? 'cover (crop)' : 'contain + padding';
+        resize.textContent = [
+            artifact.source_width && artifact.source_height
+                ? 'Source: ' + artifact.source_width + ' × ' + artifact.source_height : '',
+            artifact.target_width && artifact.target_height
+                ? 'Target: ' + artifact.target_width + ' × ' + artifact.target_height : '',
+            'Resize: ' + resizeLabel
+        ].filter(Boolean).join(' · ');
+        info.appendChild(resize);
+    }
+    const label = document.createElement('strong');
+    label.textContent = 'Finaler Prompt';
+    info.appendChild(label);
+    const prompt = document.createElement('pre');
+    prompt.className = 'image-artifact-prompt';
+    prompt.textContent = artifact.prompt || '—';
+    info.appendChild(prompt);
+    card.appendChild(info);
+    return card;
+}
+
+function renderVideoJobCard(message) {
+    const job = message.video_job;
+    if (!job || job.status === 'completed') return null;
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card video-job-card';
+    const title = document.createElement('strong');
+    const labels = {
+        queued: 'Video-Job wartet …', loading: 'Video-Modell wird geladen …',
+        encoding: 'Eingabe wird kodiert …', generating: 'Video wird erzeugt …',
+        upscaling: 'Video wird hochskaliert …',
+        decoding: 'Video wird dekodiert …', muxing: 'MP4 wird erstellt …',
+        cancelled: 'Video-Job abgebrochen', failed: 'Video-Job fehlgeschlagen'
+    };
+    title.textContent = labels[job.status] || job.status;
+    card.appendChild(title);
+    const presentation = mediaJobPresentation(job, 'video');
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    const detailLines = [
+        'Phase: ' + presentation.phase,
+        presentation.elapsed != null
+            ? 'Verstrichen: ' + formatImageJobDuration(presentation.elapsed)
+            : '',
+        job.status === 'failed' && job.error ? String(job.error) : ''
+    ].filter(Boolean);
+    if (job.status === 'generating' && !presentation.hasStepProgress) {
+        detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
+    }
+    details.textContent = detailLines.join('\n');
+    card.appendChild(details);
+    appendMediaProgress(card, job, presentation);
+    if (ACTIVE_VIDEO_JOB_STATUSES.has(job.status)) {
+        const controls = document.createElement('div');
+        controls.className = 'batch-chat-controls';
+        const cancel = document.createElement('button');
+        cancel.type = 'button'; cancel.className = 'message-action-btn'; cancel.textContent = rt('cancel', 'Cancel');
+        cancel.addEventListener('click', async () => {
+            cancel.disabled = true;
+            try {
+                const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(job.id) + '/cancel', { method: 'POST' });
+                if (!response.ok) throw new Error(await response.text());
+                const result = await response.json();
+                window.MLXChatGeneration.updateVideoJobMessage(MLXChatSessions.currentSession(), message, result);
+                MLXChatSessions.saveSessions();
+                renderMessages({ contentUpdated: true });
+            } catch (error) {
+                console.warn('Video job cancellation failed', error);
+                cancel.disabled = false;
+            }
+        });
+        controls.appendChild(cancel);
+        card.appendChild(controls);
+    }
     return card;
 }
 
@@ -2059,11 +2284,17 @@ function renderMessages(options = {}) {
             const imageJobCard = renderImageJobCard(message);
             if (imageJobCard) content.appendChild(imageJobCard);
 
+            const videoJobCard = renderVideoJobCard(message);
+            if (videoJobCard) content.appendChild(videoJobCard);
+
             const agentCard = renderAgentCard(message);
             if (agentCard) content.appendChild(agentCard);
 
             const imageArtifactCard = renderImageArtifactCard(message);
             if (imageArtifactCard) content.appendChild(imageArtifactCard);
+
+            const videoArtifactCard = renderVideoArtifactCard(message);
+            if (videoArtifactCard) content.appendChild(videoArtifactCard);
 
             const artifactCard = renderArtifactCard(message);
             if (artifactCard) content.appendChild(artifactCard);
@@ -3039,10 +3270,14 @@ function renderAll(options = {}) {
             batchFailureDetail,
             formatImageJobDuration,
             imageJobPresentation,
+            mediaJobPresentation,
             sessionNeedsImageJobUiTimer,
             syncImageJobUiTimer,
             renderImageArtifactCard,
             renderImageJobCard,
+            renderVideoArtifactCard,
+            renderVideoJobCard,
+            renderToolCard,
             renderAgentCard,
         }
     };

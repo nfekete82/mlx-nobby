@@ -32,13 +32,14 @@ tested only on the system listed above.
 
 ## Requirements and constraints
 
-The service manifests list direct application dependencies. Embeddings, images,
-and speech include a corresponding file under `requirements/constraints/`.
-Pip resolves those relative paths from the requirements file.
+The service manifests list direct application dependencies. Images and speech include a corresponding file under
+`requirements/constraints/`. Pip resolves those relative paths from the
+requirements file. The embedding adapter has no MLX-specific Python
+constraint set because inference is handled by the native `mlx-serve`
+process.
 
 | Constraint set | Reason |
 | --- | --- |
-| Embeddings: `mlx-vlm==0.7.0`, `transformers==5.17.0` | `mlx-embeddings` imports `mlx_vlm.utils` and current tokenizer/processor APIs. |
 | Speech: `mlx==0.32.2`, `transformers==5.16.1` | Tested inference and tokenizer APIs for `mlx-audio==0.5.1`. |
 | Images: `mlx==0.17.3`, `torch==2.14.0`, `transformers==5.16.1` | Tested import combination for the isolated DiffusionKit provider. |
 
@@ -53,22 +54,24 @@ output can still vary when upstream packages publish new compatible releases.
 
 ### Embeddings
 
-`mlx-embeddings==0.1.0` is the maintained package used here. Its published wheel
-imports `RepositoryNotFoundError` from the public `huggingface_hub.errors`
-module and still exports `mlx_embeddings.utils.load` and `generate`.
-`mlx-embeddings==0.0.1` used the removed private
-`huggingface_hub.utils._errors` module and is not part of this installation.
-No Hugging Face Hub downgrade or import shim is required.
+The embedding service on port `8020` is a thin local FastAPI adapter. It does
+not load model weights itself. Embedding inference is delegated to the shared
+native `mlx-serve` runtime, which defaults to:
 
-The final fresh installation resolved Hugging Face Hub 1.31.0 and NumPy 2.4.6.
-Library and FastAPI application imports passed. Contract tests covered
-`/health`, `/embedding`, and `/embeddings` with mocked vectors and confirmed
-the `model`, `dimensions` (1024), and `vectors` fields expected by
-`agent/knowledge.py`. No model inference was performed.
+`mlx-community/Qwen3-Embedding-4B-4bit-DWQ`
 
-`mlx-vlm` brings additional audio and vision packages transitively. They are
-not listed as direct project dependencies because the application does not
-import them directly.
+The model produces 2560-dimensional vectors. `mlx-serve` handles the Qwen3
+embedding architecture and pooling behavior. The adapter keeps the existing
+`/health`, `/embedding`, and `/embeddings` contracts used by
+`agent/knowledge.py`.
+
+Document and source chunks are embedded without a retrieval instruction.
+Queries receive a configurable retrieval instruction before embedding. This is
+controlled by `MLX_EMBEDDING_QUERY_INSTRUCTION`.
+
+The embedding environment therefore only contains the lightweight FastAPI,
+Pydantic, and Uvicorn dependencies required by the adapter. MLX model
+dependencies are owned by the separate native `mlx-serve` runtime.
 
 ### Speech
 
@@ -196,7 +199,7 @@ After installation, the central imports can be checked without downloading
 models. Run these from the repository root with native Metal access:
 
 ```sh
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 embedding-venv/bin/python -c 'from mlx_embeddings.utils import load, generate; import embedding_service'
+embedding-venv/bin/python -c 'import embedding_service; print(embedding_service.MODEL_ID)'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 speech-venv/bin/python -c 'from mlx_audio.stt import load; import sentencepiece, zstandard; import speech.app'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 image-venv/bin/python -c 'from diffusionkit.mlx import FluxPipeline; import image_service'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 runtime-venv/bin/python -c 'import mlx.core, mlx_lm, mlx_vlm'
@@ -225,9 +228,12 @@ file.
 | `SPEECH_SERVICE_URL` | Agent speech service; defaults to `http://127.0.0.1:8050`. |
 | `IMAGE_SERVICE_URL` | Agent image service; defaults to `http://127.0.0.1:8030`. |
 | `MLX_ROUTER_MODEL_PATH` | Agent and LaunchAgent installer local router model path. |
-| `MLX_EMBEDDING_MODEL_PATH` | Embedding service local model path; supports `~`. |
-| `MLX_EMBEDDING_MAX_LENGTH` | Embedding length from 1 to 8192; default 8192. |
-| `MLX_EMBEDDING_BATCH_SIZE` | Embedding batch size from 1 to 128; default 8. |
+| `MLX_EMBEDDING_MODEL` | Embedding model served by `mlx-serve`; defaults to `mlx-community/Qwen3-Embedding-4B-4bit-DWQ`. |
+| `MLXSERVE_URL` | Native `mlx-serve` endpoint used by the embedding adapter; defaults to `http://127.0.0.1:11234`. |
+| `MLX_EMBEDDING_REQUEST_TIMEOUT` | Adapter-to-`mlx-serve` request timeout in seconds; default 180. |
+| `MLX_EMBEDDING_CLIENT_TIMEOUT` | Knowledge-client timeout for embedding requests in seconds; default 180. |
+| `MLX_EMBEDDING_BATCH_SIZE` | Maximum accepted embedding batch size from 1 to 128; default 64. |
+| `MLX_EMBEDDING_QUERY_INSTRUCTION` | Retrieval instruction prepended to query embeddings; document chunks remain unmodified. |
 | `FFMPEG_PATH` | Explicit FFmpeg executable; otherwise PATH and Homebrew locations are checked. |
 | `MLX_IMAGE_MFLUX_BIN` | Optional directory containing the MFLUX CLI commands. |
 | `MLX_IMAGE_SDXL_IDLE_TIMEOUT` | Seconds the local SDXL worker remains warm after a request; default 600. |

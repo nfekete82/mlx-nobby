@@ -110,7 +110,7 @@ class PermissionEngine:
                     if not isinstance(message, str) or not message.strip() or len(message) > 200 or "\n" in message:
                         raise ValueError("INVALID_COMMIT_MESSAGE")
                 paths.extend(options["paths"])
-            if tool_name in {"vision_analyze", "image_edit"} and isinstance(options, dict) and options.get("upload_path"):
+            if tool_name in {"vision_analyze", "image_edit", "video_animate"} and isinstance(options, dict) and options.get("upload_path"):
                 if Path(str(options["upload_path"])).resolve() not in context.upload_paths:
                     raise ValueError("UPLOAD_OUTSIDE_RUN")
             if tool_name == "vision_analyze":

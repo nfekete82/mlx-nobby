@@ -1473,6 +1473,11 @@ document.getElementById(
     MLXChatRuntime.handlePresetChange
 );
 
+document.getElementById('mediaQuality').addEventListener(
+    'change',
+    MLXChatRuntime.handleMediaQualityChange
+);
+
 
 document.getElementById('exportChatJson').addEventListener(
     'click',
@@ -1591,6 +1596,9 @@ MLXChatSessions.configure({
         MLXChatGeneration.resumeImageJobsForSession(
             MLXChatSessions.currentSession()
         );
+        MLXChatGeneration.resumeVideoJobsForSession(
+            MLXChatSessions.currentSession()
+        );
     }
 });
 
@@ -1616,6 +1624,9 @@ MLXChatRuntime.loadSettings();
 
 MLXChatRendering.renderAll();
 MLXChatGeneration.resumeImageJobsForSession(
+    MLXChatSessions.currentSession()
+);
+MLXChatGeneration.resumeVideoJobsForSession(
     MLXChatSessions.currentSession()
 );
 MLXChatSessions.syncWithServer();
@@ -2686,7 +2697,7 @@ function showLifecycleFailure(message) {
 }
 
 
-async function waitForLifecycleProgress(action) {
+async function waitForLifecycleProgress(action, reloadOnComplete) {
     const deadline = Date.now() + 240000;
 
     let sawLifecycleState = false;
@@ -2731,7 +2742,15 @@ async function waitForLifecycleProgress(action) {
                         setTimeout(resolve, 700)
                 );
 
-                window.location.reload();
+                if (reloadOnComplete) {
+                    window.location.reload();
+                } else {
+                    document.getElementById('confirmModal')?.setAttribute(
+                        'hidden',
+                        ''
+                    );
+                    setLifecycleActionsDisabled(false);
+                }
                 return;
             }
 
@@ -2752,9 +2771,9 @@ async function waitForLifecycleProgress(action) {
 
         } catch (error) {
             /*
-             * restart-all intentionally restarts the
-             * agent. During that window the lifecycle
-             * endpoint is temporarily unavailable.
+             * System Reboot recreates the web container while the host
+             * agent keeps orchestrating. The proxy endpoint is temporarily
+             * unavailable until the new container is ready.
              *
              * This is expected and must not turn the
              * modal into an error state.
@@ -2772,7 +2791,7 @@ async function waitForLifecycleProgress(action) {
 
                 if (phase) {
                     phase.textContent =
-                        chatT('ui.services_restarting_progress', 'Services are restarting …');
+                        chatT('ui.system_reconnecting', 'Reconnecting to services …');
                 }
             }
         }
@@ -2782,14 +2801,12 @@ async function waitForLifecycleProgress(action) {
         );
     }
 
-    /*
-     * Recovery fallback:
-     * lifecycle polling should normally reach
-     * "completed". If the agent transition caused us
-     * to miss it, reload once and let the recovered
-     * application establish the final state.
-     */
-    window.location.reload();
+    showLifecycleFailure(
+        chatT(
+            'ui.system_action_timeout',
+            'The system action did not complete before the timeout.'
+        )
+    );
 }
 
 
@@ -2901,25 +2918,37 @@ function setLifecycleActionsDisabled(disabled) {
 
 
 async function runLifecycleAction(action) {
+    const activeAiWork = generating || chatState.sessions.some(session =>
+        (session.messages || []).some(message =>
+            [message?.image_job, message?.video_job, message?.batch_job]
+                .some(job =>
+                    ['queued', 'loading', 'encoding', 'generating', 'upscaling', 'running', 'saving', 'paused']
+                        .includes(job?.status)
+                )
+        )
+    );
     const config = {
-        'restart-all': {
-            title: chatT('ui.services_restart_title', 'Restart services'),
+        'reboot': {
+            title: chatT('ui.system_reboot_title', 'System Reboot'),
             confirm:
-                chatT('ui.services_restart_confirm', 'Really restart all MLX Nobby services?'),
+                chatT('ui.system_reboot_confirm', 'Stop all MLX Nobby services, rebuild the web application, and then start everything again?'),
             confirmLabel:
-                chatT('ui.services_restart_confirm_label', 'Restart'),
+                chatT('ui.system_reboot_confirm_label', 'Start reboot'),
             busy:
-                chatT('ui.services_restarting', 'MLX Nobby is restarting …'),
+                chatT('ui.system_rebooting', 'MLX Nobby is being rebuilt and restarted …'),
+            reloadOnComplete: true,
         },
 
-        'rebuild-all': {
-            title: chatT('ui.rebuild_all_title', 'Rebuild everything'),
-            confirm:
-                chatT('ui.rebuild_all_confirm', 'Completely rebuild MLX Nobby and then restart all services?'),
+        'shutdown-ai': {
+            title: chatT('ui.shutdown_ai_title', 'Shut down AI system'),
+            confirm: activeAiWork
+                ? chatT('ui.shutdown_ai_confirm_active', 'AI jobs are still running and will be stopped. Shut down all AI and model services anyway?')
+                : chatT('ui.shutdown_ai_confirm', 'Stop all AI and model services and remove their models from memory? The web UI remains available.'),
             confirmLabel:
-                chatT('ui.rebuild_all_confirm_label', 'Rebuild'),
+                chatT('ui.shutdown_ai_confirm_label', 'Shut down AI system'),
             busy:
-                chatT('ui.rebuilding', 'MLX Nobby is being rebuilt …'),
+                chatT('ui.shutdown_ai_running', 'AI and model services are shutting down …'),
+            reloadOnComplete: false,
         },
     };
 
@@ -2969,7 +2998,7 @@ async function runLifecycleAction(action) {
             );
         }
 
-        waitForLifecycleProgress(action);
+        waitForLifecycleProgress(action, current.reloadOnComplete);
 
     } catch (error) {
         const modal =
