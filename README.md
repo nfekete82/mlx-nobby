@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.1.0-informational)
+![Release](https://img.shields.io/badge/release-v1.2.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -22,15 +22,18 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 - Diagnostic, research, and file-processing agents using the central AgentRuntime
   with workspace-bound tools, permission checks, and approval/resume
 - Role-based local model selection for chat, agent, coding, vision, image, and
-  embeddings, including compatible BGE-M3 embeddings
+  Qwen3 embeddings served through MLX-Serve
 - Local embeddings, knowledge sources, and retrieval-augmented generation (RAG)
 - Hierarchical semantic routing for chat, multimodal, research, coding, and
   creative requests
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
 - Local text-to-speech with Serena voice and pause/resume playback in chat
-- Image generation and Qwen image editing through DiffusionKit and optional
-  MFLUX providers; optional local SDXL generation and Real-ESRGAN upscaling
+- Qwen Image 2.1 generation through MLX-Serve, Qwen image editing, optional
+  DiffusionKit/MFLUX/SDXL providers, and Real-ESRGAN upscaling
+- Local LTX 2.5 text-to-video and image-to-video generation with preview,
+  format selection, and model-aware media quality profiles
+- Coordinated chat, image, and video runtimes with automatic resource handoff
 - Asynchronous image jobs with real progress, cancellation, reload recovery,
   and persistent chat artifacts
 - Iterative image editing that continues from the active image artifact
