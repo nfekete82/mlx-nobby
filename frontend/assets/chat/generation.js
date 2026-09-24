@@ -2778,13 +2778,25 @@ const imageFiles =
 
                     title.textContent =
                         mediaQualityKind === 'video'
-                            ? 'Videoqualität wählen'
-                            : 'Bildqualität wählen';
+                            ? gt(
+                                'media_quality_title_video',
+                                'Choose video quality'
+                            )
+                            : gt(
+                                'media_quality_title_image',
+                                'Choose image quality'
+                            );
 
                     message.textContent =
                         mediaQualityKind === 'video'
-                            ? 'Welche Qualität möchtest du für das Video verwenden?'
-                            : 'Welche Qualität möchtest du für das Bild verwenden?';
+                            ? gt(
+                                'media_quality_message_video',
+                                'Which quality would you like to use for the video?'
+                            )
+                            : gt(
+                                'media_quality_message_image',
+                                'Which quality would you like to use for the image?'
+                            );
 
                     renderChoice();
 

@@ -1338,7 +1338,7 @@ const loading = imageJobPresentation({
     created_at: 1000,
 }, 1012);
 assert.equal(loading.title, 'Loading model …');
-assert.match(loading.details, /Phase: Laden/);
+assert.match(loading.details, /Phase: Loading/);
 assert.match(loading.details, /Elapsed: 00:12/);
 
 const saving = imageJobPresentation({
@@ -1346,7 +1346,7 @@ const saving = imageJobPresentation({
     started_at: 1000,
 }, 1068);
 assert.equal(saving.title, 'Saving image …');
-assert.match(saving.details, /Phase: Speichern/);
+assert.match(saving.details, /Phase: Saving/);
 assert.match(saving.details, /Elapsed: 01:08/);
 
 const completed = imageJobPresentation({
@@ -1802,18 +1802,18 @@ for (const [prompt, expectedTarget, expectedModal] of [
     [
         'Photorealistic portrait of a woman in natural window light',
         'image',
-        'Bildqualität wählen',
+        'Choose image quality',
     ],
     [
         'Erstelle ein Bild von einem Leuchtturm',
         'image',
-        'Bildqualität wählen',
+        'Choose image quality',
     ],
     ['Erkläre mir Rekursion', 'chat', null],
     [
         'Erstelle ein Video von einer Meeresküste',
         'video',
-        'Videoqualität wählen',
+        'Choose video quality',
     ],
 ]) {
     const modalCount = modalOpenEvents.length;

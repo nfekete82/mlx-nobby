@@ -108,15 +108,33 @@
             ? status
             : String(job?.phase || status).toLowerCase();
         const labels = {
-            queued: 'Warten', starting: 'Laden', loading: 'Laden', loading_model: 'Laden',
-            encoding: 'Encoding', encoding_text: 'Encoding',
-            running: kind === 'image' && job?.operation === 'edit' ? 'Editing' : 'Generating',
-            progress: 'Generating', generate: 'Generating', generated: 'Speichern',
-            generating: 'Generating', inference: 'Generating', denoising: 'Generating',
-            upscaling: 'Upscaling', upscale: 'Upscaling', refining: 'Upscaling',
-            saving: 'Speichern', save: 'Speichern', decoding: 'Decoding', muxing: 'Muxing',
-            completed: 'Abgeschlossen', complete: 'Abgeschlossen',
-            cancelled: 'Abgebrochen', failed: 'Fehlgeschlagen', error: 'Fehlgeschlagen'
+            queued: rt('media_phase_waiting', 'Waiting'),
+            starting: rt('media_phase_loading', 'Loading'),
+            loading: rt('media_phase_loading', 'Loading'),
+            loading_model: rt('media_phase_loading', 'Loading'),
+            encoding: rt('media_phase_encoding', 'Encoding'),
+            encoding_text: rt('media_phase_encoding', 'Encoding'),
+            running: kind === 'image' && job?.operation === 'edit'
+                ? rt('media_phase_editing', 'Editing')
+                : rt('media_phase_generating', 'Generating'),
+            progress: rt('media_phase_generating', 'Generating'),
+            generate: rt('media_phase_generating', 'Generating'),
+            generated: rt('media_phase_saving', 'Saving'),
+            generating: rt('media_phase_generating', 'Generating'),
+            inference: rt('media_phase_generating', 'Generating'),
+            denoising: rt('media_phase_generating', 'Generating'),
+            upscaling: rt('media_phase_upscaling', 'Upscaling'),
+            upscale: rt('media_phase_upscaling', 'Upscaling'),
+            refining: rt('media_phase_upscaling', 'Upscaling'),
+            saving: rt('media_phase_saving', 'Saving'),
+            save: rt('media_phase_saving', 'Saving'),
+            decoding: rt('media_phase_decoding', 'Decoding'),
+            muxing: rt('media_phase_muxing', 'Muxing'),
+            completed: rt('media_phase_completed', 'Completed'),
+            complete: rt('media_phase_completed', 'Completed'),
+            cancelled: rt('media_phase_cancelled', 'Cancelled'),
+            failed: rt('media_phase_failed', 'Failed'),
+            error: rt('media_phase_failed', 'Failed')
         };
         return labels[phase] || phase;
     }
@@ -1893,14 +1911,18 @@ function renderVideoArtifactCard(message) {
         artifact.model,
         artifact.provider,
         artifact.pipeline ? 'Pipeline: ' + artifact.pipeline : '',
-        artifact.resolution ? 'Profil: ' + artifact.resolution : '',
+        artifact.resolution
+            ? rt('video_profile', 'Profile') + ': ' + artifact.resolution
+            : '',
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
         artifact.frames ? artifact.frames + ' Frames' : '',
         artifact.duration != null ? Number(artifact.duration).toFixed(2) + ' s' : '',
         artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Distilled Steps' : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : '',
-        artifact.audio ? 'Audio' : 'Kein Audio'
+        artifact.audio
+            ? 'Audio'
+            : rt('video_no_audio', 'No audio')
     ].filter(Boolean).join(' · ');
     card.appendChild(details);
     const controls = document.createElement('div');
@@ -1948,11 +1970,42 @@ function renderVideoJobCard(message) {
     card.className = 'batch-chat-card video-job-card';
     const title = document.createElement('strong');
     const labels = {
-        queued: 'Video-Job wartet …', loading: 'Video-Modell wird geladen …',
-        encoding: 'Eingabe wird kodiert …', generating: 'Video wird erzeugt …',
-        upscaling: 'Video wird hochskaliert …',
-        decoding: 'Video wird dekodiert …', muxing: 'MP4 wird erstellt …',
-        cancelled: 'Video-Job abgebrochen', failed: 'Video-Job fehlgeschlagen'
+        queued: rt(
+            'video_job_status_queued',
+            'Video job waiting …'
+        ),
+        loading: rt(
+            'video_job_status_loading',
+            'Loading video model …'
+        ),
+        encoding: rt(
+            'video_job_status_encoding',
+            'Encoding input …'
+        ),
+        generating: rt(
+            'video_job_status_generating',
+            'Generating video …'
+        ),
+        upscaling: rt(
+            'video_job_status_upscaling',
+            'Upscaling video …'
+        ),
+        decoding: rt(
+            'video_job_status_decoding',
+            'Decoding video …'
+        ),
+        muxing: rt(
+            'video_job_status_muxing',
+            'Creating MP4 …'
+        ),
+        cancelled: rt(
+            'video_job_status_cancelled',
+            'Video job cancelled'
+        ),
+        failed: rt(
+            'video_job_status_failed',
+            'Video job failed'
+        )
     };
     title.textContent = labels[job.status] || job.status;
     card.appendChild(title);
