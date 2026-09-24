@@ -29,6 +29,13 @@ assert.match(generation, /fast: Object\.freeze\(\[5, 6, 8, 10, 20\]\)/);
 assert.match(generation, /quality: Object\.freeze\(\[5\]\)/);
 assert.match(generation, /const mediaQualityKind/);
 assert.match(generation, /if \(mediaQualityKind\)/);
+assert.match(generation, /\/api\/mlx\/chat\/actions\/route/);
+assert.match(generation, /resolvedTarget === 'image_edit'/);
+assert.match(generation, /resolved_target: resolvedTarget/);
+assert.match(generation, /const serverTarget = String/);
+assert.match(generation, /resolvedTarget !== 'image_edit'/);
+assert.match(generation, /let acceptEnter = false/);
+assert.match(generation, /requestAnimationFrame\(\(\) => \{\s*acceptEnter = true/);
 assert.match(rendering, /artifact\.quality \? 'Qualität: '/);
 assert.match(rendering, /preview: 'Vorschau'/);
 

@@ -3219,6 +3219,122 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(agent.classify_chat_action("Erstelle ein Bild von einem Apfel"), "image_generate")
 
+    def test_media_preflight_uses_router_and_never_starts_a_job(self):
+        image_prompts = (
+            "Photorealistic portrait of a woman in natural window light",
+            "beautiful sunset over the Alps",
+        )
+
+        with patch.object(
+            agent,
+            "semantic_intent_classifier",
+            return_value={
+                "intent": "image_generate",
+                "confidence": 0.99,
+                "requires_tools": True,
+                "reason": "image request",
+            },
+        ), patch.object(
+            agent,
+            "_start_chat_image_job",
+        ) as image_job, patch.object(
+            agent,
+            "_start_chat_video_job",
+        ) as video_job:
+            for prompt in image_prompts:
+                with self.subTest(prompt=prompt):
+                    result = agent.preflight_chat_action(
+                        agent.ChatActionRequest(prompt=prompt)
+                    )
+                    self.assertEqual(result, {"target": "image"})
+
+        image_job.assert_not_called()
+        video_job.assert_not_called()
+
+    def test_media_preflight_targets_chat_video_and_image_edit(self):
+        with patch.object(
+            agent,
+            "semantic_intent_classifier",
+            return_value={
+                "intent": "normal_chat",
+                "confidence": 0.99,
+                "requires_tools": False,
+                "reason": "ordinary chat",
+            },
+        ):
+            self.assertEqual(
+                agent.preflight_chat_action(
+                    agent.ChatActionRequest(prompt="Why is the sky blue?")
+                ),
+                {"target": "chat"},
+            )
+
+        self.assertEqual(
+            agent.preflight_chat_action(
+                agent.ChatActionRequest(
+                    prompt="Create a video of waves on a beach"
+                )
+            ),
+            {"target": "video"},
+        )
+        self.assertEqual(
+            agent.preflight_chat_action(
+                agent.ChatActionRequest(
+                    prompt="Make the background darker",
+                    file_context={
+                        "kind": "image",
+                        "mime_type": "image/png",
+                        "stored_path": "/tmp/source.png",
+                    },
+                )
+            ),
+            {"target": "image_edit"},
+        )
+
+    def test_resolved_media_target_skips_second_router_pass(self):
+        request = self.make_chat_action_request(
+            prompt="beautiful sunset over the Alps",
+            resolved_target="image",
+        )
+        queued_job = {
+            "id": "a" * 24,
+            "operation": "generate",
+            "status": "queued",
+        }
+
+        with patch.object(
+            agent,
+            "classify_chat_action_details",
+        ) as classify, patch.object(
+            agent,
+            "_start_chat_image_job",
+            return_value=queued_job,
+        ) as start_job:
+            result = agent.run_chat_action(request)
+
+        classify.assert_not_called()
+        start_job.assert_called_once_with("image_generate", request)
+        self.assertEqual(result["tool"], "image_generate")
+
+        with self.assertRaises(HTTPException) as mismatch:
+            agent.run_chat_action(
+                self.make_chat_action_request(
+                    prompt="Edit this",
+                    action="image_edit",
+                    resolved_target="image",
+                )
+            )
+        self.assertEqual(mismatch.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as missing_source:
+            agent.run_chat_action(
+                self.make_chat_action_request(
+                    prompt="Make it warmer",
+                    resolved_target="image_edit",
+                )
+            )
+        self.assertEqual(missing_source.exception.status_code, 422)
+
 
     def test_delete_chat_images_tolerates_file_disappearing_before_unlink(self):
         from pathlib import Path

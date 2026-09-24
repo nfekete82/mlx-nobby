@@ -2369,18 +2369,7 @@ const imageFiles =
         !textFiles.length &&
         !routesCurrentImageToVision
     ) {
-        const imageRequest =
-            explicitImageCreationRequest ||
-            explicitImageEditRequest;
         let pendingImageMessage = null;
-        if (imageRequest) {
-            pendingImageMessage = { role: 'assistant', content: gt('image_generating', 'Generating the image locally with the selected image model …'), image_generation_pending: true };
-            session.messages.push(pendingImageMessage);
-            MLXChatSessions.saveSessions();
-            MLXChatRendering.renderAll({
-                contentUpdated: true
-            });
-        }
         try {
             let currentImageContext = null;
 
@@ -2482,17 +2471,105 @@ const imageFiles =
                     )
                     : null;
 
-            if (
-                pendingImageMessage &&
-                explicitImageEditRequest &&
-                activeArtifactIdForEdit
-            ) {
-                pendingImageMessage.image_parent_artifact_id =
-                    activeArtifactIdForEdit;
+            /*
+             * Explicit patterns remain fast paths. Unknown wording is
+             * classified by the backend router before any media modal or
+             * action request is started.
+             */
+            const explicitVideoCreationRequest =
+                /\b(?:erstelle|erzeuge|generiere|mach|create|generate|make)\b[\s\S]{0,100}\b(?:video|clip|animation)\b/i.test(prompt) ||
+                /\b(?:video|clip|animation)\b[\s\S]{0,100}\b(?:erstellen|erzeugen|generieren|create|generate)\b/i.test(prompt);
+
+            const conversationContext =
+                buildAgentConversationContext(
+                    session,
+                    userMessage
+                );
+
+            const localFastPathTarget =
+                (
+                    explicitVideoAnimateRequest ||
+                    explicitVideoCreationRequest ||
+                    Boolean(options?.video)
+                )
+                    ? 'video'
+                    : explicitImageEditRequest
+                        ? 'image_edit'
+                        : (
+                            explicitImageCreationRequest ||
+                            Boolean(options?.image)
+                        )
+                            ? 'image'
+                            : null;
+            let resolvedTarget = null;
+
+            try {
+                const routeResponse = await fetch(
+                    '/api/mlx/chat/actions/route',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            prompt,
+                            file_context: fileContext,
+                            active_artifact_id:
+                                activeArtifactIdForEdit,
+                            conversation_context:
+                                conversationContext,
+                            trace_id: userMessage.trace_id,
+                            chat_id: session.id,
+                            chat_revision:
+                                persistentChatRevision(session)
+                        })
+                    }
+                );
+
+                if (!routeResponse.ok) {
+                    throw new Error(await routeResponse.text());
+                }
+
+                const route = await routeResponse.json();
+                const serverTarget = String(
+                    route?.target || ''
+                ).trim();
+
+                if (![
+                    'chat',
+                    'image',
+                    'image_edit',
+                    'video'
+                ].includes(serverTarget)) {
+                    throw new Error(
+                        'Invalid chat action route target'
+                    );
+                }
+
+                resolvedTarget = serverTarget;
+            } catch (error) {
+                if (!localFastPathTarget) {
+                    throw error;
+                }
+
+                console.warn(
+                    '[MLX Router] Preflight failed; using explicit fast path',
+                    error
+                );
+                resolvedTarget = localFastPathTarget;
             }
 
+            const mediaQualityKind =
+                resolvedTarget === 'video'
+                    ? 'video'
+                    : ['image', 'image_edit'].includes(
+                        resolvedTarget
+                    )
+                        ? 'image'
+                        : null;
+
             if (
-                explicitImageEditRequest &&
+                resolvedTarget === 'image_edit' &&
                 !fileContext?.stored_path &&
                 !activeArtifactIdForEdit
             ) {
@@ -2503,30 +2580,6 @@ const imageFiles =
                     )
                 );
             }
-
-            /*
-             * Ask for media quality only when this turn is actually
-             * creating/editing image or video content. Normal chat
-             * never sees this modal.
-             */
-            const explicitVideoCreationRequest =
-                /\b(?:erstelle|erzeuge|generiere|mach|create|generate|make)\b[\s\S]{0,100}\b(?:video|clip|animation)\b/i.test(prompt) ||
-                /\b(?:video|clip|animation)\b[\s\S]{0,100}\b(?:erstellen|erzeugen|generieren|create|generate)\b/i.test(prompt);
-
-            const mediaQualityKind =
-                (
-                    explicitVideoAnimateRequest ||
-                    explicitVideoCreationRequest ||
-                    Boolean(options?.video)
-                )
-                    ? 'video'
-                    : (
-                        explicitImageCreationRequest ||
-                        explicitImageEditRequest ||
-                        Boolean(options?.image)
-                    )
-                        ? 'image'
-                        : null;
 
             let selectedMediaQuality =
                 MLXChatRuntime.getSessionMediaQuality?.() ||
@@ -2574,14 +2627,20 @@ const imageFiles =
                         ]
                         : [];
 
-                if (
+                if (!(
                     modal &&
                     title &&
                     message &&
                     cancel &&
                     confirm &&
                     qualityButtons.length
-                ) {
+                )) {
+                    throw new Error(
+                        'Media quality modal is unavailable'
+                    );
+                }
+
+                {
                     // Default is Standard; subsequent jobs reuse this session's choice.
                     let choice = selectedMediaQuality;
 
@@ -2601,7 +2660,7 @@ const imageFiles =
                             mediaQualityKind === 'video' ||
                             (
                                 mediaQualityKind === 'image' &&
-                                !explicitImageEditRequest
+                                resolvedTarget !== 'image_edit'
                             );
 
                         formatField.hidden = !enabled;
@@ -2906,11 +2965,31 @@ const imageFiles =
                 }
             }
 
-            const conversationContext =
-                buildAgentConversationContext(
-                    session,
-                    userMessage
-                );
+            if (['image', 'image_edit'].includes(resolvedTarget)) {
+                pendingImageMessage = {
+                    role: 'assistant',
+                    content: gt(
+                        'image_generating',
+                        'Generating the image locally with the selected image model …'
+                    ),
+                    image_generation_pending: true
+                };
+
+                if (
+                    resolvedTarget === 'image_edit' &&
+                    activeArtifactIdForEdit
+                ) {
+                    pendingImageMessage.image_parent_artifact_id =
+                        activeArtifactIdForEdit;
+                }
+
+                session.messages.push(pendingImageMessage);
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({
+                    contentUpdated: true
+                });
+            }
+
             const actionPayload = {
                 prompt: prompt,
                 file_context: fileContext,
@@ -2919,7 +2998,7 @@ const imageFiles =
                     options,
                     mediaQualityKind,
                     selectedMediaFormat,
-                    !explicitImageEditRequest
+                    resolvedTarget === 'image'
                 ),
                 video_options: videoOptionsForRequest(
                     options,
@@ -2929,6 +3008,7 @@ const imageFiles =
                     selectedMediaFormat
                 ),
                 quality: selectedMediaQuality,
+                resolved_target: resolvedTarget,
                 conversation_context: conversationContext,
                 trace_id: userMessage.trace_id,
                 chat_id: session.id,

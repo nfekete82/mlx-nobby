@@ -1911,6 +1911,16 @@ def mlx_chat_actions(request: dict):
     )
 
 
+@app.post("/api/mlx/chat/actions/route")
+def mlx_chat_actions_route(request: dict):
+    return agent_json_request(
+        "POST",
+        "/api/chat/actions/route",
+        payload=request,
+        timeout=30,
+    )
+
+
 
 @app.post("/api/mlx/agent/run")
 def mlx_agent_run(request: dict):

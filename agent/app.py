@@ -3937,6 +3937,9 @@ class ChatActionRequest(BaseModel):
     image_options: dict | None = None
     video_options: dict | None = None
     quality: Literal["preview", "fast", "standard", "quality"] | None = None
+    resolved_target: Literal[
+        "chat", "image", "image_edit", "video",
+    ] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
     trace_id: str | None = None
@@ -9066,13 +9069,85 @@ def _runtime_target(action):
     return "chat"
 
 
+def _chat_preflight_target(action):
+    if action == "image_edit":
+        return "image_edit"
+    return _runtime_target(action)
+
+
+def _resolved_media_action(request, routing_file_context):
+    """Validate and expand a client-provided preflight media target."""
+    target = request.resolved_target
+    action_target = {
+        "image_generate": "image",
+        "image_edit": "image_edit",
+        "video_generate": "video",
+        "video_animate": "video",
+    }.get(request.action)
+
+    if target is not None and action_target is not None and action_target != target:
+        raise HTTPException(422, "Action passt nicht zum aufgelösten Ziel")
+
+    if target not in {"image", "image_edit", "video"}:
+        return None
+
+    if target == "image_edit":
+        if not _file_context_is_image(routing_file_context):
+            raise HTTPException(422, "Bildbearbeitung benötigt ein Quellbild")
+        return "image_edit"
+
+    if target == "image":
+        return "image_generate"
+
+    if request.action in {"video_generate", "video_animate"}:
+        return request.action
+
+    if (
+        _VIDEO_ANIMATE_PATTERN.search(request.prompt)
+        or _file_context_is_image(routing_file_context)
+    ):
+        return "video_animate"
+    return "video_generate"
+
+
+@app.post("/api/chat/actions/route")
+def preflight_chat_action(request: ChatActionRequest):
+    """Classify a turn without starting a job or changing model runtime."""
+    routing_file_context = _image_source_routing_context(request)
+    direct = _direct_chat_action(
+        request.prompt,
+        routing_file_context,
+        request.conversation_context,
+    )
+    if direct is None:
+        direct = classify_chat_action_details(
+            request.prompt,
+            routing_file_context,
+            request.conversation_context,
+        ).get("intent")
+    return {"target": _chat_preflight_target(direct)}
+
+
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
 
-    if request.action in {"video_generate", "video_animate"}:
+    resolved_media_action = _resolved_media_action(
+        request,
+        routing_file_context,
+    )
+
+    if resolved_media_action is not None:
+        routing = {
+            "intent": resolved_media_action,
+            "confidence": 1.0,
+            "requires_tools": True,
+            "reason": "Validated media preflight target",
+            "method": "preflight_target",
+        }
+    elif request.action in {"video_generate", "video_animate"}:
         routing = {
             "intent": request.action, "confidence": 1.0,
             "requires_tools": True, "reason": "Explicit video action",
