@@ -2771,7 +2771,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(edit_call.args[2]["operation"], "edit")
         self.assertEqual(
             edit_call.args[2]["payload"]["model"],
-            "configured-image-model",
+            "auto",
         )
         self.assertEqual(edit_call.args[2]["payload"]["steps"], 12)
 
@@ -4956,7 +4956,7 @@ def test_image_edit_payload_uses_normalizer_without_chat_runtime(tmp_path):
     assert payload["prompt"] == agent.normalize_image_edit_prompt(
         request.prompt
     )
-    assert payload["model"] == "mflux-qwen-image-edit-2511"
+    assert payload["model"] == "auto"
 
 
 def test_image_edit_payload_preserves_explicit_prompt_override(tmp_path):

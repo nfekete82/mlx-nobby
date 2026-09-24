@@ -100,12 +100,12 @@ class ModelRoleRoutingTests(unittest.TestCase):
         ensure.assert_not_called()
         self.assertEqual(json.loads(urlopen.call_args.args[0].data)["model"], self.app.ROUTER_MODEL)
 
-    def test_image_edit_payload_uses_image_role(self):
+    def test_image_edit_payload_uses_auto_edit_model(self):
         with mock.patch.object(self.app, "_image_source_path", return_value=Path("/tmp/source.png")), \
              mock.patch.object(self.app, "optimize_image_edit_prompt", return_value="Edit"), \
              mock.patch.object(self.app, "load_model_roles", return_value={"image": "configured-image-model"}):
             payload = self.app._image_edit_payload(self.app.ChatActionRequest(prompt="Edit this"))
-        self.assertEqual(payload["model"], "configured-image-model")
+        self.assertEqual(payload["model"], "auto")
 
     def test_auto_image_edit_selects_an_available_edit_model(self):
         import image_service

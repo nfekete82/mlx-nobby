@@ -7903,7 +7903,9 @@ def _image_edit_payload(request):
             else normalize_image_edit_prompt(request.prompt)
         ),
         "source_path": str(source),
-        "model": load_model_roles()["image"],
+        # Image editing needs an edit-capable model, which may differ from
+        # the model selected for normal text-to-image generation.
+        "model": "auto",
     }
 
     if request.quality is not None:
