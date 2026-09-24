@@ -46,7 +46,7 @@ Alle folgenden Pfade liegen unter `agent/`.
 | `evidence.py` | Evidence-Verträge, Kompaktierung, Coding-Antwortregeln, Quellenbewertung und Delegations-/Research-Helfer. |
 | `approvals.py` | `AgentApprovals`: bestehender Freigabespeicher, TTL, einmalige Entnahme, Validierung, Ausführung und Verifikation. |
 | `code_workspaces.py` | Workspace-Verwaltung, sichere Dateioperationen und bestehender Patch-/Diff-/Test-/Apply-/Verify-Workflow. |
-| `vision_classifier.py`, `vision_routing.py` | Lokale ONNX-Bildklassifikation und Auswahl zwischen `vision` und `vision_uncensored` für den normalen multimodalen Chat-Pfad. |
+| `vision_classifier.py`, `vision_routing.py` | Lokale ONNX-Bildklassifikation und Auswahl einer passenden Vision-Rolle für den normalen multimodalen Chat-Pfad. |
 | `app.py` | FastAPI-Endpunkte, Zusammensetzen der Abhängigkeiten, lokale Modellintegration, Progress-Speicher und Compatibility-Funktionen. Enthält weiterhin andere Anwendungslogik. |
 
 ## Ablauf eines Runs
@@ -183,13 +183,14 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   ausgelagerten Prompt-, Evidence- und Approval-Module an.
 - Rollen-/Modellauflösung, Modell-Lock und Progress-/Pending-Speicher bleiben in der
   bestehenden Integration. Es wurde keine neue Event-Plattform eingeführt.
-- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `vision_uncensored`,
-  `image` und `embedding` werden in der bestehenden Integration aufgelöst.
+- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `image` und `embedding`
+  werden in der bestehenden Integration aufgelöst; zusätzliche lokale
+  Vision-Rollen können optional als Fallback eingebunden werden.
   BGE-M3 ist für die Embedding-Rolle kompatibel.
 - Der Web-Backend-Chat-Pfad fragt bei Bildnachrichten die Vision-Route des
-  Agenten ab. Ein lokaler ONNX-Klassifikator wählt `vision_uncensored` nur bei
-  ausreichend sicher erkannter Adult-Klasse und verfügbarer Rolle. Bei
-  Klassifikationsfehlern oder unklaren Bildern bleibt `vision` aktiv. Das
+  Agenten ab. Ein optionaler lokaler ONNX-Klassifikator kann bei passender
+  Konfiguration zwischen verfügbaren Vision-Rollen wählen. Bei Fehlern oder
+  unklarer Klassifikation bleibt die Standard-Vision-Rolle aktiv. Das
   Klassifikatormodell wird bei Bedarf heruntergeladen; seine separaten
   Python-Abhängigkeiten installiert der Standardinstaller nicht.
 - Freigaben und Progress sind weiterhin prozesslokal; keine neue dauerhafte
