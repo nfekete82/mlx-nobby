@@ -213,7 +213,10 @@ function imageOptionsForRequest(
     return {
         ...(existing || {}),
         width: size.width,
-        height: size.height
+        height: size.height,
+        // The dimensions encode the selected aspect ratio. The image backend
+        // chooses the model/quality-appropriate native render size.
+        auto_size: true
     };
 }
 

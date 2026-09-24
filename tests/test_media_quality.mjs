@@ -38,6 +38,7 @@ assert.match(html, /id="mediaFormat"/);
 assert.match(generation, /const VIDEO_FORMATS/);
 assert.match(generation, /const IMAGE_FORMATS/);
 assert.match(generation, /IMAGE_SIZES_BY_FORMAT/);
+assert.match(generation, /auto_size: true/);
 assert.match(generation, /videoAspectRatioForFormat/);
 assert.match(generation, /imageOptionsForRequest/);
 assert.match(generation, /aspect_ratio:/);

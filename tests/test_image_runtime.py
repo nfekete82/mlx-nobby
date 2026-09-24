@@ -4948,10 +4948,30 @@ def test_image_quality_profiles_and_legacy_default():
         "default_steps": 20,
     }
     assert service._resolved_steps(model, None, "fast") == 20
-    assert service._resolved_steps(model, None, "standard") == 40
-    assert service._resolved_steps(model, None, "quality") == 50
+    assert service._resolved_steps(model, None, "standard") == 30
+    assert service._resolved_steps(model, None, "quality") == 40
     assert service._resolved_steps(model, None) == 40
-    assert service._resolved_steps({**model, "provider": "diffusionkit"}, None, "quality") == 8
+
+    juggernaut = {
+        "provider": "sdxl", "model_family": "sdxl", "base_model": "sdxl",
+        "default_steps": 30, "default_guidance": 7.0,
+    }
+    assert service._resolved_steps(juggernaut, None, "standard") == 30
+    assert service._resolved_steps(juggernaut, None, "quality") == 35
+
+    turbo = {
+        "provider": "mflux", "model_family": "z-image-turbo",
+        "base_model": "z-image-turbo", "default_steps": 9,
+        "default_guidance": 0,
+    }
+    assert service._resolved_steps(turbo, None, "quality") == 9
+
+    distilled = {
+        "provider": "mflux", "model_family": "flux2-klein",
+        "base_model": "flux2-klein-4b", "default_steps": 4,
+        "default_guidance": 1,
+    }
+    assert service._resolved_steps(distilled, None, "quality") == 4
 
 
 def test_agent_forwards_image_quality_for_generate_and_edit(tmp_path):
@@ -5004,10 +5024,52 @@ def test_image_quality_reaches_provider_and_artifact(tmp_path):
     finally:
         service.OUTPUT = old_output
     assert captured[0]["quality"] == "standard"
-    assert captured[0]["steps"] == 40
+    assert captured[0]["steps"] == 20
     assert generated["quality"] == "standard"
-    assert generated["steps"] == 40
+    assert generated["steps"] == 20
     assert captured[1]["quality"] == "quality"
-    assert captured[1]["steps"] == 50
+    assert captured[1]["steps"] == 20
     assert edited["quality"] == "quality"
-    assert edited["steps"] == 50
+    assert edited["steps"] == 20
+
+
+def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path):
+    model = {
+        "id": "qwen", "provider": "mlxserve", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    captured = []
+
+    def fake_provider(_model, params, path, **_options):
+        captured.append(dict(params))
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=False), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            standard = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="standard",
+                auto_size=True, seed=123,
+            ))
+            quality = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="quality",
+                auto_size=True, seed=123,
+            ))
+            explicit = service._generate_result(service.Generate(
+                prompt="A red apple", width=768, height=432, quality="quality",
+                steps=37, guidance=0, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert (standard["width"], standard["height"], standard["steps"]) == (768, 432, 30)
+    assert (quality["width"], quality["height"], quality["steps"]) == (1024, 576, 40)
+    assert standard["seed"] == quality["seed"] == 123
+    assert standard["guidance"] == quality["guidance"] == 0
+    assert (explicit["width"], explicit["height"]) == (768, 432)
+    assert explicit["steps"] == 37

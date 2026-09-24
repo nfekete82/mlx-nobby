@@ -8093,6 +8093,7 @@ def _image_generate_payload(request):
         "model": "auto",
         "width": width,
         "height": height,
+        "auto_size": True,
     }
 
     if request.quality is not None:
@@ -8108,11 +8109,17 @@ def _image_generate_payload(request):
             "steps",
             "guidance",
             "seed",
+            "auto_size",
         }:
             raise HTTPException(422, "Unbekannte Bildparameter")
 
         # Explicit user options always override automatic defaults.
         payload.update(request.image_options)
+        if (
+            ("width" in request.image_options or "height" in request.image_options)
+            and request.image_options.get("auto_size") is not True
+        ):
+            payload["auto_size"] = False
 
     return payload
 

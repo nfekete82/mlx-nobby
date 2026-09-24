@@ -459,7 +459,9 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(job["current_step"], 8)
         self.assertEqual(job["total_steps"], 8)
         self.assertTrue(Path(job["result"]["path"]).is_file())
-        self.assertEqual(job["result"]["pipeline"], "fast")
+        self.assertEqual(job["result"]["pipeline"], "distilled-two-stage")
+        self.assertEqual(job["result"]["stage_1_steps"], 8)
+        self.assertEqual(job["result"]["stage_2_steps"], 3)
         self.assertEqual(job["result"]["memory_peak"], snapshot)
 
     def test_cancel_and_restart_recovery(self):

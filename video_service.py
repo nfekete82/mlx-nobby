@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import video_registry as registry
+from quality_profiles import resolve_video_profile
 import runtime_coordinator
 from local_security import LocalRequestGuard
 from video_providers import (
@@ -31,12 +32,6 @@ MLX_MANAGER = PROJECT_DIR / "scripts/mlx"
 MLX_SERVER_LABEL = "de.nobby.mlx-server"
 ACTIVE = {"queued", "loading", "encoding", "generating", "upscaling", "decoding", "muxing"}
 TERMINAL = {"completed", "failed", "cancelled"}
-QUALITY_PROFILES = {
-    "preview": {"resolution": "preview", "steps": 2},
-    "fast": {"resolution": "540p", "steps": 11},
-    "standard": {"resolution": "720p", "steps": 11},
-    "quality": {"resolution": "1080p", "steps": 11},
-}
 RESOLUTION_SIZES = {
     "preview": {
         "16:9": (384, 256),
@@ -80,7 +75,7 @@ class VideoPayload(BaseModel):
     width: int | None = None
     height: int | None = None
     frames: int | None = None
-    steps: int = 11
+    steps: int | None = Field(default=None, ge=1)
     aspect_ratio: Literal["16:9", "9:16"] = "16:9"
 
     @model_validator(mode="after")
@@ -92,7 +87,9 @@ class VideoPayload(BaseModel):
 
         effective_resolution = (
             self.resolution
-            or QUALITY_PROFILES[self.quality or "standard"]["resolution"]
+            or resolve_video_profile(
+                {"model_family": "ltx-2.5"}, self.quality or "standard",
+            )["resolution"]
         )
         allowed_durations = SUPPORTED_DURATIONS_BY_RESOLUTION[
             effective_resolution
@@ -127,7 +124,9 @@ class JobCreate(BaseModel):
     def valid_operation(self):
         supplied = self.payload.model_fields_set
         quality = self.payload.quality or "standard"
-        profile = QUALITY_PROFILES[quality]
+        profile = resolve_video_profile(
+            registry.get_model(self.payload.model), quality,
+        )
 
         if quality == "preview" and self.operation != "t2v":
             raise ValueError(
@@ -135,6 +134,11 @@ class JobCreate(BaseModel):
             )
         if "resolution" not in supplied or self.payload.resolution is None:
             self.payload.resolution = profile["resolution"]
+        if "steps" in supplied and self.payload.steps != profile["steps"]:
+            raise ValueError(
+                "Die installierte LTX-Distilled-Pipeline verwendet feste "
+                f"{profile['steps']} Steps"
+            )
         self.payload.steps = profile["steps"]
         if self.operation == "i2v" and not self.payload.first_frame:
             raise ValueError("I2V benötigt ein verwaltetes First-Frame-Artefakt")
@@ -415,7 +419,15 @@ def _run(job_id, request):
                 "prompt": request.payload.prompt, "model": model["id"],
                 "repository": model["repository"], "provider": model["provider"],
                 "model_family": model["model_family"], "quantization": model["quantization"],
-                "pipeline": model["pipeline"], "steps": request.payload.steps,
+                "pipeline": resolve_video_profile(
+                    model, request.payload.quality or "standard",
+                )["pipeline"], "steps": request.payload.steps,
+                "stage_1_steps": resolve_video_profile(
+                    model, request.payload.quality or "standard",
+                )["stage_1_steps"],
+                "stage_2_steps": resolve_video_profile(
+                    model, request.payload.quality or "standard",
+                )["stage_2_steps"],
                 "seed": request.payload.seed, "operation": request.operation,
                 "quality": request.payload.quality or "standard",
                 "resolution": request.payload.resolution, "first_frame": request.payload.first_frame,

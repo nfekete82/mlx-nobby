@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import image_registry as registry
+from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 import runtime_coordinator
 import subprocess
 from image_providers import (
@@ -54,6 +55,7 @@ class Generate(BaseModel):
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     quality: Literal["fast", "standard", "quality"] | None = None
+    auto_size: bool = False
 
 
 class Edit(BaseModel):
@@ -451,10 +453,7 @@ def _resolved_steps(model, requested_steps, quality=None):
         return requested_steps
 
     if quality is not None:
-        steps = {"fast": 20, "standard": 40, "quality": 50}[quality]
-        if model["provider"] == "diffusionkit":
-            return min(steps, 8)
-        return steps
+        return resolve_image_profile(model, quality)["steps"]
 
     default_steps = int(model["default_steps"])
 
@@ -477,8 +476,17 @@ def _generate_result(
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
     params = request.model_dump()
+    profile = resolve_image_profile(model, request.quality) if request.quality else None
     params["steps"] = _resolved_steps(model, request.steps, request.quality)
-    params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
+    params["guidance"] = (
+        request.guidance
+        if request.guidance is not None
+        else profile["guidance"] if profile else model["default_guidance"]
+    )
+    if request.auto_size and profile and profile.get("long_edge"):
+        params["width"], params["height"] = dimensions_for_long_edge(
+            request.width, request.height, profile["long_edge"],
+        )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     if model["provider"] == "diffusionkit" and params["steps"] > 8:
         raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
@@ -530,8 +538,8 @@ def _generate_result(
         "id": image_id,
         "path": str(path),
         "mime_type": "image/png",
-        "width": request.width,
-        "height": request.height,
+        "width": params["width"],
+        "height": params["height"],
         "prompt": request.prompt,
         "model": model["id"],
         "provider": model["provider"],
@@ -626,7 +634,12 @@ def _edit_result(
             params["width"], params["height"] = prepared_image.size
 
     params["steps"] = _resolved_steps(model, request.steps, request.quality)
-    params["guidance"] = request.guidance if request.guidance is not None else model["default_guidance"]
+    profile = resolve_image_profile(model, request.quality) if request.quality else None
+    params["guidance"] = (
+        request.guidance
+        if request.guidance is not None
+        else profile["guidance"] if profile else model["default_guidance"]
+    )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     image_id = f"{int(time.time())}-{secrets.token_hex(6)}"
