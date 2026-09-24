@@ -8032,6 +8032,15 @@ def _image_generate_payload(request):
 
         # Explicit user options always override automatic defaults.
         payload.update(request.image_options)
+        negative_prompt = payload.get("negative_prompt")
+
+        if (
+            isinstance(negative_prompt, str)
+            and negative_prompt.strip()
+        ):
+            payload["negative_prompt"] = negative_prompt
+        else:
+            payload.pop("negative_prompt", None)
         if (
             ("width" in request.image_options or "height" in request.image_options)
             and request.image_options.get("auto_size") is not True

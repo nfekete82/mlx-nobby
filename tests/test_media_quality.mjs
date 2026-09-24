@@ -18,6 +18,9 @@ assert.match(runtime, /settings\.media_quality = normalizeMediaQuality/);
 assert.match(html, /id="mediaQualityModal"/);
 assert.match(html, /id="videoDurationField"/);
 assert.match(html, /id="videoDuration"/);
+assert.match(html, /id="imageNegativePromptField"/);
+assert.match(html, /id="imageNegativePrompt"/);
+assert.match(html, /data-negative-prompt-preset=/);
 for (const duration of [5, 6, 8, 10, 20]) {
     assert.match(html, new RegExp(`option value="${duration}"`));
 }
@@ -48,7 +51,15 @@ assert.match(generation, /IMAGE_SIZES_BY_FORMAT/);
 assert.match(generation, /auto_size: true/);
 assert.match(generation, /videoAspectRatioForFormat/);
 assert.match(generation, /imageOptionsForRequest/);
+assert.match(generation, /merged\.negative_prompt = normalizedNegativePrompt/);
+assert.match(generation, /delete merged\.negative_prompt/);
+assert.match(generation, /resolvedTarget !== 'image'/);
+assert.match(generation, /setSessionNegativePrompt/);
 assert.match(generation, /aspect_ratio:/);
+
+assert.match(runtime, /negative_prompt: ''/);
+assert.match(runtime, /getSessionNegativePrompt/);
+assert.match(runtime, /setSessionNegativePrompt/);
 
 assert.match(css, /media-quality-option\[hidden\]/);
 assert.match(css, /repeat\(auto-fit, minmax\(135px, 1fr\)\)/);

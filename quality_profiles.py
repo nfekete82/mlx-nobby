@@ -5,6 +5,11 @@ request parameters are applied by the services after profile resolution.
 """
 
 IMAGE_PROFILES = {
+    "juggernaut-xl": {
+        "fast": {"steps": 20, "guidance": 5.0, "long_edge": 768},
+        "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
+        "quality": {"steps": 35, "guidance": 5.0, "long_edge": 1024},
+    },
     "qwen-image21": {
         "fast": {"steps": 20, "guidance": 0.0, "long_edge": 768},
         "standard": {"steps": 30, "guidance": 0.0, "long_edge": 768},
@@ -75,6 +80,8 @@ VIDEO_PROFILES = {
 
 
 def image_profile_key(model):
+    if str(model.get("id") or "") == "juggernaut-xl":
+        return "juggernaut-xl"
     family = str(model.get("model_family") or "")
     base = str(model.get("base_model") or "")
     if family == "flux1":

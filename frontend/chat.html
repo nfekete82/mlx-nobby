@@ -1878,6 +1878,42 @@
             </select>
         </label>
 
+        <div
+            id="imageNegativePromptField"
+            class="media-negative-prompt-field"
+            hidden
+        >
+            <label for="imageNegativePrompt">
+                <span data-i18n="ui.negative_prompt_optional">
+                    Negative Prompt (optional)
+                </span>
+            </label>
+            <textarea
+                id="imageNegativePrompt"
+                maxlength="2000"
+                rows="3"
+                data-i18n-placeholder="ui.negative_prompt_placeholder"
+                placeholder="Was soll nicht im Bild erscheinen?"
+            ></textarea>
+            <div class="media-negative-prompt-presets">
+                <button
+                    type="button"
+                    data-negative-prompt-preset="deformed face, malformed hands, extra fingers"
+                    data-i18n="ui.negative_prompt_clean_faces_hands"
+                >Sauberes Gesicht / Hände</button>
+                <button
+                    type="button"
+                    data-negative-prompt-preset="artifacts, blurry, low quality"
+                    data-i18n="ui.negative_prompt_fewer_artifacts"
+                >Weniger Artefakte</button>
+                <button
+                    type="button"
+                    data-negative-prompt-preset="text, watermark, logo, signature"
+                    data-i18n="ui.negative_prompt_avoid_text"
+                >Text vermeiden</button>
+            </div>
+        </div>
+
         <div class="app-modal-actions">
             <button
                 id="mediaQualityModalCancel"

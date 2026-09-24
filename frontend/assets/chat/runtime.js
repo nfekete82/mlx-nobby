@@ -1315,7 +1315,8 @@ function createSessionSettings() {
                 : 'custom',
         temperature: globalSettings.default_temperature,
         max_tokens: globalSettings.default_max_tokens,
-        media_quality: DEFAULT_MEDIA_QUALITY
+        media_quality: DEFAULT_MEDIA_QUALITY,
+        negative_prompt: ''
     };
 }
 
@@ -1346,6 +1347,13 @@ function normalizeMediaQuality(value) {
     return ['fast', 'standard', 'quality'].includes(value)
         ? value
         : DEFAULT_MEDIA_QUALITY;
+}
+
+
+function normalizeNegativePrompt(value) {
+    return typeof value === 'string'
+        ? value.trim().slice(0, 2000)
+        : '';
 }
 
 
@@ -1490,6 +1498,10 @@ function sessionSettings(session) {
             session.settings.media_quality
         );
 
+        const normalizedNegativePrompt = normalizeNegativePrompt(
+            session.settings.negative_prompt
+        );
+
         if (
             session.settings.temperature !==
             normalizedTemperature
@@ -1513,6 +1525,11 @@ function sessionSettings(session) {
             changed = true;
         }
 
+        if (session.settings.negative_prompt !== normalizedNegativePrompt) {
+            session.settings.negative_prompt = normalizedNegativePrompt;
+            changed = true;
+        }
+
         if (changed) {
             session.updated = Date.now();
             MLXChatSessions.saveSessions();
@@ -1532,7 +1549,8 @@ function sessionSettings(session) {
         preset_id: preset ? preset[0] : 'custom',
         temperature: DEFAULT_TEMPERATURE,
         max_tokens: DEFAULT_MAX_TOKENS,
-        media_quality: DEFAULT_MEDIA_QUALITY
+        media_quality: DEFAULT_MEDIA_QUALITY,
+        negative_prompt: ''
     };
 
     session.updated = Date.now();
@@ -1699,6 +1717,25 @@ function getSessionMediaQuality() {
 }
 
 
+function getSessionNegativePrompt() {
+    const session = MLXChatSessions.currentSession();
+    return session
+        ? sessionSettings(session).negative_prompt
+        : '';
+}
+
+
+function setSessionNegativePrompt(value) {
+    const session = MLXChatSessions.currentSession();
+    if (!session) return;
+
+    const settings = sessionSettings(session);
+    settings.negative_prompt = normalizeNegativePrompt(value);
+    session.updated = Date.now();
+    MLXChatSessions.saveSessions();
+}
+
+
 function loadSettings() {
     try {
         globalSettings = normalizeGlobalSettings(
@@ -1776,6 +1813,8 @@ function saveSettings() {
         getSessionGenerationSettings:
             getSessionGenerationSettings,
         getSessionMediaQuality: getSessionMediaQuality,
+        getSessionNegativePrompt: getSessionNegativePrompt,
+        setSessionNegativePrompt: setSessionNegativePrompt,
         handleGlobalSettingsInput: handleGlobalSettingsInput,
         showGenerationMetrics: showGenerationMetrics,
         generationMetricsMode: generationMetricsMode,

@@ -195,15 +195,24 @@ function imageOptionsForRequest(
     options,
     mediaKind,
     format = 'square',
-    allowFormat = false
+    allowFormat = false,
+    negativePrompt = ''
 ) {
     const existing = options?.image || null;
 
-    if (
-        mediaKind !== 'image' ||
-        !allowFormat
-    ) {
+    if (mediaKind !== 'image' || !allowFormat) {
         return existing;
+    }
+
+    const merged = { ...(existing || {}) };
+    const normalizedNegativePrompt = String(
+        negativePrompt || ''
+    ).trim();
+
+    if (normalizedNegativePrompt) {
+        merged.negative_prompt = normalizedNegativePrompt;
+    } else {
+        delete merged.negative_prompt;
     }
 
     const size =
@@ -211,7 +220,7 @@ function imageOptionsForRequest(
         IMAGE_SIZES_BY_FORMAT.square;
 
     return {
-        ...(existing || {}),
+        ...merged,
         width: size.width,
         height: size.height,
         // The dimensions encode the selected aspect ratio. The image backend
@@ -2589,6 +2598,11 @@ const imageFiles =
             )
                 ? Number(options.video.duration)
                 : 5;
+            let selectedNegativePrompt = String(
+                options?.image?.negative_prompt ??
+                MLXChatRuntime.getSessionNegativePrompt?.() ??
+                ''
+            ).trim();
 
             let selectedMediaFormat =
                 mediaQualityKind === 'video'
@@ -2618,6 +2632,18 @@ const imageFiles =
                     document.getElementById('videoDurationField');
                 const durationSelect =
                     document.getElementById('videoDuration');
+                const negativePromptField =
+                    document.getElementById('imageNegativePromptField');
+                const negativePromptInput =
+                    document.getElementById('imageNegativePrompt');
+                const negativePromptPresets =
+                    typeof document.querySelectorAll === 'function'
+                        ? [
+                            ...document.querySelectorAll(
+                                '[data-negative-prompt-preset]'
+                            )
+                        ]
+                        : [];
                 const qualityButtons =
                     typeof document.querySelectorAll === 'function'
                         ? [
@@ -2774,6 +2800,19 @@ const imageFiles =
 
                         renderFormatOptions();
                         renderDurationOptions();
+
+                        if (negativePromptField) {
+                            negativePromptField.hidden =
+                                resolvedTarget !== 'image';
+                        }
+
+                        if (
+                            resolvedTarget === 'image' &&
+                            negativePromptInput
+                        ) {
+                            negativePromptInput.value =
+                                selectedNegativePrompt;
+                        }
                     };
 
                     title.textContent =
@@ -2821,6 +2860,13 @@ const imageFiles =
                                 );
                             }
 
+                            for (const preset of negativePromptPresets) {
+                                preset.removeEventListener(
+                                    'click',
+                                    onNegativePromptPreset
+                                );
+                            }
+
                             cancel.removeEventListener(
                                 'click',
                                 onCancel
@@ -2861,6 +2907,16 @@ const imageFiles =
                             finish(null);
                         };
 
+                        const onNegativePromptPreset = event => {
+                            if (!negativePromptInput) return;
+
+                            negativePromptInput.value = String(
+                                event.currentTarget.dataset
+                                    .negativePromptPreset || ''
+                            );
+                            negativePromptInput.focus();
+                        };
+
                         const onConfirm = () => {
                             if (
                                 formatField &&
@@ -2877,6 +2933,18 @@ const imageFiles =
                                     normalizeVideoDuration(
                                         duration,
                                         choice
+                                    );
+                            }
+
+                            if (
+                                resolvedTarget === 'image' &&
+                                negativePromptInput
+                            ) {
+                                selectedNegativePrompt =
+                                    negativePromptInput.value.trim();
+                                MLXChatRuntime
+                                    .setSessionNegativePrompt?.(
+                                        selectedNegativePrompt
                                     );
                             }
                             finish(choice);
@@ -2902,6 +2970,13 @@ const imageFiles =
                             button.addEventListener(
                                 'click',
                                 onQuality
+                            );
+                        }
+
+                        for (const preset of negativePromptPresets) {
+                            preset.addEventListener(
+                                'click',
+                                onNegativePromptPreset
                             );
                         }
 
@@ -3010,7 +3085,8 @@ const imageFiles =
                     options,
                     mediaQualityKind,
                     selectedMediaFormat,
-                    resolvedTarget === 'image'
+                    resolvedTarget === 'image',
+                    selectedNegativePrompt
                 ),
                 video_options: videoOptionsForRequest(
                     options,

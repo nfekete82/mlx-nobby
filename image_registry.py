@@ -29,7 +29,7 @@ Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
 Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 4
+BUILTIN_DEFAULTS_REVISION = 5
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -318,7 +318,7 @@ def builtin_models():
         quantization="none",
         enabled=False,
         default_steps=30,
-        default_guidance=7.0,
+        default_guidance=5.0,
     ).model_dump())
     return models
 
@@ -374,6 +374,12 @@ def load_registry():
                     and model.get("repository") == Z_IMAGE_TURBO_LEGACY_REPO
                 ):
                     model["repository"] = Z_IMAGE_TURBO_REPO
+
+                if (
+                    model["id"] == JUGGERNAUT_XL_ID
+                    and model["default_guidance"] == 7.0
+                ):
+                    model["default_guidance"] = 5.0
 
             data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while

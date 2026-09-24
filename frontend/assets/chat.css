@@ -9847,6 +9847,37 @@ body.notes-resizing * {
     display: none;
 }
 
+.media-negative-prompt-field {
+    display: grid;
+    gap: 8px;
+    margin: 16px 0 8px;
+}
+
+.media-negative-prompt-field[hidden] {
+    display: none;
+}
+
+.media-negative-prompt-field textarea {
+    width: 100%;
+    min-height: 76px;
+    resize: vertical;
+}
+
+.media-negative-prompt-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.media-negative-prompt-presets button {
+    border: 1px solid var(--border, rgba(255, 255, 255, .12));
+    border-radius: 999px;
+    background: var(--surface-2, rgba(255, 255, 255, .045));
+    color: inherit;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
 @media (max-width: 560px) {
     .media-quality-options {
         grid-template-columns: 1fr;

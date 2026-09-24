@@ -22,6 +22,7 @@ import image_providers as providers
 import image_service as service
 import sdxl_worker
 from agent import app as agent
+from quality_profiles import resolve_image_profile
 
 
 FAKE_SDXL_WORKER = r'''
@@ -257,7 +258,38 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
         self.assertFalse(model["enabled"])
+        self.assertEqual(model["default_guidance"], 5.0)
         self.assertIn("photorealistic", model["capabilities"])
+
+    def test_existing_registry_migrates_only_old_juggernaut_guidance(self):
+        data = registry.initial_registry()
+        data["builtin_defaults_revision"] = 4
+        juggernaut = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        juggernaut["default_guidance"] = 7.0
+        registry.REGISTRY_FILE.write_text(json.dumps(data), encoding="utf-8")
+
+        migrated = registry.load_registry()
+        migrated_juggernaut = next(
+            model
+            for model in migrated["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        self.assertEqual(migrated_juggernaut["default_guidance"], 5.0)
+
+        migrated_juggernaut["default_guidance"] = 6.0
+        migrated["builtin_defaults_revision"] = 4
+        registry.REGISTRY_FILE.write_text(json.dumps(migrated), encoding="utf-8")
+        preserved = registry.load_registry()
+        preserved_juggernaut = next(
+            model
+            for model in preserved["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        self.assertEqual(preserved_juggernaut["default_guidance"], 6.0)
 
     def test_sdxl_checkpoint_resolution_is_local_and_unambiguous(self):
         model_root = self.root / "JuggernautXL"
@@ -1260,6 +1292,29 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["steps"], 12)
         self.assertEqual(calls[0][1]["guidance"], 6.5)
 
+    def test_juggernaut_defaults_omit_negative_prompt(self):
+        registry.update_model(registry.JUGGERNAUT_XL_ID, {"enabled": True})
+        calls = []
+
+        def generate(model, params, output, **_options):
+            calls.append((model, params.copy()))
+            Image.new("RGB", (512, 512), "white").save(output)
+
+        with patch.object(service, "run_provider", side_effect=generate):
+            response = self.client.post(
+                "/generate",
+                json={
+                    "prompt": "Studio portrait",
+                    "negative_prompt": "   ",
+                    "model": registry.JUGGERNAUT_XL_ID,
+                    "seed": 42,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(calls[0][1]["guidance"], 5.0)
+        self.assertNotIn("negative_prompt", calls[0][1])
+
     def test_agent_automatic_image_dimensions(self):
         self.assertEqual(
             agent._automatic_image_dimensions(
@@ -1464,6 +1519,20 @@ class ImageRuntimeTests(unittest.TestCase):
                 )
             )
         self.assertEqual(payload["negative_prompt"], "blurry")
+
+    def test_agent_omits_empty_negative_prompt_option(self):
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A studio portrait",
+        ):
+            payload = agent._image_generate_payload(
+                agent.ChatActionRequest(
+                    prompt="Erstelle ein Studioporträt",
+                    image_options={"negative_prompt": "   "},
+                )
+            )
+        self.assertNotIn("negative_prompt", payload)
 
     def test_auto_generation_uses_capabilities_and_availability(self):
         for model_id in (
@@ -5054,11 +5123,17 @@ def test_image_quality_profiles_and_legacy_default():
     assert service._resolved_steps(model, None) == 40
 
     juggernaut = {
-        "provider": "sdxl", "model_family": "sdxl", "base_model": "sdxl",
-        "default_steps": 30, "default_guidance": 7.0,
+        "id": "juggernaut-xl", "provider": "sdxl",
+        "model_family": "sdxl", "base_model": "sdxl",
+        "default_steps": 30, "default_guidance": 5.0,
     }
     assert service._resolved_steps(juggernaut, None, "standard") == 30
     assert service._resolved_steps(juggernaut, None, "quality") == 35
+    assert resolve_image_profile(juggernaut, "standard")["guidance"] == 5.0
+    assert resolve_image_profile(juggernaut, "quality")["guidance"] == 5.0
+
+    generic_sdxl = juggernaut | {"id": "custom-sdxl"}
+    assert resolve_image_profile(generic_sdxl, "standard")["guidance"] == 6.5
 
     turbo = {
         "provider": "mflux", "model_family": "z-image-turbo",

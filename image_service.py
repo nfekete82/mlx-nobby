@@ -47,7 +47,7 @@ class Generate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     prompt: str = Field(min_length=3, max_length=2000)
-    negative_prompt: str = Field(default="", max_length=2000)
+    negative_prompt: str | None = Field(default=None, max_length=2000)
     model: str = "auto"
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=512, ge=256, le=1024)
@@ -476,6 +476,11 @@ def _generate_result(
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
     params = request.model_dump()
+    negative_prompt = str(request.negative_prompt or "").strip()
+    if negative_prompt:
+        params["negative_prompt"] = negative_prompt
+    else:
+        params.pop("negative_prompt", None)
     profile = resolve_image_profile(model, request.quality) if request.quality else None
     params["steps"] = _resolved_steps(model, request.steps, request.quality)
     params["guidance"] = (
