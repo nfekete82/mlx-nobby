@@ -6,9 +6,9 @@ request parameters are applied by the services after profile resolution.
 
 IMAGE_PROFILES = {
     "juggernaut-xl": {
-        "fast": {"steps": 20, "guidance": 5.0, "long_edge": 768},
+        "fast": {"steps": 20, "guidance": 4.5, "long_edge": 768},
         "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
-        "quality": {"steps": 35, "guidance": 5.0, "long_edge": 1024},
+        "quality": {"steps": 35, "guidance": 5.0, "long_edge": 1216},
     },
     "qwen-image21": {
         "fast": {"steps": 20, "guidance": 0.0, "long_edge": 768},
@@ -16,9 +16,9 @@ IMAGE_PROFILES = {
         "quality": {"steps": 40, "guidance": 0.0, "long_edge": 1024},
     },
     "sdxl": {
-        "fast": {"steps": 20, "guidance": 5.5, "long_edge": 768},
-        "standard": {"steps": 30, "guidance": 6.5, "long_edge": 1024},
-        "quality": {"steps": 35, "guidance": 7.0, "long_edge": 1024},
+        "fast": {"steps": 20, "guidance": 4.5, "long_edge": 768},
+        "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
+        "quality": {"steps": 35, "guidance": 5.0, "long_edge": 1216},
     },
     "flux1-schnell": {
         "fast": {"steps": 4, "guidance": 0.0, "long_edge": 768},

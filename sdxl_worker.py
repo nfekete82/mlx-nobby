@@ -6,7 +6,7 @@ import sys
 
 def main():
     import torch
-    from diffusers import StableDiffusionXLPipeline
+    from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 
     if not torch.backends.mps.is_available():
         raise RuntimeError("SDXL requires an available PyTorch MPS device")
@@ -33,7 +33,14 @@ def main():
                     dtype=torch.float16,
                     local_files_only=True,
                     use_safetensors=True,
-                ).to("mps")
+                )
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                    pipeline.scheduler.config,
+                    algorithm_type="dpmsolver++",
+                    solver_order=2,
+                    use_karras_sigmas=True,
+                )
+                pipeline = pipeline.to("mps")
                 loaded_model = model_key
 
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])

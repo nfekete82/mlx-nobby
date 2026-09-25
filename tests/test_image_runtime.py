@@ -250,6 +250,7 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 6)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
@@ -263,7 +264,7 @@ class ImageRuntimeTests(unittest.TestCase):
 
     def test_existing_registry_migrates_only_old_juggernaut_guidance(self):
         data = registry.initial_registry()
-        data["builtin_defaults_revision"] = 4
+        data["builtin_defaults_revision"] = 5
         juggernaut = next(
             model
             for model in data["models"]
@@ -281,7 +282,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(migrated_juggernaut["default_guidance"], 5.0)
 
         migrated_juggernaut["default_guidance"] = 6.0
-        migrated["builtin_defaults_revision"] = 4
+        migrated["builtin_defaults_revision"] = 5
         registry.REGISTRY_FILE.write_text(json.dumps(migrated), encoding="utf-8")
         preserved = registry.load_registry()
         preserved_juggernaut = next(
@@ -420,6 +421,7 @@ class ImageRuntimeTests(unittest.TestCase):
     def test_sdxl_worker_reuses_one_pipeline_with_fresh_request_state(self):
         loads = []
         calls = []
+        scheduler_loads = []
 
         class FakeGenerator:
             def __init__(self, device):
@@ -435,6 +437,9 @@ class ImageRuntimeTests(unittest.TestCase):
                 pass
 
         class FakePipeline:
+            def __init__(self):
+                self.scheduler = types.SimpleNamespace(config={"name": "original"})
+
             @classmethod
             def from_single_file(cls, checkpoint, **options):
                 loads.append((checkpoint, options))
@@ -448,6 +453,12 @@ class ImageRuntimeTests(unittest.TestCase):
                 calls.append(options)
                 return types.SimpleNamespace(images=[FakeImage()])
 
+        class FakeScheduler:
+            @classmethod
+            def from_config(cls, config, **options):
+                scheduler_loads.append((config, options))
+                return cls()
+
         fake_torch = types.ModuleType("torch")
         fake_torch.float16 = "float16"
         fake_torch.Generator = FakeGenerator
@@ -457,6 +468,7 @@ class ImageRuntimeTests(unittest.TestCase):
         fake_torch.mps = types.SimpleNamespace(empty_cache=lambda: None)
         fake_diffusers = types.ModuleType("diffusers")
         fake_diffusers.StableDiffusionXLPipeline = FakePipeline
+        fake_diffusers.DPMSolverMultistepScheduler = FakeScheduler
         requests = [
             {
                 "request_id": "first",
@@ -508,6 +520,13 @@ class ImageRuntimeTests(unittest.TestCase):
             sdxl_worker.main()
 
         self.assertEqual(len(loads), 1)
+        self.assertEqual(len(scheduler_loads), 1)
+        self.assertEqual(scheduler_loads[0][0], {"name": "original"})
+        self.assertEqual(scheduler_loads[0][1], {
+            "algorithm_type": "dpmsolver++",
+            "solver_order": 2,
+            "use_karras_sigmas": True,
+        })
         self.assertEqual([call["prompt"] for call in calls], ["First", "Second"])
         self.assertEqual([call["width"] for call in calls], [512, 768])
         self.assertEqual([call["num_inference_steps"] for call in calls], [12, 8])
@@ -1474,11 +1493,24 @@ class ImageRuntimeTests(unittest.TestCase):
         with patch.object(
             agent,
             "router_llm",
-            return_value=source,
-        ):
+        ) as router:
             result = agent.translate_image_prompt_to_english(source)
 
         self.assertEqual(result, source)
+        router.assert_not_called()
+
+    def test_image_prompt_strips_english_generation_prefixes(self):
+        for source in (
+            "create image: a red fox in snow",
+            "generate image: a red fox in snow",
+            "create a photo of a red fox in snow",
+            "generate a picture of a red fox in snow",
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(
+                    agent.image_prompt_from_request(source),
+                    "a red fox in snow",
+                )
 
 
     def test_image_generation_translates_full_user_prompt_without_stripping(self):
@@ -5127,13 +5159,20 @@ def test_image_quality_profiles_and_legacy_default():
         "model_family": "sdxl", "base_model": "sdxl",
         "default_steps": 30, "default_guidance": 5.0,
     }
+    assert resolve_image_profile(juggernaut, "fast") == {
+        "steps": 20, "guidance": 4.5, "long_edge": 768,
+    }
     assert service._resolved_steps(juggernaut, None, "standard") == 30
     assert service._resolved_steps(juggernaut, None, "quality") == 35
     assert resolve_image_profile(juggernaut, "standard")["guidance"] == 5.0
     assert resolve_image_profile(juggernaut, "quality")["guidance"] == 5.0
+    assert resolve_image_profile(juggernaut, "quality")["long_edge"] == 1216
 
     generic_sdxl = juggernaut | {"id": "custom-sdxl"}
-    assert resolve_image_profile(generic_sdxl, "standard")["guidance"] == 6.5
+    assert [
+        resolve_image_profile(generic_sdxl, quality)["guidance"]
+        for quality in ("fast", "standard", "quality")
+    ] == [4.5, 5.0, 5.0]
 
     turbo = {
         "provider": "mflux", "model_family": "z-image-turbo",
@@ -5207,6 +5246,57 @@ def test_image_quality_reaches_provider_and_artifact(tmp_path):
     assert captured[1]["steps"] == 20
     assert edited["quality"] == "quality"
     assert edited["steps"] == 20
+
+
+def test_sdxl_quality_size_and_explicit_parameters_win(tmp_path):
+    model = {
+        "id": "juggernaut-xl", "provider": "sdxl",
+        "model_family": "sdxl", "base_model": "sdxl",
+        "default_steps": 30, "default_guidance": 5.0,
+        "quantization": "none", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    captured = []
+
+    def fake_provider(_model, params, path, **_options):
+        captured.append(dict(params))
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            quality = service._generate_result(service.Generate(
+                prompt="A studio portrait", width=704, height=1024,
+                quality="quality", auto_size=True, seed=123,
+            ))
+            explicit = service._generate_result(service.Generate(
+                prompt="A studio portrait", width=896, height=1152,
+                quality="quality", steps=42, guidance=4.25, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert (quality["width"], quality["height"]) == (832, 1216)
+    assert (quality["steps"], quality["guidance"]) == (35, 5.0)
+    assert (explicit["width"], explicit["height"]) == (896, 1152)
+    assert (explicit["steps"], explicit["guidance"]) == (42, 4.25)
+
+
+def test_non_sdxl_generation_keeps_1024_edge_limit():
+    import pytest
+
+    model = {
+        "id": "qwen", "provider": "mlxserve",
+        "model_family": "qwen-image21", "base_model": "qwen-image-2.1",
+        "default_steps": 20, "default_guidance": 0,
+    }
+    with patch.object(service, "_generation_model", return_value=model), \
+         pytest.raises(HTTPException, match="must not exceed 1024"):
+        service._generate_result(service.Generate(
+            prompt="A red apple", width=1216, height=1024,
+        ))
 
 
 def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path):

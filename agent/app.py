@@ -6426,6 +6426,13 @@ def image_prompt_from_request(prompt):
         flags=re.IGNORECASE,
     )
     cleaned = re.sub(r"^\s*(?:bitte\s+)?(?:bild|foto|illustration)\s+von\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"^\s*(?:create|generate)\s+(?:an?\s+)?(?:image|picture|photo)"
+        r"(?:\s+of)?\s*:?\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     return cleaned.strip(" .") or str(prompt or "").strip()
 
 
@@ -6496,7 +6503,17 @@ def translate_media_prompt_to_english(prompt):
 
 def translate_image_prompt_to_english(prompt):
     """Compatibility wrapper for literal media translation."""
-    return translate_media_prompt_to_english(prompt)
+    value = str(prompt or "").strip()
+    german_markers = re.compile(
+        r"(?:[äöüß]|\b(?:ein(?:e[rmns]?|en)?|der|die|das|den|dem|des|"
+        r"mit|ohne|auf|vor|hinter|neben|und|oder|von|einer|einem|"
+        r"erstelle|generiere|erzeuge|zeichne|mach(?:e)?|bild|foto|"
+        r"frau|mann|mädchen|junge|porträt|ganzkörper)\b)",
+        re.IGNORECASE,
+    )
+    if value and not german_markers.search(value):
+        return value
+    return translate_media_prompt_to_english(value)
 
 
 def web_search_query_from_prompt(prompt):

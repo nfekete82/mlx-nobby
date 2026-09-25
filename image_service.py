@@ -49,8 +49,8 @@ class Generate(BaseModel):
     prompt: str = Field(min_length=3, max_length=2000)
     negative_prompt: str | None = Field(default=None, max_length=2000)
     model: str = "auto"
-    width: int = Field(default=512, ge=256, le=1024)
-    height: int = Field(default=512, ge=256, le=1024)
+    width: int = Field(default=512, ge=256, le=1216)
+    height: int = Field(default=512, ge=256, le=1216)
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
@@ -475,6 +475,12 @@ def _generate_result(
     if request.width % 16 or request.height % 16:
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
+    maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
+    if request.width > maximum_edge or request.height > maximum_edge:
+        raise HTTPException(
+            422,
+            f"width and height must not exceed {maximum_edge} for this model",
+        )
     params = request.model_dump()
     negative_prompt = str(request.negative_prompt or "").strip()
     if negative_prompt:
