@@ -1999,9 +1999,18 @@ function renderVideoJobCard(message) {
 
 function renderShortsJobCard(message) {
     const job = message.shorts_job;
-    if (!job || job.status === 'completed') return null;
-    const active = ['queued', 'running', 'video_completed', 'tts_completed'].includes(job.status);
-    const percent = Math.max(0, Math.min(100, Number(job.progress_percent ?? job.progress) || 0));
+    if (!job) return null;
+    const phaseProgress = {
+        planning: 5, queued: 5, video: 5, video_completed: 75,
+        tts: 80, tts_completed: 85, compose: 90, completed: 100
+    };
+    const reportedProgress = job.progress_percent ?? job.progress;
+    const percent = Math.max(0, Math.min(100,
+        Number.isFinite(Number(reportedProgress))
+            ? Number(reportedProgress)
+            : Number(phaseProgress[job.status === 'completed' ? 'completed' : job.phase] || 0)
+    ));
+    const showProgress = !['failed', 'cancelled'].includes(job.status);
     const card = document.createElement('section');
     card.className = 'batch-chat-card video-job-card shorts-job-card';
     const title = document.createElement('strong');
@@ -2023,7 +2032,7 @@ function renderShortsJobCard(message) {
     ].filter(Boolean).join('\n');
     card.appendChild(details);
     appendMediaProgress(card, job, {
-        active,
+        active: showProgress,
         progress: percent / 100,
         percent: Math.round(percent),
         hasStepProgress: false,
