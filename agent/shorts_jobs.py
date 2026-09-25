@@ -1,21 +1,23 @@
 """Persistent, resumable orchestration of ShortProject video scenes."""
 
 from copy import deepcopy
+import json
+import os
 from pathlib import Path
 import re
 import threading
 import time
 import uuid
 
-from agent import batch_state, video_api
+from agent import batch_state, service_proxy, video_api
 from agent.shorts_planner import ShortProject
 
 
 SHORTS_DIRECTORY = Path.home() / ".config/mlx-web/shorts"
 SHORTS_JOBS_FILE = SHORTS_DIRECTORY / "jobs.json"
 SHORT_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
-ACTIVE_STATUSES = {"queued", "running"}
-TERMINAL_STATUSES = {"video_completed", "failed", "cancelled"}
+ACTIVE_STATUSES = {"queued", "running", "video_completed"}
+TERMINAL_STATUSES = {"tts_completed", "failed", "cancelled"}
 VIDEO_ACTIVE_STATUSES = {
     "queued", "loading", "encoding", "generating",
     "upscaling", "decoding", "muxing",
@@ -71,6 +73,11 @@ def create_short_job(project, *, chat_id, run_id=None, chat_revision=0):
         "current_scene": 0,
         "scene_results": [],
         "active_video_job_id": None,
+        "tts_status": "pending",
+        "tts_path": None,
+        "tts_started_at": None,
+        "tts_finished_at": None,
+        "tts_metadata": None,
         "created_at": time.time(),
         "started_at": None,
         "finished_at": None,
@@ -100,6 +107,36 @@ def _update_job(job_id, **changes):
 
 def _video_request(request_fn, method, path, payload=None, timeout=15):
     return request_fn(method, path, payload, timeout=timeout)
+
+
+def _request_tts(payload):
+    url = os.environ.get(
+        "SPEECH_SERVICE_URL", "http://127.0.0.1:8050",
+    ).rstrip("/") + "/v1/audio/speech"
+    response = service_proxy.forward(
+        url,
+        json.dumps(payload).encode("utf-8"),
+        timeout=900,
+    )
+    if response.status_code >= 400:
+        detail = bytes(response.body or b"").decode(
+            "utf-8", errors="replace",
+        )
+        raise RuntimeError(detail[:2000] or "speech service failed")
+    audio = bytes(response.body or b"")
+    if not audio:
+        raise RuntimeError("speech service returned empty audio")
+    return audio
+
+
+def narration_for_project(project):
+    if not isinstance(project, ShortProject):
+        project = ShortProject.model_validate(project)
+    return "\n\n".join(scene.narration for scene in project.scenes)
+
+
+def _tts_output_path(job_id):
+    return SHORTS_DIRECTORY / job_id / "voiceover.mp3"
 
 
 def _retryable_service_error(exc, *status_codes):
@@ -155,12 +192,20 @@ def _finish_cancelled(job_id, request_fn):
         job = jobs.get(job_id)
         if job is None:
             raise KeyError("short job not found")
-        if job.get("status") == "video_completed":
+        if job.get("status") == "tts_completed":
             return deepcopy(job)
         job.update(
             cancel_requested=True,
             status="cancelled",
             phase="cancelled",
+            tts_status=(
+                "cancelled"
+                if job.get("tts_status") != "completed"
+                else "completed"
+            ),
+            tts_finished_at=(
+                job.get("tts_finished_at") or time.time()
+            ),
             finished_at=time.time(),
             error=None,
         )
@@ -169,15 +214,134 @@ def _finish_cancelled(job_id, request_fn):
         return deepcopy(job)
 
 
-def run_short_job(job_id, *, request_fn=None, poll_interval=1.0):
+def _run_tts(job_id, request_fn, tts_request_fn):
+    job = get_short_job(job_id)
+    if job.get("cancel_requested"):
+        return _finish_cancelled(job_id, request_fn)
+
+    existing_path = Path(str(job.get("tts_path") or _tts_output_path(job_id)))
+    if existing_path.is_file() and existing_path.stat().st_size > 0:
+        project = ShortProject.model_validate(job["project"])
+        narration = narration_for_project(project)
+        finished_at = job.get("tts_finished_at") or time.time()
+        return _update_job(
+            job_id,
+            status="tts_completed",
+            phase="tts_completed",
+            tts_status="completed",
+            tts_path=str(existing_path),
+            tts_finished_at=finished_at,
+            tts_metadata=job.get("tts_metadata") or {
+                "mime_type": "audio/mpeg",
+                "language": project.language,
+                "scene_count": len(project.scenes),
+                "narration_characters": len(narration),
+            },
+            finished_at=job.get("finished_at") or finished_at,
+            error=None,
+        )
+
+    project = ShortProject.model_validate(job["project"])
+    if not project.voice_enabled:
+        now = time.time()
+        return _update_job(
+            job_id,
+            status="tts_completed",
+            phase="tts_completed",
+            tts_status="disabled",
+            tts_finished_at=now,
+            tts_metadata={
+                "language": project.language,
+                "scene_count": len(project.scenes),
+                "disabled": True,
+            },
+            finished_at=now,
+            error=None,
+        )
+
+    started_at = job.get("tts_started_at") or time.time()
+    _update_job(
+        job_id,
+        status="running",
+        phase="tts",
+        tts_status="running",
+        tts_started_at=started_at,
+        error=None,
+    )
+    narration = narration_for_project(project)
+    audio = tts_request_fn({
+        "input": narration,
+        "language": project.language,
+    })
+    if not isinstance(audio, bytes) or not audio:
+        raise RuntimeError("speech service returned invalid audio")
+
+    if get_short_job(job_id).get("cancel_requested"):
+        return _finish_cancelled(job_id, request_fn)
+
+    output_path = _tts_output_path(job_id)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    batch_state.atomic_write_with(
+        output_path,
+        lambda temporary: temporary.write_bytes(audio),
+    )
+
+    if get_short_job(job_id).get("cancel_requested"):
+        output_path.unlink(missing_ok=True)
+        return _finish_cancelled(job_id, request_fn)
+
+    finished_at = time.time()
+    return _update_job(
+        job_id,
+        status="tts_completed",
+        phase="tts_completed",
+        tts_status="completed",
+        tts_path=str(output_path),
+        tts_finished_at=finished_at,
+        tts_metadata={
+            "mime_type": "audio/mpeg",
+            "language": project.language,
+            "scene_count": len(project.scenes),
+            "narration_characters": len(narration),
+        },
+        finished_at=finished_at,
+        error=None,
+    )
+
+
+def run_short_job(
+    job_id,
+    *,
+    request_fn=None,
+    tts_request_fn=None,
+    poll_interval=1.0,
+):
     """Run or resume one job synchronously; workers call this in a thread."""
     job_id = _job_id(job_id)
     request_fn = request_fn or video_api.request
+    tts_request_fn = tts_request_fn or _request_tts
     job = get_short_job(job_id)
     if job.get("status") in TERMINAL_STATUSES:
         return job
     if job.get("cancel_requested"):
         return _finish_cancelled(job_id, request_fn)
+
+    if job.get("status") == "video_completed":
+        try:
+            return _run_tts(job_id, request_fn, tts_request_fn)
+        except Exception as exc:
+            latest = get_short_job(job_id)
+            if latest.get("cancel_requested"):
+                return _finish_cancelled(job_id, request_fn)
+            return _update_job(
+                job_id,
+                status="failed",
+                phase="failed",
+                tts_status="failed",
+                error=str(exc),
+                tts_finished_at=time.time(),
+                finished_at=time.time(),
+            )
 
     _update_job(
         job_id,
@@ -205,15 +369,16 @@ def run_short_job(job_id, *, request_fn=None, poll_interval=1.0):
                 scene_index += 1
 
             if scene_index >= len(project.scenes):
-                return _update_job(
+                _update_job(
                     job_id,
                     status="video_completed",
                     phase="video_completed",
                     current_scene=len(project.scenes),
                     active_video_job_id=None,
-                    finished_at=time.time(),
+                    finished_at=None,
                     error=None,
                 )
+                return _run_tts(job_id, request_fn, tts_request_fn)
 
             if scene_index != job.get("current_scene"):
                 job = _update_job(job_id, current_scene=scene_index)
@@ -314,20 +479,29 @@ def run_short_job(job_id, *, request_fn=None, poll_interval=1.0):
         latest = get_short_job(job_id)
         if latest.get("cancel_requested"):
             return _finish_cancelled(job_id, request_fn)
+        changes = {
+            "status": "failed",
+            "phase": "failed",
+            "error": str(exc),
+            "finished_at": time.time(),
+        }
+        if get_short_job(job_id).get("phase") == "tts":
+            changes.update(
+                tts_status="failed",
+                tts_finished_at=time.time(),
+            )
         return _update_job(
             job_id,
-            status="failed",
-            phase="failed",
-            error=str(exc),
-            finished_at=time.time(),
+            **changes,
         )
 
 
-def _worker(job_id, request_fn, poll_interval):
+def _worker(job_id, request_fn, tts_request_fn, poll_interval):
     try:
         run_short_job(
             job_id,
             request_fn=request_fn,
+            tts_request_fn=tts_request_fn,
             poll_interval=poll_interval,
         )
     finally:
@@ -335,7 +509,13 @@ def _worker(job_id, request_fn, poll_interval):
             _workers.pop(job_id, None)
 
 
-def start_short_job(job_id, *, request_fn=None, poll_interval=1.0):
+def start_short_job(
+    job_id,
+    *,
+    request_fn=None,
+    tts_request_fn=None,
+    poll_interval=1.0,
+):
     job_id = _job_id(job_id)
     get_short_job(job_id)
     with _workers_lock:
@@ -344,7 +524,7 @@ def start_short_job(job_id, *, request_fn=None, poll_interval=1.0):
             return existing
         thread = threading.Thread(
             target=_worker,
-            args=(job_id, request_fn, poll_interval),
+            args=(job_id, request_fn, tts_request_fn, poll_interval),
             daemon=True,
             name=f"shorts-job-{job_id}",
         )
@@ -357,7 +537,12 @@ def start_short_job(job_id, *, request_fn=None, poll_interval=1.0):
         return thread
 
 
-def resume_short_jobs(*, request_fn=None, poll_interval=1.0):
+def resume_short_jobs(
+    *,
+    request_fn=None,
+    tts_request_fn=None,
+    poll_interval=1.0,
+):
     """Resume every durable non-terminal job, including its active child."""
     with _jobs_lock:
         jobs = _load_jobs()
@@ -367,6 +552,7 @@ def resume_short_jobs(*, request_fn=None, poll_interval=1.0):
             start_short_job(
                 job["id"],
                 request_fn=request_fn,
+                tts_request_fn=tts_request_fn,
                 poll_interval=poll_interval,
             )
             resumed.append(job["id"])
