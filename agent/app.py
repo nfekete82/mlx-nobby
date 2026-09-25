@@ -12322,6 +12322,8 @@ def _build_agent_tool_registry():
         ("video_generate", "Queue local LTX 2.5 Fast text-to-video for the bound chat.", "CREATE", (), 15, 12000),
         ("video_animate", "Animate a managed image artifact with local LTX 2.5 Fast.", "WRITE", (), 15, 12000),
         ("video_job_status", "Inspect a video job owned by the bound chat.", "READ", (), 15, 12000),
+        ("shorts_generate", "Plan and queue a complete vertical short for the bound chat from a natural-language prompt.", "CREATE", (), 900, 12000),
+        ("shorts_job_status", "Inspect a Shorts job owned by the bound chat.", "READ", (), 15, 12000),
         ("document_search", "Search an already indexed uploaded document.", "READ", (), None, 12000),
         ("document_page", "Read a page of an already indexed uploaded document.", "READ", (), None, 12000),
         ("file_inspect", "Inspect a text file in the bound workspace.", "READ", ("workspace",), None, 12000),
@@ -12354,7 +12356,7 @@ def _build_agent_tool_registry():
     }
     for name, description, permission, risks, timeout, output_limit in specs:
         schema = deepcopy(parameters)
-        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status"}:
+        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status", "shorts_generate", "shorts_job_status"}:
             schema["required"].append("query")
             schema["properties"]["query"].update(type="string", minLength=1)
         if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit", "video_animate"}:
@@ -12403,6 +12405,7 @@ def _build_agent_tool_registry():
                 "git_log", "git_stage", "git_commit", "vision_analyze",
                 "image_generate", "image_edit", "image_job_status",
                 "video_generate", "video_animate", "video_job_status",
+                "shorts_generate", "shorts_job_status",
                 "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
                 "file_analysis_status",
             } else _execute_legacy_agent_tool, name),
@@ -12418,7 +12421,7 @@ def _build_agent_tool_registry():
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
 _RUNTIME_ONLY_READ_TOOLS = {
     "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
-    "image_job_status", "video_job_status", "document_search", "document_page", "file_inspect",
+    "image_job_status", "video_job_status", "shorts_job_status", "document_search", "document_page", "file_inspect",
     "file_pii_audit", "file_analysis_status",
 }
 READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ") - _RUNTIME_ONLY_READ_TOOLS

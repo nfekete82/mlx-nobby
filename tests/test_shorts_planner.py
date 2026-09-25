@@ -66,6 +66,19 @@ def test_short_defaults_are_vertical_and_german():
     assert project.music_style is None
 
 
+def test_short_defaults_enable_voice_subtitles_and_music():
+    payload = valid_plan()
+    payload.pop("voice_enabled")
+    payload.pop("subtitles_enabled")
+    payload.pop("music_enabled")
+
+    project = ShortProject.model_validate(payload)
+
+    assert project.voice_enabled is True
+    assert project.subtitles_enabled is True
+    assert project.music_enabled is True
+
+
 def test_music_style_is_strictly_validated():
     assert ShortProject.model_validate(
         valid_plan(music_enabled=True, music_style="futuristic"),

@@ -139,6 +139,7 @@ class AgentToolRegistryTests(unittest.TestCase):
             "git_log", "git_stage", "git_commit", "vision_analyze",
             "image_generate", "image_edit", "image_job_status",
             "video_generate", "video_animate", "video_job_status",
+            "shorts_generate", "shorts_job_status",
             "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
             "file_analysis_status",
         }

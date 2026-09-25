@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from agent import code_workspaces, run_state, runtime_tools
+from agent import code_workspaces, run_state, runtime_tools, shorts_jobs, shorts_planner
 from agent.model_provider import ModelResponse
 from agent.permissions import Decision, ToolPermissionError
 
@@ -58,7 +58,8 @@ class RuntimeToolAdapterTests(unittest.TestCase):
         self.assertTrue({"workspace_status", "shell_workspace", "git_status", "git_diff", "git_log",
                          "git_stage", "git_commit", "vision_analyze", "image_generate", "image_edit",
                          "image_job_status", "document_search", "document_page", "file_analyze",
-                         "file_analysis_status", "file_inspect", "file_pii_audit"} <= names)
+                         "file_analysis_status", "file_inspect", "file_pii_audit",
+                         "shorts_generate", "shorts_job_status"} <= names)
         other = self.base / "other"
         other.mkdir()
         code_workspaces.add_workspace(str(other))
@@ -138,6 +139,73 @@ class RuntimeToolAdapterTests(unittest.TestCase):
         with mock.patch.object(self.app.image_api, "request", return_value={"chat_id": "adapter-chat", "operation": "generate", "status": "queued"}), \
              mock.patch.object(self.app, "_image_job_tool_result", return_value={"action": "image_generate", "status": "queued"}):
             self.assertEqual(self.execute("image_job_status", query="a" * 24)["status"], "queued")
+
+    def test_shorts_generate_plans_natural_prompt_and_starts_job(self):
+        prompt = "Erstelle mir ein 20-sekündiges Short über Berlin in 10 Jahren"
+        project = shorts_planner.ShortProject.model_validate({
+            "title": "Berlin in zehn Jahren",
+            "duration": 20,
+            "scenes": [{
+                "id": f"scene-{index}",
+                "duration": 5,
+                "narration": f"Szene {index}",
+                "video_prompt": f"Future Berlin {index}",
+            } for index in range(1, 5)],
+        })
+        provider = mock.Mock()
+        created = {
+            "id": "a" * 24, "status": "queued", "phase": "queued",
+        }
+        with mock.patch.object(self.app, "read_chat", return_value={"revision": 4}), \
+             mock.patch.object(runtime_tools, "current_runtime", return_value=mock.Mock(provider=provider)), \
+             mock.patch.object(shorts_planner, "plan_short", return_value=project) as plan, \
+             mock.patch.object(shorts_jobs, "create_short_job", return_value=created) as create, \
+             mock.patch.object(shorts_jobs, "start_short_job") as start:
+            result = self.approved("shorts_generate", query=prompt)
+
+        plan.assert_called_once_with(prompt, provider, run_context=self.context)
+        create.assert_called_once_with(
+            project,
+            chat_id="adapter-chat",
+            run_id="adapter-run",
+            chat_revision=4,
+        )
+        start.assert_called_once_with("a" * 24)
+        self.assertEqual(result["job_id"], "a" * 24)
+        self.assertEqual(result["status"], "queued")
+
+    def test_shorts_generate_propagates_planner_error_without_starting_job(self):
+        error = shorts_planner.ShortPlanningError("invalid plan")
+        with mock.patch.object(self.app, "read_chat", return_value={"revision": 1}), \
+             mock.patch.object(runtime_tools, "current_runtime", return_value=mock.Mock(provider=mock.Mock())), \
+             mock.patch.object(shorts_planner, "plan_short", side_effect=error), \
+             mock.patch.object(shorts_jobs, "create_short_job") as create, \
+             mock.patch.object(shorts_jobs, "start_short_job") as start:
+            with self.assertRaises(shorts_planner.ShortPlanningError) as caught:
+                self.approved("shorts_generate", query="Erstelle ein Short")
+
+        self.assertIs(caught.exception, error)
+        create.assert_not_called()
+        start.assert_not_called()
+
+    def test_shorts_job_status_is_restricted_to_bound_chat(self):
+        owned = {
+            "id": "b" * 24,
+            "chat_id": "adapter-chat",
+            "status": "running",
+            "phase": "video",
+            "current_scene": 1,
+            "project": {"scenes": [{}, {}, {}, {}]},
+        }
+        with mock.patch.object(shorts_jobs, "get_short_job", return_value=owned):
+            result = self.execute("shorts_job_status", query="b" * 24)
+        self.assertEqual(result["job_id"], "b" * 24)
+        self.assertEqual(result["scene_count"], 4)
+
+        foreign = dict(owned, chat_id="other-chat")
+        with mock.patch.object(shorts_jobs, "get_short_job", return_value=foreign):
+            with self.assertRaisesRegex(ValueError, "SHORTS_JOB_OUTSIDE_CHAT"):
+                self.execute("shorts_job_status", query="b" * 24)
 
     def test_vision_workspace_image_and_provider_contract(self):
         data = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wlq0SQAAAAASUVORK5CYII=")

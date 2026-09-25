@@ -442,6 +442,61 @@ def _video_tool(action, query, goal, options):
     return app._start_chat_video_job(action, request)
 
 
+def _shorts_tool(action, query, goal):
+    from agent import app, shorts_jobs
+    from agent.shorts_planner import plan_short
+
+    context = _context()
+    if action == "shorts_job_status":
+        job = shorts_jobs.get_short_job(str(query or ""))
+        if not context.chat_id or job.get("chat_id") != context.chat_id:
+            raise ValueError("SHORTS_JOB_OUTSIDE_CHAT")
+        return {
+            "job_id": job["id"],
+            "status": job["status"],
+            "phase": job["phase"],
+            "current_scene": job.get("current_scene", 0),
+            "scene_count": len(job.get("project", {}).get("scenes", [])),
+            "tts_status": job.get("tts_status"),
+            "music_status": job.get("music_status"),
+            "compose_status": job.get("compose_status"),
+            "final_path": job.get("final_path"),
+            "error": job.get("error"),
+        }
+
+    if not context.chat_id:
+        raise ValueError("CHAT_ID_REQUIRED")
+    with app.CHATS_LOCK:
+        chat = app.read_chat(context.chat_id)
+    if chat is None:
+        raise ValueError("CHAT_NOT_FOUND")
+    prompt = str(query or goal or "").strip()
+    if not prompt:
+        raise ValueError("SHORTS_PROMPT_REQUIRED")
+    runtime = current_runtime()
+    if runtime is None:
+        raise ValueError("AGENT_RUNTIME_REQUIRED")
+    project = plan_short(prompt, runtime.provider, run_context=context)
+    job = shorts_jobs.create_short_job(
+        project,
+        chat_id=context.chat_id,
+        run_id=context.run_id,
+        chat_revision=(
+            context.chat_revision
+            if context.chat_revision is not None
+            else chat.get("revision", 0)
+        ),
+    )
+    shorts_jobs.start_short_job(job["id"])
+    return {
+        "job_id": job["id"],
+        "status": job["status"],
+        "phase": job["phase"],
+        "title": project.title,
+        "duration": project.duration,
+    }
+
+
 def _document_tool(action, query, instruction, options):
     from agent import app
     if action in {"file_inspect", "file_pii_audit"}:
@@ -527,6 +582,8 @@ def execute(action, goal, query=None, instruction=None, files=None, options=None
         return _image_tool(action, query, goal, options)
     if action in {"video_generate", "video_animate", "video_job_status"}:
         return _video_tool(action, query, goal, options)
+    if action in {"shorts_generate", "shorts_job_status"}:
+        return _shorts_tool(action, query, goal)
     if action in {"document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status"}:
         return _document_tool(action, query, instruction, options)
     raise ValueError("UNKNOWN_RUNTIME_TOOL")

@@ -15,6 +15,7 @@ def project(**changes):
     value = {
         "title": "Berlin in zehn Jahren",
         "duration": 20,
+        "music_enabled": False,
         "scenes": [
             {
                 "id": f"scene-{index}",
