@@ -3051,6 +3051,24 @@ const imageFiles =
             }
 
             if (
+                toolResult.tool === 'shorts_generate' &&
+                toolResult.data?.job?.id
+            ) {
+                const pendingShortsMessage = {
+                    role: 'assistant', content: '',
+                    shorts_job: toolResult.data.job,
+                    tool_result: toolResult
+                };
+                session.messages.push(pendingShortsMessage);
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({ contentUpdated: true });
+                if (ACTIVE_SHORTS_JOB_STATUSES.has(toolResult.status)) {
+                    watchShortsJob(session, pendingShortsMessage);
+                }
+                return;
+            }
+
+            if (
                 ['video_generate', 'video_animate'].includes(toolResult.tool) &&
                 toolResult.data?.job?.id
             ) {
@@ -3566,7 +3584,7 @@ function toolSummary(result) {
 
 function toolFailureSummary(result) {
     if (
-        ['image_edit', 'image_upscale', 'video_generate', 'video_animate'].includes(result?.tool) &&
+        ['image_edit', 'image_upscale', 'video_generate', 'video_animate', 'shorts_generate'].includes(result?.tool) &&
         result.error
     ) {
         return gt(
@@ -3614,6 +3632,10 @@ const ACTIVE_VIDEO_JOB_STATUSES = new Set([
     'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
 ]);
 const videoJobWatchers = new Map();
+const ACTIVE_SHORTS_JOB_STATUSES = new Set([
+    'queued', 'running', 'video_completed', 'tts_completed'
+]);
+const shortsJobWatchers = new Map();
 
 function isImageJobTool(tool) {
     return IMAGE_JOB_TOOLS.has(tool);
@@ -3972,6 +3994,9 @@ async function resetSessionRuntime(session) {
     for (const watcher of [...videoJobWatchers.values()]) {
         if (watcher.session === session) stopVideoJobWatcher(watcher);
     }
+    for (const watcher of [...shortsJobWatchers.values()]) {
+        if (watcher.session === session) stopShortsJobWatcher(watcher);
+    }
 
     // Ask the image service to cancel the actual backend jobs.
     await Promise.allSettled(
@@ -4105,6 +4130,72 @@ function resumeVideoJobsForSession(session) {
     return started;
 }
 
+function updateShortsJobMessage(session, message, toolResult) {
+    const job = toolResult?.data?.job;
+    if (!job?.id) return true;
+    message.shorts_job = { ...job };
+    message.tool_result = toolResult;
+    if (toolResult.status === 'failed') {
+        message.content = toolResult.error
+            ? gt('tool_error', '**Tool error:** {message}', { message: toolResult.error })
+            : toolFailureSummary(toolResult);
+    } else if (toolResult.status === 'cancelled') {
+        message.content = gt('shorts_job_cancelled', 'Short creation cancelled.');
+    } else {
+        message.content = '';
+    }
+    return !ACTIVE_SHORTS_JOB_STATUSES.has(toolResult.status);
+}
+
+function stopShortsJobWatcher(watcher) {
+    if (!watcher || watcher.stopped) return;
+    watcher.stopped = true;
+    if (watcher.timerId != null) clearTimeout(watcher.timerId);
+    if (shortsJobWatchers.get(watcher.jobId) === watcher) {
+        shortsJobWatchers.delete(watcher.jobId);
+    }
+}
+
+function watchShortsJob(session, message) {
+    const jobId = String(message?.shorts_job?.id || '');
+    if (!IMAGE_JOB_ID_PATTERN.test(jobId) || shortsJobWatchers.has(jobId)) return false;
+    const watcher = { jobId, session, message, stopped: false, timerId: null };
+    shortsJobWatchers.set(jobId, watcher);
+    const poll = async () => {
+        if (watcher.stopped || MLXChatSessions.currentSession() !== session || !session.messages.includes(message)) {
+            stopShortsJobWatcher(watcher);
+            return;
+        }
+        try {
+            const response = await fetch('/api/mlx/shorts-jobs/' + encodeURIComponent(jobId));
+            if (!response.ok) throw new Error(await response.text());
+            const result = await response.json();
+            const terminal = updateShortsJobMessage(session, message, result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderMessages({ contentUpdated: true });
+            if (terminal) stopShortsJobWatcher(watcher);
+            else watcher.timerId = setTimeout(poll, 1000);
+        } catch (error) {
+            console.warn('Could not load Shorts job status', error);
+            watcher.timerId = setTimeout(poll, 4000);
+        }
+    };
+    poll();
+    return true;
+}
+
+function resumeShortsJobsForSession(session) {
+    for (const watcher of [...shortsJobWatchers.values()]) {
+        if (watcher.session !== session) stopShortsJobWatcher(watcher);
+    }
+    if (!session || MLXChatSessions.currentSession() !== session) return 0;
+    let started = 0;
+    for (const message of session.messages) {
+        if (ACTIVE_SHORTS_JOB_STATUSES.has(message?.shorts_job?.status) && watchShortsJob(session, message)) started += 1;
+    }
+    return started;
+}
+
 function watchBatchJob(session, jobId) {
     const poll = async () => {
         try {
@@ -4203,10 +4294,12 @@ function watchBatchJob(session, jobId) {
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,
         updateVideoJobMessage: updateVideoJobMessage,
+        updateShortsJobMessage: updateShortsJobMessage,
         isWatchingImageJob: isWatchingImageJob,
 resetSessionRuntime: resetSessionRuntime,
         resumeImageJobsForSession: resumeImageJobsForSession,
         resumeVideoJobsForSession: resumeVideoJobsForSession,
+        resumeShortsJobsForSession: resumeShortsJobsForSession,
         __test: {
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
@@ -4228,8 +4321,11 @@ resetSessionRuntime: resetSessionRuntime,
             isWatchingImageJob: isWatchingImageJob,
             resumeImageJobsForSession: resumeImageJobsForSession,
             resumeVideoJobsForSession: resumeVideoJobsForSession,
+            resumeShortsJobsForSession: resumeShortsJobsForSession,
             updateVideoJobMessage: updateVideoJobMessage,
             watchVideoJob: watchVideoJob,
+            updateShortsJobMessage: updateShortsJobMessage,
+            watchShortsJob: watchShortsJob,
             isVideoRequest: isVideoRequest,
             videoOptionsForRequest: videoOptionsForRequest,
             videoDurationsForQuality: videoDurationsForQuality,

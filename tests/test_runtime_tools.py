@@ -199,8 +199,8 @@ class RuntimeToolAdapterTests(unittest.TestCase):
         }
         with mock.patch.object(shorts_jobs, "get_short_job", return_value=owned):
             result = self.execute("shorts_job_status", query="b" * 24)
-        self.assertEqual(result["job_id"], "b" * 24)
-        self.assertEqual(result["scene_count"], 4)
+        self.assertEqual(result["data"]["job"]["id"], "b" * 24)
+        self.assertEqual(result["data"]["job"]["scene_count"], 4)
 
         foreign = dict(owned, chat_id="other-chat")
         with mock.patch.object(shorts_jobs, "get_short_job", return_value=foreign):

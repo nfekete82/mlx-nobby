@@ -26,6 +26,7 @@ from agent import disk_usage
 from agent import image_api
 from agent import video_api
 from agent import shorts_jobs
+from agent.shorts_planner import plan_short
 from agent import model_cleanup
 import runtime_coordinator
 from agent.tool_registry import Tool, ToolRegistry
@@ -8305,6 +8306,138 @@ def _video_job_tool_result(job):
     return chat_tool_result(action, status, data, artifacts=artifacts, error=job.get("error"))
 
 
+def _shorts_child_progress(job):
+    child_id = job.get("active_video_job_id")
+    if not child_id:
+        return 0.0
+    try:
+        child = video_api.request(
+            "GET", "/jobs/" + video_api.job_id(child_id), timeout=15,
+        )
+    except Exception:
+        return 0.0
+    progress = child.get("progress")
+    if progress is None and child.get("current_step") and child.get("total_steps"):
+        progress = 100 * child["current_step"] / child["total_steps"]
+    try:
+        progress = float(progress or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, progress / 100 if progress > 1 else progress))
+
+
+def _shorts_job_progress(job):
+    status = str(job.get("status") or "queued")
+    phase = str(job.get("phase") or "queued")
+    scenes = (job.get("project") or {}).get("scenes") or []
+    scene_count = len(scenes)
+    current_scene = max(0, min(int(job.get("current_scene") or 0), scene_count))
+
+    if status == "completed":
+        percent = 100
+    elif phase == "compose":
+        percent = 95
+    elif phase == "tts_completed":
+        percent = 85
+    elif phase == "tts":
+        percent = 82
+    elif phase == "video_completed":
+        percent = 75
+    elif phase == "video" and scene_count:
+        percent = 5 + 70 * (
+            current_scene + _shorts_child_progress(job)
+        ) / scene_count
+    else:
+        percent = 5
+
+    labels = {
+        "queued": "Planung abgeschlossen",
+        "planning": "Planung",
+        "video": "Video",
+        "video_completed": "Video abgeschlossen",
+        "tts": "Voiceover",
+        "tts_completed": "Voiceover abgeschlossen",
+        "compose": "Finaler Schnitt",
+        "completed": "Abgeschlossen",
+        "failed": "Fehlgeschlagen",
+        "cancelled": "Abgebrochen",
+    }
+    descriptions = {
+        "queued": "Produktionsplan ist bereit; der Job wartet auf die Ausführung.",
+        "planning": "Der Produktionsplan wird erstellt.",
+        "video": "Die Szenenvideos werden nacheinander erzeugt.",
+        "video_completed": "Alle Szenenvideos sind fertig.",
+        "tts": "Das Voiceover wird erzeugt.",
+        "tts_completed": "Das Voiceover ist fertig.",
+        "compose": "Video, Voiceover und Untertitel werden zusammengesetzt.",
+        "completed": "Das Short ist fertig.",
+        "failed": "Die Erstellung ist fehlgeschlagen.",
+        "cancelled": "Die Erstellung wurde abgebrochen.",
+    }
+    display_phase = status if status in {"completed", "failed", "cancelled"} else phase
+    scene_number = (
+        min(current_scene + 1, scene_count)
+        if phase in {"queued", "planning", "video"}
+        else current_scene
+    )
+    return {
+        "progress": percent,
+        "progress_percent": percent,
+        "scene_count": scene_count,
+        "scene_number": scene_number,
+        "phase_label": labels.get(display_phase, display_phase),
+        "status_description": descriptions.get(display_phase, display_phase),
+    }
+
+
+def _shorts_job_tool_result(job):
+    status = str(job.get("status") or "failed")
+    presented = deepcopy(job)
+    presented.update(_shorts_job_progress(job))
+    data, artifacts = {"job": presented}, []
+    if status == "completed" and job.get("final_path"):
+        artifact = {
+            "artifact_id": "short-" + job["id"],
+            "video_id": job["id"],
+            "kind": "video",
+            "name": "final.mp4",
+            "path": job["final_path"],
+            "url": "/api/mlx/shorts/" + job["id"],
+            "mime_type": "video/mp4",
+            "title": (job.get("project") or {}).get("title"),
+            "duration": (job.get("project") or {}).get("duration"),
+            "audio": True,
+            "chat_id": job.get("chat_id"),
+            "run_id": job.get("run_id"),
+        }
+        data["video"] = artifact
+        artifacts.append(artifact)
+    return chat_tool_result(
+        "shorts_generate", status, data, artifacts=artifacts,
+        error=job.get("error"),
+    )
+
+
+def _start_chat_shorts_job(request):
+    chat_id, chat_revision = _validated_image_job_chat_identity(request)
+    run_context = run_state.RunContext.start(
+        run_id=request.run_id,
+        chat_id=chat_id,
+        chat_revision=chat_revision,
+    )
+    project = plan_short(
+        request.prompt, agent_model_provider(), run_context=run_context,
+    )
+    job = shorts_jobs.create_short_job(
+        project,
+        chat_id=chat_id,
+        run_id=run_context.run_id,
+        chat_revision=chat_revision,
+    )
+    shorts_jobs.start_short_job(job["id"])
+    return job
+
+
 def _image_artifact(result, action):
     image_id = str(result.get("id", ""))
     image_path = Path(str(result.get("path", "")))
@@ -8669,6 +8802,14 @@ def video_job_api(job_id: str):
     return _video_job_tool_result(video_api.request("GET", "/jobs/" + video_api.job_id(job_id)))
 
 
+@app.get("/api/shorts/jobs/{job_id}")
+def shorts_job_api(job_id: str):
+    try:
+        return _shorts_job_tool_result(shorts_jobs.get_short_job(job_id))
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail="Shorts-Job nicht gefunden")
+
+
 @app.post("/api/video/jobs/{job_id}/cancel")
 def video_job_cancel_api(job_id: str):
     job = video_api.request("POST", "/jobs/" + video_api.job_id(job_id) + "/cancel", {}, timeout=30)
@@ -8682,6 +8823,19 @@ def video_download(video_id: str, download: bool = False):
     path = VIDEO_DIRECTORY / f"{video_id}.mp4"
     if not path.is_file():
         raise HTTPException(404, "Video nicht gefunden")
+    return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
+
+
+@app.get("/api/shorts/{job_id}")
+def shorts_download(job_id: str, download: bool = False):
+    try:
+        job = shorts_jobs.get_short_job(job_id)
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail="Short nicht gefunden")
+    path = Path(str(job.get("final_path") or "")).resolve()
+    expected = (shorts_jobs.SHORTS_DIRECTORY / job_id / "final.mp4").resolve()
+    if job.get("status") != "completed" or path != expected or not path.is_file():
+        raise HTTPException(status_code=404, detail="Short nicht gefunden")
     return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
 
 
@@ -9311,16 +9465,14 @@ def run_chat_action(request: ChatActionRequest):
         )
 
     if action == "shorts_generate":
-        return chat_tool_result(
-            action,
-            "completed",
-            {
-                "mode": "orchestrator",
-                "automatic": True,
-                "routing": routing,
-                "workspace_id": None,
-            },
-        )
+        try:
+            return _shorts_job_tool_result(_start_chat_shorts_job(request))
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                raise
+            return chat_tool_result(action, "failed", error=str(exc.detail))
+        except Exception as exc:
+            return chat_tool_result(action, "failed", error=str(exc))
 
     if action in {
         "image_generate",

@@ -11,6 +11,7 @@ import video_providers
 import video_registry
 import video_service
 from agent import app as agent
+from agent import shorts_jobs, shorts_planner
 
 
 class VideoRegistryTests(unittest.TestCase):
@@ -551,17 +552,59 @@ class VideoAgentTests(unittest.TestCase):
             "video_generate",
         )
 
-    def test_explicit_short_starts_agent_with_shorts_tool_fast_path(self):
+    def test_explicit_short_creates_and_starts_persistent_job(self):
         prompt = "Erstelle mir ein 10-sekündiges Short über Berlin"
+        project = shorts_planner.ShortProject.model_validate({
+            "title": "Berlin",
+            "duration": 10,
+            "scenes": [
+                {"id": "scene-1", "duration": 5, "narration": "Eins", "video_prompt": "Berlin one"},
+                {"id": "scene-2", "duration": 5, "narration": "Zwei", "video_prompt": "Berlin two"},
+            ],
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "shorts"
+            with mock.patch.object(shorts_jobs, "SHORTS_DIRECTORY", root), \
+                 mock.patch.object(shorts_jobs, "SHORTS_JOBS_FILE", root / "jobs.json"), \
+                 mock.patch.object(agent, "read_chat", return_value={"revision": 3}), \
+                 mock.patch.object(agent, "plan_short", return_value=project) as plan, \
+                 mock.patch.object(shorts_jobs, "start_short_job") as start:
+                routed = agent.run_chat_action(agent.ChatActionRequest(
+                    prompt=prompt, chat_id="chat-one", chat_revision=3,
+                    run_id="run-one",
+                ))
+                persisted = shorts_jobs.get_short_job(routed["data"]["job"]["id"])
 
-        routed = agent.run_chat_action(agent.ChatActionRequest(prompt=prompt))
         decision = agent.agent_choose_next_step_v2(prompt, [])
-
         self.assertEqual(routed["tool"], "shorts_generate")
-        self.assertTrue(routed["data"]["automatic"])
-        self.assertEqual(routed["data"]["mode"], "orchestrator")
+        self.assertEqual(routed["status"], "queued")
+        self.assertEqual(persisted["status"], "queued")
+        self.assertEqual(persisted["project"]["title"], "Berlin")
+        plan.assert_called_once()
+        start.assert_called_once_with(persisted["id"])
         self.assertEqual(decision["action"], "shorts_generate")
         self.assertEqual(decision["query"], prompt)
+
+    def test_shorts_progress_uses_child_progress_and_completed_artifact(self):
+        job = {
+            "id": "a" * 24,
+            "status": "running",
+            "phase": "video",
+            "current_scene": 0,
+            "active_video_job_id": "b" * 24,
+            "project": {"title": "Berlin", "duration": 10, "scenes": [{}, {}]},
+            "final_path": None,
+        }
+        with mock.patch.object(agent.video_api, "request", return_value={"progress": 50}):
+            result = agent._shorts_job_tool_result(job)
+        self.assertEqual(result["data"]["job"]["scene_number"], 1)
+        self.assertEqual(result["data"]["job"]["progress_percent"], 22.5)
+
+        completed = dict(job, status="completed", phase="completed", final_path="/tmp/final.mp4")
+        completed_result = agent._shorts_job_tool_result(completed)
+        self.assertEqual(completed_result["data"]["job"]["progress_percent"], 100)
+        self.assertEqual(completed_result["data"]["job"]["final_path"], "/tmp/final.mp4")
+        self.assertEqual(completed_result["artifacts"][0]["url"], "/api/mlx/shorts/" + "a" * 24)
 
     def test_prompt_compiler_fallback_preserves_attributes(self):
         with mock.patch.object(agent, "router_llm", side_effect=RuntimeError("offline")):

@@ -649,7 +649,7 @@ function renderToolCard(message) {
     }
     if ([
         'image_generate', 'image_edit', 'image_upscale',
-        'video_generate', 'video_animate'
+        'video_generate', 'video_animate', 'shorts_generate'
     ].includes(result.tool)) {
         return null;
     }
@@ -1876,14 +1876,14 @@ function renderImageJobCard(message) {
 }
 
 function renderVideoArtifactCard(message) {
-    const artifact = ['video_generate', 'video_animate'].includes(message.tool_result?.tool)
+    const artifact = ['video_generate', 'video_animate', 'shorts_generate'].includes(message.tool_result?.tool)
         ? message.tool_result.artifacts?.[0] : null;
     if (!artifact?.video_id) return null;
     const card = document.createElement('section');
     card.className = 'batch-chat-card video-artifact-card';
     const video = document.createElement('video');
     video.className = 'video-artifact-player';
-    video.src = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id);
+    video.src = artifact.url || '/api/mlx/videos/' + encodeURIComponent(artifact.video_id);
     video.controls = true;
     video.preload = 'metadata';
     card.appendChild(video);
@@ -1908,7 +1908,7 @@ function renderVideoArtifactCard(message) {
     const download = document.createElement('a');
     download.className = 'message-action-btn';
     download.textContent = 'Download';
-    download.href = '/api/mlx/videos/' + encodeURIComponent(artifact.video_id) + '?download=1';
+    download.href = (artifact.url || '/api/mlx/videos/' + encodeURIComponent(artifact.video_id)) + '?download=1';
     controls.appendChild(download);
     card.appendChild(controls);
     const info = document.createElement('details');
@@ -1994,6 +1994,41 @@ function renderVideoJobCard(message) {
         controls.appendChild(cancel);
         card.appendChild(controls);
     }
+    return card;
+}
+
+function renderShortsJobCard(message) {
+    const job = message.shorts_job;
+    if (!job || job.status === 'completed') return null;
+    const active = ['queued', 'running', 'video_completed', 'tts_completed'].includes(job.status);
+    const percent = Math.max(0, Math.min(100, Number(job.progress_percent ?? job.progress) || 0));
+    const card = document.createElement('section');
+    card.className = 'batch-chat-card video-job-card shorts-job-card';
+    const title = document.createElement('strong');
+    title.textContent = job.status === 'failed'
+        ? 'Short-Erstellung fehlgeschlagen'
+        : job.status === 'cancelled'
+            ? 'Short-Erstellung abgebrochen'
+            : 'Short wird erstellt …';
+    card.appendChild(title);
+    const details = document.createElement('div');
+    details.className = 'batch-chat-details';
+    details.textContent = [
+        'Phase: ' + (job.phase_label || job.phase || 'Planung'),
+        job.scene_count
+            ? 'Szene: ' + Number(job.scene_number || 0) + ' von ' + Number(job.scene_count)
+            : '',
+        job.status_description || '',
+        job.status === 'failed' && job.error ? String(job.error) : ''
+    ].filter(Boolean).join('\n');
+    card.appendChild(details);
+    appendMediaProgress(card, job, {
+        active,
+        progress: percent / 100,
+        percent: Math.round(percent),
+        hasStepProgress: false,
+        etaSeconds: null
+    });
     return card;
 }
 
@@ -2286,6 +2321,9 @@ function renderMessages(options = {}) {
 
             const videoJobCard = renderVideoJobCard(message);
             if (videoJobCard) content.appendChild(videoJobCard);
+
+            const shortsJobCard = renderShortsJobCard(message);
+            if (shortsJobCard) content.appendChild(shortsJobCard);
 
             const agentCard = renderAgentCard(message);
             if (agentCard) content.appendChild(agentCard);
@@ -3277,6 +3315,7 @@ function renderAll(options = {}) {
             renderImageJobCard,
             renderVideoArtifactCard,
             renderVideoJobCard,
+            renderShortsJobCard,
             renderToolCard,
             renderAgentCard,
         }

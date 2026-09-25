@@ -451,18 +451,7 @@ def _shorts_tool(action, query, goal):
         job = shorts_jobs.get_short_job(str(query or ""))
         if not context.chat_id or job.get("chat_id") != context.chat_id:
             raise ValueError("SHORTS_JOB_OUTSIDE_CHAT")
-        return {
-            "job_id": job["id"],
-            "status": job["status"],
-            "phase": job["phase"],
-            "current_scene": job.get("current_scene", 0),
-            "scene_count": len(job.get("project", {}).get("scenes", [])),
-            "tts_status": job.get("tts_status"),
-            "music_status": job.get("music_status"),
-            "compose_status": job.get("compose_status"),
-            "final_path": job.get("final_path"),
-            "error": job.get("error"),
-        }
+        return app._shorts_job_tool_result(job)
 
     if not context.chat_id:
         raise ValueError("CHAT_ID_REQUIRED")

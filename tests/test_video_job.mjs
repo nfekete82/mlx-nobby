@@ -7,6 +7,7 @@ const rendering = fs.readFileSync(new URL('../frontend/assets/chat/rendering.js'
 const timers = [];
 let activeSession;
 let nextResult;
+const requestedUrls = [];
 const window = { MLXI18n: { t(_key, fallback) { return fallback; } } };
 window.window = window;
 const context = {
@@ -15,7 +16,8 @@ const context = {
     setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; },
     clearTimeout() {},
     async fetch(url) {
-        assert.match(url, /^\/api\/mlx\/video-jobs\/[a-f0-9]{24}$/);
+        requestedUrls.push(url);
+        assert.match(url, /^\/api\/mlx\/(?:video-jobs|shorts-jobs)\/[a-f0-9]{24}$/);
         return { ok: true, async json() { return structuredClone(nextResult); } };
     },
 };
@@ -135,6 +137,25 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(message.video_job.status, 'completed');
 assert.equal(message.tool_result.artifacts[0].mime_type, 'video/mp4');
 
+const shortId = 'e'.repeat(24);
+const shortsMessage = {
+    role: 'assistant', content: '',
+    shorts_job: { id: shortId, status: 'running', phase: 'video' },
+    tool_result: { tool: 'shorts_generate', status: 'running', artifacts: [] },
+};
+activeSession = { messages: [shortsMessage] };
+nextResult = {
+    type: 'tool_result', tool: 'shorts_generate', status: 'completed',
+    data: { job: { id: shortId, status: 'completed', phase: 'completed', progress_percent: 100 } },
+    artifacts: [{ video_id: shortId, mime_type: 'video/mp4', url: '/api/mlx/shorts/' + shortId }],
+    error: null,
+};
+assert.equal(api.__test.watchShortsJob(activeSession, shortsMessage), true);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(shortsMessage.shorts_job.status, 'completed');
+assert.equal(shortsMessage.tool_result.artifacts[0].url, '/api/mlx/shorts/' + shortId);
+assert.equal(requestedUrls.at(-1), '/api/mlx/shorts-jobs/' + shortId);
+
 const renderingWindow = { MLXI18n: { t(_key, fallback) { return fallback; } } };
 renderingWindow.window = renderingWindow;
 vm.runInNewContext(rendering, {
@@ -146,6 +167,7 @@ const mediaProgress = renderingWindow.MLXChatRendering.__test.mediaJobPresentati
 const renderToolCard = renderingWindow.MLXChatRendering.__test.renderToolCard;
 assert.equal(renderToolCard({ tool_result: { tool: 'video_animate', status: 'generating' } }), null);
 assert.equal(renderToolCard({ tool_result: { tool: 'image_generate', status: 'running' } }), null);
+assert.equal(renderToolCard({ tool_result: { tool: 'shorts_generate', status: 'running' } }), null);
 const liveVideo = mediaProgress({
     status: 'generating', phase: 'inference', progress: 50,
     current_step: 4, total_steps: 8, started_at: 80,
@@ -169,4 +191,6 @@ assert.match(rendering, /Target: /);
 assert.match(rendering, /contain \+ padding/);
 assert.match(rendering, /batch-progress-text/);
 assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
+assert.match(rendering, /Short wird erstellt/);
+assert.match(rendering, /artifact\.url/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
