@@ -63,6 +63,16 @@ def test_short_defaults_are_vertical_and_german():
 
     assert project.aspect_ratio == "9:16"
     assert project.language == "de"
+    assert project.music_style is None
+
+
+def test_music_style_is_strictly_validated():
+    assert ShortProject.model_validate(
+        valid_plan(music_enabled=True, music_style="futuristic"),
+    ).music_style == "futuristic"
+
+    with pytest.raises(ValidationError):
+        ShortProject.model_validate(valid_plan(music_style="../../outside"))
 
 
 def test_invalid_scene_duration_is_rejected():

@@ -5,13 +5,14 @@ from unittest import mock
 
 from fastapi import HTTPException
 from fastapi.responses import Response
+import pytest
 
 from agent import shorts_jobs
 from agent.shorts_planner import ShortProject
 
 
-def project():
-    return ShortProject.model_validate({
+def project(**changes):
+    value = {
         "title": "Berlin in zehn Jahren",
         "duration": 20,
         "scenes": [
@@ -23,13 +24,16 @@ def project():
             }
             for index in range(1, 5)
         ],
-    })
+    }
+    value.update(changes)
+    return ShortProject.model_validate(value)
 
 
 def configure_store(tmp_path, monkeypatch):
     directory = tmp_path / "shorts"
     monkeypatch.setattr(shorts_jobs, "SHORTS_DIRECTORY", directory)
     monkeypatch.setattr(shorts_jobs, "SHORTS_JOBS_FILE", directory / "jobs.json")
+    monkeypatch.setattr(shorts_jobs, "MUSIC_DIRECTORY", tmp_path / "music")
     def render(command, *, cwd, cancel_check, timeout):
         assert not cancel_check()
         Path(command[-1]).write_bytes(b"final-mp4")
@@ -112,6 +116,9 @@ def test_job_is_created_persistently(tmp_path, monkeypatch):
     assert stored["tts_status"] == "pending"
     assert stored["tts_path"] is None
     assert stored["tts_metadata"] is None
+    assert stored["music_status"] == "disabled"
+    assert stored["music_style"] == "cinematic"
+    assert stored["music_path"] is None
     assert stored["subtitles_path"] is None
     assert stored["compose_status"] == "pending"
     assert stored["final_path"] is None
@@ -513,6 +520,8 @@ def test_compose_uses_ordered_clips_voiceover_and_persists_output(tmp_path, monk
         "/videos/000000000000000000000004.mp4",
         result["tts_path"],
     ]
+    assert "-stream_loop" not in command
+    assert result["music_status"] == "disabled"
     filters = command[command.index("-filter_complex") + 1]
     assert "concat=n=4:v=1:a=0" in filters
     assert "ass=subtitles.ass" in filters
@@ -599,3 +608,119 @@ def test_cancel_during_compose_discards_final_output(tmp_path, monkeypatch):
     assert result["final_path"] is None
     assert not shorts_jobs._final_output_path(job["id"]).exists()
     assert not shorts_jobs._final_output_path(job["id"]).with_suffix(".mp4.tmp").exists()
+
+
+def test_missing_music_library_uses_cinematic_and_still_completes(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(
+        project(music_enabled=True), chat_id="chat-one",
+    )
+    mark_tts_completed(job["id"])
+
+    result = shorts_jobs.run_short_job(job["id"], request_fn=mock.Mock())
+
+    assert result["status"] == "completed"
+    assert result["music_status"] == "missing"
+    assert result["music_style"] == "cinematic"
+    assert result["music_path"] is None
+
+
+def test_music_selection_finds_style_track_deterministically(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    style_directory = shorts_jobs.MUSIC_DIRECTORY / "ambient"
+    style_directory.mkdir(parents=True)
+    (style_directory / "b.mp3").write_bytes(b"b")
+    (style_directory / "a.wav").write_bytes(b"a")
+    job = shorts_jobs.create_short_job(
+        project(music_enabled=True, music_style="ambient"), chat_id="chat-one",
+    )
+    stored = shorts_jobs.get_short_job(job["id"])
+
+    first = shorts_jobs._select_music_track(job["id"], stored)
+    second = shorts_jobs._select_music_track(job["id"], stored)
+
+    assert first == second
+    assert first[0] == "selected"
+    assert first[1] == "ambient"
+    assert first[2].parent == style_directory
+
+
+def test_music_resume_reuses_persisted_track(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    style_directory = shorts_jobs.MUSIC_DIRECTORY / "dark"
+    style_directory.mkdir(parents=True)
+    selected = style_directory / "selected.mp3"
+    selected.write_bytes(b"selected")
+    job = shorts_jobs.create_short_job(
+        project(music_enabled=True, music_style="dark"), chat_id="chat-one",
+    )
+    shorts_jobs._update_job(
+        job["id"], music_status="selected", music_path=str(selected),
+    )
+    (style_directory / "new-track.mp3").write_bytes(b"new")
+
+    status, style, path = shorts_jobs._select_music_track(
+        job["id"], shorts_jobs.get_short_job(job["id"]),
+    )
+
+    assert (status, style, path) == ("selected", "dark", selected.resolve())
+
+
+def test_music_path_outside_library_is_rejected(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    outside = tmp_path / "outside.mp3"
+    outside.write_bytes(b"outside")
+
+    with pytest.raises(ValueError, match="inside the music library"):
+        shorts_jobs._validated_music_path(outside, "cinematic")
+
+
+def test_compose_adds_music_loop_ducking_trim_and_fade(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    style_directory = shorts_jobs.MUSIC_DIRECTORY / "futuristic"
+    style_directory.mkdir(parents=True)
+    track = style_directory / "pulse.mp3"
+    track.write_bytes(b"music")
+    job = shorts_jobs.create_short_job(
+        project(music_enabled=True, music_style="futuristic"), chat_id="chat-one",
+    )
+    mark_tts_completed(job["id"])
+    commands = []
+
+    def compose(command, *, cwd, cancel_check, timeout):
+        commands.append(command)
+        Path(command[-1]).write_bytes(b"music-video")
+
+    result = shorts_jobs.run_short_job(
+        job["id"], request_fn=mock.Mock(), compose_fn=compose,
+    )
+
+    command = commands[0]
+    inputs = [command[index + 1] for index, value in enumerate(command) if value == "-i"]
+    assert inputs[-2:] == [result["tts_path"], str(track.resolve())]
+    assert command[command.index("-stream_loop") + 1] == "-1"
+    filters = command[command.index("-filter_complex") + 1]
+    assert "sidechaincompress=" in filters
+    assert "volume=0.18" in filters
+    assert "atrim=duration=20[music]" in filters
+    assert "afade=t=out:st=18:d=2" in filters
+    assert "[voice_mix][ducked]amix=" in filters
+    assert "[0:a" not in filters
+    maps = [command[index + 1] for index, value in enumerate(command) if value == "-map"]
+    assert maps == ["[subtitled]", "[audio]"]
+    assert result["music_status"] == "selected"
+    assert result["music_style"] == "futuristic"
+    assert result["music_path"] == str(track.resolve())
+
+
+def test_composer_respects_ffmpeg_path_environment(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    mark_tts_completed(job["id"])
+    monkeypatch.setenv("FFMPEG_PATH", "/custom/bin/ffmpeg")
+
+    command = shorts_jobs._compose_command(
+        shorts_jobs.get_short_job(job["id"]), tmp_path / "final.mp4",
+    )
+
+    assert command[0] == "/custom/bin/ffmpeg"

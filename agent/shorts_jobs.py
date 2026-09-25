@@ -1,10 +1,12 @@
 """Persistent, resumable orchestration of ShortProject video scenes."""
 
 from copy import deepcopy
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -12,11 +14,12 @@ import uuid
 
 from agent import batch_state, service_proxy, video_api
 from agent.shorts_planner import ShortProject
-import video_providers
 
 
 SHORTS_DIRECTORY = Path.home() / ".config/mlx-web/shorts"
 SHORTS_JOBS_FILE = SHORTS_DIRECTORY / "jobs.json"
+MUSIC_DIRECTORY = Path.home() / ".config/mlx-web/music"
+MUSIC_EXTENSIONS = frozenset({".aac", ".flac", ".m4a", ".mp3", ".ogg", ".wav"})
 SHORT_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 ACTIVE_STATUSES = {"queued", "running", "video_completed", "tts_completed"}
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -80,6 +83,9 @@ def create_short_job(project, *, chat_id, run_id=None, chat_revision=0):
         "tts_started_at": None,
         "tts_finished_at": None,
         "tts_metadata": None,
+        "music_status": "pending" if project.music_enabled else "disabled",
+        "music_style": project.music_style or "cinematic",
+        "music_path": None,
         "subtitles_path": None,
         "compose_status": "pending",
         "final_path": None,
@@ -234,6 +240,59 @@ def _run_ffmpeg(command, *, cwd, cancel_check, timeout):
         raise RuntimeError("FFmpeg failed: " + (stderr or "")[-2000:])
 
 
+def _ffmpeg_path():
+    return os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "ffmpeg"
+
+
+def _validated_music_path(path, style):
+    candidate = Path(path).expanduser().resolve()
+    root = MUSIC_DIRECTORY.expanduser().resolve()
+    style_directory = (root / style).resolve()
+    if (
+        style_directory.parent != root
+        or candidate.parent != style_directory
+        or candidate.suffix.lower() not in MUSIC_EXTENSIONS
+        or not candidate.is_file()
+    ):
+        raise ValueError("music track must be a supported file inside the music library")
+    return candidate
+
+
+def _select_music_track(job_id, job):
+    project = ShortProject.model_validate(job["project"])
+    style = project.music_style or "cinematic"
+    if not project.music_enabled:
+        return "disabled", style, None
+
+    persisted = job.get("music_path")
+    if persisted:
+        try:
+            return "selected", style, _validated_music_path(persisted, style)
+        except ValueError:
+            return "missing", style, None
+
+    root = MUSIC_DIRECTORY.expanduser().resolve()
+    style_directory = (root / style).resolve()
+    if style_directory.parent != root or not style_directory.is_dir():
+        return "missing", style, None
+    try:
+        candidates = list(style_directory.iterdir())
+    except OSError:
+        return "missing", style, None
+    tracks = []
+    for candidate in candidates:
+        try:
+            tracks.append(_validated_music_path(candidate, style))
+        except ValueError:
+            continue
+    if not tracks:
+        return "missing", style, None
+    tracks.sort(key=lambda candidate: (candidate.name.casefold(), str(candidate)))
+    digest = hashlib.sha256(f"{job_id}:{style}".encode("utf-8")).digest()
+    index = int.from_bytes(digest[:8], "big") % len(tracks)
+    return "selected", style, tracks[index]
+
+
 def _compose_command(job, output_path):
     project = ShortProject.model_validate(job["project"])
     results = {
@@ -241,9 +300,7 @@ def _compose_command(job, output_path):
         for result in job.get("scene_results", [])
         if result.get("status") == "completed"
     }
-    command = [
-        video_providers.FFMPEG, "-y", "-nostdin", "-loglevel", "error",
-    ]
+    command = [_ffmpeg_path(), "-y", "-nostdin", "-loglevel", "error"]
     filters = []
     video_labels = []
     for index, scene in enumerate(project.scenes):
@@ -275,6 +332,13 @@ def _compose_command(job, output_path):
             "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
         ])
 
+    music_path = job.get("music_path") if project.music_enabled else None
+    music_index = None
+    if music_path:
+        music_path = _validated_music_path(music_path, job.get("music_style") or "cinematic")
+        music_index = audio_index + 1
+        command.extend(["-stream_loop", "-1", "-i", str(music_path)])
+
     filters.append(
         "".join(video_labels)
         + f"concat=n={len(video_labels)}:v=1:a=0[joined]"
@@ -284,10 +348,27 @@ def _compose_command(job, output_path):
         filters.append("[joined]ass=subtitles.ass[subtitled]")
         video_output = "subtitled"
 
+    audio_output = f"{audio_index}:a:0"
+    if music_index is not None:
+        fade_duration = min(2, project.duration)
+        fade_start = max(0, project.duration - fade_duration)
+        filters.extend([
+            f"[{audio_index}:a:0]aresample=48000,apad,"
+            f"atrim=duration={project.duration},asplit=2[voice_mix][voice_key]",
+            f"[{music_index}:a:0]aresample=48000,volume=0.18,"
+            f"afade=t=out:st={fade_start}:d={fade_duration},"
+            f"atrim=duration={project.duration}[music]",
+            "[music][voice_key]sidechaincompress="
+            "threshold=0.03:ratio=10:attack=20:release=400[ducked]",
+            "[voice_mix][ducked]amix=inputs=2:duration=first:"
+            "dropout_transition=0[audio]",
+        ])
+        audio_output = "[audio]"
+
     command.extend([
         "-filter_complex", ";".join(filters),
         "-map", f"[{video_output}]",
-        "-map", f"{audio_index}:a:0",
+        "-map", audio_output,
         "-t", str(project.duration),
         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
@@ -494,6 +575,13 @@ def _run_compose(job_id, request_fn, compose_fn):
         )
 
     project = ShortProject.model_validate(job["project"])
+    music_status, music_style, music_path = _select_music_track(job_id, job)
+    job = _update_job(
+        job_id,
+        music_status=music_status,
+        music_style=music_style,
+        music_path=str(music_path) if music_path else None,
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     subtitles_path = _subtitles_output_path(job_id)
     if project.subtitles_enabled:

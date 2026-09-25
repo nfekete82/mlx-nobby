@@ -43,6 +43,9 @@ class ShortProject(BaseModel):
     language: str = Field(default="de", pattern=r"^[a-z]{2}$")
     voice_enabled: bool = True
     music_enabled: bool = False
+    music_style: Literal[
+        "cinematic", "futuristic", "dark", "emotional", "energetic", "ambient",
+    ] | None = None
     subtitles_enabled: bool = True
     scenes: list[ShortScene] = Field(min_length=1, max_length=60)
 
@@ -88,7 +91,9 @@ def _planning_messages(prompt):
                 f"with LTX and one of {sorted(LTX_SCENE_DURATIONS)}. Scene durations "
                 "must sum exactly to duration. Prefer four 5-second scenes for a "
                 "20-second short. Narration and video_prompt must be non-empty. "
-                "video_prompt must describe only the visual scene."
+                "video_prompt must describe only the visual scene. If music is "
+                "enabled, choose music_style from cinematic, futuristic, dark, "
+                "emotional, energetic, or ambient; default to cinematic."
             ),
         },
         {"role": "user", "content": str(prompt).strip()},
