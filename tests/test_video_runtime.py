@@ -536,6 +536,33 @@ class VideoAgentTests(unittest.TestCase):
         )
         self.assertEqual(normal["intent"], "normal_chat")
 
+    def test_explicit_shorts_route_before_single_video(self):
+        prompts = (
+            "Erstelle mir ein 10-sekündiges Short über Berlin",
+            "Erstelle ein YouTube Short über Berlin",
+            "Erstelle ein TikTok über Berlin",
+            "Erstelle ein Reel über Berlin",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(agent.classify_chat_action(prompt), "shorts_generate")
+        self.assertEqual(
+            agent.classify_chat_action("Erstelle mir ein Video von Berlin"),
+            "video_generate",
+        )
+
+    def test_explicit_short_starts_agent_with_shorts_tool_fast_path(self):
+        prompt = "Erstelle mir ein 10-sekündiges Short über Berlin"
+
+        routed = agent.run_chat_action(agent.ChatActionRequest(prompt=prompt))
+        decision = agent.agent_choose_next_step_v2(prompt, [])
+
+        self.assertEqual(routed["tool"], "shorts_generate")
+        self.assertTrue(routed["data"]["automatic"])
+        self.assertEqual(routed["data"]["mode"], "orchestrator")
+        self.assertEqual(decision["action"], "shorts_generate")
+        self.assertEqual(decision["query"], prompt)
+
     def test_prompt_compiler_fallback_preserves_attributes(self):
         with mock.patch.object(agent, "router_llm", side_effect=RuntimeError("offline")):
             self.assertEqual(agent.compile_video_prompt("rote Kugel, statische Kamera"), "rote Kugel, statische Kamera")

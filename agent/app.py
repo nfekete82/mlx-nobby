@@ -4595,6 +4595,17 @@ _VIDEO_ANIMATE_PATTERN = re.compile(
     r"animate\s+(?:this|that)?\s*(?:image|picture))\b",
     re.IGNORECASE,
 )
+_SHORTS_NOUN_PATTERN = re.compile(
+    r"\b(?:shorts?|short[\s-]*videos?|youtube[\s-]+shorts?|"
+    r"tiktoks?(?:[\s-]+videos?)?|reels?|kurzvideos?)\b",
+    re.IGNORECASE,
+)
+_SHORTS_REQUEST_VERB_PATTERN = re.compile(
+    r"\b(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|"
+    r"mach|mache|produziere|produzieren|möchte|moechte|will|brauche|"
+    r"create|generate|make|produce|want|need)\b",
+    re.IGNORECASE,
+)
 _VIDEO_GENERATE_PATTERN = re.compile(
     r"\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b"
     r".{0,40}\b(?:video|clip)\b",
@@ -4602,9 +4613,19 @@ _VIDEO_GENERATE_PATTERN = re.compile(
 )
 
 
+def _looks_like_shorts_generation_request(prompt):
+    value = str(prompt or "")
+    return bool(
+        _SHORTS_NOUN_PATTERN.search(value)
+        and _SHORTS_REQUEST_VERB_PATTERN.search(value)
+    )
+
+
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
+    if _looks_like_shorts_generation_request(value):
+        return "shorts_generate"
     if _VIDEO_ANIMATE_PATTERN.search(value):
         return "video_animate"
     if _VIDEO_GENERATE_PATTERN.search(value):
@@ -9149,6 +9170,12 @@ def run_chat_action(request: ChatActionRequest):
             "reason": "Validated media preflight target",
             "method": "preflight_target",
         }
+    elif _looks_like_shorts_generation_request(request.prompt):
+        routing = {
+            "intent": "shorts_generate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic Shorts request",
+            "method": "deterministic_shorts_generate",
+        }
     elif request.action in {"video_generate", "video_animate"}:
         routing = {
             "intent": request.action, "confidence": 1.0,
@@ -9280,6 +9307,18 @@ def run_chat_action(request: ChatActionRequest):
                 "automatic": True,
                 "routing": routing,
                 "workspace_id": (code_workspaces.active_workspace(validate=False) or {}).get("workspace_id"),
+            },
+        )
+
+    if action == "shorts_generate":
+        return chat_tool_result(
+            action,
+            "completed",
+            {
+                "mode": "orchestrator",
+                "automatic": True,
+                "routing": routing,
+                "workspace_id": None,
             },
         )
 
@@ -14958,6 +14997,12 @@ class AgentApprovalRequest(BaseModel):
 
 def agent_choose_next_step_v2(goal, observations, max_steps=MAX_TOOL_STEPS,
                               mode="diagnostic", conversation_context=None):
+    if not observations and _looks_like_shorts_generation_request(goal):
+        return {
+            "action": "shorts_generate",
+            "query": str(goal).strip(),
+            "reason": "Expliziter Wunsch nach einem vollständigen Short",
+        }
     return agent_prompts.agent_choose_next_step_v2(
         goal, observations, max_steps, mode, conversation_context,
         observed_agent_llm=observed_agent_llm,
