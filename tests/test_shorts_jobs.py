@@ -30,6 +30,10 @@ def configure_store(tmp_path, monkeypatch):
     directory = tmp_path / "shorts"
     monkeypatch.setattr(shorts_jobs, "SHORTS_DIRECTORY", directory)
     monkeypatch.setattr(shorts_jobs, "SHORTS_JOBS_FILE", directory / "jobs.json")
+    def render(command, *, cwd, cancel_check, timeout):
+        assert not cancel_check()
+        Path(command[-1]).write_bytes(b"final-mp4")
+    monkeypatch.setattr(shorts_jobs, "_run_ffmpeg", render)
     with shorts_jobs._workers_lock:
         shorts_jobs._workers.clear()
 
@@ -76,6 +80,22 @@ def mark_video_completed(job_id):
     )
 
 
+def mark_tts_completed(job_id):
+    mark_video_completed(job_id)
+    output = shorts_jobs._tts_output_path(job_id)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(b"ID3-voiceover")
+    shorts_jobs._update_job(
+        job_id,
+        status="tts_completed",
+        phase="tts_completed",
+        tts_status="completed",
+        tts_path=str(output),
+        tts_started_at=1.0,
+        tts_finished_at=2.0,
+    )
+
+
 def test_job_is_created_persistently(tmp_path, monkeypatch):
     configure_store(tmp_path, monkeypatch)
     job = shorts_jobs.create_short_job(
@@ -92,6 +112,9 @@ def test_job_is_created_persistently(tmp_path, monkeypatch):
     assert stored["tts_status"] == "pending"
     assert stored["tts_path"] is None
     assert stored["tts_metadata"] is None
+    assert stored["subtitles_path"] is None
+    assert stored["compose_status"] == "pending"
+    assert stored["final_path"] is None
 
 
 def test_four_scenes_run_sequentially_and_finish(tmp_path, monkeypatch):
@@ -104,8 +127,8 @@ def test_four_scenes_run_sequentially_and_finish(tmp_path, monkeypatch):
         poll_interval=0,
     )
 
-    assert result["status"] == "tts_completed"
-    assert result["phase"] == "tts_completed"
+    assert result["status"] == "completed"
+    assert result["phase"] == "completed"
     assert result["current_scene"] == 4
     assert len(result["scene_results"]) == 4
     assert [call[:2] for call in api.calls] == [
@@ -157,7 +180,7 @@ def test_resume_skips_completed_scene(tmp_path, monkeypatch):
         poll_interval=0,
     )
 
-    assert result["status"] == "tts_completed"
+    assert result["status"] == "completed"
     assert api.created == 3
     assert [entry["scene_id"] for entry in result["scene_results"]] == [
         "scene-1", "scene-2", "scene-3", "scene-4",
@@ -178,7 +201,7 @@ def test_resume_polls_existing_child_before_starting_another(tmp_path, monkeypat
         poll_interval=0,
     )
 
-    assert result["status"] == "tts_completed"
+    assert result["status"] == "completed"
     assert api.calls[0][:2] == ("GET", f"/jobs/{existing_child}")
     assert api.created == 3
     assert result["scene_results"][0]["video_job_id"] == existing_child
@@ -207,7 +230,7 @@ def test_resume_retries_existing_child_while_video_service_starts(tmp_path, monk
             poll_interval=1,
         )
 
-    assert result["status"] == "tts_completed"
+    assert result["status"] == "completed"
     assert sleep.call_count == 1
     assert api.calls[0][:2] == ("GET", f"/jobs/{existing_child}")
 
@@ -272,22 +295,32 @@ def test_cancel_request_wins_over_concurrent_child_failure(tmp_path, monkeypatch
 def test_resume_short_jobs_registers_all_resumable_jobs(tmp_path, monkeypatch):
     configure_store(tmp_path, monkeypatch)
     queued = shorts_jobs.create_short_job(project(), chat_id="chat-one")
-    completed = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    video_completed = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    tts_completed = shorts_jobs.create_short_job(project(), chat_id="chat-one")
     shorts_jobs._update_job(
-        completed["id"], status="video_completed", phase="video_completed",
+        video_completed["id"], status="video_completed", phase="video_completed",
+    )
+    shorts_jobs._update_job(
+        tts_completed["id"], status="tts_completed", phase="tts_completed",
     )
 
     with mock.patch.object(shorts_jobs, "start_short_job") as start:
         resumed = shorts_jobs.resume_short_jobs()
 
-    assert resumed == [queued["id"], completed["id"]]
+    assert resumed == [queued["id"], video_completed["id"], tts_completed["id"]]
     assert start.call_args_list == [
         mock.call(
-            queued["id"], request_fn=None, tts_request_fn=None,
+            queued["id"], request_fn=None, tts_request_fn=None, compose_fn=None,
             poll_interval=1.0,
         ),
         mock.call(
-            completed["id"], request_fn=None, tts_request_fn=None,
+            video_completed["id"], request_fn=None, tts_request_fn=None,
+            compose_fn=None,
+            poll_interval=1.0,
+        ),
+        mock.call(
+            tts_completed["id"], request_fn=None, tts_request_fn=None,
+            compose_fn=None,
             poll_interval=1.0,
         ),
     ]
@@ -334,7 +367,7 @@ def test_tts_runs_once_after_video_and_persists_output(tmp_path, monkeypatch):
         "input": "Szene 1\n\nSzene 2\n\nSzene 3\n\nSzene 4",
         "language": "de",
     }]
-    assert result["status"] == result["phase"] == "tts_completed"
+    assert result["status"] == result["phase"] == "completed"
     assert result["tts_status"] == "completed"
     assert Path(result["tts_path"]).read_bytes() == b"ID3-voiceover"
     assert result["tts_started_at"] is not None
@@ -365,7 +398,7 @@ def test_tts_resume_reuses_existing_successful_output(tmp_path, monkeypatch):
     )
 
     tts.assert_not_called()
-    assert result["status"] == "tts_completed"
+    assert result["status"] == "completed"
     assert result["tts_path"] == str(output)
 
 
@@ -383,7 +416,7 @@ def test_tts_resume_reuses_atomic_output_even_before_status_checkpoint(tmp_path,
     )
 
     tts.assert_not_called()
-    assert result["status"] == "tts_completed"
+    assert result["status"] == "completed"
     assert result["tts_status"] == "completed"
     assert result["tts_path"] == str(output)
 
@@ -436,3 +469,133 @@ def test_cancel_during_tts_discards_output(tmp_path, monkeypatch):
     assert result["tts_path"] is None
     assert result["tts_status"] == "cancelled"
     assert not (shorts_jobs.SHORTS_DIRECTORY / job["id"] / "voiceover.mp3").exists()
+
+
+def test_ass_uses_scene_order_and_exact_time_windows():
+    ass = shorts_jobs.subtitles_for_project(project())
+
+    dialogues = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
+    assert dialogues == [
+        "Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,Szene 1",
+        "Dialogue: 0,0:00:05.00,0:00:10.00,Default,,0,0,0,,Szene 2",
+        "Dialogue: 0,0:00:10.00,0:00:15.00,Default,,0,0,0,,Szene 3",
+        "Dialogue: 0,0:00:15.00,0:00:20.00,Default,,0,0,0,,Szene 4",
+    ]
+
+
+def test_compose_uses_ordered_clips_voiceover_and_persists_output(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    mark_tts_completed(job["id"])
+    calls = []
+
+    def compose(command, *, cwd, cancel_check, timeout):
+        calls.append((command, cwd, timeout))
+        assert not cancel_check()
+        Path(command[-1]).write_bytes(b"composed-mp4")
+
+    result = shorts_jobs.run_short_job(
+        job["id"], request_fn=mock.Mock(), compose_fn=compose,
+    )
+
+    assert result["status"] == result["phase"] == "completed"
+    assert result["compose_status"] == "completed"
+    assert Path(result["final_path"]).read_bytes() == b"composed-mp4"
+    assert Path(result["subtitles_path"]).is_file()
+    assert result["compose_started_at"] is not None
+    assert result["compose_finished_at"] is not None
+    command = calls[0][0]
+    inputs = [command[index + 1] for index, value in enumerate(command) if value == "-i"]
+    assert inputs == [
+        "/videos/000000000000000000000001.mp4",
+        "/videos/000000000000000000000002.mp4",
+        "/videos/000000000000000000000003.mp4",
+        "/videos/000000000000000000000004.mp4",
+        result["tts_path"],
+    ]
+    filters = command[command.index("-filter_complex") + 1]
+    assert "concat=n=4:v=1:a=0" in filters
+    assert "ass=subtitles.ass" in filters
+    assert "[0:a" not in filters
+    maps = [command[index + 1] for index, value in enumerate(command) if value == "-map"]
+    assert maps == ["[subtitled]", "4:a:0"]
+    assert command[command.index("-c:v") + 1] == "libx264"
+    assert command[command.index("-c:a") + 1] == "aac"
+    assert command[command.index("-pix_fmt") + 1] == "yuv420p"
+    assert command[command.index("-movflags") + 1] == "+faststart"
+    assert command[command.index("-t", command.index("-filter_complex")) + 1] == "20"
+
+
+def test_ffmpeg_failure_fails_short(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    mark_tts_completed(job["id"])
+
+    result = shorts_jobs.run_short_job(
+        job["id"],
+        request_fn=mock.Mock(),
+        compose_fn=mock.Mock(side_effect=RuntimeError("FFmpeg failed: broken")),
+    )
+
+    assert result["status"] == result["phase"] == "failed"
+    assert result["compose_status"] == "failed"
+    assert result["error"] == "FFmpeg failed: broken"
+
+
+def test_completed_final_is_not_rendered_again(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    final_path = shorts_jobs._final_output_path(job["id"])
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    final_path.write_bytes(b"existing-final")
+    shorts_jobs._update_job(
+        job["id"],
+        status="completed",
+        phase="completed",
+        compose_status="completed",
+        final_path=str(final_path),
+        compose_finished_at=2.0,
+        finished_at=2.0,
+    )
+    compose = mock.Mock(side_effect=AssertionError("must not render"))
+
+    result = shorts_jobs.run_short_job(job["id"], compose_fn=compose)
+
+    compose.assert_not_called()
+    assert result["final_path"] == str(final_path)
+
+
+def test_cancel_before_compose_skips_ffmpeg(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    mark_tts_completed(job["id"])
+    shorts_jobs._update_job(job["id"], cancel_requested=True)
+    compose = mock.Mock(side_effect=AssertionError("must not render"))
+
+    result = shorts_jobs.run_short_job(
+        job["id"], request_fn=mock.Mock(), compose_fn=compose,
+    )
+
+    compose.assert_not_called()
+    assert result["status"] == "cancelled"
+    assert result["final_path"] is None
+
+
+def test_cancel_during_compose_discards_final_output(tmp_path, monkeypatch):
+    configure_store(tmp_path, monkeypatch)
+    job = shorts_jobs.create_short_job(project(), chat_id="chat-one")
+    mark_tts_completed(job["id"])
+
+    def compose(command, *, cwd, cancel_check, timeout):
+        shorts_jobs._update_job(job["id"], cancel_requested=True)
+        Path(command[-1]).write_bytes(b"discard-me")
+
+    result = shorts_jobs.run_short_job(
+        job["id"], request_fn=mock.Mock(), compose_fn=compose,
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["compose_status"] == "cancelled"
+    assert result["final_path"] is None
+    assert not shorts_jobs._final_output_path(job["id"]).exists()
+    assert not shorts_jobs._final_output_path(job["id"]).with_suffix(".mp4.tmp").exists()
