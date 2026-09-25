@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20260924-media-layout">
+<link rel="stylesheet" href="/assets/chat.css?v=20260925-jobs-overlay">
     <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 
@@ -183,11 +183,6 @@
 
     </aside>
 
-    <section id="jobsPanel" class="jobs-panel" hidden aria-label="Dateien und Jobs" data-i18n-aria-label="ui.jobs_plain">
-        <div class="jobs-panel-header"><strong data-i18n="ui.files_jobs_title">Dateien / Jobs</strong><button id="jobsPanelClose" class="icon-btn" type="button">×</button></div>
-        <div id="jobsPanelCleanup" class="history-cleanup"></div>
-        <div id="jobsPanelContent" class="settings-hint" data-i18n="ui.jobs_loading">Lade Vorgänge…</div>
-    </section>
 
 
     <main class="main">
@@ -1430,6 +1425,13 @@
     </div>
 
 </div>
+
+
+<section id="jobsPanel" class="jobs-panel" hidden aria-label="Dateien und Jobs" data-i18n-aria-label="ui.jobs_plain">
+    <div class="jobs-panel-header"><strong data-i18n="ui.files_jobs_title">Dateien / Jobs</strong><button id="jobsPanelClose" class="icon-btn" type="button">×</button></div>
+    <div id="jobsPanelCleanup" class="history-cleanup"></div>
+    <div id="jobsPanelContent" class="settings-hint" data-i18n="ui.jobs_loading">Lade Vorgänge…</div>
+</section>
 
 
 <script src="/assets/common.js"></script>

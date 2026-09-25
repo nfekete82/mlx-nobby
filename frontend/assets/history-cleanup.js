@@ -76,11 +76,21 @@
         updateButtons(kind);
     }
 
-    document.addEventListener?.('mlx-language-changed', () => {
+    function remountTranslations() {
         for (const [target, options] of mounts) {
             mount(target, options);
         }
-    });
+    }
+
+    document.addEventListener?.(
+        'mlx-i18n-ready',
+        remountTranslations
+    );
+
+    document.addEventListener?.(
+        'mlx-language-changed',
+        remountTranslations
+    );
 
     window.MLXHistoryCleanup = { mount };
 })();
