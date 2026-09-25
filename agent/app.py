@@ -25,6 +25,7 @@ from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
 from agent import video_api
+from agent import shorts_jobs
 from agent import model_cleanup
 import runtime_coordinator
 from agent.tool_registry import Tool, ToolRegistry
@@ -1338,6 +1339,7 @@ def delete_chat(chat_id: str):
 
 
 load_jobs()
+shorts_jobs.resume_short_jobs()
 
 
 
