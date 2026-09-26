@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -32,6 +33,11 @@ TTS_MODEL_NAME = os.environ.get(
     "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit",
 )
 
+TTS_CLONE_MODEL_NAME = os.environ.get(
+    "MLX_TTS_CLONE_MODEL",
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-6bit",
+)
+
 TTS_DEFAULT_VOICE = os.environ.get(
     "MLX_TTS_VOICE",
     "Serena",
@@ -50,8 +56,17 @@ TTS_DEFAULT_INSTRUCT = os.environ.get(
     ),
 )
 
+TTS_VOICES_DIR = Path(
+    os.environ.get(
+        "MLX_TTS_VOICES_DIR",
+        str(Path(__file__).resolve().parent / "voices"),
+    )
+).expanduser()
+
 _tts_model = None
 _tts_model_lock = threading.Lock()
+_tts_clone_model = None
+_tts_clone_model_lock = threading.Lock()
 
 
 class SpeechRequest(BaseModel):
@@ -75,6 +90,42 @@ def get_model():
     return _model
 
 
+def _local_model_path(model_name: str):
+    model_path = model_name
+
+    if model_name.startswith("mlx-community/"):
+        repo_cache_name = "models--" + model_name.replace("/", "--")
+        snapshots_dir = (
+            Path.home()
+            / ".cache"
+            / "huggingface"
+            / "hub"
+            / repo_cache_name
+            / "snapshots"
+        )
+
+        if snapshots_dir.is_dir():
+            snapshots = sorted(
+                (
+                    candidate
+                    for candidate in snapshots_dir.iterdir()
+                    if candidate.is_dir()
+                ),
+                key=lambda candidate: candidate.stat().st_mtime,
+                reverse=True,
+            )
+
+            if snapshots:
+                model_path = snapshots[0]
+                print(
+                    "[speech] Nutze lokalen TTS-Snapshot: "
+                    f"{model_path}",
+                    flush=True,
+                )
+
+    return model_path
+
+
 def get_tts_model():
     global _tts_model
 
@@ -85,55 +136,79 @@ def get_tts_model():
                     f"[speech] Lade TTS-Modell: {TTS_MODEL_NAME}",
                     flush=True,
                 )
-                # Prefer an already downloaded Hugging Face snapshot.
-                # Passing the repository ID to mlx_audio causes
-                # snapshot_download() to contact Hugging Face even when the
-                # model is already cached. A broken/slow network connection
-                # can therefore block TTS startup for minutes.
-                tts_model_path = TTS_MODEL_NAME
-
-                if TTS_MODEL_NAME.startswith("mlx-community/"):
-                    repo_cache_name = (
-                        "models--"
-                        + TTS_MODEL_NAME.replace("/", "--")
-                    )
-                    snapshots_dir = (
-                        Path.home()
-                        / ".cache"
-                        / "huggingface"
-                        / "hub"
-                        / repo_cache_name
-                        / "snapshots"
-                    )
-
-                    if snapshots_dir.is_dir():
-                        snapshots = sorted(
-                            (
-                                candidate
-                                for candidate in snapshots_dir.iterdir()
-                                if candidate.is_dir()
-                            ),
-                            key=lambda candidate: (
-                                candidate.stat().st_mtime
-                            ),
-                            reverse=True,
-                        )
-
-                        if snapshots:
-                            tts_model_path = snapshots[0]
-                            print(
-                                "[speech] Nutze lokalen TTS-Snapshot: "
-                                f"{tts_model_path}",
-                                flush=True,
-                            )
-
-                _tts_model = load_tts_model(tts_model_path)
-                print(
-                    "[speech] TTS-Modell bereit",
-                    flush=True,
+                _tts_model = load_tts_model(
+                    _local_model_path(TTS_MODEL_NAME)
                 )
+                print("[speech] TTS-Modell bereit", flush=True)
 
     return _tts_model
+
+
+def get_tts_clone_model():
+    global _tts_clone_model
+
+    if _tts_clone_model is None:
+        with _tts_clone_model_lock:
+            if _tts_clone_model is None:
+                print(
+                    f"[speech] Lade TTS-Clone-Modell: {TTS_CLONE_MODEL_NAME}",
+                    flush=True,
+                )
+                _tts_clone_model = load_tts_model(
+                    _local_model_path(TTS_CLONE_MODEL_NAME)
+                )
+                print("[speech] TTS-Clone-Modell bereit", flush=True)
+
+    return _tts_clone_model
+
+
+def _voice_profile_name(voice: str) -> str:
+    value = str(voice or "").strip().lower()
+    value = re.sub(r"[^a-z0-9_-]+", "-", value).strip("-")
+    return value
+
+
+def get_voice_profile(voice: str):
+    profile_name = _voice_profile_name(voice)
+    if not profile_name:
+        return None
+
+    profile_dir = TTS_VOICES_DIR / profile_name
+    reference = profile_dir / "reference.wav"
+    transcript = profile_dir / "transcript.txt"
+
+    if not reference.is_file() or not transcript.is_file():
+        return None
+
+    ref_text = transcript.read_text(encoding="utf-8").strip()
+    if not ref_text:
+        raise RuntimeError(
+            f"Leeres Voice-Transkript: {transcript}"
+        )
+
+    return {
+        "name": profile_name,
+        "reference": reference,
+        "transcript": transcript,
+        "ref_text": ref_text,
+    }
+
+
+def list_voice_profiles():
+    profiles = []
+    if not TTS_VOICES_DIR.is_dir():
+        return profiles
+
+    for profile_dir in sorted(TTS_VOICES_DIR.iterdir()):
+        if not profile_dir.is_dir():
+            continue
+        if (
+            (profile_dir / "reference.wav").is_file()
+            and (profile_dir / "transcript.txt").is_file()
+        ):
+            profiles.append(profile_dir.name)
+
+    return profiles
 
 
 @app.get("/health")
@@ -145,6 +220,32 @@ def health():
         "tts_model": TTS_MODEL_NAME,
         "tts_loaded": _tts_model is not None,
         "tts_voice": TTS_DEFAULT_VOICE,
+        "tts_clone_model": TTS_CLONE_MODEL_NAME,
+        "tts_clone_loaded": _tts_clone_model is not None,
+        "tts_voice_profiles": list_voice_profiles(),
+    }
+
+
+@app.get("/v1/audio/voices")
+def voices():
+    cloned = [
+        {
+            "id": name.capitalize(),
+            "label": name.capitalize(),
+            "kind": "clone",
+        }
+        for name in list_voice_profiles()
+    ]
+    return {
+        "voices": [
+            {
+                "id": "Serena",
+                "label": "Serena",
+                "kind": "preset",
+            },
+            *cloned,
+        ],
+        "default": TTS_DEFAULT_VOICE,
     }
 
 
@@ -176,7 +277,6 @@ async def transcribe(file: UploadFile = File(...)):
         ) as tmp:
             wav_path = tmp.name
 
-        # Reliably normalize browser audio to the format expected by Whisper.
         process = subprocess.run(
             [
                 FFMPEG,
@@ -265,16 +365,28 @@ def synthesize_speech(request: SpeechRequest):
     wav_path = None
 
     try:
-        model = get_tts_model()
+        profile = get_voice_profile(request.voice)
 
-        results = list(
-            model.generate_custom_voice(
-                text=text,
-                speaker=request.voice,
-                language=request.language,
-                instruct=request.instruct,
+        if profile is not None:
+            model = get_tts_clone_model()
+            results = list(
+                model.generate(
+                    text=text,
+                    ref_audio=str(profile["reference"]),
+                    ref_text=profile["ref_text"],
+                    language=request.language,
+                )
             )
-        )
+        else:
+            model = get_tts_model()
+            results = list(
+                model.generate_custom_voice(
+                    text=text,
+                    speaker=request.voice,
+                    language=request.language,
+                    instruct=request.instruct,
+                )
+            )
 
         if not results:
             raise RuntimeError(
@@ -314,23 +426,34 @@ def synthesize_speech(request: SpeechRequest):
             sample_rate,
         )
 
+        ffmpeg_args = [
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            wav_path,
+        ]
+
+        if request.speed != 1.0:
+            ffmpeg_args.extend([
+                "-filter:a",
+                f"atempo={request.speed:.3f}",
+            ])
+
+        ffmpeg_args.extend([
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            "-f",
+            "mp3",
+            "pipe:1",
+        ])
+
         process = subprocess.run(
-            [
-                FFMPEG,
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                wav_path,
-                "-codec:a",
-                "libmp3lame",
-                "-b:a",
-                "192k",
-                "-f",
-                "mp3",
-                "pipe:1",
-            ],
+            ffmpeg_args,
             capture_output=True,
             timeout=120,
         )
