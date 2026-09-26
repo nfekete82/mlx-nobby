@@ -31,7 +31,7 @@ jobs:
 
       - name: Python tests
         run: |
-          python -m unittest discover -s tests -p 'test_*.py'
+          python -m pytest -q
 
       - name: Translation and JSON checks
         run: |
@@ -44,10 +44,7 @@ jobs:
 
       - name: JavaScript tests
         run: |
-          node tests/test_model_console.mjs
-          node tests/test_chat_scroll.mjs
-          node tests/test_history_cleanup.mjs
-          node tests/test_i18n.mjs
+          node --test tests/*.mjs
 
       - name: Shell syntax
         run: |
