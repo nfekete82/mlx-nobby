@@ -65,7 +65,7 @@
                 'mlx-tts-cache'
             );
             await loadScript(
-                '/assets/chat/user-voice.js?v=20260926-user-voice',
+                '/assets/chat/user-voice.js?v=20260926-user-voice-2',
                 'mlx-user-voice-controls'
             );
         } catch (error) {
