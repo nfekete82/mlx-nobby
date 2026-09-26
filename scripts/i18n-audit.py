@@ -112,6 +112,16 @@ def html_line_is_translated(line: str) -> bool:
     return any(attribute in line for attribute in I18N_HTML_ATTRIBUTES)
 
 
+def js_line_is_translated(line: str) -> bool:
+    """Recognize the local t(german, english) helper as translated UI."""
+    return bool(
+        re.search(
+            r"\bt\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`])",
+            line,
+        )
+    )
+
+
 def extract_line_candidates(line: str):
     for match in re.finditer(r">([^<>]+)<", line):
         value = match.group(1).strip()
@@ -184,6 +194,8 @@ for path in SCAN_FILES:
         if stripped.startswith(("//", "/*", "*", "#")):
             continue
         if path.suffix == ".html" and html_line_is_translated(line):
+            continue
+        if path.suffix == ".js" and js_line_is_translated(line):
             continue
 
         for value in extract_line_candidates(line):
