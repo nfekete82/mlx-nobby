@@ -96,13 +96,25 @@ echo "mlx: $MLX_BIN"
 sleep 1
 
 echo
+echo "===== REBUILD FRONTEND ====="
+
+report_lifecycle \
+    "running" \
+    "rebuild-frontend" \
+    1 \
+    3 \
+    "Frontend wird neu gebaut."
+
+docker compose up -d --build --force-recreate mlx-web
+
+echo
 echo "===== RESTART SERVICES ====="
 
 report_lifecycle \
     "running" \
     "restart-services" \
-    1 \
     2 \
+    3 \
     "MLX-Dienste werden neu gestartet."
 
 "$MLX_BIN" restart-all
@@ -110,9 +122,9 @@ report_lifecycle \
 report_lifecycle \
     "completed" \
     "completed" \
-    2 \
-    2 \
-    "Alle MLX-Dienste wurden neu gestartet."
+    3 \
+    3 \
+    "Frontend und alle MLX-Dienste wurden neu gestartet."
 
 echo
 echo "===== COMPLETE ====="
