@@ -203,16 +203,18 @@
             .map(item => (item.textContent || '').trim().toLowerCase());
         const alias = (row.querySelector('.model-console-alias')?.textContent || '').trim().toLowerCase();
         const name = (row.querySelector('.model-console-row-title strong')?.textContent || '').trim().toLowerCase();
+        const activeLabel = (window.MLXI18n?.t('models.status.active', 'Active') || 'Active').toLowerCase();
+        const localLabel = (window.MLXI18n?.t('models.status.local', 'Local') || 'Local').toLowerCase();
 
         return {
             text,
             alias,
             name,
-            active: row.classList.contains('active') || badges.some(item => item.includes('active') || item.includes('aktiv')),
+            active: row.classList.contains('active') || badges.some(item => item.includes('active') || item.includes(activeLabel)),
             vision: badges.some(item => item === 'vision'),
             vlm: badges.some(item => item === 'vlm'),
             llm: badges.some(item => item === 'llm'),
-            local: badges.some(item => item === 'local' || item === 'lokal'),
+            local: badges.some(item => item === 'local' || item === localLabel),
             hf: badges.some(item => item.includes('hugging face')),
         };
     }
