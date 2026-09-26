@@ -3,6 +3,8 @@
 
     let activeAudio = null;
     let activeUrl = null;
+    let activeArticle = null;
+    let activeButton = null;
 
     function readAloudLabel() {
         return window.MLXI18n?.t?.(
@@ -11,23 +13,46 @@
         ) || 'Read aloud';
     }
 
+    function pauseLabel() {
+        return window.MLXI18n?.t?.(
+            'rendering.speech_pause',
+            'Pause'
+        ) || 'Pause';
+    }
+
+    function resumeLabel() {
+        return window.MLXI18n?.t?.(
+            'rendering.speech_resume',
+            'Resume'
+        ) || 'Resume';
+    }
+
     function extractUserText(article) {
         const content = article?.querySelector('.message-content');
         if (!content) return '';
         return String(content.innerText || content.textContent || '').trim();
     }
 
-    function stopActiveAudio() {
+    function setButtonLabel(button, label) {
+        if (!button) return;
+        button.title = label;
+        button.setAttribute('aria-label', label);
+    }
+
+    function clearActiveAudio() {
         if (activeAudio) {
             try {
                 activeAudio.pause();
             } catch (_) {}
-            activeAudio = null;
         }
         if (activeUrl) {
             URL.revokeObjectURL(activeUrl);
-            activeUrl = null;
         }
+        setButtonLabel(activeButton, readAloudLabel());
+        activeAudio = null;
+        activeUrl = null;
+        activeArticle = null;
+        activeButton = null;
     }
 
     function currentVoiceSettings() {
@@ -42,14 +67,25 @@
         const text = extractUserText(article);
         if (!text || button.disabled) return;
 
+        if (activeAudio && activeArticle === article) {
+            if (activeAudio.paused) {
+                await activeAudio.play();
+                setButtonLabel(button, pauseLabel());
+            } else {
+                activeAudio.pause();
+                setButtonLabel(button, resumeLabel());
+            }
+            return;
+        }
+
+        clearActiveAudio();
+
         const originalTitle = button.title;
         const voiceSettings = currentVoiceSettings();
         button.disabled = true;
         button.setAttribute('aria-busy', 'true');
 
         try {
-            stopActiveAudio();
-
             const response = await fetch('/api/mlx/audio/speech', {
                 method: 'POST',
                 headers: {
@@ -77,24 +113,31 @@
             const blob = await response.blob();
             activeUrl = URL.createObjectURL(blob);
             activeAudio = new Audio(activeUrl);
+            activeArticle = article;
+            activeButton = button;
 
             const cleanup = () => {
                 if (activeUrl) {
                     URL.revokeObjectURL(activeUrl);
-                    activeUrl = null;
                 }
+                setButtonLabel(button, readAloudLabel());
                 activeAudio = null;
+                activeUrl = null;
+                activeArticle = null;
+                activeButton = null;
             };
 
             activeAudio.addEventListener('ended', cleanup, { once: true });
             activeAudio.addEventListener('error', cleanup, { once: true });
             await activeAudio.play();
+            setButtonLabel(button, pauseLabel());
         } catch (error) {
             console.error('[voice] User message playback failed:', error);
             button.title = String(error?.message || error || originalTitle);
             setTimeout(() => {
-                button.title = originalTitle;
+                setButtonLabel(button, readAloudLabel());
             }, 3000);
+            clearActiveAudio();
         } finally {
             button.disabled = false;
             button.removeAttribute('aria-busy');
@@ -105,8 +148,7 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'message-action-btn message-action-icon mlx-user-speech-button';
-        button.title = readAloudLabel();
-        button.setAttribute('aria-label', button.title);
+        setButtonLabel(button, readAloudLabel());
         button.innerHTML = `
             <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 5 6 9H3v6h3l5 4Z"></path>
