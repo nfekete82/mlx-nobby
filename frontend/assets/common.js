@@ -29,13 +29,21 @@
 
     function loadChatVoiceControls() {
         if (!document.getElementById('input')) return;
-        if (document.querySelector('script[data-mlx-voice-controls]')) return;
+        if (!document.querySelector('script[data-mlx-voice-controls]')) {
+            const script = document.createElement('script');
+            script.src = '/assets/chat/voice.js?v=20260926-voice-popover';
+            script.dataset.mlxVoiceControls = '1';
+            script.defer = true;
+            document.head.appendChild(script);
+        }
 
-        const script = document.createElement('script');
-        script.src = '/assets/chat/voice.js?v=20260926-voice-popover';
-        script.dataset.mlxVoiceControls = '1';
-        script.defer = true;
-        document.head.appendChild(script);
+        if (!document.querySelector('script[data-mlx-user-voice-controls]')) {
+            const script = document.createElement('script');
+            script.src = '/assets/chat/user-voice.js?v=20260926-user-voice';
+            script.dataset.mlxUserVoiceControls = '1';
+            script.defer = true;
+            document.head.appendChild(script);
+        }
     }
 
     window.MLXCommon = {
