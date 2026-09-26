@@ -209,14 +209,14 @@
                 button.textContent = 'Pause';
             } else {
                 composerAudio.pause();
-                button.textContent = 'Fortsetzen';
+                button.textContent = window.MLXI18n?.t('runtime_ui.resume', 'Resume') || 'Resume';
             }
             return;
         }
 
         stopComposerAudio();
         button.disabled = true;
-        button.textContent = 'Wird erzeugt …';
+        button.textContent = window.MLXI18n?.t('common.loading', 'Loading…') || 'Loading…';
 
         try {
             const response = await fetch('/api/mlx/audio/speech', {
