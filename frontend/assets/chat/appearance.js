@@ -265,10 +265,16 @@
 
 })();
 
-(function loadModelOverviewEnhancer() {
-    if (document.querySelector('script[data-model-overview-enhancer]')) return;
-    const script = document.createElement('script');
-    script.src = '/assets/chat/model-overview.js?v=20260927-overview-v1';
-    script.dataset.modelOverviewEnhancer = 'true';
-    document.head.appendChild(script);
+(function loadModelConsoleEnhancers() {
+    const scripts = [
+        ['model-overview-enhancer', '/assets/chat/model-overview.js?v=20260927-overview-v1'],
+        ['model-path-validator', '/assets/chat/model-path-validation.js?v=20260927-validation-v1'],
+    ];
+    scripts.forEach(([key, src]) => {
+        if (document.querySelector(`script[data-${key}]`)) return;
+        const script = document.createElement('script');
+        script.src = src;
+        script.setAttribute(`data-${key}`, 'true');
+        document.head.appendChild(script);
+    });
 })();
