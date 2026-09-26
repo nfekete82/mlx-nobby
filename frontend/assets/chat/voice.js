@@ -9,6 +9,7 @@
     };
     const VOICES = [
         { id: 'Pervin', label: 'Pervin', kind: 'clone' },
+        { id: 'Laura', label: 'Laura', kind: 'clone' },
         { id: 'Serena', label: 'Serena', kind: 'preset' }
     ];
     const SPEEDS = [0.8, 0.9, 1.0, 1.1, 1.25];
@@ -50,6 +51,10 @@
 
     function voiceLabel() {
         return VOICES.find(item => item.id === settings.voice)?.label || settings.voice;
+    }
+
+    function activeVoice() {
+        return VOICES.find(item => item.id === settings.voice) || null;
     }
 
     function injectStyles() {
@@ -259,7 +264,7 @@
             const body = JSON.parse(init.body);
             body.voice = settings.voice;
             body.speed = settings.speed;
-            if (settings.voice === 'Pervin') {
+            if (activeVoice()?.kind === 'clone') {
                 body.instruct = '';
             }
             return nativeFetch(input, {
@@ -278,7 +283,8 @@
             if (!currentText) return;
             const nextText = currentText
                 .replace(/^Serena\b/, label)
-                .replace(/^Pervin\b/, label);
+                .replace(/^Pervin\b/, label)
+                .replace(/^Laura\b/, label);
             if (nextText !== currentText) {
                 node.textContent = nextText;
             }
