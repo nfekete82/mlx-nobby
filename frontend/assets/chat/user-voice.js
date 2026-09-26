@@ -30,11 +30,20 @@
         }
     }
 
+    function currentVoiceSettings() {
+        const settings = window.MLXVoice?.getSettings?.() || {};
+        return {
+            voice: String(settings.voice || 'Pervin'),
+            speed: Number(settings.speed ?? 1)
+        };
+    }
+
     async function playUserMessage(article, button) {
         const text = extractUserText(article);
         if (!text || button.disabled) return;
 
         const originalTitle = button.title;
+        const voiceSettings = currentVoiceSettings();
         button.disabled = true;
         button.setAttribute('aria-busy', 'true');
 
@@ -49,7 +58,10 @@
                 body: JSON.stringify({
                     input: text,
                     language: 'de',
-                    response_format: 'mp3'
+                    response_format: 'mp3',
+                    voice: voiceSettings.voice,
+                    speed: voiceSettings.speed,
+                    instruct: ''
                 })
             });
 
