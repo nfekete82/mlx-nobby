@@ -220,7 +220,10 @@
         const autoRow = document.createElement('div');
         autoRow.className = 'mlx-voice-row';
         const autoLabel = document.createElement('span');
-        autoLabel.textContent = 'Antworten automatisch vorlesen';
+        autoLabel.textContent = window.MLXI18n?.t(
+            'voice.auto_read',
+            'Auto-read responses'
+        ) || 'Auto-read responses';
         const toggle = document.createElement('label');
         toggle.className = 'mlx-voice-toggle';
         const checkbox = document.createElement('input');
