@@ -10,6 +10,7 @@
     const VOICES = [
         { id: 'Pervin', label: 'Pervin', kind: 'clone' },
         { id: 'Laura', label: 'Laura', kind: 'clone' },
+        { id: 'Anne', label: 'Anne', kind: 'clone' },
         { id: 'Serena', label: 'Serena', kind: 'preset' }
     ];
     const SPEEDS = [0.8, 0.9, 1.0, 1.1, 1.25];
@@ -370,7 +371,8 @@
             const nextText = currentText
                 .replace(/^Serena\b/, label)
                 .replace(/^Pervin\b/, label)
-                .replace(/^Laura\b/, label);
+                .replace(/^Laura\b/, label)
+                .replace(/^Anne\b/, label);
             if (nextText !== currentText) {
                 node.textContent = nextText;
             }
