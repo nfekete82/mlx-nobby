@@ -18,6 +18,9 @@
     let autoReadTimer = null;
     const autoReadSeen = new Set();
     const nativeFetch = window.fetch.bind(window);
+    let composerAudio = null;
+    let composerAudioUrl = null;
+    let composerAudioText = '';
 
     function normalizeSettings(value) {
         const voice = VOICES.some(item => item.id === value?.voice)
@@ -42,7 +45,20 @@
         }
     }
 
+    function stopComposerAudio() {
+        if (composerAudio) {
+            try { composerAudio.pause(); } catch (_) {}
+        }
+        if (composerAudioUrl) {
+            URL.revokeObjectURL(composerAudioUrl);
+        }
+        composerAudio = null;
+        composerAudioUrl = null;
+        composerAudioText = '';
+    }
+
     function saveSettings() {
+        stopComposerAudio();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         window.dispatchEvent(new CustomEvent('mlx:voice-settings-changed', {
             detail: { ...settings }
@@ -92,8 +108,6 @@
             .mlx-voice-dot { width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: 50%; opacity: .55; position: relative; flex: 0 0 auto; }
             .mlx-voice-option.is-active .mlx-voice-dot { opacity: 1; }
             .mlx-voice-option.is-active .mlx-voice-dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: currentColor; }
-            .mlx-voice-option-copy { display: flex; flex-direction: column; gap: 1px; }
-            .mlx-voice-option-copy small { opacity: .55; font-size: 11px; }
             .mlx-voice-divider { height: 1px; margin: 8px 4px; background: color-mix(in srgb, currentColor 12%, transparent); }
             .mlx-voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 6px; font-size: 13px; }
             .mlx-voice-speed { border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 8px; background: transparent; color: inherit; padding: 5px 7px; }
@@ -103,6 +117,14 @@
             .mlx-voice-toggle-track::after { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; border-radius: 50%; background: currentColor; opacity: .8; transition: transform .15s ease; }
             .mlx-voice-toggle input:checked + .mlx-voice-toggle-track::after { transform: translateX(14px); opacity: 1; }
             .mlx-voice-toggle input:checked + .mlx-voice-toggle-track { background: color-mix(in srgb, currentColor 28%, transparent); }
+            .mlx-voice-preview {
+                width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+                padding: 9px 10px; margin-top: 8px; border-radius: 9px;
+                border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+                background: transparent; color: inherit; cursor: pointer; font-size: 13px;
+            }
+            .mlx-voice-preview:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+            .mlx-voice-preview:disabled { opacity: .45; cursor: default; }
         `;
         document.head.appendChild(style);
     }
@@ -174,6 +196,63 @@
         });
     }
 
+    async function playComposerText(button) {
+        const input = document.getElementById('input');
+        const text = String(input?.value || '').trim();
+        if (!text) return;
+
+        if (composerAudio && composerAudioText === text) {
+            if (composerAudio.paused) {
+                await composerAudio.play();
+                button.textContent = 'Pause';
+            } else {
+                composerAudio.pause();
+                button.textContent = 'Fortsetzen';
+            }
+            return;
+        }
+
+        stopComposerAudio();
+        button.disabled = true;
+        button.textContent = 'Wird erzeugt …';
+
+        try {
+            const response = await fetch('/api/mlx/audio/speech', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    input: text,
+                    language: 'de',
+                    response_format: 'mp3',
+                    voice: settings.voice,
+                    speed: settings.speed,
+                    instruct: activeVoice()?.kind === 'clone' ? '' : undefined
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            composerAudioUrl = URL.createObjectURL(blob);
+            composerAudio = new Audio(composerAudioUrl);
+            composerAudioText = text;
+            const cleanup = () => {
+                stopComposerAudio();
+                button.textContent = 'Eingabetext abspielen';
+            };
+            composerAudio.addEventListener('ended', cleanup, { once: true });
+            composerAudio.addEventListener('error', cleanup, { once: true });
+            await composerAudio.play();
+            button.textContent = 'Pause';
+        } catch (error) {
+            console.error('[voice] Composer playback failed:', error);
+            stopComposerAudio();
+            button.textContent = 'Eingabetext abspielen';
+        } finally {
+            button.disabled = false;
+        }
+    }
+
     function renderPopover(popover) {
         popover.replaceChildren();
         const title = document.createElement('div');
@@ -187,10 +266,7 @@
             option.className = 'mlx-voice-option' + (settings.voice === item.id ? ' is-active' : '');
             option.innerHTML = `
                 <span class="mlx-voice-dot"></span>
-                <span class="mlx-voice-option-copy">
-                    <strong>${item.label}</strong>
-                    <small>${item.kind === 'clone' ? 'Geklonte Stimme' : 'Qwen Preset'}</small>
-                </span>`;
+                <strong>${item.label}</strong>`;
             option.addEventListener('click', () => {
                 settings.voice = item.id;
                 saveSettings();
@@ -243,6 +319,16 @@
         toggle.append(checkbox, track);
         autoRow.append(autoLabel, toggle);
         popover.appendChild(autoRow);
+
+        const preview = document.createElement('button');
+        preview.type = 'button';
+        preview.className = 'mlx-voice-preview';
+        preview.textContent = 'Eingabetext abspielen';
+        preview.addEventListener('click', event => {
+            event.stopPropagation();
+            playComposerText(preview);
+        });
+        popover.appendChild(preview);
     }
 
     function isSpeechRequest(input) {
