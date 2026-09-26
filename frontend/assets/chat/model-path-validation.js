@@ -4,6 +4,8 @@
     let timer = null;
     let requestId = 0;
     let observedForm = null;
+    let lastValidatedPath = '';
+    let lastValidationValid = false;
 
     function isGerman() {
         const locale = window.MLXI18n?.getLocale?.() || navigator.language || 'en';
@@ -110,6 +112,14 @@
         return document.querySelector('#modelConsoleDialogActions [data-action="submit-model"]');
     }
 
+    function syncSubmitGuard(input) {
+        const submit = submitButton();
+        if (!submit) return;
+        const value = input?.value?.trim() || '';
+        if (!isLocalPath(value)) return;
+        submit.disabled = value !== lastValidatedPath || !lastValidationValid;
+    }
+
     function panelFor(input) {
         let panel = document.getElementById('modelPathValidation');
         if (panel) return panel;
@@ -123,6 +133,8 @@
     }
 
     function resetPanel(input) {
+        lastValidatedPath = '';
+        lastValidationValid = false;
         const panel = panelFor(input);
         panel.hidden = true;
         panel.innerHTML = '';
@@ -131,6 +143,8 @@
     }
 
     function renderLoading(input) {
+        lastValidatedPath = '';
+        lastValidationValid = false;
         const panel = panelFor(input);
         panel.hidden = false;
         panel.innerHTML = `
@@ -139,11 +153,12 @@
                 <span class="model-path-validation-state">${t('Prüfe …', 'Checking …')}</span>
             </div>
         `;
-        const submit = submitButton();
-        if (submit) submit.disabled = true;
+        syncSubmitGuard(input);
     }
 
     function renderResult(input, result) {
+        lastValidatedPath = input.value.trim();
+        lastValidationValid = Boolean(result.valid);
         const panel = panelFor(input);
         panel.hidden = false;
         panel.innerHTML = '';
@@ -201,8 +216,7 @@
             panel.appendChild(errors);
         }
 
-        const submit = submitButton();
-        if (submit) submit.disabled = !result.valid;
+        syncSubmitGuard(input);
     }
 
     async function validate(input) {
@@ -236,6 +250,11 @@
 
     function schedule(input, delay = 350) {
         clearTimeout(timer);
+        if (isLocalPath(input.value)) {
+            lastValidatedPath = '';
+            lastValidationValid = false;
+            syncSubmitGuard(input);
+        }
         timer = setTimeout(() => validate(input), delay);
     }
 
@@ -243,10 +262,13 @@
         const input = document.getElementById('modelAddRepo');
         if (!input || input === observedForm) return;
         observedForm = input;
+        lastValidatedPath = '';
+        lastValidationValid = false;
         input.addEventListener('input', () => schedule(input));
         input.addEventListener('change', () => schedule(input, 0));
         input.addEventListener('blur', () => schedule(input, 0));
         if (input.value.trim()) schedule(input, 0);
+        else syncSubmitGuard(input);
     }
 
     function init() {
