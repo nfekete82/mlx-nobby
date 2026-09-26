@@ -54,6 +54,39 @@
         }
     }
 
+    function invalidateText(text) {
+        const normalized = String(text || '').trim();
+        if (!normalized) return 0;
+
+        let removed = 0;
+        for (const key of [...cache.keys()]) {
+            try {
+                const parsed = JSON.parse(key);
+                if (String(parsed.input || '').trim() === normalized) {
+                    cache.delete(key);
+                    removed += 1;
+                }
+            } catch (_) {}
+        }
+        return removed;
+    }
+
+    function messageText(button) {
+        const article = button?.closest?.('.message');
+        const content = article?.querySelector?.('.message-content');
+        if (!content) return '';
+
+        if (article.classList.contains('assistant')) {
+            for (const child of content.children) {
+                if (child.tagName === 'DIV' && !child.className) {
+                    return String(child.innerText || child.textContent || '').trim();
+                }
+            }
+        }
+
+        return String(content.innerText || content.textContent || '').trim();
+    }
+
     async function fetchAndCache(input, init, key) {
         const response = await wrappedFetch(input, init);
         if (!response.ok) return response;
@@ -97,9 +130,25 @@
         return promise;
     };
 
+    document.addEventListener('click', event => {
+        if (!event.shiftKey) return;
+        const button = event.target?.closest?.(
+            '.mlx-message-speech-button, .mlx-user-speech-button'
+        );
+        if (!button) return;
+        invalidateText(messageText(button));
+    }, true);
+
     window.MLXTTSCache = {
         clear: () => cache.clear(),
         size: () => cache.size,
-        has: (text) => [...cache.keys()].some(key => key.includes(String(text || '')))
+        invalidateText,
+        has: (text) => [...cache.keys()].some(key => {
+            try {
+                return String(JSON.parse(key).input || '') === String(text || '');
+            } catch (_) {
+                return false;
+            }
+        })
     };
 })();
