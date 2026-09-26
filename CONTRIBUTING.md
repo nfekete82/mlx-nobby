@@ -44,7 +44,7 @@ Run Python, translation, and JSON checks:
 Run JavaScript checks:
 
     find frontend -name '*.js' -print0 | xargs -0 -n1 node --check
-    for test in tests/*.mjs; do node "$test" || exit 1; done
+    node --test tests/*.mjs
 
 Validate shell scripts:
 
@@ -57,15 +57,30 @@ Validate Docker Compose:
 
     docker compose config
 
+## Code organization
+
+Keep `agent/app.py` focused on application composition and route wiring. New
+substantial features should live in focused modules under `agent/` and be
+imported into the application instead of growing `agent/app.py` further.
+Prefer small, feature-oriented modules with explicit boundaries over unrelated
+large refactors.
+
+Frontend feature loading should live in the shared bootstrap layer rather than
+inside unrelated feature modules. Avoid adding global `window.fetch` wrappers
+unless the behavior genuinely needs to intercept every matching request; prefer
+dedicated request helpers for new functionality.
+
 ## Pull requests
 
 Please keep pull requests focused and avoid unrelated refactors.
 
 Before submitting a pull request:
 
+- start from an up-to-date `main`
 - run the relevant tests
 - run `git diff --check`
 - do not include local configuration or secrets
 - document behavior changes when appropriate
 - keep public documentation in English
 - keep English and German translation keys in sync
+- merge short-lived feature branches promptly and delete them after merge
