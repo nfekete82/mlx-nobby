@@ -3166,7 +3166,9 @@ def run_model_command(alias: str):
     is configured and the MLX API is responding.
     """
     try:
-        return switch_model_runtime(alias)
+        result = switch_model_runtime(alias)
+        result["roles"] = persist_explicit_model_selection(alias)
+        return result
     except RuntimeError as exc:
         message = str(exc)
 
@@ -3192,6 +3194,37 @@ def run_model_command(alias: str):
             status_code=500,
             detail=message,
         ) from exc
+
+
+def persist_explicit_model_selection(alias: str):
+    """Keep an explicitly loaded model active across role-aware requests."""
+    selected = next(
+        (
+            item
+            for item in load_models()
+            if item.get("alias") == alias
+        ),
+        None,
+    )
+
+    if selected is None:
+        raise RuntimeError(
+            f"Unbekanntes Modell-Alias: {alias}"
+        )
+
+    roles = load_model_roles()
+
+    for role in ("chat", "agent", "coding"):
+        roles[role] = alias
+
+    if (
+        selected.get("vision") is True
+        or selected.get("backend") == "vlm"
+    ):
+        roles["vision"] = alias
+        roles["vision_uncensored"] = alias
+
+    return save_model_roles(roles)
 
 
 @app.post("/api/download/{target:path}")

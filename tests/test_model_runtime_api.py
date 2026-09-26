@@ -239,6 +239,72 @@ class ModelRuntimeApiTests(unittest.TestCase):
                         agent_app.switch_model_runtime('_local')
                     manager.assert_not_called()
 
+    def test_explicit_vlm_selection_persists_all_generative_roles(self):
+        roles = {
+            "chat": "qwen38",
+            "agent": "qwen38",
+            "coding": "qwen38",
+            "vision": "qwen38",
+            "vision_uncensored": "qwen38u",
+            "embedding": "auto",
+            "image": "juggernaut-xl",
+        }
+        selected = {
+            "alias": "qwen38_20260927",
+            "repo": "/Models/Qwen3.8-27B-Abliterated-MLX-4bit",
+            "backend": "vlm",
+            "vision": True,
+        }
+
+        with mock.patch.object(
+            agent_app,
+            "switch_model_runtime",
+            return_value={"ok": True, "alias": selected["alias"]},
+        ) as switch, mock.patch.object(
+            agent_app,
+            "load_models",
+            return_value=[selected],
+        ), mock.patch.object(
+            agent_app,
+            "load_model_roles",
+            return_value=roles,
+        ), mock.patch.object(
+            agent_app,
+            "save_model_roles",
+            side_effect=lambda value: value.copy(),
+        ) as save:
+            result = agent_app.run_model_command(selected["alias"])
+
+        switch.assert_called_once_with("qwen38_20260927")
+        persisted = save.call_args.args[0]
+        for role in (
+            "chat",
+            "agent",
+            "coding",
+            "vision",
+            "vision_uncensored",
+        ):
+            self.assertEqual(persisted[role], "qwen38_20260927")
+        self.assertEqual(persisted["embedding"], "auto")
+        self.assertEqual(persisted["image"], "juggernaut-xl")
+        self.assertEqual(result["roles"], persisted)
+
+    def test_failed_explicit_selection_does_not_change_roles(self):
+        with mock.patch.object(
+            agent_app,
+            "switch_model_runtime",
+            side_effect=RuntimeError("Modellwechsel fehlgeschlagen: qwen38_20260927"),
+        ), mock.patch.object(
+            agent_app,
+            "save_model_roles",
+        ) as save:
+            with self.assertRaises(HTTPException) as context:
+                agent_app.run_model_command("qwen38_20260927")
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertIn("qwen38_20260927", context.exception.detail)
+        save.assert_not_called()
+
     def test_cache_summary_uses_real_sizes_and_exposes_path(self):
         items = [
             {
