@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from agent import app as agent_app
+from backend import app as web_app
 from backend import observability
 
 
@@ -288,6 +289,69 @@ class ModelRuntimeApiTests(unittest.TestCase):
         self.assertEqual(persisted["embedding"], "auto")
         self.assertEqual(persisted["image"], "juggernaut-xl")
         self.assertEqual(result["roles"], persisted)
+
+    def test_frontend_model_endpoint_persists_explicit_vlm_selection(self):
+        roles = {
+            "chat": "qwen38_20260927",
+            "agent": "qwen38",
+            "coding": "qwen38",
+            "vision": "qwen38_20260927",
+            "vision_uncensored": "qwen38u",
+            "embedding": "auto",
+            "image": "juggernaut-xl",
+        }
+        selected = {
+            "alias": "qwen38_20260927",
+            "repo": "/Models/Qwen3.8-27B-Abliterated-MLX-4bit",
+            "backend": "vlm",
+            "vision": True,
+        }
+        client = TestClient(web_app.app, base_url="http://localhost")
+        self.addCleanup(client.close)
+
+        def forward_to_agent(url, timeout):
+            self.assertEqual(
+                url,
+                web_app.AGENT_URL + "/api/model/qwen38_20260927",
+            )
+            self.assertEqual(timeout, 300)
+            return agent_app.model_command("qwen38_20260927")
+
+        with mock.patch.object(
+            web_app,
+            "post_json",
+            side_effect=forward_to_agent,
+        ), mock.patch.object(
+            agent_app,
+            "switch_model_runtime",
+            return_value={"ok": True, "alias": selected["alias"]},
+        ), mock.patch.object(
+            agent_app,
+            "load_models",
+            return_value=[selected],
+        ), mock.patch.object(
+            agent_app,
+            "load_model_roles",
+            return_value=roles,
+        ), mock.patch.object(
+            agent_app,
+            "save_model_roles",
+            side_effect=lambda value: value.copy(),
+        ) as save:
+            response = client.post(
+                "/api/mlx/model/qwen38_20260927"
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        persisted = save.call_args.args[0]
+        for role in (
+            "chat",
+            "agent",
+            "coding",
+            "vision",
+            "vision_uncensored",
+        ):
+            self.assertEqual(persisted[role], "qwen38_20260927")
 
     def test_failed_explicit_selection_does_not_change_roles(self):
         with mock.patch.object(
