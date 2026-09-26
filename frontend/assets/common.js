@@ -27,9 +27,26 @@
         };
     }
 
+    function loadChatVoiceControls() {
+        if (!document.getElementById('input')) return;
+        if (document.querySelector('script[data-mlx-voice-controls]')) return;
+
+        const script = document.createElement('script');
+        script.src = '/assets/chat/voice.js?v=20260926-voice-popover';
+        script.dataset.mlxVoiceControls = '1';
+        script.defer = true;
+        document.head.appendChild(script);
+    }
+
     window.MLXCommon = {
         fetchJson: fetchJson,
         fastApiDetailError: fastApiDetailError,
         jsonRequest: jsonRequest
     };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadChatVoiceControls, { once: true });
+    } else {
+        loadChatVoiceControls();
+    }
 })();
