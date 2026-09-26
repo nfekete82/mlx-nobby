@@ -274,8 +274,14 @@
     function syncSpeechStatuses() {
         const label = voiceLabel();
         document.querySelectorAll('.mlx-message-speech-status').forEach(node => {
-            if (!node.textContent) return;
-            node.textContent = node.textContent.replace(/^Serena\b/, label).replace(/^Pervin\b/, label);
+            const currentText = node.textContent || '';
+            if (!currentText) return;
+            const nextText = currentText
+                .replace(/^Serena\b/, label)
+                .replace(/^Pervin\b/, label);
+            if (nextText !== currentText) {
+                node.textContent = nextText;
+            }
         });
     }
 
