@@ -139,6 +139,11 @@
         invalidateText(messageText(button));
     }, true);
 
+    window.addEventListener('mlx:voice-settings-changed', () => {
+        cache.clear();
+        inFlight.clear();
+    });
+
     window.MLXTTSCache = {
         clear: () => cache.clear(),
         size: () => cache.size,
