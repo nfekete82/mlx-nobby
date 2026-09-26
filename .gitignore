@@ -66,6 +66,9 @@ outputs/
 tmp/
 temp/
 
+# Local/private voice-cloning references and transcripts
+speech/voices/
+
 # Local/private notes and knowledge data
 notes/
 private/
