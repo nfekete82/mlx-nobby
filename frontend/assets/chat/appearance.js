@@ -264,3 +264,11 @@
     }
 
 })();
+
+(function loadModelOverviewEnhancer() {
+    if (document.querySelector('script[data-model-overview-enhancer]')) return;
+    const script = document.createElement('script');
+    script.src = '/assets/chat/model-overview.js?v=20260927-overview-v1';
+    script.dataset.modelOverviewEnhancer = 'true';
+    document.head.appendChild(script);
+})();
