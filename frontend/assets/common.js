@@ -73,6 +73,27 @@
         }
     }
 
+    async function loadModelConsoleEnhancers() {
+        if (!document.getElementById('modelConsoleContent')) return;
+        try {
+            await loadScript(
+                '/assets/chat/model-overview.js?v=20260927-overview-v1',
+                'model-overview-enhancer'
+            );
+            await loadScript(
+                '/assets/chat/model-path-validation.js?v=20260927-validation-v2',
+                'model-path-validator'
+            );
+        } catch (error) {
+            console.error('[models] Failed to load model console enhancements:', error);
+        }
+    }
+
+    function loadChatEnhancements() {
+        loadChatVoiceControls();
+        loadModelConsoleEnhancers();
+    }
+
     window.MLXCommon = {
         fetchJson: fetchJson,
         fastApiDetailError: fastApiDetailError,
@@ -80,8 +101,8 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadChatVoiceControls, { once: true });
+        document.addEventListener('DOMContentLoaded', loadChatEnhancements, { once: true });
     } else {
-        loadChatVoiceControls();
+        loadChatEnhancements();
     }
 })();
