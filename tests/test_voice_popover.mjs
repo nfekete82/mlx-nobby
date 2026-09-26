@@ -21,7 +21,8 @@ test('voice popover exposes Pervin and Serena', () => {
     assert.match(voice, /id:\s*'Pervin'/);
     assert.match(voice, /id:\s*'Serena'/);
     assert.match(voice, /mlxVoicePopover/);
-    assert.match(voice, /Antworten automatisch vorlesen/);
+    assert.match(voice, /voice\.auto_read/);
+    assert.match(voice, /Auto-read responses/);
 });
 
 test('speech requests inherit selected voice and speed', () => {
