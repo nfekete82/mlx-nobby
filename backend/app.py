@@ -275,10 +275,51 @@ def video_job_cancel(job_id: str):
     return agent_json_request('POST', '/api/video/jobs/' + urllib.parse.quote(job_id, safe='') + '/cancel', {}, timeout=35)
 
 
+@app.get('/api/mlx/shorts-jobs/{job_id}')
+def shorts_job(job_id: str):
+    return agent_json_request(
+        'GET', '/api/shorts/jobs/' + urllib.parse.quote(job_id, safe=''), timeout=15,
+    )
+
+
 @app.get('/api/mlx/videos/{video_id}')
 def video_file(video_id: str, request: Request, download: bool = False):
     suffix = '?download=1' if download else ''
     url = AGENT_URL + '/api/videos/' + urllib.parse.quote(video_id, safe='') + suffix
+    try:
+        headers = {}
+        if request.headers.get('range'):
+            headers['Range'] = request.headers['range']
+        upstream = urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60)
+        response_headers = {
+            key: value for key, value in {
+                'Accept-Ranges': upstream.headers.get('Accept-Ranges'),
+                'Content-Range': upstream.headers.get('Content-Range'),
+                'Content-Length': upstream.headers.get('Content-Length'),
+                'Content-Disposition': upstream.headers.get('Content-Disposition'),
+            }.items() if value
+        }
+        def chunks():
+            try:
+                while data := upstream.read(1024 * 1024):
+                    yield data
+            finally:
+                upstream.close()
+        return StreamingResponse(
+            chunks(), status_code=upstream.status,
+            media_type=upstream.headers.get('Content-Type', 'video/mp4'),
+            headers=response_headers,
+        )
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(status_code=exc.code, detail=exc.read().decode('utf-8', errors='replace'))
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=503, detail=f'Agent nicht erreichbar: {exc.reason}')
+
+
+@app.get('/api/mlx/shorts/{job_id}')
+def short_file(job_id: str, request: Request, download: bool = False):
+    suffix = '?download=1' if download else ''
+    url = AGENT_URL + '/api/shorts/' + urllib.parse.quote(job_id, safe='') + suffix
     try:
         headers = {}
         if request.headers.get('range'):

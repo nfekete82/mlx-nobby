@@ -25,6 +25,8 @@ from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
 from agent import video_api
+from agent import shorts_jobs
+from agent.shorts_planner import plan_short
 from agent import model_cleanup
 import runtime_coordinator
 from agent.tool_registry import Tool, ToolRegistry
@@ -1338,6 +1340,7 @@ def delete_chat(chat_id: str):
 
 
 load_jobs()
+shorts_jobs.resume_short_jobs()
 
 
 
@@ -4626,6 +4629,17 @@ _VIDEO_ANIMATE_PATTERN = re.compile(
     r"animate\s+(?:this|that)?\s*(?:image|picture))\b",
     re.IGNORECASE,
 )
+_SHORTS_NOUN_PATTERN = re.compile(
+    r"\b(?:shorts?|short[\s-]*videos?|youtube[\s-]+shorts?|"
+    r"tiktoks?(?:[\s-]+videos?)?|reels?|kurzvideos?)\b",
+    re.IGNORECASE,
+)
+_SHORTS_REQUEST_VERB_PATTERN = re.compile(
+    r"\b(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|"
+    r"mach|mache|produziere|produzieren|möchte|moechte|will|brauche|"
+    r"create|generate|make|produce|want|need)\b",
+    re.IGNORECASE,
+)
 _VIDEO_GENERATE_PATTERN = re.compile(
     r"\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b"
     r".{0,40}\b(?:video|clip)\b",
@@ -4633,9 +4647,19 @@ _VIDEO_GENERATE_PATTERN = re.compile(
 )
 
 
+def _looks_like_shorts_generation_request(prompt):
+    value = str(prompt or "")
+    return bool(
+        _SHORTS_NOUN_PATTERN.search(value)
+        and _SHORTS_REQUEST_VERB_PATTERN.search(value)
+    )
+
+
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
+    if _looks_like_shorts_generation_request(value):
+        return "shorts_generate"
     if _VIDEO_ANIMATE_PATTERN.search(value):
         return "video_animate"
     if _VIDEO_GENERATE_PATTERN.search(value):
@@ -8232,6 +8256,138 @@ def _video_job_tool_result(job):
     return chat_tool_result(action, status, data, artifacts=artifacts, error=job.get("error"))
 
 
+def _shorts_child_progress(job):
+    child_id = job.get("active_video_job_id")
+    if not child_id:
+        return 0.0
+    try:
+        child = video_api.request(
+            "GET", "/jobs/" + video_api.job_id(child_id), timeout=15,
+        )
+    except Exception:
+        return 0.0
+    progress = child.get("progress")
+    if progress is None and child.get("current_step") and child.get("total_steps"):
+        progress = 100 * child["current_step"] / child["total_steps"]
+    try:
+        progress = float(progress or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, progress / 100 if progress > 1 else progress))
+
+
+def _shorts_job_progress(job):
+    status = str(job.get("status") or "queued")
+    phase = str(job.get("phase") or "queued")
+    scenes = (job.get("project") or {}).get("scenes") or []
+    scene_count = len(scenes)
+    current_scene = max(0, min(int(job.get("current_scene") or 0), scene_count))
+
+    if status == "completed":
+        percent = 100
+    elif phase == "compose":
+        percent = 95
+    elif phase == "tts_completed":
+        percent = 85
+    elif phase == "tts":
+        percent = 82
+    elif phase == "video_completed":
+        percent = 75
+    elif phase == "video" and scene_count:
+        percent = 5 + 70 * (
+            current_scene + _shorts_child_progress(job)
+        ) / scene_count
+    else:
+        percent = 5
+
+    labels = {
+        "queued": "Planung abgeschlossen",
+        "planning": "Planung",
+        "video": "Video",
+        "video_completed": "Video abgeschlossen",
+        "tts": "Voiceover",
+        "tts_completed": "Voiceover abgeschlossen",
+        "compose": "Finaler Schnitt",
+        "completed": "Abgeschlossen",
+        "failed": "Fehlgeschlagen",
+        "cancelled": "Abgebrochen",
+    }
+    descriptions = {
+        "queued": "Produktionsplan ist bereit; der Job wartet auf die Ausführung.",
+        "planning": "Der Produktionsplan wird erstellt.",
+        "video": "Die Szenenvideos werden nacheinander erzeugt.",
+        "video_completed": "Alle Szenenvideos sind fertig.",
+        "tts": "Das Voiceover wird erzeugt.",
+        "tts_completed": "Das Voiceover ist fertig.",
+        "compose": "Video, Voiceover und Untertitel werden zusammengesetzt.",
+        "completed": "Das Short ist fertig.",
+        "failed": "Die Erstellung ist fehlgeschlagen.",
+        "cancelled": "Die Erstellung wurde abgebrochen.",
+    }
+    display_phase = status if status in {"completed", "failed", "cancelled"} else phase
+    scene_number = (
+        min(current_scene + 1, scene_count)
+        if phase in {"queued", "planning", "video"}
+        else current_scene
+    )
+    return {
+        "progress": percent,
+        "progress_percent": percent,
+        "scene_count": scene_count,
+        "scene_number": scene_number,
+        "phase_label": labels.get(display_phase, display_phase),
+        "status_description": descriptions.get(display_phase, display_phase),
+    }
+
+
+def _shorts_job_tool_result(job):
+    status = str(job.get("status") or "failed")
+    presented = deepcopy(job)
+    presented.update(_shorts_job_progress(job))
+    data, artifacts = {"job": presented}, []
+    if status == "completed" and job.get("final_path"):
+        artifact = {
+            "artifact_id": "short-" + job["id"],
+            "video_id": job["id"],
+            "kind": "video",
+            "name": "final.mp4",
+            "path": job["final_path"],
+            "url": "/api/mlx/shorts/" + job["id"],
+            "mime_type": "video/mp4",
+            "title": (job.get("project") or {}).get("title"),
+            "duration": (job.get("project") or {}).get("duration"),
+            "audio": True,
+            "chat_id": job.get("chat_id"),
+            "run_id": job.get("run_id"),
+        }
+        data["video"] = artifact
+        artifacts.append(artifact)
+    return chat_tool_result(
+        "shorts_generate", status, data, artifacts=artifacts,
+        error=job.get("error"),
+    )
+
+
+def _start_chat_shorts_job(request):
+    chat_id, chat_revision = _validated_image_job_chat_identity(request)
+    run_context = run_state.RunContext.start(
+        run_id=request.run_id,
+        chat_id=chat_id,
+        chat_revision=chat_revision,
+    )
+    project = plan_short(
+        request.prompt, agent_model_provider(), run_context=run_context,
+    )
+    job = shorts_jobs.create_short_job(
+        project,
+        chat_id=chat_id,
+        run_id=run_context.run_id,
+        chat_revision=chat_revision,
+    )
+    shorts_jobs.start_short_job(job["id"])
+    return job
+
+
 def _image_artifact(result, action):
     image_id = str(result.get("id", ""))
     image_path = Path(str(result.get("path", "")))
@@ -8596,6 +8752,14 @@ def video_job_api(job_id: str):
     return _video_job_tool_result(video_api.request("GET", "/jobs/" + video_api.job_id(job_id)))
 
 
+@app.get("/api/shorts/jobs/{job_id}")
+def shorts_job_api(job_id: str):
+    try:
+        return _shorts_job_tool_result(shorts_jobs.get_short_job(job_id))
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail="Shorts-Job nicht gefunden")
+
+
 @app.post("/api/video/jobs/{job_id}/cancel")
 def video_job_cancel_api(job_id: str):
     job = video_api.request("POST", "/jobs/" + video_api.job_id(job_id) + "/cancel", {}, timeout=30)
@@ -8609,6 +8773,19 @@ def video_download(video_id: str, download: bool = False):
     path = VIDEO_DIRECTORY / f"{video_id}.mp4"
     if not path.is_file():
         raise HTTPException(404, "Video nicht gefunden")
+    return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
+
+
+@app.get("/api/shorts/{job_id}")
+def shorts_download(job_id: str, download: bool = False):
+    try:
+        job = shorts_jobs.get_short_job(job_id)
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail="Short nicht gefunden")
+    path = Path(str(job.get("final_path") or "")).resolve()
+    expected = (shorts_jobs.SHORTS_DIRECTORY / job_id / "final.mp4").resolve()
+    if job.get("status") != "completed" or path != expected or not path.is_file():
+        raise HTTPException(status_code=404, detail="Short nicht gefunden")
     return FileResponse(path, media_type="video/mp4", filename=path.name if download else None)
 
 
@@ -9097,6 +9274,12 @@ def run_chat_action(request: ChatActionRequest):
             "reason": "Validated media preflight target",
             "method": "preflight_target",
         }
+    elif _looks_like_shorts_generation_request(request.prompt):
+        routing = {
+            "intent": "shorts_generate", "confidence": 1.0,
+            "requires_tools": True, "reason": "Deterministic Shorts request",
+            "method": "deterministic_shorts_generate",
+        }
     elif request.action in {"video_generate", "video_animate"}:
         routing = {
             "intent": request.action, "confidence": 1.0,
@@ -9230,6 +9413,16 @@ def run_chat_action(request: ChatActionRequest):
                 "workspace_id": (code_workspaces.active_workspace(validate=False) or {}).get("workspace_id"),
             },
         )
+
+    if action == "shorts_generate":
+        try:
+            return _shorts_job_tool_result(_start_chat_shorts_job(request))
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                raise
+            return chat_tool_result(action, "failed", error=str(exc.detail))
+        except Exception as exc:
+            return chat_tool_result(action, "failed", error=str(exc))
 
     if action in {
         "image_generate",
@@ -12270,6 +12463,8 @@ def _build_agent_tool_registry():
         ("video_generate", "Queue local LTX 2.5 Fast text-to-video for the bound chat.", "CREATE", (), 15, 12000),
         ("video_animate", "Animate a managed image artifact with local LTX 2.5 Fast.", "WRITE", (), 15, 12000),
         ("video_job_status", "Inspect a video job owned by the bound chat.", "READ", (), 15, 12000),
+        ("shorts_generate", "Plan and queue a complete vertical short for the bound chat from a natural-language prompt.", "CREATE", (), 900, 12000),
+        ("shorts_job_status", "Inspect a Shorts job owned by the bound chat.", "READ", (), 15, 12000),
         ("document_search", "Search an already indexed uploaded document.", "READ", (), None, 12000),
         ("document_page", "Read a page of an already indexed uploaded document.", "READ", (), None, 12000),
         ("file_inspect", "Inspect a text file in the bound workspace.", "READ", ("workspace",), None, 12000),
@@ -12302,7 +12497,7 @@ def _build_agent_tool_registry():
     }
     for name, description, permission, risks, timeout, output_limit in specs:
         schema = deepcopy(parameters)
-        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status"}:
+        if name in {"code_read", "code_diff", "code_test", "shell_read", "shell_workspace", "document_search", "file_inspect", "file_pii_audit", "file_analyze", "file_analysis_status", "image_job_status", "image_generate", "image_edit", "video_generate", "video_animate", "video_job_status", "shorts_generate", "shorts_job_status"}:
             schema["required"].append("query")
             schema["properties"]["query"].update(type="string", minLength=1)
         if name in {"git_stage", "git_commit", "document_page", "document_search", "image_edit", "video_animate"}:
@@ -12351,6 +12546,7 @@ def _build_agent_tool_registry():
                 "git_log", "git_stage", "git_commit", "vision_analyze",
                 "image_generate", "image_edit", "image_job_status",
                 "video_generate", "video_animate", "video_job_status",
+                "shorts_generate", "shorts_job_status",
                 "document_search", "document_page", "file_inspect", "file_pii_audit", "file_analyze",
                 "file_analysis_status",
             } else _execute_legacy_agent_tool, name),
@@ -12366,7 +12562,7 @@ def _build_agent_tool_registry():
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
 _RUNTIME_ONLY_READ_TOOLS = {
     "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
-    "image_job_status", "video_job_status", "document_search", "document_page", "file_inspect",
+    "image_job_status", "video_job_status", "shorts_job_status", "document_search", "document_page", "file_inspect",
     "file_pii_audit", "file_analysis_status",
 }
 READ_ONLY_AGENT_TOOLS = AGENT_TOOL_REGISTRY.names(permission="READ") - _RUNTIME_ONLY_READ_TOOLS
@@ -14903,6 +15099,12 @@ class AgentApprovalRequest(BaseModel):
 
 def agent_choose_next_step_v2(goal, observations, max_steps=MAX_TOOL_STEPS,
                               mode="diagnostic", conversation_context=None):
+    if not observations and _looks_like_shorts_generation_request(goal):
+        return {
+            "action": "shorts_generate",
+            "query": str(goal).strip(),
+            "reason": "Expliziter Wunsch nach einem vollständigen Short",
+        }
     return agent_prompts.agent_choose_next_step_v2(
         goal, observations, max_steps, mode, conversation_context,
         observed_agent_llm=observed_agent_llm,
