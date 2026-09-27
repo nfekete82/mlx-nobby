@@ -46,6 +46,37 @@ check_port() {
     fi
 }
 
+check_revisions() {
+    local payload
+    local summary
+
+    if ! payload="$(curl -fsS --max-time 5 http://127.0.0.1:8010/api/system/revisions 2>/dev/null)"; then
+        warn "Dienstrevisionen konnten nicht geprüft werden"
+        return
+    fi
+
+    if summary="$(printf '%s' "$payload" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+expected = data.get("expected_revision") or "unknown"
+stale = data.get("stale_services") or []
+unknown = data.get("unknown_services") or []
+parts = [f"erwartet {expected}"]
+if stale:
+    parts.append("veraltet: " + ", ".join(stale))
+if unknown:
+    parts.append("ohne Revision: " + ", ".join(unknown))
+print("Dienstrevisionen " + " · ".join(parts))
+raise SystemExit(1 if stale else 0)
+')"; then
+        ok "$summary"
+    else
+        warn "$summary"
+    fi
+}
+
 printf "\n${bold}MLX nobby Doctor${reset}\n"
 printf "Lokale System- und Runtime-Diagnose\n\n"
 
@@ -131,7 +162,10 @@ check_port 8020 "Embeddings"
 check_port 8030 "Images"
 check_port 8040 "Router"
 check_port 8050 "Speech"
+check_port 8060 "Video"
 check_port 8090 "Web"
+check_port 11234 "MLX-Serve"
+check_revisions
 
 printf "\n${bold}Docker${reset}\n"
 
