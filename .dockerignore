@@ -11,6 +11,7 @@
 !frontend/assets/
 !frontend/assets/**
 !local_security.py
+!service_identity.py
 **/*.bak*
 **/*.backup*
 **/*.before-*
