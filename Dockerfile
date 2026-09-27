@@ -13,7 +13,11 @@ COPY frontend /app/frontend
 COPY local_security.py /app/local_security.py
 COPY service_identity.py /app/service_identity.py
 
-RUN printf '%s\n' "$MLX_NOBBY_BUILD_SHA" > /app/.mlx-nobby-build-revision
+# Version the shared frontend bootstrap with the exact image revision so a
+# rebuilt UI cannot keep using an older cached common.js in the browser.
+RUN find /app/frontend -maxdepth 1 -name '*.html' -type f \
+        -exec sed -i "s|/assets/common.js|/assets/common.js?v=${MLX_NOBBY_BUILD_SHA}|g" {} + \
+    && printf '%s\n' "$MLX_NOBBY_BUILD_SHA" > /app/.mlx-nobby-build-revision
 
 RUN useradd --create-home --uid 10001 app
 USER app
