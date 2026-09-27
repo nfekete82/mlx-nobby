@@ -69,18 +69,29 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
     def test_video_stops_and_restores_previously_loaded_chat(self):
         commands = []
+        memory = {
+            "pressure": "normal",
+            "headroom_gb": 12.0,
+        }
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             runtime_coordinator,
             "release_idle_image_runtime",
             return_value={"loaded": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            return_value=memory,
         ):
             with runtime_coordinator.video_runtime(
                 threading.Event(),
                 chat_loaded=lambda: True,
                 chat_command=commands.append,
                 lock_path=Path(directory) / "runtime.lock",
-            ):
+            ) as preflight:
                 self.assertEqual(commands, ["stop"])
+                self.assertEqual(preflight["memory_before"], memory)
+                self.assertTrue(preflight["chat_released"])
+                self.assertFalse(preflight["memory_relief_needed"])
 
         self.assertEqual(commands, ["stop", "start"])
 
@@ -101,10 +112,88 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 threading.Event(),
                 requester=requester,
                 lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: False,
+                memory_snapshot=lambda: {
+                    "pressure": "normal",
+                    "headroom_gb": 12.0,
+                },
             ):
                 pass
 
         sleep.assert_called_once_with(runtime_coordinator.POLL_INTERVAL)
+
+    def test_memory_relief_needed_for_pressure_or_low_headroom(self):
+        self.assertTrue(runtime_coordinator.memory_relief_needed({
+            "pressure": "elevated",
+            "headroom_gb": 20.0,
+        }))
+        self.assertTrue(runtime_coordinator.memory_relief_needed({
+            "pressure": "critical",
+            "headroom_gb": 20.0,
+        }))
+        self.assertTrue(runtime_coordinator.memory_relief_needed({
+            "pressure": "normal",
+            "headroom_gb": runtime_coordinator.MEDIA_MIN_HEADROOM_GB - 0.1,
+        }))
+        self.assertFalse(runtime_coordinator.memory_relief_needed({
+            "pressure": "normal",
+            "headroom_gb": runtime_coordinator.MEDIA_MIN_HEADROOM_GB + 2,
+        }))
+        self.assertFalse(runtime_coordinator.memory_relief_needed({
+            "pressure": "unknown",
+            "headroom_gb": None,
+        }))
+
+    def test_image_releases_chat_when_memory_pressure_is_elevated(self):
+        commands = []
+
+        def requester(method, url, payload=None, timeout=10):
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith("/health"))
+            return {"status": "ready", "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with runtime_coordinator.image_runtime(
+                threading.Event(),
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: True,
+                chat_command=commands.append,
+                memory_snapshot=lambda: {
+                    "pressure": "elevated",
+                    "headroom_gb": 1.5,
+                },
+            ) as preflight:
+                self.assertEqual(commands, ["stop"])
+                self.assertTrue(preflight["memory_relief_needed"])
+                self.assertTrue(preflight["chat_released"])
+
+        self.assertEqual(commands, ["stop", "start"])
+
+    def test_image_keeps_chat_loaded_with_healthy_memory(self):
+        commands = []
+        chat_probe = mock.Mock(return_value=True)
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with runtime_coordinator.image_runtime(
+                threading.Event(),
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=chat_probe,
+                chat_command=commands.append,
+                memory_snapshot=lambda: {
+                    "pressure": "normal",
+                    "headroom_gb": 10.0,
+                },
+            ) as preflight:
+                self.assertFalse(preflight["memory_relief_needed"])
+                self.assertFalse(preflight["chat_released"])
+
+        chat_probe.assert_not_called()
+        self.assertEqual(commands, [])
 
     def test_consecutive_image_jobs_keep_mlxserve_model_warm(self):
         model = {
