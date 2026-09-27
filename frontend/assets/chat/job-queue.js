@@ -86,17 +86,11 @@
         const confirmed = window.MLXConfirm
             ? await window.MLXConfirm({
                 title: t('Auftrag abbrechen', 'Cancel job'),
-                message: t(
-                    'Möchtest du diesen Auftrag wirklich abbrechen?',
-                    'Do you really want to cancel this job?'
-                ),
+                message: t('Möchtest du diesen Auftrag wirklich abbrechen?', 'Do you really want to cancel this job?'),
                 confirmLabel: t('Abbrechen', 'Cancel job'),
                 cancelLabel: t('Zurück', 'Back')
             })
-            : window.confirm(t(
-                'Auftrag wirklich abbrechen?',
-                'Really cancel this job?'
-            ));
+            : window.confirm(t('Auftrag wirklich abbrechen?', 'Really cancel this job?'));
         if (!confirmed) return;
 
         const response = await fetch(
@@ -120,16 +114,8 @@
 
     function renderMedia(queue, root) {
         const summary = element('div', 'mlx-queue-summary');
-        summary.appendChild(element(
-            'span',
-            'mlx-queue-pill',
-            t(`${queue.active_count || 0} aktiv`, `${queue.active_count || 0} active`)
-        ));
-        summary.appendChild(element(
-            'span',
-            'mlx-queue-pill',
-            t(`${queue.waiting_count || 0} wartend`, `${queue.waiting_count || 0} waiting`)
-        ));
+        summary.appendChild(element('span', 'mlx-queue-pill', t(`${queue.active_count || 0} aktiv`, `${queue.active_count || 0} active`)));
+        summary.appendChild(element('span', 'mlx-queue-pill', t(`${queue.waiting_count || 0} wartend`, `${queue.waiting_count || 0} waiting`)));
         root.appendChild(summary);
 
         const heading = element('div', 'mlx-queue-section');
@@ -138,11 +124,7 @@
 
         const jobs = Array.isArray(queue.jobs) ? queue.jobs : [];
         if (!jobs.length) {
-            root.appendChild(element(
-                'div',
-                'mlx-queue-empty',
-                t('Keine Medien-Aufträge.', 'No media jobs.')
-            ));
+            root.appendChild(element('div', 'mlx-queue-empty', t('Keine Medien-Aufträge.', 'No media jobs.')));
             return;
         }
 
@@ -170,14 +152,8 @@
                 meta.appendChild(element('span', '', String(job.operation)));
             }
             if (job.kind === 'shorts' && Number(job.scene_count) > 0) {
-                meta.appendChild(element(
-                    'span',
-                    '',
-                    t(
-                        `Szene ${Math.min(Number(job.current_scene || 0) + 1, Number(job.scene_count))}/${job.scene_count}`,
-                        `Scene ${Math.min(Number(job.current_scene || 0) + 1, Number(job.scene_count))}/${job.scene_count}`
-                    )
-                ));
+                const sceneNumber = Math.min(Number(job.current_scene || 0) + 1, Number(job.scene_count));
+                meta.appendChild(element('span', '', t(`Szene ${sceneNumber}/${job.scene_count}`, `Scene ${sceneNumber}/${job.scene_count}`)));
             }
             item.appendChild(meta);
 
@@ -196,11 +172,7 @@
 
             if (job.cancellable) {
                 const actions = element('div', 'mlx-queue-actions');
-                const button = element(
-                    'button',
-                    'mlx-queue-cancel',
-                    t('Abbrechen', 'Cancel')
-                );
+                const button = element('button', 'mlx-queue-cancel', t('Abbrechen', 'Cancel'));
                 button.type = 'button';
                 button.addEventListener('click', async () => {
                     button.disabled = true;
@@ -228,11 +200,7 @@
 
         const jobs = Array.isArray(batch?.jobs) ? batch.jobs.slice(0, 8) : [];
         if (!jobs.length) {
-            root.appendChild(element(
-                'div',
-                'mlx-queue-empty',
-                t('Keine aktiven Datei-Aufträge.', 'No active file jobs.')
-            ));
+            root.appendChild(element('div', 'mlx-queue-empty', t('Keine aktiven Datei-Aufträge.', 'No active file jobs.')));
             return;
         }
 
@@ -256,11 +224,7 @@
             head.appendChild(element('span', 'mlx-queue-state', status));
             item.appendChild(head);
             const meta = element('div', 'mlx-queue-meta');
-            meta.appendChild(element(
-                'span',
-                '',
-                String(job.operation || t('Dateioperation', 'File operation'))
-            ));
+            meta.appendChild(element('span', '', String(job.operation || t('Dateioperation', 'File operation'))));
             item.appendChild(meta);
             list.appendChild(item);
         }
@@ -286,11 +250,7 @@
         if (queueResult.status === 'fulfilled') {
             renderMedia(queueResult.value, root);
         } else {
-            root.appendChild(element(
-                'div',
-                'mlx-queue-error',
-                t('Medien-Queue ist nicht erreichbar.', 'Media queue is unavailable.')
-            ));
+            root.appendChild(element('div', 'mlx-queue-error', t('Medien-Queue ist nicht erreichbar.', 'Media queue is unavailable.')));
         }
         if (batchResult.status === 'fulfilled') {
             renderBatch(batchResult.value, root);
