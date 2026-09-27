@@ -1599,6 +1599,9 @@ MLXChatSessions.configure({
         MLXChatGeneration.resumeVideoJobsForSession(
             MLXChatSessions.currentSession()
         );
+        MLXChatGeneration.resumeShortsJobsForSession(
+            MLXChatSessions.currentSession()
+        );
     }
 });
 
@@ -1627,6 +1630,9 @@ MLXChatGeneration.resumeImageJobsForSession(
     MLXChatSessions.currentSession()
 );
 MLXChatGeneration.resumeVideoJobsForSession(
+    MLXChatSessions.currentSession()
+);
+MLXChatGeneration.resumeShortsJobsForSession(
     MLXChatSessions.currentSession()
 );
 MLXChatSessions.syncWithServer();

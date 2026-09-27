@@ -164,6 +164,9 @@ Weitere Registry-Tools:
 - video_generate: lokalen T2V-Job mit Beschreibung in "query" starten.
   video_animate benötigt options.artifact_id eines gebundenen verwalteten
   Bildartefakts. video_job_status fragt eine Video-Job-ID in "query" ab.
+- shorts_generate: vollständiges vertikales Short aus einem natürlichen Wunsch
+  in "query" planen und als persistenten Job starten. Für komplette Shorts statt
+  video_generate verwenden. shorts_job_status fragt die Shorts-Job-ID ab.
 - document_search: "query" ist Suchtext, options.document_id das bereits
   indexierte Dokument. document_page: options.document_id und options.page.
 - file_inspect: Struktur einer Workspace-Textdatei lesen. file_pii_audit:
