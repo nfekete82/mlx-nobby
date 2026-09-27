@@ -116,7 +116,7 @@ sync_source() {
         return 0
     fi
 
-    if ! git -C "$PROJECT_DIR" diff --quiet || ! git -C "$PROJECT_DIR" diff --cached --quiet; then
+    if [ -n "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=normal)" ]; then
         echo "Source sync übersprungen: lokale Änderungen vorhanden."
         return 0
     fi
@@ -127,8 +127,15 @@ sync_source() {
     fi
 
     echo "Hole aktuellen Stand von origin/main ..."
-    git -C "$PROJECT_DIR" fetch origin main
-    git -C "$PROJECT_DIR" merge --ff-only origin/main
+    if ! git -C "$PROJECT_DIR" fetch origin main; then
+        echo "WARN: origin/main konnte nicht geladen werden; lokaler Stand wird weiter verwendet."
+        return 0
+    fi
+
+    if ! git -C "$PROJECT_DIR" merge --ff-only origin/main; then
+        echo "WARN: main konnte nicht per Fast-Forward aktualisiert werden; lokaler Stand wird weiter verwendet."
+        return 0
+    fi
 }
 
 verify_web_revision() {
@@ -182,17 +189,16 @@ echo "============================================================"
 cd "$PROJECT_DIR"
 
 FAILED_PHASE="sync-source"
-FAILURE_DETAIL="Git-Synchronisierung ist fehlgeschlagen."
+FAILURE_DETAIL=""
 CURRENT_STEP=0
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
     "$CURRENT_STEP" \
     "$TOTAL_STEPS" \
-    "Projektstand wird aktualisiert, sofern main sauber ist."
+    "Aktueller main-Stand wird, wenn sicher möglich, von GitHub geladen."
 
 sync_source
-FAILURE_DETAIL=""
 
 export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
