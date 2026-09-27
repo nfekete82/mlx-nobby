@@ -3,9 +3,11 @@ import fs from 'node:fs';
 
 const common = fs.readFileSync('frontend/assets/common.js', 'utf8');
 const help = fs.readFileSync('frontend/assets/chat/help.js', 'utf8');
+const dockerfile = fs.readFileSync('Dockerfile', 'utf8');
 
 assert.match(common, /\/assets\/chat\/help\.js\?v=20260927-help-v1/);
 assert.match(common, /mlx-help-center/);
+assert.match(dockerfile, /common\.js\?v=\$\{MLX_NOBBY_BUILD_SHA\}/);
 
 for (const topic of [
     'getting-started',
@@ -34,4 +36,4 @@ assert.match(help, /mlx doctor/);
 assert.match(help, /\.\/scripts\/restart-all\.sh/);
 assert.match(help, /window\.MLXHelp/);
 
-console.log('Integrated help topics, prompt insertion, localization refresh, and loader wiring passed.');
+console.log('Integrated help topics, prompt insertion, localization refresh, cache busting, and loader wiring passed.');
