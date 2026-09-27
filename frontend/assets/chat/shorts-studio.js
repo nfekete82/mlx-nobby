@@ -2,7 +2,7 @@
     'use strict';
 
     const SHORTS_PATTERN = /\b(?:shorts?|short[\s-]*videos?|youtube[\s-]+shorts?|tiktoks?(?:[\s-]+videos?)?|reels?|kurzvideos?)\b/iu;
-    const CREATE_PATTERN = /\b(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|mach(?:e)?|create|generate|make)\b/iu;
+    const CREATE_PATTERN = /\b(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|mach|mache|produziere|produzieren|möchte|moechte|will|brauche|create|generate|make|produce|want|need)\b/iu;
     const EXPLICIT_VOICE_PATTERN = /\b(?:stimme|voice|sprecher(?:in)?|speaker|sprechgeschwindigkeit|geschwindigkeit|voice[_ -]?speed|speed)\b/iu;
 
     const previousFetch = window.fetch.bind(window);
