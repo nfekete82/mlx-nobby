@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.0
+
+- Added the Shorts/Media Composer pipeline with planning, agent routing, local
+  TTS, music-aware FFmpeg composition, video orchestration, progress UI, and
+  end-to-end test coverage.
+
 ## v1.2.1
 
 - Fixed internationalization for media generation quality dialogs, runtime

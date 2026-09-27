@@ -196,8 +196,8 @@ const queuedShortsCard = renderShortsJobCard({
         scene_number: 1, scene_count: 2, status_description: 'Plan ready'
     }
 });
-assert.equal(queuedShortsCard.children[0].textContent, 'Short wird erstellt …');
-assert.match(queuedShortsCard.children[1].textContent, /Szene: 1 von 2/);
+assert.equal(queuedShortsCard.children[0].textContent, 'Creating short …');
+assert.match(queuedShortsCard.children[1].textContent, /Scene: 1 of 2/);
 assert.equal(queuedShortsCard.children[2].children[1].textContent, '5%');
 const completedShortsCard = renderShortsJobCard({
     shorts_job: { id: shortId, status: 'completed', phase: 'completed' }
@@ -207,7 +207,7 @@ const completedShortsArtifact = renderVideoArtifactCard({ tool_result: nextResul
 assert.equal(completedShortsArtifact.children[0].src, '/api/mlx/shorts/' + shortId);
 assert.equal(renderShortsJobCard({
     shorts_job: { id: shortId, status: 'failed', phase: 'failed', error: 'boom' }
-}).children[0].textContent, 'Short-Erstellung fehlgeschlagen');
+}).children[0].textContent, 'Short creation failed');
 const liveVideo = mediaProgress({
     status: 'generating', phase: 'inference', progress: 50,
     current_step: 4, total_steps: 8, started_at: 80,
@@ -231,7 +231,7 @@ assert.match(rendering, /Target: /);
 assert.match(rendering, /contain \+ padding/);
 assert.match(rendering, /batch-progress-text/);
 assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
-assert.match(rendering, /Short wird erstellt/);
+assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
 assert.match(chatHtml, /chat\/generation\.js\?v=20260926-shorts-progress/);

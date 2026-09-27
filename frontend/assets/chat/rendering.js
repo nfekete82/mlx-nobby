@@ -2068,17 +2068,20 @@ function renderShortsJobCard(message) {
     card.className = 'batch-chat-card video-job-card shorts-job-card';
     const title = document.createElement('strong');
     title.textContent = job.status === 'failed'
-        ? 'Short-Erstellung fehlgeschlagen'
+        ? rt('shorts_job_status_failed', 'Short creation failed')
         : job.status === 'cancelled'
-            ? 'Short-Erstellung abgebrochen'
-            : 'Short wird erstellt …';
+            ? rt('shorts_job_status_cancelled', 'Short creation cancelled')
+            : rt('shorts_job_status_creating', 'Creating short …');
     card.appendChild(title);
     const details = document.createElement('div');
     details.className = 'batch-chat-details';
     details.textContent = [
-        'Phase: ' + (job.phase_label || job.phase || 'Planung'),
+        'Phase: ' + (job.phase_label || job.phase || rt('shorts_phase_planning', 'Planning')),
         job.scene_count
-            ? 'Szene: ' + Number(job.scene_number || 0) + ' von ' + Number(job.scene_count)
+            ? rt('shorts_scene_progress', 'Scene: {current} of {total}', {
+                current: Number(job.scene_number || 0),
+                total: Number(job.scene_count)
+            })
             : '',
         job.status_description || '',
         job.status === 'failed' && job.error ? String(job.error) : ''
