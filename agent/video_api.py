@@ -18,7 +18,7 @@ def job_id(value):
     return value
 
 
-def request(method, path, payload=None, timeout=15):
+def _raw_request(method, path, payload=None, timeout=15):
     req = urllib.request.Request(
         VIDEO_URL + path,
         method=method,
@@ -36,3 +36,26 @@ def request(method, path, payload=None, timeout=15):
         raise HTTPException(exc.code, detail) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
         raise HTTPException(503, "Video-Service nicht erreichbar") from exc
+
+
+def request(method, path, payload=None, timeout=15):
+    """Route asynchronous video jobs through the Agent-owned media queue."""
+    if path.startswith("/jobs"):
+        from agent import media_queue
+
+        if method == "POST" and path == "/jobs":
+            return media_queue.enqueue("video", payload)
+
+        match = re.fullmatch(r"/jobs/([a-f0-9]{24})", path)
+        if method == "GET" and match:
+            queued = media_queue.get_job("video", match.group(1))
+            if queued is not None:
+                return queued
+
+        match = re.fullmatch(r"/jobs/([a-f0-9]{24})/cancel", path)
+        if method == "POST" and match:
+            queued = media_queue.cancel("video", match.group(1))
+            if queued is not None:
+                return queued
+
+    return _raw_request(method, path, payload, timeout)
