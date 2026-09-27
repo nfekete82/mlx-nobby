@@ -9,6 +9,7 @@ import urllib.request
 from backend import observability
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
+from service_identity import service_identity
 
 
 def forward(
@@ -225,7 +226,73 @@ def _validate_local_model_path(raw_path):
     }
 
 
+def _revision_probe(name, url, expected_revision, timeout=3):
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read(1)
+            revision = response.headers.get("X-MLX-Nobby-Revision") or "unknown"
+            started_at = response.headers.get("X-MLX-Nobby-Started-At")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+        return {
+            "service": name,
+            "reachable": False,
+            "revision": "unknown",
+            "started_at": None,
+            "stale": False,
+            "error": str(getattr(exc, "reason", exc)),
+        }
+
+    known = revision != "unknown" and expected_revision != "unknown"
+    return {
+        "service": name,
+        "reachable": True,
+        "revision": revision,
+        "started_at": started_at,
+        "stale": bool(known and revision != expected_revision),
+        "error": None,
+    }
+
+
 def install_routes(app, runtime_port, runtime_lock):
+    @app.get("/api/system/revisions")
+    def service_revisions():
+        identity = service_identity("agent")
+        expected_revision = identity["revision"]
+        services = [
+            {
+                **identity,
+                "reachable": True,
+                "stale": False,
+                "error": None,
+            }
+        ]
+        targets = (
+            ("web", os.environ.get("MLX_WEB_HEALTH_URL", "http://127.0.0.1:8090/api/health")),
+            ("embeddings", os.environ.get("EMBEDDING_SERVICE_URL", "http://127.0.0.1:8020").rstrip("/") + "/health"),
+            ("images", os.environ.get("IMAGE_SERVICE_URL", "http://127.0.0.1:8030").rstrip("/") + "/health"),
+            ("speech", os.environ.get("SPEECH_SERVICE_URL", "http://127.0.0.1:8050").rstrip("/") + "/health"),
+            ("video", os.environ.get("VIDEO_SERVICE_URL", "http://127.0.0.1:8060").rstrip("/") + "/health"),
+        )
+        services.extend(
+            _revision_probe(name, url, expected_revision)
+            for name, url in targets
+        )
+        stale = [item["service"] for item in services if item.get("stale")]
+        unknown = [
+            item["service"]
+            for item in services
+            if item.get("revision") == "unknown"
+        ]
+        return {
+            "ok": not stale,
+            "expected_revision": expected_revision,
+            "consistent": not stale,
+            "stale_services": stale,
+            "unknown_services": unknown,
+            "services": services,
+        }
+
     @app.get("/api/bridge/mlx/v1/models")
     def models():
         return forward(f"http://127.0.0.1:{runtime_port()}/v1/models", timeout=10)
