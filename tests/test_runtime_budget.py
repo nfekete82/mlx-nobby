@@ -67,6 +67,32 @@ class RuntimeBudgetTests(unittest.TestCase):
 
             self.assertEqual(list(state_dir.glob("*.json")), [])
 
+    def test_nested_runtime_lease_keeps_outer_workload_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock_path = root / "runtime.lock"
+            state_dir = root / "state"
+
+            with runtime_coordinator.runtime_lease(
+                lock_path=lock_path,
+                state_dir=state_dir,
+                workload="video",
+            ):
+                with runtime_coordinator.runtime_lease(
+                    lock_path=lock_path,
+                    state_dir=state_dir,
+                    workload="chat",
+                ):
+                    files = list(state_dir.glob("*.json"))
+                    self.assertEqual(len(files), 1)
+                    payload = json.loads(files[0].read_text(encoding="utf-8"))
+                    self.assertEqual(payload["workload"], "video")
+                    self.assertEqual(payload["state"], "active")
+
+                self.assertEqual(len(list(state_dir.glob("*.json"))), 1)
+
+            self.assertEqual(list(state_dir.glob("*.json")), [])
+
 
 if __name__ == "__main__":
     unittest.main()
