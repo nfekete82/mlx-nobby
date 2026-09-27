@@ -78,36 +78,24 @@
         if (pressure === 'critical') {
             return {
                 label: t('Kritisch', 'Critical'),
-                hint: t(
-                    'Sehr wenig freier Unified Memory. Schwere Jobs werden seriell ausgeführt und vorhandene Runtimes freigegeben.',
-                    'Very little unified memory is free. Heavy jobs are serialized and existing runtimes are released.'
-                )
+                hint: t('Sehr wenig freier Unified Memory. Schwere Jobs werden seriell ausgeführt und vorhandene Runtimes freigegeben.', 'Very little unified memory is free. Heavy jobs are serialized and existing runtimes are released.')
             };
         }
         if (pressure === 'elevated') {
             return {
                 label: t('Erhöht', 'Elevated'),
-                hint: t(
-                    'Der Speicher wird knapp. MLX nobby hält schwere Media-Runtimes voneinander getrennt.',
-                    'Memory is getting tight. MLX nobby keeps heavy media runtimes separated.'
-                )
+                hint: t('Der Speicher wird knapp. MLX nobby hält schwere Media-Runtimes voneinander getrennt.', 'Memory is getting tight. MLX nobby keeps heavy media runtimes separated.')
             };
         }
         if (pressure === 'normal') {
             return {
                 label: t('Normal', 'Normal'),
-                hint: t(
-                    'Genügend Speicherreserve für den normalen Betrieb.',
-                    'Enough memory headroom for normal operation.'
-                )
+                hint: t('Genügend Speicherreserve für den normalen Betrieb.', 'Enough memory headroom for normal operation.')
             };
         }
         return {
             label: t('Unbekannt', 'Unknown'),
-            hint: t(
-                'macOS-Speicherdruck konnte nicht ermittelt werden.',
-                'macOS memory pressure could not be determined.'
-            )
+            hint: t('macOS-Speicherdruck konnte nicht ermittelt werden.', 'macOS memory pressure could not be determined.')
         };
     }
 
@@ -196,10 +184,7 @@
         } catch (error) {
             section.innerHTML = `
                 <div class="runtime-budget-title">${t('Unified Memory', 'Unified memory')}</div>
-                <div class="runtime-budget-hint">${t(
-                    'Speicherinformationen sind momentan nicht verfügbar.',
-                    'Memory information is currently unavailable.'
-                )}</div>
+                <div class="runtime-budget-hint">${t('Speicherinformationen sind momentan nicht verfügbar.', 'Memory information is currently unavailable.')}</div>
             `;
         } finally {
             refreshing = false;
