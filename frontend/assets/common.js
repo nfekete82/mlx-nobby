@@ -155,12 +155,25 @@
         }
     }
 
+    async function loadJobQueue() {
+        if (!document.getElementById('jobsPanel')) return;
+        try {
+            await loadScript(
+                '/assets/chat/job-queue.js?v=20260927-unified-queue-v1',
+                'mlx-unified-job-queue'
+            );
+        } catch (error) {
+            console.error('[job-queue] Failed to load unified job queue:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         removeRedundantTopActions();
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
         loadHelpCenter();
         loadRuntimeBudget();
+        loadJobQueue();
     }
 
     window.MLXCommon = {
