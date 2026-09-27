@@ -148,6 +148,35 @@ def narration_for_project(project):
     return "\n\n".join(scene.narration for scene in project.scenes)
 
 
+def tts_payload_for_project(project):
+    """Build the speech request while preserving legacy service defaults."""
+    if not isinstance(project, ShortProject):
+        project = ShortProject.model_validate(project)
+    payload = {
+        "input": narration_for_project(project),
+        "language": project.language,
+    }
+    if project.voice:
+        payload["voice"] = project.voice
+    if project.voice_speed != 1.0:
+        payload["speed"] = project.voice_speed
+    return payload
+
+
+def _tts_metadata(project, narration):
+    metadata = {
+        "mime_type": "audio/mpeg",
+        "language": project.language,
+        "scene_count": len(project.scenes),
+        "narration_characters": len(narration),
+    }
+    if project.voice:
+        metadata["voice"] = project.voice
+    if project.voice_speed != 1.0:
+        metadata["speed"] = project.voice_speed
+    return metadata
+
+
 def _tts_output_path(job_id):
     return SHORTS_DIRECTORY / job_id / "voiceover.mp3"
 
@@ -476,12 +505,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
             tts_status="completed",
             tts_path=str(existing_path),
             tts_finished_at=finished_at,
-            tts_metadata=job.get("tts_metadata") or {
-                "mime_type": "audio/mpeg",
-                "language": project.language,
-                "scene_count": len(project.scenes),
-                "narration_characters": len(narration),
-            },
+            tts_metadata=job.get("tts_metadata") or _tts_metadata(project, narration),
             finished_at=job.get("finished_at") or finished_at,
             error=None,
         )
@@ -514,10 +538,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         error=None,
     )
     narration = narration_for_project(project)
-    audio = tts_request_fn({
-        "input": narration,
-        "language": project.language,
-    })
+    audio = tts_request_fn(tts_payload_for_project(project))
     if not isinstance(audio, bytes) or not audio:
         raise RuntimeError("speech service returned invalid audio")
 
@@ -543,12 +564,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         tts_status="completed",
         tts_path=str(output_path),
         tts_finished_at=finished_at,
-        tts_metadata={
-            "mime_type": "audio/mpeg",
-            "language": project.language,
-            "scene_count": len(project.scenes),
-            "narration_characters": len(narration),
-        },
+        tts_metadata=_tts_metadata(project, narration),
         finished_at=finished_at,
         error=None,
     )
