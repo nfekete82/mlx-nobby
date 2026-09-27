@@ -173,15 +173,16 @@ def memory_budget_snapshot():
     }
 
 
-def _state_path(state_dir=STATE_DIR):
-    return state_dir / f"{os.getpid()}.json"
+def _state_path(state_dir=STATE_DIR, thread_id=None):
+    thread_id = threading.get_ident() if thread_id is None else int(thread_id)
+    return state_dir / f"{os.getpid()}-{thread_id}.json"
 
 
 def _write_lease_state(workload, state, *, state_dir=STATE_DIR):
     try:
         state_dir.mkdir(parents=True, exist_ok=True)
         path = _state_path(state_dir)
-        temporary = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
+        temporary = path.with_name(f".{path.name}.tmp")
         payload = {
             "pid": os.getpid(),
             "thread": threading.get_ident(),
@@ -287,11 +288,9 @@ def runtime_lease(
     state_dir=STATE_DIR,
 ):
     """Hold the cross-service heavy-runtime lease, waiting cancellably."""
-    _write_lease_state(workload, "waiting", state_dir=state_dir)
-    while not _PROCESS_LOCK.acquire(timeout=POLL_INTERVAL):
-        _check_cancelled(cancel_event)
     depth = getattr(_LEASE_STATE, "depth", 0)
     if depth:
+        _PROCESS_LOCK.acquire()
         _LEASE_STATE.depth = depth + 1
         try:
             yield
@@ -300,7 +299,13 @@ def runtime_lease(
             _PROCESS_LOCK.release()
         return
 
+    _write_lease_state(workload, "waiting", state_dir=state_dir)
+    process_lock_acquired = False
     try:
+        while not _PROCESS_LOCK.acquire(timeout=POLL_INTERVAL):
+            _check_cancelled(cancel_event)
+        process_lock_acquired = True
+
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+") as handle:
             while True:
@@ -319,7 +324,8 @@ def runtime_lease(
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     finally:
         _clear_lease_state(state_dir=state_dir)
-        _PROCESS_LOCK.release()
+        if process_lock_acquired:
+            _PROCESS_LOCK.release()
 
 
 def _generation_active(health):
