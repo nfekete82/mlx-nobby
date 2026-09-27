@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException
 from starlette.responses import JSONResponse
 
+from service_identity import service_identity
+
 
 class LocalRequestGuard:
     """Reject foreign browser origins, DNS rebinding hosts and oversized bodies.
@@ -21,6 +23,24 @@ class LocalRequestGuard:
             ).split(",") if value.strip()
         }
         self.max_body = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "250")) * 1024**2 + 1024**2
+        self.identity = service_identity()
+
+    def _with_identity_headers(self, message):
+        if message.get("type") != "http.response.start":
+            return message
+
+        headers = list(message.get("headers", []))
+        existing = {key.lower() for key, _ in headers}
+        additions = (
+            (b"x-mlx-nobby-revision", self.identity["revision"]),
+            (b"x-mlx-nobby-started-at", self.identity["started_at"]),
+        )
+
+        for key, value in additions:
+            if key not in existing and value:
+                headers.append((key, str(value).encode("latin1")))
+
+        return {**message, "headers": headers}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -69,7 +89,7 @@ class LocalRequestGuard:
                     rejected = True
                     await JSONResponse({"detail": "Anfrage ist zu groß"}, 413)(scope, receive, send)
                 return
-            await send(message)
+            await send(self._with_identity_headers(message))
 
         await self.app(scope, limited_receive, guarded_send)
 
