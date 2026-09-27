@@ -7,6 +7,11 @@ const dockerfile = fs.readFileSync('Dockerfile', 'utf8');
 
 assert.match(common, /\/assets\/chat\/help\.js\?v=20260927-help-v1/);
 assert.match(common, /mlx-help-center/);
+assert.match(common, /frontendBuildRevision/);
+assert.match(common, /versionedAssetUrl/);
+assert.match(common, /searchParams\.set\('build', frontendBuildRevision\)/);
+assert.match(common, /mlxHelpVisibilityFix/);
+assert.match(common, /\.mlx-help-panel\[hidden\]\{display:none!important;\}/);
 assert.match(dockerfile, /common\.js\?v=\$\{MLX_NOBBY_BUILD_SHA\}/);
 
 for (const topic of [
@@ -36,4 +41,4 @@ assert.match(help, /mlx doctor/);
 assert.match(help, /\.\/scripts\/restart-all\.sh/);
 assert.match(help, /window\.MLXHelp/);
 
-console.log('Integrated help topics, prompt insertion, localization refresh, cache busting, and loader wiring passed.');
+console.log('Integrated help topics, prompt insertion, localization refresh, close behavior, cache busting, and loader wiring passed.');
