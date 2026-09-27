@@ -48,11 +48,10 @@ jobs:
 
       - name: Shell syntax
         run: |
-          bash -n scripts/install.sh
+          git ls-files -z 'scripts/*.sh' | xargs -0 -n1 bash -n
           bash -n scripts/mlx
-          bash -n scripts/doctor.sh
-          bash -n scripts/install-launchd.sh
           bash -n scripts/mlx-server-start
+          bash -n scripts/setup-ltx-video
           for template in launchd/templates/*.plist.template; do
             plutil -lint "$template" >/dev/null
           done
