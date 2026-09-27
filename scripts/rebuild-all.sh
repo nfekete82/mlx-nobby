@@ -139,6 +139,7 @@ echo "$(date)"
 echo "============================================================"
 
 cd "$PROJECT_DIR"
+export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
 if [ ! -x "$MLX_BIN" ]; then
     MLX_BIN="$(command -v mlx || true)"
@@ -154,8 +155,9 @@ if [ -z "$DOCKER_BIN" ] || [ ! -x "$DOCKER_BIN" ]; then
     exit 127
 fi
 
-echo "mlx:    $MLX_BIN"
-echo "docker: $DOCKER_BIN"
+echo "mlx:      $MLX_BIN"
+echo "docker:   $DOCKER_BIN"
+echo "revision: $MLX_NOBBY_BUILD_SHA"
 
 if [ -z "$PORT_CHECK_BIN" ] || [ ! -x "$PORT_CHECK_BIN" ]; then
     echo "ERROR: lsof executable not found"

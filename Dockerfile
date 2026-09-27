@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r /app/requirements/web.txt
 COPY backend /app/backend
 COPY frontend /app/frontend
 COPY local_security.py /app/local_security.py
+COPY service_identity.py /app/service_identity.py
 
 RUN useradd --create-home --uid 10001 app
 USER app

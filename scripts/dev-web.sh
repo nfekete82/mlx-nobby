@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+export MLX_NOBBY_BUILD_SHA="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
+
 COMPOSE=(
   docker compose
   -f docker-compose.yml
@@ -11,6 +13,7 @@ COMPOSE=(
 )
 
 echo "Starting MLX Nobby web development environment..."
+echo "Revision: $MLX_NOBBY_BUILD_SHA"
 
 "${COMPOSE[@]}" up -d --no-deps mlx-web
 

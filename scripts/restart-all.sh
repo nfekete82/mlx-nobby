@@ -80,6 +80,7 @@ echo "$(date)"
 echo "============================================================"
 
 cd "$PROJECT_DIR"
+export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
 if [ ! -x "$MLX_BIN" ]; then
     MLX_BIN="$(command -v mlx || true)"
@@ -91,6 +92,7 @@ if [ -z "$MLX_BIN" ] || [ ! -x "$MLX_BIN" ]; then
 fi
 
 echo "mlx: $MLX_BIN"
+echo "revision: $MLX_NOBBY_BUILD_SHA"
 
 # Let the initiating HTTP response leave the agent before restarting it.
 sleep 1

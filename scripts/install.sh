@@ -361,9 +361,12 @@ fi
 # Docker Web
 # ------------------------------------------------------------
 
+export MLX_NOBBY_BUILD_SHA="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
+
 if [ "$START_WEB" -eq 1 ]; then
 
     info "Building and starting web service"
+    ok "Web revision: $MLX_NOBBY_BUILD_SHA"
 
     (
         cd "$ROOT"
