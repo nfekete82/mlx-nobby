@@ -4,6 +4,8 @@ import fcntl
 import http.client
 import json
 import os
+import re
+import subprocess
 import threading
 import time
 import urllib.error
@@ -22,9 +24,30 @@ LOCK_PATH = Path(os.environ.get(
     "MLX_RUNTIME_COORDINATOR_LOCK",
     f"/tmp/mlx-web-runtime-{os.getuid()}.lock",
 ))
+STATE_DIR = Path(os.environ.get(
+    "MLX_RUNTIME_COORDINATOR_STATE_DIR",
+    f"/tmp/mlx-web-runtime-{os.getuid()}.d",
+))
 POLL_INTERVAL = 0.2
 _PROCESS_LOCK = threading.RLock()
 _LEASE_STATE = threading.local()
+
+
+def _float_env(name, default):
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(0.0, value)
+
+
+MEMORY_RESERVE_GB = _float_env("MLX_RUNTIME_MEMORY_RESERVE_GB", 6.0)
+PRESSURE_ELEVATED_FREE_PERCENT = _float_env(
+    "MLX_RUNTIME_PRESSURE_ELEVATED_PERCENT", 18.0
+)
+PRESSURE_CRITICAL_FREE_PERCENT = _float_env(
+    "MLX_RUNTIME_PRESSURE_CRITICAL_PERCENT", 8.0
+)
 
 
 class CoordinationCancelled(RuntimeError):
@@ -42,6 +65,184 @@ def _cancelled(cancel_event):
 def _check_cancelled(cancel_event):
     if _cancelled(cancel_event):
         raise CoordinationCancelled("Runtime handoff was cancelled")
+
+
+def _run_text(command, timeout=5):
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def memory_budget_snapshot():
+    """Return a conservative Apple-unified-memory budget snapshot.
+
+    The value reported by ``memory_pressure`` is intentionally treated as an
+    availability estimate rather than exact free RAM. macOS can reclaim caches
+    and compressed pages, so this is a scheduling signal, not an accounting
+    total.
+    """
+    total_bytes = None
+    total_raw = _run_text(["sysctl", "-n", "hw.memsize"])
+    try:
+        total_bytes = int(total_raw) if total_raw else None
+    except ValueError:
+        total_bytes = None
+
+    free_percent = None
+    pressure_raw = _run_text(["memory_pressure"], timeout=10)
+    match = re.search(
+        r"System-wide memory free percentage:\s*([0-9.]+)%",
+        pressure_raw,
+    )
+    if match:
+        free_percent = max(0.0, min(100.0, float(match.group(1))))
+
+    swap_used_gb = 0.0
+    swap_total_gb = 0.0
+    swap_raw = _run_text(["sysctl", "-n", "vm.swapusage"])
+    total_match = re.search(r"total = ([0-9.]+)([MG])", swap_raw)
+    used_match = re.search(r"used = ([0-9.]+)([MG])", swap_raw)
+
+    def to_gb(match_value):
+        if not match_value:
+            return 0.0
+        value = float(match_value.group(1))
+        return value / 1024 if match_value.group(2) == "M" else value
+
+    swap_total_gb = to_gb(total_match)
+    swap_used_gb = to_gb(used_match)
+
+    total_gb = (
+        total_bytes / (1024 ** 3)
+        if total_bytes is not None
+        else None
+    )
+    available_gb = (
+        total_gb * free_percent / 100
+        if total_gb is not None and free_percent is not None
+        else None
+    )
+    used_gb = (
+        max(0.0, total_gb - available_gb)
+        if total_gb is not None and available_gb is not None
+        else None
+    )
+    reserve_gb = (
+        min(MEMORY_RESERVE_GB, total_gb * 0.25)
+        if total_gb is not None
+        else MEMORY_RESERVE_GB
+    )
+    headroom_gb = (
+        max(0.0, available_gb - reserve_gb)
+        if available_gb is not None
+        else None
+    )
+
+    if free_percent is None:
+        pressure = "unknown"
+    elif free_percent <= PRESSURE_CRITICAL_FREE_PERCENT:
+        pressure = "critical"
+    elif free_percent <= PRESSURE_ELEVATED_FREE_PERCENT:
+        pressure = "elevated"
+    else:
+        pressure = "normal"
+
+    def rounded(value):
+        return round(value, 2) if value is not None else None
+
+    return {
+        "total_gb": rounded(total_gb),
+        "available_estimate_gb": rounded(available_gb),
+        "used_estimate_gb": rounded(used_gb),
+        "free_percent": rounded(free_percent),
+        "reserve_gb": rounded(reserve_gb),
+        "headroom_gb": rounded(headroom_gb),
+        "swap_total_gb": rounded(swap_total_gb),
+        "swap_used_gb": rounded(swap_used_gb),
+        "pressure": pressure,
+    }
+
+
+def _state_path(state_dir=STATE_DIR):
+    return state_dir / f"{os.getpid()}.json"
+
+
+def _write_lease_state(workload, state, *, state_dir=STATE_DIR):
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path = _state_path(state_dir)
+        temporary = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
+        payload = {
+            "pid": os.getpid(),
+            "thread": threading.get_ident(),
+            "workload": workload,
+            "state": state,
+            "updated_at": time.time(),
+        }
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
+    except OSError:
+        pass
+
+
+def _clear_lease_state(*, state_dir=STATE_DIR):
+    try:
+        _state_path(state_dir).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def runtime_state_snapshot(*, state_dir=STATE_DIR):
+    """Aggregate active/waiting heavy-runtime leases across native services."""
+    entries = []
+    try:
+        paths = list(state_dir.glob("*.json"))
+    except OSError:
+        paths = []
+
+    for path in paths:
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not isinstance(item, dict) or not _pid_alive(item.get("pid")):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            continue
+        entries.append(item)
+
+    entries.sort(key=lambda item: float(item.get("updated_at") or 0))
+    active = [item for item in entries if item.get("state") == "active"]
+    waiting = [item for item in entries if item.get("state") == "waiting"]
+    return {
+        "active": active[-1] if active else None,
+        "waiting": waiting,
+        "waiting_count": len(waiting),
+        "memory": memory_budget_snapshot(),
+    }
 
 
 def request_json(method, url, payload=None, timeout=10):
@@ -78,8 +279,15 @@ def request_json(method, url, payload=None, timeout=10):
 
 
 @contextmanager
-def runtime_lease(cancel_event=None, *, lock_path=LOCK_PATH):
+def runtime_lease(
+    cancel_event=None,
+    *,
+    lock_path=LOCK_PATH,
+    workload="runtime",
+    state_dir=STATE_DIR,
+):
     """Hold the cross-service heavy-runtime lease, waiting cancellably."""
+    _write_lease_state(workload, "waiting", state_dir=state_dir)
     while not _PROCESS_LOCK.acquire(timeout=POLL_INTERVAL):
         _check_cancelled(cancel_event)
     depth = getattr(_LEASE_STATE, "depth", 0)
@@ -103,12 +311,14 @@ def runtime_lease(cancel_event=None, *, lock_path=LOCK_PATH):
                 except BlockingIOError:
                     time.sleep(POLL_INTERVAL)
             _LEASE_STATE.depth = 1
+            _write_lease_state(workload, "active", state_dir=state_dir)
             try:
                 yield
             finally:
                 _LEASE_STATE.depth = 0
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     finally:
+        _clear_lease_state(state_dir=state_dir)
         _PROCESS_LOCK.release()
 
 
@@ -160,7 +370,11 @@ def video_runtime(
     lock_path=LOCK_PATH,
 ):
     """Hand off image/chat resources to video and restore prior chat state."""
-    with runtime_lease(cancel_event, lock_path=lock_path):
+    with runtime_lease(
+        cancel_event,
+        lock_path=lock_path,
+        workload="video",
+    ):
         release_idle_image_runtime(cancel_event, requester=requester)
         _check_cancelled(cancel_event)
         restore_chat = chat_loaded()
@@ -182,7 +396,11 @@ def video_runtime(
 @contextmanager
 def image_runtime(cancel_event, *, requester=request_json, lock_path=LOCK_PATH):
     """Wait for active video work and serialize image/video generation."""
-    with runtime_lease(cancel_event, lock_path=lock_path):
+    with runtime_lease(
+        cancel_event,
+        lock_path=lock_path,
+        workload="image",
+    ):
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
         yield
@@ -200,7 +418,11 @@ def chat_runtime(
 ):
     """Hold the heavy-runtime lease for a chat request."""
     already_coordinated = getattr(_LEASE_STATE, "depth", 0) > 0
-    with runtime_lease(cancel_event, lock_path=lock_path):
+    with runtime_lease(
+        cancel_event,
+        lock_path=lock_path,
+        workload="chat",
+    ):
         if not already_coordinated:
             try:
                 release_idle_image_runtime(cancel_event, requester=requester)
