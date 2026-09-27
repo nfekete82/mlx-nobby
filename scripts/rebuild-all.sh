@@ -20,7 +20,7 @@ SERVICE_WAIT_TIMEOUT="${MLX_NOBBY_SERVICE_WAIT_TIMEOUT:-60}"
 EXPECTED_PORTS="${MLX_NOBBY_REBOOT_PORTS:-8000 8010 8020 8030 8040 8050 8060 8090 11234}"
 LIFECYCLE_REPORT_FILE="${MLX_NOBBY_LIFECYCLE_REPORT_FILE:-}"
 CURRENT_STEP=0
-TOTAL_STEPS=5
+TOTAL_STEPS=6
 FAILED_PHASE="preparing"
 AI_STOPPED=0
 FAILURE_DETAIL=""
@@ -107,6 +107,47 @@ wait_for_port() {
     return 1
 }
 
+sync_source() {
+    local branch
+    branch="$(git -C "$PROJECT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+    if [ "$branch" != "main" ]; then
+        echo "Source sync übersprungen: aktiver Branch ist '${branch:-detached HEAD}', nicht main."
+        return 0
+    fi
+
+    if ! git -C "$PROJECT_DIR" diff --quiet || ! git -C "$PROJECT_DIR" diff --cached --quiet; then
+        echo "Source sync übersprungen: lokale Änderungen vorhanden."
+        return 0
+    fi
+
+    if ! git -C "$PROJECT_DIR" remote get-url origin >/dev/null 2>&1; then
+        echo "Source sync übersprungen: origin ist nicht konfiguriert."
+        return 0
+    fi
+
+    echo "Hole aktuellen Stand von origin/main ..."
+    git -C "$PROJECT_DIR" fetch origin main
+    git -C "$PROJECT_DIR" merge --ff-only origin/main
+}
+
+verify_web_revision() {
+    local built_revision
+    built_revision="$(
+        "$DOCKER_BIN" compose exec -T mlx-web \
+            sh -c 'cat /app/.mlx-nobby-build-revision 2>/dev/null' \
+            | tr -d '\r\n'
+    )"
+
+    if [ "$built_revision" != "$MLX_NOBBY_BUILD_SHA" ]; then
+        FAILURE_DETAIL="Web-Image ist nicht auf Revision ${MLX_NOBBY_BUILD_SHA} gebaut (gefunden: ${built_revision:-unbekannt})."
+        echo "ERROR: $FAILURE_DETAIL"
+        return 1
+    fi
+
+    echo "Web-Image revision verified: $built_revision"
+}
+
 handle_error() {
     local exit_code=$?
     trap - ERR
@@ -139,6 +180,20 @@ echo "$(date)"
 echo "============================================================"
 
 cd "$PROJECT_DIR"
+
+FAILED_PHASE="sync-source"
+FAILURE_DETAIL="Git-Synchronisierung ist fehlgeschlagen."
+CURRENT_STEP=0
+report_lifecycle \
+    "running" \
+    "$FAILED_PHASE" \
+    "$CURRENT_STEP" \
+    "$TOTAL_STEPS" \
+    "Projektstand wird aktualisiert, sofern main sauber ist."
+
+sync_source
+FAILURE_DETAIL=""
+
 export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
 if [ ! -x "$MLX_BIN" ]; then
@@ -172,7 +227,7 @@ echo "===== STOP AI SERVICES ====="
 
 FAILED_PHASE="stop-ai"
 FAILURE_DETAIL="mlx stop-ai ist fehlgeschlagen."
-CURRENT_STEP=0
+CURRENT_STEP=1
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
@@ -184,43 +239,48 @@ report_lifecycle \
 AI_STOPPED=1
 
 echo
-echo "===== BUILD WEB IMAGE ====="
+echo "===== BUILD WEB + FRONTEND IMAGE ====="
 
 FAILED_PHASE="build-web"
 FAILURE_DETAIL="docker compose build mlx-web ist fehlgeschlagen."
-CURRENT_STEP=1
-report_lifecycle \
-    "running" \
-    "$FAILED_PHASE" \
-    "$CURRENT_STEP" \
-    "$TOTAL_STEPS" \
-    "Web-Image wird neu gebaut."
-
-"$DOCKER_BIN" compose build mlx-web
-
-echo
-echo "===== FORCE RECREATE WEB ====="
-
-FAILED_PHASE="recreate-web"
-FAILURE_DETAIL="docker compose up --force-recreate mlx-web ist fehlgeschlagen."
 CURRENT_STEP=2
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
     "$CURRENT_STEP" \
     "$TOTAL_STEPS" \
-    "Web-Anwendung wird neu erstellt."
+    "Web-Image inklusive aktuellem Frontend wird neu gebaut."
+
+"$DOCKER_BIN" compose build \
+    --build-arg "MLX_NOBBY_BUILD_SHA=$MLX_NOBBY_BUILD_SHA" \
+    mlx-web
+
+echo
+echo "===== FORCE RECREATE WEB ====="
+
+FAILED_PHASE="recreate-web"
+FAILURE_DETAIL="docker compose up --force-recreate mlx-web ist fehlgeschlagen."
+CURRENT_STEP=3
+report_lifecycle \
+    "running" \
+    "$FAILED_PHASE" \
+    "$CURRENT_STEP" \
+    "$TOTAL_STEPS" \
+    "Web-Anwendung wird mit dem frisch gebauten Frontend neu erstellt."
 
 "$DOCKER_BIN" compose up -d \
     --force-recreate \
+    --no-deps \
     mlx-web
+
+verify_web_revision
 
 echo
 echo "===== RESTART LOCAL SERVICES ====="
 
 FAILED_PHASE="restart-services"
 FAILURE_DETAIL="mlx restart-all ist fehlgeschlagen."
-CURRENT_STEP=3
+CURRENT_STEP=4
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
@@ -235,7 +295,7 @@ echo "===== VERIFY SERVICES ====="
 
 FAILED_PHASE="verify-services"
 FAILURE_DETAIL="Mindestens ein erwarteter Dienst ist nicht erreichbar."
-CURRENT_STEP=4
+CURRENT_STEP=5
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
@@ -253,7 +313,7 @@ report_lifecycle \
     "completed" \
     "$TOTAL_STEPS" \
     "$TOTAL_STEPS" \
-    "MLX Nobby wurde neu gebaut und vollständig gestartet."
+    "MLX Nobby wurde aktualisiert, das Frontend neu gebaut und vollständig gestartet."
 
 echo
 echo "===== COMPLETE ====="
