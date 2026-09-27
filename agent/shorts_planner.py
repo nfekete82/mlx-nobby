@@ -42,6 +42,13 @@ class ShortProject(BaseModel):
     aspect_ratio: Literal["9:16"] = "9:16"
     language: str = Field(default="de", pattern=r"^[a-z]{2}$")
     voice_enabled: bool = True
+    voice: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=80,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    voice_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     music_enabled: bool = True
     music_style: Literal[
         "cinematic", "futuristic", "dark", "emotional", "energetic", "ambient",
@@ -94,7 +101,10 @@ def _planning_messages(prompt):
                 "video_prompt must describe only the visual scene. If music is "
                 "enabled, choose music_style from cinematic, futuristic, dark, "
                 "emotional, energetic, or ambient; default to cinematic. Enable "
-                "voice, subtitles, and music unless the user explicitly asks otherwise."
+                "voice, subtitles, and music unless the user explicitly asks otherwise. "
+                "Voice configuration is not a creative choice: leave voice null and "
+                "voice_speed at 1.0 unless the user explicitly names a local voice/profile "
+                "or requests another speaking speed. Never invent a voice name."
             ),
         },
         {"role": "user", "content": str(prompt).strip()},
