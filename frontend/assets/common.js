@@ -89,9 +89,22 @@
         }
     }
 
+    async function loadHelpCenter() {
+        if (!document.getElementById('input')) return;
+        try {
+            await loadScript(
+                '/assets/chat/help.js?v=20260927-help-v1',
+                'mlx-help-center'
+            );
+        } catch (error) {
+            console.error('[help] Failed to load help center:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
+        loadHelpCenter();
     }
 
     window.MLXCommon = {
