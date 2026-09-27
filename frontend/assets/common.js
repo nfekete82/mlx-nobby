@@ -128,10 +128,23 @@
         }
     }
 
+    async function loadRuntimeBudget() {
+        if (!document.getElementById('runtimeInfoButton')) return;
+        try {
+            await loadScript(
+                '/assets/chat/runtime-budget.js?v=20260927-runtime-budget-v1',
+                'mlx-runtime-budget'
+            );
+        } catch (error) {
+            console.error('[runtime-budget] Failed to load runtime budget:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
         loadHelpCenter();
+        loadRuntimeBudget();
     }
 
     window.MLXCommon = {
