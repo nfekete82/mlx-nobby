@@ -79,6 +79,20 @@
         document.head.appendChild(style);
     }
 
+    function ensureTopbarActionCleanup() {
+        if (document.getElementById('mlxTopbarActionCleanup')) return;
+
+        const style = document.createElement('style');
+        style.id = 'mlxTopbarActionCleanup';
+        style.textContent = '#settingsButton,#mlxHelpButton{display:none!important;}';
+        document.head.appendChild(style);
+    }
+
+    function removeRedundantTopActions() {
+        document.getElementById('settingsButton')?.remove();
+        document.getElementById('mlxHelpButton')?.remove();
+    }
+
     async function loadChatVoiceControls() {
         if (!document.getElementById('input')) return;
         try {
@@ -123,6 +137,7 @@
                 '/assets/chat/help.js?v=20260927-help-v1',
                 'mlx-help-center'
             );
+            removeRedundantTopActions();
         } catch (error) {
             console.error('[help] Failed to load help center:', error);
         }
@@ -141,6 +156,7 @@
     }
 
     function loadChatEnhancements() {
+        removeRedundantTopActions();
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
         loadHelpCenter();
@@ -152,6 +168,8 @@
         fastApiDetailError: fastApiDetailError,
         jsonRequest: jsonRequest
     };
+
+    ensureTopbarActionCleanup();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', loadChatEnhancements, { once: true });
