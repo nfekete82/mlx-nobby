@@ -1,6 +1,9 @@
 services:
   mlx-web:
-    build: .
+    build:
+      context: .
+      args:
+        MLX_NOBBY_BUILD_SHA: "${MLX_NOBBY_BUILD_SHA:-unknown}"
     container_name: mlx-web
     ports:
       - "127.0.0.1:${MLX_WEB_PORT:-8090}:8000"

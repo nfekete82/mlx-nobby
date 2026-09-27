@@ -171,7 +171,13 @@ class LifecycleScriptContractTests(unittest.TestCase):
             source,
         )
 
-        self.assertIn("compose build mlx-web", source)
+        self.assertIn("compose build", source)
+        self.assertIn("--build-arg", source)
+        self.assertIn("MLX_NOBBY_BUILD_SHA", source)
+        self.assertIn("--force-recreate", source)
+        self.assertIn("--no-deps", source)
+        self.assertIn("verify_web_revision", source)
+        self.assertIn("merge --ff-only origin/main", source)
 
         self.assertIn(
             "mlx-web",
@@ -183,8 +189,8 @@ class LifecycleScriptContractTests(unittest.TestCase):
             source,
         )
 
-        self.assertLess(source.index('"$MLX_BIN" stop-ai'), source.index('compose build mlx-web'))
-        self.assertLess(source.index('compose build mlx-web'), source.index('compose up -d'))
+        self.assertLess(source.index('"$MLX_BIN" stop-ai'), source.index('compose build'))
+        self.assertLess(source.index('compose build'), source.index('compose up -d'))
         self.assertLess(
             source.index('compose up -d'),
             source.index('"$MLX_BIN" restart-all', source.index('compose up -d')),
@@ -215,6 +221,10 @@ class LifecycleScriptContractTests(unittest.TestCase):
 
         self.assertIn(
             "/api/system/lifecycle/progress",
+            text,
+        )
+        self.assertIn(
+            '"sync-source"',
             text,
         )
         self.assertIn(
@@ -268,9 +278,16 @@ class RebootOrchestrationIntegrationTests(unittest.TestCase):
             mlx = root / "mlx"
             docker = root / "docker"
             port_check = root / "port-check"
+            docker_body = '''#!/bin/bash
+
+echo "docker $*" >> "$CALLS_LOG"
+if [ "$1" = "compose" ] && [ "$2" = "exec" ]; then
+    git -C "$MLX_NOBBY_PROJECT_DIR" rev-parse --short=12 HEAD
+fi
+'''
             for path, body in (
                 (mlx, '#!/bin/bash\necho "mlx $*" >> "$CALLS_LOG"\n'),
-                (docker, '#!/bin/bash\necho "docker $*" >> "$CALLS_LOG"\n'),
+                (docker, docker_body),
                 (port_check, '#!/bin/bash\necho "port $*" >> "$CALLS_LOG"\n' + ("exit 0\n" if ports_ready else "exit 1\n")),
             ):
                 path.write_text(body, encoding="utf-8")
@@ -302,14 +319,22 @@ class RebootOrchestrationIntegrationTests(unittest.TestCase):
     def test_real_helper_runs_full_sequence_before_completed(self):
         result, called, reports = self.run_reboot()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(called[:4], [
-            "mlx stop-ai",
-            "docker compose build mlx-web",
-            "docker compose up -d --force-recreate mlx-web",
-            "mlx restart-all",
-        ])
+        self.assertEqual(called[0], "mlx stop-ai")
+        self.assertRegex(
+            called[1],
+            r"^docker compose build --build-arg MLX_NOBBY_BUILD_SHA=[0-9a-f]{12} mlx-web$",
+        )
         self.assertEqual(
-            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[4:]],
+            called[2],
+            "docker compose up -d --force-recreate --no-deps mlx-web",
+        )
+        self.assertTrue(
+            called[3].startswith("docker compose exec -T mlx-web "),
+            called[3],
+        )
+        self.assertEqual(called[4], "mlx restart-all")
+        self.assertEqual(
+            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[5:]],
             ["8000", "8010", "8090"],
         )
         self.assertEqual(reports[-2]["phase"], "verify-services")
