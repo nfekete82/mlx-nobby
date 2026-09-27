@@ -1,4 +1,10 @@
 (function () {
+    const commonScript = document.currentScript;
+    const commonScriptUrl = commonScript?.src
+        ? new URL(commonScript.src, window.location.href)
+        : null;
+    const frontendBuildRevision = commonScriptUrl?.searchParams.get('v') || '';
+
     async function fetchJson(url, options) {
         const response = await fetch(url, options);
         const data = await response.json();
@@ -27,6 +33,14 @@
         };
     }
 
+    function versionedAssetUrl(src) {
+        if (!frontendBuildRevision) return src;
+
+        const url = new URL(src, window.location.href);
+        url.searchParams.set('build', frontendBuildRevision);
+        return `${url.pathname}${url.search}${url.hash}`;
+    }
+
     function loadScript(src, datasetKey) {
         return new Promise((resolve, reject) => {
             const selector = `script[data-${datasetKey}]`;
@@ -42,7 +56,7 @@
             }
 
             const script = document.createElement('script');
-            script.src = src;
+            script.src = versionedAssetUrl(src);
             script.setAttribute(`data-${datasetKey}`, '1');
             script.addEventListener('load', () => {
                 script.dataset.loaded = '1';
@@ -51,6 +65,18 @@
             script.addEventListener('error', reject, { once: true });
             document.head.appendChild(script);
         });
+    }
+
+    function ensureHelpVisibilityFix() {
+        if (document.getElementById('mlxHelpVisibilityFix')) return;
+
+        const style = document.createElement('style');
+        style.id = 'mlxHelpVisibilityFix';
+        style.textContent = [
+            '.mlx-help-backdrop[hidden],',
+            '.mlx-help-panel[hidden]{display:none!important;}'
+        ].join('');
+        document.head.appendChild(style);
     }
 
     async function loadChatVoiceControls() {
@@ -92,6 +118,7 @@
     async function loadHelpCenter() {
         if (!document.getElementById('input')) return;
         try {
+            ensureHelpVisibilityFix();
             await loadScript(
                 '/assets/chat/help.js?v=20260927-help-v1',
                 'mlx-help-center'
