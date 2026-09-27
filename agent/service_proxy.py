@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 
+from agent import media_queue
 from backend import observability
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
@@ -255,6 +256,8 @@ def _revision_probe(name, url, expected_revision, timeout=3):
 
 
 def install_routes(app, runtime_port, runtime_lock):
+    media_queue.ensure_worker()
+
     @app.get("/api/system/revisions")
     def service_revisions():
         identity = service_identity("agent")
@@ -292,6 +295,14 @@ def install_routes(app, runtime_port, runtime_lock):
             "unknown_services": unknown,
             "services": services,
         }
+
+    @app.get("/api/system/job-queue")
+    def unified_job_queue(limit: int = 40):
+        return media_queue.snapshot(limit=limit)
+
+    @app.post("/api/system/job-queue/{kind}/{job_id}/cancel")
+    def cancel_unified_job(kind: str, job_id: str):
+        return media_queue.cancel_public(kind, job_id)
 
     @app.get("/api/bridge/mlx/v1/models")
     def models():
