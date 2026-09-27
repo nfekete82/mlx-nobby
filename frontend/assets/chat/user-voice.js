@@ -236,7 +236,19 @@
         });
     }
 
+    function loadShortsStudio() {
+        if (document.querySelector('script[data-mlx-shorts-studio]')) return;
+        const script = document.createElement('script');
+        script.src = '/assets/chat/shorts-studio.js?v=20260927-shorts-studio-v2';
+        script.dataset.mlxShortsStudio = '1';
+        script.addEventListener('error', () => {
+            console.error('[shorts-studio] Failed to load integration');
+        }, { once: true });
+        document.head.appendChild(script);
+    }
+
     function init() {
+        loadShortsStudio();
         syncUserActions();
         const messages = document.getElementById('messagesInner');
         if (!messages) return;
