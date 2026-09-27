@@ -66,3 +66,9 @@ jobs:
       - name: Validate Docker Compose
         run: |
           docker compose config >/dev/null
+
+      - name: Build web image
+        run: |
+          docker compose build \
+            --build-arg MLX_NOBBY_BUILD_SHA=ci-test \
+            mlx-web
