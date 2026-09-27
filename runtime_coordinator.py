@@ -28,6 +28,9 @@ STATE_DIR = Path(os.environ.get(
     "MLX_RUNTIME_COORDINATOR_STATE_DIR",
     f"/tmp/mlx-web-runtime-{os.getuid()}.d",
 ))
+PROJECT_DIR = Path(__file__).resolve().parent
+MLX_MANAGER = PROJECT_DIR / "scripts" / "mlx"
+MLX_SERVER_LABEL = "de.nobby.mlx-server"
 POLL_INTERVAL = 0.2
 _PROCESS_LOCK = threading.RLock()
 _LEASE_STATE = threading.local()
@@ -42,6 +45,7 @@ def _float_env(name, default):
 
 
 MEMORY_RESERVE_GB = _float_env("MLX_RUNTIME_MEMORY_RESERVE_GB", 6.0)
+MEDIA_MIN_HEADROOM_GB = _float_env("MLX_RUNTIME_MEDIA_HEADROOM_GB", 4.0)
 PRESSURE_ELEVATED_FREE_PERCENT = _float_env(
     "MLX_RUNTIME_PRESSURE_ELEVATED_PERCENT", 18.0
 )
@@ -171,6 +175,57 @@ def memory_budget_snapshot():
         "swap_used_gb": rounded(swap_used_gb),
         "pressure": pressure,
     }
+
+
+def memory_relief_needed(snapshot, min_headroom_gb=MEDIA_MIN_HEADROOM_GB):
+    """Return whether a heavy media job should release the chat runtime first."""
+    if not isinstance(snapshot, dict):
+        return False
+    if snapshot.get("pressure") in {"elevated", "critical"}:
+        return True
+    headroom = snapshot.get("headroom_gb")
+    if isinstance(headroom, (int, float)) and not isinstance(headroom, bool):
+        return float(headroom) < float(min_headroom_gb)
+    return False
+
+
+def _default_chat_loaded():
+    """Return whether the launchd-managed shared chat runtime is loaded."""
+    try:
+        result = subprocess.run(
+            [
+                "launchctl",
+                "print",
+                f"gui/{os.getuid()}/{MLX_SERVER_LABEL}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _default_chat_command(action):
+    if action not in {"start", "stop"}:
+        raise ValueError("Unsupported chat runtime action")
+    try:
+        result = subprocess.run(
+            ["/bin/bash", str(MLX_MANAGER), action],
+            cwd=PROJECT_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"mlx {action} fehlgeschlagen") from exc
+    if result.returncode != 0:
+        message = result.stdout.strip() or f"mlx {action} fehlgeschlagen"
+        raise RuntimeError(message[-4000:])
 
 
 def _state_path(state_dir=STATE_DIR, thread_id=None):
@@ -381,14 +436,25 @@ def video_runtime(
         lock_path=lock_path,
         workload="video",
     ):
-        release_idle_image_runtime(cancel_event, requester=requester)
+        before = memory_budget_snapshot()
+        image_health = release_idle_image_runtime(
+            cancel_event,
+            requester=requester,
+        )
         _check_cancelled(cancel_event)
         restore_chat = chat_loaded()
         if restore_chat:
             chat_command("stop")
+        preflight = {
+            "workload": "video",
+            "memory_before": before,
+            "memory_relief_needed": memory_relief_needed(before),
+            "image_released": not bool(image_health.get("loaded")),
+            "chat_released": bool(restore_chat),
+        }
         try:
             _check_cancelled(cancel_event)
-            yield
+            yield preflight
         finally:
             if restore_chat:
                 try:
@@ -400,8 +466,21 @@ def video_runtime(
 
 
 @contextmanager
-def image_runtime(cancel_event, *, requester=request_json, lock_path=LOCK_PATH):
-    """Wait for active video work and serialize image/video generation."""
+def image_runtime(
+    cancel_event,
+    *,
+    requester=request_json,
+    lock_path=LOCK_PATH,
+    chat_loaded=None,
+    chat_command=None,
+    restore_error=None,
+    memory_snapshot=None,
+):
+    """Run image work with pressure-aware chat-runtime memory handoff."""
+    chat_loaded = chat_loaded or _default_chat_loaded
+    chat_command = chat_command or _default_chat_command
+    memory_snapshot = memory_snapshot or memory_budget_snapshot
+
     with runtime_lease(
         cancel_event,
         lock_path=lock_path,
@@ -409,7 +488,28 @@ def image_runtime(cancel_event, *, requester=request_json, lock_path=LOCK_PATH):
     ):
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
-        yield
+        before = memory_snapshot()
+        relief_needed = memory_relief_needed(before)
+        restore_chat = bool(relief_needed and chat_loaded())
+        if restore_chat:
+            chat_command("stop")
+        preflight = {
+            "workload": "image",
+            "memory_before": before,
+            "memory_relief_needed": relief_needed,
+            "chat_released": restore_chat,
+        }
+        try:
+            _check_cancelled(cancel_event)
+            yield preflight
+        finally:
+            if restore_chat:
+                try:
+                    chat_command("start")
+                except Exception as exc:
+                    if restore_error is None:
+                        raise
+                    restore_error(exc)
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
