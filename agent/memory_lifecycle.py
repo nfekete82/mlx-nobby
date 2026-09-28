@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent import memory
 from agent import memory_consolidation
+from agent import memory_privacy
 
 
 def _consolidate(memory_id: str | None) -> dict:
@@ -24,6 +25,16 @@ def _consolidate(memory_id: str | None) -> dict:
 
 def observe_user_message(message, *, source_chat_id=None):
     event = memory.observe_user_message(message, source_chat_id=source_chat_id)
+
+    if event.get("action") == "forgot":
+        removed_ids = [
+            item.get("id")
+            for item in (event.get("memories") or [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        privacy = memory_privacy.purge_cluster(memory.MEMORY_DB, removed_ids)
+        return {**event, "privacy_cleanup": privacy}
+
     if event.get("action") != "remembered":
         return event
 
@@ -89,6 +100,14 @@ def update_memory(memory_id, **changes):
     }
 
 
+def delete_memory(memory_id):
+    deleted = memory.delete(memory_id)
+    if not deleted:
+        return {"deleted": False, "privacy_cleanup": {"events_deleted": 0}}
+    privacy = memory_privacy.purge_audit_for_memory(memory.MEMORY_DB, memory_id)
+    return {"deleted": True, "privacy_cleanup": privacy}
+
+
 def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory.DEFAULT_LIMIT):
     copied = [dict(message) for message in (messages or [])]
     last_user = next(
@@ -118,6 +137,7 @@ def enrich_messages(messages, *, source_chat_id=None, observe=True, limit=memory
 
 __all__ = [
     "create_memory",
+    "delete_memory",
     "enrich_messages",
     "observe_user_message",
     "update_memory",
