@@ -76,6 +76,35 @@ with urllib.request.urlopen(
 PYREPORT
 }
 
+wait_agent_unloaded() {
+    local attempt
+    for attempt in $(seq 1 100); do
+        if ! launchctl print "$LAUNCHD_DOMAIN/$AGENT_LABEL" >/dev/null 2>&1 && \
+           ! lsof -tiTCP:8010 -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "ERROR: Agent wurde nach bootout nicht rechtzeitig vollständig entladen."
+    return 1
+}
+
+wait_agent_ready() {
+    local attempt
+    for attempt in $(seq 1 200); do
+        if lsof -tiTCP:8010 -sTCP:LISTEN >/dev/null 2>&1 && \
+           curl -fsS --connect-timeout 1 --max-time 2 \
+               "$AGENT_URL/api/status" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "ERROR: Agent wurde nach dem Reload nicht rechtzeitig bereit."
+    return 1
+}
+
 reload_agent_launchagent() {
     if [ ! -f "$AGENT_PLIST" ]; then
         echo "ERROR: Agent LaunchAgent fehlt: $AGENT_PLIST"
@@ -85,22 +114,33 @@ reload_agent_launchagent() {
     echo "Agent LaunchAgent wird neu geladen..."
 
     if launchctl print "$LAUNCHD_DOMAIN/$AGENT_LABEL" >/dev/null 2>&1; then
-        launchctl bootout "$LAUNCHD_DOMAIN/$AGENT_LABEL"
+        launchctl bootout "$LAUNCHD_DOMAIN/$AGENT_LABEL" || true
     fi
 
-    launchctl bootstrap "$LAUNCHD_DOMAIN" "$AGENT_PLIST"
+    wait_agent_unloaded || return 1
 
     local attempt
-    for attempt in $(seq 1 100); do
-        if lsof -tiTCP:8010 -sTCP:LISTEN >/dev/null 2>&1; then
-            echo "Agent LaunchAgent ist wieder bereit."
-            return 0
+    local bootstrap_ok=0
+    for attempt in $(seq 1 20); do
+        if launchctl bootstrap "$LAUNCHD_DOMAIN" "$AGENT_PLIST"; then
+            bootstrap_ok=1
+            break
         fi
-        sleep 0.1
+        echo "Agent bootstrap Versuch $attempt fehlgeschlagen; neuer Versuch..."
+        sleep 0.25
     done
 
-    echo "ERROR: Agent wurde nach dem Reload nicht rechtzeitig bereit."
-    return 1
+    if [ "$bootstrap_ok" -ne 1 ]; then
+        echo "ERROR: Agent LaunchAgent konnte nicht geladen werden."
+        return 1
+    fi
+
+    if ! wait_agent_ready; then
+        launchctl print "$LAUNCHD_DOMAIN/$AGENT_LABEL" 2>&1 || true
+        return 1
+    fi
+
+    echo "Agent LaunchAgent ist wieder bereit."
 }
 
 echo
@@ -150,8 +190,8 @@ fi
 
 # `mlx restart-all` intentionally keeps an already healthy agent alive. Reload
 # it explicitly here so route/entrypoint and plist changes are actually picked
-# up after a pull/rebuild. bootout + bootstrap also refreshes launchd's cached
-# job definition, unlike kickstart alone.
+# up after a pull/rebuild. Waiting for launchd to fully remove the previous job
+# avoids leaving the agent offline when bootstrap races with bootout.
 reload_agent_launchagent
 
 echo
