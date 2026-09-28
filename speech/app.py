@@ -56,6 +56,46 @@ TTS_DEFAULT_INSTRUCT = os.environ.get(
     ),
 )
 
+
+def _bounded_float(name, default, minimum, maximum):
+    try:
+        value = float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        value = float(default)
+    return min(maximum, max(minimum, value))
+
+
+def _bounded_int(name, default, minimum, maximum):
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        value = int(default)
+    return min(maximum, max(minimum, value))
+
+
+# Qwen3-TTS defaults to temperature=0.9/top_p=1.0. That is useful for
+# expressive generation, but unnecessarily stochastic for reference cloning:
+# repeated renders can drift noticeably from the reference identity. Keep the
+# clone path more conservative while leaving preset/custom voices untouched.
+TTS_CLONE_TEMPERATURE = _bounded_float(
+    "MLX_TTS_CLONE_TEMPERATURE", 0.65, 0.05, 1.5
+)
+TTS_CLONE_TOP_K = _bounded_int(
+    "MLX_TTS_CLONE_TOP_K", 30, 1, 200
+)
+TTS_CLONE_TOP_P = _bounded_float(
+    "MLX_TTS_CLONE_TOP_P", 0.90, 0.10, 1.0
+)
+
+
+def clone_generation_options():
+    return {
+        "temperature": TTS_CLONE_TEMPERATURE,
+        "top_k": TTS_CLONE_TOP_K,
+        "top_p": TTS_CLONE_TOP_P,
+    }
+
+
 TTS_VOICES_DIR = Path(
     os.environ.get(
         "MLX_TTS_VOICES_DIR",
@@ -223,6 +263,7 @@ def health():
         "tts_clone_model": TTS_CLONE_MODEL_NAME,
         "tts_clone_loaded": _tts_clone_model is not None,
         "tts_voice_profiles": list_voice_profiles(),
+        "tts_clone_sampling": clone_generation_options(),
     }
 
 
@@ -374,7 +415,7 @@ def synthesize_speech(request: SpeechRequest):
                     text=text,
                     ref_audio=str(profile["reference"]),
                     ref_text=profile["ref_text"],
-                    language=request.language,
+                    **clone_generation_options(),
                 )
             )
         else:
