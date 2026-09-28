@@ -9,12 +9,18 @@ install_shorts_caption_runtime()
 install_shorts_consistency_runtime()
 
 from agent.app import app, status as runtime_status
+from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
 from agent.runtime_reliability_routes import install_routes as install_runtime_reliability_routes
 from agent.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from agent.speech_streaming_routes import install_routes as install_speech_streaming_routes
 from agent.voice_manager_routes import install_routes as install_voice_manager_routes
 
+
+# Standard browser text chat streams directly through agent.app instead of the
+# ModelProvider. Enrich that path at the ASGI boundary while leaving strict
+# helper/model calls untouched.
+app.add_middleware(MemoryChatMiddleware)
 
 install_memory_routes(app)
 install_shorts_studio_routes(app)
