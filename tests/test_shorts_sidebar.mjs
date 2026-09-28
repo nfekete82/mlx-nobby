@@ -81,16 +81,18 @@ function runAppearanceWithSidebar() {
     const sidebarBottom = new FakeElement('', ['sidebar-bottom']);
     const help = new FakeElement('mlxSidebarHelpButton', ['sidebar-action']);
     const settings = new FakeElement('sidebarSettingsButton', ['sidebar-action']);
-    const launcher = new FakeElement('', ['mlx-shorts-studio-launcher']);
+    const studioLauncher = new FakeElement('', ['mlx-shorts-studio-launcher']);
+    const historyLauncher = new FakeElement('', ['mlx-shorts-history-launcher']);
     const runtime = new FakeElement('', ['sidebar-runtime']);
-    let launcherClicks = 0;
-    launcher.addEventListener('click', () => { launcherClicks += 1; });
+    let historyClicks = 0;
+    historyLauncher.addEventListener('click', () => { historyClicks += 1; });
 
     sidebarBottom.appendChild(help);
     sidebarBottom.appendChild(settings);
     sidebarBottom.appendChild(runtime);
     body.appendChild(sidebarBottom);
-    body.appendChild(launcher);
+    body.appendChild(studioLauncher);
+    body.appendChild(historyLauncher);
 
     const byId = new Map([
         ['mlxSidebarHelpButton', help],
@@ -115,7 +117,7 @@ function runAppearanceWithSidebar() {
         },
         querySelector(selector) {
             if (selector === '.sidebar-bottom') return sidebarBottom;
-            if (selector === '.mlx-shorts-studio-launcher') return launcher;
+            if (selector === '.mlx-shorts-history-launcher') return historyLauncher;
             if (selector === '.appearance-bubble-preview') return null;
             return null;
         },
@@ -134,33 +136,46 @@ function runAppearanceWithSidebar() {
     });
 
     return {
+        body,
+        head,
         sidebarBottom,
         help,
-        launcher,
+        studioLauncher,
+        historyLauncher,
         settings,
         runtime,
-        clickLauncher() {
-            launcher.click();
-            return launcherClicks;
+        clickHistoryLauncher() {
+            historyLauncher.click();
+            return historyClicks;
         },
     };
 }
 
 
-test('Shorts launcher moves between Help and Settings without losing its handler', () => {
+test('Shorts history launcher moves between Help and Settings without losing its handler', () => {
     const {
         sidebarBottom,
         help,
-        launcher,
+        historyLauncher,
         settings,
         runtime,
-        clickLauncher,
+        clickHistoryLauncher,
     } = runAppearanceWithSidebar();
 
     assert.deepEqual(
         sidebarBottom.children,
-        [help, launcher, settings, runtime]
+        [help, historyLauncher, settings, runtime]
     );
-    assert.equal(launcher.classList.contains('sidebar-action'), true);
-    assert.equal(clickLauncher(), 1);
+    assert.equal(historyLauncher.classList.contains('sidebar-action'), true);
+    assert.equal(clickHistoryLauncher(), 1);
+});
+
+
+test('legacy Shorts Studio floating launcher is forcibly hidden', () => {
+    const { head, studioLauncher, body } = runAppearanceWithSidebar();
+    const style = head.children.find(child => child.id === 'mlxShortsSidebarStyles');
+
+    assert.ok(style);
+    assert.match(style.textContent, /\.mlx-shorts-studio-launcher\s*\{[^}]*display:\s*none\s*!important/s);
+    assert.equal(studioLauncher.parentElement, body);
 });
