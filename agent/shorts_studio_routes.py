@@ -37,20 +37,31 @@ def install_routes(app):
         scene_id: str,
         request: SceneRevisionRequest,
     ):
+        revision_options = {
+            "narration": request.narration,
+            "video_prompt": request.video_prompt,
+            "force_regenerate_video": request.force_regenerate_video,
+            "voice": request.voice,
+            "voice_speed": request.voice_speed,
+        }
+        # Preserve the established call shape for legacy clients/tests. New
+        # options participate only when a caller explicitly requests them.
+        if request.force_regenerate_keyframe:
+            revision_options["force_regenerate_keyframe"] = True
+        if request.consistency_mode is not None:
+            revision_options["consistency_mode"] = request.consistency_mode
+        if request.character_consistency is not None:
+            revision_options["character_consistency"] = request.character_consistency
+        if request.style_consistency is not None:
+            revision_options["style_consistency"] = request.style_consistency
+        if request.style_strength is not None:
+            revision_options["style_strength"] = request.style_strength
+
         try:
             revised = create_scene_revision(
                 job_id,
                 scene_id,
-                narration=request.narration,
-                video_prompt=request.video_prompt,
-                force_regenerate_video=request.force_regenerate_video,
-                force_regenerate_keyframe=request.force_regenerate_keyframe,
-                voice=request.voice,
-                voice_speed=request.voice_speed,
-                consistency_mode=request.consistency_mode,
-                character_consistency=request.character_consistency,
-                style_consistency=request.style_consistency,
-                style_strength=request.style_strength,
+                **revision_options,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Shorts job not found") from exc
