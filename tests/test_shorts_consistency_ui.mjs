@@ -54,15 +54,13 @@ function job() {
 
 test('unchanged consistency settings produce no revision fields', () => {
     const api = harness();
-    assert.deepEqual(
-        api.buildSettingsPayload(job(), {
-            consistency_mode: true,
-            character_consistency: true,
-            style_consistency: true,
-            style_strength: 0.8,
-        }),
-        {}
-    );
+    const payload = api.buildSettingsPayload(job(), {
+        consistency_mode: true,
+        character_consistency: true,
+        style_consistency: true,
+        style_strength: 0.8,
+    });
+    assert.equal(Object.keys(payload).length, 0);
 });
 
 test('changed strength and mode are sent explicitly', () => {
@@ -85,7 +83,8 @@ test('forced keyframe regeneration has its own revision flag', () => {
         style_consistency: true,
         style_strength: 0.8,
     }, true);
-    assert.deepEqual(payload, { force_regenerate_keyframe: true });
+    assert.equal(payload.force_regenerate_keyframe, true);
+    assert.equal(Object.keys(payload).length, 1);
 });
 
 test('keyframe lookup returns only completed selected scene artifacts', () => {
