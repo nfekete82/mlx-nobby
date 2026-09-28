@@ -14,6 +14,9 @@ exec >>"$LOG_FILE" 2>&1
 ACTION="restart-all"
 
 AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
+AGENT_LABEL="de.nobby.mlx-agent"
+AGENT_PLIST="$HOME/Library/LaunchAgents/${AGENT_LABEL}.plist"
+LAUNCHD_DOMAIN="gui/$(id -u)"
 
 report_lifecycle() {
     local state="$1"
@@ -73,6 +76,33 @@ with urllib.request.urlopen(
 PYREPORT
 }
 
+reload_agent_launchagent() {
+    if [ ! -f "$AGENT_PLIST" ]; then
+        echo "ERROR: Agent LaunchAgent fehlt: $AGENT_PLIST"
+        return 1
+    fi
+
+    echo "Agent LaunchAgent wird neu geladen..."
+
+    if launchctl print "$LAUNCHD_DOMAIN/$AGENT_LABEL" >/dev/null 2>&1; then
+        launchctl bootout "$LAUNCHD_DOMAIN/$AGENT_LABEL"
+    fi
+
+    launchctl bootstrap "$LAUNCHD_DOMAIN" "$AGENT_PLIST"
+
+    local attempt
+    for attempt in $(seq 1 100); do
+        if lsof -tiTCP:8010 -sTCP:LISTEN >/dev/null 2>&1; then
+            echo "Agent LaunchAgent ist wieder bereit."
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "ERROR: Agent wurde nach dem Reload nicht rechtzeitig bereit."
+    return 1
+}
+
 echo
 echo "============================================================"
 echo "MLX NOBBY — RESTART ALL"
@@ -108,6 +138,21 @@ report_lifecycle \
     "Frontend wird neu gebaut."
 
 docker compose up -d --build --force-recreate mlx-web
+
+echo
+echo "===== SYNC LAUNCHAGENTS ====="
+
+if [ -x "$PROJECT_DIR/scripts/install-launchd.sh" ]; then
+    "$PROJECT_DIR/scripts/install-launchd.sh"
+elif [ -f "$PROJECT_DIR/scripts/install-launchd.sh" ]; then
+    bash "$PROJECT_DIR/scripts/install-launchd.sh"
+fi
+
+# `mlx restart-all` intentionally keeps an already healthy agent alive. Reload
+# it explicitly here so route/entrypoint and plist changes are actually picked
+# up after a pull/rebuild. bootout + bootstrap also refreshes launchd's cached
+# job definition, unlike kickstart alone.
+reload_agent_launchagent
 
 echo
 echo "===== RESTART SERVICES ====="
