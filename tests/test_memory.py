@@ -11,6 +11,11 @@ def isolated_memory(tmp_path, monkeypatch):
     root = tmp_path / "mlx-web"
     monkeypatch.setattr(memory, "ROOT", root)
     monkeypatch.setattr(memory, "MEMORY_DB", root / "memory.db")
+    monkeypatch.setattr(
+        memory.memory_embeddings,
+        "semantic_scores",
+        lambda *_args, **_kwargs: None,
+    )
     return root
 
 
@@ -67,6 +72,58 @@ def test_retrieval_prefers_query_relevant_memory(isolated_memory):
 
     assert len(selected) == 1
     assert "Qwen3.8-27B" in selected[0]["text"]
+
+
+def test_semantic_retrieval_finds_memory_without_keyword_overlap(
+    isolated_memory,
+    monkeypatch,
+):
+    coding = memory.add(
+        "Für Coding nutze ich Qwen3.8-27B.",
+        category="coding",
+        importance=0.8,
+    )
+    image = memory.add(
+        "Für Bildgenerierung bevorzuge ich Qwen Image 2.1.",
+        category="ai_models",
+        importance=0.8,
+    )
+
+    monkeypatch.setattr(
+        memory.memory_embeddings,
+        "semantic_scores",
+        lambda _db, _memories, _query: {
+            coding["id"]: 0.91,
+            image["id"]: 0.10,
+        },
+    )
+
+    selected = memory.retrieve(
+        "Welche KI nehme ich zum Programmieren?",
+        limit=1,
+    )
+
+    assert len(selected) == 1
+    assert selected[0]["id"] == coding["id"]
+
+
+def test_semantic_noise_below_threshold_is_not_injected(
+    isolated_memory,
+    monkeypatch,
+):
+    unrelated = memory.add(
+        "Für Bildgenerierung bevorzuge ich Qwen Image 2.1.",
+        importance=1.0,
+    )
+    monkeypatch.setattr(
+        memory.memory_embeddings,
+        "semantic_scores",
+        lambda _db, _memories, _query: {unrelated["id"]: 0.20},
+    )
+
+    selected = memory.retrieve("Wie konfiguriere ich eine Firewall?", limit=4)
+
+    assert selected == []
 
 
 def test_pinned_memory_can_be_retrieved_without_keyword_overlap(isolated_memory):
