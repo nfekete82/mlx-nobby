@@ -23,7 +23,9 @@ Ordinary questions and one-off commands are ignored.
 
 `Vergiss ...` / `Forget ...` removes matching memories. Forgetting keeps an
 additional lexical safety check so a semantic near-match alone cannot delete an
-unrelated memory.
+unrelated memory. If the active memory belongs to a consolidation chain, an
+explicit forget also removes its disabled historical variants and the associated
+audit snapshots so forgotten text is not retained only as consolidation history.
 
 ## Semantic retrieval
 
@@ -62,7 +64,9 @@ The lifecycle for a new durable statement is now:
 
 No absorbed memory is automatically deleted. Disabled memories remain available
 through `GET /api/memory?include_disabled=true` and can be re-enabled through the
-existing PATCH endpoint.
+existing PATCH endpoint. This preservation applies to consolidation itself; an
+explicit `Vergiss ...` request intentionally purges the connected historical
+cluster and its audit text.
 
 ### Preference slots
 
@@ -162,6 +166,10 @@ after upgrading an older database to v1.2.
 embedding model/dimensions, and how many vectors are currently cached.
 `consolidation-status` reports audit-event and disabled-memory counts plus active
 thresholds.
+
+Manual deletion removes audit snapshots that reference the deleted memory. An
+explicit conversational forget goes further and purges the entire connected
+consolidation chain.
 
 ## Failure behavior
 
