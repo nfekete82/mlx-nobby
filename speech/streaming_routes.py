@@ -7,13 +7,14 @@ JSON with base64 encoded mono float32 PCM chunks as soon as Qwen3-TTS yields the
 
 from __future__ import annotations
 
+from array import array
 import base64
 import json
 import os
+import sys
 import threading
 import time
 
-import numpy as np
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -45,8 +46,12 @@ _PRELOAD_STARTED = False
 def _pcm_bytes(audio) -> bytes:
     if hasattr(audio, "tolist"):
         audio = audio.tolist()
-    samples = np.asarray(audio, dtype="<f4").reshape(-1)
-    return samples.tobytes(order="C")
+    samples = array("f", (float(value) for value in audio))
+    if samples.itemsize != 4:
+        raise RuntimeError("Float32 PCM is not supported on this Python build")
+    if sys.byteorder != "little":
+        samples.byteswap()
+    return samples.tobytes()
 
 
 def _json_line(payload: dict) -> bytes:
