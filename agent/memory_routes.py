@@ -3,6 +3,8 @@
 from fastapi import HTTPException
 
 from agent import memory
+from agent import memory_consolidation
+from agent import memory_lifecycle
 
 
 def install_routes(app):
@@ -20,7 +22,7 @@ def install_routes(app):
         if not isinstance(payload, dict):
             raise HTTPException(422, "Ungültiger Memory-Payload")
         try:
-            item = memory.add(
+            return memory_lifecycle.create_memory(
                 payload.get("text"),
                 category=payload.get("category"),
                 importance=payload.get("importance", 0.7),
@@ -30,11 +32,39 @@ def install_routes(app):
             )
         except (TypeError, ValueError) as exc:
             raise HTTPException(422, str(exc)) from exc
-        return {"memory": item}
 
     @app.get("/api/memory/embedding-status")
     def memory_embedding_status():
         return memory.embedding_status()
+
+    @app.get("/api/memory/consolidation-status")
+    def memory_consolidation_status():
+        return memory_consolidation.status(memory.MEMORY_DB)
+
+    @app.get("/api/memory/consolidations")
+    def memory_consolidations(limit: int = 100):
+        return {
+            "consolidations": memory_consolidation.list_events(
+                memory.MEMORY_DB,
+                limit=limit,
+            )
+        }
+
+    @app.post("/api/memory/consolidate")
+    def memory_consolidate(payload: dict | None = None):
+        payload = payload or {}
+        if not isinstance(payload, dict):
+            raise HTTPException(422, "Ungültiger Memory-Payload")
+        memory_id = payload.get("memory_id")
+        if memory_id:
+            return memory_consolidation.consolidate_memory(
+                memory.MEMORY_DB,
+                str(memory_id),
+            )
+        return memory_consolidation.consolidate_all(
+            memory.MEMORY_DB,
+            limit=payload.get("limit", 500),
+        )
 
     @app.patch("/api/memory/{memory_id}")
     def memory_update(memory_id: str, payload: dict):
@@ -48,12 +78,11 @@ def install_routes(app):
             if key in payload
         }
         try:
-            item = memory.update(memory_id, **allowed)
+            return memory_lifecycle.update_memory(memory_id, **allowed)
         except KeyError as exc:
             raise HTTPException(404, "Memory nicht gefunden") from exc
         except (TypeError, ValueError) as exc:
             raise HTTPException(422, str(exc)) from exc
-        return {"memory": item}
 
     @app.delete("/api/memory/{memory_id}")
     def memory_delete(memory_id: str):
@@ -68,7 +97,7 @@ def install_routes(app):
         message = payload.get("message")
         if not isinstance(message, str) or not message.strip():
             raise HTTPException(422, "message fehlt")
-        return memory.observe_user_message(
+        return memory_lifecycle.observe_user_message(
             message,
             source_chat_id=payload.get("source_chat_id"),
         )
