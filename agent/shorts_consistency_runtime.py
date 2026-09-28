@@ -1,8 +1,8 @@
 """Opt-in Shorts runtime: Qwen image keyframes followed by LTX I2V.
 
-The module patches only ``shorts_jobs.run_short_job``.  Existing projects keep
+The module patches only ``shorts_jobs.run_short_job``. Existing projects keep
 using the original T2V worker because ``ShortProject.consistency_mode`` defaults
-to false for compatibility.  The production entrypoint installs the patch
+to false for compatibility. The production entrypoint installs the patch
 before importing ``agent.app`` so startup recovery also follows this path.
 """
 
@@ -24,6 +24,7 @@ VIDEO_ACTIVE_STATUSES = shorts_jobs.VIDEO_ACTIVE_STATUSES
 
 _ORIGINAL_RUN_SHORT_JOB = None
 _INSTALLED = False
+_EDIT_CAPABILITY = {"checked_at": 0.0, "available": False}
 
 
 def _uses_consistency(job):
@@ -63,7 +64,6 @@ def _finish_cancelled(job_id, video_request_fn):
 
 
 def _fail(job_id, error):
-    latest = shorts_jobs.get_short_job(job_id)
     return shorts_jobs._update_job(
         job_id,
         status="failed",
@@ -81,6 +81,40 @@ def _image_request(method, path, payload=None, timeout=15):
 
 def _video_request(request_fn, method, path, payload=None, timeout=15):
     return request_fn(method, path, payload, timeout=timeout)
+
+
+def _image_edit_available():
+    """Check for a ready local image-edit model, cached briefly per worker."""
+    now = time.monotonic()
+    if now - _EDIT_CAPABILITY["checked_at"] < 60:
+        return _EDIT_CAPABILITY["available"]
+    available = False
+    try:
+        data = _image_request("GET", "/models", timeout=5)
+        for model in data.get("models", []):
+            if (
+                model.get("enabled")
+                and model.get("available") is not False
+                and "image_edit" in (model.get("capabilities") or [])
+            ):
+                available = True
+                break
+    except Exception:
+        available = False
+    _EDIT_CAPABILITY.update(checked_at=now, available=available)
+    return available
+
+
+def _identity_anchor_path(project, keyframes, scene_index):
+    if (
+        scene_index <= 0
+        or not project.character_consistency
+        or not _image_edit_available()
+    ):
+        return None
+    first_id = project.scenes[0].id
+    anchor = keyframes.get(first_id)
+    return anchor.get("path") if anchor else None
 
 
 def run_consistent_short_job(
@@ -101,8 +135,6 @@ def run_consistent_short_job(
     if job.get("cancel_requested"):
         return _finish_cancelled(job_id, video_request_fn)
 
-    # The original worker already owns TTS/final composition and does not start
-    # new scene work once video_completed has been persisted.
     if job.get("status") in {"video_completed", "tts_completed"}:
         return _ORIGINAL_RUN_SHORT_JOB(
             job_id,
@@ -130,8 +162,6 @@ def run_consistent_short_job(
 
             project = ShortProject.model_validate(job["project"])
             if not project.consistency_mode:
-                # A recovered revision may have disabled consistency. Hand the
-                # durable state back to the original worker immediately.
                 return _ORIGINAL_RUN_SHORT_JOB(
                     job_id,
                     request_fn=video_request_fn,
@@ -176,14 +206,18 @@ def run_consistent_short_job(
             keyframe = keyframes.get(scene_model.id)
 
             if keyframe is None:
+                anchor_path = _identity_anchor_path(project, keyframes, scene_index)
                 child_id = job.get("active_image_job_id")
                 if not child_id:
                     try:
+                        request = keyframe_job_request(
+                            job,
+                            scene_model,
+                            scene_index,
+                            identity_anchor_path=anchor_path,
+                        )
                         child = _image_request(
-                            "POST",
-                            "/jobs",
-                            keyframe_job_request(job, scene_model, scene_index),
-                            timeout=15,
+                            "POST", "/jobs", request, timeout=15,
                         )
                     except Exception as exc:
                         if shorts_jobs._retryable_service_error(exc, 409, 503):
@@ -198,11 +232,17 @@ def run_consistent_short_job(
                         phase="keyframe",
                     )
 
-                child = _image_request(
-                    "GET",
-                    "/jobs/" + image_api.job_id(child_id),
-                    timeout=15,
-                )
+                try:
+                    child = _image_request(
+                        "GET",
+                        "/jobs/" + image_api.job_id(child_id),
+                        timeout=15,
+                    )
+                except Exception as exc:
+                    if shorts_jobs._retryable_service_error(exc, 503):
+                        time.sleep(max(poll_interval, 0.1))
+                        continue
+                    raise
                 status = str(child.get("status") or "")
                 if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
                     return _finish_cancelled(job_id, video_request_fn)
@@ -228,7 +268,13 @@ def run_consistent_short_job(
                             "image_job_id": child_id,
                             "image_id": image_id,
                             "path": path,
-                            "prompt": scene_keyframe_prompt(project, scene_model, scene_index),
+                            "prompt": scene_keyframe_prompt(
+                                project,
+                                scene_model,
+                                scene_index,
+                                identity_anchor=bool(anchor_path),
+                            ),
+                            "identity_anchor_path": anchor_path,
                         })
                     shorts_jobs._update_job(
                         job_id,
@@ -275,12 +321,18 @@ def run_consistent_short_job(
                     phase="video",
                 )
 
-            child = _video_request(
-                video_request_fn,
-                "GET",
-                "/jobs/" + video_api.job_id(child_id),
-                timeout=15,
-            )
+            try:
+                child = _video_request(
+                    video_request_fn,
+                    "GET",
+                    "/jobs/" + video_api.job_id(child_id),
+                    timeout=15,
+                )
+            except Exception as exc:
+                if shorts_jobs._retryable_service_error(exc, 503):
+                    time.sleep(max(poll_interval, 0.1))
+                    continue
+                raise
             status = str(child.get("status") or "")
             if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
                 return _finish_cancelled(job_id, video_request_fn)
