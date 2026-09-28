@@ -25,7 +25,7 @@ CLONE_OPTIONS = {
 
 speech_app_stub = types.ModuleType("speech.app")
 speech_app_stub.SpeechRequest = SpeechRequest
-speech_app_stub.clone_generation_options = lambda: dict(CLONE_OPTIONS)
+speech_app_stub.clone_generation_options = lambda voice=None: dict(CLONE_OPTIONS)
 speech_app_stub.get_tts_clone_model = lambda: None
 speech_app_stub.get_tts_model = lambda: None
 speech_app_stub.get_voice_profile = lambda voice: None

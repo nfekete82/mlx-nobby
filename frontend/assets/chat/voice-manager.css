@@ -1,0 +1,118 @@
+.mlx-vm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(0, 0, 0, .44);
+    backdrop-filter: blur(4px);
+}
+.mlx-vm-backdrop[hidden] { display: none !important; }
+.mlx-vm-panel {
+    width: min(860px, calc(100vw - 28px));
+    height: 100%;
+    overflow: auto;
+    background: var(--panel-bg, var(--background, #151515));
+    color: inherit;
+    border-left: 1px solid color-mix(in srgb, currentColor 13%, transparent);
+    box-shadow: -20px 0 60px rgba(0, 0, 0, .28);
+}
+.mlx-vm-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 22px 24px 16px;
+    background: color-mix(in srgb, var(--panel-bg, #151515) 94%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.mlx-vm-title { margin: 0; font-size: 22px; }
+.mlx-vm-subtitle { margin-top: 4px; font-size: 13px; opacity: .66; }
+.mlx-vm-close,
+.mlx-vm-button {
+    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.mlx-vm-close { width: 36px; height: 36px; font-size: 20px; }
+.mlx-vm-button { padding: 8px 11px; font-size: 13px; }
+.mlx-vm-button:hover,
+.mlx-vm-close:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.mlx-vm-button.is-primary { background: color-mix(in srgb, currentColor 12%, transparent); font-weight: 650; }
+.mlx-vm-button.is-danger { border-color: rgba(220, 70, 70, .45); }
+.mlx-vm-button:disabled { opacity: .42; cursor: default; }
+.mlx-vm-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 16px 24px 8px;
+}
+.mlx-vm-status { min-height: 20px; padding: 0 24px; font-size: 13px; opacity: .72; }
+.mlx-vm-list { display: grid; gap: 12px; padding: 12px 24px 28px; }
+.mlx-vm-card {
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-radius: 14px;
+    padding: 16px;
+    background: color-mix(in srgb, currentColor 3%, transparent);
+}
+.mlx-vm-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.mlx-vm-name { font-size: 17px; font-weight: 700; }
+.mlx-vm-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.mlx-vm-badge {
+    padding: 3px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+}
+.mlx-vm-meta { margin-top: 8px; font-size: 12px; opacity: .68; }
+.mlx-vm-sampling { margin-top: 5px; font-size: 11px; opacity: .52; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mlx-vm-quality-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 13px;
+    font-size: 13px;
+}
+.mlx-vm-select,
+.mlx-vm-input,
+.mlx-vm-textarea {
+    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    padding: 8px 9px;
+}
+.mlx-vm-select { min-width: 140px; }
+.mlx-vm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.mlx-vm-editor {
+    margin: 8px 24px 28px;
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+}
+.mlx-vm-editor[hidden] { display: none !important; }
+.mlx-vm-editor h3 { margin: 0 0 14px; }
+.mlx-vm-field { display: grid; gap: 6px; margin-top: 11px; font-size: 13px; }
+.mlx-vm-textarea { min-height: 150px; resize: vertical; font: inherit; line-height: 1.45; }
+.mlx-vm-input { width: 100%; box-sizing: border-box; }
+.mlx-vm-editor-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 15px; }
+.mlx-vm-manage-button { margin-top: 7px !important; }
+@media (max-width: 700px) {
+    .mlx-vm-panel { width: 100%; }
+    .mlx-vm-header { padding: 18px 16px 14px; }
+    .mlx-vm-toolbar, .mlx-vm-list { padding-left: 16px; padding-right: 16px; }
+    .mlx-vm-status { padding-left: 16px; padding-right: 16px; }
+    .mlx-vm-editor { margin-left: 16px; margin-right: 16px; }
+}

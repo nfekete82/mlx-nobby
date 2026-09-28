@@ -35,18 +35,17 @@ test('voice picker discovers local profiles through the speech service', () => {
     assert.match(voice, /nativeFetch\('\/api\/mlx\/audio\/voices'/);
     assert.match(voice, /normalizeVoiceList/);
     assert.match(voice, /getVoices:/);
+    assert.match(voice, /setVoice,/);
 });
 
 
-test('reference cloning uses conservative sampling instead of library defaults', () => {
-    assert.match(
-        speechApp,
-        /MLX_TTS_CLONE_TEMPERATURE[\s\S]*?0\.65/
-    );
-    assert.match(speechApp, /MLX_TTS_CLONE_TOP_K[\s\S]*?30/);
-    assert.match(speechApp, /MLX_TTS_CLONE_TOP_P[\s\S]*?0\.90/);
-    assert.match(speechApp, /\*\*clone_generation_options\(\)/);
-    assert.match(speechStreaming, /\*\*clone_generation_options\(\)/);
+test('reference cloning uses stable per-voice sampling profiles', () => {
+    assert.match(speechApp, /VOICE_QUALITY_PRESETS/);
+    assert.match(speechApp, /"stable"[\s\S]*?0\.45/);
+    assert.match(speechApp, /"natural"[\s\S]*?TTS_CLONE_TEMPERATURE/);
+    assert.match(speechApp, /"expressive"[\s\S]*?0\.85/);
+    assert.match(speechApp, /\*\*clone_generation_options\(request\.voice\)/);
+    assert.match(speechStreaming, /\*\*clone_generation_options\(request\.voice\)/);
 });
 
 
