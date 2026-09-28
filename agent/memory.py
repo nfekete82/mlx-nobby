@@ -17,6 +17,8 @@ import threading
 import time
 import uuid
 
+from agent import memory_embeddings
+
 
 ROOT = Path.home() / ".config/mlx-web"
 MEMORY_DB = ROOT / "memory.db"
@@ -101,6 +103,7 @@ def _ensure_schema(connection):
             ON memories(category);
         """
     )
+    memory_embeddings.ensure_schema(connection)
 
 
 def _normalize_text(value):
@@ -257,28 +260,55 @@ def _lexical_score(query_tokens, memory_tokens):
     return overlap / math.sqrt(len(query_tokens) * len(memory_tokens))
 
 
-def retrieve(query, *, limit=DEFAULT_LIMIT):
-    limit = max(1, min(int(limit), MAX_LIMIT))
+def _retrieval_scores(query, memories, now):
     query_tokens = _tokens(query)
-    memories = list_memories(limit=500)
-    now = time.time()
+    semantic_scores = memory_embeddings.semantic_scores(MEMORY_DB, memories, query)
+    semantic_available = semantic_scores is not None
     scored = []
 
     for item in memories:
         lexical = _lexical_score(query_tokens, _tokens(item["text"]))
         age_days = max(0.0, (now - item["updated_at"]) / 86400.0)
         recency = 1.0 / (1.0 + age_days / 90.0)
-        score = (
-            lexical * 0.60
-            + float(item["importance"]) * 0.20
-            + float(item["confidence"]) * 0.08
-            + recency * 0.07
-            + (0.20 if item["pinned"] else 0.0)
-        )
-        if query_tokens and lexical == 0.0 and not item["pinned"]:
-            continue
+
+        if semantic_available:
+            semantic = max(0.0, float(semantic_scores.get(item["id"], 0.0)))
+            if (
+                query_tokens
+                and lexical == 0.0
+                and semantic < memory_embeddings.MIN_SEMANTIC_SIMILARITY
+                and not item["pinned"]
+            ):
+                continue
+            score = (
+                semantic * 0.58
+                + lexical * 0.20
+                + float(item["importance"]) * 0.10
+                + float(item["confidence"]) * 0.05
+                + recency * 0.04
+                + (0.12 if item["pinned"] else 0.0)
+            )
+        else:
+            if query_tokens and lexical == 0.0 and not item["pinned"]:
+                continue
+            score = (
+                lexical * 0.60
+                + float(item["importance"]) * 0.20
+                + float(item["confidence"]) * 0.08
+                + recency * 0.07
+                + (0.20 if item["pinned"] else 0.0)
+            )
+
         scored.append((score, item))
 
+    return scored
+
+
+def retrieve(query, *, limit=DEFAULT_LIMIT):
+    limit = max(1, min(int(limit), MAX_LIMIT))
+    memories = list_memories(limit=500)
+    now = time.time()
+    scored = _retrieval_scores(query, memories, now)
     scored.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
     selected = [item for _score, item in scored[:limit]]
 
@@ -292,6 +322,10 @@ def retrieve(query, *, limit=DEFAULT_LIMIT):
                 (now, *ids),
             )
     return selected
+
+
+def embedding_status():
+    return memory_embeddings.status(MEMORY_DB)
 
 
 def context(query, *, limit=DEFAULT_LIMIT):
