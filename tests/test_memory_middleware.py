@@ -1,8 +1,10 @@
+import asyncio
 import json
 import threading
 import time
 
 from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 import pytest
 
@@ -23,7 +25,20 @@ def client(tmp_path, monkeypatch):
 
     @app.post("/api/runtime/chat/stream")
     async def chat(request: Request):
-        return await request.json()
+        payload = await request.json()
+
+        if request.query_params.get("mode") == "stream":
+            async def events():
+                yield b"data: first\n\n"
+                await asyncio.sleep(0)
+                yield b"data: second\n\n"
+
+            return StreamingResponse(
+                events(),
+                media_type="text/event-stream",
+            )
+
+        return payload
 
     @app.post("/unrelated")
     async def unrelated(request: Request):
@@ -108,6 +123,16 @@ def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeyp
         assert elapsed < 0.3
     finally:
         release.set()
+
+
+def test_memory_middleware_preserves_streaming_response(client):
+    response = client.post(
+        "/api/runtime/chat/stream?mode=stream",
+        json={"messages": [{"role": "user", "content": "Hallo"}]},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "data: first\n\ndata: second\n\n"
 
 
 def test_unrelated_routes_are_untouched(client):
