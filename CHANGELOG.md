@@ -5,6 +5,13 @@
 - Added the Shorts/Media Composer pipeline with planning, agent routing, local
   TTS, music-aware FFmpeg composition, video orchestration, progress UI, and
   end-to-end test coverage.
+- Added Shorts Studio v2 scene editing with durable revisions, selectable voice
+  and speaking speed, reusable scene media, and targeted scene regeneration.
+- Added visual consistency mode for newly planned multi-scene Shorts: persisted
+  visual bibles, Qwen Image keyframes, LTX image-to-video handoff, adjustable
+  character/style continuity, and a first-scene character anchor that uses the
+  local Qwen Image Edit model when available while retaining a safe keyframe
+  generation fallback.
 
 ## v1.2.1
 
