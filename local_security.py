@@ -25,6 +25,17 @@ class LocalRequestGuard:
         self.max_body = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "250")) * 1024**2 + 1024**2
         self.identity = service_identity()
 
+    @staticmethod
+    def _origin_matches_host(origin, host, backend_scheme):
+        """Allow same-origin requests through an HTTPS-terminating reverse proxy."""
+        if origin.netloc != host.netloc or origin.scheme not in {"http", "https"}:
+            return False
+        if origin.scheme == backend_scheme:
+            return True
+        # Tailscale Serve and similar trusted proxies terminate TLS before
+        # forwarding to the loopback HTTP backend while preserving Host/Origin.
+        return origin.scheme == "https" and backend_scheme == "http"
+
     def _with_identity_headers(self, message):
         if message.get("type") != "http.response.start":
             return message
@@ -51,7 +62,11 @@ class LocalRequestGuard:
             allowed = host.hostname in self.hosts and not host.username and not host.password
             if "origin" in headers:
                 origin = urlsplit(headers["origin"])
-                allowed = allowed and origin.scheme == scope.get("scheme", "http") and origin.netloc == host.netloc
+                allowed = allowed and self._origin_matches_host(
+                    origin,
+                    host,
+                    scope.get("scheme", "http"),
+                )
             allowed = allowed and headers.get("sec-fetch-site") != "cross-site"
         except ValueError:
             allowed = False
