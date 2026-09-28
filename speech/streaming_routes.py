@@ -92,7 +92,7 @@ def _stream_results(request: SpeechRequest):
             ref_text=profile["ref_text"],
             stream=True,
             streaming_interval=stream_interval,
-            **clone_generation_options(),
+            **clone_generation_options(request.voice),
         )
     else:
         stream_interval = _STREAM_INTERVAL
