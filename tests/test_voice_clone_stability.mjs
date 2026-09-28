@@ -70,3 +70,17 @@ test('streamed playback reuses exact generated PCM on normal replay', () => {
     assert.match(streamingUi, /forceRegenerate = event\.shiftKey === true/);
     assert.match(streamingUi, /streamCache\.delete\(replayKey\(text, settings\)\)/);
 });
+
+
+test('streamed playback terminates on protocol done and recovers stalled readers', () => {
+    assert.match(streamingUi, /FIRST_AUDIO_TIMEOUT_MS = 60_000/);
+    assert.match(streamingUi, /STREAM_IDLE_TIMEOUT_MS = 20_000/);
+    assert.match(streamingUi, /function readStreamChunk/);
+    assert.match(streamingUi, /error\.name = 'StreamStallError'/);
+    assert.match(streamingUi, /event\.type === 'done'/);
+    assert.match(streamingUi, /await reader\.cancel\(\)/);
+    assert.match(
+        streamingUi,
+        /error\?\.name === 'StreamStallError' && session\.firstAudio/
+    );
+});
