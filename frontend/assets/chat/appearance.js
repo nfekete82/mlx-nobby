@@ -167,7 +167,10 @@
         const style = document.createElement('style');
         style.id = 'mlxShortsSidebarStyles';
         style.textContent = `
-            .sidebar-bottom .mlx-shorts-studio-launcher.sidebar-action {
+            .mlx-shorts-studio-launcher {
+                display: none !important;
+            }
+            .sidebar-bottom .mlx-shorts-history-launcher.sidebar-action {
                 position: static;
                 right: auto;
                 bottom: auto;
@@ -184,7 +187,7 @@
                 box-shadow: none;
                 text-align: left;
             }
-            .sidebar-bottom .mlx-shorts-studio-launcher.sidebar-action:hover {
+            .sidebar-bottom .mlx-shorts-history-launcher.sidebar-action:hover {
                 background: var(--panel2);
                 color: var(--text);
             }
@@ -197,7 +200,7 @@
         const sidebarBottom =
             document.querySelector('.sidebar-bottom');
         const launcher =
-            document.querySelector('.mlx-shorts-studio-launcher');
+            document.querySelector('.mlx-shorts-history-launcher');
         const settingsButton =
             document.getElementById('sidebarSettingsButton');
 
@@ -253,6 +256,8 @@
 
 
     function initShortsSidebarLauncher() {
+        ensureShortsSidebarStyles();
+
         if (placeShortsLauncher()) {
             observeShortsSidebarOrder();
             return;
