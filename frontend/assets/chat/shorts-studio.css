@@ -220,24 +220,39 @@
     font-size: 13px;
 }
 
-/* Keep runtime details visually attached to the composer. The composer moves
-   between the centered empty-chat state and the bottom chat state, so an
-   anchor avoids hard-coded viewport offsets. Browsers without anchor
-   positioning keep the existing top-right placement from chat.css. */
-.composer {
-    anchor-name: --mlx-chat-composer;
+/* Runtime details belong visually to the composer rather than the header.
+   Avoid CSS anchor positioning here: runtimePopover precedes the composer in
+   DOM order, which makes the composer an invalid anchor in current Chrome. */
+.runtime-popover {
+    position: fixed;
+    z-index: 1300;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 32px));
+    transform: translateX(-50%);
 }
 
-@supports (position-anchor: --mlx-chat-composer) and (position-area: top center) {
-    .runtime-popover {
-        position: fixed;
-        position-anchor: --mlx-chat-composer;
-        position-area: top center;
-        inset: auto;
-        width: min(520px, calc(100vw - 32px));
-        max-height: min(520px, 65vh);
-        margin: 0 0 12px;
-        z-index: 1300;
+body.mlx-empty-chat .runtime-popover {
+    top: calc(50% - 14px);
+    max-height: calc(50vh - 30px);
+    transform: translate(-50%, -100%);
+}
+
+body.mlx-chat-started .runtime-popover {
+    top: auto;
+    bottom: 96px;
+}
+
+body.mlx-chat-started:has(.composer.composer-multiline) .runtime-popover {
+    bottom: min(310px, 38vh);
+}
+
+@media (max-height: 700px) {
+    body.mlx-empty-chat .runtime-popover {
+        top: calc(46% - 12px);
+        max-height: calc(46vh - 24px);
     }
 }
 
@@ -254,11 +269,12 @@
         grid-template-columns: 1fr;
     }
 
-    @supports (position-anchor: --mlx-chat-composer) and (position-area: top center) {
-        .runtime-popover {
-            width: calc(100vw - 24px);
-            max-height: min(460px, 62vh);
-            margin-bottom: 8px;
-        }
+    .runtime-popover {
+        width: calc(100vw - 24px);
+        max-height: min(400px, calc(100vh - 24px));
+    }
+
+    body.mlx-chat-started .runtime-popover {
+        bottom: 92px;
     }
 }
