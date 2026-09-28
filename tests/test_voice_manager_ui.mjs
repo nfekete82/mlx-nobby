@@ -49,6 +49,13 @@ test('Voice Manager exposes the full local management workflow', () => {
 });
 
 
+test('Voice Manager button is not treated as composer playback', () => {
+    assert.match(manager, /element\('button', 'mlx-vm-manage-button'/);
+    assert.doesNotMatch(manager, /mlx-voice-preview mlx-vm-manage-button/);
+    assert.match(manager, /event\.stopImmediatePropagation\(\)/);
+});
+
+
 test('Voice Manager translations have matching German and English keys', () => {
     assert.deepEqual(
         Object.keys(translations.de).sort(),

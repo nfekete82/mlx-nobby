@@ -519,11 +519,11 @@
         let button = popover.querySelector('.mlx-vm-manage-button');
         if (!button) {
             const divider = element('div', 'mlx-voice-divider');
-            button = element('button', 'mlx-voice-preview mlx-vm-manage-button', t('manage'));
+            button = element('button', 'mlx-vm-manage-button', t('manage'));
             button.type = 'button';
             button.addEventListener('click', event => {
                 event.preventDefault();
-                event.stopPropagation();
+                event.stopImmediatePropagation();
                 open().catch(error => {
                     console.error('[voice-manager] Open failed:', error);
                 });
