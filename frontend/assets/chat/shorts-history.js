@@ -8,71 +8,29 @@
         'tts_completed'
     ]);
 
-    const COPY = {
-        de: {
-            launcher: 'Shorts',
-            title: 'Shorts Studio',
-            subtitle: 'Projekte',
-            close: 'Projektübersicht schließen',
-            new_short: '+ Neues Short',
-            refresh: 'Aktualisieren',
-            all: 'Alle',
-            active: 'Aktiv',
-            completed: 'Fertig',
-            failed: 'Fehler',
-            loading: 'Shorts-Projekte werden geladen …',
-            empty: 'Noch keine Shorts-Projekte vorhanden.',
-            unavailable: 'Shorts-Historie ist momentan nicht verfügbar.',
-            open: 'Öffnen',
-            video: 'Video',
-            scenes: 'Szenen',
-            revision: 'Revision',
-            revisions: 'Revisionen',
-            voice: 'Stimme',
-            default_voice: 'Standardstimme',
-            created: 'Erstellt',
-            status_completed: 'Fertig',
-            status_failed: 'Fehler',
-            status_cancelled: 'Abgebrochen',
-            status_queued: 'Wartet',
-            status_running: 'Rendering',
-            status_video_completed: 'Video fertig',
-            status_tts_completed: 'Stimme fertig',
-            status_unknown: 'Unbekannt',
-            prompt: 'Erstelle ein 20-sekündiges Short über '
-        },
-        en: {
-            launcher: 'Shorts',
-            title: 'Shorts Studio',
-            subtitle: 'Projects',
-            close: 'Close project browser',
-            new_short: '+ New Short',
-            refresh: 'Refresh',
-            all: 'All',
-            active: 'Active',
-            completed: 'Completed',
-            failed: 'Failed',
-            loading: 'Loading Shorts projects …',
-            empty: 'No Shorts projects yet.',
-            unavailable: 'Shorts history is currently unavailable.',
-            open: 'Open',
-            video: 'Video',
-            scenes: 'scenes',
-            revision: 'revision',
-            revisions: 'revisions',
-            voice: 'Voice',
-            default_voice: 'Default voice',
-            created: 'Created',
-            status_completed: 'Completed',
-            status_failed: 'Failed',
-            status_cancelled: 'Cancelled',
-            status_queued: 'Queued',
-            status_running: 'Rendering',
-            status_video_completed: 'Video completed',
-            status_tts_completed: 'Voice completed',
-            status_unknown: 'Unknown',
-            prompt: 'Create a 20-second Short about '
-        }
+    const FALLBACKS = {
+        launcher: 'Shorts',
+        title: 'Shorts Studio',
+        subtitle: 'Projects',
+        close: 'Close project browser',
+        new_short: '+ New Short',
+        refresh: 'Refresh',
+        all: 'All',
+        active: 'Active',
+        completed: 'Completed',
+        failed: 'Failed',
+        loading: 'Loading Shorts projects …',
+        empty: 'No Shorts projects yet.',
+        unavailable: 'Shorts history is currently unavailable.',
+        open: 'Open',
+        video: 'Video',
+        scenes: 'scenes',
+        revision: 'revision',
+        revisions: 'revisions',
+        voice: 'Voice',
+        default_voice: 'Default voice',
+        created: 'Created',
+        prompt: 'Create a 20-second Short about '
     };
 
     let ui = null;
@@ -80,6 +38,8 @@
     let filter = 'all';
     let refreshTimer = null;
     let loading = false;
+    let translations = window.__MLXShortsStudioTranslations || {};
+    let translationsPromise = null;
 
     function language() {
         const configured = String(window.MLXI18n?.getLanguage?.() || '').toLowerCase();
@@ -90,7 +50,10 @@
     }
 
     function t(key) {
-        return COPY[language()]?.[key] || COPY.en[key] || key;
+        const fullKey = `history_${key}`;
+        const localized = translations?.[language()]?.[fullKey];
+        const fallback = localized || FALLBACKS[key] || key;
+        return window.MLXI18n?.t?.(`shorts_studio.${fullKey}`, fallback) || fallback;
     }
 
     function createElement(tag, className, text) {
@@ -109,14 +72,11 @@
         document.head.appendChild(link);
     }
 
-    function statusKey(status) {
-        const normalized = String(status || 'unknown').toLowerCase();
-        return `status_${normalized}`;
-    }
-
     function statusLabel(status) {
-        const key = statusKey(status);
-        return COPY[language()]?.[key] || COPY.en[key] || String(status || t('status_unknown'));
+        const normalized = String(status || 'unknown').trim().toLowerCase();
+        const localized = translations?.[language()]?.[`status_${normalized}`];
+        if (localized) return localized;
+        return window.MLXShortsStudio?.statusLabel?.(normalized) || normalized;
     }
 
     function statusClass(status) {
@@ -433,6 +393,25 @@
         }
     }
 
+    function loadTranslations() {
+        if (translationsPromise) return translationsPromise;
+        translationsPromise = window.fetch('/i18n/shorts-studio.json', { cache: 'no-cache' })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(payload => {
+                if (payload && typeof payload === 'object') translations = payload;
+                render();
+                return translations;
+            })
+            .catch(error => {
+                console.warn('[Shorts History i18n]', error);
+                return translations;
+            });
+        return translationsPromise;
+    }
+
     function open() {
         const current = ensureUi();
         if (!current) return;
@@ -455,6 +434,7 @@
 
     function init() {
         ensureUi();
+        loadTranslations();
         loadProjects(false);
         document.addEventListener('mlx-language-changed', refreshLanguage);
     }
