@@ -20,7 +20,7 @@ test('memory consolidation UI exposes status, cleanup, history and restore actio
     assert.match(manager, /\/api\/mlx\/memory\/consolidation-status/);
     assert.match(manager, /\/api\/mlx\/memory\/consolidations\?limit=100/);
     assert.match(manager, /\/api\/mlx\/memory\/consolidate/);
-    assert.match(manager, /MemoryConsolidationHistory/);
+    assert.match(manager, /memoryConsolidationHistory/);
     assert.match(manager, /restoreMemory/);
     assert.match(manager, /enabled: true/);
     assert.match(manager, /slot_replacement/);
