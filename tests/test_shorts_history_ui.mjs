@@ -10,6 +10,10 @@ const commonSource = fs.readFileSync(
     new URL('../frontend/assets/common.js', import.meta.url),
     'utf8'
 );
+const translations = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/shorts-studio.json', import.meta.url),
+    'utf8'
+));
 
 
 test('Shorts history loads grouped project endpoint', () => {
@@ -28,12 +32,26 @@ test('Shorts history reopens a persisted job in Shorts Studio', () => {
 });
 
 
-test('Shorts history exposes project filters and new-short composer entry', () => {
+test('Shorts history exposes project filters and localized new-short entry', () => {
     for (const filter of ['all', 'active', 'completed', 'failed']) {
         assert.match(historySource, new RegExp(`'${filter}'`));
     }
     assert.match(historySource, /Create a 20-second Short about/);
-    assert.match(historySource, /Erstelle ein 20-sekündiges Short über/);
+    assert.equal(
+        translations.de.history_prompt,
+        'Erstelle ein 20-sekündiges Short über '
+    );
+    assert.equal(
+        translations.en.history_prompt,
+        'Create a 20-second Short about '
+    );
+});
+
+
+test('Shorts history uses shared Shorts Studio translations', () => {
+    assert.match(historySource, /\/i18n\/shorts-studio\.json/);
+    assert.equal(translations.de.history_open, 'Öffnen');
+    assert.equal(translations.en.history_open, 'Open');
 });
 
 
