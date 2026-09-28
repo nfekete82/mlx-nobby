@@ -147,6 +147,18 @@
         }
     }
 
+    async function loadRuntimeReliability() {
+        if (!document.getElementById('runtimeInfoButton')) return;
+        try {
+            await loadScript(
+                '/assets/chat/runtime-reliability.js?v=20260928-runtime-reliability-v1',
+                'mlx-runtime-reliability'
+            );
+        } catch (error) {
+            console.error('[runtime-reliability] Failed to load runtime reliability:', error);
+        }
+    }
+
     async function loadRuntimeBudget() {
         if (!document.getElementById('runtimeInfoButton')) return;
         try {
@@ -173,6 +185,7 @@
 
     function loadChatEnhancements() {
         removeRedundantTopActions();
+        loadRuntimeReliability();
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
         loadHelpCenter();
