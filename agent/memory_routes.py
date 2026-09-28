@@ -32,6 +32,10 @@ def install_routes(app):
             raise HTTPException(422, str(exc)) from exc
         return {"memory": item}
 
+    @app.get("/api/memory/embedding-status")
+    def memory_embedding_status():
+        return memory.embedding_status()
+
     @app.patch("/api/memory/{memory_id}")
     def memory_update(memory_id: str, payload: dict):
         if not isinstance(payload, dict):
@@ -71,8 +75,9 @@ def install_routes(app):
 
     @app.get("/api/memory/context")
     def memory_context(query: str, limit: int = memory.DEFAULT_LIMIT):
+        selected = memory.retrieve(query, limit=limit)
         return {
             "query": query,
-            "memories": memory.retrieve(query, limit=limit),
-            "context": memory.context(query, limit=limit),
+            "memories": selected,
+            "context": memory.context_from_memories(selected),
         }
