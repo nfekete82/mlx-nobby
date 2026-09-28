@@ -7,6 +7,7 @@ from typing import Callable, ContextManager, Protocol
 import urllib.error
 import urllib.request
 
+from agent import memory
 from agent.run_state import RunContext
 from backend import observability
 
@@ -44,6 +45,50 @@ def _check_cancelled(context):
         raise ProviderError("cancelled", "Agent-Modellaufruf wurde abgebrochen")
 
 
+def _memory_allowed(request: ModelRequest) -> bool:
+    """Keep memory out of strict machine-output and transformation prompts."""
+    if request.role not in {"chat", "agent", "coding"}:
+        return False
+    system_text = "\n".join(
+        str(message.get("content") or "")
+        for message in request.messages
+        if message.get("role") == "system"
+        and isinstance(message.get("content"), str)
+    ).casefold()
+    strict_markers = (
+        "return exactly one json",
+        "return json only",
+        "literal translator",
+        "repair the supplied output",
+        "translate the user's prompt into english and nothing else",
+    )
+    return not any(marker in system_text for marker in strict_markers)
+
+
+def _with_memory(request: ModelRequest, run_context: RunContext | None) -> ModelRequest:
+    if not _memory_allowed(request):
+        return request
+    try:
+        chat_id = getattr(run_context, "chat_id", None) if run_context is not None else None
+        messages = memory.enrich_messages(
+            request.messages,
+            source_chat_id=chat_id,
+            observe=True,
+        )
+    except Exception:
+        # Memory must never make the core model path unavailable. A corrupt or
+        # temporarily locked local database simply degrades to normal chat.
+        return request
+    if messages == request.messages:
+        return request
+    return ModelRequest(
+        messages=messages,
+        max_tokens=request.max_tokens,
+        temperature=request.temperature,
+        role=request.role,
+    )
+
+
 class MLXProvider:
     """Uses the host's existing role resolver, shared runtime lock and config.
 
@@ -63,6 +108,7 @@ class MLXProvider:
 
     def complete(self, request: ModelRequest, *, run_context: RunContext | None = None) -> ModelResponse:
         _check_cancelled(run_context)
+        request = _with_memory(request, run_context)
         metrics = observability.ModelCallMetrics(
             purpose=observability.current_call_purpose("agent.call"),
             role=request.role,
