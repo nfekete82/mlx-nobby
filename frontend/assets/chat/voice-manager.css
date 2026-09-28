@@ -108,7 +108,32 @@
 .mlx-vm-textarea { min-height: 150px; resize: vertical; font: inherit; line-height: 1.45; }
 .mlx-vm-input { width: 100%; box-sizing: border-box; }
 .mlx-vm-editor-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 15px; }
-.mlx-vm-manage-button { margin-top: 7px !important; }
+.mlx-vm-manage-button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    margin-top: 7px;
+    padding: 9px 10px;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    text-align: center;
+    appearance: none;
+}
+.mlx-vm-manage-button:hover {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.mlx-vm-manage-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, currentColor 55%, transparent);
+    outline-offset: 2px;
+}
 @media (max-width: 700px) {
     .mlx-vm-panel { width: 100%; }
     .mlx-vm-header { padding: 18px 16px 14px; }
