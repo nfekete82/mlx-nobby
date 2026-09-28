@@ -1,7 +1,6 @@
 """FastAPI routes for Shorts Studio scene revisions and project history."""
 
 from copy import deepcopy
-from pathlib import Path
 import shutil
 
 from fastapi import HTTPException
@@ -27,6 +26,15 @@ class SceneRevisionRequest(BaseModel):
     character_consistency: bool | None = None
     style_consistency: bool | None = None
     style_strength: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+def _route_exists(app, path, method):
+    method = str(method).upper()
+    return any(
+        getattr(route, "path", None) == path
+        and method in (getattr(route, "methods", None) or set())
+        for route in app.routes
+    )
 
 
 def _job_timestamp(job):
@@ -274,22 +282,20 @@ def delete_failed_short_projects():
 
 def install_routes(app):
     """Register Shorts Studio routes exactly once on an existing FastAPI app."""
-    paths = {getattr(route, "path", None) for route in app.routes}
-
     history_path = "/api/shorts-jobs"
-    if history_path not in paths:
+    if not _route_exists(app, history_path, "GET"):
         @app.get(history_path)
         def shorts_history(limit: int = 50):
             return list_short_history(limit=limit)
 
     failed_cleanup_path = "/api/shorts-jobs/failed"
-    if failed_cleanup_path not in paths:
+    if not _route_exists(app, failed_cleanup_path, "DELETE"):
         @app.delete(failed_cleanup_path)
         def delete_failed_shorts():
             return delete_failed_short_projects()
 
     delete_path = "/api/shorts-jobs/{job_id}"
-    if delete_path not in paths:
+    if not _route_exists(app, delete_path, "DELETE"):
         @app.delete(delete_path)
         def delete_short(job_id: str):
             try:
@@ -302,7 +308,7 @@ def install_routes(app):
                 raise HTTPException(status_code=status, detail=detail) from exc
 
     revision_path = "/api/shorts/jobs/{job_id}/scenes/{scene_id}/revise"
-    if revision_path not in paths:
+    if not _route_exists(app, revision_path, "POST"):
         @app.post(revision_path, status_code=202)
         def revise_short_scene(
             job_id: str,
