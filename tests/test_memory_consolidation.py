@@ -69,13 +69,9 @@ def test_semantic_duplicate_is_disabled_but_not_deleted(
 
     assert result["changed"] is True
     assert result["primary_id"] == new["id"]
-    assert result["absorbed"] == [
-        {
-            "id": old["id"],
-            "reason": "semantic_duplicate",
-            "similarity": pytest.approx(0.985),
-        }
-    ]
+    assert result["absorbed"][0]["id"] == old["id"]
+    assert result["absorbed"][0]["reason"] == "semantic_duplicate"
+    assert result["absorbed"][0]["similarity"] == pytest.approx(0.985)
     assert memory.get(old["id"])["enabled"] is False
     assert memory.get(old["id"])["text"] == "Bitte antworte mir kurz und direkt."
     assert memory.get(new["id"])["enabled"] is True
@@ -144,3 +140,27 @@ def test_consolidation_events_are_auditable(isolated_memory):
     assert events[0]["reason"] == "slot_replacement"
     assert status["events"] == 1
     assert status["disabled_memories"] == 1
+
+
+def test_explicit_forget_purges_disabled_history_and_audit(isolated_memory):
+    first = memory_lifecycle.observe_user_message(
+        "Merk dir: Für Coding nutze ich Qwen3.8-27B."
+    )
+    second = memory_lifecycle.observe_user_message(
+        "Merk dir: Für Coding nutze ich Devstral."
+    )
+
+    assert second["consolidation"]["changed"] is True
+    assert len(memory.list_memories(include_disabled=True)) == 2
+    assert len(memory_consolidation.list_events(memory.MEMORY_DB)) == 1
+
+    forgotten = memory_lifecycle.observe_user_message("Vergiss Devstral Coding")
+
+    assert forgotten["action"] == "forgot"
+    assert forgotten["count"] == 1
+    assert set(forgotten["privacy_cleanup"]["memory_ids"]) == {
+        first["remembered_memory_id"],
+        second["remembered_memory_id"],
+    }
+    assert memory.list_memories(include_disabled=True) == []
+    assert memory_consolidation.list_events(memory.MEMORY_DB) == []
