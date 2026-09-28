@@ -209,4 +209,9 @@ def install_routes(app):
                 "streaming_interval": _STREAM_INTERVAL,
             }
 
-    start_preload_once()
+    if not getattr(app.state, "mlx_tts_preload_hook", False):
+        app.state.mlx_tts_preload_hook = True
+
+        @app.on_event("startup")
+        def preload_tts_on_startup():
+            start_preload_once()
