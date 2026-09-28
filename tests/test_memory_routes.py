@@ -11,9 +11,15 @@ def client(tmp_path, monkeypatch):
     root = tmp_path / "mlx-web"
     monkeypatch.setattr(memory, "ROOT", root)
     monkeypatch.setattr(memory, "MEMORY_DB", root / "memory.db")
+    monkeypatch.setattr(
+        memory.memory_embeddings,
+        "semantic_scores",
+        lambda *_args, **_kwargs: None,
+    )
     app = FastAPI()
     install_routes(app)
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_memory_crud(client):
@@ -40,13 +46,14 @@ def test_memory_crud(client):
     assert client.get("/api/memory").json()["memories"] == []
 
 
-def test_memory_observe_and_context(client):
+def test_memory_observe_and_context_retrieves_once(client):
     observed = client.post(
         "/api/memory/observe",
         json={"message": "Merk dir: Nenn mich Nobby.", "source_chat_id": "chat-1"},
     )
     assert observed.status_code == 200
     assert observed.json()["action"] == "remembered"
+    memory_id = observed.json()["memory"]["id"]
 
     context = client.get(
         "/api/memory/context",
@@ -56,3 +63,24 @@ def test_memory_observe_and_context(client):
     payload = context.json()
     assert payload["memories"]
     assert "Nobby" in payload["context"]
+    assert memory.get(memory_id)["use_count"] == 1
+
+
+def test_memory_embedding_status(client, monkeypatch):
+    monkeypatch.setattr(
+        memory.memory_embeddings,
+        "status",
+        lambda _db: {
+            "available": True,
+            "mode": "hybrid",
+            "model": "qwen-test",
+            "dimensions": 3,
+            "stored_vectors": 2,
+        },
+    )
+
+    response = client.get("/api/memory/embedding-status")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "hybrid"
+    assert response.json()["model"] == "qwen-test"
