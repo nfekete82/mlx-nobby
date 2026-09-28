@@ -2,7 +2,9 @@
 
 A revision creates a new durable job instead of mutating a completed source job.
 Unchanged completed scene videos/keyframes are reused. Visual or consistency
-changes invalidate only the media that must actually be regenerated.
+changes invalidate only the media that must actually be regenerated. When the
+first keyframe is the recurring-character anchor, changing it also invalidates
+all dependent scene keyframes/videos.
 """
 
 from copy import deepcopy
@@ -117,8 +119,14 @@ def create_scene_revision(
     invalidate_keyframe = force_regenerate_keyframe or (
         revised_project.consistency_mode and video_prompt is not None
     )
+    anchor_changed = (
+        invalidate_keyframe
+        and index == 0
+        and revised_project.consistency_mode
+        and revised_project.character_consistency
+    )
 
-    if consistency_changed:
+    if consistency_changed or anchor_changed:
         reused = {}
         reused_keyframes = {}
     else:
