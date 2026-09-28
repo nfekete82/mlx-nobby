@@ -110,6 +110,60 @@ def test_semantic_scores_lazy_backfill_and_refresh_stale_text(tmp_path, monkeypa
     assert row[2] == hashlib.sha256(changed[0]["text"].encode()).hexdigest()
 
 
+def test_semantic_scores_bound_lazy_backfill_per_request(tmp_path, monkeypatch):
+    database = tmp_path / "memory.db"
+    _database(database)
+    health = {
+        "ok": True,
+        "model": "embedding-role",
+        "upstream_model": "qwen-test",
+        "dimensions": 3,
+    }
+    monkeypatch.setattr(memory_embeddings, "embedding_health", lambda: health)
+    monkeypatch.setattr(memory_embeddings, "EMBEDDING_BACKFILL_PER_REQUEST", 2)
+
+    embedded_batches = []
+
+    def fake_request(path, payload=None, **_kwargs):
+        if path == "/embeddings":
+            texts = list(payload["texts"])
+            embedded_batches.append(texts)
+            return {
+                "model": "embedding-role",
+                "upstream_model": "qwen-test",
+                "dimensions": 3,
+                "vectors": [[1.0, 0.0, 0.0] for _ in texts],
+            }
+        if path == "/embedding":
+            return {
+                "model": "embedding-role",
+                "upstream_model": "qwen-test",
+                "dimensions": 3,
+                "vectors": [[1.0, 0.0, 0.0]],
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(memory_embeddings, "_request", fake_request)
+
+    memories = [
+        {"id": f"m{index}", "text": f"Memory {index}"}
+        for index in range(5)
+    ]
+    _seed_memories(database, memories)
+
+    first = memory_embeddings.semantic_scores(database, memories, "Memory")
+    assert embedded_batches == [["Memory 0", "Memory 1"]]
+    assert set(first) == {"m0", "m1"}
+
+    second = memory_embeddings.semantic_scores(database, memories, "Memory")
+    assert embedded_batches[-1] == ["Memory 2", "Memory 3"]
+    assert set(second) == {"m0", "m1", "m2", "m3"}
+
+    third = memory_embeddings.semantic_scores(database, memories, "Memory")
+    assert embedded_batches[-1] == ["Memory 4"]
+    assert set(third) == {"m0", "m1", "m2", "m3", "m4"}
+
+
 def test_semantic_scores_fall_back_when_embedding_service_is_unavailable(
     tmp_path,
     monkeypatch,
@@ -148,3 +202,4 @@ def test_status_reports_hybrid_mode_and_vector_count(tmp_path, monkeypatch):
     assert result["model"] == "qwen-test"
     assert result["dimensions"] == 3
     assert result["stored_vectors"] == 0
+    assert result["backfill_per_request"] == memory_embeddings.EMBEDDING_BACKFILL_PER_REQUEST

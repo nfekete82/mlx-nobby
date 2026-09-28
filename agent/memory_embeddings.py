@@ -30,6 +30,10 @@ EMBEDDING_BATCH_SIZE = max(
     1,
     min(int(os.environ.get("MLX_MEMORY_EMBEDDING_BATCH_SIZE", "64")), 128),
 )
+EMBEDDING_BACKFILL_PER_REQUEST = max(
+    1,
+    min(int(os.environ.get("MLX_MEMORY_EMBEDDING_BACKFILL_PER_REQUEST", "32")), 128),
+)
 MIN_SEMANTIC_SIMILARITY = max(
     0.0,
     min(float(os.environ.get("MLX_MEMORY_MIN_SEMANTIC_SIMILARITY", "0.35")), 1.0),
@@ -181,6 +185,8 @@ def _backfill(connection, memories, *, model, dimensions) -> int:
         ).fetchone()
         if row is None:
             missing.append((item, content_hash))
+            if len(missing) >= EMBEDDING_BACKFILL_PER_REQUEST:
+                break
 
     written = 0
     for offset in range(0, len(missing), EMBEDDING_BATCH_SIZE):
@@ -221,7 +227,8 @@ def semantic_scores(db_path, memories, query):
     """Return ``memory_id -> cosine similarity`` or ``None`` on fallback.
 
     Existing v1 databases are upgraded lazily. Missing, stale, or differently
-    modelled vectors are regenerated only when semantic retrieval is used.
+    modelled vectors are regenerated in bounded batches when semantic retrieval
+    is used. A single chat request therefore cannot trigger an unbounded backfill.
     """
     query = str(query or "").strip()
     if not query or not memories:
@@ -293,6 +300,7 @@ def status(db_path=None):
         "model": _model_key(health or {}),
         "dimensions": int((health or {}).get("dimensions") or 0) or None,
         "min_similarity": MIN_SEMANTIC_SIMILARITY,
+        "backfill_per_request": EMBEDDING_BACKFILL_PER_REQUEST,
     }
     if db_path is not None:
         try:
