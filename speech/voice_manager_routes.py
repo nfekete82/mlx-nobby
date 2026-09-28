@@ -348,6 +348,7 @@ def install_routes(app):
                 raise HTTPException(404, "Voice profile not found")
             profile_dir = _managed_profile_dir(name)
             old_label = voice_profile_label(name)
+            was_default = current_default_voice() == old_label
             metadata = voice_profile_metadata(name)
             label = old_label
 
@@ -375,7 +376,7 @@ def install_routes(app):
             metadata.setdefault("quality", get_voice_quality(name))
             _write_json_atomic(profile_dir / "profile.json", metadata)
 
-            if current_default_voice() == old_label and label != old_label:
+            if was_default and label != old_label:
                 _set_default_voice(label)
 
             return _clone_details(name)
