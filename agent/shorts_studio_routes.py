@@ -11,6 +11,7 @@ class SceneRevisionRequest(BaseModel):
     narration: str | None = Field(default=None, min_length=1, max_length=4000)
     video_prompt: str | None = Field(default=None, min_length=1, max_length=4000)
     force_regenerate_video: bool = False
+    force_regenerate_keyframe: bool = False
     voice: str | None = Field(
         default=None,
         min_length=1,
@@ -18,6 +19,10 @@ class SceneRevisionRequest(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     voice_speed: float | None = Field(default=None, ge=0.5, le=2.0)
+    consistency_mode: bool | None = None
+    character_consistency: bool | None = None
+    style_consistency: bool | None = None
+    style_strength: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 def install_routes(app):
@@ -39,8 +44,13 @@ def install_routes(app):
                 narration=request.narration,
                 video_prompt=request.video_prompt,
                 force_regenerate_video=request.force_regenerate_video,
+                force_regenerate_keyframe=request.force_regenerate_keyframe,
                 voice=request.voice,
                 voice_speed=request.voice_speed,
+                consistency_mode=request.consistency_mode,
+                character_consistency=request.character_consistency,
+                style_consistency=request.style_consistency,
+                style_strength=request.style_strength,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Shorts job not found") from exc
