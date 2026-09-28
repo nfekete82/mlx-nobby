@@ -13,6 +13,9 @@ MEMORY_MANAGER_SCRIPT = (
 MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
     b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
 )
+MEMORY_CONTEXT_INSPECTOR_SCRIPT = (
+    b'<script src="/assets/chat/memory-context-inspector.js?v=20260928-memory-context-v13"></script>'
+)
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
 
@@ -30,6 +33,7 @@ def inject_memory_manager_script(body: bytes) -> bytes:
         for script in (
             MEMORY_MANAGER_SCRIPT,
             MEMORY_MANAGER_CONSOLIDATION_SCRIPT,
+            MEMORY_CONTEXT_INSPECTOR_SCRIPT,
         )
         if script not in body
     ]
@@ -208,6 +212,19 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 "GET",
                 "/api/memory/context?" + params,
                 timeout=10,
+            )
+
+    if "/api/mlx/memory/inspect" not in paths:
+        @app.get("/api/mlx/memory/inspect")
+        def memory_inspect(query: str, limit: int = 6):
+            params = urllib.parse.urlencode({
+                "query": query,
+                "limit": max(1, min(int(limit), 12)),
+            })
+            return agent_json_request(
+                "GET",
+                "/api/memory/inspect?" + params,
+                timeout=20,
             )
 
     if "/api/mlx/memory/consolidation-status" not in paths:
