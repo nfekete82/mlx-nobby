@@ -14,6 +14,10 @@ const entrypoint = fs.readFileSync(
     new URL('../backend/entrypoint.py', import.meta.url),
     'utf8'
 );
+const translations = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/memory-manager.json', import.meta.url),
+    'utf8'
+));
 
 
 test('memory manager exposes the full local CRUD workflow', () => {
@@ -39,8 +43,12 @@ test('memory manager is injected before the hard-coded settings router', () => {
 test('memory manager supports direct settings navigation and both UI languages', () => {
     assert.match(manager, /requestedAtBoot/);
     assert.match(manager, /\/settings\/memory/);
-    assert.match(manager, /const COPY =/);
-    assert.match(manager, /de:/);
-    assert.match(manager, /en:/);
+    assert.match(manager, /memory-manager\.json/);
     assert.match(manager, /mlx-language-changed/);
+    assert.deepEqual(
+        Object.keys(translations.de).sort(),
+        Object.keys(translations.en).sort()
+    );
+    assert.equal(translations.de.remove, 'Löschen');
+    assert.equal(translations.en.remove, 'Delete');
 });
