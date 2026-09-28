@@ -1,8 +1,8 @@
 """Conservative consolidation for Nobby Memory.
 
 The planner identifies older memories that represent the same preference slot or
-very likely semantic duplicates. It never deletes data; callers disable absorbed
-memories and record an audit event.
+very likely semantic duplicates. It never deletes data: absorbed memories are
+disabled and every consolidation is written to an audit table.
 """
 
 from __future__ import annotations
@@ -115,11 +115,7 @@ def _normalize_scope(value: str) -> str:
 
 
 def slot_key(text: str) -> str | None:
-    """Return a conservative preference slot or ``None``.
-
-    Slots intentionally cover only structures where a later statement can
-    reasonably replace an earlier value, such as ``Für Coding nutze ich ...``.
-    """
+    """Return a conservative replaceable preference slot or ``None``."""
     text = str(text or "").strip()
     if not text:
         return None
@@ -155,8 +151,9 @@ def lexical_similarity(left: str, right: str) -> float:
 
 
 def _primary_key(item: dict) -> tuple:
-    # Recency is authoritative: a later durable user statement supersedes an
-    # older one. Pinned/importance/confidence only break close/tied cases.
+    # The newest durable user statement wins. Pinned/importance/confidence are
+    # preserved later during metadata aggregation, so an updated preference can
+    # inherit the strength of an older explicit memory without keeping old text.
     return (
         float(item.get("updated_at") or 0.0),
         int(bool(item.get("pinned"))),
@@ -169,7 +166,11 @@ def _primary_key(item: dict) -> tuple:
 def plan(db_path, target: dict, candidates: list[dict]) -> dict:
     """Return a consolidation plan without mutating memory rows."""
     if not target or not target.get("enabled", True):
-        return {"changed": False, "primary_id": target.get("id") if target else None, "absorbed": []}
+        return {
+            "changed": False,
+            "primary_id": target.get("id") if target else None,
+            "absorbed": [],
+        }
 
     peers = [
         item
@@ -214,7 +215,6 @@ def plan(db_path, target: dict, candidates: list[dict]) -> dict:
             else float(semantic_scores.get(item["id"], 0.0))
         )
 
-        duplicate = False
         if semantic is None:
             duplicate = lexical >= LEXICAL_FALLBACK_THRESHOLD
         else:
@@ -244,8 +244,6 @@ def plan(db_path, target: dict, candidates: list[dict]) -> dict:
         if item["id"] == primary["id"]:
             continue
         if item["id"] == target["id"]:
-            # If the target itself loses to a newer peer, preserve the strongest
-            # reason found in the cluster for the audit record.
             best = max(
                 matched.values(),
                 key=lambda entry: float(entry.get("similarity") or 0.0),
@@ -270,6 +268,23 @@ def plan(db_path, target: dict, candidates: list[dict]) -> dict:
         "absorbed": absorbed,
         "slot": target_slot,
     }
+
+
+def _connect(db_path) -> sqlite3.Connection:
+    connection = sqlite3.connect(db_path, timeout=10)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    ensure_schema(connection)
+    return connection
+
+
+def _memory_dict(row) -> dict | None:
+    if row is None:
+        return None
+    item = dict(row)
+    item["pinned"] = bool(item.get("pinned"))
+    item["enabled"] = bool(item.get("enabled"))
+    return item
 
 
 def record_event(
@@ -303,12 +318,174 @@ def record_event(
     return event_id
 
 
+def consolidate_memory(db_path, memory_id: str) -> dict:
+    """Consolidate one enabled memory against the current enabled store."""
+    try:
+        with _connect(db_path) as connection:
+            target = _memory_dict(
+                connection.execute(
+                    "SELECT * FROM memories WHERE id = ?",
+                    (str(memory_id),),
+                ).fetchone()
+            )
+            if target is None:
+                return {
+                    "changed": False,
+                    "primary_id": None,
+                    "absorbed": [],
+                    "error": "memory_not_found",
+                }
+            if not target["enabled"]:
+                return {
+                    "changed": False,
+                    "primary_id": target["id"],
+                    "absorbed": [],
+                    "reason": "memory_disabled",
+                }
+            candidates = [
+                _memory_dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM memories WHERE enabled = 1 ORDER BY updated_at DESC LIMIT 500"
+                ).fetchall()
+            ]
+
+        result = plan(db_path, target, candidates)
+        if not result.get("changed"):
+            return result
+
+        absorbed_ids = [entry["id"] for entry in result["absorbed"]]
+        cluster_ids = [result["primary_id"], *absorbed_ids]
+        placeholders = ",".join("?" for _ in cluster_ids)
+
+        with _connect(db_path) as connection:
+            rows = connection.execute(
+                f"SELECT * FROM memories WHERE id IN ({placeholders})",
+                cluster_ids,
+            ).fetchall()
+            items = {row["id"]: _memory_dict(row) for row in rows}
+            primary = items.get(result["primary_id"])
+            if primary is None:
+                return {
+                    "changed": False,
+                    "primary_id": None,
+                    "absorbed": [],
+                    "error": "primary_missing",
+                }
+
+            absorbed_items = [
+                items[entry["id"]]
+                for entry in result["absorbed"]
+                if entry["id"] in items and items[entry["id"]]["enabled"]
+            ]
+            if not absorbed_items:
+                return {
+                    "changed": False,
+                    "primary_id": primary["id"],
+                    "absorbed": [],
+                }
+
+            cluster = [primary, *absorbed_items]
+            importance = max(float(item.get("importance") or 0.0) for item in cluster)
+            confidence = max(float(item.get("confidence") or 0.0) for item in cluster)
+            pinned = any(bool(item.get("pinned")) for item in cluster)
+            use_count = sum(int(item.get("use_count") or 0) for item in cluster)
+            last_used_values = [
+                float(item["last_used_at"])
+                for item in cluster
+                if item.get("last_used_at") is not None
+            ]
+            last_used_at = max(last_used_values) if last_used_values else None
+
+            connection.execute(
+                """
+                UPDATE memories
+                   SET importance = ?, confidence = ?, pinned = ?,
+                       use_count = ?, last_used_at = ?, enabled = 1
+                 WHERE id = ?
+                """,
+                (
+                    importance,
+                    confidence,
+                    int(pinned),
+                    use_count,
+                    last_used_at,
+                    primary["id"],
+                ),
+            )
+
+            event_ids = []
+            applied = []
+            by_id = {entry["id"]: entry for entry in result["absorbed"]}
+            for absorbed in absorbed_items:
+                connection.execute(
+                    "UPDATE memories SET enabled = 0 WHERE id = ?",
+                    (absorbed["id"],),
+                )
+                detail = by_id[absorbed["id"]]
+                event_ids.append(
+                    record_event(
+                        connection,
+                        primary=primary,
+                        absorbed=absorbed,
+                        reason=detail["reason"],
+                        similarity=detail.get("similarity"),
+                    )
+                )
+                applied.append(detail)
+            connection.commit()
+
+        return {
+            **result,
+            "changed": bool(applied),
+            "absorbed": applied,
+            "event_ids": event_ids,
+            "primary": primary,
+        }
+    except sqlite3.Error as exc:
+        return {
+            "changed": False,
+            "primary_id": str(memory_id),
+            "absorbed": [],
+            "error": str(exc),
+        }
+
+
+def consolidate_all(db_path, *, limit=500) -> dict:
+    """Conservatively compact the enabled store, newest memories first."""
+    limit = max(1, min(int(limit), 1000))
+    try:
+        with _connect(db_path) as connection:
+            ids = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT id FROM memories WHERE enabled = 1 ORDER BY updated_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            ]
+    except sqlite3.Error as exc:
+        return {"changed": False, "processed": 0, "absorbed": 0, "error": str(exc)}
+
+    processed = 0
+    absorbed = 0
+    events = []
+    for memory_id in ids:
+        result = consolidate_memory(db_path, memory_id)
+        processed += 1
+        absorbed += len(result.get("absorbed") or []) if result.get("changed") else 0
+        events.extend(result.get("event_ids") or [])
+
+    return {
+        "changed": absorbed > 0,
+        "processed": processed,
+        "absorbed": absorbed,
+        "event_ids": events,
+    }
+
+
 def list_events(db_path, *, limit=100) -> list[dict]:
     limit = max(1, min(int(limit), 1000))
     try:
-        with sqlite3.connect(db_path, timeout=10) as connection:
-            connection.row_factory = sqlite3.Row
-            ensure_schema(connection)
+        with _connect(db_path) as connection:
             rows = connection.execute(
                 """
                 SELECT event_id, primary_memory_id, absorbed_memory_id,
@@ -326,8 +503,7 @@ def list_events(db_path, *, limit=100) -> list[dict]:
 
 def status(db_path) -> dict:
     try:
-        with sqlite3.connect(db_path, timeout=10) as connection:
-            ensure_schema(connection)
+        with _connect(db_path) as connection:
             events = connection.execute("SELECT count(*) FROM memory_consolidations").fetchone()[0]
             disabled = connection.execute("SELECT count(*) FROM memories WHERE enabled = 0").fetchone()[0]
         return {
