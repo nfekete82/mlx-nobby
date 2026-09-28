@@ -30,29 +30,7 @@
             context: 'Injected context preview',
             error: 'Inspector error:',
         },
-        de: {
-            title: 'Context Inspector',
-            description: 'Prüft, welche Memories Nobby für eine konkrete Nutzernachricht injizieren würde. Die Diagnose verändert keine Nutzungszähler.',
-            query: 'Nutzernachricht',
-            placeholder: 'z. B. Welches Modell soll ich fürs Coding nehmen?',
-            limit: 'Max. Memories',
-            inspect: 'Context prüfen',
-            inspecting: 'Prüfe …',
-            modeHybrid: 'Hybride Suche',
-            modeLexical: 'Lexikalischer Fallback',
-            selected: '{count} ausgewählt',
-            eligible: '{count} relevant',
-            none: 'Für diese Nachricht würde keine Memory injiziert.',
-            score: 'Score',
-            semantic: 'Semantisch',
-            lexical: 'Lexikalisch',
-            importance: 'Wichtigkeit',
-            confidence: 'Konfidenz',
-            recency: 'Aktualität',
-            pinned: 'Pin-Bonus',
-            context: 'Vorschau des injizierten Contexts',
-            error: 'Inspector-Fehler:',
-        },
+        de: {},
     };
 
     let copy = FALLBACK;
@@ -72,7 +50,6 @@
     const t = (key, values = {}) => interpolate(
         copy[language()]?.[key]
         || copy.en?.[key]
-        || FALLBACK[language()]?.[key]
         || FALLBACK.en[key]
         || key,
         values
