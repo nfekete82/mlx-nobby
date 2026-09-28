@@ -248,6 +248,15 @@ body.mlx-chat-started:has(.composer.composer-multiline) .runtime-popover {
     top: calc(100vh - min(330px, 40vh));
 }
 
+/* Keep the start-screen greeting from visually colliding with the runtime
+   popover. The empty-state container already has an opacity/transform
+   transition in chat.css, so opening and closing the info panel stays soft. */
+body.mlx-empty-chat:has(.runtime-popover:not([hidden])) .empty {
+    opacity: 0;
+    transform: translateY(-110px);
+    pointer-events: none;
+}
+
 @media (max-height: 700px) {
     body.mlx-empty-chat .runtime-popover {
         top: calc(46vh - 12px);
