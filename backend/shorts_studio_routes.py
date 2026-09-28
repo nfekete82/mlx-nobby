@@ -3,12 +3,19 @@
 import urllib.parse
 
 
+def _route_exists(app, path, method):
+    method = str(method).upper()
+    return any(
+        getattr(route, "path", None) == path
+        and method in (getattr(route, "methods", None) or set())
+        for route in app.routes
+    )
+
+
 def install_routes(app, agent_json_request):
     """Register Shorts Studio proxy routes exactly once."""
-    paths = {getattr(route, "path", None) for route in app.routes}
-
     history_path = "/api/mlx/shorts-jobs"
-    if history_path not in paths:
+    if not _route_exists(app, history_path, "GET"):
         @app.get(history_path)
         def shorts_history(limit: int = 50):
             safe_limit = max(1, min(int(limit), 200))
@@ -20,7 +27,7 @@ def install_routes(app, agent_json_request):
             )
 
     failed_cleanup_path = "/api/mlx/shorts-jobs/failed"
-    if failed_cleanup_path not in paths:
+    if not _route_exists(app, failed_cleanup_path, "DELETE"):
         @app.delete(failed_cleanup_path)
         def delete_failed_shorts():
             return agent_json_request(
@@ -31,7 +38,7 @@ def install_routes(app, agent_json_request):
             )
 
     delete_path = "/api/mlx/shorts-jobs/{job_id}"
-    if delete_path not in paths:
+    if not _route_exists(app, delete_path, "DELETE"):
         @app.delete(delete_path)
         def delete_short(job_id: str):
             safe_job = urllib.parse.quote(job_id, safe="")
@@ -43,7 +50,7 @@ def install_routes(app, agent_json_request):
             )
 
     revision_path = "/api/mlx/shorts-jobs/{job_id}/scenes/{scene_id}/revise"
-    if revision_path not in paths:
+    if not _route_exists(app, revision_path, "POST"):
         @app.post(revision_path, status_code=202)
         def revise_short_scene(job_id: str, scene_id: str, request: dict):
             safe_job = urllib.parse.quote(job_id, safe="")
