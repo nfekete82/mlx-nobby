@@ -97,11 +97,15 @@
         if (!document.getElementById('input')) return;
         try {
             await loadScript(
-                '/assets/chat/voice.js?v=20260926-voice-popover-2',
+                '/assets/chat/voice.js?v=20260928-voice-defaults-v2',
                 'mlx-voice-controls'
             );
             await loadScript(
-                '/assets/chat/voice-streaming.js?v=20260928-voice-streaming-v1',
+                '/assets/chat/voice-manager.js?v=20260928-voice-manager-v1',
+                'mlx-voice-manager'
+            );
+            await loadScript(
+                '/assets/chat/voice-streaming.js?v=20260928-voice-streaming-v2',
                 'mlx-voice-streaming'
             );
             await loadScript(
