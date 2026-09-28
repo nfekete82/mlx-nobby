@@ -86,9 +86,10 @@ def install_routes(app):
 
     @app.delete("/api/memory/{memory_id}")
     def memory_delete(memory_id: str):
-        if not memory.delete(memory_id):
+        result = memory_lifecycle.delete_memory(memory_id)
+        if not result["deleted"]:
             raise HTTPException(404, "Memory nicht gefunden")
-        return {"ok": True}
+        return {"ok": True, "privacy_cleanup": result["privacy_cleanup"]}
 
     @app.post("/api/memory/observe")
     def memory_observe(payload: dict):
