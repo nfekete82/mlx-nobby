@@ -10,6 +10,6 @@ services:
     environment:
       AGENT_URL: "${AGENT_URL:-http://host.docker.internal:8010}"
       MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-250}"
-      MLX_ALLOWED_HOSTS: "localhost,127.0.0.1,::1"
+      MLX_ALLOWED_HOSTS: "${MLX_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}"
       MLX_NOBBY_BUILD_SHA: "${MLX_NOBBY_BUILD_SHA:-unknown}"
     restart: unless-stopped
