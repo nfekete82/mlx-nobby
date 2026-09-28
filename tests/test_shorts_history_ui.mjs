@@ -48,6 +48,19 @@ test('Shorts history exposes project filters and localized new-short entry', () 
 });
 
 
+test('Shorts history supports confirmed single and failed-project deletion', () => {
+    assert.match(historySource, /window\.MLXConfirm/);
+    assert.match(historySource, /method: 'DELETE'/);
+    assert.match(historySource, /\/api\/mlx\/shorts-jobs\/failed/);
+    assert.match(historySource, /deleteProject/);
+    assert.match(historySource, /deleteFailedProjects/);
+    assert.match(historySource, /ACTIVE_STATUSES\.has/);
+    assert.equal(translations.de.history_delete, 'Löschen');
+    assert.equal(translations.de.history_delete_failed, 'Fehlgeschlagene löschen');
+    assert.equal(translations.en.history_delete, 'Delete');
+});
+
+
 test('Shorts history uses shared Shorts Studio translations', () => {
     assert.match(historySource, /\/i18n\/shorts-studio\.json/);
     assert.equal(translations.de.history_open, 'Öffnen');
