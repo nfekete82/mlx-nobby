@@ -122,6 +122,25 @@
     color: #111114;
 }
 
+.mlx-shorts-history-toolbar button[data-danger="1"],
+.mlx-shorts-history-actions button[data-danger="1"] {
+    border-color: rgba(255, 92, 92, .24);
+    background: rgba(255, 92, 92, .08);
+    color: #ff9b9b;
+}
+
+.mlx-shorts-history-toolbar button[data-danger="1"]:hover,
+.mlx-shorts-history-actions button[data-danger="1"]:hover {
+    border-color: rgba(255, 92, 92, .4);
+    background: rgba(255, 92, 92, .14);
+}
+
+.mlx-shorts-history-toolbar button:disabled,
+.mlx-shorts-history-actions button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
 .mlx-shorts-history-list {
     display: grid;
     gap: 12px;
