@@ -142,8 +142,8 @@ def _phrase_text(group, active_index):
         text = _ass_text(item["word"])
         if index == active_index:
             parts.append(
-                "{\\c" + HIGHLIGHT_COLOUR + r"\\fs68\\b1}" + text
-                + "{\\c" + WHITE_COLOUR + r"\\fs60\\b1}"
+                "{\\c" + HIGHLIGHT_COLOUR + r"\fs68\b1}" + text
+                + "{\\c" + WHITE_COLOUR + r"\fs60\b1}"
             )
         else:
             parts.append(text)
