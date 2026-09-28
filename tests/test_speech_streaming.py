@@ -17,8 +17,15 @@ class SpeechRequest(BaseModel):
     speed: float = 1.0
 
 
+CLONE_OPTIONS = {
+    "temperature": 0.65,
+    "top_k": 30,
+    "top_p": 0.9,
+}
+
 speech_app_stub = types.ModuleType("speech.app")
 speech_app_stub.SpeechRequest = SpeechRequest
+speech_app_stub.clone_generation_options = lambda: dict(CLONE_OPTIONS)
 speech_app_stub.get_tts_clone_model = lambda: None
 speech_app_stub.get_tts_model = lambda: None
 speech_app_stub.get_voice_profile = lambda voice: None
@@ -81,9 +88,19 @@ def test_clone_stream_uses_qwen_streaming_and_emits_pcm(monkeypatch):
         "done",
     ]
     assert model.kwargs["stream"] is True
-    assert model.kwargs["streaming_interval"] == streaming_routes._STREAM_INTERVAL
+    assert (
+        model.kwargs["streaming_interval"]
+        == streaming_routes._CLONE_STREAM_INTERVAL
+    )
     assert model.kwargs["ref_audio"] == "/tmp/pervin.wav"
     assert model.kwargs["ref_text"] == "Referenz"
+    for key, value in CLONE_OPTIONS.items():
+        assert model.kwargs[key] == value
+    assert events[0]["clone"] is True
+    assert (
+        events[0]["streaming_interval"]
+        == streaming_routes._CLONE_STREAM_INTERVAL
+    )
 
     pcm_bytes = base64.b64decode(events[1]["pcm"])
     pcm = struct.unpack("<3f", pcm_bytes)
@@ -109,6 +126,8 @@ def test_preset_stream_uses_custom_voice_streaming(monkeypatch):
     assert model.kwargs["speaker"] == "Serena"
     assert model.kwargs["language"] == "de"
     assert model.kwargs["stream"] is True
+    assert model.kwargs["streaming_interval"] == streaming_routes._STREAM_INTERVAL
+    assert events[0]["clone"] is False
 
 
 def test_stream_rejects_non_realtime_speed():
@@ -159,6 +178,25 @@ def test_agent_streaming_proxy_forwards_bytes(monkeypatch):
     assert upstream.closed is True
 
 
+def test_agent_voice_proxy_forwards_json(monkeypatch):
+    payload = {
+        "voices": [{"id": "Nobby", "label": "Nobby", "kind": "clone"}],
+        "default": "Serena",
+    }
+    monkeypatch.setattr(
+        agent_streaming,
+        "_upstream_json",
+        lambda path: payload,
+    )
+    app = FastAPI()
+    agent_streaming.install_routes(app)
+
+    response = TestClient(app).get("/api/mlx/audio/voices")
+
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
 def test_backend_streaming_proxy_forwards_bytes(monkeypatch):
     upstream = _Upstream(b'{"type":"audio","pcm":"AA=="}\n')
     monkeypatch.setattr(
@@ -177,3 +215,28 @@ def test_backend_streaming_proxy_forwards_bytes(monkeypatch):
     assert response.status_code == 200
     assert b'"type":"audio"' in response.content
     assert upstream.closed is True
+
+
+def test_backend_voice_proxy_forwards_json(monkeypatch):
+    class _JsonUpstream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"voices":[{"id":"Nobby","kind":"clone"}],"default":"Serena"}'
+
+    monkeypatch.setattr(
+        backend_streaming.urllib.request,
+        "urlopen",
+        lambda request, timeout=15: _JsonUpstream(),
+    )
+    app = FastAPI()
+    backend_streaming.install_routes(app, "http://127.0.0.1:8010")
+
+    response = TestClient(app).get("/api/mlx/audio/voices")
+
+    assert response.status_code == 200
+    assert response.json()["voices"][0]["id"] == "Nobby"
