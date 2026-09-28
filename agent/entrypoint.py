@@ -10,8 +10,10 @@ install_shorts_consistency_runtime()
 
 from agent.app import app
 from agent.shorts_studio_routes import install_routes as install_shorts_studio_routes
+from agent.speech_streaming_routes import install_routes as install_speech_streaming_routes
 
 
 install_shorts_studio_routes(app)
+install_speech_streaming_routes(app)
 
 __all__ = ["app"]
