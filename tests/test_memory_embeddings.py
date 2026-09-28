@@ -17,6 +17,14 @@ def _database(path):
     connection.close()
 
 
+def _seed_memories(database, memories):
+    with sqlite3.connect(database) as connection:
+        connection.executemany(
+            "INSERT INTO memories(id, text) VALUES (?, ?)",
+            [(item["id"], item["text"]) for item in memories],
+        )
+
+
 def test_semantic_scores_lazy_backfill_and_refresh_stale_text(tmp_path, monkeypatch):
     database = tmp_path / "memory.db"
     _database(database)
@@ -61,6 +69,7 @@ def test_semantic_scores_lazy_backfill_and_refresh_stale_text(tmp_path, monkeypa
         {"id": "coding", "text": "Für Coding nutze ich Qwen3.8."},
         {"id": "image", "text": "Für Bilder nutze ich Qwen Image."},
     ]
+    _seed_memories(database, memories)
 
     first = memory_embeddings.semantic_scores(
         database,
@@ -81,6 +90,12 @@ def test_semantic_scores_lazy_backfill_and_refresh_stale_text(tmp_path, monkeypa
         {"id": "coding", "text": "Für Bilder nutze ich jetzt Qwen Image."},
         memories[1],
     ]
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE memories SET text = ? WHERE id = 'coding'",
+            (changed[0]["text"],),
+        )
+
     refreshed = memory_embeddings.semantic_scores(database, changed, "Coding")
 
     assert embedded_texts == [changed[0]["text"]]
