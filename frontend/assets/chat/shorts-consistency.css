@@ -1,0 +1,128 @@
+.mlx-shorts-consistency {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.mlx-shorts-consistency-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mlx-shorts-consistency-heading span {
+    opacity: .62;
+    font-size: 12px;
+}
+
+.mlx-shorts-consistency-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.mlx-shorts-consistency-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-radius: 12px;
+    font-size: 13px;
+}
+
+.mlx-shorts-consistency-strength {
+    display: grid;
+    gap: 8px;
+}
+
+.mlx-shorts-consistency-strength-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.mlx-shorts-consistency-strength input {
+    width: 100%;
+}
+
+.mlx-shorts-consistency-media {
+    display: grid;
+    grid-template-columns: minmax(140px, 220px) 1fr;
+    gap: 14px;
+    align-items: stretch;
+}
+
+.mlx-shorts-consistency-media img,
+.mlx-shorts-consistency-empty {
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.mlx-shorts-consistency-empty {
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+    opacity: .64;
+}
+
+.mlx-shorts-consistency-bible {
+    min-width: 0;
+    margin: 0;
+    padding: 14px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.55;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    background: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.mlx-shorts-consistency-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.mlx-shorts-consistency-actions button {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 10px;
+}
+
+.mlx-shorts-consistency-feedback {
+    min-height: 18px;
+    font-size: 12px;
+    opacity: .72;
+}
+
+.mlx-shorts-consistency-feedback.is-error {
+    color: #ff7d7d;
+    opacity: 1;
+}
+
+@media (max-width: 760px) {
+    .mlx-shorts-consistency-grid,
+    .mlx-shorts-consistency-media {
+        grid-template-columns: 1fr;
+    }
+
+    .mlx-shorts-consistency-media img,
+    .mlx-shorts-consistency-empty {
+        max-width: 220px;
+    }
+}

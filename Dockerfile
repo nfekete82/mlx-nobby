@@ -22,4 +22,4 @@ RUN find /app/frontend -maxdepth 1 -name '*.html' -type f \
 RUN useradd --create-home --uid 10001 app
 USER app
 
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.entrypoint:app", "--host", "0.0.0.0", "--port", "8000"]

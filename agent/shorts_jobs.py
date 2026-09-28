@@ -24,7 +24,7 @@ SHORT_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 ACTIVE_STATUSES = {"queued", "running", "video_completed", "tts_completed"}
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 VIDEO_ACTIVE_STATUSES = {
-    "queued", "loading", "encoding", "generating",
+    "queued", "dispatching", "loading", "encoding", "generating",
     "upscaling", "decoding", "muxing",
 }
 
@@ -146,6 +146,35 @@ def narration_for_project(project):
     if not isinstance(project, ShortProject):
         project = ShortProject.model_validate(project)
     return "\n\n".join(scene.narration for scene in project.scenes)
+
+
+def tts_payload_for_project(project):
+    """Build the speech request while preserving legacy service defaults."""
+    if not isinstance(project, ShortProject):
+        project = ShortProject.model_validate(project)
+    payload = {
+        "input": narration_for_project(project),
+        "language": project.language,
+    }
+    if project.voice:
+        payload["voice"] = project.voice
+    if project.voice_speed != 1.0:
+        payload["speed"] = project.voice_speed
+    return payload
+
+
+def _tts_metadata(project, narration):
+    metadata = {
+        "mime_type": "audio/mpeg",
+        "language": project.language,
+        "scene_count": len(project.scenes),
+        "narration_characters": len(narration),
+    }
+    if project.voice:
+        metadata["voice"] = project.voice
+    if project.voice_speed != 1.0:
+        metadata["speed"] = project.voice_speed
+    return metadata
 
 
 def _tts_output_path(job_id):
@@ -476,12 +505,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
             tts_status="completed",
             tts_path=str(existing_path),
             tts_finished_at=finished_at,
-            tts_metadata=job.get("tts_metadata") or {
-                "mime_type": "audio/mpeg",
-                "language": project.language,
-                "scene_count": len(project.scenes),
-                "narration_characters": len(narration),
-            },
+            tts_metadata=job.get("tts_metadata") or _tts_metadata(project, narration),
             finished_at=job.get("finished_at") or finished_at,
             error=None,
         )
@@ -514,10 +538,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         error=None,
     )
     narration = narration_for_project(project)
-    audio = tts_request_fn({
-        "input": narration,
-        "language": project.language,
-    })
+    audio = tts_request_fn(tts_payload_for_project(project))
     if not isinstance(audio, bytes) or not audio:
         raise RuntimeError("speech service returned invalid audio")
 
@@ -543,12 +564,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         tts_status="completed",
         tts_path=str(output_path),
         tts_finished_at=finished_at,
-        tts_metadata={
-            "mime_type": "audio/mpeg",
-            "language": project.language,
-            "scene_count": len(project.scenes),
-            "narration_characters": len(narration),
-        },
+        tts_metadata=_tts_metadata(project, narration),
         finished_at=finished_at,
         error=None,
     )
@@ -863,7 +879,9 @@ def _worker(job_id, request_fn, tts_request_fn, compose_fn, poll_interval):
         )
     finally:
         with _workers_lock:
-            _workers.pop(job_id, None)
+            current = _workers.get(job_id)
+            if current is threading.current_thread():
+                _workers.pop(job_id, None)
 
 
 def start_short_job(
@@ -875,55 +893,43 @@ def start_short_job(
     poll_interval=1.0,
 ):
     job_id = _job_id(job_id)
-    get_short_job(job_id)
+    job = get_short_job(job_id)
+    if job.get("status") in TERMINAL_STATUSES:
+        return job
     with _workers_lock:
-        existing = _workers.get(job_id)
-        if existing is not None and existing.is_alive():
-            return existing
-        thread = threading.Thread(
+        worker = _workers.get(job_id)
+        if worker is not None and worker.is_alive():
+            return job
+        worker = threading.Thread(
             target=_worker,
             args=(job_id, request_fn, tts_request_fn, compose_fn, poll_interval),
             daemon=True,
-            name=f"shorts-job-{job_id}",
+            name=f"mlx-short-{job_id[:8]}",
         )
-        _workers[job_id] = thread
-        try:
-            thread.start()
-        except Exception:
-            _workers.pop(job_id, None)
-            raise
-        return thread
+        _workers[job_id] = worker
+        worker.start()
+    return get_short_job(job_id)
 
 
-def resume_short_jobs(
-    *,
-    request_fn=None,
-    tts_request_fn=None,
-    compose_fn=None,
-    poll_interval=1.0,
-):
-    """Resume every durable non-terminal job, including its active child."""
-    with _jobs_lock:
-        jobs = _load_jobs()
-    resumed = []
-    for job in jobs.values():
-        if job.get("status") in ACTIVE_STATUSES:
-            start_short_job(
-                job["id"],
-                request_fn=request_fn,
-                tts_request_fn=tts_request_fn,
-                compose_fn=compose_fn,
-                poll_interval=poll_interval,
-            )
-            resumed.append(job["id"])
-    return resumed
-
-
-def cancel_short_job(job_id, *, request_fn=None):
+def cancel_short_job(job_id, request_fn=None):
     job_id = _job_id(job_id)
     request_fn = request_fn or video_api.request
     job = get_short_job(job_id)
-    if job.get("status") not in ACTIVE_STATUSES:
-        raise ValueError("short job cannot be cancelled")
+    if job.get("status") in TERMINAL_STATUSES:
+        raise ValueError("short job is already finished")
     _update_job(job_id, cancel_requested=True)
     return _finish_cancelled(job_id, request_fn)
+
+
+def resume_short_jobs():
+    with _jobs_lock:
+        jobs = _load_jobs()
+        resumable = [
+            job_id
+            for job_id, job in jobs.items()
+            if job.get("status") in ACTIVE_STATUSES
+            and not job.get("cancel_requested")
+        ]
+    for job_id in resumable:
+        start_short_job(job_id)
+    return resumable

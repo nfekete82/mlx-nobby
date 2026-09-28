@@ -101,6 +101,10 @@
                 'mlx-voice-controls'
             );
             await loadScript(
+                '/assets/chat/voice-streaming.js?v=20260928-voice-streaming-v1',
+                'mlx-voice-streaming'
+            );
+            await loadScript(
                 '/assets/chat/tts-cache.js?v=20260926-tts-cache',
                 'mlx-tts-cache'
             );

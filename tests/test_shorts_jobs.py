@@ -317,20 +317,9 @@ def test_resume_short_jobs_registers_all_resumable_jobs(tmp_path, monkeypatch):
 
     assert resumed == [queued["id"], video_completed["id"], tts_completed["id"]]
     assert start.call_args_list == [
-        mock.call(
-            queued["id"], request_fn=None, tts_request_fn=None, compose_fn=None,
-            poll_interval=1.0,
-        ),
-        mock.call(
-            video_completed["id"], request_fn=None, tts_request_fn=None,
-            compose_fn=None,
-            poll_interval=1.0,
-        ),
-        mock.call(
-            tts_completed["id"], request_fn=None, tts_request_fn=None,
-            compose_fn=None,
-            poll_interval=1.0,
-        ),
+        mock.call(queued["id"]),
+        mock.call(video_completed["id"]),
+        mock.call(tts_completed["id"]),
     ]
 
 
