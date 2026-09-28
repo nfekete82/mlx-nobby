@@ -11,13 +11,20 @@ const common = fs.readFileSync(
     'utf8'
 );
 
-test('chat loads low-latency voice streaming after voice settings', () => {
+test('experimental voice streaming remains available after voice settings', () => {
     assert.match(common, /voice-streaming\.js/);
     assert.match(common, /mlx-voice-streaming/);
     assert.ok(
         common.indexOf('voice.js') < common.indexOf('voice-streaming.js'),
         'voice settings must load before the streaming enhancer'
     );
+});
+
+test('browser defaults to stable buffered TTS unless streaming is explicitly enabled', () => {
+    assert.match(common, /experimentalVoiceStreamingEnabled/);
+    assert.match(common, /mlx-nobby-voice-streaming/);
+    assert.match(common, /getItem\('mlx-nobby-voice-streaming'\) === '1'/);
+    assert.match(common, /if \(experimentalVoiceStreamingEnabled\(\)\)/);
 });
 
 test('voice streaming uses NDJSON and Web Audio scheduling', () => {
