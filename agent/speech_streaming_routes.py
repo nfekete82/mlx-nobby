@@ -1,4 +1,4 @@
-"""Transparent streaming proxy from the agent to the local speech service."""
+"""Transparent speech proxy from the agent to the local speech service."""
 
 from __future__ import annotations
 
@@ -17,6 +17,14 @@ SPEECH_SERVICE_URL = os.environ.get(
 ).rstrip("/")
 
 
+def _http_error_detail(exc):
+    body = exc.read().decode("utf-8", errors="replace")
+    try:
+        return json.loads(body).get("detail", body)
+    except Exception:
+        return body
+
+
 def _upstream_stream(payload: dict):
     request = urllib.request.Request(
         f"{SPEECH_SERVICE_URL}/v1/audio/speech/stream",
@@ -31,21 +39,41 @@ def _upstream_stream(payload: dict):
     try:
         return urllib.request.urlopen(request, timeout=900)
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        try:
-            detail = json.loads(body).get("detail", body)
-        except Exception:
-            detail = body
-        raise HTTPException(status_code=exc.code, detail=detail) from exc
+        raise HTTPException(
+            status_code=exc.code,
+            detail=_http_error_detail(exc),
+        ) from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise HTTPException(503, "Speech-Dienst nicht erreichbar") from exc
+
+
+def _upstream_json(path: str):
+    request = urllib.request.Request(
+        f"{SPEECH_SERVICE_URL}{path}",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(
+            status_code=exc.code,
+            detail=_http_error_detail(exc),
+        ) from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise HTTPException(503, "Speech-Dienst nicht erreichbar") from exc
 
 
 def install_routes(app):
-    if any(
-        getattr(route, "path", None) == "/api/mlx/audio/speech/stream"
-        for route in app.routes
-    ):
+    route_paths = {getattr(route, "path", None) for route in app.routes}
+
+    if "/api/mlx/audio/voices" not in route_paths:
+        @app.get("/api/mlx/audio/voices")
+        def speech_voices():
+            return _upstream_json("/v1/audio/voices")
+
+    if "/api/mlx/audio/speech/stream" in route_paths:
         return
 
     @app.post("/api/mlx/audio/speech/stream")

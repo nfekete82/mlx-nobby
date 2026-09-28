@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from speech.app import (
     SpeechRequest,
+    clone_generation_options,
     get_tts_clone_model,
     get_tts_model,
     get_voice_profile,
@@ -30,6 +31,17 @@ from speech.app import (
 _STREAM_INTERVAL = min(
     2.0,
     max(0.16, float(os.environ.get("MLX_TTS_STREAM_INTERVAL", "0.32"))),
+)
+# Reference cloning needs a little more decoder context at the beginning than a
+# preset voice. 0.80s is still interactive, but yields ~10 codec tokens instead
+# of only ~4 before the first decode step and avoids the weak first syllables
+# observed with very aggressive 0.32s clone streaming.
+_CLONE_STREAM_INTERVAL = min(
+    2.0,
+    max(
+        0.32,
+        float(os.environ.get("MLX_TTS_CLONE_STREAM_INTERVAL", "0.80")),
+    ),
 )
 _PRELOAD_MODE = os.environ.get("MLX_TTS_PRELOAD", "auto").strip().lower()
 _PRELOAD_STATE = {
@@ -72,15 +84,18 @@ def _stream_results(request: SpeechRequest):
 
     profile = get_voice_profile(request.voice)
     if profile is not None:
+        stream_interval = _CLONE_STREAM_INTERVAL
         model = get_tts_clone_model()
         results = model.generate(
             text=text,
             ref_audio=str(profile["reference"]),
             ref_text=profile["ref_text"],
             stream=True,
-            streaming_interval=_STREAM_INTERVAL,
+            streaming_interval=stream_interval,
+            **clone_generation_options(),
         )
     else:
+        stream_interval = _STREAM_INTERVAL
         model = get_tts_model()
         results = model.generate_custom_voice(
             text=text,
@@ -88,7 +103,7 @@ def _stream_results(request: SpeechRequest):
             language=request.language,
             instruct=request.instruct,
             stream=True,
-            streaming_interval=_STREAM_INTERVAL,
+            streaming_interval=stream_interval,
         )
 
     started = time.perf_counter()
@@ -99,7 +114,8 @@ def _stream_results(request: SpeechRequest):
             "voice": request.voice,
             "format": "f32le",
             "channels": 1,
-            "streaming_interval": _STREAM_INTERVAL,
+            "streaming_interval": stream_interval,
+            "clone": profile is not None,
         }
     )
 
@@ -212,6 +228,8 @@ def install_routes(app):
             return {
                 **_PRELOAD_STATE,
                 "streaming_interval": _STREAM_INTERVAL,
+                "clone_streaming_interval": _CLONE_STREAM_INTERVAL,
+                "clone_sampling": clone_generation_options(),
             }
 
     if not getattr(app.state, "mlx_tts_preload_hook", False):

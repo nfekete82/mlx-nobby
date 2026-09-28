@@ -183,6 +183,18 @@
         }
     }
 
+    async function loadShortsHistory() {
+        if (!document.getElementById('input')) return;
+        try {
+            await loadScript(
+                '/assets/chat/shorts-history.js?v=20260928-shorts-history-v1',
+                'mlx-shorts-history'
+            );
+        } catch (error) {
+            console.error('[shorts-history] Failed to load Shorts project browser:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         removeRedundantTopActions();
         loadRuntimeReliability();
@@ -191,6 +203,7 @@
         loadHelpCenter();
         loadRuntimeBudget();
         loadJobQueue();
+        loadShortsHistory();
     }
 
     window.MLXCommon = {

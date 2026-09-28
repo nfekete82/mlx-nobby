@@ -1,0 +1,288 @@
+.mlx-shorts-history-launcher {
+    position: fixed;
+    right: 22px;
+    bottom: 74px;
+    z-index: 1195;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 999px;
+    padding: 10px 16px;
+    background: rgba(20, 20, 24, .94);
+    color: #fff;
+    font: inherit;
+    font-weight: 650;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .24);
+    cursor: pointer;
+}
+
+.mlx-shorts-history-launcher[data-active="true"] {
+    border-color: rgba(97, 218, 251, .45);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .24), 0 0 0 1px rgba(97, 218, 251, .12);
+}
+
+.mlx-shorts-history-overlay[hidden] {
+    display: none !important;
+}
+
+.mlx-shorts-history-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1240;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    background: rgba(0, 0, 0, .48);
+    backdrop-filter: blur(5px);
+}
+
+.mlx-shorts-history-panel {
+    width: min(860px, calc(100vw - 28px));
+    height: 100%;
+    overflow: auto;
+    background: #141418;
+    color: #f4f4f5;
+    border-left: 1px solid rgba(255, 255, 255, .09);
+    box-shadow: -24px 0 70px rgba(0, 0, 0, .32);
+}
+
+.mlx-shorts-history-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 24px 16px;
+    background: rgba(20, 20, 24, .96);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+
+.mlx-shorts-history-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.mlx-shorts-history-subtitle {
+    margin-top: 4px;
+    color: rgba(255, 255, 255, .56);
+    font-size: .86rem;
+}
+
+.mlx-shorts-history-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .07);
+    color: inherit;
+    font: inherit;
+    font-size: 1.4rem;
+    cursor: pointer;
+}
+
+.mlx-shorts-history-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+
+.mlx-shorts-history-filters,
+.mlx-shorts-history-toolbar-actions,
+.mlx-shorts-history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mlx-shorts-history-toolbar button,
+.mlx-shorts-history-actions button {
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, .055);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.mlx-shorts-history-toolbar button:hover,
+.mlx-shorts-history-actions button:hover,
+.mlx-shorts-history-close:hover {
+    background: rgba(255, 255, 255, .1);
+}
+
+.mlx-shorts-history-toolbar button.is-active,
+.mlx-shorts-history-toolbar button[data-primary="1"],
+.mlx-shorts-history-actions button[data-primary="1"] {
+    background: #f2f2f3;
+    border-color: #f2f2f3;
+    color: #111114;
+}
+
+.mlx-shorts-history-toolbar button[data-danger="1"],
+.mlx-shorts-history-actions button[data-danger="1"] {
+    border-color: rgba(255, 92, 92, .24);
+    background: rgba(255, 92, 92, .08);
+    color: #ff9b9b;
+}
+
+.mlx-shorts-history-toolbar button[data-danger="1"]:hover,
+.mlx-shorts-history-actions button[data-danger="1"]:hover {
+    border-color: rgba(255, 92, 92, .4);
+    background: rgba(255, 92, 92, .14);
+}
+
+.mlx-shorts-history-toolbar button:disabled,
+.mlx-shorts-history-actions button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.mlx-shorts-history-list {
+    display: grid;
+    gap: 12px;
+    padding: 18px 24px 30px;
+}
+
+.mlx-shorts-history-card {
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr);
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .035);
+}
+
+.mlx-shorts-history-card:hover {
+    border-color: rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .05);
+}
+
+.mlx-shorts-history-preview {
+    display: grid;
+    place-items: center;
+    width: 118px;
+    aspect-ratio: 9 / 16;
+    overflow: hidden;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.025));
+    color: rgba(255, 255, 255, .5);
+    font-size: 1.5rem;
+}
+
+.mlx-shorts-history-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.mlx-shorts-history-card-body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mlx-shorts-history-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mlx-shorts-history-card-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1rem;
+}
+
+.mlx-shorts-history-status {
+    flex: none;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, .07);
+    color: rgba(255, 255, 255, .7);
+    font-size: .76rem;
+    font-weight: 650;
+}
+
+.mlx-shorts-history-status.is-completed {
+    background: rgba(73, 201, 132, .12);
+    color: #83e7ad;
+}
+
+.mlx-shorts-history-status.is-active {
+    background: rgba(97, 218, 251, .12);
+    color: #8fe7ff;
+}
+
+.mlx-shorts-history-status.is-failed {
+    background: rgba(255, 92, 92, .12);
+    color: #ff9b9b;
+}
+
+.mlx-shorts-history-status.is-cancelled {
+    background: rgba(255, 255, 255, .07);
+    color: rgba(255, 255, 255, .55);
+}
+
+.mlx-shorts-history-card-meta,
+.mlx-shorts-history-card-details {
+    color: rgba(255, 255, 255, .58);
+    font-size: .84rem;
+}
+
+.mlx-shorts-history-error {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #ff9b9b;
+    font-size: .82rem;
+}
+
+.mlx-shorts-history-actions {
+    margin-top: auto;
+    padding-top: 4px;
+}
+
+.mlx-shorts-history-empty {
+    padding: 48px 18px;
+    text-align: center;
+    color: rgba(255, 255, 255, .55);
+}
+
+@media (max-width: 700px) {
+    .mlx-shorts-history-launcher {
+        right: 14px;
+        bottom: 68px;
+    }
+
+    .mlx-shorts-history-panel {
+        width: 100%;
+    }
+
+    .mlx-shorts-history-header,
+    .mlx-shorts-history-toolbar,
+    .mlx-shorts-history-list {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .mlx-shorts-history-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .mlx-shorts-history-card {
+        grid-template-columns: 88px minmax(0, 1fr);
+    }
+
+    .mlx-shorts-history-preview {
+        width: 88px;
+    }
+}

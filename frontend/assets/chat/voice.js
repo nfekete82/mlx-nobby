@@ -7,7 +7,7 @@
         speed: 1.0,
         auto_read: false
     };
-    const VOICES = [
+    const FALLBACK_VOICES = [
         { id: 'Pervin', label: 'Pervin', kind: 'clone' },
         { id: 'Laura', label: 'Laura', kind: 'clone' },
         { id: 'Anne', label: 'Anne', kind: 'clone' },
@@ -16,6 +16,7 @@
     ];
     const SPEEDS = [0.8, 0.9, 1.0, 1.1, 1.25];
 
+    let voices = FALLBACK_VOICES.map(item => ({ ...item }));
     let settings = loadSettings();
     let autoReadTimer = null;
     const autoReadSeen = new Set();
@@ -25,7 +26,7 @@
     let composerAudioText = '';
 
     function normalizeSettings(value) {
-        const voice = VOICES.some(item => item.id === value?.voice)
+        const voice = voices.some(item => item.id === value?.voice)
             ? value.voice
             : DEFAULTS.voice;
         const speedValue = Number(value?.speed);
@@ -68,11 +69,58 @@
     }
 
     function voiceLabel() {
-        return VOICES.find(item => item.id === settings.voice)?.label || settings.voice;
+        return voices.find(item => item.id === settings.voice)?.label || settings.voice;
     }
 
     function activeVoice() {
-        return VOICES.find(item => item.id === settings.voice) || null;
+        return voices.find(item => item.id === settings.voice) || null;
+    }
+
+    function normalizeVoiceList(payload) {
+        const incoming = Array.isArray(payload?.voices) ? payload.voices : [];
+        const seen = new Set();
+        const normalized = [];
+
+        for (const item of incoming) {
+            const id = String(item?.id || '').trim();
+            const label = String(item?.label || id).trim();
+            const kind = item?.kind === 'clone' ? 'clone' : 'preset';
+            if (!id || !label || seen.has(id)) continue;
+            seen.add(id);
+            normalized.push({ id, label, kind });
+        }
+        return normalized;
+    }
+
+    async function loadVoices() {
+        try {
+            const response = await nativeFetch('/api/mlx/audio/voices', {
+                cache: 'no-store',
+                headers: { Accept: 'application/json' }
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            const loaded = normalizeVoiceList(payload);
+            if (!loaded.length) return;
+
+            voices = loaded;
+            if (!voices.some(item => item.id === settings.voice)) {
+                const requestedDefault = String(payload?.default || '').trim();
+                const nextVoice = voices.some(item => item.id === requestedDefault)
+                    ? requestedDefault
+                    : voices[0].id;
+                settings = { ...settings, voice: nextVoice };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+            }
+
+            const popover = document.getElementById('mlxVoicePopover');
+            if (popover && !popover.hidden) renderPopover(popover);
+            window.dispatchEvent(new CustomEvent('mlx:voice-settings-changed', {
+                detail: { ...settings }
+            }));
+        } catch (error) {
+            console.warn('[voice] Local voice profiles unavailable, using fallback list:', error);
+        }
     }
 
     function injectStyles() {
@@ -262,7 +310,7 @@
         title.textContent = 'Stimme';
         popover.appendChild(title);
 
-        VOICES.forEach(item => {
+        voices.forEach(item => {
             const option = document.createElement('button');
             option.type = 'button';
             option.className = 'mlx-voice-option' + (settings.voice === item.id ? ' is-active' : '');
@@ -366,17 +414,18 @@
 
     function syncSpeechStatuses() {
         const label = voiceLabel();
+        const knownLabels = new Set([
+            ...FALLBACK_VOICES.map(item => item.label),
+            ...voices.map(item => item.label)
+        ]);
         document.querySelectorAll('.mlx-message-speech-status').forEach(node => {
             const currentText = node.textContent || '';
             if (!currentText) return;
-            const nextText = currentText
-                .replace(/^Serena\b/, label)
-                .replace(/^Pervin\b/, label)
-                .replace(/^Laura\b/, label)
-                .replace(/^Anne\b/, label)
-                .replace(/^Julia\b/, label);
-            if (nextText !== currentText) {
-                node.textContent = nextText;
+            for (const currentLabel of knownLabels) {
+                if (currentText.startsWith(`${currentLabel} ·`)) {
+                    node.textContent = label + currentText.slice(currentLabel.length);
+                    break;
+                }
             }
         });
     }
@@ -415,6 +464,7 @@
     function init() {
         buildPopover();
         syncSpeechStatuses();
+        loadVoices();
         const messages = document.getElementById('messagesInner');
         if (messages) {
             const observer = new MutationObserver(scheduleAutoRead);
@@ -424,7 +474,9 @@
 
     window.MLXVoice = {
         getSettings: () => ({ ...settings }),
-        getVoiceLabel: voiceLabel
+        getVoiceLabel: voiceLabel,
+        getVoices: () => voices.map(item => ({ ...item })),
+        refreshVoices: loadVoices
     };
 
     if (document.readyState === 'loading') {

@@ -1,4 +1,4 @@
-"""Transparent streaming proxy from the web backend to the local agent."""
+"""Transparent speech proxy from the web backend to the local agent."""
 
 from __future__ import annotations
 
@@ -10,17 +10,44 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 
+def _error_detail(exc):
+    body = exc.read().decode("utf-8", errors="replace")
+    try:
+        return json.loads(body).get("detail", body)
+    except Exception:
+        return body
+
+
 def install_routes(app, agent_url: str):
-    if any(
-        getattr(route, "path", None) == "/api/mlx/audio/speech/stream"
-        for route in app.routes
-    ):
+    route_paths = {getattr(route, "path", None) for route in app.routes}
+    base_url = agent_url.rstrip("/")
+
+    if "/api/mlx/audio/voices" not in route_paths:
+        @app.get("/api/mlx/audio/voices")
+        def speech_voices():
+            request = urllib.request.Request(
+                f"{base_url}/api/mlx/audio/voices",
+                headers={"Accept": "application/json"},
+                method="GET",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                raise HTTPException(
+                    status_code=exc.code,
+                    detail=_error_detail(exc),
+                ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                raise HTTPException(503, "Agent nicht erreichbar") from exc
+
+    if "/api/mlx/audio/speech/stream" in route_paths:
         return
 
     @app.post("/api/mlx/audio/speech/stream")
     def speech_stream(payload: dict):
         request = urllib.request.Request(
-            f"{agent_url.rstrip('/')}/api/mlx/audio/speech/stream",
+            f"{base_url}/api/mlx/audio/speech/stream",
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
@@ -32,12 +59,10 @@ def install_routes(app, agent_url: str):
         try:
             upstream = urllib.request.urlopen(request, timeout=900)
         except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            try:
-                detail = json.loads(body).get("detail", body)
-            except Exception:
-                detail = body
-            raise HTTPException(status_code=exc.code, detail=detail) from exc
+            raise HTTPException(
+                status_code=exc.code,
+                detail=_error_detail(exc),
+            ) from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise HTTPException(503, "Agent nicht erreichbar") from exc
 

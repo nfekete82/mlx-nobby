@@ -18,6 +18,12 @@ class MediaQueueTests(unittest.TestCase):
             mock.patch.object(media_queue, "QUEUE_DIRECTORY", self.queue_directory),
             mock.patch.object(media_queue, "QUEUE_FILE", self.queue_file),
             mock.patch.object(media_queue, "SHORTS_FILE", self.shorts_file),
+            # The queue worker is a process-global daemon thread. A worker that
+            # was started by another test can otherwise wake up while this test
+            # owns the mocked queue and consume the same job concurrently with
+            # a direct _dispatch_and_poll() call. Keep background selection idle
+            # so these unit tests control dispatch deterministically.
+            mock.patch.object(media_queue, "_next_job_id", return_value=None),
         ]
         for patcher in self.patches:
             patcher.start()
