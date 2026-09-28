@@ -1,8 +1,10 @@
 """Visual-consistency helpers for Shorts Studio.
 
 Consistency mode creates one managed keyframe per scene and then hands that
-image to LTX image-to-video.  The visual bible is deliberately persisted in the
-ShortProject so scene revisions remain deterministic and resumable.
+image to LTX image-to-video. The visual bible is deliberately persisted in the
+ShortProject so scene revisions remain deterministic and resumable. When a
+recurring character is requested and Qwen Image Edit is available, later scene
+keyframes use scene one as an identity anchor instead of relying on text alone.
 """
 
 from agent.shorts_planner import ShortProject
@@ -51,7 +53,7 @@ def visual_bible_text(project):
     return "\n".join(parts)[:1800]
 
 
-def scene_keyframe_prompt(project, scene, scene_index=0):
+def scene_keyframe_prompt(project, scene, scene_index=0, *, identity_anchor=False):
     """Build a vertical still-image prompt that preserves project continuity."""
     if not isinstance(project, ShortProject):
         project = ShortProject.model_validate(project)
@@ -59,9 +61,18 @@ def scene_keyframe_prompt(project, scene, scene_index=0):
     strength = round(project.style_strength * 100)
     bible = visual_bible_text(project)
     scene_text = _clean(scene.video_prompt, 900)
+    if identity_anchor:
+        opening = (
+            "Edit the supplied reference image into a new cinematic 9:16 scene. "
+            "The reference is the canonical identity anchor for the recurring character. "
+            "Preserve the same face, hair, age, body proportions, wardrobe and distinctive "
+            "features while changing pose, action, camera framing and environment as needed.\n"
+        )
+    else:
+        opening = "Create a photorealistic cinematic 9:16 keyframe for a short video.\n"
     prompt = (
-        "Create a photorealistic cinematic 9:16 keyframe for a short video.\n"
-        f"Scene {scene_index + 1}: {scene_text}\n\n"
+        opening
+        + f"Scene {scene_index + 1}: {scene_text}\n\n"
         "Continuity bible:\n"
         f"{bible}\n\n"
         f"Continuity strength: {strength}%. "
@@ -73,18 +84,32 @@ def scene_keyframe_prompt(project, scene, scene_index=0):
     return prompt[:2000]
 
 
-def keyframe_job_request(job, scene, scene_index=0):
+def keyframe_job_request(job, scene, scene_index=0, *, identity_anchor_path=None):
     project = ShortProject.model_validate(job["project"])
-    return {
-        "operation": "generate",
-        "payload": {
-            "prompt": scene_keyframe_prompt(project, scene, scene_index),
-            "model": "auto",
+    use_anchor = bool(identity_anchor_path and project.character_consistency)
+    payload = {
+        "prompt": scene_keyframe_prompt(
+            project,
+            scene,
+            scene_index,
+            identity_anchor=use_anchor,
+        ),
+        "model": "auto",
+        "quality": KEYFRAME_QUALITY,
+    }
+    if use_anchor:
+        operation = "edit"
+        payload["source_path"] = str(identity_anchor_path)
+    else:
+        operation = "generate"
+        payload.update({
             "width": KEYFRAME_WIDTH,
             "height": KEYFRAME_HEIGHT,
-            "quality": KEYFRAME_QUALITY,
             "auto_size": False,
-        },
+        })
+    return {
+        "operation": operation,
+        "payload": payload,
         "chat_id": job["chat_id"],
         "run_id": job["run_id"],
         "chat_revision": job["chat_revision"],
