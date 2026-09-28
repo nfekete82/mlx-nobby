@@ -6,6 +6,8 @@
     const MAX_CHARS = 1500;
     const MAX_CACHE_ENTRIES = 12;
     const MAX_CACHE_BASE64_CHARS = 8_000_000;
+    const FIRST_AUDIO_TIMEOUT_MS = 60_000;
+    const STREAM_IDLE_TIMEOUT_MS = 20_000;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
     let activeSession = null;
@@ -230,8 +232,11 @@
                 session.finishTimer = setTimeout(check, 150);
                 return;
             }
+            if (session.context.state === 'suspended') {
+                session.context.resume().catch(() => {});
+            }
             const remaining = session.scheduledUntil - session.context.currentTime;
-            if (remaining > 0.05) {
+            if (remaining > 0.05 && session.sources.size > 0) {
                 session.finishTimer = setTimeout(
                     check,
                     Math.min(500, Math.max(70, remaining * 500))
@@ -264,7 +269,12 @@
         const source = session.context.createBufferSource();
         source.buffer = buffer;
         source.connect(session.context.destination);
-        source.addEventListener('ended', () => session.sources.delete(source), { once: true });
+        source.addEventListener('ended', () => {
+            session.sources.delete(source);
+            if (session.streamDone && !session.paused && session.sources.size === 0) {
+                armCompletion(session);
+            }
+        }, { once: true });
 
         const startAt = Math.max(
             session.scheduledUntil,
@@ -286,6 +296,27 @@
         }
     }
 
+    function readStreamChunk(reader, timeoutMs) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                const error = new Error('TTS stream stalled');
+                error.name = 'StreamStallError';
+                reject(error);
+            }, timeoutMs);
+
+            reader.read().then(
+                value => {
+                    clearTimeout(timer);
+                    resolve(value);
+                },
+                error => {
+                    clearTimeout(timer);
+                    reject(error);
+                }
+            );
+        });
+    }
+
     async function consumeNdjson(session, response) {
         if (!response.body?.getReader) {
             throw new Error('Streaming response body is unavailable');
@@ -296,7 +327,10 @@
         let pending = '';
 
         while (!session.stopped) {
-            const { value, done } = await reader.read();
+            const timeoutMs = session.firstAudio
+                ? STREAM_IDLE_TIMEOUT_MS
+                : FIRST_AUDIO_TIMEOUT_MS;
+            const { value, done } = await readStreamChunk(reader, timeoutMs);
             if (done) break;
             pending += decoder.decode(value, { stream: true });
 
@@ -312,6 +346,9 @@
                         sample_rate: Number(event.sample_rate) || 24000,
                     });
                     scheduleAudioChunk(session, event);
+                } else if (event.type === 'done') {
+                    try { await reader.cancel(); } catch (_) {}
+                    return;
                 } else if (event.type === 'error') {
                     throw new Error(event.detail || 'TTS streaming failed');
                 }
@@ -429,6 +466,15 @@
             armCompletion(session);
         } catch (error) {
             if (session.stopped || error?.name === 'AbortError') return;
+
+            if (error?.name === 'StreamStallError' && session.firstAudio) {
+                console.warn('[voice-stream] Stream stalled after audio; finishing buffered PCM:', error);
+                session.streamDone = true;
+                rememberStream(session.replayKey, session.recordedChunks);
+                armCompletion(session);
+                return;
+            }
+
             console.warn('[voice-stream] Streaming failed, using MP3 fallback:', error);
 
             for (const source of session.sources) {
