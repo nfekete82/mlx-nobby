@@ -109,6 +109,10 @@
                 'mlx-voice-controls'
             );
             await loadScript(
+                '/assets/chat/voice-loading.js?v=20260928-voice-loading-v1',
+                'mlx-voice-loading'
+            );
+            await loadScript(
                 '/assets/chat/voice-manager.js?v=20260928-voice-manager-v1',
                 'mlx-voice-manager'
             );
