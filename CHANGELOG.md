@@ -12,6 +12,11 @@
   character/style continuity, and a first-scene character anchor that uses the
   local Qwen Image Edit model when available while retaining a safe keyframe
   generation fallback.
+- Added word-timed animated Shorts captions: the generated voiceover is aligned
+  locally with Whisper word timestamps, compact phrase cards highlight the
+  currently spoken word, alignment metadata is cached per durable Shorts job,
+  and scene-timed subtitles remain an automatic fallback when alignment is not
+  available.
 
 ## v1.2.1
 
