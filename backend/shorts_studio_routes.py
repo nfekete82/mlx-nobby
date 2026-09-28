@@ -19,6 +19,29 @@ def install_routes(app, agent_json_request):
                 timeout=15,
             )
 
+    failed_cleanup_path = "/api/mlx/shorts-jobs/failed"
+    if failed_cleanup_path not in paths:
+        @app.delete(failed_cleanup_path)
+        def delete_failed_shorts():
+            return agent_json_request(
+                "DELETE",
+                "/api/shorts-jobs/failed",
+                None,
+                timeout=30,
+            )
+
+    delete_path = "/api/mlx/shorts-jobs/{job_id}"
+    if delete_path not in paths:
+        @app.delete(delete_path)
+        def delete_short(job_id: str):
+            safe_job = urllib.parse.quote(job_id, safe="")
+            return agent_json_request(
+                "DELETE",
+                f"/api/shorts-jobs/{safe_job}",
+                None,
+                timeout=30,
+            )
+
     revision_path = "/api/mlx/shorts-jobs/{job_id}/scenes/{scene_id}/revise"
     if revision_path not in paths:
         @app.post(revision_path, status_code=202)
