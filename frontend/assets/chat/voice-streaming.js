@@ -4,9 +4,12 @@
     const STREAM_ENDPOINT = '/api/mlx/audio/speech/stream';
     const BUFFERED_ENDPOINT = '/api/mlx/audio/speech';
     const MAX_CHARS = 1500;
+    const MAX_CACHE_ENTRIES = 12;
+    const MAX_CACHE_BASE64_CHARS = 8_000_000;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
     let activeSession = null;
+    const streamCache = new Map();
 
     const pauseIcon = `
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -93,6 +96,34 @@
         return chunks.filter(Boolean);
     }
 
+    function replayKey(text, settings) {
+        return JSON.stringify({
+            text: String(text || '').trim(),
+            voice: String(settings?.voice || 'Serena'),
+            speed: Number(settings?.speed ?? 1),
+        });
+    }
+
+    function rememberStream(key, chunks) {
+        if (!key || !Array.isArray(chunks) || !chunks.length) return;
+        const size = chunks.reduce(
+            (total, chunk) => total + String(chunk?.pcm || '').length,
+            0
+        );
+        if (size <= 0 || size > MAX_CACHE_BASE64_CHARS) return;
+        if (streamCache.has(key)) streamCache.delete(key);
+        streamCache.set(
+            key,
+            chunks.map(chunk => ({
+                pcm: String(chunk.pcm || ''),
+                sample_rate: Number(chunk.sample_rate) || 24000,
+            }))
+        );
+        while (streamCache.size > MAX_CACHE_ENTRIES) {
+            streamCache.delete(streamCache.keys().next().value);
+        }
+    }
+
     function statusNode(button) {
         return button.closest('.message')?.querySelector('.mlx-message-speech-status') || null;
     }
@@ -173,6 +204,10 @@
         clearCompletionTimer(session);
         try { session.controller?.abort(); } catch (_) {}
         try { session.bufferedAudio?.pause(); } catch (_) {}
+        if (session.bufferedUrl) {
+            URL.revokeObjectURL(session.bufferedUrl);
+            session.bufferedUrl = null;
+        }
         for (const source of session.sources) {
             try { source.stop(); } catch (_) {}
         }
@@ -244,7 +279,9 @@
             renderButton(session, 'playing');
             setStatus(
                 session,
-                `${session.voice} · ${vt('stream_playing', 'Playing while generating…')}`
+                session.replaying
+                    ? `${session.voice} · ${vt('stream_playing', 'Playing…')}`
+                    : `${session.voice} · ${vt('stream_playing', 'Playing while generating…')}`
             );
         }
     }
@@ -270,6 +307,10 @@
                 if (!raw) continue;
                 const event = JSON.parse(raw);
                 if (event.type === 'audio') {
+                    session.recordedChunks.push({
+                        pcm: String(event.pcm || ''),
+                        sample_rate: Number(event.sample_rate) || 24000,
+                    });
                     scheduleAudioChunk(session, event);
                 } else if (event.type === 'error') {
                     throw new Error(event.detail || 'TTS streaming failed');
@@ -326,23 +367,17 @@
         session.bufferedUrl = url;
         renderButton(session, 'playing');
         setStatus(session, `${session.voice} · ${vt('stream_playing', 'Playing…')}`);
-        audio.addEventListener('ended', () => {
-            URL.revokeObjectURL(url);
-            session.bufferedUrl = null;
-            stopSession(session);
-        }, { once: true });
-        audio.addEventListener('error', () => {
-            URL.revokeObjectURL(url);
-            session.bufferedUrl = null;
-            stopSession(session);
-        }, { once: true });
+        audio.addEventListener('ended', () => stopSession(session), { once: true });
+        audio.addEventListener('error', () => stopSession(session), { once: true });
         await audio.play();
     }
 
-    async function startStreaming(button, text, settings) {
+    async function startStreaming(button, text, settings, options = {}) {
         if (activeSession) stopSession(activeSession);
 
         const context = new AudioContextClass({ latencyHint: 'interactive' });
+        const key = replayKey(text, settings);
+        const cached = options.forceRegenerate ? null : streamCache.get(key);
         const session = {
             button,
             original: snapshotButton(button),
@@ -356,10 +391,13 @@
             streamDone: false,
             paused: false,
             stopped: false,
+            replaying: Boolean(cached?.length),
             voice: String(settings.voice || 'Serena'),
             instruct: '',
             bufferedAudio: null,
             bufferedUrl: null,
+            recordedChunks: [],
+            replayKey: key,
         };
         activeSession = session;
         renderButton(session, 'loading');
@@ -367,6 +405,17 @@
 
         try {
             await context.resume();
+
+            if (cached?.length) {
+                for (const chunk of cached) {
+                    if (session.stopped) return;
+                    scheduleAudioChunk(session, chunk);
+                }
+                session.streamDone = true;
+                armCompletion(session);
+                return;
+            }
+
             const parts = splitText(text);
             for (const part of parts) {
                 if (session.stopped) return;
@@ -376,6 +425,7 @@
             if (!session.firstAudio) {
                 throw new Error('TTS stream returned no audio');
             }
+            rememberStream(session.replayKey, session.recordedChunks);
             armCompletion(session);
         } catch (error) {
             if (session.stopped || error?.name === 'AbortError') return;
@@ -387,6 +437,7 @@
             session.sources.clear();
             session.scheduledUntil = 0;
             session.firstAudio = false;
+            session.recordedChunks = [];
             try {
                 await playBufferedFallback(session, text);
             } catch (fallbackError) {
@@ -457,13 +508,16 @@
             return;
         }
 
-        startStreaming(button, text, settings).catch(error => {
+        const forceRegenerate = event.shiftKey === true;
+        if (forceRegenerate) streamCache.delete(replayKey(text, settings));
+        startStreaming(button, text, settings, { forceRegenerate }).catch(error => {
             console.error('[voice-stream] Playback failed:', error);
         });
     }, true);
 
     window.addEventListener('mlx:voice-settings-changed', () => {
         if (activeSession) stopSession(activeSession);
+        streamCache.clear();
     });
 
     window.MLXVoiceStreaming = {
@@ -471,5 +525,7 @@
         stop: () => activeSession && stopSession(activeSession),
         isActive: () => Boolean(activeSession),
         splitText,
+        clearCache: () => streamCache.clear(),
+        cacheSize: () => streamCache.size,
     };
 })();
