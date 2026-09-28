@@ -15,6 +15,7 @@
         close: 'Close project browser',
         new_short: '+ New Short',
         refresh: 'Refresh',
+        delete_failed: 'Delete failed',
         all: 'All',
         active: 'Active',
         completed: 'Completed',
@@ -24,13 +25,21 @@
         unavailable: 'Shorts history is currently unavailable.',
         open: 'Open',
         video: 'Video',
+        delete: 'Delete',
         scenes: 'scenes',
         revision: 'revision',
         revisions: 'revisions',
         voice: 'Voice',
         default_voice: 'Default voice',
         created: 'Created',
-        prompt: 'Create a 20-second Short about '
+        prompt: 'Create a 20-second Short about ',
+        delete_title: 'Delete Short?',
+        delete_message: 'Permanently delete “{title}” and all of its revisions and Shorts-owned files?',
+        delete_confirm: 'Delete project',
+        delete_failed_title: 'Delete failed Shorts?',
+        delete_failed_message: 'Permanently delete {count} failed Shorts project(s), including revisions and Shorts-owned files?',
+        delete_failed_confirm: 'Delete failed',
+        delete_error: 'Could not delete Shorts project: {message}'
     };
 
     let ui = null;
@@ -49,11 +58,20 @@
             : 'en';
     }
 
-    function t(key) {
+    function interpolate(value, params = {}) {
+        let result = String(value || '');
+        for (const [key, replacement] of Object.entries(params)) {
+            result = result.replaceAll(`{${key}}`, String(replacement ?? ''));
+        }
+        return result;
+    }
+
+    function t(key, params = {}) {
         const fullKey = `history_${key}`;
         const localized = translations?.[language()]?.[fullKey];
         const fallback = localized || FALLBACKS[key] || key;
-        return window.MLXI18n?.t?.(`shorts_studio.${fullKey}`, fallback) || fallback;
+        const value = window.MLXI18n?.t?.(`shorts_studio.${fullKey}`, fallback) || fallback;
+        return interpolate(value, params);
     }
 
     function createElement(tag, className, text) {
@@ -118,6 +136,10 @@
         return projects.filter(project => ACTIVE_STATUSES.has(String(project.status || '').toLowerCase())).length;
     }
 
+    function failedCount() {
+        return projects.filter(project => String(project.status || '').toLowerCase() === 'failed').length;
+    }
+
     function updateLauncher() {
         if (!ui?.launcher) return;
         const count = activeCount();
@@ -139,6 +161,22 @@
         const count = Number(project.revision_count || 0);
         if (!count) return '';
         return `${count} ${t(count === 1 ? 'revision' : 'revisions')}`;
+    }
+
+    async function confirmAction(options) {
+        if (typeof window.MLXConfirm === 'function') {
+            return window.MLXConfirm(options);
+        }
+        return window.confirm(options.message || options.title || 'Confirm');
+    }
+
+    async function responseDetail(response) {
+        try {
+            const payload = await response.json();
+            return payload?.detail || payload?.error || `HTTP ${response.status}`;
+        } catch (_) {
+            return `HTTP ${response.status}`;
+        }
     }
 
     async function openProject(project) {
@@ -164,6 +202,59 @@
             '_blank',
             'noopener,noreferrer'
         );
+    }
+
+    async function deleteProject(project) {
+        const status = String(project?.status || '').toLowerCase();
+        if (!project?.id || ACTIVE_STATUSES.has(status)) return;
+
+        const confirmed = await confirmAction({
+            title: t('delete_title'),
+            message: t('delete_message', { title: project.title || 'Short' }),
+            confirmLabel: t('delete_confirm'),
+            cancelLabel: window.MLXI18n?.t?.('common.cancel', 'Cancel') || 'Cancel'
+        });
+        if (!confirmed) return;
+
+        const response = await window.fetch(
+            `/api/mlx/shorts-jobs/${encodeURIComponent(project.id)}`,
+            { method: 'DELETE' }
+        );
+        if (!response.ok) {
+            throw new Error(await responseDetail(response));
+        }
+
+        const rootId = String(project.root_job_id || project.id);
+        projects = projects.filter(item => String(item.root_job_id || item.id) !== rootId);
+        render();
+        await loadProjects(false);
+    }
+
+    async function deleteFailedProjects() {
+        const count = failedCount();
+        if (!count) return;
+
+        const confirmed = await confirmAction({
+            title: t('delete_failed_title'),
+            message: t('delete_failed_message', { count }),
+            confirmLabel: t('delete_failed_confirm'),
+            cancelLabel: window.MLXI18n?.t?.('common.cancel', 'Cancel') || 'Cancel'
+        });
+        if (!confirmed) return;
+
+        const response = await window.fetch('/api/mlx/shorts-jobs/failed', {
+            method: 'DELETE'
+        });
+        if (!response.ok) {
+            throw new Error(await responseDetail(response));
+        }
+        await loadProjects(false);
+    }
+
+    function reportDeleteError(error) {
+        const message = error?.message || String(error);
+        console.error('[Shorts History] delete failed:', error);
+        window.alert(t('delete_error', { message }));
     }
 
     function renderProject(project) {
@@ -237,6 +328,23 @@
             actions.appendChild(videoButton);
         }
 
+        if (!ACTIVE_STATUSES.has(String(project.status || '').toLowerCase())) {
+            const deleteButton = createElement('button', '', t('delete'));
+            deleteButton.type = 'button';
+            deleteButton.dataset.danger = '1';
+            deleteButton.addEventListener('click', async event => {
+                event.stopPropagation();
+                deleteButton.disabled = true;
+                try {
+                    await deleteProject(project);
+                } catch (error) {
+                    deleteButton.disabled = false;
+                    reportDeleteError(error);
+                }
+            });
+            actions.appendChild(deleteButton);
+        }
+
         body.appendChild(actions);
         card.append(preview, body);
         card.addEventListener('dblclick', () => openProject(project).catch(() => {}));
@@ -251,6 +359,13 @@
         ui.close.setAttribute('aria-label', t('close'));
         ui.newButton.textContent = t('new_short');
         ui.refreshButton.textContent = t('refresh');
+
+        const failed = failedCount();
+        ui.deleteFailedButton.textContent = failed > 0
+            ? `${t('delete_failed')} (${failed})`
+            : t('delete_failed');
+        ui.deleteFailedButton.hidden = failed === 0;
+        ui.deleteFailedButton.disabled = failed === 0;
 
         ui.filters.querySelectorAll('[data-filter]').forEach(button => {
             const key = button.dataset.filter;
@@ -303,11 +418,24 @@
             filters.appendChild(button);
         });
         const toolbarActions = createElement('div', 'mlx-shorts-history-toolbar-actions');
+        const deleteFailedButton = createElement('button', '', t('delete_failed'));
         const refreshButton = createElement('button', '', t('refresh'));
         const newButton = createElement('button', '', t('new_short'));
+        deleteFailedButton.type = 'button';
+        deleteFailedButton.dataset.danger = '1';
         refreshButton.type = 'button';
         newButton.type = 'button';
         newButton.dataset.primary = '1';
+        deleteFailedButton.addEventListener('click', async () => {
+            deleteFailedButton.disabled = true;
+            try {
+                await deleteFailedProjects();
+            } catch (error) {
+                reportDeleteError(error);
+            } finally {
+                deleteFailedButton.disabled = failedCount() === 0;
+            }
+        });
         refreshButton.addEventListener('click', () => loadProjects(true));
         newButton.addEventListener('click', () => {
             close();
@@ -318,7 +446,7 @@
             input.focus();
             input.setSelectionRange(input.value.length, input.value.length);
         });
-        toolbarActions.append(refreshButton, newButton);
+        toolbarActions.append(deleteFailedButton, refreshButton, newButton);
         toolbar.append(filters, toolbarActions);
 
         const list = createElement('div', 'mlx-shorts-history-list');
@@ -343,6 +471,7 @@
             subtitle,
             close: closeButton,
             filters,
+            deleteFailedButton,
             refreshButton,
             newButton,
             list
@@ -453,7 +582,9 @@
         __test: {
             statusClass,
             projectRevisionText,
-            visibleProjects
+            visibleProjects,
+            activeCount,
+            failedCount
         }
     };
 })();
