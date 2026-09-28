@@ -210,37 +210,51 @@
 
         const helpButton =
             document.getElementById('mlxSidebarHelpButton');
-
-        if (
+        const reference = (
             helpButton &&
             helpButton.parentElement === sidebarBottom
+        )
+            ? helpButton.nextSibling
+            : settingsButton;
+        const desiredReference =
+            reference === launcher
+                ? launcher.nextSibling
+                : reference;
+
+        if (
+            launcher.parentElement === sidebarBottom &&
+            launcher.nextSibling === desiredReference
         ) {
-            sidebarBottom.insertBefore(
-                launcher,
-                helpButton.nextSibling || settingsButton
-            );
-        } else {
-            sidebarBottom.insertBefore(
-                launcher,
-                settingsButton
-            );
+            return true;
         }
+
+        sidebarBottom.insertBefore(
+            launcher,
+            desiredReference || settingsButton
+        );
 
         return true;
     }
 
 
+    function observeShortsSidebarOrder() {
+        const sidebarBottom =
+            document.querySelector('.sidebar-bottom');
+
+        if (!sidebarBottom || typeof MutationObserver === 'undefined') {
+            return;
+        }
+
+        const orderObserver = new MutationObserver(() => {
+            placeShortsLauncher();
+        });
+        orderObserver.observe(sidebarBottom, { childList: true });
+    }
+
+
     function initShortsSidebarLauncher() {
         if (placeShortsLauncher()) {
-            const sidebarBottom =
-                document.querySelector('.sidebar-bottom');
-
-            if (sidebarBottom && typeof MutationObserver !== 'undefined') {
-                const orderObserver = new MutationObserver(() => {
-                    placeShortsLauncher();
-                });
-                orderObserver.observe(sidebarBottom, { childList: true });
-            }
+            observeShortsSidebarOrder();
             return;
         }
 
@@ -254,16 +268,7 @@
             }
 
             launcherObserver.disconnect();
-
-            const sidebarBottom =
-                document.querySelector('.sidebar-bottom');
-
-            if (sidebarBottom) {
-                const orderObserver = new MutationObserver(() => {
-                    placeShortsLauncher();
-                });
-                orderObserver.observe(sidebarBottom, { childList: true });
-            }
+            observeShortsSidebarOrder();
         });
 
         launcherObserver.observe(document.body, {
