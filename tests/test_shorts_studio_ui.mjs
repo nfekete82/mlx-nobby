@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import { test } from 'node:test';
 
 const source = fs.readFileSync('frontend/assets/chat/shorts-studio.js', 'utf8');
+const studioTranslations = JSON.parse(
+    fs.readFileSync('frontend/i18n/shorts-studio.json', 'utf8')
+);
 
 function harness(
     settings = { voice: 'Pervin', speed: 1.1 },
@@ -17,6 +20,7 @@ function harness(
             getLanguage: () => language,
             t: (_key, fallback) => fallback
         },
+        __MLXShortsStudioTranslations: studioTranslations,
         fetch: async (input, init) => {
             calls.push({ input, init });
             return { ok: true };
