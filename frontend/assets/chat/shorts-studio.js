@@ -7,103 +7,58 @@
     const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
     const previousFetch = window.fetch.bind(window);
 
-    const FALLBACK_TRANSLATIONS = {
-        de: {
-            title: 'Shorts Studio',
-            close: 'Shorts Studio schließen',
-            scene: 'Szene',
-            scenes: 'Szenen',
-            narration: 'Sprechertext',
-            visual_prompt: 'Visueller Prompt',
-            voice_profile: 'Stimmprofil',
-            voice_placeholder: 'Aktuelle/Standardstimme verwenden',
-            voice_speed: 'Sprechgeschwindigkeit',
-            apply_revision: 'Änderungen anwenden',
-            regenerate_video: 'Szenenvideo neu erzeugen',
-            rendering_prefix: 'Rendering',
-            revision_of: 'Revision von {id}.',
-            help_completed: 'Wähle eine Szene, bearbeite Sprechertext oder visuellen Prompt und erstelle anschließend eine Revision. Änderungen nur am Sprechertext verwenden das vorhandene Szenenvideo weiter.',
-            help_rendering: 'Die aktuelle Revision wird noch gerendert. Die Bearbeitung wird nach Abschluss wieder aktiviert.',
-            feedback_no_changes: 'Keine Änderungen zum Rendern.',
-            feedback_creating: 'Revision wird erstellt…',
-            feedback_queued: 'Revision wurde eingereiht.',
-            error_revision_failed: 'Revision fehlgeschlagen ({status})',
-            error_missing_job: 'Die Revisionsantwort enthält keinen Shorts-Job.',
-            status_unknown: 'Unbekannt',
-            status_ready: 'Bereit',
-            status_rendering: 'Wird gerendert',
-            status_pending: 'Ausstehend',
-            status_completed: 'Abgeschlossen',
-            status_failed: 'Fehlgeschlagen',
-            status_cancelled: 'Abgebrochen',
-            status_queued: 'In Warteschlange',
-            status_running: 'Läuft',
-            status_dispatching: 'Wird übergeben',
-            status_loading: 'Wird geladen',
-            status_encoding: 'Wird kodiert',
-            status_generating: 'Wird erzeugt',
-            status_upscaling: 'Wird hochskaliert',
-            status_decoding: 'Wird dekodiert',
-            status_muxing: 'Wird zusammengeführt',
-            status_saving: 'Wird gespeichert',
-            status_keyframe: 'Keyframe',
-            status_video: 'Video',
-            status_tts: 'Sprachausgabe',
-            status_compose: 'Zusammenstellung',
-            status_video_completed: 'Video abgeschlossen',
-            status_tts_completed: 'Sprachausgabe abgeschlossen'
-        },
-        en: {
-            title: 'Shorts Studio',
-            close: 'Close Shorts Studio',
-            scene: 'Scene',
-            scenes: 'scenes',
-            narration: 'Narration',
-            visual_prompt: 'Visual prompt',
-            voice_profile: 'Voice profile',
-            voice_placeholder: 'Use current/default voice',
-            voice_speed: 'Voice speed',
-            apply_revision: 'Apply revision',
-            regenerate_video: 'Regenerate scene video',
-            rendering_prefix: 'Rendering',
-            revision_of: 'Revision of {id}.',
-            help_completed: 'Select a scene, edit narration or visual prompt, then create a revision. Narration-only changes reuse the existing scene video.',
-            help_rendering: 'The current revision is still rendering. Editing is enabled again after completion.',
-            feedback_no_changes: 'No changes to render.',
-            feedback_creating: 'Creating revision…',
-            feedback_queued: 'Revision queued.',
-            error_revision_failed: 'Revision failed ({status})',
-            error_missing_job: 'Revision response did not contain a Shorts job.',
-            status_unknown: 'Unknown',
-            status_ready: 'Ready',
-            status_rendering: 'Rendering',
-            status_pending: 'Pending',
-            status_completed: 'Completed',
-            status_failed: 'Failed',
-            status_cancelled: 'Cancelled',
-            status_queued: 'Queued',
-            status_running: 'Running',
-            status_dispatching: 'Dispatching',
-            status_loading: 'Loading',
-            status_encoding: 'Encoding',
-            status_generating: 'Generating',
-            status_upscaling: 'Upscaling',
-            status_decoding: 'Decoding',
-            status_muxing: 'Muxing',
-            status_saving: 'Saving',
-            status_keyframe: 'Keyframe',
-            status_video: 'Video',
-            status_tts: 'Voice',
-            status_compose: 'Composing',
-            status_video_completed: 'Video completed',
-            status_tts_completed: 'Voice completed'
-        }
+    const ENGLISH_FALLBACKS = {
+        title: 'Shorts Studio',
+        close: 'Close Shorts Studio',
+        scene: 'Scene',
+        scenes: 'scenes',
+        narration: 'Narration',
+        visual_prompt: 'Visual prompt',
+        voice_profile: 'Voice profile',
+        voice_placeholder: 'Use current/default voice',
+        voice_speed: 'Voice speed',
+        apply_revision: 'Apply revision',
+        regenerate_video: 'Regenerate scene video',
+        rendering_prefix: 'Rendering',
+        revision_of: 'Revision of {id}.',
+        help_completed: 'Select a scene, edit narration or visual prompt, then create a revision. Narration-only changes reuse the existing scene video.',
+        help_rendering: 'The current revision is still rendering. Editing is enabled again after completion.',
+        feedback_no_changes: 'No changes to render.',
+        feedback_creating: 'Creating revision…',
+        feedback_queued: 'Revision queued.',
+        error_revision_failed: 'Revision failed ({status})',
+        error_missing_job: 'Revision response did not contain a Shorts job.',
+        status_unknown: 'Unknown',
+        status_ready: 'Ready',
+        status_rendering: 'Rendering',
+        status_pending: 'Pending',
+        status_completed: 'Completed',
+        status_failed: 'Failed',
+        status_cancelled: 'Cancelled',
+        status_queued: 'Queued',
+        status_running: 'Running',
+        status_dispatching: 'Dispatching',
+        status_loading: 'Loading',
+        status_encoding: 'Encoding',
+        status_generating: 'Generating',
+        status_upscaling: 'Upscaling',
+        status_decoding: 'Decoding',
+        status_muxing: 'Muxing',
+        status_saving: 'Saving',
+        status_keyframe: 'Keyframe',
+        status_video: 'Video',
+        status_tts: 'Voice',
+        status_compose: 'Composing',
+        status_video_completed: 'Video completed',
+        status_tts_completed: 'Voice completed'
     };
 
     let activeJob = null;
     let activeSceneId = null;
     let pollTimer = null;
     let studio = null;
+    let studioTranslations = window.__MLXShortsStudioTranslations || {};
+    let translationsPromise = null;
     const sceneDrafts = new Map();
     const projectDrafts = new Map();
 
@@ -127,9 +82,8 @@
 
     function translate(key, params = {}) {
         const language = currentLanguage();
-        const fallback = FALLBACK_TRANSLATIONS[language]?.[key]
-            || FALLBACK_TRANSLATIONS.en[key]
-            || key;
+        const localized = studioTranslations?.[language]?.[key];
+        const fallback = localized || ENGLISH_FALLBACKS[key] || key;
         const value = window.MLXI18n?.t?.(`shorts_studio.${key}`, fallback) || fallback;
         return interpolate(value, params);
     }
@@ -580,6 +534,29 @@
         if (activeJob) renderStudio();
     }
 
+    function loadStudioTranslations() {
+        if (translationsPromise) return translationsPromise;
+        translationsPromise = previousFetch('/i18n/shorts-studio.json', { cache: 'no-cache' })
+            .then(response => {
+                if (!response.ok || typeof response.json !== 'function') {
+                    throw new Error('Could not load Shorts Studio translations.');
+                }
+                return response.json();
+            })
+            .then(payload => {
+                if (payload && typeof payload === 'object') {
+                    studioTranslations = payload;
+                }
+                refreshLanguage();
+                return studioTranslations;
+            })
+            .catch(error => {
+                console.warn('[Shorts Studio i18n]', error);
+                return studioTranslations;
+            });
+        return translationsPromise;
+    }
+
     window.fetch = async function mlxShortsStudioFetch(input, init) {
         const path = requestPath(input);
         let forwardedInit = init;
@@ -611,12 +588,19 @@
     };
 
     if (typeof document !== 'undefined') {
-        document.addEventListener('mlx-i18n-ready', refreshLanguage);
+        document.addEventListener('mlx-i18n-ready', () => {
+            loadStudioTranslations();
+            refreshLanguage();
+        });
         document.addEventListener('mlx-language-changed', refreshLanguage);
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', ensureStudio, { once: true });
+            document.addEventListener('DOMContentLoaded', () => {
+                ensureStudio();
+                loadStudioTranslations();
+            }, { once: true });
         } else {
             ensureStudio();
+            loadStudioTranslations();
         }
     }
 
