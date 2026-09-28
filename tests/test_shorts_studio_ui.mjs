@@ -15,7 +15,7 @@ function harness(settings = { voice: 'Pervin', speed: 1.1 }) {
             return { ok: true };
         }
     };
-    vm.runInNewContext(source, { window, URL, console });
+    vm.runInNewContext(source, { window, URL, console, setTimeout, clearTimeout });
     return { window, calls };
 }
 
@@ -60,4 +60,76 @@ test('Normal chat action requests are not modified', async () => {
 
     const payload = JSON.parse(calls[0].init.body);
     assert.equal(payload.prompt, prompt);
+});
+
+test('Narration-only revisions reuse the scene video contract', () => {
+    const { window } = harness();
+    const job = {
+        id: 'short-one',
+        status: 'completed',
+        project: {
+            voice: 'Pervin',
+            voice_speed: 1,
+            scenes: [{
+                id: 'scene-1',
+                narration: 'Old narration',
+                video_prompt: 'Old visual prompt'
+            }]
+        }
+    };
+
+    const payload = window.MLXShortsStudio.revisionPayload(
+        job,
+        'scene-1',
+        { narration: 'New narration', video_prompt: 'Old visual prompt' },
+        { voice: 'Pervin', voice_speed: 1 },
+        false
+    );
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(payload)),
+        { force_regenerate_video: false, narration: 'New narration' }
+    );
+});
+
+test('Forced scene regeneration does not require text changes', () => {
+    const { window } = harness();
+    const job = {
+        id: 'short-one',
+        status: 'completed',
+        project: {
+            voice: null,
+            voice_speed: 1,
+            scenes: [{
+                id: 'scene-1',
+                narration: 'Narration',
+                video_prompt: 'Visual prompt'
+            }]
+        }
+    };
+
+    const payload = window.MLXShortsStudio.revisionPayload(
+        job,
+        'scene-1',
+        { narration: 'Narration', video_prompt: 'Visual prompt' },
+        { voice: '', voice_speed: 1 },
+        true
+    );
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(payload)),
+        { force_regenerate_video: true }
+    );
+});
+
+test('Shorts job extraction supports API and action response shapes', () => {
+    const { window } = harness();
+    const job = {
+        id: 'short-one',
+        project: { scenes: [{ id: 'scene-1' }] }
+    };
+
+    assert.equal(window.MLXShortsStudio.extractJob({ job }), job);
+    assert.equal(window.MLXShortsStudio.extractJob({ data: { job } }), job);
+    assert.equal(window.MLXShortsStudio.extractJob({ result: { job } }), job);
 });
