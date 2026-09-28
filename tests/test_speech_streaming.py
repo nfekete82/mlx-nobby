@@ -1,11 +1,30 @@
 import base64
 import json
+import struct
+import sys
+import types
 
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
-from speech.app import SpeechRequest
+
+class SpeechRequest(BaseModel):
+    input: str
+    voice: str = "Serena"
+    language: str = "de"
+    instruct: str = ""
+    speed: float = 1.0
+
+
+speech_app_stub = types.ModuleType("speech.app")
+speech_app_stub.SpeechRequest = SpeechRequest
+speech_app_stub.get_tts_clone_model = lambda: None
+speech_app_stub.get_tts_model = lambda: None
+speech_app_stub.get_voice_profile = lambda voice: None
+speech_app_stub.list_voice_profiles = lambda: []
+sys.modules.setdefault("speech.app", speech_app_stub)
+
 from speech import streaming_routes
 from agent import speech_streaming_routes as agent_streaming
 from backend import speech_streaming_routes as backend_streaming
@@ -13,7 +32,7 @@ from backend import speech_streaming_routes as backend_streaming
 
 class _Result:
     def __init__(self, values=(0.0, 0.5, -0.5), sample_rate=24000):
-        self.audio = np.asarray(values, dtype=np.float32)
+        self.audio = list(values)
         self.sample_rate = sample_rate
 
 
@@ -66,11 +85,9 @@ def test_clone_stream_uses_qwen_streaming_and_emits_pcm(monkeypatch):
     assert model.kwargs["ref_audio"] == "/tmp/pervin.wav"
     assert model.kwargs["ref_text"] == "Referenz"
 
-    pcm = np.frombuffer(
-        base64.b64decode(events[1]["pcm"]),
-        dtype="<f4",
-    )
-    np.testing.assert_allclose(pcm, [0.0, 0.5, -0.5])
+    pcm_bytes = base64.b64decode(events[1]["pcm"])
+    pcm = struct.unpack("<3f", pcm_bytes)
+    assert pcm == (0.0, 0.5, -0.5)
     assert events[1]["sample_rate"] == 24000
 
 
