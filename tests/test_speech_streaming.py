@@ -66,6 +66,14 @@ def _events(lines):
     return [json.loads(line.decode("utf-8")) for line in lines]
 
 
+def test_stream_backpressure_bounds_producer_lead(monkeypatch):
+    monkeypatch.setattr(streaming_routes, "_MAX_STREAM_AHEAD_SECONDS", 2.0)
+
+    assert streaming_routes._stream_backpressure_delay(1.5, 0.0) == 0.0
+    assert streaming_routes._stream_backpressure_delay(2.0, 0.0) == 0.0
+    assert streaming_routes._stream_backpressure_delay(3.25, 0.25) == 1.0
+
+
 def test_clone_stream_uses_qwen_streaming_and_emits_pcm(monkeypatch):
     model = _CloneModel()
     monkeypatch.setattr(
@@ -100,6 +108,10 @@ def test_clone_stream_uses_qwen_streaming_and_emits_pcm(monkeypatch):
     assert (
         events[0]["streaming_interval"]
         == streaming_routes._CLONE_STREAM_INTERVAL
+    )
+    assert (
+        events[0]["max_stream_ahead_seconds"]
+        == streaming_routes._MAX_STREAM_AHEAD_SECONDS
     )
 
     pcm_bytes = base64.b64decode(events[1]["pcm"])
