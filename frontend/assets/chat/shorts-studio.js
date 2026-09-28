@@ -7,12 +7,139 @@
     const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
     const previousFetch = window.fetch.bind(window);
 
+    const FALLBACK_TRANSLATIONS = {
+        de: {
+            title: 'Shorts Studio',
+            close: 'Shorts Studio schließen',
+            scene: 'Szene',
+            scenes: 'Szenen',
+            narration: 'Sprechertext',
+            visual_prompt: 'Visueller Prompt',
+            voice_profile: 'Stimmprofil',
+            voice_placeholder: 'Aktuelle/Standardstimme verwenden',
+            voice_speed: 'Sprechgeschwindigkeit',
+            apply_revision: 'Änderungen anwenden',
+            regenerate_video: 'Szenenvideo neu erzeugen',
+            rendering_prefix: 'Rendering',
+            revision_of: 'Revision von {id}.',
+            help_completed: 'Wähle eine Szene, bearbeite Sprechertext oder visuellen Prompt und erstelle anschließend eine Revision. Änderungen nur am Sprechertext verwenden das vorhandene Szenenvideo weiter.',
+            help_rendering: 'Die aktuelle Revision wird noch gerendert. Die Bearbeitung wird nach Abschluss wieder aktiviert.',
+            feedback_no_changes: 'Keine Änderungen zum Rendern.',
+            feedback_creating: 'Revision wird erstellt…',
+            feedback_queued: 'Revision wurde eingereiht.',
+            error_revision_failed: 'Revision fehlgeschlagen ({status})',
+            error_missing_job: 'Die Revisionsantwort enthält keinen Shorts-Job.',
+            status_unknown: 'Unbekannt',
+            status_ready: 'Bereit',
+            status_rendering: 'Wird gerendert',
+            status_pending: 'Ausstehend',
+            status_completed: 'Abgeschlossen',
+            status_failed: 'Fehlgeschlagen',
+            status_cancelled: 'Abgebrochen',
+            status_queued: 'In Warteschlange',
+            status_running: 'Läuft',
+            status_dispatching: 'Wird übergeben',
+            status_loading: 'Wird geladen',
+            status_encoding: 'Wird kodiert',
+            status_generating: 'Wird erzeugt',
+            status_upscaling: 'Wird hochskaliert',
+            status_decoding: 'Wird dekodiert',
+            status_muxing: 'Wird zusammengeführt',
+            status_saving: 'Wird gespeichert',
+            status_keyframe: 'Keyframe',
+            status_video: 'Video',
+            status_tts: 'Sprachausgabe',
+            status_compose: 'Zusammenstellung',
+            status_video_completed: 'Video abgeschlossen',
+            status_tts_completed: 'Sprachausgabe abgeschlossen'
+        },
+        en: {
+            title: 'Shorts Studio',
+            close: 'Close Shorts Studio',
+            scene: 'Scene',
+            scenes: 'scenes',
+            narration: 'Narration',
+            visual_prompt: 'Visual prompt',
+            voice_profile: 'Voice profile',
+            voice_placeholder: 'Use current/default voice',
+            voice_speed: 'Voice speed',
+            apply_revision: 'Apply revision',
+            regenerate_video: 'Regenerate scene video',
+            rendering_prefix: 'Rendering',
+            revision_of: 'Revision of {id}.',
+            help_completed: 'Select a scene, edit narration or visual prompt, then create a revision. Narration-only changes reuse the existing scene video.',
+            help_rendering: 'The current revision is still rendering. Editing is enabled again after completion.',
+            feedback_no_changes: 'No changes to render.',
+            feedback_creating: 'Creating revision…',
+            feedback_queued: 'Revision queued.',
+            error_revision_failed: 'Revision failed ({status})',
+            error_missing_job: 'Revision response did not contain a Shorts job.',
+            status_unknown: 'Unknown',
+            status_ready: 'Ready',
+            status_rendering: 'Rendering',
+            status_pending: 'Pending',
+            status_completed: 'Completed',
+            status_failed: 'Failed',
+            status_cancelled: 'Cancelled',
+            status_queued: 'Queued',
+            status_running: 'Running',
+            status_dispatching: 'Dispatching',
+            status_loading: 'Loading',
+            status_encoding: 'Encoding',
+            status_generating: 'Generating',
+            status_upscaling: 'Upscaling',
+            status_decoding: 'Decoding',
+            status_muxing: 'Muxing',
+            status_saving: 'Saving',
+            status_keyframe: 'Keyframe',
+            status_video: 'Video',
+            status_tts: 'Voice',
+            status_compose: 'Composing',
+            status_video_completed: 'Video completed',
+            status_tts_completed: 'Voice completed'
+        }
+    };
+
     let activeJob = null;
     let activeSceneId = null;
     let pollTimer = null;
     let studio = null;
     const sceneDrafts = new Map();
     const projectDrafts = new Map();
+
+    function currentLanguage() {
+        const configured = String(window.MLXI18n?.getLanguage?.() || '').toLowerCase();
+        if (configured === 'de' || configured === 'en') return configured;
+        if (typeof document !== 'undefined') {
+            const documentLanguage = String(document.documentElement?.lang || '').toLowerCase();
+            if (documentLanguage.startsWith('de')) return 'de';
+        }
+        return 'en';
+    }
+
+    function interpolate(value, params) {
+        return String(value || '').replace(/\{([a-z0-9_]+)\}/giu, (match, key) => (
+            Object.prototype.hasOwnProperty.call(params || {}, key)
+                ? String(params[key])
+                : match
+        ));
+    }
+
+    function translate(key, params = {}) {
+        const language = currentLanguage();
+        const fallback = FALLBACK_TRANSLATIONS[language]?.[key]
+            || FALLBACK_TRANSLATIONS.en[key]
+            || key;
+        const value = window.MLXI18n?.t?.(`shorts_studio.${key}`, fallback) || fallback;
+        return interpolate(value, params);
+    }
+
+    function statusLabel(status) {
+        const normalized = String(status || 'unknown').trim().toLowerCase();
+        const key = `status_${normalized}`;
+        const translated = translate(key);
+        return translated === key ? normalized : translated;
+    }
 
     function requestPath(input) {
         const raw = typeof input === 'string' ? input : input?.url;
@@ -207,7 +334,7 @@
         if (studio || typeof document === 'undefined' || !document.body) return studio;
         loadStyles();
 
-        const launcher = createElement('button', 'mlx-shorts-studio-launcher', 'Shorts Studio');
+        const launcher = createElement('button', 'mlx-shorts-studio-launcher', translate('title'));
         launcher.type = 'button';
         launcher.hidden = true;
 
@@ -215,13 +342,13 @@
         const panel = createElement('aside', 'mlx-shorts-studio-panel');
         const header = createElement('div', 'mlx-shorts-studio-header');
         const titleWrap = createElement('div');
-        const title = createElement('h2', 'mlx-shorts-studio-title', 'Shorts Studio');
+        const title = createElement('h2', 'mlx-shorts-studio-title', translate('title'));
         const meta = createElement('div', 'mlx-shorts-studio-meta');
         const close = createElement('button', 'mlx-shorts-studio-close', '×');
         const body = createElement('div', 'mlx-shorts-studio-body');
 
         close.type = 'button';
-        close.setAttribute('aria-label', 'Close Shorts Studio');
+        close.setAttribute('aria-label', translate('close'));
         titleWrap.append(title, meta);
         header.append(titleWrap, close);
         panel.append(header, body);
@@ -234,7 +361,7 @@
             if (event.target === overlay) overlay.classList.remove('is-open');
         });
 
-        studio = { launcher, overlay, panel, title, meta, body };
+        studio = { launcher, overlay, panel, title, meta, close, body };
         return studio;
     }
 
@@ -268,13 +395,13 @@
             forceRegenerateVideo
         );
         if (!payload) {
-            setFeedback('No changes to render.');
+            setFeedback(translate('feedback_no_changes'));
             return;
         }
 
         if (studio?.applyButton) studio.applyButton.disabled = true;
         if (studio?.regenerateButton) studio.regenerateButton.disabled = true;
-        setFeedback('Creating revision…');
+        setFeedback(translate('feedback_creating'));
 
         try {
             const response = await window.fetch(
@@ -287,13 +414,15 @@
             );
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(data?.detail || `Revision failed (${response.status})`);
+                throw new Error(
+                    data?.detail || translate('error_revision_failed', { status: response.status })
+                );
             }
             const revised = extractJob(data);
-            if (!revised) throw new Error('Revision response did not contain a Shorts job.');
+            if (!revised) throw new Error(translate('error_missing_job'));
             activeSceneId = scene.id;
             setActiveJob(revised);
-            setFeedback('Revision queued.');
+            setFeedback(translate('feedback_queued'));
         } catch (error) {
             setFeedback(error?.message || String(error), true);
             renderStudio();
@@ -310,8 +439,10 @@
         if (!getScene(activeJob, activeSceneId)) activeSceneId = scenes[0].id;
 
         ui.launcher.hidden = false;
-        ui.title.textContent = project.title || 'Shorts Studio';
-        ui.meta.textContent = `${activeJob.status || 'unknown'} · ${project.duration || 0}s · ${scenes.length} scenes`;
+        ui.launcher.textContent = translate('title');
+        ui.close.setAttribute('aria-label', translate('close'));
+        ui.title.textContent = project.title || translate('title');
+        ui.meta.textContent = `${statusLabel(activeJob.status)} · ${project.duration || 0}s · ${scenes.length} ${translate(scenes.length === 1 ? 'scene' : 'scenes')}`;
         ui.body.replaceChildren();
 
         const preview = createElement('section', 'mlx-shorts-studio-preview');
@@ -323,17 +454,17 @@
             preview.appendChild(video);
         } else {
             const placeholder = createElement('div', 'mlx-shorts-studio-status');
-            placeholder.textContent = `Rendering: ${activeJob.phase || activeJob.status || 'queued'}`;
+            placeholder.textContent = `${translate('rendering_prefix')}: ${statusLabel(activeJob.phase || activeJob.status || 'queued')}`;
             preview.appendChild(placeholder);
         }
         const status = createElement('div', 'mlx-shorts-studio-status');
         const revisionInfo = activeJob.parent_job_id
-            ? `Revision of ${activeJob.parent_job_id}. `
+            ? `${translate('revision_of', { id: activeJob.parent_job_id })} `
             : '';
         status.textContent = revisionInfo + (
             activeJob.status === 'completed'
-                ? 'Select a scene, edit narration or visual prompt, then create a revision. Narration-only changes reuse the existing scene video.'
-                : 'The current revision is still rendering. Editing is enabled again after completion.'
+                ? translate('help_completed')
+                : translate('help_rendering')
         );
         preview.appendChild(status);
         ui.body.appendChild(preview);
@@ -343,11 +474,11 @@
             const button = createElement('button', 'mlx-shorts-studio-scene');
             button.type = 'button';
             if (scene.id === activeSceneId) button.classList.add('is-active');
-            const strong = createElement('strong', '', `Scene ${index + 1}`);
+            const strong = createElement('strong', '', `${translate('scene')} ${index + 1}`);
             const info = createElement(
                 'span',
                 '',
-                `${scene.duration}s · ${sceneResultStatus(activeJob, scene.id)}`
+                `${scene.duration}s · ${statusLabel(sceneResultStatus(activeJob, scene.id))}`
             );
             button.append(strong, info);
             button.addEventListener('click', () => {
@@ -364,7 +495,7 @@
         const editor = createElement('section', 'mlx-shorts-studio-editor');
 
         const narrationField = createElement('div', 'mlx-shorts-studio-field');
-        const narrationLabel = createElement('label', '', 'Narration');
+        const narrationLabel = createElement('label', '', translate('narration'));
         const narration = document.createElement('textarea');
         narration.value = draft.narration;
         narration.addEventListener('input', () => {
@@ -373,7 +504,7 @@
         narrationField.append(narrationLabel, narration);
 
         const promptField = createElement('div', 'mlx-shorts-studio-field');
-        const promptLabel = createElement('label', '', 'Visual prompt');
+        const promptLabel = createElement('label', '', translate('visual_prompt'));
         const visualPrompt = document.createElement('textarea');
         visualPrompt.value = draft.video_prompt;
         visualPrompt.addEventListener('input', () => {
@@ -383,18 +514,18 @@
 
         const controls = createElement('div', 'mlx-shorts-studio-controls');
         const voiceField = createElement('div', 'mlx-shorts-studio-field');
-        const voiceLabel = createElement('label', '', 'Voice profile');
+        const voiceLabel = createElement('label', '', translate('voice_profile'));
         const voice = document.createElement('input');
         voice.type = 'text';
         voice.value = projectDraft.voice;
-        voice.placeholder = 'Use current/default voice';
+        voice.placeholder = translate('voice_placeholder');
         voice.addEventListener('input', () => {
             projectDraft.voice = voice.value;
         });
         voiceField.append(voiceLabel, voice);
 
         const speedField = createElement('div', 'mlx-shorts-studio-field');
-        const speedLabel = createElement('label', '', 'Voice speed');
+        const speedLabel = createElement('label', '', translate('voice_speed'));
         const speed = document.createElement('input');
         speed.type = 'number';
         speed.min = '0.5';
@@ -408,8 +539,8 @@
         controls.append(voiceField, speedField);
 
         const actions = createElement('div', 'mlx-shorts-studio-actions');
-        const apply = createElement('button', '', 'Apply revision');
-        const regenerate = createElement('button', '', 'Regenerate scene video');
+        const apply = createElement('button', '', translate('apply_revision'));
+        const regenerate = createElement('button', '', translate('regenerate_video'));
         apply.type = 'button';
         regenerate.type = 'button';
         apply.dataset.primary = '1';
@@ -437,6 +568,16 @@
         }
         renderStudio();
         schedulePoll(job);
+    }
+
+    function refreshLanguage() {
+        const ui = ensureStudio();
+        if (ui) {
+            ui.launcher.textContent = translate('title');
+            ui.close.setAttribute('aria-label', translate('close'));
+            if (!activeJob) ui.title.textContent = translate('title');
+        }
+        if (activeJob) renderStudio();
     }
 
     window.fetch = async function mlxShortsStudioFetch(input, init) {
@@ -470,6 +611,8 @@
     };
 
     if (typeof document !== 'undefined') {
+        document.addEventListener('mlx-i18n-ready', refreshLanguage);
+        document.addEventListener('mlx-language-changed', refreshLanguage);
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', ensureStudio, { once: true });
         } else {
@@ -482,6 +625,8 @@
         studioVoiceInstruction,
         extractJob,
         revisionPayload,
+        translate,
+        statusLabel,
         getActiveJob() {
             return activeJob;
         },
