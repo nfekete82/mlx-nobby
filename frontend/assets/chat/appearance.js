@@ -159,9 +159,124 @@
     }
 
 
+    function ensureShortsSidebarStyles() {
+        if (document.getElementById('mlxShortsSidebarStyles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'mlxShortsSidebarStyles';
+        style.textContent = `
+            .sidebar-bottom .mlx-shorts-studio-launcher.sidebar-action {
+                position: static;
+                right: auto;
+                bottom: auto;
+                z-index: auto;
+                width: 100%;
+                padding: 10px;
+                border: 0;
+                border-radius: 9px;
+                background: transparent;
+                color: var(--muted);
+                font: inherit;
+                font-size: 12px;
+                font-weight: 400;
+                box-shadow: none;
+                text-align: left;
+            }
+            .sidebar-bottom .mlx-shorts-studio-launcher.sidebar-action:hover {
+                background: var(--panel2);
+                color: var(--text);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+
+    function placeShortsLauncher() {
+        const sidebarBottom =
+            document.querySelector('.sidebar-bottom');
+        const launcher =
+            document.querySelector('.mlx-shorts-studio-launcher');
+        const settingsButton =
+            document.getElementById('sidebarSettingsButton');
+
+        if (!sidebarBottom || !launcher || !settingsButton) {
+            return false;
+        }
+
+        ensureShortsSidebarStyles();
+        launcher.classList.add('sidebar-action');
+
+        const helpButton =
+            document.getElementById('mlxSidebarHelpButton');
+
+        if (
+            helpButton &&
+            helpButton.parentElement === sidebarBottom
+        ) {
+            sidebarBottom.insertBefore(
+                launcher,
+                helpButton.nextSibling || settingsButton
+            );
+        } else {
+            sidebarBottom.insertBefore(
+                launcher,
+                settingsButton
+            );
+        }
+
+        return true;
+    }
+
+
+    function initShortsSidebarLauncher() {
+        if (placeShortsLauncher()) {
+            const sidebarBottom =
+                document.querySelector('.sidebar-bottom');
+
+            if (sidebarBottom && typeof MutationObserver !== 'undefined') {
+                const orderObserver = new MutationObserver(() => {
+                    placeShortsLauncher();
+                });
+                orderObserver.observe(sidebarBottom, { childList: true });
+            }
+            return;
+        }
+
+        if (typeof MutationObserver === 'undefined' || !document.body) {
+            return;
+        }
+
+        const launcherObserver = new MutationObserver(() => {
+            if (!placeShortsLauncher()) {
+                return;
+            }
+
+            launcherObserver.disconnect();
+
+            const sidebarBottom =
+                document.querySelector('.sidebar-bottom');
+
+            if (sidebarBottom) {
+                const orderObserver = new MutationObserver(() => {
+                    placeShortsLauncher();
+                });
+                orderObserver.observe(sidebarBottom, { childList: true });
+            }
+        });
+
+        launcherObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+
     function init() {
         applySettings();
         syncControls();
+        initShortsSidebarLauncher();
 
         const font =
             document.getElementById('chatFontSize');
