@@ -1,10 +1,14 @@
 import json
+import threading
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 import pytest
 
 from agent import memory
+from agent import memory_lifecycle
+from agent import memory_middleware
 from agent.memory_middleware import MemoryChatMiddleware
 
 
@@ -62,6 +66,48 @@ def test_streaming_chat_observes_explicit_remember(client):
     items = memory.list_memories()
     assert len(items) == 1
     assert "Qwen3.8-27B" in items[0]["text"]
+
+
+def test_slow_memory_enrichment_fails_open_without_blocking_chat(client, monkeypatch):
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_enrichment(messages, **_kwargs):
+        started.set()
+        release.wait(timeout=1.0)
+        return [
+            {"role": "system", "content": "late memory"},
+            *messages,
+        ]
+
+    monkeypatch.setattr(
+        memory_lifecycle,
+        "enrich_messages",
+        slow_enrichment,
+    )
+    monkeypatch.setattr(
+        memory_middleware,
+        "MEMORY_ENRICH_TIMEOUT_SECONDS",
+        0.02,
+    )
+
+    payload = {
+        "messages": [
+            {"role": "user", "content": "Warum antwortest du nicht?"}
+        ]
+    }
+
+    before = time.monotonic()
+    try:
+        response = client.post("/api/runtime/chat/stream", json=payload)
+        elapsed = time.monotonic() - before
+
+        assert started.wait(timeout=0.2)
+        assert response.status_code == 200
+        assert response.json()["messages"] == payload["messages"]
+        assert elapsed < 0.3
+    finally:
+        release.set()
 
 
 def test_unrelated_routes_are_untouched(client):
