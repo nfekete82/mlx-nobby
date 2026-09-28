@@ -1,3 +1,5 @@
+from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
@@ -33,7 +35,7 @@ class ShortsHistoryTests(unittest.TestCase):
             "current_scene": current_scene,
             "final_path": final_path if status == "completed" else None,
             "chat_id": "chat-1",
-            "error": None,
+            "error": "render failed" if status == "failed" else None,
             "project": {
                 "title": title,
                 "duration": 20,
@@ -99,12 +101,136 @@ class ShortsHistoryTests(unittest.TestCase):
         self.assertEqual(result["limit"], 2)
         self.assertEqual(len(result["projects"]), 2)
 
-    def test_agent_history_route_is_registered(self):
+    def test_delete_project_removes_full_revision_chain_and_owned_directories(self):
+        root_id = "a" * 24
+        revision_id = "b" * 24
+        store = {
+            root_id: self.make_job(root_id, created_at=100),
+            revision_id: self.make_job(
+                revision_id,
+                created_at=200,
+                parent_job_id=root_id,
+            ),
+        }
+
+        def load_jobs():
+            return dict(store)
+
+        def save_jobs(updated):
+            store.clear()
+            store.update(updated)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for job_id in store:
+                directory = root / job_id
+                directory.mkdir()
+                (directory / "final.mp4").write_bytes(b"video")
+
+            with (
+                mock.patch.object(agent_routes.shorts_jobs, "SHORTS_DIRECTORY", root),
+                mock.patch.object(agent_routes.shorts_jobs, "_load_jobs", side_effect=load_jobs),
+                mock.patch.object(agent_routes.shorts_jobs, "_save_jobs", side_effect=save_jobs),
+                mock.patch.object(agent_routes.shorts_jobs, "_workers", {}),
+            ):
+                result = agent_routes.delete_short_project(revision_id)
+
+            self.assertEqual(store, {})
+            self.assertEqual(result["root_job_id"], root_id)
+            self.assertEqual(result["deleted_jobs"], 2)
+            self.assertEqual(result["cleanup_errors"], [])
+            self.assertFalse((root / root_id).exists())
+            self.assertFalse((root / revision_id).exists())
+
+    def test_delete_project_rejects_active_revision_chain(self):
+        root_id = "a" * 24
+        revision_id = "b" * 24
+        jobs = {
+            root_id: self.make_job(root_id, created_at=100),
+            revision_id: self.make_job(
+                revision_id,
+                created_at=200,
+                status="running",
+                parent_job_id=root_id,
+                final_path=None,
+            ),
+        }
+
+        with (
+            mock.patch.object(agent_routes.shorts_jobs, "_load_jobs", return_value=jobs),
+            mock.patch.object(agent_routes.shorts_jobs, "_save_jobs") as save_jobs,
+            mock.patch.object(agent_routes.shorts_jobs, "_workers", {}),
+        ):
+            with self.assertRaisesRegex(ValueError, "cancelled before deletion"):
+                agent_routes.delete_short_project(root_id)
+
+        save_jobs.assert_not_called()
+
+    def test_delete_failed_projects_only_removes_failed_latest_projects(self):
+        failed_root = "a" * 24
+        failed_revision = "b" * 24
+        completed_id = "c" * 24
+        store = {
+            failed_root: self.make_job(failed_root, created_at=100),
+            failed_revision: self.make_job(
+                failed_revision,
+                created_at=200,
+                status="failed",
+                parent_job_id=failed_root,
+                final_path=None,
+            ),
+            completed_id: self.make_job(completed_id, created_at=300),
+        }
+
+        def load_jobs():
+            return dict(store)
+
+        def save_jobs(updated):
+            store.clear()
+            store.update(updated)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for job_id in store:
+                (root / job_id).mkdir()
+
+            with (
+                mock.patch.object(agent_routes.shorts_jobs, "SHORTS_DIRECTORY", root),
+                mock.patch.object(agent_routes.shorts_jobs, "_load_jobs", side_effect=load_jobs),
+                mock.patch.object(agent_routes.shorts_jobs, "_save_jobs", side_effect=save_jobs),
+                mock.patch.object(agent_routes.shorts_jobs, "_workers", {}),
+            ):
+                result = agent_routes.delete_failed_short_projects()
+
+            self.assertEqual(result["deleted_projects"], 1)
+            self.assertEqual(result["deleted_jobs"], 2)
+            self.assertEqual(set(store), {completed_id})
+            self.assertTrue((root / completed_id).exists())
+            self.assertFalse((root / failed_root).exists())
+            self.assertFalse((root / failed_revision).exists())
+
+    def test_agent_history_routes_are_registered(self):
         app = FastAPI()
         agent_routes.install_routes(app)
         paths = {route.path for route in app.routes}
         self.assertIn("/api/shorts-jobs", paths)
+        self.assertIn("/api/shorts-jobs/failed", paths)
+        self.assertIn("/api/shorts-jobs/{job_id}", paths)
         self.assertIn("/api/shorts/jobs/{job_id}/scenes/{scene_id}/revise", paths)
+
+    def test_agent_delete_route_returns_conflict_for_active_project(self):
+        app = FastAPI()
+        agent_routes.install_routes(app)
+        client = TestClient(app)
+
+        with mock.patch.object(
+            agent_routes,
+            "delete_short_project",
+            side_effect=ValueError("active Shorts projects must be cancelled before deletion"),
+        ):
+            response = client.delete("/api/shorts-jobs/" + ("a" * 24))
+
+        self.assertEqual(response.status_code, 409)
 
     def test_backend_history_proxy_uses_agent_endpoint(self):
         calls = []
@@ -123,6 +249,30 @@ class ShortsHistoryTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [("GET", "/api/shorts-jobs?limit=12", None, 15)],
+        )
+
+    def test_backend_delete_proxies_use_agent_endpoints(self):
+        calls = []
+
+        def requester(method, path, payload=None, timeout=10):
+            calls.append((method, path, payload, timeout))
+            return {"deleted": True}
+
+        app = FastAPI()
+        backend_routes.install_routes(app, requester)
+        client = TestClient(app)
+        job_id = "a" * 24
+
+        response = client.delete(f"/api/mlx/shorts-jobs/{job_id}")
+        self.assertEqual(response.status_code, 200)
+        response = client.delete("/api/mlx/shorts-jobs/failed")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            calls,
+            [
+                ("DELETE", f"/api/shorts-jobs/{job_id}", None, 30),
+                ("DELETE", "/api/shorts-jobs/failed", None, 30),
+            ],
         )
 
 
