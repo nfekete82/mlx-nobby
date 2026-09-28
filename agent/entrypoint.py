@@ -8,12 +8,14 @@ from agent.shorts_consistency_runtime import install_runtime as install_shorts_c
 install_shorts_caption_runtime()
 install_shorts_consistency_runtime()
 
-from agent.app import app
+from agent.app import app, status as runtime_status
+from agent.runtime_reliability_routes import install_routes as install_runtime_reliability_routes
 from agent.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from agent.speech_streaming_routes import install_routes as install_speech_streaming_routes
 
 
 install_shorts_studio_routes(app)
 install_speech_streaming_routes(app)
+install_runtime_reliability_routes(app, status_provider=runtime_status)
 
 __all__ = ["app"]
