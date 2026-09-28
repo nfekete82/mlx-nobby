@@ -23,6 +23,8 @@ class MemoryManagerRouteTests(unittest.TestCase):
             })
             if method == "GET" and path.startswith("/api/memory?"):
                 return {"memories": []}
+            if method == "GET" and path.startswith("/api/memory/inspect?"):
+                return {"mode": "lexical", "selected": []}
             if method == "POST":
                 return {"memory": {"id": "m1", **(payload or {})}}
             if method == "PATCH":
@@ -70,6 +72,17 @@ class MemoryManagerRouteTests(unittest.TestCase):
         self.assertIn("query=Qwen+coding", self.calls[-1]["path"])
         self.assertIn("limit=12", self.calls[-1]["path"])
 
+    def test_inspector_query_is_encoded_bounded_and_read_only(self):
+        response = self.client.get(
+            "/api/mlx/memory/inspect",
+            params={"query": "Welche KI fürs Coding?", "limit": 99},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.calls[-1]["method"], "GET")
+        self.assertIn("query=Welche+KI+f%C3%BCrs+Coding%3F", self.calls[-1]["path"])
+        self.assertIn("limit=12", self.calls[-1]["path"])
+        self.assertEqual(self.calls[-1]["timeout"], 20)
+
     def test_script_injection_is_idempotent_and_before_chat_runtime(self):
         html = (
             b"<html><body>"
@@ -78,14 +91,15 @@ class MemoryManagerRouteTests(unittest.TestCase):
         )
         injected = inject_memory_manager_script(html)
         self.assertIn(b"memory-manager.js", injected)
+        self.assertIn(b"memory-manager-consolidation.js", injected)
+        self.assertIn(b"memory-context-inspector.js", injected)
         self.assertLess(
-            injected.index(b"memory-manager.js"),
+            injected.index(b"memory-context-inspector.js"),
             injected.index(b"/assets/chat.js"),
         )
-        self.assertEqual(
-            inject_memory_manager_script(injected).count(b"memory-manager.js"),
-            1,
-        )
+        reinjected = inject_memory_manager_script(injected)
+        self.assertEqual(reinjected.count(b"memory-manager.js"), 1)
+        self.assertEqual(reinjected.count(b"memory-context-inspector.js"), 1)
 
 
 if __name__ == "__main__":
