@@ -149,6 +149,44 @@ def test_consistency_requests_use_qwen_keyframe_then_ltx_i2v():
     assert video["payload"]["aspect_ratio"] == "9:16"
 
 
+def test_later_character_keyframe_can_edit_the_first_scene_anchor():
+    value = project()
+    job = {
+        "project": value.model_dump(mode="json"),
+        "chat_id": "chat-one",
+        "run_id": "run-one",
+        "chat_revision": 2,
+    }
+    image = keyframe_job_request(
+        job,
+        value.scenes[1],
+        1,
+        identity_anchor_path="/managed/scene-one.png",
+    )
+    assert image["operation"] == "edit"
+    assert image["payload"]["source_path"] == "/managed/scene-one.png"
+    assert "canonical identity anchor" in image["payload"]["prompt"]
+    assert "width" not in image["payload"]
+
+
+def test_character_anchor_is_not_used_when_character_consistency_is_disabled():
+    value = project(character_consistency=False)
+    job = {
+        "project": value.model_dump(mode="json"),
+        "chat_id": "chat-one",
+        "run_id": "run-one",
+        "chat_revision": 2,
+    }
+    image = keyframe_job_request(
+        job,
+        value.scenes[1],
+        1,
+        identity_anchor_path="/managed/scene-one.png",
+    )
+    assert image["operation"] == "generate"
+    assert "source_path" not in image["payload"]
+
+
 def test_narration_revision_reuses_keyframes_and_videos(tmp_path, monkeypatch):
     source = completed_source(tmp_path, monkeypatch)
     revised = shorts_studio.create_scene_revision(
@@ -182,14 +220,25 @@ def test_video_only_regeneration_keeps_existing_keyframe(tmp_path, monkeypatch):
     assert {item["scene_id"] for item in revised["keyframe_results"]} == {"scene-1", "scene-2"}
 
 
-def test_keyframe_regeneration_invalidates_keyframe_and_video(tmp_path, monkeypatch):
+def test_character_anchor_regeneration_invalidates_all_dependent_visual_media(tmp_path, monkeypatch):
     source = completed_source(tmp_path, monkeypatch)
     revised = shorts_studio.create_scene_revision(
         source["id"], "scene-1", force_regenerate_keyframe=True
     )
     assert revised["revision_kind"] == "keyframe"
-    assert [item["scene_id"] for item in revised["scene_results"]] == ["scene-2"]
-    assert [item["scene_id"] for item in revised["keyframe_results"]] == ["scene-2"]
+    assert revised["scene_results"] == []
+    assert revised["keyframe_results"] == []
+    assert revised["current_scene"] == 0
+
+
+def test_non_anchor_keyframe_regeneration_stays_scene_local(tmp_path, monkeypatch):
+    source = completed_source(tmp_path, monkeypatch)
+    revised = shorts_studio.create_scene_revision(
+        source["id"], "scene-2", force_regenerate_keyframe=True
+    )
+    assert revised["revision_kind"] == "keyframe"
+    assert [item["scene_id"] for item in revised["scene_results"]] == ["scene-1"]
+    assert [item["scene_id"] for item in revised["keyframe_results"]] == ["scene-1"]
 
 
 def test_global_consistency_change_invalidates_all_visual_media(tmp_path, monkeypatch):
