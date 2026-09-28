@@ -5,11 +5,18 @@ import { test } from 'node:test';
 
 const source = fs.readFileSync('frontend/assets/chat/shorts-studio.js', 'utf8');
 
-function harness(settings = { voice: 'Pervin', speed: 1.1 }) {
+function harness(
+    settings = { voice: 'Pervin', speed: 1.1 },
+    language = 'en'
+) {
     const calls = [];
     const window = {
         location: { origin: 'http://127.0.0.1:8090' },
         MLXVoice: { getSettings: () => ({ ...settings }) },
+        MLXI18n: {
+            getLanguage: () => language,
+            t: (_key, fallback) => fallback
+        },
         fetch: async (input, init) => {
             calls.push({ input, init });
             return { ok: true };
@@ -132,4 +139,24 @@ test('Shorts job extraction supports API and action response shapes', () => {
     assert.equal(window.MLXShortsStudio.extractJob({ job }), job);
     assert.equal(window.MLXShortsStudio.extractJob({ data: { job } }), job);
     assert.equal(window.MLXShortsStudio.extractJob({ result: { job } }), job);
+});
+
+test('Shorts Studio exposes German UI translations and localized statuses', () => {
+    const { window } = harness({ voice: 'Pervin', speed: 1.1 }, 'de');
+
+    assert.equal(window.MLXShortsStudio.translate('narration'), 'Sprechertext');
+    assert.equal(window.MLXShortsStudio.translate('visual_prompt'), 'Visueller Prompt');
+    assert.equal(window.MLXShortsStudio.translate('voice_profile'), 'Stimmprofil');
+    assert.equal(window.MLXShortsStudio.translate('apply_revision'), 'Änderungen anwenden');
+    assert.equal(window.MLXShortsStudio.translate('regenerate_video'), 'Szenenvideo neu erzeugen');
+    assert.equal(window.MLXShortsStudio.statusLabel('completed'), 'Abgeschlossen');
+    assert.equal(window.MLXShortsStudio.statusLabel('dispatching'), 'Wird übergeben');
+});
+
+test('Shorts Studio keeps English UI translations available', () => {
+    const { window } = harness({ voice: 'Pervin', speed: 1.1 }, 'en');
+
+    assert.equal(window.MLXShortsStudio.translate('narration'), 'Narration');
+    assert.equal(window.MLXShortsStudio.translate('apply_revision'), 'Apply revision');
+    assert.equal(window.MLXShortsStudio.statusLabel('completed'), 'Completed');
 });
