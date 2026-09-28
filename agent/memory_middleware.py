@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from agent import memory
+from agent import memory_lifecycle
 
 
 TARGET_PATH = "/api/runtime/chat/stream"
@@ -47,7 +47,7 @@ class MemoryChatMiddleware:
             payload = json.loads(replacement.decode("utf-8"))
             raw_messages = payload.get("messages")
             if isinstance(raw_messages, list):
-                enriched = memory.enrich_messages(raw_messages, observe=True)
+                enriched = memory_lifecycle.enrich_messages(raw_messages, observe=True)
                 if enriched != raw_messages:
                     payload = dict(payload)
                     payload["messages"] = enriched

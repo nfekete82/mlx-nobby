@@ -7,7 +7,7 @@ from typing import Callable, ContextManager, Protocol
 import urllib.error
 import urllib.request
 
-from agent import memory
+from agent import memory_lifecycle
 from agent.run_state import RunContext
 from backend import observability
 
@@ -70,7 +70,7 @@ def _with_memory(request: ModelRequest, run_context: RunContext | None) -> Model
         return request
     try:
         chat_id = getattr(run_context, "chat_id", None) if run_context is not None else None
-        messages = memory.enrich_messages(
+        messages = memory_lifecycle.enrich_messages(
             request.messages,
             source_chat_id=chat_id,
             observe=True,

@@ -84,3 +84,51 @@ def test_memory_embedding_status(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["mode"] == "hybrid"
     assert response.json()["model"] == "qwen-test"
+
+
+def test_memory_api_consolidates_replaced_slot_and_exposes_audit(client):
+    first = client.post(
+        "/api/memory",
+        json={"text": "Für Coding nutze ich Qwen3.8-27B.", "pinned": True},
+    )
+    second = client.post(
+        "/api/memory",
+        json={"text": "Für Coding nutze ich Devstral."},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    payload = second.json()
+    assert payload["consolidation"]["changed"] is True
+    assert payload["memory"]["text"] == "Für Coding nutze ich Devstral."
+    assert payload["memory"]["pinned"] is True
+
+    active = client.get("/api/memory").json()["memories"]
+    all_items = client.get(
+        "/api/memory",
+        params={"include_disabled": True},
+    ).json()["memories"]
+    audit = client.get("/api/memory/consolidations")
+    status = client.get("/api/memory/consolidation-status")
+
+    assert len(active) == 1
+    assert len(all_items) == 2
+    assert sum(not item["enabled"] for item in all_items) == 1
+    assert audit.status_code == 200
+    assert audit.json()["consolidations"][0]["reason"] == "slot_replacement"
+    assert status.status_code == 200
+    assert status.json()["events"] == 1
+
+
+def test_manual_bulk_consolidation_endpoint(client):
+    # Use the low-level store to simulate memories that predate v1.2.
+    old = memory.add("Nenn mich Norbert.", pinned=True)
+    new = memory.add("Nenn mich Nobby.", pinned=True)
+
+    response = client.post("/api/memory/consolidate", json={})
+
+    assert response.status_code == 200
+    assert response.json()["changed"] is True
+    assert response.json()["absorbed"] == 1
+    assert memory.get(old["id"])["enabled"] is False
+    assert memory.get(new["id"])["enabled"] is True
