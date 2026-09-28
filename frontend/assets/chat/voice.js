@@ -17,6 +17,10 @@
     const SPEEDS = [0.8, 0.9, 1.0, 1.1, 1.25];
 
     let voices = FALLBACK_VOICES.map(item => ({ ...item }));
+    let hadStoredVoice = false;
+    try {
+        hadStoredVoice = Boolean(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')?.voice);
+    } catch (_) {}
     let settings = loadSettings();
     let autoReadTimer = null;
     const autoReadSeen = new Set();
@@ -62,6 +66,7 @@
 
     function saveSettings() {
         stopComposerAudio();
+        hadStoredVoice = Boolean(settings.voice);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         window.dispatchEvent(new CustomEvent('mlx:voice-settings-changed', {
             detail: { ...settings }
@@ -74,6 +79,14 @@
 
     function activeVoice() {
         return voices.find(item => item.id === settings.voice) || null;
+    }
+
+    function setVoice(voice) {
+        const requested = String(voice || '').trim();
+        if (!voices.some(item => item.id === requested)) return false;
+        settings = { ...settings, voice: requested };
+        saveSettings();
+        return true;
     }
 
     function normalizeVoiceList(payload) {
@@ -104,12 +117,13 @@
             if (!loaded.length) return;
 
             voices = loaded;
-            if (!voices.some(item => item.id === settings.voice)) {
+            if (!hadStoredVoice || !voices.some(item => item.id === settings.voice)) {
                 const requestedDefault = String(payload?.default || '').trim();
                 const nextVoice = voices.some(item => item.id === requestedDefault)
                     ? requestedDefault
                     : voices[0].id;
                 settings = { ...settings, voice: nextVoice };
+                hadStoredVoice = true;
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
             }
 
@@ -476,6 +490,7 @@
         getSettings: () => ({ ...settings }),
         getVoiceLabel: voiceLabel,
         getVoices: () => voices.map(item => ({ ...item })),
+        setVoice,
         refreshVoices: loadVoices
     };
 
