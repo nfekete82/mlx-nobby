@@ -24,7 +24,7 @@ SHORT_JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 ACTIVE_STATUSES = {"queued", "running", "video_completed", "tts_completed"}
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 VIDEO_ACTIVE_STATUSES = {
-    "queued", "loading", "encoding", "generating",
+    "queued", "dispatching", "loading", "encoding", "generating",
     "upscaling", "decoding", "muxing",
 }
 
@@ -879,7 +879,9 @@ def _worker(job_id, request_fn, tts_request_fn, compose_fn, poll_interval):
         )
     finally:
         with _workers_lock:
-            _workers.pop(job_id, None)
+            current = _workers.get(job_id)
+            if current is threading.current_thread():
+                _workers.pop(job_id, None)
 
 
 def start_short_job(
@@ -891,55 +893,43 @@ def start_short_job(
     poll_interval=1.0,
 ):
     job_id = _job_id(job_id)
-    get_short_job(job_id)
+    job = get_short_job(job_id)
+    if job.get("status") in TERMINAL_STATUSES:
+        return job
     with _workers_lock:
-        existing = _workers.get(job_id)
-        if existing is not None and existing.is_alive():
-            return existing
-        thread = threading.Thread(
+        worker = _workers.get(job_id)
+        if worker is not None and worker.is_alive():
+            return job
+        worker = threading.Thread(
             target=_worker,
             args=(job_id, request_fn, tts_request_fn, compose_fn, poll_interval),
             daemon=True,
-            name=f"shorts-job-{job_id}",
+            name=f"mlx-short-{job_id[:8]}",
         )
-        _workers[job_id] = thread
-        try:
-            thread.start()
-        except Exception:
-            _workers.pop(job_id, None)
-            raise
-        return thread
+        _workers[job_id] = worker
+        worker.start()
+    return get_short_job(job_id)
 
 
-def resume_short_jobs(
-    *,
-    request_fn=None,
-    tts_request_fn=None,
-    compose_fn=None,
-    poll_interval=1.0,
-):
-    """Resume every durable non-terminal job, including its active child."""
-    with _jobs_lock:
-        jobs = _load_jobs()
-    resumed = []
-    for job in jobs.values():
-        if job.get("status") in ACTIVE_STATUSES:
-            start_short_job(
-                job["id"],
-                request_fn=request_fn,
-                tts_request_fn=tts_request_fn,
-                compose_fn=compose_fn,
-                poll_interval=poll_interval,
-            )
-            resumed.append(job["id"])
-    return resumed
-
-
-def cancel_short_job(job_id, *, request_fn=None):
+def cancel_short_job(job_id, request_fn=None):
     job_id = _job_id(job_id)
     request_fn = request_fn or video_api.request
     job = get_short_job(job_id)
-    if job.get("status") not in ACTIVE_STATUSES:
-        raise ValueError("short job cannot be cancelled")
+    if job.get("status") in TERMINAL_STATUSES:
+        raise ValueError("short job is already finished")
     _update_job(job_id, cancel_requested=True)
     return _finish_cancelled(job_id, request_fn)
+
+
+def resume_short_jobs():
+    with _jobs_lock:
+        jobs = _load_jobs()
+        resumable = [
+            job_id
+            for job_id, job in jobs.items()
+            if job.get("status") in ACTIVE_STATUSES
+            and not job.get("cancel_requested")
+        ]
+    for job_id in resumable:
+        start_short_job(job_id)
+    return resumable
