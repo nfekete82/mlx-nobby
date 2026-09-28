@@ -328,8 +328,7 @@ def embedding_status():
     return memory_embeddings.status(MEMORY_DB)
 
 
-def context(query, *, limit=DEFAULT_LIMIT):
-    selected = retrieve(query, limit=limit)
+def context_from_memories(selected):
     if not selected:
         return ""
     lines = [f"- [{item['category']}] {item['text']}" for item in selected]
@@ -342,6 +341,10 @@ def context(query, *, limit=DEFAULT_LIMIT):
         + "- Prefer the user's current message over an older conflicting memory.\n"
         + "- Do not mention that a memory was retrieved unless it is useful to the answer."
     )
+
+
+def context(query, *, limit=DEFAULT_LIMIT):
+    return context_from_memories(retrieve(query, limit=limit))
 
 
 def _durable_candidate(message):
