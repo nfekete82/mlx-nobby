@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from agent import memory
 from agent import memory_consolidation
+from agent import memory_debug
 from agent import memory_lifecycle
 
 
@@ -65,6 +66,13 @@ def install_routes(app):
             memory.MEMORY_DB,
             limit=payload.get("limit", 500),
         )
+
+    @app.get("/api/memory/inspect")
+    def memory_inspect(query: str, limit: int = memory.DEFAULT_LIMIT):
+        query = str(query or "").strip()
+        if not query:
+            raise HTTPException(422, "query fehlt")
+        return memory_debug.inspect(query, limit=limit)
 
     @app.patch("/api/memory/{memory_id}")
     def memory_update(memory_id: str, payload: dict):
