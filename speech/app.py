@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import re
 import subprocess
@@ -87,19 +88,36 @@ TTS_CLONE_TOP_P = _bounded_float(
     "MLX_TTS_CLONE_TOP_P", 0.90, 0.10, 1.0
 )
 
-
-def clone_generation_options():
-    return {
+VOICE_QUALITY_PRESETS = {
+    "stable": {
+        "temperature": 0.45,
+        "top_k": 20,
+        "top_p": 0.85,
+    },
+    "natural": {
         "temperature": TTS_CLONE_TEMPERATURE,
         "top_k": TTS_CLONE_TOP_K,
         "top_p": TTS_CLONE_TOP_P,
-    }
+    },
+    "expressive": {
+        "temperature": 0.85,
+        "top_k": 50,
+        "top_p": 0.95,
+    },
+}
+VOICE_QUALITY_MODES = tuple(VOICE_QUALITY_PRESETS)
 
 
 TTS_VOICES_DIR = Path(
     os.environ.get(
         "MLX_TTS_VOICES_DIR",
         str(Path(__file__).resolve().parent / "voices"),
+    )
+).expanduser()
+VOICE_MANAGER_CONFIG = Path(
+    os.environ.get(
+        "MLX_TTS_VOICE_MANAGER_CONFIG",
+        str(Path.home() / ".config" / "mlx-web" / "voice-manager.json"),
     )
 ).expanduser()
 
@@ -208,6 +226,40 @@ def _voice_profile_name(voice: str) -> str:
     return value
 
 
+def _read_json_file(path: Path):
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def voice_profile_metadata(voice: str):
+    profile_name = _voice_profile_name(voice)
+    if not profile_name:
+        return {}
+    return _read_json_file(TTS_VOICES_DIR / profile_name / "profile.json")
+
+
+def voice_profile_label(voice: str) -> str:
+    profile_name = _voice_profile_name(voice)
+    metadata = voice_profile_metadata(profile_name)
+    label = str(metadata.get("label") or "").strip()
+    if label:
+        return label
+    return profile_name.replace("-", " ").replace("_", " ").title()
+
+
+def get_voice_quality(voice: str) -> str:
+    quality = str(voice_profile_metadata(voice).get("quality") or "natural").strip().lower()
+    return quality if quality in VOICE_QUALITY_PRESETS else "natural"
+
+
+def clone_generation_options(voice: str | None = None):
+    mode = get_voice_quality(voice) if voice else "natural"
+    return dict(VOICE_QUALITY_PRESETS[mode])
+
+
 def get_voice_profile(voice: str):
     profile_name = _voice_profile_name(voice)
     if not profile_name:
@@ -251,6 +303,17 @@ def list_voice_profiles():
     return profiles
 
 
+def current_default_voice() -> str:
+    configured = str(_read_json_file(VOICE_MANAGER_CONFIG).get("default_voice") or "").strip()
+    available = {voice_profile_label(name) for name in list_voice_profiles()}
+    available.add("Serena")
+    if configured in available:
+        return configured
+    if TTS_DEFAULT_VOICE in available:
+        return TTS_DEFAULT_VOICE
+    return "Serena"
+
+
 @app.get("/health")
 def health():
     return {
@@ -259,7 +322,7 @@ def health():
         "loaded": _model is not None,
         "tts_model": TTS_MODEL_NAME,
         "tts_loaded": _tts_model is not None,
-        "tts_voice": TTS_DEFAULT_VOICE,
+        "tts_voice": current_default_voice(),
         "tts_clone_model": TTS_CLONE_MODEL_NAME,
         "tts_clone_loaded": _tts_clone_model is not None,
         "tts_voice_profiles": list_voice_profiles(),
@@ -269,11 +332,14 @@ def health():
 
 @app.get("/v1/audio/voices")
 def voices():
+    default_voice = current_default_voice()
     cloned = [
         {
-            "id": name.capitalize(),
-            "label": name.capitalize(),
+            "id": voice_profile_label(name),
+            "label": voice_profile_label(name),
             "kind": "clone",
+            "quality": get_voice_quality(name),
+            "is_default": voice_profile_label(name) == default_voice,
         }
         for name in list_voice_profiles()
     ]
@@ -283,10 +349,13 @@ def voices():
                 "id": "Serena",
                 "label": "Serena",
                 "kind": "preset",
+                "quality": None,
+                "is_default": default_voice == "Serena",
             },
             *cloned,
         ],
-        "default": TTS_DEFAULT_VOICE,
+        "default": default_voice,
+        "quality_modes": list(VOICE_QUALITY_MODES),
     }
 
 
@@ -415,7 +484,7 @@ def synthesize_speech(request: SpeechRequest):
                     text=text,
                     ref_audio=str(profile["reference"]),
                     ref_text=profile["ref_text"],
-                    **clone_generation_options(),
+                    **clone_generation_options(request.voice),
                 )
             )
         else:
