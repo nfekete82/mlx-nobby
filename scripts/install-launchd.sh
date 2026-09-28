@@ -11,6 +11,7 @@ MLX_SERVE_DIR="${MLX_SERVE_DIR:-${HOME}/mlx-serve-qwen21}"
 MLX_SERVE_BIN="${MLX_SERVE_BIN:-${MLX_SERVE_DIR}/zig-out/bin/mlx-serve}"
 TEMPLATE_DIR="${PROJECT_DIR}/launchd/templates"
 TARGET_DIR="${HOME}/Library/LaunchAgents"
+LAUNCHD_DOMAIN="gui/$(id -u)"
 
 mkdir -p "${CONFIG_DIR}"
 mkdir -p "${TARGET_DIR}"
@@ -38,9 +39,12 @@ if [ ! -d "${TEMPLATE_DIR}" ]; then
     exit 1
 fi
 
+RENDER_CHANGED=0
+
 render_template() {
     local source="$1"
     local target="$2"
+    local temporary="${target}.tmp.$$"
 
     sed \
         -e "s|__PROJECT_DIR__|${PROJECT_DIR}|g" \
@@ -51,9 +55,32 @@ render_template() {
         -e "s|__ROUTER_MODEL__|${ROUTER_MODEL}|g" \
         -e "s|__MLX_SERVE_DIR__|${MLX_SERVE_DIR}|g" \
         -e "s|__MLX_SERVE_BIN__|${MLX_SERVE_BIN}|g" \
-        "${source}" > "${target}"
+        "${source}" > "${temporary}"
 
-    plutil -lint "${target}" >/dev/null
+    plutil -lint "${temporary}" >/dev/null
+
+    RENDER_CHANGED=1
+    if [ -f "${target}" ] && cmp -s "${temporary}" "${target}"; then
+        RENDER_CHANGED=0
+    fi
+
+    mv "${temporary}" "${target}"
+}
+
+reload_changed_launchagent() {
+    local filename="$1"
+    local target="$2"
+    local label="${filename%.plist}"
+
+    [ "${RENDER_CHANGED}" -eq 1 ] || return 0
+
+    if ! launchctl print "${LAUNCHD_DOMAIN}/${label}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "Reloading changed LaunchAgent: ${label}"
+    launchctl bootout "${LAUNCHD_DOMAIN}/${label}"
+    launchctl bootstrap "${LAUNCHD_DOMAIN}" "${target}"
 }
 
 for template in "${TEMPLATE_DIR}"/*.plist.template; do
@@ -68,7 +95,13 @@ for template in "${TEMPLATE_DIR}"/*.plist.template; do
     fi
 
     render_template "${template}" "${target}"
-    echo "Installed: ${target}"
+    reload_changed_launchagent "${filename}" "${target}"
+
+    if [ "${RENDER_CHANGED}" -eq 1 ]; then
+        echo "Installed: ${target} (changed)"
+    else
+        echo "Installed: ${target} (unchanged)"
+    fi
 done
 
 echo
