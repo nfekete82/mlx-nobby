@@ -156,23 +156,19 @@ async def _close_iterator(iterator, pending_task=None):
 async def _wait_for_next(iterator, timeout: float):
     task = asyncio.create_task(iterator.__anext__())
     done, _ = await asyncio.wait({task}, timeout=timeout)
-    if task in done:
-        return True, task
-    return False, task
+    return task in done, task
+
+
+async def _wait_existing_task(task, timeout: float):
+    if timeout <= 0:
+        return False, task
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    return task in done, task
 
 
 def _media_is_active(snapshot: dict) -> bool:
     workload = (snapshot.get("lease") or {}).get("active_workload")
     return workload in {"image", "video"}
-
-
-def _copy_headers(response) -> dict:
-    ignored = {"content-length", "connection", "transfer-encoding"}
-    return {
-        key: value
-        for key, value in response.headers.items()
-        if key.lower() not in ignored
-    }
 
 
 async def _reliable_stream(
@@ -253,6 +249,14 @@ async def _reliable_stream(
                 retryable=True,
             )
             return
+        except Exception as exc:
+            await _close_iterator(iterator)
+            yield _sse_error(
+                f"Chat-Stream konnte nicht gestartet werden: {exc}",
+                "stream_start_failed",
+                retryable=True,
+            )
+            return
 
         emitted = True
         yield first
@@ -282,6 +286,14 @@ async def _reliable_stream(
             except StopAsyncIteration:
                 await _close_iterator(iterator)
                 return
+            except Exception as exc:
+                await _close_iterator(iterator)
+                yield _sse_error(
+                    f"Die laufende Antwort wurde unterbrochen: {exc}",
+                    "stream_interrupted",
+                    retryable=True,
+                )
+                return
 
             emitted = True
             yield chunk
@@ -292,13 +304,6 @@ async def _reliable_stream(
             "empty_stream",
             retryable=True,
         )
-
-
-async def _wait_existing_task(task, timeout: float):
-    if timeout <= 0:
-        return False, task
-    done, _ = await asyncio.wait({task}, timeout=timeout)
-    return task in done, task
 
 
 def install_routes(
@@ -315,21 +320,19 @@ def install_routes(
     if "/api/chat/reliable-stream" not in paths:
         @app.post("/api/chat/reliable-stream")
         async def reliable_chat_stream(request: ReliableChatRequest):
-            # Build one response up front solely to preserve media type/headers.
-            template = stream_factory(request)
-            headers = _copy_headers(template)
-            await _close_iterator(template.body_iterator.__aiter__())
-
-            headers["X-MLX-Reliability"] = "1"
             return StreamingResponse(
                 _reliable_stream(
                     request,
                     stream_factory=stream_factory,
                     agent_url=agent_url,
                 ),
-                status_code=template.status_code,
-                media_type=template.media_type or "text/event-stream",
-                headers=headers,
+                status_code=200,
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "X-MLX-Reliability": "1",
+                },
             )
 
     if "/api/mlx/runtime/reliability" not in paths:
