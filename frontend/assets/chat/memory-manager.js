@@ -8,112 +8,94 @@
         filter: 'all',
         loading: false,
     };
-
-    const COPY = {
-        de: {
-            tab: 'Memory',
-            title: 'Nobby Memory',
-            description: 'Dauerhafte Erinnerungen verwalten, die Nobby bei passenden Anfragen automatisch berücksichtigt.',
-            add: '+ Erinnerung',
-            search: 'Erinnerungen durchsuchen …',
-            all: 'Alle',
-            active: 'Aktiv',
-            pinned: 'Angeheftet',
-            disabled: 'Deaktiviert',
-            empty: 'Noch keine Erinnerungen vorhanden.',
-            noResults: 'Keine passenden Erinnerungen gefunden.',
-            loading: 'Memory wird geladen …',
-            loadFailed: 'Memory konnte nicht geladen werden:',
-            newTitle: 'Neue Erinnerung',
-            memoryText: 'Erinnerung',
-            memoryPlaceholder: 'z. B. Für Coding bevorzuge ich Qwen3.8-27B.',
-            category: 'Kategorie',
-            importance: 'Wichtigkeit',
-            confidence: 'Konfidenz',
-            pinnedLabel: 'Anheften',
-            enabled: 'Aktiv',
-            cancel: 'Abbrechen',
-            create: 'Speichern',
-            save: 'Speichern',
-            saved: 'Gespeichert',
-            pin: 'Anheften',
-            unpin: 'Lösen',
-            remove: 'Löschen',
-            deleteTitle: 'Erinnerung löschen?',
-            deleteMessage: 'Diese Erinnerung wird dauerhaft aus Nobby Memory entfernt.',
-            deleted: 'Erinnerung gelöscht.',
-            created: 'Erinnerung gespeichert.',
-            updated: 'Aktualisiert',
-            used: 'Verwendet',
-            never: 'noch nie',
-            memories: 'Erinnerungen',
-            activeCount: 'aktiv',
-            pinnedCount: 'angeheftet',
-            disabledCount: 'deaktiviert',
-            error: 'Fehler:',
-        },
-        en: {
-            tab: 'Memory',
-            title: 'Nobby Memory',
-            description: 'Manage long-term memories that Nobby automatically uses when they are relevant.',
-            add: '+ Memory',
-            search: 'Search memories …',
-            all: 'All',
-            active: 'Active',
-            pinned: 'Pinned',
-            disabled: 'Disabled',
-            empty: 'No memories yet.',
-            noResults: 'No matching memories found.',
-            loading: 'Loading memory …',
-            loadFailed: 'Could not load memory:',
-            newTitle: 'New memory',
-            memoryText: 'Memory',
-            memoryPlaceholder: 'e.g. For coding I prefer Qwen3.8-27B.',
-            category: 'Category',
-            importance: 'Importance',
-            confidence: 'Confidence',
-            pinnedLabel: 'Pin',
-            enabled: 'Active',
-            cancel: 'Cancel',
-            create: 'Save',
-            save: 'Save',
-            saved: 'Saved',
-            pin: 'Pin',
-            unpin: 'Unpin',
-            remove: 'Delete',
-            deleteTitle: 'Delete memory?',
-            deleteMessage: 'This memory will be permanently removed from Nobby Memory.',
-            deleted: 'Memory deleted.',
-            created: 'Memory saved.',
-            updated: 'Updated',
-            used: 'Used',
-            never: 'never',
-            memories: 'memories',
-            activeCount: 'active',
-            pinnedCount: 'pinned',
-            disabledCount: 'disabled',
-            error: 'Error:',
-        },
+    const CATEGORY_VALUES = [
+        'preference',
+        'communication',
+        'coding',
+        'ai_models',
+        'work',
+        'other',
+    ];
+    const ENGLISH_FALLBACK = {
+        tab: 'Memory',
+        title: 'Nobby Memory',
+        description: 'Manage long-term memories that Nobby automatically uses when they are relevant.',
+        add: '+ Memory',
+        search: 'Search memories …',
+        all: 'All',
+        active: 'Active',
+        pinned: 'Pinned',
+        disabled: 'Disabled',
+        empty: 'No memories yet.',
+        noResults: 'No matching memories found.',
+        loading: 'Loading memory …',
+        loadFailed: 'Could not load memory:',
+        newTitle: 'New memory',
+        memoryText: 'Memory',
+        memoryPlaceholder: 'e.g. For coding I prefer Qwen3.8-27B.',
+        category: 'Category',
+        importance: 'Importance',
+        confidence: 'Confidence',
+        pinnedLabel: 'Pin',
+        enabled: 'Active',
+        cancel: 'Cancel',
+        create: 'Save',
+        save: 'Save',
+        saved: 'Saved',
+        pin: 'Pin',
+        unpin: 'Unpin',
+        remove: 'Delete',
+        deleteTitle: 'Delete memory?',
+        deleteMessage: 'This memory will be permanently removed from Nobby Memory.',
+        deleted: 'Memory deleted.',
+        created: 'Memory saved.',
+        updated: 'Updated',
+        used: 'Used',
+        never: 'never',
+        memories: 'memories',
+        activeCount: 'active',
+        pinnedCount: 'pinned',
+        disabledCount: 'disabled',
+        error: 'Error:',
+        category_preference: 'Preference',
+        category_communication: 'Communication',
+        category_coding: 'Coding',
+        category_ai_models: 'AI & Models',
+        category_work: 'Work',
+        category_other: 'Other',
     };
 
-    const CATEGORY_LABELS = {
-        preference: { de: 'Präferenz', en: 'Preference' },
-        communication: { de: 'Kommunikation', en: 'Communication' },
-        coding: { de: 'Coding', en: 'Coding' },
-        ai_models: { de: 'KI & Modelle', en: 'AI & Models' },
-        work: { de: 'Arbeit', en: 'Work' },
-        other: { de: 'Sonstiges', en: 'Other' },
+    let copy = {
+        en: ENGLISH_FALLBACK,
+        de: ENGLISH_FALLBACK,
     };
-
-    const language = () => window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en';
-    const t = key => COPY[language()][key] || COPY.en[key] || key;
-    const categoryLabel = value => (
-        CATEGORY_LABELS[value]?.[language()] || value || CATEGORY_LABELS.other[language()]
-    );
-    const $ = id => document.getElementById(id);
-
     let tab = null;
     let pane = null;
+
+    const $ = id => document.getElementById(id);
+    const language = () => (
+        window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en'
+    );
+    const t = key => (
+        copy[language()]?.[key]
+        || copy.en?.[key]
+        || ENGLISH_FALLBACK[key]
+        || key
+    );
+    const categoryLabel = value => t(`category_${value || 'other'}`);
+
+    async function loadTranslations() {
+        try {
+            const response = await fetch('/i18n/memory-manager.json', {
+                cache: 'no-cache',
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (payload?.en && payload?.de) copy = payload;
+        } catch (error) {
+            console.warn('[memory-manager] translations unavailable', error);
+        }
+    }
 
     async function request(path, options = {}) {
         const response = await fetch(path, options);
@@ -158,6 +140,17 @@
         document.head.appendChild(style);
     }
 
+    function setCategories(select, selected = 'preference') {
+        select.innerHTML = '';
+        for (const value of CATEGORY_VALUES) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = categoryLabel(value);
+            select.appendChild(option);
+        }
+        select.value = CATEGORY_VALUES.includes(selected) ? selected : 'other';
+    }
+
     function buildUi() {
         if ($('memoryManagerPane')) {
             tab = $('memoryManagerTab');
@@ -177,7 +170,6 @@
         tab.id = 'memoryManagerTab';
         tab.type = 'button';
         tab.setAttribute('aria-selected', 'false');
-        tab.textContent = t('tab');
         profileTab?.after(tab);
         if (!tab.isConnected) tabs.appendChild(tab);
 
@@ -230,20 +222,8 @@
             </section>
         `;
         profilePane.after(pane);
-
         bindEvents();
         updateStaticLabels();
-    }
-
-    function categories(select, selected = 'preference') {
-        select.innerHTML = '';
-        for (const value of Object.keys(CATEGORY_LABELS)) {
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = categoryLabel(value);
-            select.appendChild(option);
-        }
-        select.value = Object.hasOwn(CATEGORY_LABELS, selected) ? selected : 'other';
     }
 
     function updateStaticLabels() {
@@ -253,10 +233,11 @@
         $('memoryManagerDescription').textContent = t('description');
         $('memoryManagerSearch').placeholder = t('search');
         $('memoryManagerAdd').textContent = t('add');
-        $('memoryManagerFilter').options[0].textContent = t('all');
-        $('memoryManagerFilter').options[1].textContent = t('active');
-        $('memoryManagerFilter').options[2].textContent = t('pinned');
-        $('memoryManagerFilter').options[3].textContent = t('disabled');
+        const options = $('memoryManagerFilter').options;
+        options[0].textContent = t('all');
+        options[1].textContent = t('active');
+        options[2].textContent = t('pinned');
+        options[3].textContent = t('disabled');
         $('memoryManagerNewTitle').textContent = t('newTitle');
         $('memoryManagerTextLabel').textContent = t('memoryText');
         $('memoryManagerNewText').placeholder = t('memoryPlaceholder');
@@ -265,7 +246,10 @@
         $('memoryManagerPinnedLabel').textContent = t('pinnedLabel');
         $('memoryManagerCreateCancel').textContent = t('cancel');
         $('memoryManagerCreateSave').textContent = t('create');
-        categories($('memoryManagerNewCategory'), $('memoryManagerNewCategory').value || 'preference');
+        setCategories(
+            $('memoryManagerNewCategory'),
+            $('memoryManagerNewCategory').value || 'preference'
+        );
         render();
     }
 
@@ -283,7 +267,9 @@
             if (state.filter === 'pinned' && item.pinned !== true) return false;
             if (state.filter === 'disabled' && item.enabled !== false) return false;
             if (!query) return true;
-            return `${item.text || ''} ${item.category || ''}`.toLocaleLowerCase().includes(query);
+            return `${item.text || ''} ${item.category || ''}`
+                .toLocaleLowerCase()
+                .includes(query);
         });
     }
 
@@ -305,15 +291,16 @@
         const active = state.memories.filter(item => item.enabled !== false).length;
         const pinned = state.memories.filter(item => item.pinned === true).length;
         const disabled = state.memories.length - active;
-        target.innerHTML = '';
-        for (const text of [
+        const values = [
             `${state.memories.length} ${t('memories')}`,
             `${active} ${t('activeCount')}`,
             `${pinned} ${t('pinnedCount')}`,
             `${disabled} ${t('disabledCount')}`,
-        ]) {
+        ];
+        target.innerHTML = '';
+        for (const value of values) {
             const badge = document.createElement('span');
-            badge.textContent = text;
+            badge.textContent = value;
             target.appendChild(badge);
         }
     }
@@ -326,6 +313,20 @@
         return button;
     }
 
+    function replaceMemory(memory) {
+        const index = state.memories.findIndex(item => item.id === memory.id);
+        if (index >= 0) state.memories[index] = memory;
+        else state.memories.unshift(memory);
+    }
+
+    function patch(id, payload) {
+        return request(`/api/mlx/memory/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    }
+
     function renderCard(item) {
         const card = document.createElement('article');
         card.className = 'memory-manager-card';
@@ -335,7 +336,6 @@
         head.className = 'memory-manager-card-head';
         const badges = document.createElement('div');
         badges.className = 'memory-manager-badges';
-
         const categoryBadge = document.createElement('span');
         categoryBadge.className = 'memory-manager-badge';
         categoryBadge.textContent = categoryLabel(item.category);
@@ -343,7 +343,7 @@
         if (item.pinned) {
             const pinBadge = document.createElement('span');
             pinBadge.className = 'memory-manager-badge pin';
-            pinBadge.textContent = '📌 ' + t('pinned');
+            pinBadge.textContent = `📌 ${t('pinned')}`;
             badges.appendChild(pinBadge);
         }
 
@@ -352,7 +352,7 @@
         const enabled = document.createElement('input');
         enabled.type = 'checkbox';
         enabled.checked = item.enabled !== false;
-        enabledLabel.append(enabled, document.createTextNode(' ' + t('enabled')));
+        enabledLabel.append(enabled, document.createTextNode(` ${t('enabled')}`));
         head.append(badges, enabledLabel);
 
         const text = document.createElement('textarea');
@@ -366,7 +366,7 @@
         const categoryCaption = document.createElement('span');
         categoryCaption.textContent = t('category');
         const category = document.createElement('select');
-        categories(category, item.category);
+        setCategories(category, item.category);
         categoryField.append(categoryCaption, category);
 
         const importanceField = document.createElement('label');
@@ -375,7 +375,7 @@
         const importanceValue = document.createElement('output');
         importanceValue.textContent = Number(item.importance ?? 0.7).toFixed(2);
         importanceCaption.append(
-            document.createTextNode(t('importance') + ' · '),
+            document.createTextNode(`${t('importance')} · `),
             importanceValue
         );
         const importance = document.createElement('input');
@@ -482,37 +482,23 @@
         target.innerHTML = '';
 
         if (state.loading) {
-            const empty = document.createElement('div');
-            empty.className = 'memory-manager-empty';
-            empty.textContent = t('loading');
-            target.appendChild(empty);
+            const message = document.createElement('div');
+            message.className = 'memory-manager-empty';
+            message.textContent = t('loading');
+            target.appendChild(message);
             return;
         }
 
         const items = filteredMemories();
         if (!items.length) {
-            const empty = document.createElement('div');
-            empty.className = 'memory-manager-empty';
-            empty.textContent = state.memories.length ? t('noResults') : t('empty');
-            target.appendChild(empty);
+            const message = document.createElement('div');
+            message.className = 'memory-manager-empty';
+            message.textContent = state.memories.length ? t('noResults') : t('empty');
+            target.appendChild(message);
             return;
         }
 
         for (const item of items) target.appendChild(renderCard(item));
-    }
-
-    function replaceMemory(memory) {
-        const index = state.memories.findIndex(item => item.id === memory.id);
-        if (index >= 0) state.memories[index] = memory;
-        else state.memories.unshift(memory);
-    }
-
-    function patch(id, payload) {
-        return request(`/api/mlx/memory/${encodeURIComponent(id)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
     }
 
     async function load() {
@@ -610,7 +596,8 @@
         });
         $('memoryManagerCreateSave').addEventListener('click', createMemory);
         $('memoryManagerNewImportance').addEventListener('input', event => {
-            $('memoryManagerNewImportanceValue').textContent = Number(event.target.value).toFixed(2);
+            $('memoryManagerNewImportanceValue').textContent =
+                Number(event.target.value).toFixed(2);
         });
 
         document.querySelectorAll('[data-settings-tab]').forEach(button => {
@@ -621,18 +608,13 @@
         }
     }
 
-    function init() {
+    async function init() {
+        await loadTranslations();
         buildUi();
-        if (requestedAtBoot) {
-            setTimeout(activate, 0);
-        }
+        if (requestedAtBoot) setTimeout(activate, 0);
     }
 
-    init();
-
-    document.addEventListener('mlx-language-changed', () => {
-        updateStaticLabels();
-    });
-
+    document.addEventListener('mlx-language-changed', updateStaticLabels);
     window.MLXMemory = { load, activate };
+    init();
 })();
