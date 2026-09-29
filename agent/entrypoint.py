@@ -17,6 +17,7 @@ from agent.app import (
     status as runtime_status,
     switch_model_runtime,
 )
+from agent.automation_routes import install_routes as install_automation_routes
 from agent.media_queue_performance import install as install_media_queue_performance
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
@@ -50,5 +51,6 @@ install_voice_manager_routes(app)
 install_runtime_reliability_routes(app, status_provider=runtime_status)
 install_system_health_performance()
 install_system_health_routes(app)
+install_automation_routes(app)
 
 __all__ = ["app"]
