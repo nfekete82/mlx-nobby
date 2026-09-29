@@ -1,0 +1,13 @@
+{
+  "title": "Notifications",
+  "unread": "{count} unread",
+  "mark_all_read": "Mark all read",
+  "mark_read": "Mark read",
+  "empty": "No automation notifications yet.",
+  "native_delivered": "Delivered to macOS Notification Center",
+  "native_failed": "Native delivery unavailable",
+  "level_info": "Info",
+  "level_success": "Success",
+  "level_warning": "Attention",
+  "level_error": "Error"
+}
