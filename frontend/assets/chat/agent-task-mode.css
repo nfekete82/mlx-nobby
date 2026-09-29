@@ -1,0 +1,55 @@
+.agent-task-mode-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(127, 139, 158, 0.26);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    opacity: 0.72;
+    transition: opacity 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.agent-task-mode-button:hover {
+    opacity: 1;
+    background: rgba(127, 139, 158, 0.08);
+}
+
+.agent-task-mode-button.is-active {
+    opacity: 1;
+    border-color: currentColor;
+    background: rgba(127, 139, 158, 0.14);
+    font-weight: 650;
+}
+
+.agent-task-mode-button:active {
+    transform: translateY(1px);
+}
+
+.agent-task-mode-icon {
+    font-size: 0.92rem;
+    line-height: 1;
+}
+
+@media (max-width: 700px) {
+    .agent-task-mode-button {
+        width: 34px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .agent-task-mode-button [data-agent-task-label] {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .agent-task-mode-button {
+        transition: none;
+    }
+}
