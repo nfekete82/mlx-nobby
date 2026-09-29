@@ -4,7 +4,7 @@
     if (window.__mlxNobbyModelScoutFilter) return;
     window.__mlxNobbyModelScoutFilter = true;
 
-    const FILTER_VALUES = ['all', 'uncensored', 'heretic', 'abliterated', 'standard'];
+    const FILTER_VALUES = ['all', 'uncensored', 'heretic', 'abliterated', 'orthogonalized', 'unfiltered', 'standard'];
     let selectedFilter = 'all';
     let rootObserver = null;
 
@@ -21,6 +21,8 @@
                 uncensored: 'Uncensored',
                 heretic: 'Heretic',
                 abliterated: 'Abliterated',
+                orthogonalized: 'Orthogonalized',
+                unfiltered: 'Unfiltered',
                 standard: 'Standard',
                 count: (visible, total) => `${visible}/${total}`,
             };
@@ -31,6 +33,8 @@
             uncensored: 'Uncensored',
             heretic: 'Heretic',
             abliterated: 'Abliterated',
+            orthogonalized: 'Orthogonalized',
+            unfiltered: 'Unfiltered',
             standard: 'Standard',
             count: (visible, total) => `${visible}/${total}`,
         };
