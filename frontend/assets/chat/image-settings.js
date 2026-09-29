@@ -157,3 +157,299 @@ function imageT(key, fallback = '', variables = {}) {
     role.onchange = () => action(role, () => api('/role', 'PUT', { model: role.value }));
     window.MLXImageSettings = { load };
 })();
+
+/*
+ * Image artifact regeneration lives next to the image settings because it
+ * reuses the exact image-runtime parameters from an existing artifact. The
+ * transient seed is intentionally omitted so the image service chooses a new
+ * seed for every click.
+ */
+(() => {
+    const generation = window.MLXChatGeneration;
+
+    if (
+        !generation?.createImageUpscaleMenu ||
+        generation.__imageRegenerateInstalled
+    ) {
+        return;
+    }
+
+    generation.__imageRegenerateInstalled = true;
+
+    const originalCreateImageUpscaleMenu =
+        generation.createImageUpscaleMenu.bind(generation);
+
+    const IMAGE_QUALITIES = new Set([
+        'fast',
+        'standard',
+        'quality'
+    ]);
+
+    function finiteNumber(value, minimum, maximum) {
+        const number = Number(value);
+        return Number.isFinite(number) &&
+            number >= minimum &&
+            number <= maximum
+            ? number
+            : null;
+    }
+
+    function regenerationOptions(artifact) {
+        const prompt = String(artifact?.prompt || '').trim();
+
+        if (!prompt) {
+            return null;
+        }
+
+        const imageOptions = {
+            prompt,
+            model: String(artifact?.model || 'auto'),
+            auto_size: false
+        };
+
+        const width = finiteNumber(artifact?.width, 256, 1216);
+        const height = finiteNumber(artifact?.height, 256, 1216);
+        const steps = finiteNumber(artifact?.steps, 1, 50);
+        const guidance = finiteNumber(artifact?.guidance, 0, 10);
+
+        if (width != null) imageOptions.width = Math.round(width);
+        if (height != null) imageOptions.height = Math.round(height);
+        if (steps != null) imageOptions.steps = Math.round(steps);
+        if (guidance != null) imageOptions.guidance = guidance;
+
+        const negativePrompt = String(
+            artifact?.negative_prompt || ''
+        ).trim();
+
+        if (negativePrompt) {
+            imageOptions.negative_prompt = negativePrompt;
+        }
+
+        return {
+            prompt,
+            imageOptions,
+            quality: IMAGE_QUALITIES.has(artifact?.quality)
+                ? artifact.quality
+                : null
+        };
+    }
+
+    function activeImageJob(status) {
+        return [
+            'queued',
+            'loading',
+            'running',
+            'saving'
+        ].includes(String(status || ''));
+    }
+
+    function persistentChatRevision(session) {
+        const revision = Number(session?.revision);
+        return Number.isSafeInteger(revision) && revision >= 0
+            ? revision
+            : 0;
+    }
+
+    async function regenerateImageArtifact(artifact) {
+        const prepared = regenerationOptions(artifact);
+        const session = window.MLXChatSessions?.currentSession?.();
+
+        if (!prepared || !session) {
+            return false;
+        }
+
+        const pendingMessage = {
+            role: 'assistant',
+            content: imageT(
+                'generation.image_generating',
+                'Generating the image locally with the selected image model …'
+            ),
+            image_generation_pending: true,
+            image_regenerated_from_artifact_id:
+                artifact?.artifact_id || null
+        };
+
+        session.messages.push(pendingMessage);
+        session.updated = Date.now();
+        window.MLXChatSessions.saveSessions();
+        window.MLXChatRendering?.renderAll?.({
+            contentUpdated: true
+        });
+
+        try {
+            const traceId = globalThis.crypto?.randomUUID
+                ? globalThis.crypto.randomUUID()
+                : 'image-regenerate-' + Date.now().toString(16);
+
+            const response = await fetch(
+                '/api/mlx/chat/actions',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prepared.prompt,
+                        action: 'image_generate',
+                        image_options: prepared.imageOptions,
+                        quality: prepared.quality,
+                        resolved_target: 'image',
+                        conversation_context: [],
+                        trace_id: traceId,
+                        chat_id: session.id,
+                        chat_revision:
+                            persistentChatRevision(session)
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            const toolResult = await response.json();
+
+            if (
+                window.MLXChatSessions?.currentSession?.() !== session ||
+                !session.messages.includes(pendingMessage)
+            ) {
+                const staleJob = toolResult?.data?.job;
+
+                if (
+                    staleJob?.id &&
+                    activeImageJob(staleJob.status)
+                ) {
+                    fetch(
+                        '/api/mlx/image-jobs/' +
+                            encodeURIComponent(staleJob.id) +
+                            '/cancel',
+                        { method: 'POST' }
+                    ).catch(() => {});
+                }
+
+                return false;
+            }
+
+            if (toolResult?.tool !== 'image_generate') {
+                throw new Error(
+                    imageT(
+                        'generation.image_regenerate_unexpected_action',
+                        'The image regeneration request was not accepted.'
+                    )
+                );
+            }
+
+            if (toolResult.data?.job?.id) {
+                generation.updateImageJobMessage(
+                    session,
+                    pendingMessage,
+                    toolResult
+                );
+                window.MLXChatSessions.saveSessions();
+                window.MLXChatRendering?.renderAll?.({
+                    contentUpdated: true
+                });
+                generation.resumeImageJobsForSession?.(session);
+                return true;
+            }
+
+            pendingMessage.tool_result = toolResult;
+            pendingMessage.image_generation_pending = false;
+
+            if (
+                toolResult.status === 'completed' &&
+                toolResult.artifacts?.[0]?.artifact_id
+            ) {
+                session.workspace = {
+                    ...(session.workspace || {}),
+                    active_artifact_id:
+                        toolResult.artifacts[0].artifact_id
+                };
+                pendingMessage.content = '';
+            } else {
+                throw new Error(
+                    toolResult?.error ||
+                    imageT(
+                        'generation.action_failed',
+                        'The action could not be completed.'
+                    )
+                );
+            }
+
+            window.MLXChatSessions.saveSessions();
+            window.MLXChatRendering?.renderAll?.({
+                contentUpdated: true
+            });
+            return true;
+
+        } catch (error) {
+            pendingMessage.image_generation_pending = false;
+            pendingMessage.tool_result = {
+                type: 'tool_result',
+                tool: 'image_generate',
+                status: 'failed',
+                data: {},
+                artifacts: [],
+                error: error?.message || String(error)
+            };
+            pendingMessage.content = imageT(
+                'generation.tool_error',
+                '**Tool error:** {message}',
+                { message: pendingMessage.tool_result.error }
+            );
+            window.MLXChatSessions.saveSessions();
+            window.MLXChatRendering?.renderAll?.({
+                contentUpdated: true
+            });
+            return false;
+        }
+    }
+
+    generation.createImageUpscaleMenu = source => {
+        const enhanceMenu = originalCreateImageUpscaleMenu(source);
+
+        // Text-to-image artifacts have a prompt but no source image. Edits and
+        // upscales intentionally keep their existing enhancement-only UI.
+        if (
+            !source?.prompt ||
+            source?.source_path ||
+            source?.scale
+        ) {
+            return enhanceMenu;
+        }
+
+        const fragment = document.createDocumentFragment();
+        const regenerate = document.createElement('button');
+        regenerate.type = 'button';
+        regenerate.className = 'message-action-btn';
+        regenerate.textContent = imageT(
+            'ui.regenerate',
+            'Regenerate'
+        );
+        regenerate.title = regenerate.textContent;
+
+        regenerate.addEventListener('click', async () => {
+            regenerate.disabled = true;
+            const originalLabel = regenerate.textContent;
+            regenerate.textContent = imageT(
+                'common.loading',
+                'Loading…'
+            );
+
+            const started = await regenerateImageArtifact(source);
+
+            if (!started && regenerate.isConnected) {
+                regenerate.disabled = false;
+                regenerate.textContent = originalLabel;
+            }
+        });
+
+        fragment.append(regenerate, enhanceMenu);
+        return fragment;
+    };
+
+    window.MLXImageRegenerate = {
+        regenerateImageArtifact,
+        regenerationOptions
+    };
+})();
