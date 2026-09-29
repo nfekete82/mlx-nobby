@@ -78,6 +78,16 @@ const extras = [
 
 assert.equal(helpers.isInitialImageMessage(first), true);
 assert.equal(helpers.artifactForMessage(first).image_id, 'image-one');
+
+const session = {
+    messages: [
+        { role: 'user', content: 'create an image' },
+        first,
+    ],
+};
+assert.strictEqual(helpers.firstImageMessageAfter(session, 1), first);
+assert.equal(helpers.terminalStatus(first), 'completed');
+
 assert.equal(
     helpers.mergeInitialImageWithGeneratedVariants(first, extras, 3),
     'variant-group',
@@ -96,15 +106,6 @@ assert.deepEqual(
         { group: 'variant-group', index: 3, count: 3 },
     ],
 );
-
-const session = {
-    messages: [
-        { role: 'user', content: 'create an image' },
-        first,
-    ],
-};
-assert.strictEqual(helpers.firstImageMessageAfter(session, 1), first);
-assert.equal(helpers.terminalStatus(first), 'completed');
 
 const grouped = {
     ...first,
