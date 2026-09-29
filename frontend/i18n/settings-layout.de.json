@@ -11,9 +11,7 @@
   "tools": "Tools",
   "tools_description": "Automatische Funktionen und Workspace-Tests.",
   "system": "System",
-  "system_description": "Runtime, Speicher, Dienste und Logs.",
-  "runtime": "Runtime",
-  "storage": "Speicher",
+  "system_description": "Lokale Dienste und Logs.",
   "server": "Server",
   "logs": "Logs"
 }
