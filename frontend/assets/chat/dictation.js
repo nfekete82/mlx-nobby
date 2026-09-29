@@ -1,3 +1,12 @@
+(() => {
+    if (document.querySelector('script[data-agent-task-mode-loader]')) return;
+    const script = document.createElement('script');
+    script.src = '/assets/chat/agent-task-mode.js?v=20260929-task-mode-v1';
+    script.async = false;
+    script.dataset.agentTaskModeLoader = '1';
+    document.head.appendChild(script);
+})();
+
 function dictationT(key, fallback = '', variables = {}) {
     let value = window.MLXI18n?.t(key, fallback) ?? fallback;
 
@@ -103,7 +112,6 @@ function dictationT(key, fallback = '', variables = {}) {
         input.focus();
         input.setSelectionRange(caret, caret);
 
-        // Bestehende Auto-Resize-/Token-/Context-Logik informieren.
         input.dispatchEvent(
             new Event("input", {
                 bubbles: true,
