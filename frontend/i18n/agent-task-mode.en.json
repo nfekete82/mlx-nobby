@@ -1,0 +1,9 @@
+{
+  "label": "Task",
+  "active": "Task Mode active",
+  "enable_title": "Use Task Mode for the next message",
+  "disable_title": "Disable Task Mode",
+  "workspace_required": "Task Mode requires an active coding workspace. Open a workspace first and start the task again.",
+  "workspace_check_failed": "The active workspace could not be checked.",
+  "starting": "Starting Agent Task Mode …"
+}
