@@ -77,7 +77,9 @@ assert.equal(groups[0].id, 'group-a');
 assert.equal(groups[0].count, 3);
 assert.equal(groups[0].firstIndex, 1);
 assert.deepEqual(
-    groups[0].items.map(item => item.message.image_variant_index),
+    JSON.parse(JSON.stringify(
+        groups[0].items.map(item => item.message.image_variant_index),
+    )),
     [1, 2, 3],
 );
 
