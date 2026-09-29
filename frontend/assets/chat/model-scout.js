@@ -6,6 +6,7 @@
         scan: 'Search for new models', scanning: 'Searching Hugging Face…', refresh: 'Search again', role_all: 'All', role_chat: 'Chat', role_coding: 'Coding', role_vision: 'Vision',
         system: 'System', source: 'Source', found: '{count} candidates found', no_results: 'No matching candidates found.', unavailable: 'Model Scout is currently unavailable.',
         candidate: 'Upgrade candidate', interesting: 'Interesting', installed: 'Installed', not_recommended: 'Tight for this system', memory: 'Estimated memory', unknown: 'unknown', params: 'Parameters', quant: 'Quantization', license: 'License', updated: 'Updated', downloads: 'Downloads', likes: 'Likes', details: 'Hugging Face',
+        tuning: 'Tuning', tuning_none: 'No explicit markers', tuning_uncensored: 'Uncensored', tuning_heretic: 'Heretic', tuning_abliterated: 'Abliterated', tuning_orthogonalized: 'Orthogonalized', tuning_unfiltered: 'Unfiltered', tuning_hint: 'Tuning markers are inferred from the model name and Hugging Face tags. They are not proof of specific model behavior.',
         add_test: 'Add for testing', adding: 'Adding…', added: 'Added to model manager', add_failed: 'Could not add model', fit_excellent: 'Excellent fit', fit_good: 'Good fit', fit_tight: 'Tight', fit_risky: 'Risky', fit_unknown: 'Fit unknown',
         score_hint: 'The discovery score combines freshness, popularity and system fit. It is not a quality benchmark.', phase_hint: 'Local candidates can be compared with the active model. The A/B test temporarily switches the runtime and restores the original model afterwards.',
         benchmark: 'Run A/B test', benchmark_download_first: 'Download locally first', benchmark_starting: 'Starting benchmark…', benchmark_running: 'A/B test: {phase} · {progress}%', benchmark_failed: 'Benchmark failed', benchmark_result: 'Local A/B quick test',
@@ -13,6 +14,14 @@
         benchmark_suite_note: 'The quality score comes from a small deterministic micro-suite and is not a general leaderboard score.', signal_strong_candidate: 'Strong candidate', signal_promising: 'Promising', signal_mixed: 'Mixed result', signal_quality_regression: 'Quality regression',
         phase_queued: 'queued', phase_waiting_runtime: 'reserving runtime', phase_baseline: 'testing active model', phase_switching_candidate: 'loading candidate', phase_candidate: 'testing candidate', phase_restoring: 'restoring original model', phase_restoring_after_error: 'restoring runtime', phase_completed: 'done'
     };
+
+    const TUNING_PATTERNS = [
+        ['heretic', /(^|[^a-z0-9])heretic(?:s)?([^a-z0-9]|$)/i],
+        ['uncensored', /(^|[^a-z0-9])(?:uncensored|uncensor(?:ed)?|de[-_ ]?censored|decensored)([^a-z0-9]|$)/i],
+        ['abliterated', /(^|[^a-z0-9])(?:abliterated|abliteration|abliterate)([^a-z0-9]|$)/i],
+        ['orthogonalized', /(^|[^a-z0-9])(?:orthogonalized|orthogonalised|orthogonalization|orthogonalisation)([^a-z0-9]|$)/i],
+        ['unfiltered', /(^|[^a-z0-9])unfiltered([^a-z0-9]|$)/i]
+    ];
 
     let copy = { ...FALLBACK };
     let copyLoaded = false;
@@ -50,7 +59,7 @@
             .model-scout{margin:0 0 16px;padding:15px;border:1px solid #293244;border-radius:13px;background:linear-gradient(145deg,rgba(18,24,35,.92),rgba(10,14,21,.9))}.model-scout-head{display:flex;gap:14px;align-items:flex-start;justify-content:space-between}.model-scout-title{margin:0;font-size:15px;font-weight:750}.model-scout-subtitle{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45;max-width:720px}
             .model-scout-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:12px}.model-scout-button,.model-scout-select{min-height:34px;border:1px solid #30394a;border-radius:9px;background:#151b26;color:var(--text);font:inherit;font-size:11px}.model-scout-button{padding:0 11px;cursor:pointer;font-weight:650}.model-scout-button.primary{background:#326fda;border-color:#4f8cff;color:white}.model-scout-button:disabled{opacity:.5;cursor:default}.model-scout-select{padding:0 28px 0 9px}.model-scout-meta{margin-left:auto;color:var(--muted);font-size:10px}.model-scout-status{margin-top:10px;color:#9da9b9;font-size:11px}.model-scout-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:9px;margin-top:12px}
             .model-scout-card{min-width:0;padding:12px;border:1px solid #283244;border-radius:11px;background:rgba(10,14,20,.55)}.model-scout-card[data-status="candidate"]{border-color:rgba(64,214,154,.38)}.model-scout-card[data-status="not_recommended"]{border-color:rgba(240,185,103,.38)}.model-scout-card-top{display:flex;align-items:flex-start;gap:8px;justify-content:space-between}.model-scout-name{min-width:0;font-size:12px;font-weight:700;overflow-wrap:anywhere}.model-scout-badge{flex:0 0 auto;padding:3px 6px;border-radius:999px;background:#1a2230;color:#aab5c4;font-size:9px;font-weight:700}.model-scout-card[data-status="candidate"] .model-scout-badge{background:rgba(35,126,91,.18);color:#77ddb7}.model-scout-card[data-status="installed"] .model-scout-badge{background:rgba(47,111,234,.17);color:#91b5ff}
-            .model-scout-specs{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.model-scout-chip{padding:3px 6px;border:1px solid #293344;border-radius:7px;color:#9ca8b8;font-size:9px}.model-scout-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;margin-top:10px;color:#8793a4;font-size:10px}.model-scout-stats strong{color:#c7d0dc;font-weight:600}.model-scout-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}.model-scout-actions a{text-decoration:none;display:inline-flex;align-items:center}.model-scout-note{margin-top:10px;color:#6f7b8c;font-size:10px;line-height:1.45}
+            .model-scout-specs{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}.model-scout-chip{padding:3px 6px;border:1px solid #293344;border-radius:7px;color:#9ca8b8;font-size:9px}.model-scout-chip.tuning{border-color:rgba(190,111,255,.38);background:rgba(146,67,214,.09);color:#d4a8ff;font-weight:700}.model-scout-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;margin-top:10px;color:#8793a4;font-size:10px}.model-scout-stats strong{color:#c7d0dc;font-weight:600}.model-scout-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}.model-scout-actions a{text-decoration:none;display:inline-flex;align-items:center}.model-scout-note{margin-top:10px;color:#6f7b8c;font-size:10px;line-height:1.45}
             .model-scout-benchmark{margin-top:12px;padding:10px;border:1px solid #2c3749;border-radius:10px;background:rgba(16,22,32,.75)}.model-scout-benchmark-head{display:flex;gap:8px;align-items:center;justify-content:space-between}.model-scout-benchmark-title{font-size:11px;font-weight:750}.model-scout-signal{padding:3px 7px;border-radius:999px;background:rgba(47,111,234,.16);color:#9bb9ff;font-size:9px;font-weight:750}.model-scout-benchmark-table{display:grid;grid-template-columns:minmax(90px,1.2fr) repeat(3,minmax(70px,1fr));gap:5px 8px;margin-top:9px;font-size:9px;color:#8290a1}.model-scout-benchmark-table strong{color:#c8d2df;font-weight:650}.model-scout-benchmark-table .head{color:#6f7c8e;font-weight:700}.model-scout-benchmark-note{margin-top:8px;color:#687587;font-size:9px;line-height:1.4}
             @media(max-width:720px){.model-scout-head{display:block}.model-scout-meta{margin-left:0}.model-scout-grid{grid-template-columns:1fr}.model-scout-benchmark-table{grid-template-columns:minmax(80px,1.2fr) repeat(3,minmax(58px,1fr))}}
         `;
@@ -72,6 +81,24 @@
     function fitLabel(fit) { return text({ excellent: 'fit_excellent', good: 'fit_good', tight: 'fit_tight', risky: 'fit_risky', unknown: 'fit_unknown' }[fit] || 'fit_unknown'); }
     function signalLabel(signal) { return text({ strong_candidate: 'signal_strong_candidate', promising: 'signal_promising', mixed: 'signal_mixed', quality_regression: 'signal_quality_regression' }[signal] || 'signal_mixed'); }
     function phaseLabel(phase) { return text('phase_' + String(phase || 'queued')); }
+    function tuningLabel(trait) { return text('tuning_' + trait); }
+
+    function tuningTraits(candidate) {
+        const explicit = Array.isArray(candidate?.tuning_traits)
+            ? candidate.tuning_traits.map(value => String(value).toLowerCase())
+            : [];
+        const values = [
+            candidate?.id,
+            candidate?.name,
+            ...(Array.isArray(candidate?.tags) ? candidate.tags : [])
+        ].filter(Boolean).map(value => String(value));
+        const haystack = values.join(' ');
+        const detected = [];
+        for (const [trait, pattern] of TUNING_PATTERNS) {
+            if (explicit.includes(trait) || pattern.test(haystack)) detected.push(trait);
+        }
+        return detected;
+    }
 
     function createPanel(content) {
         let panel = content.querySelector(':scope > .model-scout');
@@ -92,7 +119,7 @@
         panel.querySelector('[data-scout-scan]').textContent = text(lastData ? 'refresh' : 'scan');
         const options = panel.querySelectorAll('[data-scout-role] option');
         ['role_all', 'role_chat', 'role_coding', 'role_vision'].forEach((key, index) => { if (options[index]) options[index].textContent = text(key); });
-        panel.querySelector('[data-scout-note]').textContent = text('score_hint') + ' ' + text('phase_hint');
+        panel.querySelector('[data-scout-note]').textContent = text('score_hint') + ' ' + text('phase_hint') + ' ' + text('tuning_hint');
     }
 
     function addStat(container, label, value) {
@@ -104,6 +131,13 @@
         container.appendChild(span);
     }
 
+    function appendChip(container, value, className = '') {
+        const chip = document.createElement('span');
+        chip.className = 'model-scout-chip' + (className ? ' ' + className : '');
+        chip.textContent = value;
+        container.appendChild(chip);
+    }
+
     function renderCard(candidate) {
         const card = document.createElement('article');
         card.className = 'model-scout-card';
@@ -112,12 +146,23 @@
         const name = document.createElement('div'); name.className = 'model-scout-name'; name.textContent = candidate.id;
         const badge = document.createElement('span'); badge.className = 'model-scout-badge'; badge.textContent = statusLabel(candidate.status);
         top.append(name, badge); card.appendChild(top);
+        const traits = tuningTraits(candidate);
         const specs = document.createElement('div'); specs.className = 'model-scout-specs';
-        [candidate.role, 'score ' + candidate.discovery_score].forEach(value => { const chip = document.createElement('span'); chip.className = 'model-scout-chip'; chip.textContent = value; specs.appendChild(chip); });
+        appendChip(specs, candidate.role);
+        traits.forEach(trait => appendChip(specs, tuningLabel(trait), 'tuning'));
+        appendChip(specs, 'score ' + candidate.discovery_score);
         card.appendChild(specs);
         const stats = document.createElement('div'); stats.className = 'model-scout-stats';
         addStat(stats, text('memory'), candidate.estimated_memory_gb == null ? text('unknown') : Number(candidate.estimated_memory_gb).toFixed(1) + ' GB');
-        addStat(stats, text('params'), candidate.parameter_billions == null ? '—' : candidate.parameter_billions + 'B'); addStat(stats, text('quant'), candidate.quantization_bits == null ? '—' : candidate.quantization_bits + '-bit'); addStat(stats, text('license'), candidate.license || '—'); addStat(stats, text('updated'), formatDate(candidate.last_modified)); addStat(stats, text('downloads'), formatNumber(candidate.downloads)); addStat(stats, text('likes'), formatNumber(candidate.likes)); addStat(stats, text('system'), fitLabel(candidate.memory_fit)); card.appendChild(stats);
+        addStat(stats, text('params'), candidate.parameter_billions == null ? '—' : candidate.parameter_billions + 'B');
+        addStat(stats, text('quant'), candidate.quantization_bits == null ? '—' : candidate.quantization_bits + '-bit');
+        addStat(stats, text('tuning'), traits.length ? traits.map(tuningLabel).join(' · ') : text('tuning_none'));
+        addStat(stats, text('license'), candidate.license || '—');
+        addStat(stats, text('updated'), formatDate(candidate.last_modified));
+        addStat(stats, text('downloads'), formatNumber(candidate.downloads));
+        addStat(stats, text('likes'), formatNumber(candidate.likes));
+        addStat(stats, text('system'), fitLabel(candidate.memory_fit));
+        card.appendChild(stats);
         const actions = document.createElement('div'); actions.className = 'model-scout-actions';
         const link = document.createElement('a'); link.className = 'model-scout-button'; link.href = candidate.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = text('details'); actions.appendChild(link);
         if (!candidate.installed) {
@@ -198,6 +243,11 @@
     async function mount() {
         const content = document.getElementById('modelConsoleContent'); if (!content) return false; injectStyles(); await loadCopy(); const panel = createPanel(content); applyPanelCopy(panel); if (lastData && !panel.querySelector('[data-scout-grid]').children.length) render(panel, lastData); return true;
     }
+
+    window.MLXModelScout = {
+        ...(window.MLXModelScout || {}),
+        tuningTraits
+    };
 
     function scheduleMount() { requestAnimationFrame(() => { mount(); }); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleMount, { once: true }); else scheduleMount();
