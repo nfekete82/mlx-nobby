@@ -8,28 +8,11 @@
     let selectedFilter = 'all';
     let rootObserver = null;
 
-    function locale() {
-        const current = window.MLXI18n?.getLocale?.() || navigator.language || 'en';
-        return String(current).toLowerCase().startsWith('de') ? 'de' : 'en';
-    }
-
     function labels() {
-        if (locale() === 'de') {
-            return {
-                aria: 'Modelle nach Tuning filtern',
-                all: 'Tuning: Alle',
-                uncensored: 'Uncensored',
-                heretic: 'Heretic',
-                abliterated: 'Abliterated',
-                orthogonalized: 'Orthogonalized',
-                unfiltered: 'Unfiltered',
-                standard: 'Standard',
-                count: (visible, total) => `${visible}/${total}`,
-            };
-        }
+        const roleAll = document.querySelector('#modelConsoleContent > .model-scout [data-scout-role] option[value="all"]')?.textContent || 'All';
         return {
-            aria: 'Filter models by tuning',
-            all: 'Tuning: All',
+            aria: 'Tuning filter',
+            all: 'Tuning: ' + roleAll,
             uncensored: 'Uncensored',
             heretic: 'Heretic',
             abliterated: 'Abliterated',
