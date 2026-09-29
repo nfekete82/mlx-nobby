@@ -10,9 +10,22 @@ const commonSource = fs.readFileSync(
     new URL('../frontend/assets/common.js', import.meta.url),
     'utf8',
 );
+const de = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/image-count-picker.de.json', import.meta.url),
+    'utf8',
+));
+const en = JSON.parse(fs.readFileSync(
+    new URL('../frontend/i18n/image-count-picker.en.json', import.meta.url),
+    'utf8',
+));
 
 const window = {
     addEventListener() {},
+    localStorage: {
+        getItem(key) {
+            return key === 'mlx-nobby-language' ? 'de' : null;
+        },
+    },
 };
 window.window = window;
 
@@ -35,6 +48,9 @@ const context = {
     Array,
     Number,
     String,
+    crypto: {
+        randomUUID: () => 'generated-variant-group',
+    },
 };
 
 vm.runInNewContext(source, context, {
@@ -44,9 +60,24 @@ vm.runInNewContext(source, context, {
 const helpers = window.MLXImageCountPicker.__test;
 
 assert.equal(helpers.normalizeImageCount(1), 1);
-assert.equal(helpers.normalizeImageCount('3'), 3);
-assert.equal(helpers.normalizeImageCount(2), 1);
+assert.equal(helpers.normalizeImageCount('2'), 2);
+assert.equal(helpers.normalizeImageCount(3), 3);
+assert.equal(helpers.normalizeImageCount('4'), 4);
+assert.equal(helpers.normalizeImageCount(5), 5);
+assert.equal(helpers.normalizeImageCount('6'), 6);
+assert.equal(helpers.normalizeImageCount(0), 1);
+assert.equal(helpers.normalizeImageCount(7), 6);
 assert.equal(helpers.normalizeImageCount('invalid'), 1);
+assert.equal(helpers.resolveLanguage(), 'de');
+assert.equal(helpers.resolveLanguage('en-US'), 'en');
+assert.equal(helpers.resolveLanguage('de-DE'), 'de');
+
+assert.equal(de.count_label, 'Anzahl');
+assert.deepEqual(
+    [1, 2, 3, 4, 5, 6].map(index => de['count_' + index]),
+    ['1 Bild', '2 Bilder', '3 Bilder', '4 Bilder', '5 Bilder', '6 Bilder'],
+);
+assert.deepEqual(Object.keys(de), Object.keys(en));
 
 const first = {
     role: 'assistant',
@@ -62,16 +93,42 @@ const first = {
 const extras = [
     {
         role: 'assistant',
+        image_regenerated_from_artifact_id: 'artifact-one',
         image_variant_group_id: 'variant-group',
         image_variant_index: 1,
-        image_variant_count: 2,
+        image_variant_count: 5,
         image_job: { status: 'queued' },
     },
     {
         role: 'assistant',
+        image_regenerated_from_artifact_id: 'artifact-one',
         image_variant_group_id: 'variant-group',
         image_variant_index: 2,
-        image_variant_count: 2,
+        image_variant_count: 5,
+        image_job: { status: 'queued' },
+    },
+    {
+        role: 'assistant',
+        image_regenerated_from_artifact_id: 'artifact-one',
+        image_variant_group_id: 'variant-group',
+        image_variant_index: 3,
+        image_variant_count: 5,
+        image_job: { status: 'queued' },
+    },
+    {
+        role: 'assistant',
+        image_regenerated_from_artifact_id: 'artifact-one',
+        image_variant_group_id: 'variant-group',
+        image_variant_index: 4,
+        image_variant_count: 5,
+        image_job: { status: 'queued' },
+    },
+    {
+        role: 'assistant',
+        image_regenerated_from_artifact_id: 'artifact-one',
+        image_variant_group_id: 'variant-group',
+        image_variant_index: 5,
+        image_variant_count: 5,
         image_job: { status: 'queued' },
     },
 ];
@@ -89,12 +146,12 @@ assert.strictEqual(helpers.firstImageMessageAfter(session, 1), first);
 assert.equal(helpers.terminalStatus(first), 'completed');
 
 assert.equal(
-    helpers.mergeInitialImageWithGeneratedVariants(first, extras, 3),
+    helpers.mergeInitialImageWithGeneratedVariants(first, extras, 6),
     'variant-group',
 );
 assert.equal(first.image_variant_group_id, 'variant-group');
 assert.equal(first.image_variant_index, 1);
-assert.equal(first.image_variant_count, 3);
+assert.equal(first.image_variant_count, 6);
 assert.deepEqual(
     JSON.parse(JSON.stringify(extras.map(message => ({
         group: message.image_variant_group_id,
@@ -102,9 +159,45 @@ assert.deepEqual(
         count: message.image_variant_count,
     })))),
     [
-        { group: 'variant-group', index: 2, count: 3 },
-        { group: 'variant-group', index: 3, count: 3 },
+        { group: 'variant-group', index: 2, count: 6 },
+        { group: 'variant-group', index: 3, count: 6 },
+        { group: 'variant-group', index: 4, count: 6 },
+        { group: 'variant-group', index: 5, count: 6 },
+        { group: 'variant-group', index: 6, count: 6 },
     ],
+);
+
+const firstForPair = {
+    role: 'assistant',
+    tool_result: {
+        tool: 'image_generate',
+        status: 'completed',
+        artifacts: [{ image_id: 'pair-first', artifact_id: 'pair-artifact' }],
+    },
+};
+const pairExtra = {
+    role: 'assistant',
+    image_regenerated_from_artifact_id: 'pair-artifact',
+    image_job: { status: 'queued' },
+};
+assert.equal(
+    helpers.mergeInitialImageWithGeneratedVariants(
+        firstForPair,
+        [pairExtra],
+        2,
+    ),
+    'generated-variant-group',
+);
+assert.equal(firstForPair.image_variant_index, 1);
+assert.equal(firstForPair.image_variant_count, 2);
+assert.equal(pairExtra.image_variant_index, 2);
+assert.equal(pairExtra.image_variant_count, 2);
+assert.equal(pairExtra.image_variant_group_id, 'generated-variant-group');
+assert.strictEqual(
+    helpers.regeneratedMessageForArtifact([pairExtra], {
+        artifact_id: 'pair-artifact',
+    }),
+    pairExtra,
 );
 
 const grouped = {
@@ -113,7 +206,9 @@ const grouped = {
 };
 assert.equal(helpers.isInitialImageMessage(grouped), false);
 
-assert.match(commonSource, /image-count-picker\.js\?v=20260929-image-count-v1/);
+assert.match(commonSource, /image-count-picker\.js\?v=20260929-image-count-v2/);
 assert.match(commonSource, /loadImageCountPicker\(\);/);
+assert.match(source, /mlx-i18n-ready/);
+assert.match(source, /mlx-language-changed/);
 
-console.log('Image count picker and initial three-variant grouping passed.');
+console.log('Image count picker, localization, and 1-6 grouping passed.');
