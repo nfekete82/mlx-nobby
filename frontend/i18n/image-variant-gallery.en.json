@@ -1,0 +1,15 @@
+{
+  "title": "{count} variants",
+  "variant": "Variant {index}",
+  "use": "Use",
+  "selected": "Selected",
+  "more": "Create {count} more",
+  "generating": "Generating …",
+  "waiting": "Waiting …",
+  "failed": "Generation failed",
+  "cancelled": "Cancelled",
+  "download": "Download",
+  "progress": "{percent}% · Step {current}/{total}",
+  "progress_percent": "{percent}%",
+  "loading": "Starting …"
+}

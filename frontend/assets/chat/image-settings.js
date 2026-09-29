@@ -565,3 +565,18 @@ function imageT(key, fallback = '', variables = {}) {
         regenerationOptions
     };
 })();
+
+/* Keep the variant gallery isolated from the core renderer. */
+(() => {
+    if (
+        !document?.head?.appendChild ||
+        document.getElementById?.('mlx-image-variant-gallery-script')
+    ) {
+        return;
+    }
+    const script = document.createElement('script');
+    script.id = 'mlx-image-variant-gallery-script';
+    script.src = '/assets/chat/image-variant-gallery.js?v=20260929-gallery-v1';
+    script.async = false;
+    document.head.appendChild(script);
+})();
