@@ -67,6 +67,33 @@ function sessionT(key, fallback = '', variables = {}) {
         );
     }
 
+    function normalizeRecoveredMediaState(session) {
+        if (!validSession(session)) {
+            return session;
+        }
+
+        session.messages.forEach(message => {
+            const imageJob = message?.image_job;
+            if (imageJob?.status === 'dispatching') {
+                imageJob.status = 'queued';
+                imageJob.phase = 'queued';
+            }
+
+            const toolResult = message?.tool_result;
+            if (toolResult?.status === 'dispatching') {
+                toolResult.status = 'queued';
+            }
+
+            const resultJob = toolResult?.data?.job;
+            if (resultJob?.status === 'dispatching') {
+                resultJob.status = 'queued';
+                resultJob.phase = 'queued';
+            }
+        });
+
+        return session;
+    }
+
     function withoutHeavyCacheFields(value) {
 
         if (Array.isArray(value)) {
@@ -161,6 +188,8 @@ function sessionT(key, fallback = '', variables = {}) {
         if (keepMessages) {
             session.messages = messages;
         }
+
+        normalizeRecoveredMediaState(session);
     }
 
 
@@ -228,7 +257,9 @@ function sessionT(key, fallback = '', variables = {}) {
                 localStorage.getItem(STORAGE_KEY)
             ) || [];
 
-            state.sessions = cached.filter(validSession);
+            state.sessions = cached
+                .filter(validSession)
+                .map(normalizeRecoveredMediaState);
         } catch {
             state.sessions = [];
         }
@@ -266,12 +297,14 @@ function sessionT(key, fallback = '', variables = {}) {
             const localById = new Map(
                 state.sessions
                     .filter(validSession)
+                    .map(normalizeRecoveredMediaState)
                     .map(session => [session.id, session])
             );
 
             const serverById = new Map(
                 data.chats
                     .filter(validSession)
+                    .map(normalizeRecoveredMediaState)
                     .map(session => [session.id, session])
             );
 
@@ -298,7 +331,7 @@ function sessionT(key, fallback = '', variables = {}) {
                         isGenerating() && state.activeId === id
                     );
                 }
-                merged.set(id, local || server);
+                merged.set(id, normalizeRecoveredMediaState(local || server));
             });
 
             state.sessions = Array.from(merged.values())
@@ -606,6 +639,7 @@ function sessionT(key, fallback = '', variables = {}) {
         if (isGenerating()) return;
 
         state.activeId = id;
+        normalizeRecoveredMediaState(currentSession());
         onSessionSelected();
         renderAll();
     }
@@ -710,13 +744,14 @@ function sessionT(key, fallback = '', variables = {}) {
         let imported = 0;
 
         chats.filter(validSession).forEach(chat => {
-            const existing = state.sessions.find(item => item.id === chat.id);
+            const recoveredChat = normalizeRecoveredMediaState(chat);
+            const existing = state.sessions.find(item => item.id === recoveredChat.id);
 
-            if (!existing || chat.updated > existing.updated) {
+            if (!existing || recoveredChat.updated > existing.updated) {
                 if (existing) {
-                    state.sessions[state.sessions.indexOf(existing)] = withoutStreamingFields(chat);
+                    state.sessions[state.sessions.indexOf(existing)] = withoutStreamingFields(recoveredChat);
                 } else {
-                    state.sessions.push(withoutStreamingFields(chat));
+                    state.sessions.push(withoutStreamingFields(recoveredChat));
                 }
                 imported++;
             }

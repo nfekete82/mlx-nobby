@@ -65,6 +65,24 @@ class MediaQueueTests(unittest.TestCase):
         self.assertIn(job["id"], stored)
         self.assertEqual(stored[job["id"]]["request"]["run_id"], "run-1")
 
+    def test_public_job_hides_internal_dispatching_state(self):
+        job = self.enqueue()
+
+        with media_queue._jobs_lock:
+            internal = media_queue._jobs[job["id"]]
+            internal["status"] = "dispatching"
+            internal["phase"] = "dispatching"
+            media_queue._persist_locked()
+
+        public = media_queue.get_job("image", job["id"])
+
+        self.assertEqual(public["status"], "queued")
+        self.assertEqual(public["phase"], "queued")
+        self.assertTrue(public["cancellable"])
+        with media_queue._jobs_lock:
+            self.assertEqual(media_queue._jobs[job["id"]]["status"], "dispatching")
+            self.assertEqual(media_queue._jobs[job["id"]]["phase"], "dispatching")
+
     def test_dispatch_mirrors_native_job_until_completion(self):
         job = self.enqueue(kind="video", prompt="Queued video")
         native_id = "a" * 24
