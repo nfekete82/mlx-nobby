@@ -1,0 +1,12 @@
+{
+  "read_aloud": "Vorlesen",
+  "generating": "{voice} · Audio wird erzeugt {current}/{total}",
+  "stop": "Sprachausgabe stoppen",
+  "playing": "{voice} · Wiedergabe {current}/{total}",
+  "pause": "Wiedergabe pausieren",
+  "paused": "{voice} · pausiert",
+  "resume": "Wiedergabe fortsetzen",
+  "failed": "Sprachausgabe fehlgeschlagen · erneut versuchen",
+  "timeout": "Sprachausgabe hat zu lange gebraucht · erneut versuchen",
+  "empty": "Kein vorlesbarer Text"
+}

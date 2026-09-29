@@ -1,0 +1,12 @@
+{
+  "read_aloud": "Read aloud",
+  "generating": "{voice} · generating audio {current}/{total}",
+  "stop": "Stop speech generation",
+  "playing": "{voice} · playing {current}/{total}",
+  "pause": "Pause playback",
+  "paused": "{voice} · paused",
+  "resume": "Resume playback",
+  "failed": "Speech failed · try again",
+  "timeout": "Speech generation timed out · try again",
+  "empty": "No readable text"
+}
