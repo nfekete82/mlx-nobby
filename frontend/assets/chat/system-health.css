@@ -1,0 +1,209 @@
+.system-health-v1 {
+    display: grid;
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.system-health-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.system-health-heading h3 {
+    margin: 0 0 4px;
+}
+
+.system-health-muted,
+.system-health-checked {
+    color: var(--muted, #8e99aa);
+    font-size: 0.86rem;
+}
+
+.system-health-heading p {
+    margin: 0;
+}
+
+.system-health-actions,
+.system-health-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.system-health-primary {
+    font-weight: 650;
+}
+
+.system-health-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid rgba(127, 142, 164, 0.28);
+    border-radius: 12px;
+    background: rgba(127, 142, 164, 0.06);
+}
+
+.system-health-services {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.system-health-service {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(127, 142, 164, 0.28);
+    border-radius: 12px;
+    background: rgba(127, 142, 164, 0.04);
+}
+
+.system-health-service.status-degraded,
+.system-health-service.status-down {
+    border-width: 1.5px;
+}
+
+.system-health-service-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.system-health-service-title {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+}
+
+.system-health-service-title strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.system-health-port {
+    color: var(--muted, #8e99aa);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.system-health-badge {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.status-healthy .system-health-badge {
+    opacity: 0.86;
+}
+
+.status-degraded .system-health-badge,
+.status-down .system-health-badge {
+    opacity: 1;
+}
+
+.system-health-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 12px;
+}
+
+.system-health-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.system-health-field-label {
+    color: var(--muted, #8e99aa);
+    font-size: 0.72rem;
+}
+
+.system-health-field-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.84rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.system-health-error-details {
+    font-size: 0.8rem;
+}
+
+.system-health-error-details summary {
+    cursor: pointer;
+    color: var(--muted, #8e99aa);
+}
+
+.system-health-error-details pre {
+    max-height: 140px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 8px 0 0;
+    padding: 9px;
+    border-radius: 8px;
+    background: rgba(127, 142, 164, 0.08);
+}
+
+.system-health-notice {
+    padding: 10px 12px;
+    border: 1px solid rgba(127, 142, 164, 0.28);
+    border-radius: 10px;
+}
+
+.system-health-notice.busy {
+    opacity: 0.86;
+}
+
+.system-health-notice.error {
+    font-weight: 600;
+}
+
+.system-health-stuck {
+    display: grid;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.system-health-stuck h4,
+.system-health-stuck p {
+    margin: 0;
+}
+
+.system-health-stuck-item {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding: 10px 12px;
+    border: 1px solid rgba(127, 142, 164, 0.28);
+    border-radius: 10px;
+}
+
+.system-health-copy-fallback {
+    position: fixed;
+    left: -10000px;
+    top: -10000px;
+}
+
+@media (max-width: 760px) {
+    .system-health-heading {
+        flex-direction: column;
+    }
+
+    .system-health-fields {
+        grid-template-columns: 1fr;
+    }
+}
