@@ -10,15 +10,22 @@
         disable_title: 'Disable Task Mode',
         workspace_required: 'Task Mode requires an active coding workspace. Open a workspace first and start the task again.',
         workspace_check_failed: 'The active workspace could not be checked.',
-        starting: 'Starting Agent Task Mode …'
+        prompt_required: 'Describe the task first.',
+        running: 'Agent Task Mode is working …',
+        failed: 'Agent Task Mode failed: {message}'
     };
 
     let armed = false;
+    let running = false;
     let button = null;
     let dictionary = {};
 
-    function t(key) {
-        return dictionary[key] || FALLBACK[key] || key;
+    function t(key, variables = {}) {
+        let value = dictionary[key] || FALLBACK[key] || key;
+        for (const [name, replacement] of Object.entries(variables)) {
+            value = value.replaceAll('{' + name + '}', String(replacement ?? ''));
+        }
+        return value;
     }
 
     function installCss() {
@@ -52,13 +59,19 @@
     }
 
     function setArmed(value) {
-        armed = Boolean(value);
+        armed = Boolean(value) && !running;
         if (!button) return;
-        button.classList.toggle('is-active', armed);
+        button.classList.toggle('is-active', armed || running);
+        button.classList.toggle('is-running', running);
         button.setAttribute('aria-pressed', armed ? 'true' : 'false');
+        button.disabled = running;
         button.title = armed ? t('disable_title') : t('enable_title');
         const label = button.querySelector('[data-agent-task-label]');
-        if (label) label.textContent = armed ? t('active') : t('label');
+        if (label) {
+            label.textContent = running
+                ? t('running')
+                : armed ? t('active') : t('label');
+        }
     }
 
     function executionGoal(userGoal) {
@@ -117,29 +130,220 @@
         };
     }
 
-    function mount() {
-        installCss();
-        if (document.getElementById('agentTaskModeButton')) {
-            button = document.getElementById('agentTaskModeButton');
-            setArmed(armed);
-            return;
+    function conversationContext(session, currentMessage) {
+        return (session?.messages || [])
+            .filter(message =>
+                message !== currentMessage &&
+                ['user', 'assistant'].includes(message?.role)
+            )
+            .slice(-8)
+            .map(message => ({
+                role: message.role,
+                content: String(
+                    message.display_content || message.content || ''
+                ).slice(0, 2000)
+            }))
+            .filter(message => message.content.trim());
+    }
+
+    function render() {
+        window.MLXChatSessions?.saveSessions?.();
+        window.MLXChatRendering?.renderAll?.({ contentUpdated: true });
+    }
+
+    function setBusy(value) {
+        running = Boolean(value);
+        const input = document.getElementById('input');
+        const send = document.getElementById('sendButton');
+        if (input) input.disabled = running;
+        if (send) send.disabled = running;
+        setArmed(false);
+    }
+
+    async function runTask(task, session, userMessage, assistantMessage) {
+        const controller = new AbortController();
+        const runId = globalThis.crypto?.randomUUID
+            ? globalThis.crypto.randomUUID()
+            : 'task-' + Date.now().toString(16) +
+                Math.random().toString(16).slice(2);
+        let timer = null;
+
+        assistantMessage.agent_run = {
+            status: 'running',
+            goal: task.userGoal,
+            steps: [],
+            pending_action: null
+        };
+        render();
+
+        try {
+            await window.MLXChatSessions?.persistSession?.(session);
+
+            const poll = async () => {
+                try {
+                    const response = await fetch(
+                        '/api/mlx/agent/runs/' + encodeURIComponent(runId),
+                        { signal: controller.signal }
+                    );
+                    if (!response.ok) return;
+                    const progress = await response.json();
+                    if (!session.messages.includes(assistantMessage)) return;
+                    const steps = Array.isArray(progress.steps)
+                        ? [...progress.steps]
+                        : [];
+                    if (progress.current_step) steps.push(progress.current_step);
+                    assistantMessage.agent_run = {
+                        status: progress.status || 'running',
+                        goal: task.userGoal,
+                        steps,
+                        pending_action: progress.pending_action || null
+                    };
+                    render();
+                } catch (_error) {}
+            };
+
+            timer = setInterval(poll, 800);
+            poll();
+
+            const response = await fetch('/api/mlx/agent/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    goal: task.executionGoal,
+                    mode: 'coding',
+                    run_id: runId,
+                    trace_id: userMessage.trace_id,
+                    chat_id: session.id,
+                    workspace_id: task.workspaceId,
+                    workspace_bound: true,
+                    conversation_context: conversationContext(
+                        session,
+                        userMessage
+                    )
+                }),
+                signal: controller.signal
+            });
+
+            if (!response.ok) throw new Error(await response.text());
+            const data = await response.json();
+            if (!session.messages.includes(assistantMessage)) return;
+
+            assistantMessage.agent_run = {
+                status: data.status || 'completed',
+                goal: task.userGoal,
+                steps: Array.isArray(data.steps) ? data.steps : [],
+                pending_action: data.pending_action || null
+            };
+            assistantMessage.content = data.answer || '';
+            assistantMessage.model_metrics = data.model_metrics || null;
+        } catch (error) {
+            assistantMessage.agent_run = {
+                ...(assistantMessage.agent_run || {}),
+                status: 'failed',
+                goal: task.userGoal,
+                pending_action: null
+            };
+            assistantMessage.content = t('failed', {
+                message: error?.message || String(error)
+            });
+        } finally {
+            if (timer) clearInterval(timer);
+            setBusy(false);
+            render();
+            document.getElementById('input')?.focus?.();
+        }
+    }
+
+    async function startFromComposer() {
+        if (!armed || running) return false;
+        const input = document.getElementById('input');
+        const prompt = String(input?.value || '').trim();
+        if (!prompt) return true;
+
+        const session = window.MLXChatSessions?.currentSession?.();
+        if (!session) return true;
+
+        const task = await consume({ prompt });
+        if (!task) return false;
+        if (task.error) {
+            session.messages.push({ role: 'assistant', content: task.error });
+            render();
+            return true;
         }
 
-        const actions = document.querySelector('.composer-actions');
-        const dictation = document.getElementById('dictationButton');
-        if (!actions || !dictation) return;
+        const userMessage = {
+            role: 'user',
+            trace_id: globalThis.crypto?.randomUUID
+                ? globalThis.crypto.randomUUID()
+                : 'task-' + Date.now().toString(16),
+            content: prompt,
+            display_content: prompt,
+            task_mode: true
+        };
+        const assistantMessage = {
+            role: 'assistant',
+            content: '',
+            task_mode: {
+                version: 1,
+                user_goal: prompt,
+                workspace_id: task.workspaceId,
+                workspace_name: task.workspaceName
+            }
+        };
 
-        button = document.createElement('button');
-        button.id = 'agentTaskModeButton';
-        button.className = 'agent-task-mode-button';
-        button.type = 'button';
-        button.setAttribute('aria-pressed', 'false');
-        button.innerHTML =
-            '<span class="agent-task-mode-icon" aria-hidden="true">⌘</span>' +
-            '<span data-agent-task-label></span>';
-        button.addEventListener('click', () => setArmed(!armed));
-        actions.insertBefore(button, dictation);
-        setArmed(false);
+        session.messages.push(userMessage, assistantMessage);
+        session.updated = Date.now();
+        window.MLXChatSessions?.updateTitle?.(session);
+        if (input) {
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        setBusy(true);
+        render();
+        runTask(task, session, userMessage, assistantMessage);
+        return true;
+    }
+
+    function interceptComposer() {
+        const send = document.getElementById('sendButton');
+        const input = document.getElementById('input');
+        send?.addEventListener('click', event => {
+            if (!armed || running) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            startFromComposer();
+        }, true);
+        input?.addEventListener('keydown', event => {
+            if (
+                !armed || running || event.isComposing ||
+                event.key !== 'Enter' || event.shiftKey
+            ) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            startFromComposer();
+        }, true);
+    }
+
+    function mount() {
+        installCss();
+        if (!button) {
+            const actions = document.querySelector('.composer-actions');
+            const dictation = document.getElementById('dictationButton');
+            if (!actions || !dictation) return;
+
+            button = document.createElement('button');
+            button.id = 'agentTaskModeButton';
+            button.className = 'agent-task-mode-button';
+            button.type = 'button';
+            button.setAttribute('aria-pressed', 'false');
+            button.innerHTML =
+                '<span class="agent-task-mode-icon" aria-hidden="true">⌘</span>' +
+                '<span data-agent-task-label></span>';
+            button.addEventListener('click', () => setArmed(!armed));
+            actions.insertBefore(button, dictation);
+            interceptComposer();
+        }
+        setArmed(armed);
     }
 
     async function refreshLanguage() {
@@ -152,9 +356,15 @@
         consume,
         executionGoal,
         isArmed: () => armed,
+        isRunning: () => running,
         setArmed,
+        startFromComposer,
         mount,
-        __test: { activeWorkspace, t }
+        __test: {
+            activeWorkspace,
+            conversationContext,
+            t
+        }
     };
 
     loadDictionary().finally(mount);
