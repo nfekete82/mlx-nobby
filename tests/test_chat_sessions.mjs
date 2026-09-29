@@ -18,7 +18,9 @@ vm.runInNewContext(source, {
     window,
     console,
     localStorage: {
+        getItem(key) { return cache.get(key) ?? null; },
         setItem(key, value) { cache.set(key, value); },
+        removeItem(key) { cache.delete(key); },
     },
     MLXCommon: {
         jsonRequest(_method, body) { return body; },
@@ -45,6 +47,38 @@ function chat(updated, messages = []) {
         revision: updated,
         messages,
     };
+}
+
+function dispatchingImageMessage() {
+    return {
+        role: 'assistant',
+        content: '',
+        image_job: {
+            id: 'a'.repeat(24),
+            status: 'dispatching',
+            phase: 'dispatching',
+        },
+        tool_result: {
+            type: 'tool_result',
+            tool: 'image_generate',
+            status: 'dispatching',
+            data: {
+                job: {
+                    id: 'a'.repeat(24),
+                    status: 'dispatching',
+                    phase: 'dispatching',
+                },
+            },
+        },
+    };
+}
+
+function assertRecoveredDispatchingMessage(message) {
+    assert.equal(message.image_job.status, 'queued');
+    assert.equal(message.image_job.phase, 'queued');
+    assert.equal(message.tool_result.status, 'queued');
+    assert.equal(message.tool_result.data.job.status, 'queued');
+    assert.equal(message.tool_result.data.job.phase, 'queued');
 }
 
 nextResponse = async () => ({
@@ -155,4 +189,21 @@ assert.strictEqual(state.sessions[0], session);
 assert.equal(session.messages[0].content, 'synced');
 assert.equal(session.revision, 50);
 
-console.log('Chat session persistence and sync identity passed.');
+nextResponse = async () => ({
+    response: { ok: true },
+    data: { chats: [chat(60, [dispatchingImageMessage()])] },
+});
+await sessions.syncWithServer();
+assertRecoveredDispatchingMessage(state.sessions[0].messages[0]);
+
+cache.set(
+    'mlx-web-chats-v1',
+    JSON.stringify([chat(70, [dispatchingImageMessage()])]),
+);
+state.sessions = [];
+state.activeId = null;
+sessions.loadSessions();
+assert.equal(state.sessions.length, 1);
+assertRecoveredDispatchingMessage(state.sessions[0].messages[0]);
+
+console.log('Chat session persistence, sync identity, and media recovery passed.');
