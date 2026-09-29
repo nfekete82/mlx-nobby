@@ -9,10 +9,6 @@ const dictation = fs.readFileSync(
     'frontend/assets/chat/dictation.js',
     'utf8',
 );
-const css = fs.readFileSync(
-    'frontend/assets/chat/agent-task-mode.css',
-    'utf8',
-);
 const de = JSON.parse(fs.readFileSync(
     'frontend/i18n/agent-task-mode.de.json',
     'utf8',
@@ -22,33 +18,29 @@ const en = JSON.parse(fs.readFileSync(
     'utf8',
 ));
 
-assert.match(dictation, /agent-task-mode\.js/, 'chat must load Task Mode module');
-assert.match(source, /agentTaskModeSwitch/, 'Task Mode must expose a Chat\/Task switch');
-assert.match(source, /agentChatModeButton/, 'switch must expose Chat mode');
-assert.match(source, /agentTaskModeButton/, 'switch must expose Task mode');
-assert.match(source, /activeWorkspaceHeader/, 'mode switch must live next to the active workspace');
-assert.match(source, /let mode = 'chat'/, 'Chat must be the safe default');
-assert.match(source, /mode !== 'task'/, 'only Task mode may own task submissions');
-assert.doesNotMatch(source, /setArmed\(false\);\s*\n\s*let workspace/, 'Task mode must no longer be one-shot');
-assert.match(source, /!workspace\?\.workspace_id && mode === 'task'/, 'closing the workspace must fall back to Chat');
-assert.match(source, /taskButton\.disabled = running \|\| !hasWorkspace/, 'Task must be disabled without a workspace');
-assert.match(source, /\/api\/mlx\/code\/workspaces/, 'Task Mode must bind an active workspace');
-assert.match(source, /\/api\/mlx\/agent\/run/, 'Task Mode must reuse the existing agent runtime');
-assert.match(source, /mode:\s*'coding'/, 'Task Mode must execute through coding mode');
-assert.match(source, /workspace_bound:\s*true/, 'Task Mode must enforce workspace binding');
-assert.match(source, /code_prepare/, 'Task contract must prepare a patch');
-assert.match(source, /code_apply/, 'Task contract must use approved code application');
-assert.match(source, /code_test/, 'Task contract must run workspace tests');
-assert.match(source, /code_revert/, 'Task contract must preserve rollback semantics');
-assert.match(source, /at most three repair cycles/, 'Task contract must cap repair cycles');
-assert.match(source, /stopImmediatePropagation/, 'Task Mode must own composer submission while selected');
-assert.match(css, /\.agent-task-mode-switch/, 'Task Mode switch must have isolated styling');
-assert.match(css, /\.agent-task-mode-option\.is-active/, 'selected mode must be visually distinct');
+assert.match(dictation, /agent-task-mode\.js/, 'chat must load workspace mode module');
+assert.doesNotMatch(source, /agentTaskModeSwitch/, 'workspace mode must not expose a Chat\/Task switch');
+assert.doesNotMatch(source, /agentChatModeButton/, 'workspace mode must not expose a manual Chat button');
+assert.doesNotMatch(source, /agentTaskModeButton/, 'workspace mode must not expose a manual Task button');
+assert.match(source, /function isWorkspaceMode\(\)/, 'workspace presence must determine the mode');
+assert.match(source, /Boolean\(workspace\?\.workspace_id\)/, 'an active workspace must imply task mode');
+assert.match(source, /if \(!isWorkspaceMode\(\) \|\| running\) return;/, 'normal chat must remain untouched without a workspace');
+assert.match(source, /\/api\/mlx\/code\/workspaces/, 'workspace mode must bind an active workspace');
+assert.match(source, /\/api\/mlx\/agent\/run/, 'workspace mode must reuse the existing agent runtime');
+assert.match(source, /mode:\s*'coding'/, 'workspace mode must execute through coding mode');
+assert.match(source, /workspace_bound:\s*true/, 'workspace mode must enforce workspace binding');
+assert.match(source, /read-only answer or an actual mutation/, 'task contract must distinguish read-only and mutating requests');
+assert.match(source, /do not prepare or apply a patch/, 'read-only workspace questions must remain read-only');
+assert.match(source, /code_prepare/, 'mutation contract must prepare a patch');
+assert.match(source, /code_apply/, 'mutation contract must use approved code application');
+assert.match(source, /code_test/, 'mutation contract must run workspace tests');
+assert.match(source, /code_revert/, 'mutation contract must preserve rollback semantics');
+assert.match(source, /at most three repair cycles/, 'mutation contract must cap repair cycles');
+assert.match(source, /stopImmediatePropagation/, 'workspace mode must own composer submission while a workspace is active');
+assert.match(source, /data-workspace-task-active/, 'active workspace state must be observable in the DOM');
 
-assert.equal(de.chat_label, 'Chat');
-assert.equal(de.task_label, 'Task');
-assert.equal(en.chat_label, 'Chat');
-assert.equal(en.task_label, 'Task');
-assert.deepEqual(Object.keys(de).sort(), Object.keys(en).sort(), 'Task Mode translations must stay in sync');
+assert.deepEqual(Object.keys(de).sort(), Object.keys(en).sort(), 'workspace mode translations must stay in sync');
+assert.equal(de.workspace_check_failed, 'Der aktive Workspace konnte nicht geprüft werden.');
+assert.equal(en.workspace_check_failed, 'The active workspace could not be checked.');
 
-console.log('✓ agent task mode workspace switch contract present');
+console.log('✓ agent workspace-implies-task contract present');
