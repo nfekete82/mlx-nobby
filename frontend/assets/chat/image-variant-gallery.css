@@ -74,10 +74,10 @@
 }
 
 /*
- * Desktop hover preview: keep the thumbnail hit area in place while the
- * image itself is promoted to a viewport-level lightbox. The overlay does
- * not receive pointer events, so leaving the original thumbnail closes it
- * immediately and gallery controls remain untouched.
+ * Desktop hover preview. The enlarged image must remain pointer-active so the
+ * parent link keeps its :hover state while the pointer moves from the original
+ * thumbnail onto the preview. Otherwise the preview repeatedly closes and
+ * reopens, which looks like the backdrop is flickering.
  */
 @media (hover: hover) and (pointer: fine) {
     .image-variant-preview-link:hover {
@@ -112,7 +112,8 @@
             0 28px 90px rgba(0, 0, 0, 0.68),
             0 0 0 1px rgba(255, 255, 255, 0.13);
         transform: translate(-50%, -50%);
-        pointer-events: none;
+        cursor: zoom-out;
+        pointer-events: auto;
     }
 }
 
