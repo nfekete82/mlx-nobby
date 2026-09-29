@@ -1,0 +1,13 @@
+{
+  "title": "Benachrichtigungen",
+  "unread": "{count} ungelesen",
+  "mark_all_read": "Alle gelesen",
+  "mark_read": "Gelesen",
+  "empty": "Noch keine Automation-Benachrichtigungen vorhanden.",
+  "native_delivered": "An macOS-Mitteilungszentrale gesendet",
+  "native_failed": "Native Zustellung nicht verfügbar",
+  "level_info": "Info",
+  "level_success": "Erfolgreich",
+  "level_warning": "Hinweis",
+  "level_error": "Fehler"
+}
