@@ -3,13 +3,13 @@
   "variant": "Variante {index}",
   "use": "Verwenden",
   "selected": "Ausgewählt",
-  "more": "Noch {count} Varianten",
+  "more": "Noch {count} Varianten erstellen",
   "generating": "Wird generiert …",
   "waiting": "Wartet …",
   "failed": "Generierung fehlgeschlagen",
   "cancelled": "Abgebrochen",
-  "download": "Download",
-  "progress": "{percent}% · Step {current}/{total}",
+  "download": "Herunterladen",
+  "progress": "{percent}% · Schritt {current}/{total}",
   "progress_percent": "{percent}%",
   "loading": "Wird gestartet …"
 }

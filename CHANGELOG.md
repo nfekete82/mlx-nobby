@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.4.0
+
+- Added persistent local memory with semantic retrieval, consolidation,
+  lifecycle handling, privacy cleanup, a Memory Manager, and a Context
+  Inspector for debugging retrieved memories.
+- Added System Health & Self-Healing with live service status, restart controls,
+  stuck media-job detection, conservative retry/recovery, and copyable
+  diagnostics.
+- Improved image generation workflows with reliable queued-job recovery,
+  regenerate actions, selectable 1–6 image outputs, grouped variant galleries,
+  per-variant selection/download/enhancement actions, and localized controls.
+- Improved speech/read-aloud reliability, media progress handling, frontend
+  recovery, and several streaming/queue regressions discovered during local use.
+- Added a central VERSION file, `/api/version`, build revision reporting, and
+  version display in the System Health interface.
+
 ## v1.3.0
 
 - Added the Shorts/Media Composer pipeline with planning, agent routing, local
