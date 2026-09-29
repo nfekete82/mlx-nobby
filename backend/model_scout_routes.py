@@ -1,4 +1,4 @@
-"""Web proxy routes and HTML hook for Model Scout v2."""
+"""Web proxy routes and HTML hook for Model Scout."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from fastapi import FastAPI, Query
 
 
 MODEL_SCOUT_SCRIPT = (
-    b'<script src="/assets/chat/model-scout-loader.js?v=20260929-model-scout-loader-v3"></script>'
+    b'<script src="/assets/chat/model-scout-loader.js?v=20260929-model-scout-loader-v4"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
