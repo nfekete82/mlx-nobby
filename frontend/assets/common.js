@@ -224,7 +224,9 @@
 
         const draftTitles = () => new Set([
             normalizeTitle('New chat'),
-            normalizeTitle('Neuer Chat'),
+            normalizeTitle(
+                window.MLXI18n?.t?.('ui.new_chat', 'New chat')
+            ),
             normalizeTitle(
                 window.MLXI18n?.t?.('sessions.new_chat', 'New chat')
             )
