@@ -9,6 +9,7 @@ install_shorts_caption_runtime()
 install_shorts_consistency_runtime()
 
 from agent.app import app, status as runtime_status
+from agent.media_queue_performance import install as install_media_queue_performance
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
 from agent.runtime_reliability_routes import install_routes as install_runtime_reliability_routes
@@ -24,6 +25,7 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 # helper/model calls untouched.
 app.add_middleware(MemoryChatMiddleware)
 
+install_media_queue_performance()
 install_memory_routes(app)
 install_shorts_studio_routes(app)
 install_speech_streaming_routes(app)
