@@ -225,6 +225,30 @@
         }
     }
 
+    async function loadGalleryLanguageSync() {
+        if (!document.getElementById('input')) return;
+        try {
+            await loadScript(
+                '/assets/chat/gallery-language-sync.js?v=20260929-gallery-i18n-v1',
+                'mlx-gallery-language-sync'
+            );
+        } catch (error) {
+            console.error('[gallery-i18n] Failed to load gallery language sync:', error);
+        }
+    }
+
+    async function loadAppVersion() {
+        if (!document.getElementById('input')) return;
+        try {
+            await loadScript(
+                '/assets/chat/app-version.js?v=20260929-version-v1',
+                'mlx-app-version'
+            );
+        } catch (error) {
+            console.error('[version] Failed to load app version UI:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         removeRedundantTopActions();
         loadRuntimeReliability();
@@ -235,6 +259,8 @@
         loadJobQueue();
         loadShortsHistory();
         loadImageCountPicker();
+        loadGalleryLanguageSync();
+        loadAppVersion();
     }
 
     window.MLXCommon = {
