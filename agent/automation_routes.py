@@ -13,6 +13,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException, Query
 
+from agent import automation_notifications
 from agent import automations
 
 
@@ -76,16 +77,148 @@ def _model_scout_result(data: dict) -> dict:
     }
 
 
+def _candidate_ids(result: dict | None) -> set[str]:
+    ids = set()
+    for item in (result or {}).get("candidates") or []:
+        if isinstance(item, dict) and item.get("id"):
+            ids.add(str(item["id"]))
+    return ids
+
+
+def _previous_scout_candidates(automation_id: str, *, exclude_run_id: str) -> tuple[set[str], bool]:
+    for run in automations.list_runs(automation_id=automation_id, limit=30):
+        if run.get("id") == exclude_run_id or run.get("status") != "completed":
+            continue
+        result = run.get("result")
+        if isinstance(result, dict) and result.get("kind") == "model_scout":
+            return _candidate_ids(result), True
+    return set(), False
+
+
+def _short_answer(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    text = str(result.get("answer") or result.get("status") or "").strip()
+    text = " ".join(text.split())
+    return text[:260]
+
+
+def _notification_payload(
+    automation: dict,
+    *,
+    status: str,
+    result=None,
+    error: str | None = None,
+    previous_scout_ids: set[str] | None = None,
+    had_previous_scout: bool = False,
+) -> dict | None:
+    name = str(automation.get("name") or "Automation").strip() or "Automation"
+
+    if status == "needs_approval":
+        return {
+            "level": "warning",
+            "title": "Freigabe erforderlich",
+            "message": f"{name} wartet auf deine Freigabe.",
+        }
+
+    if status == "failed":
+        detail = " ".join(str(error or "Unbekannter Fehler").split())[:320]
+        return {
+            "level": "error",
+            "title": "Automation fehlgeschlagen",
+            "message": f"{name}: {detail}",
+        }
+
+    if status != "completed":
+        return None
+
+    if automation.get("kind") == "model_scout":
+        current_ids = _candidate_ids(result if isinstance(result, dict) else None)
+        if had_previous_scout:
+            new_ids = sorted(current_ids - set(previous_scout_ids or set()))
+            if not new_ids:
+                return None
+            preview = ", ".join(new_ids[:3])
+            suffix = "" if len(new_ids) <= 3 else f" +{len(new_ids) - 3} weitere"
+            return {
+                "level": "success",
+                "title": "Model Scout",
+                "message": f"{len(new_ids)} neue MLX-Kandidaten gefunden: {preview}{suffix}",
+            }
+
+        count = int((result or {}).get("count") or len(current_ids)) if isinstance(result, dict) else len(current_ids)
+        if count <= 0:
+            return None
+        return {
+            "level": "success",
+            "title": "Model Scout",
+            "message": f"Erster Scan abgeschlossen: {count} MLX-Kandidaten gefunden.",
+        }
+
+    summary = _short_answer(result)
+    return {
+        "level": "success",
+        "title": name,
+        "message": summary or "Automation erfolgreich abgeschlossen.",
+    }
+
+
+def _emit_run_notification(
+    automation: dict,
+    *,
+    run_id: str,
+    status: str,
+    result=None,
+    error: str | None = None,
+    previous_scout_ids: set[str] | None = None,
+    had_previous_scout: bool = False,
+) -> dict | None:
+    payload = _notification_payload(
+        automation,
+        status=status,
+        result=result,
+        error=error,
+        previous_scout_ids=previous_scout_ids,
+        had_previous_scout=had_previous_scout,
+    )
+    if payload is None:
+        return None
+
+    notification = automation_notifications.create_notification(
+        automation_id=automation["id"],
+        run_id=run_id,
+        level=payload["level"],
+        title=payload["title"],
+        message=payload["message"],
+    )
+    delivered, delivery_error = automation_notifications.deliver_macos(
+        notification["title"], notification["message"]
+    )
+    return automation_notifications.mark_delivery(
+        notification["id"], delivered=delivered, error=delivery_error
+    )
+
+
 def _execute_automation(run_id: str, automation: dict) -> None:
+    previous_scout_ids: set[str] = set()
+    had_previous_scout = False
     try:
         automations.start_run(run_id)
         if automation.get("kind") == "model_scout":
+            previous_scout_ids, had_previous_scout = _previous_scout_candidates(
+                automation["id"], exclude_run_id=run_id
+            )
             query = urllib.parse.urlencode({"limit": 36, "role": "all"})
             data = _json_request("GET", f"/api/model-scout/discover?{query}", timeout=45)
-            automations.finish_run(
-                run_id,
+            result = _model_scout_result(data)
+            automations.finish_run(run_id, status="completed", result=result)
+            _emit_run_notification(
+                automation,
+                run_id=run_id,
                 status="completed",
-                result=_model_scout_result(data),
+                result=result,
+                previous_scout_ids=previous_scout_ids,
+                had_previous_scout=had_previous_scout,
             )
             return
 
@@ -104,12 +237,28 @@ def _execute_automation(run_id: str, automation: dict) -> None:
         if data.get("status") in {"failed", "cancelled"}:
             terminal = data["status"]
         automations.finish_run(run_id, status=terminal, result=data)
+        _emit_run_notification(
+            automation,
+            run_id=run_id,
+            status=terminal,
+            result=data,
+            error=data.get("answer") if terminal == "failed" else None,
+        )
     except Exception as exc:
         logger.exception("Automation run failed (run_id=%s)", run_id)
         try:
             automations.finish_run(run_id, status="failed", error=str(exc))
         except Exception:
             logger.exception("Could not persist failed automation run (run_id=%s)", run_id)
+        try:
+            _emit_run_notification(
+                automation,
+                run_id=run_id,
+                status="failed",
+                error=str(exc),
+            )
+        except Exception:
+            logger.exception("Could not emit failed automation notification (run_id=%s)", run_id)
 
 
 def _start_worker(run_id: str, automation: dict) -> None:
@@ -126,12 +275,17 @@ def _recover_stale_runs() -> None:
     for run in automations.list_runs(limit=200):
         if run.get("status") not in automations.ACTIVE_RUN_STATUSES:
             continue
+        error = "Agent wurde während dieser Automation neu gestartet."
         try:
-            automations.finish_run(
-                run["id"],
-                status="failed",
-                error="Agent wurde während dieser Automation neu gestartet.",
-            )
+            automations.finish_run(run["id"], status="failed", error=error)
+            automation = automations.get_automation(run["automation_id"])
+            if automation:
+                _emit_run_notification(
+                    automation,
+                    run_id=run["id"],
+                    status="failed",
+                    error=error,
+                )
         except Exception:
             logger.exception("Could not recover stale automation run %s", run.get("id"))
 
@@ -200,6 +354,35 @@ def install_routes(app: FastAPI) -> None:
                 )
             }
 
+    if "/api/automations/notifications" not in paths:
+        @app.get("/api/automations/notifications")
+        def automation_notification_list(
+            limit: int = Query(default=50, ge=1, le=200),
+            unread_only: bool = False,
+        ):
+            return {
+                "notifications": automation_notifications.list_notifications(
+                    limit=limit,
+                    unread_only=unread_only,
+                ),
+                "unread_count": automation_notifications.unread_count(),
+            }
+
+        @app.post("/api/automations/notifications/read-all")
+        def automation_notification_read_all():
+            return {
+                "ok": True,
+                "updated": automation_notifications.mark_all_read(),
+                "unread_count": automation_notifications.unread_count(),
+            }
+
+        @app.post("/api/automations/notifications/{notification_id}/read")
+        def automation_notification_read(notification_id: str):
+            item = automation_notifications.mark_read(notification_id)
+            if item is None:
+                raise HTTPException(404, "Benachrichtigung nicht gefunden")
+            return item
+
     if "/api/automations/{automation_id}" not in paths:
         @app.get("/api/automations/{automation_id}")
         def automation_get(automation_id: str):
@@ -242,4 +425,8 @@ def install_routes(app: FastAPI) -> None:
     start_scheduler()
 
 
-__all__ = ["install_routes", "start_scheduler"]
+__all__ = [
+    "_notification_payload",
+    "install_routes",
+    "start_scheduler",
+]
