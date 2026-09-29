@@ -5,5 +5,7 @@
   "disable_title": "Task Mode ausschalten",
   "workspace_required": "Task Mode benötigt einen aktiven Coding-Workspace. Öffne zuerst einen Workspace und starte die Aufgabe erneut.",
   "workspace_check_failed": "Der aktive Workspace konnte nicht geprüft werden.",
-  "starting": "Agent Task Mode wird gestartet …"
+  "attachments_unsupported": "Task Mode v1 arbeitet aktuell nur mit dem aktiven Coding-Workspace. Entferne angehängte Dateien, bevor du die Aufgabe startest.",
+  "running": "Agent Task Mode arbeitet …",
+  "failed": "Agent Task Mode fehlgeschlagen: {message}"
 }
