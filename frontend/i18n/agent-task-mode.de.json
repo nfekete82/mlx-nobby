@@ -1,8 +1,9 @@
 {
-  "label": "Task",
-  "active": "Task Mode aktiv",
-  "enable_title": "Task Mode für die nächste Nachricht verwenden",
-  "disable_title": "Task Mode ausschalten",
+  "chat_label": "Chat",
+  "task_label": "Task",
+  "chat_title": "Normalen Chat-Modus verwenden",
+  "task_title": "Agent Task Mode für diesen Workspace verwenden",
+  "task_unavailable_title": "Wähle zuerst einen Coding-Workspace aus, um Task Mode zu verwenden",
   "workspace_required": "Task Mode benötigt einen aktiven Coding-Workspace. Öffne zuerst einen Workspace und starte die Aufgabe erneut.",
   "workspace_check_failed": "Der aktive Workspace konnte nicht geprüft werden.",
   "attachments_unsupported": "Task Mode v1 arbeitet aktuell nur mit dem aktiven Coding-Workspace. Entferne angehängte Dateien, bevor du die Aufgabe startest.",
