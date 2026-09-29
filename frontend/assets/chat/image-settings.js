@@ -250,37 +250,48 @@ function imageT(key, fallback = '', variables = {}) {
             : 0;
     }
 
-    async function regenerateImageArtifact(artifact) {
-        const prepared = regenerationOptions(artifact);
-        const session = window.MLXChatSessions?.currentSession?.();
+    function pendingImageMessage(
+        artifact,
+        variantIndex = null,
+        variantCount = null,
+        variantGroupId = null
+    ) {
+        const base = imageT(
+            'generation.image_generating',
+            'Generating the image locally with the selected image model …'
+        );
+        const isVariantSet = Number(variantCount) > 1;
 
-        if (!prepared || !session) {
-            return false;
-        }
-
-        const pendingMessage = {
+        return {
             role: 'assistant',
-            content: imageT(
-                'generation.image_generating',
-                'Generating the image locally with the selected image model …'
-            ),
+            content: isVariantSet
+                ? base + ' · ' + variantIndex + '/' + variantCount
+                : base,
             image_generation_pending: true,
             image_regenerated_from_artifact_id:
-                artifact?.artifact_id || null
+                artifact?.artifact_id || null,
+            image_variant_index:
+                isVariantSet ? Number(variantIndex) : null,
+            image_variant_count:
+                isVariantSet ? Number(variantCount) : null,
+            image_variant_group_id:
+                isVariantSet ? variantGroupId : null
         };
+    }
 
-        session.messages.push(pendingMessage);
-        session.updated = Date.now();
-        window.MLXChatSessions.saveSessions();
-        window.MLXChatRendering?.renderAll?.({
-            contentUpdated: true
-        });
+    function newTraceId(prefix = 'image-regenerate') {
+        return globalThis.crypto?.randomUUID
+            ? globalThis.crypto.randomUUID()
+            : prefix + '-' + Date.now().toString(16) + '-' +
+                Math.random().toString(16).slice(2);
+    }
 
+    async function submitPreparedImage(
+        prepared,
+        session,
+        pendingMessage
+    ) {
         try {
-            const traceId = globalThis.crypto?.randomUUID
-                ? globalThis.crypto.randomUUID()
-                : 'image-regenerate-' + Date.now().toString(16);
-
             const response = await fetch(
                 '/api/mlx/chat/actions',
                 {
@@ -295,7 +306,7 @@ function imageT(key, fallback = '', variables = {}) {
                         quality: prepared.quality,
                         resolved_target: 'image',
                         conversation_context: [],
-                        trace_id: traceId,
+                        trace_id: newTraceId(),
                         chat_id: session.id,
                         chat_revision:
                             persistentChatRevision(session)
@@ -345,11 +356,6 @@ function imageT(key, fallback = '', variables = {}) {
                     pendingMessage,
                     toolResult
                 );
-                window.MLXChatSessions.saveSessions();
-                window.MLXChatRendering?.renderAll?.({
-                    contentUpdated: true
-                });
-                generation.resumeImageJobsForSession?.(session);
                 return true;
             }
 
@@ -366,21 +372,16 @@ function imageT(key, fallback = '', variables = {}) {
                         toolResult.artifacts[0].artifact_id
                 };
                 pendingMessage.content = '';
-            } else {
-                throw new Error(
-                    toolResult?.error ||
-                    imageT(
-                        'generation.action_failed',
-                        'The action could not be completed.'
-                    )
-                );
+                return true;
             }
 
-            window.MLXChatSessions.saveSessions();
-            window.MLXChatRendering?.renderAll?.({
-                contentUpdated: true
-            });
-            return true;
+            throw new Error(
+                toolResult?.error ||
+                imageT(
+                    'generation.action_failed',
+                    'The action could not be completed.'
+                )
+            );
 
         } catch (error) {
             pendingMessage.image_generation_pending = false;
@@ -397,12 +398,92 @@ function imageT(key, fallback = '', variables = {}) {
                 '**Tool error:** {message}',
                 { message: pendingMessage.tool_result.error }
             );
-            window.MLXChatSessions.saveSessions();
-            window.MLXChatRendering?.renderAll?.({
-                contentUpdated: true
-            });
             return false;
         }
+    }
+
+    function persistAndRender(session) {
+        session.updated = Date.now();
+        window.MLXChatSessions.saveSessions();
+        window.MLXChatRendering?.renderAll?.({
+            contentUpdated: true
+        });
+    }
+
+    async function regenerateImageArtifact(artifact) {
+        const prepared = regenerationOptions(artifact);
+        const session = window.MLXChatSessions?.currentSession?.();
+
+        if (!prepared || !session) {
+            return false;
+        }
+
+        const pendingMessage = pendingImageMessage(artifact);
+        session.messages.push(pendingMessage);
+        persistAndRender(session);
+
+        const started = await submitPreparedImage(
+            prepared,
+            session,
+            pendingMessage
+        );
+
+        persistAndRender(session);
+
+        if (started) {
+            generation.resumeImageJobsForSession?.(session);
+        }
+
+        return started;
+    }
+
+    async function generateImageVariants(artifact, count = 3) {
+        const prepared = regenerationOptions(artifact);
+        const session = window.MLXChatSessions?.currentSession?.();
+        const variantCount = Math.max(
+            2,
+            Math.min(6, Math.round(Number(count) || 3))
+        );
+
+        if (!prepared || !session) {
+            return false;
+        }
+
+        const groupId = newTraceId('image-variant-group');
+        const pendingMessages = Array.from(
+            { length: variantCount },
+            (_unused, index) => pendingImageMessage(
+                artifact,
+                index + 1,
+                variantCount,
+                groupId
+            )
+        );
+
+        session.messages.push(...pendingMessages);
+        persistAndRender(session);
+
+        let startedCount = 0;
+
+        for (const pendingMessage of pendingMessages) {
+            if (
+                await submitPreparedImage(
+                    prepared,
+                    session,
+                    pendingMessage
+                )
+            ) {
+                startedCount += 1;
+            }
+        }
+
+        persistAndRender(session);
+
+        if (startedCount > 0) {
+            generation.resumeImageJobsForSession?.(session);
+        }
+
+        return startedCount === variantCount;
     }
 
     generation.createImageUpscaleMenu = source => {
@@ -420,6 +501,8 @@ function imageT(key, fallback = '', variables = {}) {
 
         const fragment = document.createDocumentFragment();
         const regenerate = document.createElement('button');
+        const variants = document.createElement('button');
+
         regenerate.type = 'button';
         regenerate.className = 'message-action-btn';
         regenerate.textContent = imageT(
@@ -428,8 +511,17 @@ function imageT(key, fallback = '', variables = {}) {
         );
         regenerate.title = regenerate.textContent;
 
+        variants.type = 'button';
+        variants.className = 'message-action-btn';
+        variants.textContent = '3× ' + imageT(
+            'ui.regenerate',
+            'Regenerate'
+        );
+        variants.title = variants.textContent;
+
         regenerate.addEventListener('click', async () => {
             regenerate.disabled = true;
+            variants.disabled = true;
             const originalLabel = regenerate.textContent;
             regenerate.textContent = imageT(
                 'common.loading',
@@ -440,16 +532,36 @@ function imageT(key, fallback = '', variables = {}) {
 
             if (!started && regenerate.isConnected) {
                 regenerate.disabled = false;
+                variants.disabled = false;
                 regenerate.textContent = originalLabel;
             }
         });
 
-        fragment.append(regenerate, enhanceMenu);
+        variants.addEventListener('click', async () => {
+            regenerate.disabled = true;
+            variants.disabled = true;
+            const originalLabel = variants.textContent;
+            variants.textContent = imageT(
+                'common.loading',
+                'Loading…'
+            );
+
+            const started = await generateImageVariants(source, 3);
+
+            if (!started && variants.isConnected) {
+                regenerate.disabled = false;
+                variants.disabled = false;
+                variants.textContent = originalLabel;
+            }
+        });
+
+        fragment.append(regenerate, variants, enhanceMenu);
         return fragment;
     };
 
     window.MLXImageRegenerate = {
         regenerateImageArtifact,
+        generateImageVariants,
         regenerationOptions
     };
 })();
