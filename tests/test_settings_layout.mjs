@@ -39,6 +39,7 @@ const api = window.MLXSettingsLayout;
 assert.equal(typeof api?.sectionFromPath, 'function');
 assert.equal(typeof api?.systemTabFromPath, 'function');
 assert.equal(typeof api?.sectionTarget, 'function');
+assert.equal(typeof api?.activateModel, 'function');
 
 assert.equal(api.sectionFromPath('/settings/general'), 'chat');
 assert.equal(api.sectionFromPath('/settings/advanced/generation'), 'chat');
