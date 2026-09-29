@@ -62,6 +62,7 @@
 }
 
 .image-variant-preview-link {
+    position: relative;
     cursor: zoom-in;
 }
 
@@ -70,6 +71,49 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+/*
+ * Desktop hover preview: keep the thumbnail hit area in place while the
+ * image itself is promoted to a viewport-level lightbox. The overlay does
+ * not receive pointer events, so leaving the original thumbnail closes it
+ * immediately and gallery controls remain untouched.
+ */
+@media (hover: hover) and (pointer: fine) {
+    .image-variant-preview-link:hover {
+        overflow: visible;
+        z-index: 10000;
+    }
+
+    .image-variant-preview-link:hover::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        pointer-events: none;
+        background: rgba(3, 7, 14, 0.76);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+    }
+
+    .image-variant-preview-link:hover .image-variant-preview {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        z-index: 10001;
+        width: auto;
+        height: auto;
+        max-width: min(88vw, 1100px);
+        max-height: 86vh;
+        object-fit: contain;
+        border-radius: 14px;
+        background: #080b12;
+        box-shadow:
+            0 28px 90px rgba(0, 0, 0, 0.68),
+            0 0 0 1px rgba(255, 255, 255, 0.13);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+    }
 }
 
 .image-variant-placeholder {
