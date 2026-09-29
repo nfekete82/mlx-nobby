@@ -8,7 +8,7 @@ from fastapi import FastAPI, Query
 
 
 MODEL_SCOUT_SCRIPT = (
-    b'<script src="/assets/chat/model-scout.js?v=20260929-model-scout-v2"></script>'
+    b'<script src="/assets/chat/model-scout-loader.js?v=20260929-model-scout-loader-v1"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
