@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.4.1
+
+- Reduced chat persistence pressure by coalescing burst saves while keeping the
+  leading write immediate and flushing pending state when the page is hidden or
+  unloaded.
+- Reduced frontend DOM churn by coalescing high-frequency content renders into
+  one browser animation-frame render while keeping normal UI renders immediate.
+- Improved System Health performance by probing local services concurrently and
+  sharing near-simultaneous health reads through a short-lived defensive cache.
+- Reduced durable media-queue writes by ignoring unchanged native poll results
+  and throttling progress-only persistence while keeping status, errors, native
+  IDs, results, cancellation, and terminal transitions immediately durable.
+- Added focused regression tests for chat performance coalescing, System Health
+  caching, and media-queue persistence behavior.
+
 ## v1.4.0
 
 - Added persistent local memory with semantic retrieval, consolidation,
