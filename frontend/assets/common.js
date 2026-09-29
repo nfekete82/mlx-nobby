@@ -93,6 +93,14 @@
         document.getElementById('mlxHelpButton')?.remove();
     }
 
+    function experimentalVoiceStreamingEnabled() {
+        try {
+            return window.localStorage?.getItem('mlx-nobby-voice-streaming') === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
     async function loadChatVoiceControls() {
         if (!document.getElementById('input')) return;
         try {
@@ -104,10 +112,12 @@
                 '/assets/chat/voice-manager.js?v=20260928-voice-manager-v1',
                 'mlx-voice-manager'
             );
-            await loadScript(
-                '/assets/chat/voice-streaming.js?v=20260928-voice-streaming-v2',
-                'mlx-voice-streaming'
-            );
+            if (experimentalVoiceStreamingEnabled()) {
+                await loadScript(
+                    '/assets/chat/voice-streaming.js?v=20260928-voice-streaming-v2',
+                    'mlx-voice-streaming'
+                );
+            }
             await loadScript(
                 '/assets/chat/tts-cache.js?v=20260926-tts-cache',
                 'mlx-tts-cache'

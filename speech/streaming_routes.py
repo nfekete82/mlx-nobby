@@ -3,6 +3,8 @@
 The existing /v1/audio/speech MP3 endpoint intentionally remains untouched for
 Shorts, downloads and non-1.0 playback speeds. This route emits newline-delimited
 JSON with base64 encoded mono float32 PCM chunks as soon as Qwen3-TTS yields them.
+The stream is paced so a browser cannot be flooded with many seconds of decoded
+PCM before playback catches up.
 """
 
 from __future__ import annotations
@@ -43,6 +45,10 @@ _CLONE_STREAM_INTERVAL = min(
         float(os.environ.get("MLX_TTS_CLONE_STREAM_INTERVAL", "0.80")),
     ),
 )
+_MAX_STREAM_AHEAD_SECONDS = min(
+    5.0,
+    max(0.5, float(os.environ.get("MLX_TTS_MAX_STREAM_AHEAD", "2.0"))),
+)
 _PRELOAD_MODE = os.environ.get("MLX_TTS_PRELOAD", "auto").strip().lower()
 _PRELOAD_STATE = {
     "mode": _PRELOAD_MODE,
@@ -68,6 +74,17 @@ def _pcm_bytes(audio) -> bytes:
 
 def _json_line(payload: dict) -> bytes:
     return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def _stream_backpressure_delay(produced_audio_seconds: float, elapsed_seconds: float) -> float:
+    """Return how long to pause before emitting more PCM.
+
+    The producer may run faster than realtime on Apple Silicon. Keeping only a
+    small lead bounds browser-side Web Audio nodes and proxy buffers while still
+    allowing smooth playback.
+    """
+    lead = max(0.0, float(produced_audio_seconds) - max(0.0, float(elapsed_seconds)))
+    return max(0.0, lead - _MAX_STREAM_AHEAD_SECONDS)
 
 
 def _stream_results(request: SpeechRequest):
@@ -108,6 +125,7 @@ def _stream_results(request: SpeechRequest):
 
     started = time.perf_counter()
     chunks = 0
+    produced_audio_seconds = 0.0
     yield _json_line(
         {
             "type": "start",
@@ -115,6 +133,7 @@ def _stream_results(request: SpeechRequest):
             "format": "f32le",
             "channels": 1,
             "streaming_interval": stream_interval,
+            "max_stream_ahead_seconds": _MAX_STREAM_AHEAD_SECONDS,
             "clone": profile is not None,
         }
     )
@@ -124,12 +143,20 @@ def _stream_results(request: SpeechRequest):
             pcm = _pcm_bytes(result.audio)
             if not pcm:
                 continue
+            sample_rate = int(getattr(result, "sample_rate", 24000) or 24000)
+            produced_audio_seconds += len(pcm) / (4.0 * max(1, sample_rate))
+            delay = _stream_backpressure_delay(
+                produced_audio_seconds,
+                time.perf_counter() - started,
+            )
+            if delay > 0:
+                time.sleep(delay)
             chunks += 1
             yield _json_line(
                 {
                     "type": "audio",
                     "index": chunks - 1,
-                    "sample_rate": int(getattr(result, "sample_rate", 24000) or 24000),
+                    "sample_rate": sample_rate,
                     "pcm": base64.b64encode(pcm).decode("ascii"),
                 }
             )
@@ -229,6 +256,7 @@ def install_routes(app):
                 **_PRELOAD_STATE,
                 "streaming_interval": _STREAM_INTERVAL,
                 "clone_streaming_interval": _CLONE_STREAM_INTERVAL,
+                "max_stream_ahead_seconds": _MAX_STREAM_AHEAD_SECONDS,
                 "clone_sampling": clone_generation_options(),
             }
 
