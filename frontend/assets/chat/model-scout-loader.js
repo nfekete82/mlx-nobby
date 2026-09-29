@@ -26,7 +26,7 @@
         stopWatching();
 
         const script = document.createElement('script');
-        script.src = '/assets/chat/model-scout.js?v=20260929-model-scout-v2-safe';
+        script.src = '/assets/chat/model-scout.js?v=20260929-model-scout-v2-tuning';
         script.async = true;
         script.dataset.modelScoutRuntime = 'true';
         script.addEventListener('error', () => {
