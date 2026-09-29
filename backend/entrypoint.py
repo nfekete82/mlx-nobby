@@ -6,6 +6,10 @@ from backend.memory_manager_routes import (
     MemoryManagerUiMiddleware,
     install_routes as install_memory_manager_routes,
 )
+from backend.model_scout_routes import (
+    ModelScoutUiMiddleware,
+    install_routes as install_model_scout_routes,
+)
 from backend.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from backend.speech_streaming_routes import install_routes as install_speech_streaming_routes
 from backend.system_health_routes import (
@@ -18,8 +22,10 @@ from backend.voice_manager_routes import install_routes as install_voice_manager
 
 app.add_middleware(MemoryManagerUiMiddleware)
 app.add_middleware(SystemHealthUiMiddleware)
+app.add_middleware(ModelScoutUiMiddleware)
 
 install_memory_manager_routes(app, agent_json_request)
+install_model_scout_routes(app, agent_json_request)
 install_shorts_studio_routes(app, agent_json_request)
 install_speech_streaming_routes(app, AGENT_URL)
 install_voice_manager_routes(app, AGENT_URL)
