@@ -3,25 +3,16 @@
 
     const CSS_ID = 'mlx-agent-diff-view-css';
     const CSS_VERSION = '20260929-agent-diff-v1';
+    const FALLBACK = {
+        compare: 'Compare changes',
+        old: 'Old',
+        new: 'New',
+        one_prepared: '1 change prepared',
+        file: 'File'
+    };
     let observer = null;
     let enhancing = false;
-
-    const COPY = {
-        de: {
-            compare: 'Änderungen vergleichen',
-            old: 'Alt',
-            next: 'Neu',
-            onePrepared: '1 Änderung vorbereitet',
-            file: 'Datei'
-        },
-        en: {
-            compare: 'Compare changes',
-            old: 'Old',
-            next: 'New',
-            onePrepared: '1 change prepared',
-            file: 'File'
-        }
-    };
+    let dictionary = {};
 
     function language() {
         return String(
@@ -32,7 +23,22 @@
     }
 
     function copy(key) {
-        return COPY[language()]?.[key] || COPY.en[key] || key;
+        return dictionary[key] || FALLBACK[key] || key;
+    }
+
+    async function loadDictionary() {
+        if (typeof fetch !== 'function') return;
+        try {
+            const response = await fetch(
+                '/i18n/agent-diff-view.' + language() + '.json',
+                { cache: 'no-store' }
+            );
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data && typeof data === 'object') {
+                dictionary = data;
+            }
+        } catch (_error) {}
     }
 
     function installCss() {
@@ -195,7 +201,7 @@
         const oldLabel = document.createElement('span');
         oldLabel.textContent = copy('old');
         const newLabel = document.createElement('span');
-        newLabel.textContent = copy('next');
+        newLabel.textContent = copy('new');
         labels.append(oldLabel, newLabel);
         section.appendChild(labels);
 
@@ -268,12 +274,13 @@
 
         if (
             step?.action === 'code_patch' &&
-            Number(step?.result?.summary?.files || step?.result?.files?.length || 0) === 1
+            Number(
+                step?.result?.summary?.files ||
+                step?.result?.files?.length ||
+                0
+            ) === 1
         ) {
-            const text = normalizeText(title.textContent);
-            if (/^1\s+(Änderungen|changes)\s+(vorbereitet|prepared)$/i.test(text)) {
-                title.textContent = copy('onePrepared');
-            }
+            title.textContent = copy('one_prepared');
         }
 
         const evidenceTitle = row.querySelector?.('.agent-test-evidence-title');
@@ -325,9 +332,7 @@
 
         const viewer = buildDiffViewer(steps[diffIndex].result.files);
         if (!viewer) return;
-
-        const body = rows[diffIndex].querySelector('.agent-step-body') || rows[diffIndex];
-        body.appendChild(viewer);
+        rows[diffIndex].appendChild(viewer);
     }
 
     function enhance() {
@@ -379,6 +384,14 @@
         return true;
     }
 
+    async function refreshLanguage() {
+        dictionary = {};
+        await loadDictionary();
+        if (typeof document !== 'undefined') {
+            queueMicrotask(enhance);
+        }
+    }
+
     globalThis.MLXAgentDiffView = {
         enhance,
         install,
@@ -391,13 +404,15 @@
     };
 
     if (typeof document !== 'undefined') {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', install, { once: true });
-        } else {
+        const start = async () => {
+            await loadDictionary();
             install();
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start, { once: true });
+        } else {
+            start();
         }
-        document.addEventListener('mlx-language-changed', () => {
-            queueMicrotask(enhance);
-        });
+        document.addEventListener('mlx-language-changed', refreshLanguage);
     }
 })();
