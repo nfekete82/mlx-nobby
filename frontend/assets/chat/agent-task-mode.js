@@ -1,27 +1,15 @@
 (() => {
     'use strict';
 
-    const SCRIPT_VERSION = '20260929-task-mode-v2';
-    const CSS_ID = 'mlx-agent-task-mode-css';
     const FALLBACK = {
-        chat_label: 'Chat',
-        task_label: 'Task',
-        chat_title: 'Use normal chat mode',
-        task_title: 'Use Agent Task Mode for this workspace',
-        task_unavailable_title: 'Select a coding workspace to use Task Mode',
-        workspace_required: 'Task Mode requires an active coding workspace. Open a workspace first and start the task again.',
+        workspace_required: 'Workspace mode requires an active coding workspace.',
         workspace_check_failed: 'The active workspace could not be checked.',
-        attachments_unsupported: 'Task Mode v1 currently works with the active coding workspace only. Remove attached files before starting the task.',
-        running: 'Agent Task Mode is working …',
-        failed: 'Agent Task Mode failed: {message}'
+        attachments_unsupported: 'Workspace mode currently works with the active coding workspace only. Remove attached files before starting the task.',
+        failed: 'Workspace task failed: {message}'
     };
 
-    let mode = 'chat';
     let running = false;
     let workspace = null;
-    let switcher = null;
-    let chatButton = null;
-    let taskButton = null;
     let dictionary = {};
     let workspaceObserver = null;
     let workspaceSyncScheduled = false;
@@ -32,19 +20,6 @@
             value = value.replaceAll('{' + name + '}', String(replacement ?? ''));
         }
         return value;
-    }
-
-    function installCss() {
-        if (
-            typeof document === 'undefined' ||
-            document.getElementById?.(CSS_ID) ||
-            !document.head?.appendChild
-        ) return;
-        const link = document.createElement('link');
-        link.id = CSS_ID;
-        link.rel = 'stylesheet';
-        link.href = '/assets/chat/agent-task-mode.css?v=' + SCRIPT_VERSION;
-        document.head.appendChild(link);
     }
 
     async function loadDictionary() {
@@ -64,62 +39,22 @@
         } catch (_error) {}
     }
 
-    function updateSwitch() {
-        if (!switcher || !chatButton || !taskButton) return;
-
-        const hasWorkspace = Boolean(workspace?.workspace_id);
-        if (!hasWorkspace && mode === 'task') mode = 'chat';
-
-        const taskActive = mode === 'task' && hasWorkspace;
-        chatButton.classList.toggle('is-active', !taskActive);
-        taskButton.classList.toggle('is-active', taskActive);
-        chatButton.setAttribute('aria-pressed', taskActive ? 'false' : 'true');
-        taskButton.setAttribute('aria-pressed', taskActive ? 'true' : 'false');
-
-        chatButton.disabled = running;
-        taskButton.disabled = running || !hasWorkspace;
-        chatButton.textContent = t('chat_label');
-        taskButton.textContent = t('task_label');
-        chatButton.title = t('chat_title');
-        taskButton.title = hasWorkspace
-            ? t('task_title')
-            : t('task_unavailable_title');
-
-        switcher.classList.toggle('is-running', running);
-        switcher.classList.toggle('has-workspace', hasWorkspace);
-        switcher.dataset.mode = taskActive ? 'task' : 'chat';
-        switcher.title = !hasWorkspace
-            ? t('task_unavailable_title')
-            : '';
-    }
-
-    function setMode(nextMode) {
-        const requested = nextMode === 'task' ? 'task' : 'chat';
-        if (requested === 'task' && !workspace?.workspace_id) {
-            mode = 'chat';
-        } else if (!running) {
-            mode = requested;
-        }
-        updateSwitch();
-        return mode;
-    }
-
     function executionGoal(userGoal) {
         return [
-            'AGENT TASK MODE v1',
+            'AGENT WORKSPACE MODE v1',
             '',
             'User goal:',
             String(userGoal || '').trim(),
             '',
             'Execution contract:',
             '1. Work only inside the bound coding workspace.',
-            '2. Inspect the project before proposing changes. Prefer workspace_search/workspace_read and git_status/git_diff.',
-            '3. Form a concise implementation plan from evidence before any mutation.',
-            '4. Prepare changes with code_prepare. Let the existing coding runtime perform code_diff and code_test on the isolated patch before it requests approval for code_apply. Never bypass that approval flow.',
+            '2. Inspect the workspace first and decide whether the user is asking for a read-only answer or an actual mutation. Prefer workspace_search/workspace_read and git_status/git_diff.',
+            '3. For read-only questions, analysis, explanations, searches, reviews, or diagnostics, answer from workspace evidence and do not prepare or apply a patch.',
+            '4. Only when the user requests or clearly requires a workspace mutation, prepare changes with code_prepare. Let the existing coding runtime perform code_diff and code_test on the isolated patch before it requests approval for code_apply. Never bypass that approval flow.',
             '5. If patch tests fail, inspect the failure and attempt at most three repair cycles. Each new mutation must use the normal prepare/diff/test/approval path.',
             '6. After approval, rely on the existing code_apply and verification path; do not perform an unrelated second mutation.',
             '7. Do not use unrestricted shell commands when a workspace/code tool can do the job.',
-            '8. Finish with a concise summary containing changed files, isolated test result, apply/verification status, and patch/diff information. Mention that an applied patch can be reverted with code_revert when a patch id is available.',
+            '8. For mutation tasks, finish with a concise summary containing changed files, isolated test result, apply/verification status, and patch/diff information. Mention that an applied patch can be reverted with code_revert when a patch id is available.',
             '9. If workspace evidence is insufficient or the requested change is unsafe, stop and explain instead of guessing.'
         ].join('\n');
     }
@@ -133,14 +68,25 @@
         return data?.active_workspace || null;
     }
 
+    function isWorkspaceMode() {
+        return Boolean(workspace?.workspace_id);
+    }
+
+    function updateWorkspaceMarker() {
+        const header = document.getElementById('activeWorkspaceHeader');
+        if (!header) return;
+        const active = isWorkspaceMode();
+        header.dataset.agentMode = active ? 'task' : 'chat';
+        header.setAttribute('data-workspace-task-active', active ? 'true' : 'false');
+    }
+
     async function syncWorkspaceState() {
         try {
             workspace = await activeWorkspace();
         } catch (_error) {
             workspace = null;
         }
-        if (!workspace?.workspace_id && mode === 'task') mode = 'chat';
-        updateSwitch();
+        updateWorkspaceMarker();
         return workspace;
     }
 
@@ -154,8 +100,6 @@
     }
 
     async function consume({ prompt } = {}) {
-        if (mode !== 'task') return null;
-
         let currentWorkspace = null;
         try {
             currentWorkspace = await activeWorkspace();
@@ -167,11 +111,10 @@
         }
 
         workspace = currentWorkspace;
-        updateSwitch();
+        updateWorkspaceMarker();
 
         if (!workspace?.workspace_id) {
-            setMode('chat');
-            return { error: t('workspace_required') };
+            return null;
         }
 
         return {
@@ -221,7 +164,6 @@
         const send = document.getElementById('sendButton');
         if (input) input.disabled = running;
         if (send) send.disabled = running;
-        updateSwitch();
     }
 
     function installApprovalAdapter() {
@@ -339,7 +281,7 @@
     }
 
     async function startFromComposer() {
-        if (mode !== 'task' || running) return false;
+        if (!isWorkspaceMode() || running) return false;
         const input = document.getElementById('input');
         const prompt = String(input?.value || '').trim();
         if (!prompt) return true;
@@ -398,14 +340,14 @@
         const send = document.getElementById('sendButton');
         const input = document.getElementById('input');
         send?.addEventListener('click', event => {
-            if (mode !== 'task' || running) return;
+            if (!isWorkspaceMode() || running) return;
             event.preventDefault();
             event.stopImmediatePropagation();
             startFromComposer();
         }, true);
         input?.addEventListener('keydown', event => {
             if (
-                mode !== 'task' || running || event.isComposing ||
+                !isWorkspaceMode() || running || event.isComposing ||
                 event.key !== 'Enter' || event.shiftKey
             ) return;
             event.preventDefault();
@@ -428,41 +370,8 @@
         });
     }
 
-    function mountSwitch() {
-        if (switcher) return true;
-        const workspaceHeader = document.getElementById('activeWorkspaceHeader');
-        if (!workspaceHeader?.parentNode) return false;
-
-        switcher = document.createElement('div');
-        switcher.id = 'agentTaskModeSwitch';
-        switcher.className = 'agent-task-mode-switch';
-        switcher.setAttribute('role', 'group');
-
-        chatButton = document.createElement('button');
-        chatButton.id = 'agentChatModeButton';
-        chatButton.className = 'agent-task-mode-option';
-        chatButton.type = 'button';
-        chatButton.addEventListener('click', () => setMode('chat'));
-
-        taskButton = document.createElement('button');
-        taskButton.id = 'agentTaskModeButton';
-        taskButton.className = 'agent-task-mode-option';
-        taskButton.type = 'button';
-        taskButton.addEventListener('click', async () => {
-            await syncWorkspaceState();
-            setMode('task');
-        });
-
-        switcher.append(chatButton, taskButton);
-        workspaceHeader.insertAdjacentElement('afterend', switcher);
-        updateSwitch();
-        return true;
-    }
-
     function mount() {
-        installCss();
         installApprovalAdapter();
-        if (!mountSwitch()) return;
         interceptComposer();
         observeWorkspaceHeader();
         syncWorkspaceState();
@@ -471,23 +380,23 @@
     async function refreshLanguage() {
         dictionary = {};
         await loadDictionary();
-        updateSwitch();
     }
 
     window.MLXAgentTaskMode = {
         consume,
         executionGoal,
-        getMode: () => mode,
-        isArmed: () => mode === 'task',
+        isArmed: isWorkspaceMode,
         isRunning: () => running,
-        setArmed: value => setMode(value ? 'task' : 'chat'),
-        setMode,
+        getMode: () => isWorkspaceMode() ? 'task' : 'chat',
+        setArmed: () => isWorkspaceMode(),
+        setMode: () => isWorkspaceMode() ? 'task' : 'chat',
         startFromComposer,
         syncWorkspaceState,
         mount,
         __test: {
             activeWorkspace,
             conversationContext,
+            isWorkspaceMode,
             normalizeTaskGoals,
             t
         }
