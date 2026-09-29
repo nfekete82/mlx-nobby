@@ -2,6 +2,7 @@
 
 from backend.app import AGENT_URL, agent_json_request, app, mlx_chat_stream
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
+from backend.media_routing_ui import MediaRoutingUiMiddleware
 from backend.memory_manager_routes import (
     MemoryManagerUiMiddleware,
     install_routes as install_memory_manager_routes,
@@ -25,6 +26,7 @@ app.add_middleware(MemoryManagerUiMiddleware)
 app.add_middleware(SystemHealthUiMiddleware)
 app.add_middleware(ModelScoutUiMiddleware)
 app.add_middleware(SettingsUiMiddleware)
+app.add_middleware(MediaRoutingUiMiddleware)
 
 install_memory_manager_routes(app, agent_json_request)
 install_model_scout_routes(app, agent_json_request)
