@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 VERSION_FILE = PROJECT_DIR / "VERSION"
+BUILD_REVISION_FILE = PROJECT_DIR / ".mlx-nobby-build-revision"
 
 
 def _read_version() -> str:
@@ -30,6 +31,14 @@ def _read_commit() -> str | None:
     override = str(os.environ.get("MLX_NOBBY_COMMIT") or "").strip()
     if override:
         return override[:12]
+
+    try:
+        build_revision = BUILD_REVISION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        build_revision = ""
+
+    if build_revision and build_revision != "unknown":
+        return build_revision[:12]
 
     try:
         result = subprocess.run(
