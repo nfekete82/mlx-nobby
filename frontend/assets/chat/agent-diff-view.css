@@ -6,6 +6,11 @@
     background: rgba(14, 18, 24, 0.28);
 }
 
+.agent-step > .agent-git-diff {
+    grid-column: 2;
+    min-width: 0;
+}
+
 .agent-git-diff > summary {
     cursor: pointer;
     padding: 9px 11px;
