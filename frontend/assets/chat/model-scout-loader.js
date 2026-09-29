@@ -17,7 +17,7 @@
     function loadFilter() {
         if (document.querySelector('script[data-model-scout-filter-runtime]')) return;
         const filter = document.createElement('script');
-        filter.src = '/assets/chat/model-scout-filter.js?v=20260929-model-scout-filter-v1';
+        filter.src = '/assets/chat/model-scout-filter.js?v=20260929-model-scout-filter-v2';
         filter.async = true;
         filter.dataset.modelScoutFilterRuntime = 'true';
         document.head.appendChild(filter);
