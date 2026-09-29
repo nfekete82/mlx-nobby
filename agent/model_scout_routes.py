@@ -1,10 +1,8 @@
 """Model Scout discovery, compatibility checks and local A/B benchmarks.
 
-Discovery is intentionally conservative: freshness/popularity are discovery
-signals only. Model Scout v2 can additionally run an explicit local A/B quick
-benchmark. The benchmark temporarily switches the single MLX runtime to the
-candidate, measures both models, and restores the original model afterwards.
-Nothing is activated permanently by the benchmark.
+The discovery score is only a discovery signal. Model Scout v2 can also run an
+explicit local A/B quick benchmark. It temporarily switches the single MLX
+runtime to a candidate and always attempts to restore the original model.
 """
 
 from __future__ import annotations
@@ -31,9 +29,9 @@ from pydantic import BaseModel
 
 HF_API = os.environ.get("MODEL_SCOUT_HF_API", "https://huggingface.co/api/models").rstrip("/")
 DEFAULT_SOURCES = tuple(
-    source.strip()
-    for source in os.environ.get("MODEL_SCOUT_SOURCES", "mlx-community").split(",")
-    if source.strip()
+    value.strip()
+    for value in os.environ.get("MODEL_SCOUT_SOURCES", "mlx-community").split(",")
+    if value.strip()
 )
 CACHE_TTL_SECONDS = max(60, int(os.environ.get("MODEL_SCOUT_CACHE_TTL", "900")))
 SCOUT_VERSION = 2
@@ -79,7 +77,6 @@ def _system_memory_gb() -> float | None:
             return round((pages * page_size) / (1024 ** 3), 1)
     except (AttributeError, OSError, ValueError):
         pass
-
     return None
 
 
@@ -98,21 +95,18 @@ def infer_parameter_billions(model_id: str) -> float | None:
     matches = re.findall(r"(?<![A-Za-z0-9])(\d+(?:\.\d+)?)B(?:\b|[-_])", name, re.IGNORECASE)
     if not matches:
         matches = re.findall(r"(?:^|[-_])(\d+(?:\.\d+)?)B(?:[-_]|$)", name, re.IGNORECASE)
-    if not matches:
-        return None
     try:
-        return float(matches[0])
+        return float(matches[0]) if matches else None
     except ValueError:
         return None
 
 
 def infer_quantization_bits(model_id: str, tags: list[str] | None = None) -> float | None:
     text = " ".join([model_id, *(tags or [])]).lower()
-    patterns = (
+    for pattern in (
         r"(?:^|[-_ ])(\d+(?:\.\d+)?)bit(?:[-_ ]|$)",
         r"(?:^|[-_ ])q(\d+)(?:[-_ ]|$)",
-    )
-    for pattern in patterns:
+    ):
         match = re.search(pattern, text)
         if match:
             try:
@@ -133,8 +127,7 @@ def infer_quantization_bits(model_id: str, tags: list[str] | None = None) -> flo
 def estimate_memory_gb(parameter_billions: float | None, bits: float | None) -> float | None:
     if not parameter_billions or not bits:
         return None
-    weights = parameter_billions * bits / 8.0
-    return round(weights * 1.25 + 1.5, 1)
+    return round((parameter_billions * bits / 8.0) * 1.25 + 1.5, 1)
 
 
 def infer_role(model_id: str, tags: list[str] | None = None, pipeline_tag: str | None = None) -> str:
@@ -148,10 +141,10 @@ def infer_role(model_id: str, tags: list[str] | None = None, pipeline_tag: str |
 
 def _license_from(model: dict) -> str | None:
     card = model.get("cardData")
-    if isinstance(card, dict):
-        value = card.get("license")
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    if isinstance(card, dict) and isinstance(card.get("license"), str):
+        value = card["license"].strip()
+        if value:
+            return value
     for tag in model.get("tags") or []:
         if isinstance(tag, str) and tag.startswith("license:"):
             return tag.split(":", 1)[1] or None
@@ -159,10 +152,8 @@ def _license_from(model: dict) -> str | None:
 
 
 def _parse_updated(value: str | None) -> datetime | None:
-    if not value:
-        return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
     except ValueError:
         return None
 
@@ -185,15 +176,7 @@ def _discovery_score(model: dict, fit: str) -> int:
     updated = _parse_updated(model.get("lastModified"))
     if updated:
         age_days = max(0, (datetime.now(timezone.utc) - updated.astimezone(timezone.utc)).days)
-        if age_days <= 14:
-            score += 35
-        elif age_days <= 60:
-            score += 25
-        elif age_days <= 180:
-            score += 15
-        else:
-            score += 5
-
+        score += 35 if age_days <= 14 else 25 if age_days <= 60 else 15 if age_days <= 180 else 5
     downloads = max(0, int(model.get("downloads") or 0))
     likes = max(0, int(model.get("likes") or 0))
     score += min(25, int(math.log10(downloads + 1) * 6))
@@ -205,10 +188,10 @@ def _discovery_score(model: dict, fit: str) -> int:
 def _hf_cache_available(repo: str) -> bool:
     if not re.fullmatch(r"[^/\s]+/[^/\s]+", repo):
         return False
-    owner, name = repo.split("/", 1)
-    root = Path.home() / ".cache/huggingface/hub" / f"models--{owner.replace('-', '--')}--{name.replace('-', '--')}" / "snapshots"
+    cache_name = "models--" + repo.replace("/", "--")
+    snapshots = Path.home() / ".cache/huggingface/hub" / cache_name / "snapshots"
     try:
-        return any(path.is_file() for path in root.glob("*/config.json"))
+        return any(path.is_file() for path in snapshots.glob("*/config.json"))
     except OSError:
         return False
 
@@ -221,41 +204,28 @@ def model_reference_available(model: dict) -> bool:
     path = Path(repo).expanduser()
     if path.is_dir() and (path / "config.json").is_file():
         return True
-
     if isinstance(model.get("available"), bool) and model.get("available"):
         return True
-
     if _hf_cache_available(repo):
         return True
 
     if "/" in repo and not repo.startswith("/"):
         root = Path.home() / "Models" / repo.split("/")[-1]
         try:
-            if (root / "config.json").is_file():
-                return True
-            return any(path.is_file() for path in root.glob("*/config.json"))
+            return (root / "config.json").is_file() or any(path.is_file() for path in root.glob("*/config.json"))
         except OSError:
             return False
-
     return False
 
 
 def _installed_model(model_id: str, installed) -> dict | None:
-    model_id_lower = model_id.lower()
+    lowered = model_id.lower()
     if isinstance(installed, set):
-        if model_id_lower in installed:
-            return {
-                "alias": model_id.split("/")[-1],
-                "repo": model_id,
-                "available": True,
-            }
+        if lowered in installed:
+            return {"alias": model_id.split("/")[-1], "repo": model_id, "available": True}
         return None
-
     for item in installed or []:
-        if not isinstance(item, dict):
-            continue
-        repo = str(item.get("repo") or "").strip()
-        if repo.lower() == model_id_lower:
+        if isinstance(item, dict) and str(item.get("repo") or "").strip().lower() == lowered:
             return item
     return None
 
@@ -273,19 +243,16 @@ def normalize_candidate(model: dict, profile: dict, installed) -> dict | None:
     role = infer_role(model_id, tags, model.get("pipeline_tag"))
     installed_item = _installed_model(model_id, installed)
     installed_match = installed_item is not None
-
     name = model_id.split("/", 1)[1]
     alias = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-_")[:64] or "model"
     score = _discovery_score(model, fit)
 
-    if installed_match:
-        status = "installed"
-    elif fit == "risky":
-        status = "not_recommended"
-    elif score >= 65:
-        status = "candidate"
-    else:
-        status = "interesting"
+    status = (
+        "installed" if installed_match
+        else "not_recommended" if fit == "risky"
+        else "candidate" if score >= 65
+        else "interesting"
+    )
 
     return {
         "id": model_id,
@@ -332,7 +299,6 @@ def _fetch_source(author: str, limit: int) -> list[dict]:
         raise HTTPException(exc.code, "Hugging Face model search failed") from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise HTTPException(503, "Hugging Face model search is currently unavailable") from exc
-
     return data if isinstance(data, list) else []
 
 
@@ -342,10 +308,9 @@ def discover_raw_models(limit: int) -> list[dict]:
         if _CACHE["models"] and now - float(_CACHE["created"]) < CACHE_TTL_SECONDS:
             return list(_CACHE["models"])
 
-    per_source = max(limit, 40)
     combined: dict[str, dict] = {}
     for source in DEFAULT_SOURCES:
-        for model in _fetch_source(source, per_source):
+        for model in _fetch_source(source, max(limit, 40)):
             model_id = str(model.get("id") or model.get("modelId") or "")
             if model_id:
                 combined[model_id] = model
@@ -367,21 +332,13 @@ def discover_models(model_provider, *, limit: int = 30, role: str = "all") -> di
     candidates = []
     for raw in discover_raw_models(limit):
         candidate = normalize_candidate(raw, profile, installed_models)
-        if candidate is None:
-            continue
-        if role != "all" and candidate["role"] != role:
-            continue
-        candidates.append(candidate)
+        if candidate is not None and (role == "all" or candidate["role"] == role):
+            candidates.append(candidate)
 
     candidates.sort(
-        key=lambda item: (
-            item["installed"],
-            item["discovery_score"],
-            item.get("last_modified") or "",
-        ),
+        key=lambda item: (item["installed"], item["discovery_score"], item.get("last_modified") or ""),
         reverse=True,
     )
-
     return {
         "version": SCOUT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -391,69 +348,21 @@ def discover_models(model_provider, *, limit: int = 30, role: str = "all") -> di
         "candidates": candidates[:limit],
         "notes": {
             "score": "Discovery score measures freshness, popularity and local fit; it is not a quality benchmark.",
-            "memory": "Memory is estimated from model naming metadata and includes a conservative runtime reserve.",
-            "benchmark": "The A/B quick benchmark measures the same runtime and deterministic micro-suite on both models.",
+            "memory": "Memory is estimated from naming metadata and includes a conservative runtime reserve.",
+            "benchmark": "The A/B quick benchmark runs the same timing probe and deterministic micro-suite on both models.",
         },
     }
 
 
 QUALITY_TASKS = (
-    {
-        "id": "reasoning_sequence",
-        "category": "reasoning",
-        "prompt": "Setze die Folge fort: 2, 6, 12, 20, 30, ?. Antworte nur mit der Zahl.",
-        "kind": "contains",
-        "expected": "42",
-    },
-    {
-        "id": "reasoning_logic",
-        "category": "reasoning",
-        "prompt": "Alle Ralos sind Tims. Kein Tim ist ein Vek. Kann ein Ralo ein Vek sein? Antworte nur mit ja oder nein.",
-        "kind": "contains",
-        "expected": "nein",
-    },
-    {
-        "id": "coding_php",
-        "category": "coding",
-        "prompt": "Welcher Operator verbindet in PHP zwei Strings? Antworte ausschließlich mit dem Operatorzeichen.",
-        "kind": "exact",
-        "expected": ".",
-    },
-    {
-        "id": "coding_javascript",
-        "category": "coding",
-        "prompt": "Was ergibt JavaScript: [1,2,3].map(x => x * 2).join(',')? Antworte nur mit dem Ergebnis.",
-        "kind": "contains",
-        "expected": "2,4,6",
-    },
-    {
-        "id": "german_article",
-        "category": "german",
-        "prompt": "Ergänze den bestimmten Artikel: ___ Mädchen. Antworte nur mit dem Artikel.",
-        "kind": "contains",
-        "expected": "das",
-    },
-    {
-        "id": "german_grammar",
-        "category": "german",
-        "prompt": "Korrigiere den Satz und gib nur den korrigierten Satz aus: Wegen dem Regen blieb ich zuhause.",
-        "kind": "contains",
-        "expected": "wegen des regens",
-    },
-    {
-        "id": "instruction_exact",
-        "category": "instruction",
-        "prompt": "Antworte exakt mit NOBBY_OK und mit nichts anderem.",
-        "kind": "exact",
-        "expected": "nobby_ok",
-    },
-    {
-        "id": "instruction_json",
-        "category": "instruction",
-        "prompt": "Gib ausschließlich gültiges JSON aus: Schlüssel status mit Wert ok und Schlüssel count mit Zahl 3.",
-        "kind": "json",
-        "expected": {"status": "ok", "count": 3},
-    },
+    {"id": "reasoning_sequence", "category": "reasoning", "prompt": "Setze die Folge fort: 2, 6, 12, 20, 30, ?. Antworte nur mit der Zahl.", "kind": "contains", "expected": "42"},
+    {"id": "reasoning_logic", "category": "reasoning", "prompt": "Alle Ralos sind Tims. Kein Tim ist ein Vek. Kann ein Ralo ein Vek sein? Antworte nur mit ja oder nein.", "kind": "contains", "expected": "nein"},
+    {"id": "coding_php", "category": "coding", "prompt": "Welcher Operator verbindet in PHP zwei Strings? Antworte ausschließlich mit dem Operatorzeichen.", "kind": "exact", "expected": "."},
+    {"id": "coding_javascript", "category": "coding", "prompt": "Was ergibt JavaScript: [1,2,3].map(x => x * 2).join(',')? Antworte nur mit dem Ergebnis.", "kind": "contains", "expected": "2,4,6"},
+    {"id": "german_article", "category": "german", "prompt": "Ergänze den bestimmten Artikel: ___ Mädchen. Antworte nur mit dem Artikel.", "kind": "contains", "expected": "das"},
+    {"id": "german_grammar", "category": "german", "prompt": "Korrigiere den Satz und gib nur den korrigierten Satz aus: Wegen dem Regen blieb ich zuhause.", "kind": "contains", "expected": "wegen des regens"},
+    {"id": "instruction_exact", "category": "instruction", "prompt": "Antworte exakt mit NOBBY_OK und mit nichts anderem.", "kind": "exact", "expected": "nobby_ok"},
+    {"id": "instruction_json", "category": "instruction", "prompt": "Gib ausschließlich gültiges JSON aus: Schlüssel status mit Wert ok und Schlüssel count mit Zahl 3.", "kind": "json", "expected": {"status": "ok", "count": 3}},
 )
 
 
@@ -467,9 +376,8 @@ def score_quality_answer(task: dict, answer: str) -> bool:
     normalized = _normalize_answer(answer)
     kind = task.get("kind")
     expected = task.get("expected")
-
     if kind == "exact":
-        return normalized.strip(". \n\t") == str(expected).lower().strip()
+        return normalized.strip() == str(expected).lower().strip()
     if kind == "contains":
         return str(expected).lower() in normalized
     if kind == "json":
@@ -477,10 +385,9 @@ def score_quality_answer(task: dict, answer: str) -> bool:
         if not match:
             return False
         try:
-            parsed = json.loads(match.group(0))
+            return json.loads(match.group(0)) == expected
         except json.JSONDecodeError:
             return False
-        return parsed == expected
     return False
 
 
@@ -494,29 +401,24 @@ def summarize_quality(results: list[dict]) -> dict:
         if result.get("passed"):
             passed += 1
             bucket["passed"] = int(bucket["passed"]) + 1
-
     for bucket in categories.values():
         total = int(bucket["total"])
-        bucket["score"] = round((int(bucket["passed"]) / total) * 100, 1) if total else 0.0
-
+        bucket["score"] = round(int(bucket["passed"]) / total * 100, 1) if total else 0.0
     total = len(results)
     return {
         "passed": passed,
         "total": total,
-        "score": round((passed / total) * 100, 1) if total else 0.0,
+        "score": round(passed / total * 100, 1) if total else 0.0,
         "categories": categories,
     }
 
 
 def _http_json(url: str, payload: dict | None = None, timeout: int = 120) -> dict:
-    data = None
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Accept": "application/json"}
-    method = "GET"
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
+    if data is not None:
         headers["Content-Type"] = "application/json"
-        method = "POST"
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data is not None else "GET")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -540,15 +442,17 @@ def _runtime_model_id(port: int) -> str:
 
 def _chat_once(port: int, model_id: str, prompt: str, max_tokens: int = 96) -> dict:
     started = time.perf_counter()
-    payload = {
-        "model": model_id,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0,
-        "max_tokens": max_tokens,
-        "stream": False,
-    }
-    data = _http_json(f"http://127.0.0.1:{port}/v1/chat/completions", payload, timeout=180)
-    elapsed = time.perf_counter() - started
+    data = _http_json(
+        f"http://127.0.0.1:{port}/v1/chat/completions",
+        {
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": max_tokens,
+            "stream": False,
+        },
+        timeout=180,
+    )
     try:
         content = data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError):
@@ -557,7 +461,7 @@ def _chat_once(port: int, model_id: str, prompt: str, max_tokens: int = 96) -> d
     return {
         "content": str(content),
         "usage": usage if isinstance(usage, dict) else {},
-        "elapsed": elapsed,
+        "elapsed": time.perf_counter() - started,
     }
 
 
@@ -578,7 +482,6 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
     started = time.perf_counter()
     first_token_at = None
     chunks: list[str] = []
-
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
             for raw_line in response:
@@ -594,8 +497,7 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
                 except (json.JSONDecodeError, IndexError, AttributeError):
                     continue
                 if delta:
-                    if first_token_at is None:
-                        first_token_at = time.perf_counter()
+                    first_token_at = first_token_at or time.perf_counter()
                     chunks.append(str(delta))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -623,16 +525,13 @@ def _runtime_rss_gb(pid: int | None) -> float | None:
             timeout=5,
             check=True,
         )
-        rss_kb = int(result.stdout.strip())
-        return round(rss_kb / (1024 ** 2), 2)
+        return round(int(result.stdout.strip()) / (1024 ** 2), 2)
     except Exception:
         return None
 
 
 def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -> dict:
     model_id = _runtime_model_id(port)
-
-    # Warm up kernels before collecting comparable timing numbers.
     _chat_once(port, model_id, "Antworte nur mit OK.", max_tokens=8)
 
     perf_prompt = (
@@ -650,16 +549,14 @@ def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -
     quality_results = []
     for task in QUALITY_TASKS:
         result = _chat_once(port, model_id, str(task["prompt"]), max_tokens=96)
-        passed = score_quality_answer(task, result["content"])
         quality_results.append({
             "id": task["id"],
             "category": task["category"],
-            "passed": passed,
+            "passed": score_quality_answer(task, result["content"]),
             "answer": result["content"][:600],
             "elapsed": round(float(result["elapsed"]), 3),
         })
 
-    pid = find_server_pid(port)
     return {
         "runtime_model_id": model_id,
         "performance": {
@@ -668,7 +565,7 @@ def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -
             "generation_tps": round(completion_tokens / generation_seconds, 1),
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "runtime_rss_gb": _runtime_rss_gb(pid),
+            "runtime_rss_gb": _runtime_rss_gb(find_server_pid(port)),
         },
         "quality": summarize_quality(quality_results),
         "quality_tasks": quality_results,
@@ -678,7 +575,7 @@ def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -
 def _delta_percent(candidate: float | None, baseline: float | None) -> float | None:
     if candidate is None or baseline in (None, 0):
         return None
-    return round(((candidate - baseline) / baseline) * 100, 1)
+    return round((candidate - baseline) / baseline * 100, 1)
 
 
 def compare_benchmarks(baseline: dict, candidate: dict) -> dict:
@@ -713,15 +610,14 @@ def compare_benchmarks(baseline: dict, candidate: dict) -> dict:
     }
 
 
-def _public_job(job: dict) -> dict:
-    return json.loads(json.dumps(job))
-
-
 def _set_job(job_id: str, **updates) -> None:
     with _BENCHMARK_LOCK:
-        job = _BENCHMARK_JOBS.get(job_id)
-        if job is not None:
-            job.update(updates)
+        if job_id in _BENCHMARK_JOBS:
+            _BENCHMARK_JOBS[job_id].update(updates)
+
+
+def _public_job(job: dict) -> dict:
+    return json.loads(json.dumps(job))
 
 
 def _load_history() -> list[dict]:
@@ -733,9 +629,7 @@ def _load_history() -> list[dict]:
 
 
 def _save_history(result: dict) -> None:
-    history = _load_history()
-    history.insert(0, result)
-    history = history[:BENCHMARK_MAX_HISTORY]
+    history = [result, *_load_history()][:BENCHMARK_MAX_HISTORY]
     BENCHMARK_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = BENCHMARK_HISTORY_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -764,9 +658,7 @@ def _run_benchmark_job(
 ) -> None:
     acquired = False
     baseline_alias = None
-    baseline_repo = None
     switched = False
-
     try:
         _set_job(job_id, status="running", phase="waiting_runtime", progress=3)
         acquired = runtime_lock.acquire(timeout=10)
@@ -778,9 +670,8 @@ def _run_benchmark_job(
         baseline_repo = str(config.get("MODEL") or "").strip()
         baseline = _find_model(models, repo=baseline_repo)
         candidate = _find_model(models, alias=candidate_alias)
-
         if baseline is None:
-            raise RuntimeError("Das aktuell aktive Modell hat keinen eindeutigen Alias und kann nicht sicher wiederhergestellt werden.")
+            raise RuntimeError("Das aktive Modell hat keinen eindeutigen Alias und kann nicht sicher wiederhergestellt werden.")
         if candidate is None:
             raise RuntimeError("Der Benchmark-Kandidat ist nicht mehr in der Modellverwaltung vorhanden.")
 
@@ -793,16 +684,7 @@ def _run_benchmark_job(
             raise RuntimeError("Der Kandidat ist noch nicht lokal verfügbar. Bitte zuerst herunterladen.")
 
         port = int(config.get("PORT") or 8000)
-        _set_job(
-            job_id,
-            baseline_alias=baseline_alias,
-            baseline_repo=baseline_repo,
-            candidate_repo=candidate.get("repo"),
-            phase="baseline",
-            progress=10,
-        )
-
-        # If the runtime is offline, switch to the baseline once to start it.
+        _set_job(job_id, baseline_alias=baseline_alias, baseline_repo=baseline_repo, candidate_repo=candidate.get("repo"), phase="baseline", progress=10)
         try:
             _runtime_model_id(port)
         except RuntimeError:
@@ -810,7 +692,6 @@ def _run_benchmark_job(
 
         baseline_result = benchmark_runtime(port, find_server_pid)
         _set_job(job_id, baseline=baseline_result, phase="switching_candidate", progress=48)
-
         switch_model(candidate_alias)
         switched = True
         _set_job(job_id, phase="candidate", progress=56)
@@ -820,11 +701,12 @@ def _run_benchmark_job(
         _set_job(job_id, phase="restoring", progress=94)
         switch_model(baseline_alias)
         switched = False
-
         finished_at = datetime.now(timezone.utc).isoformat()
+        with _BENCHMARK_LOCK:
+            created_at = _BENCHMARK_JOBS[job_id].get("created_at")
         result = {
             "job_id": job_id,
-            "created_at": _BENCHMARK_JOBS[job_id].get("created_at"),
+            "created_at": created_at,
             "finished_at": finished_at,
             "baseline_alias": baseline_alias,
             "baseline_repo": baseline_repo,
@@ -836,19 +718,11 @@ def _run_benchmark_job(
             "suite": {
                 "name": "mlx-nobby-quick-ab-v1",
                 "tasks": len(QUALITY_TASKS),
-                "note": "Micro-suite for repeatable local comparison; not a general leaderboard score.",
+                "note": "Repeatable local micro-suite; not a general leaderboard score.",
             },
         }
         _save_history(result)
-        _set_job(
-            job_id,
-            status="completed",
-            phase="completed",
-            progress=100,
-            finished_at=finished_at,
-            result=result,
-        )
-
+        _set_job(job_id, status="completed", phase="completed", progress=100, finished_at=finished_at, result=result)
     except Exception as exc:
         restore_error = None
         if acquired and switched and baseline_alias:
@@ -857,17 +731,10 @@ def _run_benchmark_job(
                 switch_model(baseline_alias)
             except Exception as restore_exc:
                 restore_error = str(restore_exc)
-
         message = str(exc)
         if restore_error:
             message += f" | Wiederherstellung fehlgeschlagen: {restore_error}"
-        _set_job(
-            job_id,
-            status="failed",
-            phase="failed",
-            finished_at=datetime.now(timezone.utc).isoformat(),
-            error=message,
-        )
+        _set_job(job_id, status="failed", phase="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=message)
     finally:
         if acquired:
             runtime_lock.release()
@@ -887,16 +754,8 @@ def start_benchmark(
         raise HTTPException(400, "Ungültiger Modellalias")
 
     with _BENCHMARK_LOCK:
-        active = next(
-            (
-                job for job in _BENCHMARK_JOBS.values()
-                if job.get("status") in {"queued", "running"}
-            ),
-            None,
-        )
-        if active is not None:
+        if any(job.get("status") in {"queued", "running"} for job in _BENCHMARK_JOBS.values()):
             raise HTTPException(409, "Es läuft bereits ein Model-Scout-Benchmark.")
-
         job_id = uuid.uuid4().hex[:12]
         job = {
             "id": job_id,
@@ -910,21 +769,12 @@ def start_benchmark(
         }
         _BENCHMARK_JOBS[job_id] = job
 
-    thread = threading.Thread(
+    threading.Thread(
         target=_run_benchmark_job,
-        args=(
-            job_id,
-            candidate_alias,
-            model_provider,
-            config_provider,
-            switch_model,
-            runtime_lock,
-            find_server_pid,
-        ),
+        args=(job_id, candidate_alias, model_provider, config_provider, switch_model, runtime_lock, find_server_pid),
         name=f"model-scout-{job_id}",
         daemon=True,
-    )
-    thread.start()
+    ).start()
     return _public_job(job)
 
 
@@ -959,11 +809,7 @@ def install_routes(
         ):
             return discover_models(model_provider, limit=limit, role=role)
 
-    benchmark_enabled = all(
-        value is not None
-        for value in (config_provider, switch_model, runtime_lock, find_server_pid)
-    )
-
+    benchmark_enabled = all(value is not None for value in (config_provider, switch_model, runtime_lock, find_server_pid))
     if benchmark_enabled and "/api/model-scout/benchmarks" not in paths:
         @app.post("/api/model-scout/benchmarks", status_code=202)
         def model_scout_start_benchmark(request: BenchmarkRequest):
