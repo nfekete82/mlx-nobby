@@ -121,6 +121,7 @@ const context = {
     crypto: {
         randomUUID: () => 'regenerate-trace-id',
     },
+    Math,
     Date,
     encodeURIComponent,
     fetch: async (url, options = {}) => {
@@ -128,6 +129,10 @@ const context = {
 
         assert.equal(url, '/api/mlx/chat/actions');
         assert.equal(options.method, 'POST');
+
+        const jobCharacter = ['a', 'b', 'c', 'd', 'e', 'f'][
+            requests.length - 1
+        ] || 'f';
 
         return {
             ok: true,
@@ -138,7 +143,7 @@ const context = {
                     status: 'queued',
                     data: {
                         job: {
-                            id: 'a'.repeat(24),
+                            id: jobCharacter.repeat(24),
                             operation: 'generate',
                             status: 'queued',
                             phase: 'queued',
@@ -184,11 +189,14 @@ assert.equal(prepared.imageOptions.auto_size, false);
 assert.equal(Object.hasOwn(prepared.imageOptions, 'seed'), false);
 
 const controls = window.MLXChatGeneration.createImageUpscaleMenu(artifact);
-assert.equal(controls.children.length, 2);
+assert.equal(controls.children.length, 3);
 assert.equal(controls.children[0].tagName, 'BUTTON');
 assert.equal(controls.children[0].textContent, 'Neu generieren');
 assert.equal(controls.children[0].className, 'message-action-btn');
-assert.equal(controls.children[1].className, 'image-upscale-menu');
+assert.equal(controls.children[1].tagName, 'BUTTON');
+assert.equal(controls.children[1].textContent, '3× Neu generieren');
+assert.equal(controls.children[1].className, 'message-action-btn');
+assert.equal(controls.children[2].className, 'image-upscale-menu');
 
 const editControls = window.MLXChatGeneration.createImageUpscaleMenu({
     ...artifact,
@@ -225,8 +233,59 @@ assert.equal(Object.hasOwn(payload.image_options, 'seed'), false);
 assert.equal(session.messages.length, 1);
 assert.equal(session.messages[0].image_job.status, 'queued');
 assert.equal(session.messages[0].tool_result.tool, 'image_generate');
-assert.equal(resumeCalls, 1);
-assert.ok(saveCalls >= 2);
-assert.ok(renderCalls >= 2);
 
-console.log('Image regenerate action passed.');
+const variantsStarted = await window.MLXImageRegenerate.generateImageVariants(
+    artifact,
+    3,
+);
+assert.equal(variantsStarted, true);
+assert.equal(requests.length, 4);
+assert.equal(session.messages.length, 4);
+
+const variantMessages = session.messages.slice(1);
+assert.deepEqual(
+    variantMessages.map(message => message.image_variant_index),
+    [1, 2, 3],
+);
+assert.deepEqual(
+    variantMessages.map(message => message.image_variant_count),
+    [3, 3, 3],
+);
+assert.equal(
+    new Set(variantMessages.map(message => message.image_variant_group_id)).size,
+    1,
+);
+assert.ok(variantMessages.every(message => message.image_job.status === 'queued'));
+assert.deepEqual(
+    variantMessages.map(message => message.image_job.id),
+    ['b'.repeat(24), 'c'.repeat(24), 'd'.repeat(24)],
+);
+
+for (const request of requests.slice(1)) {
+    const variantPayload = JSON.parse(request.options.body);
+    assert.equal(variantPayload.prompt, artifact.prompt);
+    assert.equal(variantPayload.action, 'image_generate');
+    assert.equal(variantPayload.resolved_target, 'image');
+    assert.equal(variantPayload.quality, 'quality');
+    assert.equal(variantPayload.chat_id, session.id);
+    assert.equal(variantPayload.chat_revision, 12);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(variantPayload.image_options)),
+        {
+            prompt: artifact.prompt,
+            model: 'juggernaut-xl',
+            auto_size: false,
+            width: 1216,
+            height: 1216,
+            steps: 35,
+            guidance: 5.5,
+        },
+    );
+    assert.equal(Object.hasOwn(variantPayload.image_options, 'seed'), false);
+}
+
+assert.equal(resumeCalls, 2);
+assert.ok(saveCalls >= 4);
+assert.ok(renderCalls >= 4);
+
+console.log('Image regenerate and three-variant actions passed.');
