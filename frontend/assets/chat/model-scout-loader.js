@@ -14,12 +14,25 @@
         }
     }
 
+    function loadV3() {
+        if (document.querySelector('script[data-model-scout-v3-runtime]')) return;
+        const script = document.createElement('script');
+        script.src = '/assets/chat/model-scout-v3.js?v=20260929-model-scout-v3-1';
+        script.async = true;
+        script.dataset.modelScoutV3Runtime = 'true';
+        document.head.appendChild(script);
+    }
+
     function loadFilter() {
-        if (document.querySelector('script[data-model-scout-filter-runtime]')) return;
+        if (document.querySelector('script[data-model-scout-filter-runtime]')) {
+            loadV3();
+            return;
+        }
         const filter = document.createElement('script');
         filter.src = '/assets/chat/model-scout-filter.js?v=20260929-model-scout-filter-v2';
         filter.async = true;
         filter.dataset.modelScoutFilterRuntime = 'true';
+        filter.addEventListener('load', loadV3, { once: true });
         document.head.appendChild(filter);
     }
 
