@@ -1,12 +1,14 @@
-"""Web proxy routes and HTML hook for Model Scout v1."""
+"""Web proxy routes and HTML hook for Model Scout v2."""
 
 from __future__ import annotations
+
+import urllib.parse
 
 from fastapi import FastAPI, Query
 
 
 MODEL_SCOUT_SCRIPT = (
-    b'<script src="/assets/chat/model-scout.js?v=20260929-model-scout-v1"></script>'
+    b'<script src="/assets/chat/model-scout.js?v=20260929-model-scout-v2"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
@@ -124,6 +126,33 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 "GET",
                 "/api/model-scout/discover?limit=" + str(limit) + "&role=" + role,
                 timeout=25,
+            )
+
+    if "/api/mlx/model-scout/benchmarks" not in paths:
+        @app.post("/api/mlx/model-scout/benchmarks", status_code=202)
+        def model_scout_start_benchmark(request: dict):
+            return agent_json_request(
+                "POST",
+                "/api/model-scout/benchmarks",
+                payload=request,
+                timeout=15,
+            )
+
+        @app.get("/api/mlx/model-scout/benchmarks")
+        def model_scout_benchmark_history():
+            return agent_json_request(
+                "GET",
+                "/api/model-scout/benchmarks",
+                timeout=15,
+            )
+
+    if "/api/mlx/model-scout/benchmarks/{job_id}" not in paths:
+        @app.get("/api/mlx/model-scout/benchmarks/{job_id}")
+        def model_scout_benchmark_job(job_id: str):
+            return agent_json_request(
+                "GET",
+                "/api/model-scout/benchmarks/" + urllib.parse.quote(job_id, safe=""),
+                timeout=15,
             )
 
 
