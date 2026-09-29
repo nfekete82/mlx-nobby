@@ -5,7 +5,7 @@
     window.__mlxNobbySettingsLayout = true;
 
     const SECTIONS = ['chat', 'models', 'knowledge', 'personal', 'tools', 'system'];
-    const SYSTEM_TABS = ['runtime', 'storage', 'server', 'logs'];
+    const SYSTEM_TABS = ['server', 'logs'];
     const FALLBACK = {
         title: 'Settings',
         chat: 'Chat',
@@ -19,16 +19,14 @@
         tools: 'Tools',
         tools_description: 'Automatic capabilities and workspace tests.',
         system: 'System',
-        system_description: 'Runtime, storage, services and logs.',
-        runtime: 'Runtime',
-        storage: 'Storage',
+        system_description: 'Local services and logs.',
         server: 'Server',
         logs: 'Logs'
     };
 
     let copy = { ...FALLBACK };
     let activeSection = 'chat';
-    let activeSystemTab = 'runtime';
+    let activeSystemTab = 'server';
     let settings = null;
     let shellTitle = null;
     let contentTitle = null;
@@ -58,16 +56,17 @@
     function sectionFromPath(pathname) {
         const path = String(pathname || '');
         if (/^\/settings\/models\/?$/.test(path)) return 'models';
+        if (/^\/settings\/advanced\/(runtime|storage)\/?$/.test(path)) return 'models';
         if (/^\/settings\/knowledge\/?$/.test(path)) return 'knowledge';
         if (/^\/settings\/(profile|appearance)\/?$/.test(path)) return 'personal';
         if (/^\/settings\/functions\/?$/.test(path)) return 'tools';
-        if (/^\/settings\/advanced\/(runtime|storage|server|logs)\/?$/.test(path)) return 'system';
+        if (/^\/settings\/advanced\/(server|logs)\/?$/.test(path)) return 'system';
         if (/^\/settings\/advanced\/generation\/?$/.test(path)) return 'chat';
         return 'chat';
     }
 
     function systemTabFromPath(pathname) {
-        const match = String(pathname || '').match(/^\/settings\/advanced\/(runtime|storage|server|logs)\/?$/);
+        const match = String(pathname || '').match(/^\/settings\/advanced\/(server|logs)\/?$/);
         return match ? match[1] : null;
     }
 
@@ -216,6 +215,7 @@
         const path = String(location.pathname || '');
         const legacyGeneration = /^\/settings\/advanced\/generation\/?$/.test(path);
         const legacyAppearance = /^\/settings\/appearance\/?$/.test(path);
+        const legacyModelSystem = /^\/settings\/advanced\/(runtime|storage)\/?$/.test(path);
 
         if (options.normalizeLegacy !== false && controller) {
             if (legacyGeneration) {
@@ -227,6 +227,12 @@
             if (legacyAppearance) {
                 activeSection = 'personal';
                 controller.select('profile');
+                render();
+                return;
+            }
+            if (legacyModelSystem) {
+                activeSection = 'models';
+                controller.select('models');
                 render();
                 return;
             }
