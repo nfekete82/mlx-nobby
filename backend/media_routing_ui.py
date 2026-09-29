@@ -23,6 +23,23 @@ _EXPLICIT_IMAGE_REQUEST = re.compile(
     re.IGNORECASE,
 )
 
+_SHORTS_MEDIA_NOUN = (
+    r"(?:youtube\s+shorts?|shorts|short[- ]videos?|kurzvideos?|"
+    r"tiktok(?:[- ]videos?)?|reels?|(?:ein(?:en)?|a)\s+short)"
+)
+_SHORTS_CREATE_VERB = (
+    r"(?:erstelle|erstell|erstellen|mach|mache|machen|generiere|generieren|"
+    r"erzeuge|erzeugen|produziere|produzieren|baue|bauen|schneide|schneiden|"
+    r"create|generate|produce|build)"
+)
+_EXPLICIT_SHORTS_REQUEST = re.compile(
+    rf"(?:\b{_SHORTS_CREATE_VERB}\b[\s\S]{{0,160}}?\b{_SHORTS_MEDIA_NOUN}\b)"
+    rf"|(?:\b{_SHORTS_MEDIA_NOUN}\b[\s\S]{{0,160}}?\b{_SHORTS_CREATE_VERB}\b)"
+    r"|(?:\b(?:turn|convert)\b[\s\S]{0,160}?\b(?:into|to)\b"
+    r"[\s\S]{0,60}?\b(?:youtube\s+short|short[- ]video|tiktok(?:[- ]video)?|reel)\b)",
+    re.IGNORECASE,
+)
+
 _VISUAL_PROMPT_HINT = re.compile(
     r"\b(?:photorealistic|fotorealistisch|cinematic|cinematisch|portrait|porträt|portraitaufnahme|"
     r"composition|komposition|lighting|beleuchtung|lens|objektiv|bokeh|depth of field|tiefenschärfe|"
@@ -62,18 +79,38 @@ def _visual_prompt_hint_count(prompt: str) -> int:
     return len({match.group(0).casefold() for match in _VISUAL_PROMPT_HINT.finditer(prompt)})
 
 
-def conservative_media_target(prompt: str, target: str) -> str:
-    """Demote weak long-form image classifications back to normal chat.
+def _has_explicit_shorts_request(prompt: str) -> bool:
+    """Require an actual Shorts creation instruction, especially for pasted prose."""
+    text = str(prompt or "").strip()
+    if not text:
+        return False
 
-    Short prompts keep the semantic router's decision. Longer prose must either
-    contain an explicit image-creation instruction or look strongly like a
-    dedicated visual prompt. This prevents ordinary pasted text from opening
-    the image-quality dialog just because it happens to mention images.
+    if len(text) <= LONG_PROMPT_CHARS:
+        search_text = text
+    else:
+        # A real request around pasted source material normally sits at the start
+        # or the end. Ignoring the middle prevents quoted prose from triggering a job.
+        search_text = text[:400] + "\n" + text[-400:]
+
+    return bool(_EXPLICIT_SHORTS_REQUEST.search(search_text))
+
+
+def conservative_media_target(prompt: str, target: str) -> str:
+    """Demote weak media classifications back to normal chat.
+
+    Image generation remains available for explicit requests and dedicated
+    visual prompts. Shorts generation is stricter because it starts a costly,
+    multi-step media workflow: mentions of Shorts, TikTok or Reels alone are
+    never enough; an explicit creation instruction is required.
     """
+    text = str(prompt or "").strip()
+
+    if target == "shorts_generate":
+        return target if _has_explicit_shorts_request(text) else "chat"
+
     if target != "image":
         return target
 
-    text = str(prompt or "").strip()
     if not text:
         return target
 
@@ -93,7 +130,7 @@ def conservative_media_target(prompt: str, target: str) -> str:
 
 
 def guard_media_route_payload(request_body: bytes, response_body: bytes) -> bytes:
-    """Rewrite a weak image route response to chat, leaving all else untouched."""
+    """Rewrite weak media route responses to chat, leaving unrelated routes untouched."""
     try:
         request_payload = json.loads(request_body.decode("utf-8"))
         response_payload = json.loads(response_body.decode("utf-8"))
@@ -113,7 +150,11 @@ def guard_media_route_payload(request_body: bytes, response_body: bytes) -> byte
         return response_body
 
     response_payload["target"] = guarded_target
-    response_payload["routing_guard"] = "long_form_chat_fallback"
+    response_payload["routing_guard"] = (
+        "explicit_shorts_intent_required"
+        if original_target == "shorts_generate"
+        else "long_form_chat_fallback"
+    )
     return json.dumps(
         response_payload,
         ensure_ascii=False,
@@ -122,7 +163,7 @@ def guard_media_route_payload(request_body: bytes, response_body: bytes) -> byte
 
 
 class MediaRoutingUiMiddleware:
-    """Inject UI fallback and guard over-eager image-route classifications."""
+    """Inject UI fallback and guard over-eager media-route classifications."""
 
     def __init__(self, app):
         self.app = app
