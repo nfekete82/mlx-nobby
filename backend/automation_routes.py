@@ -34,6 +34,41 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 timeout=15,
             )
 
+    if "/api/mlx/automations/notifications" not in paths:
+        @app.get("/api/mlx/automations/notifications")
+        def automation_notifications(
+            limit: int = Query(default=50, ge=1, le=200),
+            unread_only: bool = False,
+        ):
+            query = urllib.parse.urlencode({
+                "limit": str(limit),
+                "unread_only": "true" if unread_only else "false",
+            })
+            return agent_json_request(
+                "GET",
+                "/api/automations/notifications?" + query,
+                timeout=15,
+            )
+
+        @app.post("/api/mlx/automations/notifications/read-all")
+        def automation_notifications_read_all():
+            return agent_json_request(
+                "POST",
+                "/api/automations/notifications/read-all",
+                {},
+                timeout=15,
+            )
+
+        @app.post("/api/mlx/automations/notifications/{notification_id}/read")
+        def automation_notification_read(notification_id: str):
+            return agent_json_request(
+                "POST",
+                "/api/automations/notifications/" +
+                urllib.parse.quote(notification_id, safe="") + "/read",
+                {},
+                timeout=15,
+            )
+
     if "/api/mlx/automations/{automation_id}" not in paths:
         @app.get("/api/mlx/automations/{automation_id}")
         def automation_get(automation_id: str):
