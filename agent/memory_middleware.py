@@ -84,7 +84,14 @@ class MemoryChatMiddleware:
                     "body": replacement,
                     "more_body": False,
                 }
-            return {"type": "http.disconnect"}
+
+            # Do not synthesize ``http.disconnect`` here. StreamingResponse
+            # listens on the ASGI receive channel while it sends tokens. A fake
+            # disconnect cancels the response body immediately and leaves the
+            # browser with an empty assistant message. After replaying the
+            # rewritten request body, delegate to the real client connection so
+            # disconnect is reported only when the client actually goes away.
+            return await receive()
 
         await self.app(scope, enriched_receive, send)
 
