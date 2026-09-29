@@ -13,6 +13,8 @@
   "personal_description": "Profile, response style and appearance.",
   "tools": "Tools",
   "tools_description": "Automatic capabilities and workspace tests.",
+  "automations": "Automations",
+  "automations_description": "Scheduled local agent tasks and recurring checks.",
   "system": "System",
   "system_description": "Local services and logs.",
   "server": "Server",
