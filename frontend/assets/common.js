@@ -213,6 +213,18 @@
         }
     }
 
+    async function loadImageCountPicker() {
+        if (!document.getElementById('mediaQualityModal')) return;
+        try {
+            await loadScript(
+                '/assets/chat/image-count-picker.js?v=20260929-image-count-v1',
+                'mlx-image-count-picker'
+            );
+        } catch (error) {
+            console.error('[image-count] Failed to load image count picker:', error);
+        }
+    }
+
     function loadChatEnhancements() {
         removeRedundantTopActions();
         loadRuntimeReliability();
@@ -222,6 +234,7 @@
         loadRuntimeBudget();
         loadJobQueue();
         loadShortsHistory();
+        loadImageCountPicker();
     }
 
     window.MLXCommon = {
