@@ -1,13 +1,14 @@
 (() => {
     'use strict';
 
-    const SCRIPT_VERSION = '20260929-task-mode-v1';
+    const SCRIPT_VERSION = '20260929-task-mode-v2';
     const CSS_ID = 'mlx-agent-task-mode-css';
     const FALLBACK = {
-        label: 'Task',
-        active: 'Task Mode active',
-        enable_title: 'Use Task Mode for the next message',
-        disable_title: 'Disable Task Mode',
+        chat_label: 'Chat',
+        task_label: 'Task',
+        chat_title: 'Use normal chat mode',
+        task_title: 'Use Agent Task Mode for this workspace',
+        task_unavailable_title: 'Select a coding workspace to use Task Mode',
         workspace_required: 'Task Mode requires an active coding workspace. Open a workspace first and start the task again.',
         workspace_check_failed: 'The active workspace could not be checked.',
         attachments_unsupported: 'Task Mode v1 currently works with the active coding workspace only. Remove attached files before starting the task.',
@@ -15,10 +16,15 @@
         failed: 'Agent Task Mode failed: {message}'
     };
 
-    let armed = false;
+    let mode = 'chat';
     let running = false;
-    let button = null;
+    let workspace = null;
+    let switcher = null;
+    let chatButton = null;
+    let taskButton = null;
     let dictionary = {};
+    let workspaceObserver = null;
+    let workspaceSyncScheduled = false;
 
     function t(key, variables = {}) {
         let value = dictionary[key] || FALLBACK[key] || key;
@@ -58,20 +64,44 @@
         } catch (_error) {}
     }
 
-    function setArmed(value) {
-        armed = Boolean(value) && !running;
-        if (!button) return;
-        button.classList.toggle('is-active', armed || running);
-        button.classList.toggle('is-running', running);
-        button.setAttribute('aria-pressed', armed ? 'true' : 'false');
-        button.disabled = running;
-        button.title = armed ? t('disable_title') : t('enable_title');
-        const label = button.querySelector('[data-agent-task-label]');
-        if (label) {
-            label.textContent = running
-                ? t('running')
-                : armed ? t('active') : t('label');
+    function updateSwitch() {
+        if (!switcher || !chatButton || !taskButton) return;
+
+        const hasWorkspace = Boolean(workspace?.workspace_id);
+        if (!hasWorkspace && mode === 'task') mode = 'chat';
+
+        const taskActive = mode === 'task' && hasWorkspace;
+        chatButton.classList.toggle('is-active', !taskActive);
+        taskButton.classList.toggle('is-active', taskActive);
+        chatButton.setAttribute('aria-pressed', taskActive ? 'false' : 'true');
+        taskButton.setAttribute('aria-pressed', taskActive ? 'true' : 'false');
+
+        chatButton.disabled = running;
+        taskButton.disabled = running || !hasWorkspace;
+        chatButton.textContent = t('chat_label');
+        taskButton.textContent = t('task_label');
+        chatButton.title = t('chat_title');
+        taskButton.title = hasWorkspace
+            ? t('task_title')
+            : t('task_unavailable_title');
+
+        switcher.classList.toggle('is-running', running);
+        switcher.classList.toggle('has-workspace', hasWorkspace);
+        switcher.dataset.mode = taskActive ? 'task' : 'chat';
+        switcher.title = !hasWorkspace
+            ? t('task_unavailable_title')
+            : '';
+    }
+
+    function setMode(nextMode) {
+        const requested = nextMode === 'task' ? 'task' : 'chat';
+        if (requested === 'task' && !workspace?.workspace_id) {
+            mode = 'chat';
+        } else if (!running) {
+            mode = requested;
         }
+        updateSwitch();
+        return mode;
     }
 
     function executionGoal(userGoal) {
@@ -103,13 +133,32 @@
         return data?.active_workspace || null;
     }
 
-    async function consume({ prompt } = {}) {
-        if (!armed) return null;
-        setArmed(false);
-
-        let workspace = null;
+    async function syncWorkspaceState() {
         try {
             workspace = await activeWorkspace();
+        } catch (_error) {
+            workspace = null;
+        }
+        if (!workspace?.workspace_id && mode === 'task') mode = 'chat';
+        updateSwitch();
+        return workspace;
+    }
+
+    function scheduleWorkspaceSync() {
+        if (workspaceSyncScheduled) return;
+        workspaceSyncScheduled = true;
+        queueMicrotask(async () => {
+            workspaceSyncScheduled = false;
+            await syncWorkspaceState();
+        });
+    }
+
+    async function consume({ prompt } = {}) {
+        if (mode !== 'task') return null;
+
+        let currentWorkspace = null;
+        try {
+            currentWorkspace = await activeWorkspace();
         } catch (error) {
             return {
                 error: t('workspace_check_failed') + ' ' +
@@ -117,7 +166,11 @@
             };
         }
 
+        workspace = currentWorkspace;
+        updateSwitch();
+
         if (!workspace?.workspace_id) {
+            setMode('chat');
             return { error: t('workspace_required') };
         }
 
@@ -168,7 +221,7 @@
         const send = document.getElementById('sendButton');
         if (input) input.disabled = running;
         if (send) send.disabled = running;
-        setArmed(false);
+        updateSwitch();
     }
 
     function installApprovalAdapter() {
@@ -286,7 +339,7 @@
     }
 
     async function startFromComposer() {
-        if (!armed || running) return false;
+        if (mode !== 'task' || running) return false;
         const input = document.getElementById('input');
         const prompt = String(input?.value || '').trim();
         if (!prompt) return true;
@@ -345,14 +398,14 @@
         const send = document.getElementById('sendButton');
         const input = document.getElementById('input');
         send?.addEventListener('click', event => {
-            if (!armed || running) return;
+            if (mode !== 'task' || running) return;
             event.preventDefault();
             event.stopImmediatePropagation();
             startFromComposer();
         }, true);
         input?.addEventListener('keydown', event => {
             if (
-                !armed || running || event.isComposing ||
+                mode !== 'task' || running || event.isComposing ||
                 event.key !== 'Enter' || event.shiftKey
             ) return;
             event.preventDefault();
@@ -361,42 +414,76 @@
         }, true);
     }
 
+    function observeWorkspaceHeader() {
+        const header = document.getElementById('activeWorkspaceHeader');
+        if (!header || workspaceObserver || typeof MutationObserver === 'undefined') {
+            return;
+        }
+        workspaceObserver = new MutationObserver(scheduleWorkspaceSync);
+        workspaceObserver.observe(header, {
+            attributes: true,
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+    }
+
+    function mountSwitch() {
+        if (switcher) return true;
+        const workspaceHeader = document.getElementById('activeWorkspaceHeader');
+        if (!workspaceHeader?.parentNode) return false;
+
+        switcher = document.createElement('div');
+        switcher.id = 'agentTaskModeSwitch';
+        switcher.className = 'agent-task-mode-switch';
+        switcher.setAttribute('role', 'group');
+
+        chatButton = document.createElement('button');
+        chatButton.id = 'agentChatModeButton';
+        chatButton.className = 'agent-task-mode-option';
+        chatButton.type = 'button';
+        chatButton.addEventListener('click', () => setMode('chat'));
+
+        taskButton = document.createElement('button');
+        taskButton.id = 'agentTaskModeButton';
+        taskButton.className = 'agent-task-mode-option';
+        taskButton.type = 'button';
+        taskButton.addEventListener('click', async () => {
+            await syncWorkspaceState();
+            setMode('task');
+        });
+
+        switcher.append(chatButton, taskButton);
+        workspaceHeader.insertAdjacentElement('afterend', switcher);
+        updateSwitch();
+        return true;
+    }
+
     function mount() {
         installCss();
         installApprovalAdapter();
-        if (!button) {
-            const actions = document.querySelector('.composer-actions');
-            const dictation = document.getElementById('dictationButton');
-            if (!actions || !dictation) return;
-
-            button = document.createElement('button');
-            button.id = 'agentTaskModeButton';
-            button.className = 'agent-task-mode-button';
-            button.type = 'button';
-            button.setAttribute('aria-pressed', 'false');
-            button.innerHTML =
-                '<span class="agent-task-mode-icon" aria-hidden="true">⌘</span>' +
-                '<span data-agent-task-label></span>';
-            button.addEventListener('click', () => setArmed(!armed));
-            actions.insertBefore(button, dictation);
-            interceptComposer();
-        }
-        setArmed(armed);
+        if (!mountSwitch()) return;
+        interceptComposer();
+        observeWorkspaceHeader();
+        syncWorkspaceState();
     }
 
     async function refreshLanguage() {
         dictionary = {};
         await loadDictionary();
-        setArmed(armed);
+        updateSwitch();
     }
 
     window.MLXAgentTaskMode = {
         consume,
         executionGoal,
-        isArmed: () => armed,
+        getMode: () => mode,
+        isArmed: () => mode === 'task',
         isRunning: () => running,
-        setArmed,
+        setArmed: value => setMode(value ? 'task' : 'chat'),
+        setMode,
         startFromComposer,
+        syncWorkspaceState,
         mount,
         __test: {
             activeWorkspace,
@@ -409,4 +496,8 @@
     loadDictionary().finally(mount);
     document.addEventListener('mlx-i18n-ready', refreshLanguage);
     document.addEventListener('mlx-language-changed', refreshLanguage);
+    window.addEventListener('focus', scheduleWorkspaceSync);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleWorkspaceSync();
+    });
 })();
