@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r /app/requirements/web.txt
 
 ARG MLX_NOBBY_BUILD_SHA=unknown
 
+COPY VERSION /app/VERSION
 COPY backend /app/backend
 COPY frontend /app/frontend
 COPY local_security.py /app/local_security.py
