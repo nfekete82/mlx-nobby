@@ -15,6 +15,8 @@ const window = {
             if (id.includes('heretic')) traits.push('heretic');
             if (id.includes('uncensored')) traits.push('uncensored');
             if (id.includes('abliterated')) traits.push('abliterated');
+            if (id.includes('orthogonalized')) traits.push('orthogonalized');
+            if (id.includes('unfiltered')) traits.push('unfiltered');
             return traits;
         },
     },
@@ -82,5 +84,13 @@ assert.equal(matches(standard, 'abliterated'), false);
 const abliterated = card('mlx-community/Qwen3.8-27B-Abliterated-4bit', ['Abliterated']);
 assert.equal(matches(abliterated, 'abliterated'), true);
 assert.equal(matches(abliterated, 'standard'), false);
+
+const orthogonalized = card('mlx-community/Model-Orthogonalized-4bit', ['Orthogonalized']);
+assert.equal(matches(orthogonalized, 'orthogonalized'), true);
+assert.equal(matches(orthogonalized, 'unfiltered'), false);
+
+const unfiltered = card('mlx-community/Model-4bit', ['Unfiltered']);
+assert.equal(matches(unfiltered, 'unfiltered'), true);
+assert.equal(matches(unfiltered, 'standard'), false);
 
 console.log('Model Scout tuning filter passed.');
