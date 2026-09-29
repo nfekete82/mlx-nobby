@@ -14,9 +14,19 @@
         }
     }
 
+    function loadFilter() {
+        if (document.querySelector('script[data-model-scout-filter-runtime]')) return;
+        const filter = document.createElement('script');
+        filter.src = '/assets/chat/model-scout-filter.js?v=20260929-model-scout-filter-v1';
+        filter.async = true;
+        filter.dataset.modelScoutFilterRuntime = 'true';
+        document.head.appendChild(filter);
+    }
+
     function loadScout() {
         if (!document.getElementById('modelConsoleContent')) return false;
         if (document.querySelector('script[data-model-scout-runtime]')) {
+            loadFilter();
             stopWatching();
             return true;
         }
@@ -29,6 +39,7 @@
         script.src = '/assets/chat/model-scout.js?v=20260929-model-scout-v2-tuning';
         script.async = true;
         script.dataset.modelScoutRuntime = 'true';
+        script.addEventListener('load', loadFilter, { once: true });
         script.addEventListener('error', () => {
             loading = false;
             startWatching();
