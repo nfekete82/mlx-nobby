@@ -59,7 +59,47 @@ def test_long_visual_prompt_without_command_stays_image():
     assert conservative_media_target(prompt, "image") == "image"
 
 
-def test_non_image_targets_are_never_changed():
+def test_long_normal_prose_is_not_routed_to_shorts():
+    prompt = (
+        "Analysiere bitte diesen langen Text. Darin geht es unter anderem um "
+        "YouTube Shorts, TikTok und Reels als Plattformformate, aber ich möchte "
+        "nur eine textliche Einschätzung. "
+    ) * 8
+
+    assert conservative_media_target(prompt, "shorts_generate") == "chat"
+
+
+def test_ambiguous_short_mention_requires_explicit_creation_request():
+    assert conservative_media_target(
+        "Was hältst du von YouTube Shorts und Reels?",
+        "shorts_generate",
+    ) == "chat"
+
+
+def test_explicit_shorts_request_keeps_router_decision():
+    assert conservative_media_target(
+        "Erstelle mir ein YouTube Short über Apple Silicon mit drei Szenen.",
+        "shorts_generate",
+    ) == "shorts_generate"
+
+
+def test_explicit_english_shorts_request_keeps_router_decision():
+    assert conservative_media_target(
+        "Turn this into a 30 second TikTok video with captions.",
+        "shorts_generate",
+    ) == "shorts_generate"
+
+
+def test_long_shorts_request_at_end_keeps_router_decision():
+    prompt = (
+        "Hier ist mein langer Ausgangstext über Apple Silicon und lokale KI. " * 20
+        + "Mach daraus bitte ein Short mit drei Szenen und Untertiteln."
+    )
+
+    assert conservative_media_target(prompt, "shorts_generate") == "shorts_generate"
+
+
+def test_unrelated_targets_are_never_changed():
     long_prompt = "normaler Text " * 100
 
     assert conservative_media_target(long_prompt, "image_edit") == "image_edit"
@@ -77,6 +117,18 @@ def test_guard_rewrites_only_target_and_marks_reason():
     assert guarded["target"] == "chat"
     assert guarded["confidence"] == 0.61
     assert guarded["routing_guard"] == "long_form_chat_fallback"
+
+
+def test_shorts_guard_rewrites_target_and_marks_reason():
+    prompt = "Analysiere diesen Text über Shorts und Reels. " * 30
+    request = json.dumps({"prompt": prompt}).encode()
+    response = json.dumps({"target": "shorts_generate", "confidence": 0.73}).encode()
+
+    guarded = json.loads(guard_media_route_payload(request, response))
+
+    assert guarded["target"] == "chat"
+    assert guarded["confidence"] == 0.73
+    assert guarded["routing_guard"] == "explicit_shorts_intent_required"
 
 
 def test_guard_leaves_invalid_json_untouched():
