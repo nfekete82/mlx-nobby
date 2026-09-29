@@ -7,6 +7,15 @@
     document.head.appendChild(script);
 })();
 
+(() => {
+    if (document.querySelector('script[data-agent-diff-view-loader]')) return;
+    const script = document.createElement('script');
+    script.src = '/assets/chat/agent-diff-view.js?v=20260929-agent-diff-v1';
+    script.async = false;
+    script.dataset.agentDiffViewLoader = '1';
+    document.head.appendChild(script);
+})();
+
 function dictationT(key, fallback = '', variables = {}) {
     let value = window.MLXI18n?.t(key, fallback) ?? fallback;
 
