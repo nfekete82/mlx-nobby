@@ -47,13 +47,15 @@ assert.equal(api.sectionFromPath('/settings/knowledge'), 'knowledge');
 assert.equal(api.sectionFromPath('/settings/profile'), 'personal');
 assert.equal(api.sectionFromPath('/settings/appearance'), 'personal');
 assert.equal(api.sectionFromPath('/settings/functions'), 'tools');
-assert.equal(api.sectionFromPath('/settings/advanced/runtime'), 'system');
-assert.equal(api.sectionFromPath('/settings/advanced/storage'), 'system');
+assert.equal(api.sectionFromPath('/settings/advanced/runtime'), 'models');
+assert.equal(api.sectionFromPath('/settings/advanced/storage'), 'models');
 assert.equal(api.sectionFromPath('/settings/advanced/server'), 'system');
 assert.equal(api.sectionFromPath('/settings/advanced/logs'), 'system');
 
-assert.equal(api.systemTabFromPath('/settings/advanced/runtime'), 'runtime');
-assert.equal(api.systemTabFromPath('/settings/advanced/storage'), 'storage');
+assert.equal(api.systemTabFromPath('/settings/advanced/runtime'), null);
+assert.equal(api.systemTabFromPath('/settings/advanced/storage'), null);
+assert.equal(api.systemTabFromPath('/settings/advanced/server'), 'server');
+assert.equal(api.systemTabFromPath('/settings/advanced/logs'), 'logs');
 assert.equal(api.systemTabFromPath('/settings/models'), null);
 
 assert.equal(api.sectionTarget('chat'), 'general');
