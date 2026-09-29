@@ -1,12 +1,6 @@
 {
-  "chat_label": "Chat",
-  "task_label": "Task",
-  "chat_title": "Use normal chat mode",
-  "task_title": "Use Agent Task Mode for this workspace",
-  "task_unavailable_title": "Select a coding workspace to use Task Mode",
-  "workspace_required": "Task Mode requires an active coding workspace. Open a workspace first and start the task again.",
+  "workspace_required": "Workspace mode requires an active coding workspace.",
   "workspace_check_failed": "The active workspace could not be checked.",
-  "attachments_unsupported": "Task Mode v1 currently works with the active coding workspace only. Remove attached files before starting the task.",
-  "running": "Agent Task Mode is working …",
-  "failed": "Agent Task Mode failed: {message}"
+  "attachments_unsupported": "Workspace mode currently works with the active coding workspace only. Remove attached files before starting the task.",
+  "failed": "Workspace task failed: {message}"
 }
