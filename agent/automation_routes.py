@@ -122,6 +122,20 @@ def _start_worker(run_id: str, automation: dict) -> None:
     thread.start()
 
 
+def _recover_stale_runs() -> None:
+    for run in automations.list_runs(limit=200):
+        if run.get("status") not in automations.ACTIVE_RUN_STATUSES:
+            continue
+        try:
+            automations.finish_run(
+                run["id"],
+                status="failed",
+                error="Agent wurde während dieser Automation neu gestartet.",
+            )
+        except Exception:
+            logger.exception("Could not recover stale automation run %s", run.get("id"))
+
+
 def _scheduler_loop() -> None:
     # Give the agent routes a moment to finish booting before the first claim.
     time.sleep(3)
@@ -139,6 +153,7 @@ def start_scheduler() -> None:
     with _SCHEDULER_LOCK:
         if _SCHEDULER_STARTED:
             return
+        _recover_stale_runs()
         _SCHEDULER_STARTED = True
         thread = threading.Thread(
             target=_scheduler_loop,
