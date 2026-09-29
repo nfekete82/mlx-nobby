@@ -142,6 +142,16 @@ def _public(job):
         for key, item in job.items()
         if key != "request" and not key.startswith("_")
     }
+
+    # ``dispatching`` is an internal queue hand-off state between the Agent
+    # and the native media service. Older clients do not know that state and
+    # can mistake it for a terminal result, which stops their job poller and
+    # leaves a chat card frozen forever. Keep the internal state for recovery
+    # and persistence, but expose it as the normal active ``queued`` state.
+    if value.get("status") == "dispatching":
+        value["status"] = "queued"
+        value["phase"] = "queued"
+
     value["cancellable"] = value.get("status") not in TERMINAL
     return value
 
