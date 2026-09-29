@@ -48,6 +48,7 @@ assert.equal(api.sectionFromPath('/settings/knowledge'), 'knowledge');
 assert.equal(api.sectionFromPath('/settings/profile'), 'personal');
 assert.equal(api.sectionFromPath('/settings/appearance'), 'personal');
 assert.equal(api.sectionFromPath('/settings/functions'), 'tools');
+assert.equal(api.sectionFromPath('/settings/automations'), 'automations');
 assert.equal(api.sectionFromPath('/settings/advanced/runtime'), 'models');
 assert.equal(api.sectionFromPath('/settings/advanced/storage'), 'models');
 assert.equal(api.sectionFromPath('/settings/advanced/server'), 'system');
@@ -64,5 +65,6 @@ assert.equal(api.sectionTarget('personal'), 'profile');
 assert.equal(api.sectionTarget('tools'), 'functions');
 assert.equal(api.sectionTarget('knowledge'), 'knowledge');
 assert.equal(api.sectionTarget('models'), 'models');
+assert.equal(api.sectionTarget('automations'), 'automations');
 
 console.log('Organized settings navigation helpers passed.');
