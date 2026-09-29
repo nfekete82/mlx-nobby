@@ -1,0 +1,156 @@
+.agent-git-diff {
+    margin-top: 10px;
+    border: 1px solid rgba(127, 139, 158, 0.24);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(14, 18, 24, 0.28);
+}
+
+.agent-step > .agent-git-diff {
+    grid-column: 2;
+    min-width: 0;
+}
+
+.agent-git-diff > summary {
+    cursor: pointer;
+    padding: 9px 11px;
+    font-size: 0.8rem;
+    font-weight: 650;
+    user-select: none;
+}
+
+.agent-git-diff[open] > summary {
+    border-bottom: 1px solid rgba(127, 139, 158, 0.18);
+}
+
+.agent-git-diff-body {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+}
+
+.agent-split-diff-file {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgba(127, 139, 158, 0.18);
+    border-radius: 8px;
+    background: rgba(8, 11, 16, 0.34);
+}
+
+.agent-split-diff-file-header,
+.agent-split-diff-labels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 9px;
+}
+
+.agent-split-diff-file-header {
+    border-bottom: 1px solid rgba(127, 139, 158, 0.16);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+}
+
+.agent-split-diff-file-header strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.agent-split-diff-stats {
+    opacity: 0.75;
+    white-space: nowrap;
+}
+
+.agent-split-diff-labels {
+    grid-template-columns: 1fr 1fr;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(127, 139, 158, 0.14);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.68;
+}
+
+.agent-split-diff-labels span:nth-child(2) {
+    padding-left: 8px;
+    border-left: 1px solid rgba(127, 139, 158, 0.14);
+}
+
+.agent-split-diff-grid {
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
+.agent-split-diff-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+    min-width: 620px;
+}
+
+.agent-split-diff-cell {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    min-height: 24px;
+    border-bottom: 1px solid rgba(127, 139, 158, 0.07);
+}
+
+.agent-split-diff-cell.right {
+    border-left: 1px solid rgba(127, 139, 158, 0.14);
+}
+
+.agent-split-diff-cell.is-removed {
+    background: rgba(248, 81, 73, 0.16);
+}
+
+.agent-split-diff-cell.is-added {
+    background: rgba(46, 160, 67, 0.18);
+}
+
+.agent-split-diff-cell.is-empty {
+    background: rgba(127, 139, 158, 0.035);
+}
+
+.agent-split-diff-line-number {
+    padding: 3px 7px;
+    text-align: right;
+    color: rgba(160, 170, 184, 0.72);
+    background: rgba(127, 139, 158, 0.06);
+    user-select: none;
+}
+
+.agent-split-diff-code {
+    display: block;
+    min-width: 0;
+    padding: 3px 8px;
+    white-space: pre;
+    overflow-wrap: normal;
+}
+
+.agent-split-diff-hunk {
+    min-width: 620px;
+    padding: 4px 10px;
+    color: #8cb4ff;
+    background: rgba(56, 109, 201, 0.12);
+    border-bottom: 1px solid rgba(127, 139, 158, 0.08);
+}
+
+.agent-test-evidence-title[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 760px) {
+    .agent-git-diff-body {
+        padding: 7px;
+    }
+
+    .agent-split-diff-row,
+    .agent-split-diff-hunk {
+        min-width: 560px;
+    }
+}
