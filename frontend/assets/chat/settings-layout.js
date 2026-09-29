@@ -4,7 +4,7 @@
     if (window.__mlxNobbySettingsLayout) return;
     window.__mlxNobbySettingsLayout = true;
 
-    const SECTIONS = ['chat', 'models', 'knowledge', 'personal', 'tools', 'system'];
+    const SECTIONS = ['chat', 'models', 'knowledge', 'personal', 'tools', 'automations', 'system'];
     const MODEL_TABS = ['models', 'runtime', 'storage', 'downloads'];
     const SYSTEM_TABS = ['server', 'logs'];
     const FALLBACK = {
@@ -22,6 +22,8 @@
         personal_description: 'Profile, response style and appearance.',
         tools: 'Tools',
         tools_description: 'Automatic capabilities and workspace tests.',
+        automations: 'Automations',
+        automations_description: 'Scheduled local agent tasks and recurring checks.',
         system: 'System',
         system_description: 'Local services and logs.',
         server: 'Server',
@@ -66,6 +68,7 @@
         if (/^\/settings\/knowledge\/?$/.test(path)) return 'knowledge';
         if (/^\/settings\/(profile|appearance)\/?$/.test(path)) return 'personal';
         if (/^\/settings\/functions\/?$/.test(path)) return 'tools';
+        if (/^\/settings\/automations\/?$/.test(path)) return 'automations';
         if (/^\/settings\/advanced\/(server|logs)\/?$/.test(path)) return 'system';
         if (/^\/settings\/advanced\/generation\/?$/.test(path)) return 'chat';
         return 'chat';
@@ -82,7 +85,8 @@
             models: 'models',
             knowledge: 'knowledge',
             personal: 'profile',
-            tools: 'functions'
+            tools: 'functions',
+            automations: 'automations'
         }[section] || 'general';
     }
 
@@ -228,6 +232,11 @@
     function activateSection(section) {
         if (!controller || !SECTIONS.includes(section)) return;
         activeSection = section;
+        if (section === 'automations') {
+            window.MLXAutomationsUI?.show({ updateHistory: true });
+            render();
+            return;
+        }
         if (section === 'system') {
             controller.selectSystem(activeSystemTab);
         } else {
@@ -286,6 +295,11 @@
         }
 
         activeSection = sectionFromPath(path);
+        if (activeSection === 'automations') {
+            window.MLXAutomationsUI?.show({ updateHistory: false });
+            render();
+            return;
+        }
         const systemTab = systemTabFromPath(path);
         if (systemTab) activeSystemTab = systemTab;
         render();
