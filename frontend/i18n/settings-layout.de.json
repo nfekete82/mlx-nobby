@@ -1,0 +1,19 @@
+{
+  "title": "Einstellungen",
+  "chat": "Chat",
+  "chat_description": "Verhalten, Generation, Kontext und Backups.",
+  "models": "Modelle",
+  "models_description": "Modelle, Rollen, Downloads und Model Scout.",
+  "knowledge": "Wissen",
+  "knowledge_description": "Lokale Dokumente und semantische Suche.",
+  "personal": "Persönlich",
+  "personal_description": "Profil, Antwortstil und Darstellung.",
+  "tools": "Tools",
+  "tools_description": "Automatische Funktionen und Workspace-Tests.",
+  "system": "System",
+  "system_description": "Runtime, Speicher, Dienste und Logs.",
+  "runtime": "Runtime",
+  "storage": "Speicher",
+  "server": "Server",
+  "logs": "Logs"
+}
