@@ -10,7 +10,7 @@
         disable_title: 'Disable Task Mode',
         workspace_required: 'Task Mode requires an active coding workspace. Open a workspace first and start the task again.',
         workspace_check_failed: 'The active workspace could not be checked.',
-        prompt_required: 'Describe the task first.',
+        attachments_unsupported: 'Task Mode v1 currently works with the active coding workspace only. Remove attached files before starting the task.',
         running: 'Agent Task Mode is working …',
         failed: 'Agent Task Mode failed: {message}'
     };
@@ -85,12 +85,12 @@
             '1. Work only inside the bound coding workspace.',
             '2. Inspect the project before proposing changes. Prefer workspace_search/workspace_read and git_status/git_diff.',
             '3. Form a concise implementation plan from evidence before any mutation.',
-            '4. Prepare changes with code_prepare. Never bypass the existing approval flow for code_apply.',
-            '5. After an approved patch is applied, run the workspace test suite with code_test.',
-            '6. If tests fail, inspect the failure and attempt at most three repair cycles. Each new mutation must use the normal prepare/apply approval path.',
+            '4. Prepare changes with code_prepare. Let the existing coding runtime perform code_diff and code_test on the isolated patch before it requests approval for code_apply. Never bypass that approval flow.',
+            '5. If patch tests fail, inspect the failure and attempt at most three repair cycles. Each new mutation must use the normal prepare/diff/test/approval path.',
+            '6. After approval, rely on the existing code_apply and verification path; do not perform an unrelated second mutation.',
             '7. Do not use unrestricted shell commands when a workspace/code tool can do the job.',
-            '8. Finish with a concise summary containing changed files, test result, and patch/diff information. Mention that the applied patch can be reverted with code_revert when a patch id is available.',
-            '9. If the workspace evidence is insufficient or the requested change is unsafe, stop and explain instead of guessing.'
+            '8. Finish with a concise summary containing changed files, isolated test result, apply/verification status, and patch/diff information. Mention that an applied patch can be reverted with code_revert when a patch id is available.',
+            '9. If workspace evidence is insufficient or the requested change is unsafe, stop and explain instead of guessing.'
         ].join('\n');
     }
 
@@ -146,7 +146,18 @@
             .filter(message => message.content.trim());
     }
 
+    function normalizeTaskGoals() {
+        const session = window.MLXChatSessions?.currentSession?.();
+        for (const message of session?.messages || []) {
+            const userGoal = message?.task_mode?.user_goal;
+            if (userGoal && message.agent_run) {
+                message.agent_run.goal = userGoal;
+            }
+        }
+    }
+
     function render() {
+        normalizeTaskGoals();
         window.MLXChatSessions?.saveSessions?.();
         window.MLXChatRendering?.renderAll?.({ contentUpdated: true });
     }
@@ -158,6 +169,26 @@
         if (input) input.disabled = running;
         if (send) send.disabled = running;
         setArmed(false);
+    }
+
+    function installApprovalAdapter() {
+        const generation = window.MLXChatGeneration;
+        if (
+            !generation?.approveAgentAction ||
+            generation.__agentTaskModeApprovalAdapter
+        ) return;
+
+        generation.__agentTaskModeApprovalAdapter = true;
+        const original = generation.approveAgentAction.bind(generation);
+        generation.approveAgentAction = async (message, approved) => {
+            const userGoal = message?.task_mode?.user_goal || null;
+            const result = await original(message, approved);
+            if (userGoal && message?.agent_run) {
+                message.agent_run.goal = userGoal;
+                render();
+            }
+            return result;
+        };
     }
 
     async function runTask(task, session, userMessage, assistantMessage) {
@@ -260,6 +291,12 @@
         const prompt = String(input?.value || '').trim();
         if (!prompt) return true;
 
+        const attachments = window.MLXChatAttachments?.getAttachments?.() || [];
+        if (attachments.length) {
+            window.alert?.(t('attachments_unsupported'));
+            return true;
+        }
+
         const session = window.MLXChatSessions?.currentSession?.();
         if (!session) return true;
 
@@ -326,6 +363,7 @@
 
     function mount() {
         installCss();
+        installApprovalAdapter();
         if (!button) {
             const actions = document.querySelector('.composer-actions');
             const dictation = document.getElementById('dictationButton');
@@ -363,6 +401,7 @@
         __test: {
             activeWorkspace,
             conversationContext,
+            normalizeTaskGoals,
             t
         }
     };
