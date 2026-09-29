@@ -4,10 +4,117 @@
         ? new URL(commonScript.src, window.location.href)
         : null;
     const frontendBuildRevision = commonScriptUrl?.searchParams.get('v') || '';
+    const CHAT_STORAGE_KEY = 'mlx-web-chats-v1';
+
+    function chatHasUserMessage(session) {
+        return Boolean(
+            session &&
+            Array.isArray(session.messages) &&
+            session.messages.some(message => message?.role === 'user')
+        );
+    }
+
+    function parseStoredChats() {
+        try {
+            const chats = JSON.parse(
+                window.localStorage?.getItem(CHAT_STORAGE_KEY) || '[]'
+            );
+            return Array.isArray(chats) ? chats : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function sanitizeStoredChats() {
+        try {
+            const chats = parseStoredChats();
+            const visibleChats = chats.filter(chatHasUserMessage);
+
+            if (visibleChats.length !== chats.length) {
+                window.localStorage?.setItem(
+                    CHAT_STORAGE_KEY,
+                    JSON.stringify(visibleChats)
+                );
+            }
+        } catch (_) {
+            // localStorage is only a cache; server persistence remains available.
+        }
+    }
+
+    function chatApiPath(url) {
+        try {
+            return new URL(url, window.location.href).pathname;
+        } catch (_) {
+            return String(url || '').split('?')[0];
+        }
+    }
+
+    function requestJsonBody(options) {
+        if (!options?.body || typeof options.body !== 'string') {
+            return null;
+        }
+
+        try {
+            return JSON.parse(options.body);
+        } catch (_) {
+            return null;
+        }
+    }
 
     async function fetchJson(url, options) {
+        const path = chatApiPath(url);
+        const method = String(options?.method || 'GET').toUpperCase();
+
+        /*
+         * A freshly opened chat is only a local draft. Do not persist it
+         * until the user has actually sent the first message.
+         */
+        if (
+            method === 'PUT' &&
+            /^\/api\/mlx\/chats\/[^/]+$/.test(path)
+        ) {
+            const chat = requestJsonBody(options);
+
+            if (chat && !chatHasUserMessage(chat)) {
+                return {
+                    response: {
+                        ok: true,
+                        status: 200
+                    },
+                    data: {
+                        chat: chat
+                    }
+                };
+            }
+        }
+
         const response = await fetch(url, options);
         const data = await response.json();
+
+        /*
+         * Older builds persisted empty "New chat" sessions. Keep them out
+         * of the history and remove those stale server records lazily.
+         */
+        if (
+            method === 'GET' &&
+            path === '/api/mlx/chats' &&
+            Array.isArray(data?.chats)
+        ) {
+            const emptyChats = data.chats.filter(
+                chat => !chatHasUserMessage(chat)
+            );
+
+            data.chats = data.chats.filter(chatHasUserMessage);
+
+            emptyChats.forEach(chat => {
+                if (!chat?.id) return;
+
+                fetch(
+                    '/api/mlx/chats/' + encodeURIComponent(chat.id),
+                    { method: 'DELETE' }
+                ).catch(() => {});
+            });
+        }
 
         return {
             response: response,
@@ -91,6 +198,116 @@
     function removeRedundantTopActions() {
         document.getElementById('settingsButton')?.remove();
         document.getElementById('mlxHelpButton')?.remove();
+    }
+
+    function ensureChatHistoryPolish() {
+        const chatList = document.getElementById('chatList');
+        const input = document.getElementById('input');
+
+        if (!chatList || !input) return;
+
+        if (!document.getElementById('mlxChatHistoryPolish')) {
+            const style = document.createElement('style');
+            style.id = 'mlxChatHistoryPolish';
+            style.textContent = [
+                '@media (min-width:901px){',
+                '.app.sidebar-collapsed .empty{',
+                'transform:translateX(112px);',
+                '}',
+                '}'
+            ].join('');
+            document.head.appendChild(style);
+        }
+
+        const normalizeTitle = value =>
+            String(value || '').trim().toLocaleLowerCase();
+
+        const draftTitles = () => new Set([
+            normalizeTitle('New chat'),
+            normalizeTitle('Neuer Chat'),
+            normalizeTitle(
+                window.MLXI18n?.t?.('sessions.new_chat', 'New chat')
+            )
+        ]);
+
+        const hideDraftEntries = () => {
+            sanitizeStoredChats();
+
+            const titles = draftTitles();
+            const persistedDraftCounts = new Map();
+
+            parseStoredChats()
+                .filter(chatHasUserMessage)
+                .forEach(chat => {
+                    const title = normalizeTitle(chat?.title);
+                    if (!titles.has(title)) return;
+                    persistedDraftCounts.set(
+                        title,
+                        (persistedDraftCounts.get(title) || 0) + 1
+                    );
+                });
+
+            const candidatesByTitle = new Map();
+
+            chatList
+                .querySelectorAll('.chat-entry-wrap')
+                .forEach(wrap => {
+                    const entry = wrap.querySelector('.chat-entry');
+                    const title = normalizeTitle(entry?.textContent);
+
+                    wrap.hidden = false;
+
+                    if (!titles.has(title)) return;
+
+                    const candidates = candidatesByTitle.get(title) || [];
+                    candidates.push(wrap);
+                    candidatesByTitle.set(title, candidates);
+                });
+
+            candidatesByTitle.forEach((candidates, title) => {
+                const persistedCount = persistedDraftCounts.get(title) || 0;
+                const draftsToHide = Math.max(
+                    0,
+                    candidates.length - persistedCount
+                );
+
+                for (let index = 0; index < draftsToHide; index++) {
+                    candidates[index].hidden = true;
+                }
+            });
+        };
+
+        const observer = new MutationObserver(hideDraftEntries);
+        observer.observe(chatList, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+
+        hideDraftEntries();
+
+        const sessions = window.MLXChatSessions;
+        if (
+            sessions?.createSession &&
+            !sessions.createSession.__mlxDraftGuard
+        ) {
+            const originalCreateSession = sessions.createSession.bind(sessions);
+
+            const guardedCreateSession = function (...args) {
+                const current = sessions.currentSession?.();
+
+                if (current && !chatHasUserMessage(current)) {
+                    input.focus();
+                    hideDraftEntries();
+                    return;
+                }
+
+                return originalCreateSession(...args);
+            };
+
+            guardedCreateSession.__mlxDraftGuard = true;
+            sessions.createSession = guardedCreateSession;
+        }
     }
 
     function experimentalVoiceStreamingEnabled() {
@@ -263,6 +480,7 @@
 
     function loadChatEnhancements() {
         removeRedundantTopActions();
+        ensureChatHistoryPolish();
         loadChatPerformance();
         loadRuntimeReliability();
         loadChatVoiceControls();
@@ -282,6 +500,7 @@
         jsonRequest: jsonRequest
     };
 
+    sanitizeStoredChats();
     ensureTopbarActionCleanup();
 
     if (document.readyState === 'loading') {
