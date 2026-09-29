@@ -1,0 +1,181 @@
+.automations-notifications {
+    overflow: hidden;
+    border: 1px solid var(--border, #2b3444);
+    border-radius: 12px;
+    background: rgba(12, 17, 25, .58);
+}
+
+.automations-notifications-header,
+.automation-notification-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.automations-notifications-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid #283142;
+    align-items: center;
+}
+
+.automations-notifications-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.automations-notifications-header h5 {
+    margin: 0;
+    font-size: 11px;
+    color: #bfc9d6;
+}
+
+.automation-notification-count {
+    border: 1px solid rgba(84, 144, 255, .42);
+    border-radius: 999px;
+    background: rgba(47, 111, 234, .12);
+    color: #a9c3ff;
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+.automations-notifications-list {
+    display: grid;
+}
+
+.automation-notification {
+    position: relative;
+    padding: 10px 12px 10px 15px;
+    border-top: 1px solid rgba(43, 52, 68, .66);
+    opacity: .78;
+}
+
+.automation-notification:first-child {
+    border-top: 0;
+}
+
+.automation-notification.unread {
+    opacity: 1;
+    background: rgba(35, 45, 61, .22);
+}
+
+.automation-notification::before {
+    content: '';
+    position: absolute;
+    top: 14px;
+    left: 7px;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: #738097;
+}
+
+.automation-notification.level-success::before,
+.automation-notification-toast.level-success::before {
+    background: #66c89e;
+}
+
+.automation-notification.level-warning::before,
+.automation-notification-toast.level-warning::before {
+    background: #dfb45f;
+}
+
+.automation-notification.level-error::before,
+.automation-notification-toast.level-error::before {
+    background: #df7c7c;
+}
+
+.automation-notification-copy {
+    min-width: 0;
+}
+
+.automation-notification-copy strong {
+    display: block;
+    color: #cbd5e2;
+    font-size: 11px;
+}
+
+.automation-notification-meta {
+    margin-top: 3px;
+    color: #79879a;
+    font-size: 9px;
+}
+
+.automation-notification-message {
+    margin: 7px 0 0;
+    color: #9da9b9;
+    font-size: 10px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.automation-button.compact {
+    padding: 5px 8px;
+    font-size: 10px;
+}
+
+.automation-notification-toasts {
+    position: fixed;
+    z-index: 2500;
+    right: 18px;
+    bottom: 18px;
+    display: grid;
+    gap: 8px;
+    width: min(380px, calc(100vw - 36px));
+    pointer-events: none;
+}
+
+.automation-notification-toast {
+    appearance: none;
+    position: relative;
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    border: 1px solid #38455a;
+    border-radius: 12px;
+    background: rgba(16, 22, 32, .97);
+    color: inherit;
+    padding: 11px 12px 11px 18px;
+    box-shadow: 0 16px 42px rgba(0, 0, 0, .34);
+    text-align: left;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.automation-notification-toast::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 14px;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: #7b8ba2;
+}
+
+.automation-notification-toast strong {
+    color: #d6deea;
+    font-size: 11px;
+}
+
+.automation-notification-toast span {
+    color: #9ca9ba;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+    .automations-notifications-header,
+    .automation-notification-top {
+        align-items: flex-start;
+    }
+
+    .automation-notification-toasts {
+        right: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+    }
+}
