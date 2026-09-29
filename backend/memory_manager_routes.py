@@ -10,6 +10,9 @@ from fastapi import FastAPI
 MEMORY_MANAGER_SCRIPT = (
     b'<script src="/assets/chat/memory-manager.js?v=20260928-memory-manager-v1"></script>'
 )
+MEMORY_MANAGER_CONSOLIDATION_SCRIPT = (
+    b'<script src="/assets/chat/memory-manager-consolidation.js?v=20260928-memory-manager-v12"></script>'
+)
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
 
 
@@ -21,14 +24,23 @@ def _is_chat_html_path(path: str) -> bool:
 
 
 def inject_memory_manager_script(body: bytes) -> bytes:
-    """Inject the manager before chat.js without modifying the large HTML file."""
-    if MEMORY_MANAGER_SCRIPT in body:
+    """Inject the manager modules before chat.js without modifying the large HTML file."""
+    missing = [
+        script
+        for script in (
+            MEMORY_MANAGER_SCRIPT,
+            MEMORY_MANAGER_CONSOLIDATION_SCRIPT,
+        )
+        if script not in body
+    ]
+    if not missing:
         return body
 
+    scripts = b"\n".join(missing)
     if CHAT_SCRIPT_MARKER in body:
         return body.replace(
             CHAT_SCRIPT_MARKER,
-            MEMORY_MANAGER_SCRIPT + b"\n" + CHAT_SCRIPT_MARKER,
+            scripts + b"\n" + CHAT_SCRIPT_MARKER,
             1,
         )
 
@@ -36,7 +48,7 @@ def inject_memory_manager_script(body: bytes) -> bytes:
     if marker in body:
         return body.replace(
             marker,
-            MEMORY_MANAGER_SCRIPT + b"\n" + marker,
+            scripts + b"\n" + marker,
             1,
         )
 
@@ -44,7 +56,7 @@ def inject_memory_manager_script(body: bytes) -> bytes:
 
 
 class MemoryManagerUiMiddleware:
-    """Inject the memory UI script into chat/settings HTML responses only."""
+    """Inject the memory UI scripts into chat/settings HTML responses only."""
 
     def __init__(self, app):
         self.app = app
@@ -196,6 +208,37 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 "GET",
                 "/api/memory/context?" + params,
                 timeout=10,
+            )
+
+    if "/api/mlx/memory/consolidation-status" not in paths:
+        @app.get("/api/mlx/memory/consolidation-status")
+        def memory_consolidation_status():
+            return agent_json_request(
+                "GET",
+                "/api/memory/consolidation-status",
+                timeout=10,
+            )
+
+    if "/api/mlx/memory/consolidations" not in paths:
+        @app.get("/api/mlx/memory/consolidations")
+        def memory_consolidations(limit: int = 100):
+            query = urllib.parse.urlencode({
+                "limit": max(1, min(int(limit), 1000)),
+            })
+            return agent_json_request(
+                "GET",
+                "/api/memory/consolidations?" + query,
+                timeout=10,
+            )
+
+    if "/api/mlx/memory/consolidate" not in paths:
+        @app.post("/api/mlx/memory/consolidate")
+        def memory_consolidate(payload: dict | None = None):
+            return agent_json_request(
+                "POST",
+                "/api/memory/consolidate",
+                payload=payload or {},
+                timeout=120,
             )
 
 
