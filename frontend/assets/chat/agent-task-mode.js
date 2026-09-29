@@ -1,11 +1,54 @@
 (() => {
     'use strict';
 
+    const SCRIPT_VERSION = '20260929-task-mode-v1';
+    const CSS_ID = 'mlx-agent-task-mode-css';
+    const FALLBACK = {
+        label: 'Task',
+        active: 'Task Mode active',
+        enable_title: 'Use Task Mode for the next message',
+        disable_title: 'Disable Task Mode',
+        workspace_required: 'Task Mode requires an active coding workspace. Open a workspace first and start the task again.',
+        workspace_check_failed: 'The active workspace could not be checked.',
+        starting: 'Starting Agent Task Mode …'
+    };
+
     let armed = false;
     let button = null;
+    let dictionary = {};
 
-    function t(key, fallback) {
-        return window.MLXI18n?.t(key, fallback) ?? fallback;
+    function t(key) {
+        return dictionary[key] || FALLBACK[key] || key;
+    }
+
+    function installCss() {
+        if (
+            typeof document === 'undefined' ||
+            document.getElementById?.(CSS_ID) ||
+            !document.head?.appendChild
+        ) return;
+        const link = document.createElement('link');
+        link.id = CSS_ID;
+        link.rel = 'stylesheet';
+        link.href = '/assets/chat/agent-task-mode.css?v=' + SCRIPT_VERSION;
+        document.head.appendChild(link);
+    }
+
+    async function loadDictionary() {
+        const language = String(
+            window.MLXI18n?.getLanguage?.() ||
+            document.documentElement?.lang ||
+            'en'
+        ).toLowerCase().startsWith('de') ? 'de' : 'en';
+        try {
+            const response = await fetch(
+                '/i18n/agent-task-mode.' + language + '.json',
+                { cache: 'no-store' }
+            );
+            if (!response.ok) return;
+            const data = await response.json();
+            if (data && typeof data === 'object') dictionary = data;
+        } catch (_error) {}
     }
 
     function setArmed(value) {
@@ -13,15 +56,9 @@
         if (!button) return;
         button.classList.toggle('is-active', armed);
         button.setAttribute('aria-pressed', armed ? 'true' : 'false');
-        button.title = armed
-            ? t('agent_task_mode.disable_title', 'Task Mode ausschalten')
-            : t('agent_task_mode.enable_title', 'Task Mode für die nächste Nachricht');
+        button.title = armed ? t('disable_title') : t('enable_title');
         const label = button.querySelector('[data-agent-task-label]');
-        if (label) {
-            label.textContent = armed
-                ? t('agent_task_mode.active', 'Task Mode aktiv')
-                : t('agent_task_mode.label', 'Task');
-        }
+        if (label) label.textContent = armed ? t('active') : t('label');
     }
 
     function executionGoal(userGoal) {
@@ -48,9 +85,7 @@
         const response = await fetch('/api/mlx/code/workspaces', {
             cache: 'no-store'
         });
-        if (!response.ok) {
-            throw new Error(await response.text());
-        }
+        if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
         return data?.active_workspace || null;
     }
@@ -64,33 +99,29 @@
             workspace = await activeWorkspace();
         } catch (error) {
             return {
-                error: t(
-                    'agent_task_mode.workspace_check_failed',
-                    'Der aktive Workspace konnte nicht geprüft werden.'
-                ) + ' ' + (error?.message || '')
+                error: t('workspace_check_failed') + ' ' +
+                    (error?.message || '')
             };
         }
 
         if (!workspace?.workspace_id) {
-            return {
-                error: t(
-                    'agent_task_mode.workspace_required',
-                    'Task Mode benötigt einen aktiven Coding-Workspace. Öffne zuerst einen Workspace und starte die Aufgabe erneut.'
-                )
-            };
+            return { error: t('workspace_required') };
         }
 
         return {
             userGoal: String(prompt || '').trim(),
             executionGoal: executionGoal(prompt),
             workspaceId: workspace.workspace_id,
-            workspaceName: workspace.name || workspace.root_path || workspace.workspace_id
+            workspaceName:
+                workspace.name || workspace.root_path || workspace.workspace_id
         };
     }
 
     function mount() {
+        installCss();
         if (document.getElementById('agentTaskModeButton')) {
             button = document.getElementById('agentTaskModeButton');
+            setArmed(armed);
             return;
         }
 
@@ -103,19 +134,18 @@
         button.className = 'agent-task-mode-button';
         button.type = 'button';
         button.setAttribute('aria-pressed', 'false');
-        button.innerHTML = '<span class="agent-task-mode-icon" aria-hidden="true">⌘</span><span data-agent-task-label></span>';
+        button.innerHTML =
+            '<span class="agent-task-mode-icon" aria-hidden="true">⌘</span>' +
+            '<span data-agent-task-label></span>';
         button.addEventListener('click', () => setArmed(!armed));
         actions.insertBefore(button, dictation);
         setArmed(false);
     }
 
-    document.addEventListener('mlx:i18n-ready', () => setArmed(armed));
-    document.addEventListener('mlx:i18n-changed', () => setArmed(armed));
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', mount, { once: true });
-    } else {
-        mount();
+    async function refreshLanguage() {
+        dictionary = {};
+        await loadDictionary();
+        setArmed(armed);
     }
 
     window.MLXAgentTaskMode = {
@@ -124,6 +154,10 @@
         isArmed: () => armed,
         setArmed,
         mount,
-        __test: { activeWorkspace }
+        __test: { activeWorkspace, t }
     };
+
+    loadDictionary().finally(mount);
+    document.addEventListener('mlx-i18n-ready', refreshLanguage);
+    document.addEventListener('mlx-language-changed', refreshLanguage);
 })();
