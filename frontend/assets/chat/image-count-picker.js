@@ -1,14 +1,20 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20260929-image-count-v1';
+    const SCRIPT_VERSION = '20260929-image-count-v2';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
+    const MIN_IMAGE_COUNT = 1;
+    const MAX_IMAGE_COUNT = 6;
 
     const FALLBACK = {
         count_label: 'Count',
-        count_one: '1 image',
-        count_three: '3 variants'
+        count_1: '1 image',
+        count_2: '2 images',
+        count_3: '3 images',
+        count_4: '4 images',
+        count_5: '5 images',
+        count_6: '6 images'
     };
 
     const pendingRequests = new Map();
@@ -22,7 +28,39 @@
     }
 
     function normalizeImageCount(value) {
-        return Number(value) === 3 ? 3 : 1;
+        const number = Math.round(Number(value));
+        if (!Number.isFinite(number)) return MIN_IMAGE_COUNT;
+        return Math.max(
+            MIN_IMAGE_COUNT,
+            Math.min(MAX_IMAGE_COUNT, number)
+        );
+    }
+
+    function resolveLanguage(languageHint = '') {
+        const hinted = String(languageHint || '').toLowerCase();
+        if (hinted.startsWith('de')) return 'de';
+        if (hinted.startsWith('en')) return 'en';
+
+        try {
+            const saved = String(
+                window.localStorage?.getItem?.('mlx-nobby-language') || ''
+            ).toLowerCase();
+            if (saved === 'de' || saved === 'en') return saved;
+        } catch (_error) {}
+
+        const runtimeLanguage = String(
+            window.MLXI18n?.getLanguage?.() ||
+            window.MLXI18n?.getLocale?.() ||
+            document.documentElement?.lang ||
+            'en'
+        ).toLowerCase();
+        return runtimeLanguage.startsWith('de') ? 'de' : 'en';
+    }
+
+    function newVariantGroupId() {
+        return globalThis.crypto?.randomUUID?.() ||
+            'image-count-group-' + Date.now().toString(16) + '-' +
+            Math.random().toString(16).slice(2);
     }
 
     function artifactForMessage(message) {
@@ -56,13 +94,18 @@
             ? extraMessages.slice(0, requiredExtras)
             : [];
 
-        if (!firstMessage || extras.length !== requiredExtras) {
+        if (
+            count < 2 ||
+            !firstMessage ||
+            extras.length !== requiredExtras
+        ) {
             return null;
         }
 
         const groupId = String(
             extras.find(message => message?.image_variant_group_id)
-                ?.image_variant_group_id || ''
+                ?.image_variant_group_id ||
+            newVariantGroupId()
         ).trim();
 
         if (!groupId) return null;
@@ -80,14 +123,9 @@
         return groupId;
     }
 
-    async function loadDictionary() {
+    async function loadDictionary(languageHint = '') {
         if (typeof document === 'undefined') return;
-        const language = String(
-            window.MLXI18n?.getLanguage?.() ||
-            window.MLXI18n?.getLocale?.() ||
-            document.documentElement?.lang ||
-            'en'
-        ).toLowerCase().startsWith('de') ? 'de' : 'en';
+        const language = resolveLanguage(languageHint);
 
         try {
             const response = await fetch(
@@ -104,8 +142,15 @@
         if (!picker) return;
         picker.label.textContent = t('count_label');
         picker.select.setAttribute('aria-label', t('count_label'));
-        picker.one.textContent = t('count_one');
-        picker.three.textContent = t('count_three');
+
+        for (
+            let count = MIN_IMAGE_COUNT;
+            count <= MAX_IMAGE_COUNT;
+            count += 1
+        ) {
+            const option = picker.options.get(count);
+            if (option) option.textContent = t('count_' + count);
+        }
     }
 
     function syncPickerVisibility() {
@@ -137,7 +182,7 @@
 
         const session = currentSession();
         const count = normalizeImageCount(picker.select.value);
-        if (!session || count !== 3) return;
+        if (!session || count <= 1) return;
 
         const key = requestKey(session);
         if (!key) return;
@@ -170,6 +215,48 @@
         );
     }
 
+    function regeneratedMessageForArtifact(messages, artifact) {
+        const artifactId = String(artifact?.artifact_id || '');
+        if (!artifactId) return null;
+        return (Array.isArray(messages) ? messages : []).find(message =>
+            String(message?.image_regenerated_from_artifact_id || '') ===
+                artifactId
+        ) || null;
+    }
+
+    async function generateAdditionalImages(
+        artifact,
+        session,
+        additionalCount
+    ) {
+        const regenerate =
+            window.MLXImageRegenerate?.regenerateImageArtifact;
+        if (typeof regenerate !== 'function') return [];
+
+        const target = Math.max(
+            0,
+            Math.min(MAX_IMAGE_COUNT - 1, Number(additionalCount) || 0)
+        );
+        const extras = [];
+
+        for (let index = 0; index < target; index += 1) {
+            const before = Array.isArray(session.messages)
+                ? session.messages.length
+                : 0;
+
+            await regenerate(artifact);
+
+            const added = regeneratedMessageForArtifact(
+                session.messages.slice(before),
+                artifact
+            );
+            if (!added) break;
+            extras.push(added);
+        }
+
+        return extras;
+    }
+
     async function maybeExpandActiveBatch() {
         const now = Date.now();
         for (const [key, request] of pendingRequests) {
@@ -198,19 +285,14 @@
         const artifact = artifactForMessage(firstMessage);
         if (status !== 'completed' || !artifact) return false;
 
-        const generator = window.MLXImageRegenerate?.generateImageVariants;
-        if (typeof generator !== 'function') return false;
-
         request.expanding = true;
-        const before = session.messages.length;
 
         try {
-            await generator(artifact, request.count - 1);
-
-            const extras = session.messages
-                .slice(before)
-                .filter(message => Boolean(message?.image_variant_group_id))
-                .slice(0, request.count - 1);
+            const extras = await generateAdditionalImages(
+                artifact,
+                session,
+                request.count - 1
+            );
 
             const groupId = mergeInitialImageWithGeneratedVariants(
                 firstMessage,
@@ -219,7 +301,7 @@
             );
 
             if (!groupId) {
-                console.warn('[image-count] Could not group initial variants.');
+                console.warn('[image-count] Could not group image batch.');
                 return false;
             }
 
@@ -230,7 +312,7 @@
             });
             return true;
         } catch (error) {
-            console.warn('[image-count] Variant expansion failed:', error);
+            console.warn('[image-count] Image batch expansion failed:', error);
             return false;
         } finally {
             pendingRequests.delete(key);
@@ -280,14 +362,19 @@
         const select = document.createElement('select');
         select.id = 'imageVariantCount';
 
-        const one = document.createElement('option');
-        one.value = '1';
-        one.selected = true;
+        const options = new Map();
+        for (
+            let count = MIN_IMAGE_COUNT;
+            count <= MAX_IMAGE_COUNT;
+            count += 1
+        ) {
+            const option = document.createElement('option');
+            option.value = String(count);
+            option.selected = count === 1;
+            options.set(count, option);
+            select.appendChild(option);
+        }
 
-        const three = document.createElement('option');
-        three.value = '3';
-
-        select.append(one, three);
         field.append(label, select);
         negativePromptField.parentNode?.insertBefore(field, negativePromptField);
 
@@ -298,8 +385,7 @@
             field,
             label,
             select,
-            one,
-            three,
+            options,
             wasModalOpen: false
         };
 
@@ -320,6 +406,12 @@
         return true;
     }
 
+    async function refreshLanguage(event) {
+        dictionary = {};
+        await loadDictionary(event?.detail?.language || '');
+        updatePickerLabels();
+    }
+
     async function mount() {
         await loadDictionary();
         installPicker();
@@ -335,6 +427,8 @@
             isInitialImageMessage,
             mergeInitialImageWithGeneratedVariants,
             normalizeImageCount,
+            regeneratedMessageForArtifact,
+            resolveLanguage,
             terminalStatus
         }
     };
@@ -346,11 +440,8 @@
             mount();
         }
 
-        document.addEventListener?.('mlx-language-changed', async () => {
-            dictionary = {};
-            await loadDictionary();
-            updatePickerLabels();
-        });
+        document.addEventListener?.('mlx-i18n-ready', refreshLanguage);
+        document.addEventListener?.('mlx-language-changed', refreshLanguage);
     }
 
     window.addEventListener?.('beforeunload', () => {
