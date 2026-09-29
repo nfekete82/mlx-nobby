@@ -1,5 +1,9 @@
 {
   "count_label": "Count",
-  "count_one": "1 image",
-  "count_three": "3 variants"
+  "count_1": "1 image",
+  "count_2": "2 images",
+  "count_3": "3 images",
+  "count_4": "4 images",
+  "count_5": "5 images",
+  "count_6": "6 images"
 }
