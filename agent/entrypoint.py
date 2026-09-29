@@ -8,7 +8,15 @@ from agent.shorts_consistency_runtime import install_runtime as install_shorts_c
 install_shorts_caption_runtime()
 install_shorts_consistency_runtime()
 
-from agent.app import app, load_models, status as runtime_status
+from agent.app import (
+    MODEL_RUNTIME_LOCK,
+    app,
+    find_server_pid,
+    load_config,
+    load_models,
+    status as runtime_status,
+    switch_model_runtime,
+)
 from agent.media_queue_performance import install as install_media_queue_performance
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
@@ -28,7 +36,14 @@ app.add_middleware(MemoryChatMiddleware)
 
 install_media_queue_performance()
 install_memory_routes(app)
-install_model_scout_routes(app, model_provider=load_models)
+install_model_scout_routes(
+    app,
+    model_provider=load_models,
+    config_provider=load_config,
+    switch_model=switch_model_runtime,
+    runtime_lock=MODEL_RUNTIME_LOCK,
+    find_server_pid=find_server_pid,
+)
 install_shorts_studio_routes(app)
 install_speech_streaming_routes(app)
 install_voice_manager_routes(app)
