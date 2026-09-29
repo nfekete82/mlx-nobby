@@ -6,8 +6,14 @@ from __future__ import annotations
 SETTINGS_CSS = (
     b'<link rel="stylesheet" href="/assets/chat/settings-layout.css?v=20260929-settings-layout-v1">'
 )
+AUTOMATIONS_CSS = (
+    b'<link rel="stylesheet" href="/assets/chat/automations.css?v=20260929-automations-v1">'
+)
+AUTOMATIONS_SCRIPT = (
+    b'<script src="/assets/chat/automations.js?v=20260929-automations-v1"></script>'
+)
 SETTINGS_SCRIPT = (
-    b'<script src="/assets/chat/settings-layout.js?v=20260929-settings-layout-v1"></script>'
+    b'<script src="/assets/chat/settings-layout.js?v=20260929-settings-layout-v2"></script>'
 )
 
 
@@ -17,14 +23,15 @@ def _is_chat_html_path(path: str) -> bool:
 
 def inject_settings_ui(body: bytes) -> bytes:
     result = body
-    if SETTINGS_CSS not in result:
-        head_marker = b"</head>"
-        if head_marker in result:
-            result = result.replace(head_marker, SETTINGS_CSS + b"\n" + head_marker, 1)
-    if SETTINGS_SCRIPT not in result:
-        body_marker = b"</body>"
-        if body_marker in result:
-            result = result.replace(body_marker, SETTINGS_SCRIPT + b"\n" + body_marker, 1)
+    head_marker = b"</head>"
+    for asset in (SETTINGS_CSS, AUTOMATIONS_CSS):
+        if asset not in result and head_marker in result:
+            result = result.replace(head_marker, asset + b"\n" + head_marker, 1)
+
+    body_marker = b"</body>"
+    for asset in (AUTOMATIONS_SCRIPT, SETTINGS_SCRIPT):
+        if asset not in result and body_marker in result:
+            result = result.replace(body_marker, asset + b"\n" + body_marker, 1)
     return result
 
 
@@ -105,6 +112,8 @@ class SettingsUiMiddleware:
 
 
 __all__ = [
+    "AUTOMATIONS_CSS",
+    "AUTOMATIONS_SCRIPT",
     "SETTINGS_CSS",
     "SETTINGS_SCRIPT",
     "SettingsUiMiddleware",
