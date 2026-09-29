@@ -5,6 +5,7 @@
     window.__mlxNobbySettingsLayout = true;
 
     const SECTIONS = ['chat', 'models', 'knowledge', 'personal', 'tools', 'system'];
+    const MODEL_TABS = ['models', 'runtime', 'storage', 'downloads'];
     const SYSTEM_TABS = ['server', 'logs'];
     const FALLBACK = {
         title: 'Settings',
@@ -12,6 +13,9 @@
         chat_description: 'Behavior, generation, context and backups.',
         models: 'Models',
         models_description: 'Models, roles, downloads and Model Scout.',
+        runtime: 'Runtime',
+        storage: 'Storage',
+        downloads: 'Downloads',
         knowledge: 'Knowledge',
         knowledge_description: 'Local documents and semantic search.',
         personal: 'Personal',
@@ -26,12 +30,14 @@
 
     let copy = { ...FALLBACK };
     let activeSection = 'chat';
+    let activeModelTab = 'models';
     let activeSystemTab = 'server';
     let settings = null;
     let shellTitle = null;
     let contentTitle = null;
     let contentDescription = null;
     let organizerNav = null;
+    let modelNav = null;
     let systemNav = null;
     let controller = null;
     let retryTimer = null;
@@ -107,6 +113,14 @@
         return button;
     }
 
+    function modelButton(tab) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.organizerModelTab = tab;
+        button.addEventListener('click', () => activateModelTab(tab));
+        return button;
+    }
+
     function systemButton(tab) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -143,13 +157,19 @@
         contentDescription = document.createElement('p');
         contentCopy.append(contentTitle, contentDescription);
 
+        modelNav = document.createElement('nav');
+        modelNav.className = 'settings-organizer-system-tabs settings-organizer-model-tabs';
+        modelNav.setAttribute('aria-label', 'Models');
+        MODEL_TABS.forEach(tab => modelNav.appendChild(modelButton(tab)));
+        modelNav.hidden = true;
+
         systemNav = document.createElement('nav');
         systemNav.className = 'settings-organizer-system-tabs';
         systemNav.setAttribute('aria-label', 'System');
         SYSTEM_TABS.forEach(tab => systemNav.appendChild(systemButton(tab)));
         systemNav.hidden = true;
 
-        contentHeader.append(contentCopy, systemNav);
+        contentHeader.append(contentCopy, modelNav, systemNav);
         main.appendChild(contentHeader);
 
         const panes = Array.from(settings.children).filter(child => child.classList.contains('settings-pane'));
@@ -162,6 +182,9 @@
         if (shellTitle) shellTitle.textContent = copy.title;
         organizerNav?.querySelectorAll('[data-organizer-section]').forEach(button => {
             button.textContent = copy[button.dataset.organizerSection] || button.dataset.organizerSection;
+        });
+        modelNav?.querySelectorAll('[data-organizer-model-tab]').forEach(button => {
+            button.textContent = copy[button.dataset.organizerModelTab] || button.dataset.organizerModelTab;
         });
         systemNav?.querySelectorAll('[data-organizer-system-tab]').forEach(button => {
             button.textContent = copy[button.dataset.organizerSystemTab] || button.dataset.organizerSystemTab;
@@ -181,6 +204,16 @@
             button.setAttribute('aria-current', selected ? 'page' : 'false');
         });
 
+        if (modelNav) {
+            const show = activeSection === 'models';
+            if (modelNav.hidden === show) modelNav.hidden = !show;
+            modelNav.querySelectorAll('[data-organizer-model-tab]').forEach(button => {
+                const selected = button.dataset.organizerModelTab === activeModelTab;
+                button.classList.toggle('active', selected);
+                button.setAttribute('aria-selected', selected ? 'true' : 'false');
+            });
+        }
+
         if (systemNav) {
             const show = activeSection === 'system';
             if (systemNav.hidden === show) systemNav.hidden = !show;
@@ -199,7 +232,19 @@
             controller.selectSystem(activeSystemTab);
         } else {
             controller.select(sectionTarget(section));
+            if (section === 'models') {
+                window.MLXModelConsole?.setTab(activeModelTab);
+            }
         }
+        render();
+    }
+
+    function activateModelTab(tab) {
+        if (!controller || !MODEL_TABS.includes(tab)) return;
+        activeSection = 'models';
+        activeModelTab = tab;
+        controller.select('models');
+        window.MLXModelConsole?.setTab(tab);
         render();
     }
 
@@ -215,7 +260,7 @@
         const path = String(location.pathname || '');
         const legacyGeneration = /^\/settings\/advanced\/generation\/?$/.test(path);
         const legacyAppearance = /^\/settings\/appearance\/?$/.test(path);
-        const legacyModelSystem = /^\/settings\/advanced\/(runtime|storage)\/?$/.test(path);
+        const legacyModelSystem = path.match(/^\/settings\/advanced\/(runtime|storage)\/?$/);
 
         if (options.normalizeLegacy !== false && controller) {
             if (legacyGeneration) {
@@ -232,7 +277,9 @@
             }
             if (legacyModelSystem) {
                 activeSection = 'models';
+                activeModelTab = legacyModelSystem[1];
                 controller.select('models');
+                window.MLXModelConsole?.setTab(activeModelTab);
                 render();
                 return;
             }
@@ -309,6 +356,7 @@
         sectionTarget,
         sync: syncFromPath,
         activate: activateSection,
+        activateModel: activateModelTab,
         activateSystem: activateSystemTab
     };
 
