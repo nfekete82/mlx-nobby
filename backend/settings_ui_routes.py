@@ -9,8 +9,14 @@ SETTINGS_CSS = (
 AUTOMATIONS_CSS = (
     b'<link rel="stylesheet" href="/assets/chat/automations.css?v=20260929-automations-v1">'
 )
+AUTOMATION_NOTIFICATIONS_CSS = (
+    b'<link rel="stylesheet" href="/assets/chat/automation-notifications.css?v=20260929-automations-v11">'
+)
 AUTOMATIONS_SCRIPT = (
     b'<script src="/assets/chat/automations.js?v=20260929-automations-v1"></script>'
+)
+AUTOMATION_NOTIFICATIONS_SCRIPT = (
+    b'<script src="/assets/chat/automation-notifications.js?v=20260929-automations-v11"></script>'
 )
 SETTINGS_SCRIPT = (
     b'<script src="/assets/chat/settings-layout.js?v=20260929-settings-layout-v2"></script>'
@@ -24,12 +30,12 @@ def _is_chat_html_path(path: str) -> bool:
 def inject_settings_ui(body: bytes) -> bytes:
     result = body
     head_marker = b"</head>"
-    for asset in (SETTINGS_CSS, AUTOMATIONS_CSS):
+    for asset in (SETTINGS_CSS, AUTOMATIONS_CSS, AUTOMATION_NOTIFICATIONS_CSS):
         if asset not in result and head_marker in result:
             result = result.replace(head_marker, asset + b"\n" + head_marker, 1)
 
     body_marker = b"</body>"
-    for asset in (AUTOMATIONS_SCRIPT, SETTINGS_SCRIPT):
+    for asset in (AUTOMATIONS_SCRIPT, AUTOMATION_NOTIFICATIONS_SCRIPT, SETTINGS_SCRIPT):
         if asset not in result and body_marker in result:
             result = result.replace(body_marker, asset + b"\n" + body_marker, 1)
     return result
@@ -114,6 +120,8 @@ class SettingsUiMiddleware:
 __all__ = [
     "AUTOMATIONS_CSS",
     "AUTOMATIONS_SCRIPT",
+    "AUTOMATION_NOTIFICATIONS_CSS",
+    "AUTOMATION_NOTIFICATIONS_SCRIPT",
     "SETTINGS_CSS",
     "SETTINGS_SCRIPT",
     "SettingsUiMiddleware",
