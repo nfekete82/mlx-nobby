@@ -101,6 +101,18 @@
         }
     }
 
+    async function loadChatPerformance() {
+        if (!document.getElementById('input')) return;
+        try {
+            await loadScript(
+                '/assets/chat/performance.js?v=20260929-perf-v1',
+                'mlx-chat-performance'
+            );
+        } catch (error) {
+            console.error('[performance] Failed to load chat performance layer:', error);
+        }
+    }
+
     async function loadChatVoiceControls() {
         if (!document.getElementById('input')) return;
         try {
@@ -251,6 +263,7 @@
 
     function loadChatEnhancements() {
         removeRedundantTopActions();
+        loadChatPerformance();
         loadRuntimeReliability();
         loadChatVoiceControls();
         loadModelConsoleEnhancers();
