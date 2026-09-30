@@ -114,12 +114,14 @@
     }
 
     function formatConfidence(value) {
+        if (value === null || value === undefined || value === '') return '—';
         const number = Number(value);
         if (!Number.isFinite(number)) return '—';
         return Math.round(number * 100) + ' %';
     }
 
     function confidenceClass(value) {
+        if (value === null || value === undefined || value === '') return '';
         const number = Number(value);
         if (!Number.isFinite(number)) return '';
         if (number >= 0.90) return 'is-high';
