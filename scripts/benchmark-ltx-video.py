@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -15,6 +18,12 @@ import urllib.request
 DEFAULT_MODELS = ["ltx-2.5-22b-distilled", "ltx-2.5-mlx-q4"]
 TERMINAL = {"completed", "failed", "cancelled"}
 HEARTBEAT_SECONDS = 30.0
+THERMAL_RANK = {
+    "Nominal": 0,
+    "Moderate": 1,
+    "Heavy": 2,
+    "Trapping": 3,
+}
 
 
 def request_json(method, url, payload=None, timeout=30):
@@ -75,6 +84,15 @@ def _command_output(command, timeout=5):
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _sysctl_output(name):
+    """Read a sysctl value even when /usr/sbin is missing from PATH."""
+    for executable in ("/usr/sbin/sysctl", "sysctl"):
+        output = _command_output([executable, "-n", name])
+        if output:
+            return output
+    return ""
+
+
 def _vm_stat_ram_used(output):
     page_size_match = re.search(r"page size of (\d+) bytes", output or "")
     if not page_size_match:
@@ -94,11 +112,17 @@ def _vm_stat_ram_used(output):
 
 
 def _swap_used(output):
-    match = re.search(r"used = ([0-9.]+)([MG])", output or "")
+    match = re.search(
+        r"used\s*=\s*([0-9.]+)\s*([KMGT]?)(?:i?B)?",
+        output or "",
+        re.IGNORECASE,
+    )
     if not match:
         return None
-    multiplier = 1024 ** 2 if match.group(2) == "M" else 1024 ** 3
-    return int(float(match.group(1)) * multiplier)
+    power = {"": 0, "K": 1, "M": 2, "G": 3, "T": 4}.get(match.group(2).upper())
+    if power is None:
+        return None
+    return int(float(match.group(1)) * (1024 ** power))
 
 
 def _parse_thermal_limits(output):
@@ -133,15 +157,17 @@ def _parse_thermal_limits(output):
 
 
 def _memory_pressure_name(value):
-    return {1: "normal", 2: "warning", 4: "critical"}.get(value, str(value) if value is not None else "n/a")
+    return {1: "normal", 2: "warning", 4: "critical"}.get(
+        value, str(value) if value is not None else "n/a"
+    )
 
 
 def system_snapshot():
     """Capture cheap system-wide macOS telemetry outside benchmark wall time."""
     vm_stat = _command_output(["vm_stat"])
-    swap = _command_output(["sysctl", "-n", "vm.swapusage"])
+    swap = _sysctl_output("vm.swapusage")
     therm = _command_output(["pmset", "-g", "therm"])
-    pressure_raw = _command_output(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"])
+    pressure_raw = _sysctl_output("kern.memorystatus_vm_pressure_level")
     try:
         pressure = int(pressure_raw.strip()) if pressure_raw else None
     except ValueError:
@@ -184,6 +210,163 @@ def system_snapshot_text(snapshot):
     return " · ".join(parts)
 
 
+def _parse_powermetrics_thermal(output):
+    levels = [
+        value.title()
+        for value in re.findall(
+            r"Current pressure level:\s*([A-Za-z]+)",
+            output or "",
+            re.IGNORECASE,
+        )
+    ]
+    counts = {}
+    for level in levels:
+        counts[level] = counts.get(level, 0) + 1
+    peak = None
+    if levels:
+        peak = max(levels, key=lambda value: THERMAL_RANK.get(value, -1))
+    return {
+        "samples": len(levels),
+        "first": levels[0] if levels else None,
+        "last": levels[-1] if levels else None,
+        "peak": peak,
+        "counts": counts,
+    }
+
+
+def _thermal_trace_text(trace):
+    if not trace or not trace.get("samples"):
+        return "keine Thermal-Samples"
+    counts = trace.get("counts") or {}
+    durations = " · ".join(
+        f"{counts[level]}× {level}"
+        for level in ("Nominal", "Moderate", "Heavy", "Trapping")
+        if counts.get(level)
+    )
+    return (
+        f"{trace.get('first') or '?'} → {trace.get('last') or '?'} "
+        f"· Peak {trace.get('peak') or '?'}"
+        + (f" · {durations}" if durations else "")
+    )
+
+
+def _thermal_trace_compact(trace):
+    if not trace or not trace.get("samples"):
+        return "—"
+    counts = trace.get("counts") or {}
+    parts = []
+    for level, short in (
+        ("Nominal", "N"),
+        ("Moderate", "M"),
+        ("Heavy", "H"),
+        ("Trapping", "T"),
+    ):
+        if counts.get(level):
+            parts.append(f"{short}{counts[level]}")
+    return "/".join(parts) or "—"
+
+
+def _thermal_flow(trace):
+    if not trace or not trace.get("samples"):
+        return "—"
+    short = {
+        "Nominal": "N",
+        "Moderate": "M",
+        "Heavy": "H",
+        "Trapping": "T",
+    }
+    first = short.get(trace.get("first"), "?")
+    peak = short.get(trace.get("peak"), "?")
+    last = short.get(trace.get("last"), "?")
+    return f"{first}→{peak}→{last}"
+
+
+def _prepare_thermal_sampling():
+    if sys.platform != "darwin":
+        raise RuntimeError("--thermal benötigt macOS")
+    if not os.path.exists("/usr/bin/powermetrics"):
+        raise RuntimeError("/usr/bin/powermetrics wurde nicht gefunden")
+    print(
+        "Thermal-Telemetrie: sudo wird einmal vorbereitet; "
+        "powermetrics läuft danach automatisch pro Benchmark.",
+        flush=True,
+    )
+    completed = subprocess.run(["sudo", "-v"], check=False)
+    if completed.returncode != 0:
+        raise RuntimeError("sudo-Freigabe für powermetrics fehlgeschlagen")
+
+
+def _start_thermal_sampler(enabled):
+    if not enabled:
+        return None
+    log = tempfile.NamedTemporaryFile(
+        mode="w+",
+        encoding="utf-8",
+        prefix="mlx-nobby-thermal-",
+        suffix=".log",
+        delete=False,
+    )
+    try:
+        process = subprocess.Popen(
+            [
+                "sudo",
+                "-n",
+                "/usr/bin/powermetrics",
+                "-s",
+                "thermal",
+                "-i",
+                "1000",
+            ],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
+    except Exception:
+        path = log.name
+        log.close()
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return {"process": process, "log": log, "path": log.name}
+
+
+def _stop_thermal_sampler(state):
+    if not state:
+        return None
+    process = state["process"]
+    log = state["log"]
+    path = state["path"]
+    try:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGINT)
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=2)
+        log.flush()
+        log.seek(0)
+        output = log.read()
+    finally:
+        log.close()
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    trace = _parse_powermetrics_thermal(output)
+    if not trace.get("samples") and output.strip():
+        trace["error"] = output.strip()[-300:]
+    return trace
+
+
 def progress_text(job):
     phase = str(job.get("phase") or job.get("status") or "working")
     progress = job.get("progress")
@@ -216,56 +399,69 @@ def _print_fast_mlx_muxing_if_missed(model, phase, last_signature, total, elapse
 def run_job(base_url, model, args, repeat):
     system_before = system_snapshot()
     print(f"    System vorher: {system_snapshot_text(system_before)}", flush=True)
+    thermal_sampler = _start_thermal_sampler(args.thermal)
+    thermal_trace = None
     created_at = time.monotonic()
-    payload = {
-        "operation": "t2v",
-        "chat_id": "ltx-benchmark",
-        "run_id": f"benchmark-{model}-{repeat}-{int(time.time())}",
-        "chat_revision": 0,
-        "payload": {
-            "prompt": args.prompt,
-            "model": model,
-            "quality": args.quality,
-            "duration": args.duration,
-            "fps": args.fps,
-            "seed": args.seed,
-            "aspect_ratio": args.aspect_ratio,
-        },
-    }
-    job = request_json("POST", base_url + "/jobs", payload, timeout=30)
-    job_id = job["id"]
-    print(f"  job {job_id}: gestartet", flush=True)
+    try:
+        payload = {
+            "operation": "t2v",
+            "chat_id": "ltx-benchmark",
+            "run_id": f"benchmark-{model}-{repeat}-{int(time.time())}",
+            "chat_revision": 0,
+            "payload": {
+                "prompt": args.prompt,
+                "model": model,
+                "quality": args.quality,
+                "duration": args.duration,
+                "fps": args.fps,
+                "seed": args.seed,
+                "aspect_ratio": args.aspect_ratio,
+            },
+        }
+        job = request_json("POST", base_url + "/jobs", payload, timeout=30)
+        job_id = job["id"]
+        print(f"  job {job_id}: gestartet", flush=True)
 
-    last_signature = None
-    last_output_at = created_at
-    deadline = time.monotonic() + args.timeout
-    while time.monotonic() < deadline:
-        job = request_json("GET", base_url + f"/jobs/{job_id}", timeout=15)
-        now = time.monotonic()
-        phase, percentage, step, total, label = progress_text(job)
-        signature = (phase, percentage, step, total)
-        heartbeat_due = step is None and now - last_output_at >= HEARTBEAT_SECONDS
-        if signature != last_signature or heartbeat_due:
-            if signature != last_signature:
-                _print_fast_mlx_muxing_if_missed(
-                    model, phase, last_signature, total, now - created_at,
-                )
-            print(f"    {label} · {elapsed_text(now - created_at)}", flush=True)
-            last_signature = signature
-            last_output_at = now
-        if job.get("status") in TERMINAL:
-            break
-        time.sleep(args.poll)
-    else:
-        try:
-            request_json("POST", base_url + f"/jobs/{job_id}/cancel", {}, timeout=30)
-        except Exception:
-            pass
-        raise RuntimeError(f"Timeout nach {args.timeout:.0f} s")
+        last_signature = None
+        last_output_at = created_at
+        deadline = time.monotonic() + args.timeout
+        while time.monotonic() < deadline:
+            job = request_json("GET", base_url + f"/jobs/{job_id}", timeout=15)
+            now = time.monotonic()
+            phase, percentage, step, total, label = progress_text(job)
+            signature = (phase, percentage, step, total)
+            heartbeat_due = step is None and now - last_output_at >= HEARTBEAT_SECONDS
+            if signature != last_signature or heartbeat_due:
+                if signature != last_signature:
+                    _print_fast_mlx_muxing_if_missed(
+                        model, phase, last_signature, total, now - created_at,
+                    )
+                print(f"    {label} · {elapsed_text(now - created_at)}", flush=True)
+                last_signature = signature
+                last_output_at = now
+            if job.get("status") in TERMINAL:
+                break
+            time.sleep(args.poll)
+        else:
+            try:
+                request_json("POST", base_url + f"/jobs/{job_id}/cancel", {}, timeout=30)
+            except Exception:
+                pass
+            raise RuntimeError(f"Timeout nach {args.timeout:.0f} s")
+        wall = round(time.monotonic() - created_at, 3)
+    finally:
+        thermal_trace = _stop_thermal_sampler(thermal_sampler)
 
-    wall = round(time.monotonic() - created_at, 3)
     system_after = system_snapshot()
     print(f"    System nachher: {system_snapshot_text(system_after)}", flush=True)
+    if args.thermal:
+        print(f"    Thermal im Lauf: {_thermal_trace_text(thermal_trace)}", flush=True)
+        if thermal_trace and thermal_trace.get("error"):
+            print(
+                f"    Thermal-Hinweis: {thermal_trace['error']}",
+                file=sys.stderr,
+                flush=True,
+            )
     if job.get("status") != "completed":
         raise RuntimeError(job.get("error") or f"Job endete mit {job.get('status')}")
 
@@ -306,6 +502,7 @@ def run_job(base_url, model, args, repeat):
         "swap_delta_gb": swap_delta,
         "system_before": system_before,
         "system_after": system_after,
+        "thermal_trace": thermal_trace,
         "path": result.get("path"),
     }
 
@@ -323,6 +520,7 @@ def failed_result(model, exc):
         "ram_peak_gb": None,
         "swap_peak_gb": None,
         "swap_delta_gb": None,
+        "thermal_trace": None,
     }
 
 
@@ -338,13 +536,14 @@ def _thermal_summary(item):
 
 def print_table(results):
     print("\nErgebnisse")
-    print("=" * 158)
+    print("=" * 184)
     header = (
         f"{'Model':28} {'Status':9} {'Backend':15} {'Start':6} {'Size':13} "
-        f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap peak':>10} {'Swap Δ':>9} {'CPU lim':>10}"
+        f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap peak':>10} "
+        f"{'Swap Δ':>9} {'CPU lim':>10} {'Thermal':>9} {'T-Samples':>18}"
     )
     print(header)
-    print("-" * 158)
+    print("-" * 184)
     for item in results:
         size = f"{item.get('width') or '?'}x{item.get('height') or '?'}"
         provider = item.get("provider_seconds")
@@ -361,12 +560,15 @@ def print_table(results):
             f"{size:13} {wall_text:>9} {provider_text:>9} "
             f"{(f'{ram:.1f} GB' if ram is not None else '—'):>10} "
             f"{(f'{swap:.1f} GB' if swap is not None else '—'):>10} "
-            f"{swap_delta_text:>9} {_thermal_summary(item):>10}"
+            f"{swap_delta_text:>9} {_thermal_summary(item):>10} "
+            f"{_thermal_flow(item.get('thermal_trace')):>9} "
+            f"{_thermal_trace_compact(item.get('thermal_trace')):>18}"
         )
         if item.get("error"):
             print(f"  ↳ {str(item['error'])[:118]}")
-    print("=" * 158)
+    print("=" * 184)
     print("CPU lim = pmset CPU_Speed_Limit vor→nach dem Lauf; kein Temperaturwert.")
+    print("Thermal = powermetrics Start→Peak→Ende; N=Nominal, M=Moderate, H=Heavy, T=Trapping.")
 
 
 def main():
@@ -385,6 +587,11 @@ def main():
         action="store_true",
         help="run exactly cold -> warm -> forced-cold for one native-MLX model",
     )
+    parser.add_argument(
+        "--thermal",
+        action="store_true",
+        help="sample macOS powermetrics thermal pressure once per second during each run",
+    )
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--json", action="store_true")
@@ -396,6 +603,9 @@ def main():
     missing = [model for model in args.models if model not in available]
     if missing:
         raise RuntimeError("Unbekannte Video-Modelle: " + ", ".join(missing))
+
+    if args.thermal:
+        _prepare_thermal_sampling()
 
     if args.cold_warm_cold:
         if len(args.models) != 1:
