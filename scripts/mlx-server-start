@@ -61,7 +61,37 @@ PY
     echo "lm"
 }
 
+adaptive_prefill_step_size() {
+    if [ -n "${MLX_PREFILL_STEP_SIZE:-}" ]; then
+        case "$MLX_PREFILL_STEP_SIZE" in
+            ''|*[!0-9]*)
+                echo "Ungültiges MLX_PREFILL_STEP_SIZE: $MLX_PREFILL_STEP_SIZE" >&2
+                return 1
+                ;;
+            *)
+                if [ "$MLX_PREFILL_STEP_SIZE" -lt 128 ] || [ "$MLX_PREFILL_STEP_SIZE" -gt 4096 ]; then
+                    echo "MLX_PREFILL_STEP_SIZE muss zwischen 128 und 4096 liegen" >&2
+                    return 1
+                fi
+                echo "$MLX_PREFILL_STEP_SIZE"
+                return
+                ;;
+        esac
+    fi
+
+    # Larger unified-memory Macs can prefill longer context chunks efficiently.
+    # Keep smaller machines on the conservative upstream-sized default.
+    local memory_bytes
+    memory_bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+    if [[ "$memory_bytes" =~ ^[0-9]+$ ]] && [ "$memory_bytes" -ge 34359738368 ]; then
+        echo "1024"
+    else
+        echo "512"
+    fi
+}
+
 BACKEND="$(detect_backend "$MODEL")"
+PREFILL_STEP_SIZE="$(adaptive_prefill_step_size)" || exit 1
 
 echo
 echo "============================================================"
@@ -71,6 +101,7 @@ echo "Modell:   $MODEL"
 echo "Backend:  $BACKEND"
 echo "Port:     $PORT"
 echo "Thinking: $THINKING"
+echo "Prefill:  $PREFILL_STEP_SIZE"
 echo "============================================================"
 echo
 
@@ -81,7 +112,7 @@ if [ "$BACKEND" = "vlm" ]; then
         --model "$MODEL"
         --host 127.0.0.1
         --port "$PORT"
-        --prefill-step-size 512
+        --prefill-step-size "$PREFILL_STEP_SIZE"
         --max-num-seqs 2
     )
 
@@ -99,7 +130,7 @@ else
         --model "$MODEL"
         --host 127.0.0.1
         --port "$PORT"
-        --prefill-step-size 512
+        --prefill-step-size "$PREFILL_STEP_SIZE"
     )
 
     echo "Starte mlx_lm..."
