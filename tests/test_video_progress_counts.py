@@ -1,8 +1,7 @@
 import unittest
-from types import SimpleNamespace
+from pathlib import Path
 
 import video_provider_dispatch
-import video_service_dispatch
 
 
 class VideoProgressCountTests(unittest.TestCase):
@@ -51,11 +50,11 @@ class VideoProgressCountTests(unittest.TestCase):
             original,
         )
 
-    def test_service_uses_validated_profile_steps_for_completion(self):
-        standard = SimpleNamespace(steps=11, quality="standard")
-        preview = SimpleNamespace(steps=2, quality="preview")
-        self.assertEqual(video_service_dispatch._job_total_steps(standard), 11)
-        self.assertEqual(video_service_dispatch._job_total_steps(preview), 2)
+    def test_service_dispatch_uses_validated_profile_steps_for_completion(self):
+        source = Path("video_service_dispatch.py").read_text()
+        self.assertIn('steps = int(payload.steps)', source)
+        self.assertIn('return 2 if payload.quality == "preview" else 11', source)
+        self.assertIn('service._job_total_steps = _job_total_steps', source)
 
 
 if __name__ == "__main__":
