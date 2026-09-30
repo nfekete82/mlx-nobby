@@ -15,6 +15,7 @@ from backend.model_scout_routes import (
     ModelScoutUiMiddleware,
     install_routes as install_model_scout_routes,
 )
+from backend.negative_prompt_ui import NegativePromptUiMiddleware
 from backend.settings_ui_routes import SettingsUiMiddleware
 from backend.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from backend.speech_streaming_routes import install_routes as install_speech_streaming_routes
@@ -31,6 +32,7 @@ app.add_middleware(SystemHealthUiMiddleware)
 app.add_middleware(ModelScoutUiMiddleware)
 app.add_middleware(SettingsUiMiddleware)
 app.add_middleware(MediaRoutingUiMiddleware)
+app.add_middleware(NegativePromptUiMiddleware)
 
 install_automation_routes(app, agent_json_request)
 install_memory_manager_routes(app, agent_json_request)

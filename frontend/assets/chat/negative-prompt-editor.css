@@ -1,0 +1,47 @@
+.negative-prompt-editor-controls {
+    display: grid;
+    gap: 8px;
+}
+
+.negative-prompt-editor-helper {
+    color: var(--muted, #8a95a5);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.negative-prompt-editor-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.negative-prompt-editor-actions button {
+    border: 1px solid var(--border, rgba(255, 255, 255, .12));
+    border-radius: 8px;
+    background: var(--surface-2, rgba(255, 255, 255, .045));
+    color: inherit;
+    padding: 6px 9px;
+    font-size: 12px;
+}
+
+.negative-prompt-editor-actions button:hover:not(:disabled) {
+    background: rgba(79, 140, 255, .12);
+    border-color: rgba(79, 140, 255, .45);
+}
+
+.negative-prompt-editor-actions button:disabled {
+    cursor: default;
+    opacity: .45;
+}
+
+.negative-prompt-editor-status {
+    color: var(--muted, #8a95a5);
+    font-size: 12px;
+}
+
+.media-negative-prompt-presets button.is-selected {
+    border-color: var(--blue, #4f8cff);
+    background: rgba(79, 140, 255, .16);
+    color: var(--text, #eef2f7);
+}
