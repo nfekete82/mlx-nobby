@@ -52,6 +52,7 @@ jobs:
           bash -n scripts/mlx
           bash -n scripts/mlx-server-start
           bash -n scripts/setup-ltx-video
+          bash -n scripts/setup-ltx-video-mlx
           for template in launchd/templates/*.plist.template; do
             plutil -lint "$template" >/dev/null
           done
