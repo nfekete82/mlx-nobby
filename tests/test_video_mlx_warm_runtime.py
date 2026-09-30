@@ -62,11 +62,24 @@ class VideoMlxWarmRuntimeTests(unittest.TestCase):
         self.assertIn('"weights_resident": False', source)
         self.assertIn("LTX_MLX_PARENT_PID", source)
 
+    def test_worker_source_maps_upstream_step_hook_to_live_progress(self):
+        source = Path("video_mlx_worker.py").read_text()
+        self.assertIn("def _install_progress_hook", source)
+        self.assertIn("pipe._stepwise_hook = stepwise_hook", source)
+        self.assertIn('phase="denoising"', source)
+        self.assertIn("0.9 * completed / total_steps", source)
+
     def test_benchmark_records_failures_instead_of_aborting_first_backend(self):
         source = Path("scripts/benchmark-ltx-video.py").read_text()
         self.assertIn("def failed_result", source)
         self.assertIn("results.append(failed_result(model, exc))", source)
         self.assertIn("Kein Benchmark-Backend konnte einen Lauf abschließen", source)
+
+    def test_benchmark_prints_periodic_heartbeat(self):
+        source = Path("scripts/benchmark-ltx-video.py").read_text()
+        self.assertIn("HEARTBEAT_SECONDS", source)
+        self.assertIn("heartbeat_due", source)
+        self.assertIn("elapsed_text", source)
 
 
 if __name__ == "__main__":

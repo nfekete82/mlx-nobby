@@ -31,6 +31,8 @@ _STATE = {
     "busy": False,
     "phase": "ready",
     "progress": 0.0,
+    "current_step": None,
+    "total_steps": None,
     "generation_count": 0,
     "pipeline_initialized": False,
     "last_elapsed_seconds": None,
@@ -66,18 +68,60 @@ def _snapshot():
         }
 
 
+def _install_progress_hook(pipe, stage1_steps, stage2_steps):
+    """Map upstream per-step denoising callbacks onto worker health state.
+
+    LTX 2.5 distilled generation is two-stage (8 + 3 steps for normal
+    quality). Denoising occupies 90% of the public progress range so the UI
+    never claims 100% while decode/audio muxing is still running.
+    """
+    total_steps = max(1, int(stage1_steps) + int(stage2_steps))
+
+    def stepwise_hook(_latent_frames, _latent_height, _latent_width, *, stage=None):
+        stage_offset = int(stage1_steps) if stage == 2 else 0
+
+        def on_step(step_idx, num_steps, _video_x0, _sigma):
+            completed_in_stage = min(int(step_idx) + 1, max(1, int(num_steps)))
+            completed = min(total_steps, stage_offset + completed_in_stage)
+            with _STATE_LOCK:
+                _STATE.update(
+                    phase="denoising",
+                    current_step=completed,
+                    total_steps=total_steps,
+                    progress=round(0.9 * completed / total_steps, 6),
+                )
+
+        return on_step
+
+    # The pinned upstream pipeline asks self._stepwise_hook(...) separately for
+    # stage 1 and stage 2. Replacing the instance hook is intentionally local to
+    # this worker and avoids patching the installed upstream runtime.
+    pipe._stepwise_hook = stepwise_hook
+
+
 def _generate(payload):
     if not _GENERATION_LOCK.acquire(blocking=False):
         raise RuntimeError("LTX-MLX worker is already generating")
     started = time.monotonic()
+    stage1_steps = int(payload["stage1_steps"])
+    stage2_steps = int(payload["stage2_steps"])
+    total_steps = max(1, stage1_steps + stage2_steps)
     with _STATE_LOCK:
         reused = _STATE["generation_count"] > 0
-        _STATE.update(busy=True, phase="generating", progress=0.01, last_error=None)
+        _STATE.update(
+            busy=True,
+            phase="generating",
+            progress=0.01,
+            current_step=0,
+            total_steps=total_steps,
+            last_error=None,
+        )
     try:
         output = Path(str(payload["output"])).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
         image = payload.get("image")
         pipe = _pipeline()
+        _install_progress_hook(pipe, stage1_steps, stage2_steps)
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),
             output_path=str(output),
@@ -86,8 +130,8 @@ def _generate(payload):
             num_frames=int(payload["frames"]),
             frame_rate=float(payload["fps"]),
             seed=int(payload["seed"]),
-            stage1_steps=int(payload["stage1_steps"]),
-            stage2_steps=int(payload["stage2_steps"]),
+            stage1_steps=stage1_steps,
+            stage2_steps=stage2_steps,
             image=str(image) if image else None,
         )
         if not output.is_file():
@@ -99,6 +143,8 @@ def _generate(payload):
                 busy=False,
                 phase="ready",
                 progress=1.0,
+                current_step=total_steps,
+                total_steps=total_steps,
                 last_elapsed_seconds=round(elapsed, 3),
             )
         return {
@@ -109,14 +155,21 @@ def _generate(payload):
         }
     except Exception as exc:
         with _STATE_LOCK:
-            _STATE.update(busy=False, phase="ready", progress=0.0, last_error=str(exc)[-2000:])
+            _STATE.update(
+                busy=False,
+                phase="ready",
+                progress=0.0,
+                current_step=None,
+                total_steps=None,
+                last_error=str(exc)[-2000:],
+            )
         raise
     finally:
         _GENERATION_LOCK.release()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "mlx-nobby-ltx-mlx/2"
+    server_version = "mlx-nobby-ltx-mlx/3"
 
     def log_message(self, fmt, *args):
         return

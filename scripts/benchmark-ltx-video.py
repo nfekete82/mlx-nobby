@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark Nobby's stable MPS and experimental native-MLX LTX backends."""
+"""Benchmark Nobby's stable MPS and native-MLX LTX backends."""
 from __future__ import annotations
 
 import argparse
@@ -12,6 +12,7 @@ import urllib.request
 
 DEFAULT_MODELS = ["ltx-2.5-22b-distilled", "ltx-2.5-mlx-q4"]
 TERMINAL = {"completed", "failed", "cancelled"}
+HEARTBEAT_SECONDS = 30.0
 
 
 def request_json(method, url, payload=None, timeout=30):
@@ -35,6 +36,31 @@ def gb(value):
     return round(float(value) / (1024 ** 3), 2)
 
 
+def elapsed_text(seconds):
+    seconds = max(0, int(seconds))
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def progress_text(job):
+    phase = str(job.get("phase") or job.get("status") or "working")
+    progress = job.get("progress")
+    percentage = round(progress * 100) if isinstance(progress, (int, float)) else None
+    step = job.get("current_step")
+    total = job.get("total_steps")
+    if isinstance(step, int) and isinstance(total, int) and step > 0 and total > 0:
+        suffix = f" {step}/{total}"
+        if percentage is not None:
+            suffix += f" ({percentage} %)"
+        return phase, percentage, step, total, phase + suffix
+    if percentage is not None:
+        return phase, percentage, None, total, f"{phase} ({percentage} %)"
+    return phase, None, None, total, phase
+
+
 def run_job(base_url, model, args, repeat):
     created_at = time.monotonic()
     payload = {
@@ -56,16 +82,19 @@ def run_job(base_url, model, args, repeat):
     job_id = job["id"]
     print(f"  job {job_id}: gestartet", flush=True)
 
-    last_phase = None
+    last_signature = None
+    last_output_at = created_at
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
         job = request_json("GET", base_url + f"/jobs/{job_id}", timeout=15)
-        phase = job.get("phase")
-        if phase and phase != last_phase:
-            progress = job.get("progress")
-            suffix = f" ({progress * 100:.0f} %)" if isinstance(progress, (int, float)) else ""
-            print(f"    {phase}{suffix}", flush=True)
-            last_phase = phase
+        now = time.monotonic()
+        phase, percentage, step, total, label = progress_text(job)
+        signature = (phase, percentage, step, total)
+        heartbeat_due = now - last_output_at >= HEARTBEAT_SECONDS
+        if signature != last_signature or heartbeat_due:
+            print(f"    {label} · {elapsed_text(now - created_at)}", flush=True)
+            last_signature = signature
+            last_output_at = now
         if job.get("status") in TERMINAL:
             break
         time.sleep(args.poll)

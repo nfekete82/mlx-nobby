@@ -87,5 +87,5 @@ echo "  Runtime: $CLI"
 echo "  Q4-Pack: $MODEL_DIR (${MODEL_SIZE:-?})"
 echo "  Encoder: Gemma 4 aus dem LTX-2.5-Pack (kein separater Download)"
 echo
-echo "Der bestehende PyTorch/MPS-Worker bleibt absichtlich Standard."
-echo "Nach einem Nobby-Neustart kann der MLX-Worker explizit gebenchmarkt werden."
+echo "MLX Q4 ist Nobbys Standard-Video-Backend; der PyTorch/MPS-Pfad bleibt als Fallback verfügbar."
+echo "Nach einem Nobby-Neustart kann der Worker direkt über die normale Video-Generierung verwendet werden."

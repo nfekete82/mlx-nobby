@@ -1,3 +1,4 @@
+import json
 import tempfile
 import threading
 import unittest
@@ -10,19 +11,42 @@ import video_registry
 
 
 class VideoMlxRegistryTests(unittest.TestCase):
-    def test_registry_keeps_mps_default_and_adds_experimental_q4(self):
+    def test_registry_uses_mlx_q4_as_default_and_keeps_mps_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry_file = Path(tmp) / "video-models.json"
             with mock.patch.object(video_registry, "REGISTRY_FILE", registry_file):
                 data = video_registry.load_registry()
 
-        self.assertEqual(data["default_model"], video_registry.LTX_ID)
+        self.assertEqual(data["default_model"], video_registry.LTX_MLX_Q4_ID)
         by_id = {item["id"]: item for item in data["models"]}
         self.assertIn(video_registry.LTX_ID, by_id)
         self.assertIn(video_registry.LTX_MLX_Q4_ID, by_id)
         self.assertEqual(by_id[video_registry.LTX_MLX_Q4_ID]["provider"], "ltx-mlx")
         self.assertEqual(by_id[video_registry.LTX_MLX_Q4_ID]["quantization"], "int4")
-        self.assertTrue(by_id[video_registry.LTX_MLX_Q4_ID]["experimental"])
+        self.assertFalse(by_id[video_registry.LTX_MLX_Q4_ID]["experimental"])
+
+    def test_revision_four_migrates_former_mps_default_to_mlx(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry_file = Path(tmp) / "video-models.json"
+            registry_file.write_text(json.dumps({
+                "revision": 3,
+                "default_model": video_registry.LTX_ID,
+                "models": [],
+            }))
+            with mock.patch.object(video_registry, "REGISTRY_FILE", registry_file):
+                data = video_registry.load_registry()
+
+        self.assertEqual(data["revision"], 4)
+        self.assertEqual(data["default_model"], video_registry.LTX_MLX_Q4_ID)
+
+    def test_explicit_default_environment_override_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry_file = Path(tmp) / "video-models.json"
+            with mock.patch.object(video_registry, "REGISTRY_FILE", registry_file), \
+                 mock.patch.dict("os.environ", {"MLX_VIDEO_DEFAULT_MODEL": video_registry.LTX_ID}):
+                data = video_registry.load_registry()
+
+        self.assertEqual(data["default_model"], video_registry.LTX_ID)
 
     def test_mlx_model_requires_ready_marker_and_embedded_config(self):
         with tempfile.TemporaryDirectory() as tmp:

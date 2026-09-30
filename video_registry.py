@@ -21,9 +21,10 @@ MLX_MODEL_ROOT = Path(os.environ.get(
 )).expanduser()
 LTX_ID = "ltx-2.5-22b-distilled"
 LTX_MLX_Q4_ID = "ltx-2.5-mlx-q4"
+DEFAULT_MODEL_ID = LTX_MLX_Q4_ID
 LTX_REPOSITORY = "Lightricks/LTX-2.5"
 LTX_MLX_Q4_REPOSITORY = "dgrauet/ltx-2.5-mlx-q4"
-REVISION = 3
+REVISION = 4
 _lock = threading.RLock()
 
 REQUIRED_FILES = (
@@ -58,7 +59,7 @@ def builtin_model():
 def builtin_mlx_model():
     return {
         "id": LTX_MLX_Q4_ID,
-        "display_name": "LTX 2.5 MLX Q4 (experimental)",
+        "display_name": "LTX 2.5 MLX Q4 (local)",
         "provider": "ltx-mlx",
         "repository": LTX_MLX_Q4_REPOSITORY,
         "model_family": "ltx-2.5",
@@ -70,7 +71,7 @@ def builtin_mlx_model():
         "default_fps": 24,
         "inference_steps": 11,
         "enabled": True,
-        "experimental": True,
+        "experimental": False,
     }
 
 
@@ -138,12 +139,28 @@ def load_registry():
                 model["enabled"] = bool(existing.get("enabled", True))
 
         available_ids = {model["id"] for model in models}
-        requested_default = str(
-            os.environ.get("MLX_VIDEO_DEFAULT_MODEL")
-            or stored.get("default_model")
-            or LTX_ID
+        env_default = os.environ.get("MLX_VIDEO_DEFAULT_MODEL")
+        stored_default = stored.get("default_model")
+        try:
+            stored_revision = int(stored.get("revision") or 0)
+        except (TypeError, ValueError):
+            stored_revision = 0
+
+        if env_default:
+            requested_default = str(env_default)
+        elif stored_revision < REVISION and stored_default == LTX_ID:
+            # Revision 4 promotes the benchmarked native-MLX Q4 backend. Migrate
+            # the former built-in MPS default once while preserving later user
+            # selections and explicit environment overrides.
+            requested_default = DEFAULT_MODEL_ID
+        else:
+            requested_default = str(stored_default or DEFAULT_MODEL_ID)
+
+        default_model = (
+            requested_default
+            if requested_default in available_ids
+            else DEFAULT_MODEL_ID
         )
-        default_model = requested_default if requested_default in available_ids else LTX_ID
         data = {
             "revision": REVISION,
             "default_model": default_model,
