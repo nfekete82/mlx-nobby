@@ -18,7 +18,6 @@ from video_providers import (
     ProviderCancelled,
     _prepare_first_frame,
     _probe_video,
-    _runtime_canvas,
     validate_first_frame,
 )
 
@@ -35,7 +34,6 @@ LTX_MLX_GEMMA_DIR = Path(os.environ.get(
     "LTX_MLX_GEMMA_DIR",
     str(Path.home() / ".local/share/mlx-nobby/models/gemma-3-12b-it-4bit"),
 )).expanduser()
-LTX_MLX_READY_MARKER = ".mlx-nobby-ready"
 DEFAULT_LOW_RAM = os.environ.get("LTX_MLX_LOW_RAM", "1").strip().lower() not in {
     "0", "false", "no", "off",
 }
@@ -119,7 +117,7 @@ def _run_process(command, *, cancel_event, response_callback=None,
     if phase_callback:
         phase_callback("generating")
     if progress_callback:
-        progress_callback({"phase": "generating", "progress": 1})
+        progress_callback({"phase": "generating", "progress": 0.01})
 
     output = ""
     try:
@@ -165,21 +163,20 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
         prepared = None
         if source is not None:
             prepared = Path(temporary) / "first-frame.png"
-            runtime_width, runtime_height = _runtime_canvas(
-                params["resolution"], params["aspect_ratio"],
-            )
+            target_width = int(params["width"])
+            target_height = int(params["height"])
             resize_info = _prepare_first_frame(
                 source,
-                runtime_width,
-                runtime_height,
+                target_width,
+                target_height,
                 params.get("resize_mode") or "contain",
                 prepared,
             )
             resize_info.update({
-                "target_width": int(params["width"]),
-                "target_height": int(params["height"]),
-                "conditioning_width": runtime_width,
-                "conditioning_height": runtime_height,
+                "target_width": target_width,
+                "target_height": target_height,
+                "conditioning_width": target_width,
+                "conditioning_height": target_height,
             })
 
         command = _command(model, params, output, image=prepared)
