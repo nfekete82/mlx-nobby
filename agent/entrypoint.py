@@ -22,6 +22,7 @@ from agent.media_queue_performance import install as install_media_queue_perform
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
 from agent.model_scout_routes import install_routes as install_model_scout_routes
+from agent.performance_observatory_routes import install_routes as install_performance_observatory_routes
 from agent.runtime_reliability_routes import install_routes as install_runtime_reliability_routes
 from agent.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from agent.speech_streaming_routes import install_routes as install_speech_streaming_routes
@@ -49,6 +50,7 @@ install_shorts_studio_routes(app)
 install_speech_streaming_routes(app)
 install_voice_manager_routes(app)
 install_runtime_reliability_routes(app, status_provider=runtime_status)
+install_performance_observatory_routes(app, status_provider=runtime_status)
 install_system_health_performance()
 install_system_health_routes(app)
 install_automation_routes(app)

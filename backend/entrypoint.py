@@ -16,6 +16,10 @@ from backend.model_scout_routes import (
     install_routes as install_model_scout_routes,
 )
 from backend.negative_prompt_ui import NegativePromptUiMiddleware
+from backend.performance_observatory_routes import (
+    PerformanceObservatoryUiMiddleware,
+    install_routes as install_performance_observatory_routes,
+)
 from backend.settings_ui_routes import SettingsUiMiddleware
 from backend.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from backend.speech_streaming_routes import install_routes as install_speech_streaming_routes
@@ -29,6 +33,7 @@ from backend.voice_manager_routes import install_routes as install_voice_manager
 
 app.add_middleware(MemoryManagerUiMiddleware)
 app.add_middleware(SystemHealthUiMiddleware)
+app.add_middleware(PerformanceObservatoryUiMiddleware)
 app.add_middleware(ModelScoutUiMiddleware)
 app.add_middleware(SettingsUiMiddleware)
 app.add_middleware(MediaRoutingUiMiddleware)
@@ -42,6 +47,7 @@ install_speech_streaming_routes(app, AGENT_URL)
 install_voice_manager_routes(app, AGENT_URL)
 install_version_routes(app)
 install_system_health_routes(app, agent_json_request)
+install_performance_observatory_routes(app, agent_json_request)
 install_routing_observatory_routes(app)
 install_chat_reliability_routes(
     app,
