@@ -480,7 +480,11 @@ def guard_media_route_payload(
     }
 
     if record:
-        record_routing_decision(trace)
+        try:
+            record_routing_decision(trace)
+        except (OSError, TypeError, ValueError):
+            # Observability must never block a chat/media route.
+            pass
 
     return json.dumps(
         response_payload,
