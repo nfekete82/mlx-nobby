@@ -68,11 +68,7 @@ import sys
 from huggingface_hub import snapshot_download
 
 repo_id, destination = sys.argv[1:]
-snapshot_download(
-    repo_id=repo_id,
-    local_dir=destination,
-    local_dir_use_symlinks=False,
-)
+snapshot_download(repo_id=repo_id, local_dir=destination)
 PY
 ); then
     fail "Q4-Download fehlgeschlagen. Prüfe Hugging-Face-Zugriff/Lizenz und führe das Setup erneut aus."
@@ -88,11 +84,7 @@ import sys
 from huggingface_hub import snapshot_download
 
 repo_id, destination = sys.argv[1:]
-snapshot_download(
-    repo_id=repo_id,
-    local_dir=destination,
-    local_dir_use_symlinks=False,
-)
+snapshot_download(repo_id=repo_id, local_dir=destination)
 PY
 ); then
     fail "Gemma-Download fehlgeschlagen. Prüfe Hugging-Face-Zugriff/Lizenz und führe das Setup erneut aus."
