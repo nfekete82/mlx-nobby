@@ -84,6 +84,18 @@ def main():
                 )
                 loaded_scheduler = scheduler_name
 
+            # Prewarm loads the exact production pipeline and scheduler into
+            # the persistent worker without spending any denoising/decoding
+            # work or creating an artifact.
+            if request.get("operation") == "prewarm":
+                print(json.dumps({
+                    "type": "complete",
+                    "request_id": request_id,
+                    "operation": "prewarm",
+                    "scheduler": scheduler_name,
+                }), flush=True)
+                continue
+
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 
             def report_step(_pipeline, step, _timestep, callback_kwargs):

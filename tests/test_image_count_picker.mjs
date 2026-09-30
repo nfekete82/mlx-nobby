@@ -72,6 +72,16 @@ assert.equal(helpers.normalizeImageCount('invalid'), 1);
 assert.equal(helpers.resolveLanguage(), 'de');
 assert.equal(helpers.resolveLanguage('en-US'), 'en');
 assert.equal(helpers.resolveLanguage('de-DE'), 'de');
+assert.equal(
+    helpers.latestImagePrompt({
+        messages: [
+            { role: 'user', content: 'first prompt' },
+            { role: 'assistant', content: 'ok' },
+            { role: 'user', content: 'photorealistic portrait' },
+        ],
+    }),
+    'photorealistic portrait',
+);
 
 assert.equal(de.count_label, 'Anzahl');
 assert.deepEqual(
@@ -250,7 +260,7 @@ const versionMatch = source.match(
     /const SCRIPT_VERSION = '([^']+)'/,
 );
 assert.ok(versionMatch, 'image count picker must expose a script version');
-assert.equal(versionMatch[1], '20260930-image-count-v3');
+assert.equal(versionMatch[1], '20260930-image-count-v4');
 assert.ok(
     commonSource.includes(
         'image-count-picker.js?v=' + versionMatch[1],
@@ -260,7 +270,9 @@ assert.ok(
 assert.match(commonSource, /loadImageCountPicker\(\);/);
 assert.match(source, /settings: selectedImageBatchSettings\(\)/);
 assert.match(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
+assert.match(source, /fetch\('\/api\/image\/prewarm'/);
+assert.match(source, /if \(imageMode\) requestImagePrewarm\(\);/);
 assert.match(source, /mlx-i18n-ready/);
 assert.match(source, /mlx-language-changed/);
 
-console.log('Image count picker loader, batch settings, localization, and 1-6 grouping passed.');
+console.log('Image count picker loader, prewarm, batch settings, localization, and 1-6 grouping passed.');
