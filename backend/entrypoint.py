@@ -3,6 +3,7 @@
 from backend.app import AGENT_URL, agent_json_request, app, mlx_chat_stream
 from backend.automation_routes import install_routes as install_automation_routes
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
+from backend.media_prompt_meta_guard import install_media_prompt_meta_guard
 from backend.media_routing_ui import (
     MediaRoutingUiMiddleware,
     install_routes as install_routing_observatory_routes,
@@ -30,6 +31,8 @@ from backend.system_health_routes import (
 from backend.version_routes import install_routes as install_version_routes
 from backend.voice_manager_routes import install_routes as install_voice_manager_routes
 
+
+install_media_prompt_meta_guard()
 
 app.add_middleware(MemoryManagerUiMiddleware)
 app.add_middleware(SystemHealthUiMiddleware)
