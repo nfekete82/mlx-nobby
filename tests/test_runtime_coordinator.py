@@ -67,7 +67,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                     requester=requester,
                 )
 
-    def test_video_stops_and_restores_previously_loaded_chat(self):
+    def test_video_stops_and_restores_previously_loaded_chat_when_headroom_is_low(self):
         commands = []
         memory = {
             "pressure": "normal",
@@ -91,9 +91,41 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 self.assertEqual(commands, ["stop"])
                 self.assertEqual(preflight["memory_before"], memory)
                 self.assertTrue(preflight["chat_released"])
-                self.assertFalse(preflight["memory_relief_needed"])
+                self.assertTrue(preflight["memory_relief_needed"])
+                self.assertEqual(
+                    preflight["required_headroom_gb"],
+                    runtime_coordinator.VIDEO_MIN_HEADROOM_GB,
+                )
 
         self.assertEqual(commands, ["stop", "start"])
+
+    def test_video_keeps_chat_warm_when_memory_headroom_is_healthy(self):
+        commands = []
+        chat_probe = mock.Mock(return_value=True)
+        memory = {
+            "pressure": "normal",
+            "headroom_gb": runtime_coordinator.VIDEO_MIN_HEADROOM_GB + 4.0,
+        }
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator,
+            "release_idle_image_runtime",
+            return_value={"loaded": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            return_value=memory,
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(),
+                chat_loaded=chat_probe,
+                chat_command=commands.append,
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertFalse(preflight["memory_relief_needed"])
+                self.assertFalse(preflight["chat_released"])
+
+        chat_probe.assert_not_called()
+        self.assertEqual(commands, [])
 
     def test_image_waits_for_active_video(self):
         health = [
