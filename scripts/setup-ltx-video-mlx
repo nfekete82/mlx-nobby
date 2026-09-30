@@ -8,9 +8,7 @@ UPSTREAM_VERSION="0.15.12"
 RUNTIME_ROOT="${LTX_MLX_RUNTIME_ROOT:-$HOME/.local/share/mlx-nobby/ltx-2-mlx}"
 MODEL_ROOT="${LTX_MLX_MODEL_ROOT:-$HOME/.local/share/mlx-nobby/models}"
 MODEL_DIR="$MODEL_ROOT/ltx-2.5-mlx-q4"
-GEMMA_DIR="${LTX_MLX_GEMMA_DIR:-$MODEL_ROOT/gemma-3-12b-it-4bit}"
 MODEL_REPO="dgrauet/ltx-2.5-mlx-q4"
-GEMMA_REPO="mlx-community/gemma-3-12b-it-4bit"
 READY_MARKER="$MODEL_DIR/.mlx-nobby-ready"
 
 fail() {
@@ -36,7 +34,7 @@ echo "Pin:      $UPSTREAM_COMMIT"
 echo "Model:    $MODEL_REPO"
 echo
 
-echo "[1/4] Upstream-Runtime installieren/aktualisieren"
+echo "[1/3] Upstream-Runtime installieren/aktualisieren"
 if [ ! -d "$RUNTIME_ROOT/.git" ]; then
     rm -rf "$RUNTIME_ROOT"
     git clone "$UPSTREAM_REPO" "$RUNTIME_ROOT"
@@ -55,7 +53,7 @@ CLI="$RUNTIME_ROOT/.venv/bin/ltx-2-mlx"
 [ -x "$CLI" ] || fail "CLI wurde nicht erzeugt: $CLI"
 "$CLI" --help >/dev/null
 
-echo "[2/4] LTX 2.5 MLX Q4 herunterladen"
+echo "[2/3] LTX 2.5 MLX Q4 herunterladen"
 echo "Hinweis: Nobby akzeptiert keine Modell-Lizenz automatisch."
 echo "Falls Hugging Face den Download sperrt, akzeptiere dort zuerst die"
 echo "Bedingungen für $MODEL_REPO und melde dich lokal mit 'hf auth login' an."
@@ -75,34 +73,19 @@ PY
 fi
 
 [ -f "$MODEL_DIR/embedded_config.json" ] || fail "Q4-Modell ist unvollständig: embedded_config.json fehlt."
+[ -f "$MODEL_DIR/text_encoder.safetensors" ] || fail "Q4-Modell ist unvollständig: pack-lokaler Gemma-4-Encoder fehlt."
+[ -f "$MODEL_DIR/text_encoder_config.json" ] || fail "Q4-Modell ist unvollständig: text_encoder_config.json fehlt."
 
-echo "[3/4] Lokalen MLX-Gemma-Textencoder herunterladen"
-if ! (
-    cd "$RUNTIME_ROOT"
-    uv run --with huggingface_hub python - "$GEMMA_REPO" "$GEMMA_DIR" <<'PY'
-import sys
-from huggingface_hub import snapshot_download
-
-repo_id, destination = sys.argv[1:]
-snapshot_download(repo_id=repo_id, local_dir=destination)
-PY
-); then
-    fail "Gemma-Download fehlgeschlagen. Prüfe Hugging-Face-Zugriff/Lizenz und führe das Setup erneut aus."
-fi
-
-[ -f "$GEMMA_DIR/config.json" ] || fail "Gemma-Modell ist unvollständig: config.json fehlt."
-
-echo "[4/4] Installation validieren"
+echo "[3/3] Installation validieren"
 touch "$READY_MARKER"
 
 MODEL_SIZE="$(du -sh "$MODEL_DIR" 2>/dev/null | awk '{print $1}')"
-GEMMA_SIZE="$(du -sh "$GEMMA_DIR" 2>/dev/null | awk '{print $1}')"
 
 echo
 echo "LTX 2.5 MLX Q4 ist bereit."
 echo "  Runtime: $CLI"
-echo "  Q4:      $MODEL_DIR (${MODEL_SIZE:-?})"
-echo "  Gemma:   $GEMMA_DIR (${GEMMA_SIZE:-?})"
+echo "  Q4-Pack: $MODEL_DIR (${MODEL_SIZE:-?})"
+echo "  Encoder: Gemma 4 aus dem LTX-2.5-Pack (kein separater Download)"
 echo
 echo "Der bestehende PyTorch/MPS-Worker bleibt absichtlich Standard."
 echo "Nach einem Nobby-Neustart kann der MLX-Worker explizit gebenchmarkt werden."
