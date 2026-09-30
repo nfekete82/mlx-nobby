@@ -33,6 +33,7 @@ FFPROBE = os.environ.get("FFPROBE_PATH", str(Path(FFMPEG).with_name("ffprobe")))
 IMAGE_ROOT = Path.home() / ".config/mlx-web/images"
 UPLOAD_ROOT = Path.home() / ".config/mlx-web/batch/uploads"
 RUNTIME_LOG = Path.home() / ".config/mlx-web/ltx-runtime.log"
+MLX_SERVER_LABEL = "de.nobby.mlx-server"
 SUPPORTED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 DEFAULT_LTX_IDLE_TIMEOUT = 300.0
 _RUNTIME_LOCK = threading.RLock()
@@ -276,6 +277,25 @@ def _runtime_alive(runtime):
         return False
 
 
+def _chat_runtime_loaded():
+    """Probe whether the shared chat server is resident right now."""
+    try:
+        result = subprocess.run(
+            [
+                "launchctl",
+                "print",
+                f"gui/{os.getuid()}/{MLX_SERVER_LABEL}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 def _cancel_warm_timer_locked():
     global _WARM_TIMER, _WARM_GENERATION
     _WARM_GENERATION += 1
@@ -337,12 +357,18 @@ def discard_runtime(runtime):
 
 
 def unload(runtime):
-    """Release a healthy LTX runtime into the warm idle pool."""
+    """Release a healthy LTX runtime into the warm idle pool when it is safe."""
     if not runtime:
         return
     with _RUNTIME_LOCK:
         if runtime is _WARM_RUNTIME and _runtime_alive(runtime):
-            _schedule_warm_shutdown_locked()
+            # If video generation required the chat process to be evicted, do
+            # not keep LTX resident while the coordinator restores chat. Warm
+            # reuse is only safe when chat and LTX already coexisted.
+            if _chat_runtime_loaded():
+                _schedule_warm_shutdown_locked()
+            else:
+                _stop_warm_runtime_locked()
             return
         if runtime is _WARM_RUNTIME:
             _stop_warm_runtime_locked()
