@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 
 PERFORMANCE_OBSERVATORY_ASSETS = (
-    b'<link rel="stylesheet" href="/assets/chat/performance-observatory.css?v=20260930-performance-v2">\n'
+    b'<link id="mlx-performance-observatory-css" rel="stylesheet" href="/assets/chat/performance-observatory.css?v=20260930-performance-v2">\n'
     b'<script src="/assets/chat/performance-observatory.js?v=20260930-performance-v2"></script>'
 )
 CHAT_SCRIPT_MARKER = b'<script src="/assets/chat.js?v=20260926-shorts-progress"></script>'
