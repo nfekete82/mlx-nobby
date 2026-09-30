@@ -15,6 +15,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+import runtime_coordinator
 from image_registry import FAMILIES, MODEL_ROOTS, validate_path
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
@@ -53,6 +55,132 @@ REALESRGAN_PRESETS = {
         "scale": 4,
     },
 }
+
+MFLUX_PERFORMANCE_HEADROOM_GB = 16.0
+MFLUX_BALANCED_HEADROOM_GB = 8.0
+MFLUX_PERFORMANCE_CACHE_GB = 8
+MFLUX_BALANCED_CACHE_GB = 4
+MFLUX_LOW_RAM_CACHE_GB = 2
+QUALITY_UPSCALE_PRESET = "photo-2x"
+
+
+def _float_env(name, default):
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+    return value if math.isfinite(value) else float(default)
+
+
+def _int_env(name, default, *, minimum=1, maximum=32):
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+    return max(minimum, min(maximum, value))
+
+
+def mflux_memory_policy(snapshot=None):
+    """Resolve a conservative MFLUX memory/cache policy for Apple unified RAM.
+
+    ``auto`` keeps low-RAM mode for constrained/unknown conditions, but lets
+    higher-memory Macs use a larger MLX cache and the normal execution path
+    when there is enough reclaimable headroom. Explicit modes are available
+    for benchmarking and troubleshooting.
+    """
+    mode = str(os.environ.get("MLX_IMAGE_MFLUX_MODE", "auto")).strip().lower()
+    aliases = {
+        "high": "performance",
+        "fast": "performance",
+        "normal": "balanced",
+        "safe": "low-ram",
+        "low": "low-ram",
+        "low_ram": "low-ram",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in {"auto", "performance", "balanced", "low-ram"}:
+        mode = "auto"
+
+    performance_cache = _int_env(
+        "MLX_IMAGE_MFLUX_PERFORMANCE_CACHE_GB",
+        MFLUX_PERFORMANCE_CACHE_GB,
+    )
+    balanced_cache = _int_env(
+        "MLX_IMAGE_MFLUX_BALANCED_CACHE_GB",
+        MFLUX_BALANCED_CACHE_GB,
+    )
+    low_cache = _int_env(
+        "MLX_IMAGE_MFLUX_LOW_RAM_CACHE_GB",
+        MFLUX_LOW_RAM_CACHE_GB,
+    )
+
+    if mode == "performance":
+        return {
+            "mode": "performance",
+            "low_ram": False,
+            "cache_gb": performance_cache,
+            "snapshot": snapshot,
+        }
+    if mode == "balanced":
+        return {
+            "mode": "balanced",
+            "low_ram": True,
+            "cache_gb": balanced_cache,
+            "snapshot": snapshot,
+        }
+    if mode == "low-ram":
+        return {
+            "mode": "low-ram",
+            "low_ram": True,
+            "cache_gb": low_cache,
+            "snapshot": snapshot,
+        }
+
+    if snapshot is None:
+        try:
+            snapshot = runtime_coordinator.memory_budget_snapshot()
+        except Exception:
+            snapshot = {}
+
+    pressure = str((snapshot or {}).get("pressure") or "unknown").lower()
+    headroom = (snapshot or {}).get("headroom_gb")
+    performance_headroom = max(
+        1.0,
+        _float_env(
+            "MLX_IMAGE_MFLUX_PERFORMANCE_HEADROOM_GB",
+            MFLUX_PERFORMANCE_HEADROOM_GB,
+        ),
+    )
+    balanced_headroom = max(
+        1.0,
+        _float_env(
+            "MLX_IMAGE_MFLUX_BALANCED_HEADROOM_GB",
+            MFLUX_BALANCED_HEADROOM_GB,
+        ),
+    )
+
+    if pressure in {"elevated", "critical"}:
+        resolved_mode = "low-ram"
+    elif isinstance(headroom, (int, float)) and not isinstance(headroom, bool):
+        if float(headroom) >= performance_headroom:
+            resolved_mode = "performance"
+        elif float(headroom) >= balanced_headroom:
+            resolved_mode = "balanced"
+        else:
+            resolved_mode = "low-ram"
+    else:
+        resolved_mode = "balanced"
+
+    return {
+        "mode": resolved_mode,
+        "low_ram": resolved_mode != "performance",
+        "cache_gb": {
+            "performance": performance_cache,
+            "balanced": balanced_cache,
+            "low-ram": low_cache,
+        }[resolved_mode],
+        "snapshot": snapshot,
+    }
 
 
 def realesrgan_command(
@@ -117,6 +245,35 @@ def realesrgan_command(
         "png",
         "-v",
     ]
+
+
+def quality_upscale_mode():
+    """Return ``off``, ``auto`` or ``required`` for Quality+ post-processing."""
+    value = str(os.environ.get("MLX_IMAGE_QUALITY_UPSCALE", "auto")).strip().lower()
+    aliases = {
+        "0": "off",
+        "false": "off",
+        "no": "off",
+        "1": "auto",
+        "true": "auto",
+        "on": "auto",
+        "force": "required",
+    }
+    value = aliases.get(value, value)
+    return value if value in {"off", "auto", "required"} else "auto"
+
+
+def quality_upscale_available(preset=QUALITY_UPSCALE_PRESET):
+    """Check whether the local Real-ESRGAN Quality+ runtime is complete."""
+    try:
+        realesrgan_command(
+            Path("quality-probe-input.png"),
+            Path("quality-probe-output.png"),
+            preset=preset,
+        )
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
 
 GENERATION_TIMEOUT = 840
 MAX_PROCESS_RSS_GB = 24
@@ -451,6 +608,7 @@ def mflux_command(model, params, output):
 
         return command
 
+    memory_policy = mflux_memory_policy()
     command = [
         str(MFLUX_BIN / FAMILIES[family][0]),
         "--model",
@@ -468,10 +626,12 @@ def mflux_command(model, params, output):
         str(params["seed"]),
         "--output",
         str(output),
-        "--low-ram",
         "--mlx-cache-limit-gb",
-        "2",
+        str(memory_policy["cache_gb"]),
     ]
+
+    if memory_policy["low_ram"]:
+        command.append("--low-ram")
 
     if family != "z-image-turbo":
         command += [
@@ -842,6 +1002,131 @@ def _validate_provider_output(params, output):
         image.verify()
 
 
+def _quality_progress_callback(progress_callback, percent):
+    if progress_callback is None:
+        return
+    progress_callback({
+        "phase": "upscaling",
+        "progress": min(0.995, max(0.9, 0.9 + (percent / 1000))),
+    })
+
+
+def _maybe_quality_upscale(
+    params,
+    output,
+    *,
+    cancel_event=None,
+    process_callback=None,
+    progress_callback=None,
+):
+    """Apply optional Real-ESRGAN 2x refinement to text-to-image quality jobs."""
+    if params.get("quality") != "quality" or "source_path" in params:
+        return False
+
+    mode = quality_upscale_mode()
+    if mode == "off":
+        return False
+    if not quality_upscale_available():
+        if mode == "required":
+            raise RuntimeError(
+                "Quality+ benötigt eine vollständige lokale Real-ESRGAN-Installation"
+            )
+        return False
+
+    output = Path(output)
+    temporary = output.with_name(
+        f".{output.stem}-quality-{secrets.token_hex(4)}.png"
+    )
+    command = realesrgan_command(
+        output,
+        temporary,
+        preset=QUALITY_UPSCALE_PRESET,
+    )
+    process = None
+    lines = []
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+        if process_callback is not None:
+            process_callback(process)
+        deadline = time.monotonic() + GENERATION_TIMEOUT
+        if progress_callback is not None:
+            progress_callback({"phase": "upscaling", "progress": 0.9})
+
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ProviderCancelled("Image job was cancelled")
+
+            line = process.stdout.readline()
+            if line:
+                clean = line.strip()
+                lines.append(clean)
+                if len(lines) > 100:
+                    lines = lines[-100:]
+                match = re.search(r"([0-9]+(?:\.[0-9]+)?)%", clean)
+                if match:
+                    _quality_progress_callback(
+                        progress_callback,
+                        min(100.0, max(0.0, float(match.group(1)))),
+                    )
+
+            returncode = process.poll()
+            if returncode is not None:
+                if process.stdout is not None:
+                    remainder = process.stdout.read()
+                    if remainder:
+                        lines.extend(
+                            item.strip()
+                            for item in remainder.splitlines()
+                            if item.strip()
+                        )
+                break
+
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Quality+ Upscaling hat das Zeitlimit überschritten")
+            if not line:
+                time.sleep(0.05)
+
+        if process.returncode != 0 or not temporary.is_file():
+            detail = "\n".join(lines[-50:]).strip()
+            raise RuntimeError(
+                detail[-3000:]
+                or "Quality+ konnte das Bild nicht hochskalieren"
+            )
+
+        os.replace(temporary, output)
+        from PIL import Image
+        with Image.open(output) as image:
+            params["width"], params["height"] = image.size
+        params["quality_upscale"] = True
+        params["upscale_preset"] = QUALITY_UPSCALE_PRESET
+        if progress_callback is not None:
+            progress_callback({"phase": "upscaling", "progress": 0.995})
+        return True
+    except ProviderCancelled:
+        raise
+    except Exception as exc:
+        if mode == "required":
+            raise
+        print(
+            f"[image-quality] Quality+ fallback to base image: {exc}",
+            flush=True,
+        )
+        return False
+    finally:
+        temporary.unlink(missing_ok=True)
+        if process is not None and process.poll() is None:
+            terminate_process_tree(process)
+        if process_callback is not None:
+            process_callback(None)
+
+
 def run_provider(
     model,
     params,
@@ -871,6 +1156,13 @@ def run_provider(
             progress_callback=progress_callback,
         )
         _validate_provider_output(params, output)
+        _maybe_quality_upscale(
+            params,
+            output,
+            cancel_event=cancel_event,
+            process_callback=process_callback,
+            progress_callback=progress_callback,
+        )
         return
     if model["provider"] == "mlxserve":
         command = [
@@ -964,3 +1256,10 @@ def run_provider(
                 raise RuntimeError("Installierte MFLUX-CLI ist mit den Provider-Parametern nicht kompatibel")
             raise RuntimeError(f"{model['provider']} konnte das lokale Modell/LoRA nicht ausführen (Exit {process.returncode}). Cache und Provider-Kompatibilität prüfen; es wurde nichts heruntergeladen.")
     _validate_provider_output(params, output)
+    _maybe_quality_upscale(
+        params,
+        output,
+        cancel_event=cancel_event,
+        process_callback=process_callback,
+        progress_callback=progress_callback,
+    )
