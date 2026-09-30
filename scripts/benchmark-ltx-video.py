@@ -24,6 +24,17 @@ THERMAL_RANK = {
     "Heavy": 2,
     "Trapping": 3,
 }
+REFERENCE_BASELINE = {
+    "model": "ltx-2.5-mlx-q4",
+    "quality": "standard",
+    "duration": 5,
+    "fps": 24,
+    "aspect_ratio": "16:9",
+    "seed": 42,
+    "wall_seconds": 141.5,
+    "runs": (139.9, 143.9, 140.8),
+    "recorded_on": "2026-09-30",
+}
 
 
 def request_json(method, url, payload=None, timeout=30):
@@ -101,13 +112,16 @@ def _vm_stat_ram_used(output):
     pages = {}
     for label, value in re.findall(r"^([^:]+):\s+(\d+)\.", output or "", re.MULTILINE):
         pages[label] = int(value)
-    used_pages = sum(pages.get(label, 0) for label in (
-        "Pages active",
-        "Pages inactive",
-        "Pages wired down",
-        "Pages occupied by compressor",
-        "Pages speculative",
-    ))
+    used_pages = sum(
+        pages.get(label, 0)
+        for label in (
+            "Pages active",
+            "Pages inactive",
+            "Pages wired down",
+            "Pages occupied by compressor",
+            "Pages speculative",
+        )
+    )
     return used_pages * page_size
 
 
@@ -317,6 +331,7 @@ def _start_thermal_sampler(enabled):
                 "-i",
                 "1000",
             ],
+            stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,
             text=True,
@@ -480,13 +495,15 @@ def run_job(base_url, model, args, repeat):
         "provider": result.get("provider"),
         "backend": result.get("backend") or result.get("provider"),
         "quantization": result.get("quantization"),
-        "quality": result.get("quality"),
+        "quality": result.get("quality") or args.quality,
         "resolution": result.get("resolution"),
         "width": result.get("width"),
         "height": result.get("height"),
-        "duration": result.get("duration"),
-        "fps": result.get("fps"),
+        "duration": result.get("duration") or args.duration,
+        "fps": result.get("fps") or args.fps,
         "frames": result.get("frames"),
+        "seed": args.seed,
+        "aspect_ratio": args.aspect_ratio,
         "runtime_start": "warm" if result.get("runtime_reused") is True else (
             "cold" if result.get("runtime_reused") is False else "unknown"
         ),
@@ -533,16 +550,42 @@ def _thermal_summary(item):
     return f"{before_limit if before_limit is not None else '?'}→{after_limit if after_limit is not None else '?'}%"
 
 
+def _reference_baseline_seconds(item):
+    if item.get("model") != REFERENCE_BASELINE["model"]:
+        return None
+    if item.get("quality") != REFERENCE_BASELINE["quality"]:
+        return None
+    if item.get("duration") != REFERENCE_BASELINE["duration"]:
+        return None
+    if item.get("fps") != REFERENCE_BASELINE["fps"]:
+        return None
+    if item.get("aspect_ratio") != REFERENCE_BASELINE["aspect_ratio"]:
+        return None
+    if item.get("seed") != REFERENCE_BASELINE["seed"]:
+        return None
+    return REFERENCE_BASELINE["wall_seconds"]
+
+
+def _baseline_delta_text(item):
+    wall = item.get("wall_seconds")
+    baseline = _reference_baseline_seconds(item)
+    if not isinstance(wall, (int, float)) or not isinstance(baseline, (int, float)):
+        return "—"
+    delta = wall - baseline
+    return f"{delta:+.1f}s"
+
+
 def print_table(results):
-    print("\nErgebnisse")
-    print("=" * 184)
+    print()
+    print("Ergebnisse")
+    print("=" * 196)
     header = (
         f"{'Model':28} {'Status':9} {'Backend':15} {'Start':6} {'Size':13} "
-        f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap peak':>10} "
+        f"{'Wall':>9} {'Ref Δ':>8} {'Provider':>9} {'RAM peak':>10} {'Swap peak':>10} "
         f"{'Swap Δ':>9} {'CPU lim':>10} {'Thermal':>9} {'T-Samples':>18}"
     )
     print(header)
-    print("-" * 184)
+    print("-" * 196)
     for item in results:
         size = f"{item.get('width') or '?'}x{item.get('height') or '?'}"
         provider = item.get("provider_seconds")
@@ -556,7 +599,7 @@ def print_table(results):
         print(
             f"{item['model'][:28]:28} {item.get('status', '—')[:9]:9} "
             f"{str(item.get('backend') or '—')[:15]:15} {str(item.get('runtime_start') or '—')[:6]:6} "
-            f"{size:13} {wall_text:>9} {provider_text:>9} "
+            f"{size:13} {wall_text:>9} {_baseline_delta_text(item):>8} {provider_text:>9} "
             f"{(f'{ram:.1f} GB' if ram is not None else '—'):>10} "
             f"{(f'{swap:.1f} GB' if swap is not None else '—'):>10} "
             f"{swap_delta_text:>9} {_thermal_summary(item):>10} "
@@ -565,21 +608,40 @@ def print_table(results):
         )
         if item.get("error"):
             print(f"  ↳ {str(item['error'])[:118]}")
-    print("=" * 184)
+    print("=" * 196)
     print("CPU lim = pmset CPU_Speed_Limit vor→nach dem Lauf; kein Temperaturwert.")
     print("Thermal = powermetrics Start→Peak→Ende; N=Nominal, M=Moderate, H=Heavy, T=Trapping.")
+    runs = "/".join(f"{value:.1f}" for value in REFERENCE_BASELINE["runs"])
+    print(
+        "Ref Δ = lokale MLX-Q4-Referenz: "
+        f"{REFERENCE_BASELINE['wall_seconds']:.1f}s "
+        f"(n={len(REFERENCE_BASELINE['runs'])}; {runs}s; "
+        f"{REFERENCE_BASELINE['quality']}, {REFERENCE_BASELINE['duration']}s, "
+        f"{REFERENCE_BASELINE['fps']}fps, {REFERENCE_BASELINE['aspect_ratio']}, "
+        f"Seed {REFERENCE_BASELINE['seed']}; {REFERENCE_BASELINE['recorded_on']})."
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8060")
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
-    parser.add_argument("--quality", choices=("preview", "fast", "standard", "quality"), default="standard")
+    parser.add_argument(
+        "--quality",
+        choices=("preview", "fast", "standard", "quality"),
+        default="standard",
+    )
     parser.add_argument("--duration", type=int, default=5)
     parser.add_argument("--fps", type=int, choices=(8, 24), default=24)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--aspect-ratio", choices=("16:9", "9:16"), default="16:9")
-    parser.add_argument("--prompt", default="Cinematic tracking shot of a red sports car driving through rain at night, realistic reflections, smooth motion")
+    parser.add_argument(
+        "--prompt",
+        default=(
+            "Cinematic tracking shot of a red sports car driving through rain at night, "
+            "realistic reflections, smooth motion"
+        ),
+    )
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument(
         "--cold-warm-cold",
@@ -613,8 +675,9 @@ def main():
         if available[model].get("provider") != "ltx-mlx":
             raise RuntimeError("--cold-warm-cold ist nur für das native MLX-Backend verfügbar")
         reset = reset_mlx_runtime(base_url)
+        print()
         print(
-            "\nIsolation Cold → Warm → Cold: "
+            "Isolation Cold → Warm → Cold: "
             f"MLX-Worker zurückgesetzt (vorher geladen: {'ja' if reset.get('was_loaded') else 'nein'}).",
             flush=True,
         )
@@ -625,7 +688,8 @@ def main():
     results = []
     for repeat in range(1, repeat_count + 1):
         for model in args.models:
-            print(f"\n[{repeat}/{repeat_count}] {model}", flush=True)
+            print()
+            print(f"[{repeat}/{repeat_count}] {model}", flush=True)
             if not available[model].get("available"):
                 reason = available[model].get("availability_note") or "Backend nicht verfügbar"
                 print(f"  FAILED: {reason}", file=sys.stderr)
@@ -639,8 +703,9 @@ def main():
 
         if args.cold_warm_cold and repeat == 2:
             reset = reset_mlx_runtime(base_url)
+            print()
             print(
-                "\n  MLX-Worker nach Warm-Lauf gezielt zurückgesetzt "
+                "  MLX-Worker nach Warm-Lauf gezielt zurückgesetzt "
                 f"(vorher geladen: {'ja' if reset.get('was_loaded') else 'nein'}).",
                 flush=True,
             )
@@ -658,7 +723,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nAbgebrochen.", file=sys.stderr)
+        print()
+        print("Abgebrochen.", file=sys.stderr)
         raise SystemExit(130)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
