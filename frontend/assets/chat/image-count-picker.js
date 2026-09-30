@@ -1,11 +1,23 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20260929-image-count-v2';
+    const SCRIPT_VERSION = '20260930-image-count-v3';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
     const MIN_IMAGE_COUNT = 1;
     const MAX_IMAGE_COUNT = 6;
+    const IMAGE_QUALITIES = new Set([
+        'fast',
+        'standard',
+        'quality'
+    ]);
+    const IMAGE_SIZES_BY_FORMAT = Object.freeze({
+        landscape: Object.freeze({ width: 768, height: 432 }),
+        portrait: Object.freeze({ width: 432, height: 768 }),
+        square: Object.freeze({ width: 512, height: 512 }),
+        landscape_4_3: Object.freeze({ width: 576, height: 432 }),
+        portrait_3_4: Object.freeze({ width: 432, height: 576 })
+    });
 
     const FALLBACK = {
         count_label: 'Count',
@@ -177,6 +189,64 @@
         return String(session?.id || '');
     }
 
+    function selectedImageBatchSettings() {
+        const format = String(
+            document.getElementById?.('mediaFormat')?.value || 'square'
+        );
+        const size =
+            IMAGE_SIZES_BY_FORMAT[format] ||
+            IMAGE_SIZES_BY_FORMAT.square;
+        const qualityButtons =
+            typeof document.querySelectorAll === 'function'
+                ? [...document.querySelectorAll('[data-media-quality]')]
+                : [];
+        const selectedQuality = qualityButtons.find(button =>
+            !button.hidden &&
+            (
+                button.classList?.contains?.('is-selected') ||
+                button.getAttribute?.('aria-pressed') === 'true'
+            )
+        )?.dataset?.mediaQuality;
+        const quality = IMAGE_QUALITIES.has(selectedQuality)
+            ? selectedQuality
+            : null;
+        const negativePrompt = String(
+            document.getElementById?.('imageNegativePrompt')?.value || ''
+        ).trim();
+
+        return {
+            quality,
+            format,
+            width: size.width,
+            height: size.height,
+            negativePrompt
+        };
+    }
+
+    function applyImageBatchSettings(artifact, settings) {
+        const prepared = { ...(artifact || {}) };
+        if (!settings || typeof settings !== 'object') {
+            return prepared;
+        }
+
+        const width = Math.round(Number(settings.width));
+        const height = Math.round(Number(settings.height));
+        if (Number.isFinite(width) && width > 0) prepared.width = width;
+        if (Number.isFinite(height) && height > 0) prepared.height = height;
+
+        if (IMAGE_QUALITIES.has(settings.quality)) {
+            prepared.quality = settings.quality;
+        }
+
+        if (Object.hasOwn(settings, 'negativePrompt')) {
+            const negativePrompt = String(settings.negativePrompt || '').trim();
+            if (negativePrompt) prepared.negative_prompt = negativePrompt;
+            else delete prepared.negative_prompt;
+        }
+
+        return prepared;
+    }
+
     function captureSelection() {
         if (!picker || picker.field.hidden) return;
 
@@ -192,6 +262,7 @@
                 ? session.messages.length
                 : 0,
             count,
+            settings: selectedImageBatchSettings(),
             createdAt: Date.now(),
             expanding: false
         });
@@ -227,7 +298,8 @@
     async function generateAdditionalImages(
         artifact,
         session,
-        additionalCount
+        additionalCount,
+        batchSettings = null
     ) {
         const regenerate =
             window.MLXImageRegenerate?.regenerateImageArtifact;
@@ -238,17 +310,19 @@
             Math.min(MAX_IMAGE_COUNT - 1, Number(additionalCount) || 0)
         );
         const extras = [];
+        const regenerationArtifact =
+            applyImageBatchSettings(artifact, batchSettings);
 
         for (let index = 0; index < target; index += 1) {
             const before = Array.isArray(session.messages)
                 ? session.messages.length
                 : 0;
 
-            await regenerate(artifact);
+            await regenerate(regenerationArtifact);
 
             const added = regeneratedMessageForArtifact(
                 session.messages.slice(before),
-                artifact
+                regenerationArtifact
             );
             if (!added) break;
             extras.push(added);
@@ -291,7 +365,8 @@
             const extras = await generateAdditionalImages(
                 artifact,
                 session,
-                request.count - 1
+                request.count - 1,
+                request.settings
             );
 
             const groupId = mergeInitialImageWithGeneratedVariants(
@@ -422,6 +497,7 @@
         install: installPicker,
         check: maybeExpandActiveBatch,
         __test: {
+            applyImageBatchSettings,
             artifactForMessage,
             firstImageMessageAfter,
             isInitialImageMessage,
@@ -429,6 +505,7 @@
             normalizeImageCount,
             regeneratedMessageForArtifact,
             resolveLanguage,
+            selectedImageBatchSettings,
             terminalStatus
         }
     };
