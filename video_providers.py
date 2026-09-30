@@ -1,4 +1,5 @@
 """Headless LTX 2.5 provider using Lightricks' official local MPS backend."""
+import atexit
 import concurrent.futures
 import json
 import os
@@ -32,7 +33,14 @@ FFPROBE = os.environ.get("FFPROBE_PATH", str(Path(FFMPEG).with_name("ffprobe")))
 IMAGE_ROOT = Path.home() / ".config/mlx-web/images"
 UPLOAD_ROOT = Path.home() / ".config/mlx-web/batch/uploads"
 RUNTIME_LOG = Path.home() / ".config/mlx-web/ltx-runtime.log"
+MLX_SERVER_LABEL = "de.nobby.mlx-server"
 SUPPORTED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+DEFAULT_LTX_IDLE_TIMEOUT = 300.0
+_RUNTIME_LOCK = threading.RLock()
+_GENERATION_LOCK = threading.Lock()
+_WARM_RUNTIME = None
+_WARM_TIMER = None
+_WARM_GENERATION = 0
 
 
 class ProviderCancelled(RuntimeError):
@@ -244,12 +252,145 @@ def _stop_runtime(process, log):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
-    log.close()
+    if not log.closed:
+        log.close()
+
+
+def _configured_ltx_idle_timeout():
+    try:
+        timeout = float(os.environ.get(
+            "MLX_VIDEO_LTX_IDLE_TIMEOUT",
+            DEFAULT_LTX_IDLE_TIMEOUT,
+        ))
+    except (TypeError, ValueError):
+        return DEFAULT_LTX_IDLE_TIMEOUT
+    return timeout if timeout > 0 else DEFAULT_LTX_IDLE_TIMEOUT
+
+
+def _runtime_alive(runtime):
+    if not runtime:
+        return False
+    process, log = runtime
+    try:
+        return process.poll() is None and not log.closed
+    except Exception:
+        return False
+
+
+def _chat_runtime_loaded():
+    """Probe whether the shared chat server is resident right now."""
+    try:
+        result = subprocess.run(
+            [
+                "launchctl",
+                "print",
+                f"gui/{os.getuid()}/{MLX_SERVER_LABEL}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _cancel_warm_timer_locked():
+    global _WARM_TIMER, _WARM_GENERATION
+    _WARM_GENERATION += 1
+    if _WARM_TIMER is not None:
+        _WARM_TIMER.cancel()
+        _WARM_TIMER = None
+
+
+def _stop_warm_runtime_locked():
+    global _WARM_RUNTIME
+    _cancel_warm_timer_locked()
+    runtime = _WARM_RUNTIME
+    _WARM_RUNTIME = None
+    if runtime:
+        _stop_runtime(*runtime)
+
+
+def _expire_warm_runtime(generation):
+    with _RUNTIME_LOCK:
+        if generation == _WARM_GENERATION:
+            _stop_warm_runtime_locked()
+
+
+def _schedule_warm_shutdown_locked():
+    global _WARM_TIMER
+    _cancel_warm_timer_locked()
+    generation = _WARM_GENERATION
+    timer = threading.Timer(
+        _configured_ltx_idle_timeout(),
+        _expire_warm_runtime,
+        args=(generation,),
+    )
+    timer.daemon = True
+    _WARM_TIMER = timer
+    timer.start()
+
+
+def _acquire_runtime(cancel_event):
+    global _WARM_RUNTIME
+    with _RUNTIME_LOCK:
+        _cancel_warm_timer_locked()
+        if _runtime_alive(_WARM_RUNTIME):
+            return _WARM_RUNTIME, True
+        if _WARM_RUNTIME is not None:
+            _stop_warm_runtime_locked()
+        _WARM_RUNTIME = _start_runtime(cancel_event)
+        return _WARM_RUNTIME, False
+
+
+def discard_runtime(runtime):
+    """Force-discard an LTX runtime after a failed or cancelled generation."""
+    if not runtime:
+        return
+    with _RUNTIME_LOCK:
+        if runtime is _WARM_RUNTIME:
+            _stop_warm_runtime_locked()
+        else:
+            _stop_runtime(*runtime)
 
 
 def unload(runtime):
-    if runtime:
+    """Release a healthy LTX runtime into the warm idle pool when it is safe."""
+    if not runtime:
+        return
+    with _RUNTIME_LOCK:
+        if runtime is _WARM_RUNTIME and _runtime_alive(runtime):
+            # If video generation required the chat process to be evicted, do
+            # not keep LTX resident while the coordinator restores chat. Warm
+            # reuse is only safe when chat and LTX already coexisted.
+            if _chat_runtime_loaded():
+                _schedule_warm_shutdown_locked()
+            else:
+                _stop_warm_runtime_locked()
+            return
+        if runtime is _WARM_RUNTIME:
+            _stop_warm_runtime_locked()
+            return
         _stop_runtime(*runtime)
+
+
+def shutdown_warm_runtime():
+    """Force-release the resident LTX backend, including during process exit."""
+    with _RUNTIME_LOCK:
+        _stop_warm_runtime_locked()
+
+
+def warm_runtime_status():
+    with _RUNTIME_LOCK:
+        return {
+            "loaded": _runtime_alive(_WARM_RUNTIME),
+            "idle_timeout_seconds": _configured_ltx_idle_timeout(),
+        }
+
+
+atexit.register(shutdown_warm_runtime)
 
 
 def _preview_log_tail():
@@ -461,77 +602,86 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
             phase_callback=phase_callback,
         )
 
-    runtime = _start_runtime(cancel_event)
-    if response_callback:
-        response_callback(runtime)
-    resize_info = {}
-    try:
-        width, height = int(params["width"]), int(params["height"])
-        runtime_width, runtime_height = _runtime_canvas(
-            params["resolution"], params["aspect_ratio"],
-        )
-        payload = {
-            "prompt": params["prompt"], "resolution": params["resolution"],
-            "model": "fast", "duration": params["duration"], "fps": params["fps"],
-            "aspectRatio": params["aspect_ratio"], "seed": params["seed"], "audio": True,
-        }
-        with tempfile.TemporaryDirectory(prefix="mlx-ltx-i2v-") as temporary:
-            if source:
-                prepared = Path(temporary) / "first-frame.png"
-                resize_info = _prepare_first_frame(
-                    source, runtime_width, runtime_height,
-                    params.get("resize_mode") or "contain", prepared,
-                )
-                resize_info.update({
-                    "target_width": width, "target_height": height,
-                    "conditioning_width": runtime_width,
-                    "conditioning_height": runtime_height,
-                })
-                payload["imagePath"] = str(prepared)
-            if phase_callback:
-                phase_callback("encoding")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_generate_request, payload)
-                cancel_sent = False
-                while not future.done():
-                    if cancel_event.is_set() and not cancel_sent:
-                        cancel_sent = True
+    with _GENERATION_LOCK:
+        runtime, runtime_reused = _acquire_runtime(cancel_event)
+        if response_callback:
+            response_callback(runtime)
+        resize_info = {}
+        succeeded = False
+        try:
+            width, height = int(params["width"]), int(params["height"])
+            runtime_width, runtime_height = _runtime_canvas(
+                params["resolution"], params["aspect_ratio"],
+            )
+            payload = {
+                "prompt": params["prompt"], "resolution": params["resolution"],
+                "model": "fast", "duration": params["duration"], "fps": params["fps"],
+                "aspectRatio": params["aspect_ratio"], "seed": params["seed"], "audio": True,
+            }
+            with tempfile.TemporaryDirectory(prefix="mlx-ltx-i2v-") as temporary:
+                if source:
+                    prepared = Path(temporary) / "first-frame.png"
+                    resize_info = _prepare_first_frame(
+                        source, runtime_width, runtime_height,
+                        params.get("resize_mode") or "contain", prepared,
+                    )
+                    resize_info.update({
+                        "target_width": width, "target_height": height,
+                        "conditioning_width": runtime_width,
+                        "conditioning_height": runtime_height,
+                    })
+                    payload["imagePath"] = str(prepared)
+                if phase_callback:
+                    phase_callback("encoding")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_generate_request, payload)
+                    cancel_sent = False
+                    while not future.done():
+                        if cancel_event.is_set() and not cancel_sent:
+                            cancel_sent = True
+                            try:
+                                _json_request("POST", "/api/generate/cancel", {}, timeout=10)
+                            except Exception:
+                                pass
+                        if cancel_sent and future.done():
+                            break
                         try:
-                            _json_request("POST", "/api/generate/cancel", {}, timeout=10)
+                            progress = _json_request("GET", "/api/generation/progress", timeout=5)
+                            phase = str(progress.get("phase") or "")
+                            if phase_callback and phase:
+                                phase_callback(phase)
+                            if progress_callback:
+                                progress_callback({
+                                    "phase": phase,
+                                    "step": progress.get("currentStep"),
+                                    "total_steps": progress.get("totalSteps"),
+                                    "progress": progress.get("progress"),
+                                })
                         except Exception:
                             pass
-                    if cancel_sent and future.done():
-                        break
-                    try:
-                        progress = _json_request("GET", "/api/generation/progress", timeout=5)
-                        phase = str(progress.get("phase") or "")
-                        if phase_callback and phase:
-                            phase_callback(phase)
-                        if progress_callback:
-                            progress_callback({
-                                "phase": phase,
-                                "step": progress.get("currentStep"),
-                                "total_steps": progress.get("totalSteps"),
-                                "progress": progress.get("progress"),
-                            })
-                    except Exception:
-                        pass
-                    time.sleep(0.5)
-                result = future.result()
-            if cancel_event.is_set() or result.get("status") == "cancelled":
-                raise ProviderCancelled("Video job was cancelled")
-            source_output = Path(str(result.get("video_path") or ""))
-            if result.get("status") != "complete" or not source_output.is_file():
-                raise RuntimeError("LTX-Backend lieferte kein Video")
-            if phase_callback:
-                phase_callback("muxing")
-            if progress_callback:
-                progress_callback({"phase": "muxing", "progress": 98})
-            _finalize_video(
-                source_output, output, width, height, runtime_width, runtime_height,
-            )
-        return _probe_video(output) | resize_info | {"provider_payload": payload}
-    finally:
-        if response_callback:
-            response_callback(None)
-        unload(runtime)
+                        time.sleep(0.5)
+                    result = future.result()
+                if cancel_event.is_set() or result.get("status") == "cancelled":
+                    raise ProviderCancelled("Video job was cancelled")
+                source_output = Path(str(result.get("video_path") or ""))
+                if result.get("status") != "complete" or not source_output.is_file():
+                    raise RuntimeError("LTX-Backend lieferte kein Video")
+                if phase_callback:
+                    phase_callback("muxing")
+                if progress_callback:
+                    progress_callback({"phase": "muxing", "progress": 98})
+                _finalize_video(
+                    source_output, output, width, height, runtime_width, runtime_height,
+                )
+            succeeded = True
+            return _probe_video(output) | resize_info | {
+                "provider_payload": payload,
+                "runtime_reused": runtime_reused,
+            }
+        finally:
+            if response_callback:
+                response_callback(None)
+            if succeeded:
+                unload(runtime)
+            else:
+                discard_runtime(runtime)
