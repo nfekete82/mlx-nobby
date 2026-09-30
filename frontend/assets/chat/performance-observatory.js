@@ -28,9 +28,11 @@
         average: 'Average',
         samples: '{count} samples',
         runtime_title: 'Runtime state',
+        runtime_start: 'Runtime start',
         chat: 'Chat',
         image: 'Image',
         video: 'Video',
+        shorts: 'Shorts',
         warm: 'Warm',
         cold: 'Cold',
         unavailable: 'Unavailable',
@@ -61,9 +63,9 @@
         queued: 'Queued',
         cancelled: 'Cancelled',
         unknown: 'Unknown',
-        live_note: 'Warm/cold describes the current loaded state. Model-call history starts with the current Agent process; media history is durable.',
+        live_note: 'Warm/cold cards show the current loaded state. Video jobs also record historical warm/cold runtime reuse. Model-call history starts with the current Agent process; media history is durable.',
         checked: 'Updated {time}',
-        estimated: 'estimated',
+        estimate: 'estimated',
         upstream: 'measured'
     };
 
@@ -192,6 +194,17 @@
         return parts.join(' · ');
     }
 
+    function videoMetricDetail(summary) {
+        const metric = summary?.generation_ms || {};
+        const parts = [metricDetail(metric, formatDuration)];
+        const warm = Number(summary?.warm_starts || 0);
+        const cold = Number(summary?.cold_starts || 0);
+        if (warm || cold) {
+            parts.push(t('warm') + ' ' + warm + ' · ' + t('cold') + ' ' + cold);
+        }
+        return parts.join(' · ');
+    }
+
     function kpiCard(label, value, detail, className = '') {
         const card = el('article', 'performance-observatory-kpi ' + className);
         card.append(
@@ -232,7 +245,7 @@
             kpiCard(
                 t('video_time'),
                 videoMetric.count ? formatDuration(videoMetric.average) : '—',
-                metricDetail(videoMetric, formatDuration),
+                videoMetricDetail(media?.video),
                 'metric-video'
             ),
             kpiCard(
@@ -366,7 +379,7 @@
             : [];
         const head = el('thead');
         head.appendChild(tableHeader([
-            t('kind'), t('model'), t('queue'), t('generation'), t('total'), t('status')
+            t('kind'), t('model'), t('runtime_start'), t('queue'), t('generation'), t('total'), t('status')
         ]));
         const body = el('tbody');
 
@@ -375,6 +388,7 @@
             row.append(
                 tableCell(t(job?.kind) || job?.kind || '—'),
                 tableCell(job?.model || '—'),
+                tableCell(job?.runtime_start ? stateText(job.runtime_start) : '—'),
                 tableCell(formatDuration(job?.queue_wait_ms)),
                 tableCell(formatDuration(job?.generation_ms)),
                 tableCell(formatDuration(job?.total_ms)),
@@ -386,7 +400,7 @@
         if (!jobs.length) {
             const row = el('tr');
             const cell = tableCell(t('no_data'), 'performance-observatory-empty');
-            cell.colSpan = 6;
+            cell.colSpan = 7;
             row.appendChild(cell);
             body.appendChild(row);
         }
