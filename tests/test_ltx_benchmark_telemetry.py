@@ -50,11 +50,38 @@ class LtxBenchmarkTelemetryTests(unittest.TestCase):
         self.assertIn('"thermal_trace": thermal_trace', source)
         self.assertIn("Thermal = powermetrics Start→Peak→Ende", source)
 
-    def test_powermetrics_keeps_sudo_ticket_tty_and_stops_child_safely(self):
+    def test_powermetrics_keeps_sudo_ticket_and_does_not_touch_terminal_input(self):
         source = Path("scripts/benchmark-ltx-video.py").read_text()
         self.assertNotIn("start_new_session=True", source)
+        self.assertIn("stdin=subprocess.DEVNULL", source)
         self.assertIn("process.send_signal(signal.SIGINT)", source)
         self.assertNotIn("os.killpg(process.pid, signal.SIGINT)", source)
+
+    def test_reference_baseline_matches_only_canonical_mlx_run(self):
+        baseline = BENCHMARK["REFERENCE_BASELINE"]
+        reference = BENCHMARK["_reference_baseline_seconds"]
+        delta = BENCHMARK["_baseline_delta_text"]
+        item = {
+            "model": "ltx-2.5-mlx-q4",
+            "quality": "standard",
+            "duration": 5,
+            "fps": 24,
+            "aspect_ratio": "16:9",
+            "seed": 42,
+            "wall_seconds": 140.8,
+        }
+        self.assertEqual(baseline["wall_seconds"], 141.5)
+        self.assertEqual(reference(item), 141.5)
+        self.assertEqual(delta(item), "-0.7s")
+
+        changed = dict(item, fps=8)
+        self.assertIsNone(reference(changed))
+        self.assertEqual(delta(changed), "—")
+
+    def test_table_uses_explicit_blank_lines_instead_of_embedded_terminal_newlines(self):
+        source = Path("scripts/benchmark-ltx-video.py").read_text()
+        self.assertIn('print()\n    print("Ergebnisse")', source)
+        self.assertIn('print()\n            print(f"[{repeat}/{repeat_count}] {model}"', source)
 
 
 if __name__ == "__main__":
