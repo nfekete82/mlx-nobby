@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -57,6 +59,131 @@ def elapsed_text(seconds):
     return f"{minutes:02d}:{seconds:02d}"
 
 
+def _command_output(command, timeout=5):
+    """Return best-effort local diagnostic output without breaking benchmarks."""
+    try:
+        completed = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _vm_stat_ram_used(output):
+    page_size_match = re.search(r"page size of (\d+) bytes", output or "")
+    if not page_size_match:
+        return None
+    page_size = int(page_size_match.group(1))
+    pages = {}
+    for label, value in re.findall(r"^([^:]+):\s+(\d+)\.", output or "", re.MULTILINE):
+        pages[label] = int(value)
+    used_pages = sum(pages.get(label, 0) for label in (
+        "Pages active",
+        "Pages inactive",
+        "Pages wired down",
+        "Pages occupied by compressor",
+        "Pages speculative",
+    ))
+    return used_pages * page_size
+
+
+def _swap_used(output):
+    match = re.search(r"used = ([0-9.]+)([MG])", output or "")
+    if not match:
+        return None
+    multiplier = 1024 ** 2 if match.group(2) == "M" else 1024 ** 3
+    return int(float(match.group(1)) * multiplier)
+
+
+def _parse_thermal_limits(output):
+    """Parse `pmset -g therm` limits; these are limits, not temperatures."""
+    parsed = {
+        "cpu_speed_limit": None,
+        "scheduler_limit": None,
+        "available_cpus": None,
+        "thermal_warning_recorded": None,
+        "performance_warning_recorded": None,
+    }
+    text = output or ""
+    lower = text.lower()
+    if "no thermal warning level has been recorded" in lower:
+        parsed["thermal_warning_recorded"] = False
+    elif "thermal warning level" in lower:
+        parsed["thermal_warning_recorded"] = True
+    if "no performance warning level has been recorded" in lower:
+        parsed["performance_warning_recorded"] = False
+    elif "performance warning level" in lower:
+        parsed["performance_warning_recorded"] = True
+
+    for key, field in (
+        ("CPU_Speed_Limit", "cpu_speed_limit"),
+        ("Scheduler_Limit", "scheduler_limit"),
+        ("Available_CPUs", "available_cpus"),
+    ):
+        match = re.search(rf"{re.escape(key)}\s*=\s*(\d+)", text)
+        if match:
+            parsed[field] = int(match.group(1))
+    return parsed
+
+
+def _memory_pressure_name(value):
+    return {1: "normal", 2: "warning", 4: "critical"}.get(value, str(value) if value is not None else "n/a")
+
+
+def system_snapshot():
+    """Capture cheap system-wide macOS telemetry outside benchmark wall time."""
+    vm_stat = _command_output(["vm_stat"])
+    swap = _command_output(["sysctl", "-n", "vm.swapusage"])
+    therm = _command_output(["pmset", "-g", "therm"])
+    pressure_raw = _command_output(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"])
+    try:
+        pressure = int(pressure_raw.strip()) if pressure_raw else None
+    except ValueError:
+        pressure = None
+    return {
+        "captured_at": time.time(),
+        "ram_used_bytes": _vm_stat_ram_used(vm_stat),
+        "swap_used_bytes": _swap_used(swap),
+        "memory_pressure_level": pressure,
+        "thermal": _parse_thermal_limits(therm),
+    }
+
+
+def system_snapshot_text(snapshot):
+    ram = gb(snapshot.get("ram_used_bytes"))
+    swap = gb(snapshot.get("swap_used_bytes"))
+    thermal = snapshot.get("thermal") or {}
+    parts = [
+        f"RAM {ram:.1f} GB" if ram is not None else "RAM n/a",
+        f"Swap {swap:.1f} GB" if swap is not None else "Swap n/a",
+        f"Pressure {_memory_pressure_name(snapshot.get('memory_pressure_level'))}",
+    ]
+    cpu_limit = thermal.get("cpu_speed_limit")
+    scheduler_limit = thermal.get("scheduler_limit")
+    available_cpus = thermal.get("available_cpus")
+    if cpu_limit is not None:
+        parts.append(f"CPU-Limit {cpu_limit}%")
+    if scheduler_limit is not None:
+        parts.append(f"Scheduler {scheduler_limit}%")
+    if available_cpus is not None:
+        parts.append(f"CPUs {available_cpus}")
+    if thermal.get("thermal_warning_recorded") is False:
+        parts.append("Thermal-Warnung nein")
+    elif thermal.get("thermal_warning_recorded") is True:
+        parts.append("Thermal-Warnung ja")
+    if thermal.get("performance_warning_recorded") is False:
+        parts.append("Performance-Warnung nein")
+    elif thermal.get("performance_warning_recorded") is True:
+        parts.append("Performance-Warnung ja")
+    return " · ".join(parts)
+
+
 def progress_text(job):
     phase = str(job.get("phase") or job.get("status") or "working")
     progress = job.get("progress")
@@ -74,13 +201,7 @@ def progress_text(job):
 
 
 def _print_fast_mlx_muxing_if_missed(model, phase, last_signature, total, elapsed):
-    """Surface MLX's very short final mux phase when polling skips over it.
-
-    The MLX provider emits an explicit muxing=98% event before it completes, but
-    on a fast local run that state can be shorter than the benchmark polling
-    interval.  If the terminal poll jumps directly from denoising to completed,
-    render the known finalization transition once instead of hiding it.
-    """
+    """Surface MLX's very short final mux phase when polling skips over it."""
     if model != "ltx-2.5-mlx-q4" or phase != "completed":
         return
     previous_phase = last_signature[0] if last_signature else None
@@ -93,6 +214,8 @@ def _print_fast_mlx_muxing_if_missed(model, phase, last_signature, total, elapse
 
 
 def run_job(base_url, model, args, repeat):
+    system_before = system_snapshot()
+    print(f"    System vorher: {system_snapshot_text(system_before)}", flush=True)
     created_at = time.monotonic()
     payload = {
         "operation": "t2v",
@@ -121,9 +244,6 @@ def run_job(base_url, model, args, repeat):
         now = time.monotonic()
         phase, percentage, step, total, label = progress_text(job)
         signature = (phase, percentage, step, total)
-        # Once real step metadata exists, repeating exactly the same step every
-        # 30 seconds adds noise rather than information. Keep heartbeats only
-        # for opaque phases/backends that cannot expose a current step.
         heartbeat_due = step is None and now - last_output_at >= HEARTBEAT_SECONDS
         if signature != last_signature or heartbeat_due:
             if signature != last_signature:
@@ -144,6 +264,8 @@ def run_job(base_url, model, args, repeat):
         raise RuntimeError(f"Timeout nach {args.timeout:.0f} s")
 
     wall = round(time.monotonic() - created_at, 3)
+    system_after = system_snapshot()
+    print(f"    System nachher: {system_snapshot_text(system_after)}", flush=True)
     if job.get("status") != "completed":
         raise RuntimeError(job.get("error") or f"Job endete mit {job.get('status')}")
 
@@ -151,6 +273,11 @@ def run_job(base_url, model, args, repeat):
     peak = result.get("memory_peak") or job.get("memory_peak") or {}
     before = result.get("memory_before") or job.get("memory_before") or {}
     after = result.get("memory_after") or job.get("memory_after") or {}
+    system_swap_before = gb(system_before.get("swap_used_bytes"))
+    system_swap_after = gb(system_after.get("swap_used_bytes"))
+    swap_delta = None
+    if system_swap_before is not None and system_swap_after is not None:
+        swap_delta = round(system_swap_after - system_swap_before, 2)
     return {
         "status": "completed",
         "error": None,
@@ -173,7 +300,12 @@ def run_job(base_url, model, args, repeat):
         "ram_before_gb": gb(before.get("ram_used_bytes")),
         "ram_peak_gb": gb(peak.get("ram_used_bytes")),
         "ram_after_gb": gb(after.get("ram_used_bytes")),
+        "swap_before_gb": system_swap_before,
         "swap_peak_gb": gb(peak.get("swap_used_bytes")),
+        "swap_after_gb": system_swap_after,
+        "swap_delta_gb": swap_delta,
+        "system_before": system_before,
+        "system_after": system_after,
         "path": result.get("path"),
     }
 
@@ -190,18 +322,29 @@ def failed_result(model, exc):
         "provider_seconds": None,
         "ram_peak_gb": None,
         "swap_peak_gb": None,
+        "swap_delta_gb": None,
     }
+
+
+def _thermal_summary(item):
+    before = (item.get("system_before") or {}).get("thermal") or {}
+    after = (item.get("system_after") or {}).get("thermal") or {}
+    before_limit = before.get("cpu_speed_limit")
+    after_limit = after.get("cpu_speed_limit")
+    if before_limit is None and after_limit is None:
+        return "—"
+    return f"{before_limit if before_limit is not None else '?'}→{after_limit if after_limit is not None else '?'}%"
 
 
 def print_table(results):
     print("\nErgebnisse")
-    print("=" * 132)
+    print("=" * 158)
     header = (
         f"{'Model':28} {'Status':9} {'Backend':15} {'Start':6} {'Size':13} "
-        f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap':>8}"
+        f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap peak':>10} {'Swap Δ':>9} {'CPU lim':>10}"
     )
     print(header)
-    print("-" * 132)
+    print("-" * 158)
     for item in results:
         size = f"{item.get('width') or '?'}x{item.get('height') or '?'}"
         provider = item.get("provider_seconds")
@@ -210,16 +353,20 @@ def print_table(results):
         wall_text = f"{wall:.1f}s" if isinstance(wall, (int, float)) else "—"
         ram = item.get("ram_peak_gb")
         swap = item.get("swap_peak_gb")
+        swap_delta = item.get("swap_delta_gb")
+        swap_delta_text = f"{swap_delta:+.1f} GB" if isinstance(swap_delta, (int, float)) else "—"
         print(
             f"{item['model'][:28]:28} {item.get('status', '—')[:9]:9} "
             f"{str(item.get('backend') or '—')[:15]:15} {str(item.get('runtime_start') or '—')[:6]:6} "
             f"{size:13} {wall_text:>9} {provider_text:>9} "
             f"{(f'{ram:.1f} GB' if ram is not None else '—'):>10} "
-            f"{(f'{swap:.1f} GB' if swap is not None else '—'):>8}"
+            f"{(f'{swap:.1f} GB' if swap is not None else '—'):>10} "
+            f"{swap_delta_text:>9} {_thermal_summary(item):>10}"
         )
         if item.get("error"):
             print(f"  ↳ {str(item['error'])[:118]}")
-    print("=" * 132)
+    print("=" * 158)
+    print("CPU lim = pmset CPU_Speed_Limit vor→nach dem Lauf; kein Temperaturwert.")
 
 
 def main():
