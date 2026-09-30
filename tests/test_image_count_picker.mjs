@@ -246,11 +246,21 @@ assert.equal(clearedNegativePrompt.height, 768);
 assert.equal(clearedNegativePrompt.quality, 'fast');
 assert.equal(Object.hasOwn(clearedNegativePrompt, 'negative_prompt'), false);
 
-assert.match(commonSource, /image-count-picker\.js\?v=20260929-image-count-v2/);
-assert.match(source, /20260930-image-count-v3/);
+const versionMatch = source.match(
+    /const SCRIPT_VERSION = '([^']+)'/,
+);
+assert.ok(versionMatch, 'image count picker must expose a script version');
+assert.equal(versionMatch[1], '20260930-image-count-v3');
+assert.ok(
+    commonSource.includes(
+        'image-count-picker.js?v=' + versionMatch[1],
+    ),
+    'common.js must load the same image count picker build as the script version',
+);
+assert.match(commonSource, /loadImageCountPicker\(\);/);
 assert.match(source, /settings: selectedImageBatchSettings\(\)/);
 assert.match(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
 assert.match(source, /mlx-i18n-ready/);
 assert.match(source, /mlx-language-changed/);
 
-console.log('Image count picker, batch settings, localization, and 1-6 grouping passed.');
+console.log('Image count picker loader, batch settings, localization, and 1-6 grouping passed.');
