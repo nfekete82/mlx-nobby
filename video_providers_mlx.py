@@ -1,7 +1,7 @@
 """Experimental native-MLX LTX 2.5 provider.
 
 The implementation deliberately lives beside the proven LTX Desktop/MPS
-provider.  It shells out to a pinned ltx-2-mlx runtime so the experiment can be
+provider. It shells out to a pinned ltx-2-mlx runtime so the experiment can be
 benchmarked and removed independently without making MLX a hard dependency of
 MLX Nobby's video service.
 """
@@ -30,10 +30,6 @@ LTX_MLX_CLI = Path(os.environ.get(
     "LTX_MLX_CLI",
     str(LTX_MLX_RUNTIME_ROOT / ".venv/bin/ltx-2-mlx"),
 )).expanduser()
-LTX_MLX_GEMMA_DIR = Path(os.environ.get(
-    "LTX_MLX_GEMMA_DIR",
-    str(Path.home() / ".local/share/mlx-nobby/models/gemma-3-12b-it-4bit"),
-)).expanduser()
 DEFAULT_LOW_RAM = os.environ.get("LTX_MLX_LOW_RAM", "1").strip().lower() not in {
     "0", "false", "no", "off",
 }
@@ -53,8 +49,6 @@ def availability(model):
     if not video_registry.local_files_available(model):
         missing = video_registry.missing_files(model)
         return False, "LTX-2.5-MLX-Q4-Gewichte fehlen: " + ", ".join(missing)
-    if not (LTX_MLX_GEMMA_DIR / "config.json").is_file():
-        return False, f"Lokaler MLX-Gemma-Encoder fehlt unter {LTX_MLX_GEMMA_DIR}"
     return True, "LTX 2.5 Q4 ist nativ über MLX/Metal verfügbar (experimentell)"
 
 
@@ -85,7 +79,9 @@ def _command(model, params, output, *, image=None):
         "--prompt", str(params["prompt"]),
         "--output", str(output),
         "--model", str(video_registry.model_path(model)),
-        "--gemma", str(LTX_MLX_GEMMA_DIR),
+        # LTX 2.5 MLX packs ship their Gemma 4 text encoder inside the pack;
+        # ltx-2-mlx auto-selects it from text_encoder*. Do not force its
+        # Gemma-3 fallback with an unnecessary second checkpoint.
         "--width", str(int(params["width"])),
         "--height", str(int(params["height"])),
         "--frames", str(int(params["frames"])),
