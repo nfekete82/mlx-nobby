@@ -76,27 +76,6 @@ VIDEO_PROFILES = {
             "stage_1_steps": 8, "stage_2_steps": 3,
         },
     },
-    "wan2.2-ti2v": {
-        # Nobby intentionally does not expose the generic low-resolution preview
-        # path for Wan yet.  The provider rejects preview requests until we have
-        # measured a native Wan preview profile on the target Mac.
-        "preview": {
-            "resolution": "720p", "steps": 10, "pipeline": "single-model-unipc",
-            "stage_1_steps": 10, "stage_2_steps": 0,
-        },
-        "fast": {
-            "resolution": "720p", "steps": 10, "pipeline": "single-model-unipc",
-            "stage_1_steps": 10, "stage_2_steps": 0,
-        },
-        "standard": {
-            "resolution": "720p", "steps": 20, "pipeline": "single-model-unipc",
-            "stage_1_steps": 20, "stage_2_steps": 0,
-        },
-        "quality": {
-            "resolution": "720p", "steps": 40, "pipeline": "single-model-unipc",
-            "stage_1_steps": 40, "stage_2_steps": 0,
-        },
-    },
 }
 
 

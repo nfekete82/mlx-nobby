@@ -19,17 +19,11 @@ MLX_MODEL_ROOT = Path(os.environ.get(
     "LTX_MLX_MODEL_ROOT",
     str(Path.home() / ".local/share/mlx-nobby/models"),
 )).expanduser()
-WAN_MLX_MODEL_ROOT = Path(os.environ.get(
-    "WAN_MLX_MODEL_ROOT",
-    str(Path.home() / ".local/share/mlx-nobby/models"),
-)).expanduser()
 LTX_ID = "ltx-2.5-22b-distilled"
 LTX_MLX_Q4_ID = "ltx-2.5-mlx-q4"
-WAN_MLX_Q8_ID = "wan2.2-ti2v-5b-mlx-q8"
 LTX_REPOSITORY = "Lightricks/LTX-2.5"
 LTX_MLX_Q4_REPOSITORY = "dgrauet/ltx-2.5-mlx-q4"
-WAN_MLX_Q8_REPOSITORY = "Anes1032/Wan2.2-TI2V-5B-mlx-q8"
-REVISION = 4
+REVISION = 3
 _lock = threading.RLock()
 
 REQUIRED_FILES = (
@@ -40,13 +34,6 @@ REQUIRED_FILES = (
     "ltx-2.5/ltx-2.5-audio-vae-bf16.safetensors",
 )
 MLX_READY_MARKER = ".mlx-nobby-ready"
-WAN_REQUIRED_FILES = (
-    MLX_READY_MARKER,
-    "config.json",
-    "model.safetensors",
-    "t5_encoder.safetensors",
-    "vae.safetensors",
-)
 
 
 def builtin_model():
@@ -87,61 +74,31 @@ def builtin_mlx_model():
     }
 
 
-def builtin_wan_model():
-    return {
-        "id": WAN_MLX_Q8_ID,
-        "display_name": "Wan 2.2 TI2V 5B MLX Q8 (experimental)",
-        "provider": "wan-mlx",
-        "repository": WAN_MLX_Q8_REPOSITORY,
-        "model_family": "wan2.2-ti2v",
-        "quantization": "int8",
-        "capabilities": ["t2v", "i2v", "native-mlx"],
-        "pipeline": "single-model-unipc",
-        "default_resolution": "720p",
-        "default_duration": 5,
-        "default_fps": 24,
-        "inference_steps": 20,
-        "enabled": True,
-        "experimental": True,
-    }
-
-
 def _builtin_models():
-    return [builtin_model(), builtin_mlx_model(), builtin_wan_model()]
+    return [builtin_model(), builtin_mlx_model()]
 
 
 def model_path(model):
-    provider = str(model.get("provider") or "")
-    if provider == "ltx-mlx":
+    if str(model.get("provider") or "") == "ltx-mlx":
         return MLX_MODEL_ROOT / LTX_MLX_Q4_ID
-    if provider == "wan-mlx":
-        return WAN_MLX_MODEL_ROOT / WAN_MLX_Q8_ID
     return MODEL_ROOT / "ltx-2.5"
 
 
 def local_files_available(model):
-    provider = str(model.get("provider") or "")
-    if provider == "ltx-mlx":
+    if str(model.get("provider") or "") == "ltx-mlx":
         root = model_path(model)
         return (
             (root / MLX_READY_MARKER).is_file()
             and (root / "embedded_config.json").is_file()
         )
-    if provider == "wan-mlx":
-        root = model_path(model)
-        return all((root / name).is_file() for name in WAN_REQUIRED_FILES)
     return all((MODEL_ROOT / relative).is_file() for relative in REQUIRED_FILES)
 
 
 def missing_files(model):
-    provider = str(model.get("provider") or "")
-    if provider == "ltx-mlx":
+    if str(model.get("provider") or "") == "ltx-mlx":
         root = model_path(model)
         required = (MLX_READY_MARKER, "embedded_config.json")
         return [name for name in required if not (root / name).is_file()]
-    if provider == "wan-mlx":
-        root = model_path(model)
-        return [name for name in WAN_REQUIRED_FILES if not (root / name).is_file()]
     return [relative for relative in REQUIRED_FILES if not (MODEL_ROOT / relative).is_file()]
 
 
