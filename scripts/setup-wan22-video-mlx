@@ -129,6 +129,14 @@ if int(quant.get("bits") or 0) != 8:
     raise SystemExit("Erwartete Q8-Quantisierung fehlt in config.json")
 PY
 
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZER_REPO="${TOKENIZER_REPO}" \
+"${VENV_DIR}/bin/python" - <<'PY'
+import os
+from transformers import AutoTokenizer
+
+AutoTokenizer.from_pretrained(os.environ["TOKENIZER_REPO"], local_files_only=True)
+PY
+
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 "${VENV_DIR}/bin/python" -m mlx_video.models.wan_2.generate --help >/dev/null
 
