@@ -13,8 +13,10 @@ assert.match(source, /serviceHealthGrid/);
 assert.match(source, /tokens_per_second/);
 assert.match(source, /headroom_gb/);
 assert.match(source, /swap_used_gb/);
-assert.match(source, /state-warm/);
-assert.match(source, /state-cold/);
+assert.match(source, /performance-observatory-runtime state-/);
+assert.match(source, /runtime_start/);
+assert.match(source, /warm_starts/);
+assert.match(source, /cold_starts/);
 assert.match(source, /recent_calls/);
 assert.match(source, /recent_jobs/);
 
