@@ -15,9 +15,15 @@ LTX_APP_DATA = Path(os.environ.get(
     str(Path.home() / "Library/Application Support/LTXDesktop"),
 )).expanduser()
 MODEL_ROOT = LTX_APP_DATA / "models"
+MLX_MODEL_ROOT = Path(os.environ.get(
+    "LTX_MLX_MODEL_ROOT",
+    str(Path.home() / ".local/share/mlx-nobby/models"),
+)).expanduser()
 LTX_ID = "ltx-2.5-22b-distilled"
+LTX_MLX_Q4_ID = "ltx-2.5-mlx-q4"
 LTX_REPOSITORY = "Lightricks/LTX-2.5"
-REVISION = 2
+LTX_MLX_Q4_REPOSITORY = "dgrauet/ltx-2.5-mlx-q4"
+REVISION = 3
 _lock = threading.RLock()
 
 REQUIRED_FILES = (
@@ -27,6 +33,7 @@ REQUIRED_FILES = (
     "ltx-2.5/ltx-2.5-video-vae-conv-bf16.safetensors",
     "ltx-2.5/ltx-2.5-audio-vae-bf16.safetensors",
 )
+MLX_READY_MARKER = ".mlx-nobby-ready"
 
 
 def builtin_model():
@@ -44,18 +51,54 @@ def builtin_model():
         "default_fps": 24,
         "inference_steps": 11,
         "enabled": True,
+        "experimental": False,
     }
 
 
-def model_path(_model):
+def builtin_mlx_model():
+    return {
+        "id": LTX_MLX_Q4_ID,
+        "display_name": "LTX 2.5 MLX Q4 (experimental)",
+        "provider": "ltx-mlx",
+        "repository": LTX_MLX_Q4_REPOSITORY,
+        "model_family": "ltx-2.5",
+        "quantization": "int4",
+        "capabilities": ["t2v", "i2v", "audio", "native-mlx"],
+        "pipeline": "distilled-two-stage",
+        "default_resolution": "720p",
+        "default_duration": 5,
+        "default_fps": 24,
+        "inference_steps": 11,
+        "enabled": True,
+        "experimental": True,
+    }
+
+
+def _builtin_models():
+    return [builtin_model(), builtin_mlx_model()]
+
+
+def model_path(model):
+    if str(model.get("provider") or "") == "ltx-mlx":
+        return MLX_MODEL_ROOT / LTX_MLX_Q4_ID
     return MODEL_ROOT / "ltx-2.5"
 
 
-def local_files_available(_model):
+def local_files_available(model):
+    if str(model.get("provider") or "") == "ltx-mlx":
+        root = model_path(model)
+        return (
+            (root / MLX_READY_MARKER).is_file()
+            and (root / "embedded_config.json").is_file()
+        )
     return all((MODEL_ROOT / relative).is_file() for relative in REQUIRED_FILES)
 
 
-def missing_files(_model):
+def missing_files(model):
+    if str(model.get("provider") or "") == "ltx-mlx":
+        root = model_path(model)
+        required = (MLX_READY_MARKER, "embedded_config.json")
+        return [name for name in required if not (root / name).is_file()]
     return [relative for relative in REQUIRED_FILES if not (MODEL_ROOT / relative).is_file()]
 
 
@@ -76,22 +119,53 @@ def _write(data):
 
 def load_registry():
     with _lock:
-        model = builtin_model()
+        models = _builtin_models()
+        stored = {}
         if REGISTRY_FILE.is_file():
             try:
                 stored = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
-                existing = next(
-                    (item for item in stored.get("models", []) if item.get("id") == LTX_ID),
-                    None,
-                )
-                if existing:
-                    model["enabled"] = bool(existing.get("enabled", True))
             except (OSError, ValueError, TypeError):
-                pass
-        data = {"revision": REVISION, "default_model": LTX_ID, "models": [model]}
-        if not REGISTRY_FILE.is_file():
+                stored = {}
+
+        existing_by_id = {
+            item.get("id"): item
+            for item in stored.get("models", [])
+            if isinstance(item, dict) and item.get("id")
+        }
+        for model in models:
+            existing = existing_by_id.get(model["id"])
+            if existing:
+                model["enabled"] = bool(existing.get("enabled", True))
+
+        available_ids = {model["id"] for model in models}
+        requested_default = str(
+            os.environ.get("MLX_VIDEO_DEFAULT_MODEL")
+            or stored.get("default_model")
+            or LTX_ID
+        )
+        default_model = requested_default if requested_default in available_ids else LTX_ID
+        data = {
+            "revision": REVISION,
+            "default_model": default_model,
+            "models": models,
+        }
+
+        if stored != data:
             _write(data)
         return data
+
+
+def set_default_model(model_id):
+    with _lock:
+        data = load_registry()
+        model = next((item for item in data["models"] if item["id"] == model_id), None)
+        if model is None:
+            raise KeyError(model_id)
+        if not model["enabled"]:
+            raise ValueError("Video-Modell ist deaktiviert")
+        data["default_model"] = model_id
+        _write(data)
+        return model
 
 
 def get_model(model_id="auto"):
