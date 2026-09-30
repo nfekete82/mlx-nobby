@@ -16,6 +16,7 @@
   "average": "Average",
   "samples": "{count} samples",
   "runtime_title": "Runtime state",
+  "runtime_start": "Runtime start",
   "chat": "Chat",
   "image": "Image",
   "video": "Video",
@@ -50,7 +51,7 @@
   "queued": "Queued",
   "cancelled": "Cancelled",
   "unknown": "Unknown",
-  "live_note": "Warm/cold describes the current loaded state. Model-call history starts with the current Agent process; media history is durable.",
+  "live_note": "Warm/cold cards show the current loaded state. Video jobs also record historical warm/cold runtime reuse. Model-call history starts with the current Agent process; media history is durable.",
   "checked": "Updated {time}",
   "estimate": "estimated",
   "upstream": "measured"
