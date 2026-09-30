@@ -16,6 +16,7 @@
   "average": "Durchschnitt",
   "samples": "{count} Messwerte",
   "runtime_title": "Runtime-Status",
+  "runtime_start": "Runtime-Start",
   "chat": "Chat",
   "image": "Bild",
   "video": "Video",
@@ -50,7 +51,7 @@
   "queued": "Wartet",
   "cancelled": "Abgebrochen",
   "unknown": "Unbekannt",
-  "live_note": "Warm/kalt zeigt den aktuell geladenen Zustand. Die Modellhistorie beginnt mit dem aktuellen Agent-Prozess; die Medienhistorie bleibt dauerhaft erhalten.",
+  "live_note": "Warm/kalt zeigt den aktuell geladenen Zustand. Videojobs speichern zusätzlich historische Warm-/Kaltstarts. Die Modellhistorie beginnt mit dem aktuellen Agent-Prozess; die Medienhistorie bleibt dauerhaft erhalten.",
   "checked": "Aktualisiert {time}",
   "estimate": "geschätzt",
   "upstream": "gemessen"
