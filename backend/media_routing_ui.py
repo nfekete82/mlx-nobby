@@ -1,17 +1,54 @@
-"""Media-routing UI helpers and conservative route guard."""
+"""Media-routing UI helpers, conservative route guard and local observatory."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import threading
+import time
+import uuid
+from pathlib import Path
+
+from fastapi import HTTPException
 
 
 MEDIA_ROUTING_SCRIPT = (
     b'<script src="/assets/chat/media-routing-fallback.js?v=20260929-chat-fallback-v1"></script>'
 )
+ROUTING_OBSERVATORY_ASSETS = (
+    b'<link rel="stylesheet" href="/assets/chat/routing-observatory.css?v=20260930-routing-v1">\n'
+    + MEDIA_ROUTING_SCRIPT
+    + b'\n<script src="/assets/chat/routing-observatory.js?v=20260930-routing-v1"></script>'
+)
 MEDIA_ROUTE_PATH = "/api/mlx/chat/actions/route"
 LONG_PROMPT_CHARS = 600
 CHAT_LIKE_PROMPT_CHARS = 320
+ROUTING_DECISION_LIMIT = 500
+ROUTING_OBSERVATORY_FILE = Path(
+    os.environ.get(
+        "MLX_ROUTING_OBSERVATORY_FILE",
+        str(Path.home() / ".config/mlx-web/routing-observatory.json"),
+    )
+)
+ROUTING_OBSERVATORY_LOCK = threading.RLock()
+
+ACTIVE_MEDIA_TARGETS = {
+    "image",
+    "shorts_generate",
+    "video",
+    "video_generate",
+    "video_animate",
+}
+FEEDBACK_TARGETS = {
+    "chat",
+    "image",
+    "video_generate",
+    "shorts_generate",
+    "agent",
+    "web_search",
+}
 
 _EXPLICIT_IMAGE_REQUEST = re.compile(
     r"(?:\b(?:erstelle|erstell|erzeugen|erzeuge|generiere|generieren|zeichne|zeichnen|male|malen|"
@@ -40,6 +77,16 @@ _EXPLICIT_SHORTS_REQUEST = re.compile(
     re.IGNORECASE,
 )
 
+_EXPLICIT_VIDEO_REQUEST = re.compile(
+    r"(?:\b(?:erstelle|erstell|erzeugen|erzeuge|generiere|generieren|mache|mach|"
+    r"produziere|produzieren|animiere|animieren|create|generate|make|produce|animate)\b"
+    r"[\s\S]{0,140}?\b(?:video|clip|animation|film|movie)\b)"
+    r"|(?:\b(?:video|clip|animation|film|movie)\b[\s\S]{0,140}?"
+    r"\b(?:erstellen|erzeugen|generieren|machen|produzieren|animieren|create|generate|"
+    r"make|produce|animate)\b)",
+    re.IGNORECASE,
+)
+
 _VISUAL_PROMPT_HINT = re.compile(
     r"\b(?:photorealistic|fotorealistisch|cinematic|cinematisch|portrait|porträt|portraitaufnahme|"
     r"composition|komposition|lighting|beleuchtung|lens|objektiv|bokeh|depth of field|tiefenschärfe|"
@@ -65,12 +112,12 @@ def _is_chat_html_path(path: str) -> bool:
 
 
 def inject_media_routing_script(body: bytes) -> bytes:
-    if MEDIA_ROUTING_SCRIPT in body:
+    if ROUTING_OBSERVATORY_ASSETS in body:
         return body
 
     marker = b"</body>"
     if marker in body:
-        return body.replace(marker, MEDIA_ROUTING_SCRIPT + b"\n" + marker, 1)
+        return body.replace(marker, ROUTING_OBSERVATORY_ASSETS + b"\n" + marker, 1)
 
     return body
 
@@ -93,6 +140,76 @@ def _has_explicit_shorts_request(prompt: str) -> bool:
         search_text = text[:400] + "\n" + text[-400:]
 
     return bool(_EXPLICIT_SHORTS_REQUEST.search(search_text))
+
+
+def _explicit_intent(prompt: str, target: str, action: str | None = None) -> bool:
+    text = str(prompt or "").strip()
+    action = str(action or "").strip()
+
+    if action:
+        if target == "image" and action.startswith("image_"):
+            return True
+        if target in {"video", "video_generate", "video_animate"} and action.startswith("video_"):
+            return True
+
+    if target == "image":
+        return bool(_EXPLICIT_IMAGE_REQUEST.search(text))
+    if target == "shorts_generate":
+        return _has_explicit_shorts_request(text)
+    if target in {"video", "video_generate", "video_animate"}:
+        return bool(_EXPLICIT_VIDEO_REQUEST.search(text))
+    return False
+
+
+def _dedicated_media_prompt(prompt: str, target: str) -> bool:
+    return target == "image" and _visual_prompt_hint_count(str(prompt or "")) >= 3
+
+
+def _coerce_confidence(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    if confidence < 0 or confidence > 1:
+        return None
+    return round(confidence, 4)
+
+
+def _derived_confidence(prompt: str, target: str, action: str | None = None) -> float | None:
+    if _explicit_intent(prompt, target, action):
+        return 1.0 if action else 0.98
+
+    if target == "image":
+        if _dedicated_media_prompt(prompt, target):
+            return 0.86
+        return 0.62
+
+    if target == "shorts_generate":
+        return 0.45
+
+    if target in {"video", "video_generate", "video_animate"}:
+        return 0.60
+
+    return None
+
+
+def route_confidence(
+    prompt: str,
+    target: str,
+    response_payload: dict,
+    action: str | None = None,
+) -> tuple[float | None, str]:
+    router_confidence = _coerce_confidence(response_payload.get("confidence"))
+    if router_confidence is not None:
+        return router_confidence, "router"
+
+    derived = _derived_confidence(prompt, target, action)
+    if derived is not None:
+        return derived, "heuristic"
+
+    return None, "unavailable"
 
 
 def conservative_media_target(prompt: str, target: str) -> str:
@@ -129,8 +246,173 @@ def conservative_media_target(prompt: str, target: str) -> str:
     return target
 
 
-def guard_media_route_payload(request_body: bytes, response_body: bytes) -> bytes:
-    """Rewrite weak media route responses to chat, leaving unrelated routes untouched."""
+def confidence_guard_target(
+    prompt: str,
+    target: str,
+    confidence: float | None,
+    action: str | None = None,
+) -> tuple[str, str | None]:
+    """Apply the conservative confidence policy to active media actions."""
+    if target not in ACTIVE_MEDIA_TARGETS or confidence is None:
+        return target, None
+
+    if confidence >= 0.90:
+        return target, "high_confidence"
+
+    if confidence < 0.65:
+        return "chat", "low_confidence_fallback"
+
+    if _explicit_intent(prompt, target, action) or _dedicated_media_prompt(prompt, target):
+        return target, "medium_confidence_explicit_intent"
+
+    return "chat", "medium_confidence_requires_explicit_intent"
+
+
+def _normalized_prompt_preview(prompt: str, limit: int = 220) -> str:
+    normalized = " ".join(str(prompt or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _intent_name(prompt: str, target: str, action: str | None = None) -> str:
+    if _explicit_intent(prompt, target, action):
+        if target == "image":
+            return "explicit_image"
+        if target == "shorts_generate":
+            return "explicit_short"
+        if target in {"video", "video_generate", "video_animate"}:
+            return "explicit_video"
+    if _dedicated_media_prompt(prompt, target):
+        return "visual_prompt"
+    if target == "chat":
+        return "normal_chat"
+    return "router_classification"
+
+
+def _guard_reason(
+    prompt: str,
+    original_target: str,
+    conservative_target: str,
+) -> str | None:
+    if conservative_target == original_target:
+        return None
+    if original_target == "shorts_generate":
+        return "explicit_shorts_intent_required"
+    if original_target == "image":
+        return "long_form_chat_fallback"
+    return "conservative_fallback"
+
+
+def _empty_store() -> dict:
+    return {"version": 1, "decisions": []}
+
+
+def _read_observatory_store() -> dict:
+    if not ROUTING_OBSERVATORY_FILE.exists():
+        return _empty_store()
+
+    try:
+        payload = json.loads(ROUTING_OBSERVATORY_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _empty_store()
+
+    decisions = payload.get("decisions") if isinstance(payload, dict) else None
+    if not isinstance(decisions, list):
+        return _empty_store()
+
+    return {
+        "version": 1,
+        "decisions": [item for item in decisions if isinstance(item, dict)][-ROUTING_DECISION_LIMIT:],
+    }
+
+
+def _write_observatory_store(payload: dict) -> None:
+    ROUTING_OBSERVATORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = ROUTING_OBSERVATORY_FILE.with_name(
+        f".{ROUTING_OBSERVATORY_FILE.name}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temporary, ROUTING_OBSERVATORY_FILE)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def record_routing_decision(decision: dict) -> dict:
+    record = dict(decision)
+    record.setdefault("id", uuid.uuid4().hex)
+    record.setdefault("created_at", time.time())
+
+    with ROUTING_OBSERVATORY_LOCK:
+        payload = _read_observatory_store()
+        payload["decisions"].append(record)
+        payload["decisions"] = payload["decisions"][-ROUTING_DECISION_LIMIT:]
+        _write_observatory_store(payload)
+
+    return record
+
+
+def list_routing_decisions(limit: int = 50) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 200))
+    with ROUTING_OBSERVATORY_LOCK:
+        decisions = _read_observatory_store()["decisions"]
+    return list(reversed(decisions[-safe_limit:]))
+
+
+def save_routing_feedback(
+    decision_id: str,
+    correct: bool,
+    expected_target: str | None = None,
+) -> dict:
+    if not isinstance(correct, bool):
+        raise HTTPException(400, "correct muss true oder false sein.")
+
+    if correct:
+        expected_target = None
+    elif expected_target not in FEEDBACK_TARGETS:
+        raise HTTPException(400, "Ungültige Zielroute für Routing-Feedback.")
+
+    with ROUTING_OBSERVATORY_LOCK:
+        payload = _read_observatory_store()
+        for decision in payload["decisions"]:
+            if decision.get("id") != decision_id:
+                continue
+
+            decision["feedback"] = {
+                "correct": correct,
+                "expected_target": expected_target,
+                "updated_at": time.time(),
+            }
+            decision["regression_candidate"] = not correct
+            _write_observatory_store(payload)
+            return decision
+
+    raise HTTPException(404, "Routing-Entscheidung nicht gefunden.")
+
+
+def list_regression_candidates() -> list[dict]:
+    with ROUTING_OBSERVATORY_LOCK:
+        decisions = _read_observatory_store()["decisions"]
+
+    return [
+        decision
+        for decision in reversed(decisions)
+        if decision.get("regression_candidate") is True
+    ]
+
+
+def guard_media_route_payload(
+    request_body: bytes,
+    response_body: bytes,
+    *,
+    duration_ms: float | None = None,
+    record: bool = False,
+) -> bytes:
+    """Guard route responses and optionally persist an observability trace."""
     try:
         request_payload = json.loads(request_body.decode("utf-8"))
         response_payload = json.loads(response_body.decode("utf-8"))
@@ -140,21 +422,66 @@ def guard_media_route_payload(request_body: bytes, response_body: bytes) -> byte
     if not isinstance(request_payload, dict) or not isinstance(response_payload, dict):
         return response_body
 
+    prompt = str(request_payload.get("prompt") or "")
+    action = str(request_payload.get("action") or "") or None
     original_target = str(response_payload.get("target") or "")
-    guarded_target = conservative_media_target(
-        str(request_payload.get("prompt") or ""),
+    conservative_target = conservative_media_target(prompt, original_target)
+    reason = _guard_reason(prompt, original_target, conservative_target)
+
+    confidence, confidence_source = route_confidence(
+        prompt,
         original_target,
+        response_payload,
+        action,
     )
 
+    guarded_target = conservative_target
+    confidence_reason = None
     if guarded_target == original_target:
-        return response_body
+        guarded_target, confidence_reason = confidence_guard_target(
+            prompt,
+            original_target,
+            confidence,
+            action,
+        )
+        if guarded_target != original_target:
+            reason = confidence_reason
 
-    response_payload["target"] = guarded_target
-    response_payload["routing_guard"] = (
-        "explicit_shorts_intent_required"
-        if original_target == "shorts_generate"
-        else "long_form_chat_fallback"
-    )
+    if guarded_target != original_target:
+        response_payload["target"] = guarded_target
+        response_payload["routing_guard"] = reason or "confidence_fallback"
+
+    decision_id = uuid.uuid4().hex
+    trace = {
+        "id": decision_id,
+        "created_at": time.time(),
+        "prompt_preview": _normalized_prompt_preview(prompt),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "prompt_chars": len(prompt),
+        "intent": _intent_name(prompt, original_target, action),
+        "original_target": original_target,
+        "target": guarded_target,
+        "confidence": confidence,
+        "confidence_source": confidence_source,
+        "reason": reason or confidence_reason or "router_decision",
+        "guarded": guarded_target != original_target,
+        "fallback": guarded_target if guarded_target != original_target else None,
+        "duration_ms": round(float(duration_ms), 2) if duration_ms is not None else None,
+    }
+
+    response_payload["routing_observatory"] = {
+        "id": decision_id,
+        "original_target": original_target,
+        "target": guarded_target,
+        "confidence": confidence,
+        "confidence_source": confidence_source,
+        "reason": trace["reason"],
+        "guarded": trace["guarded"],
+    }
+
+    if record:
+        record_routing_decision(trace)
+
     return json.dumps(
         response_payload,
         ensure_ascii=False,
@@ -162,8 +489,29 @@ def guard_media_route_payload(request_body: bytes, response_body: bytes) -> byte
     ).encode("utf-8")
 
 
+def install_routes(app) -> None:
+    @app.get("/api/routing/decisions")
+    def routing_decisions(limit: int = 50):
+        return {
+            "decisions": list_routing_decisions(limit),
+            "max_retained": ROUTING_DECISION_LIMIT,
+        }
+
+    @app.post("/api/routing/decisions/{decision_id}/feedback")
+    def routing_feedback(decision_id: str, request: dict):
+        return save_routing_feedback(
+            decision_id,
+            request.get("correct"),
+            request.get("expected_target"),
+        )
+
+    @app.get("/api/routing/regressions")
+    def routing_regressions():
+        return {"candidates": list_regression_candidates()}
+
+
 class MediaRoutingUiMiddleware:
-    """Inject UI fallback and guard over-eager media-route classifications."""
+    """Inject routing UI and guard over-eager media-route classifications."""
 
     def __init__(self, app):
         self.app = app
@@ -225,7 +573,9 @@ class MediaRoutingUiMiddleware:
                 return
             await send(message)
 
+        started_at = time.perf_counter()
         await self.app(scope, replay_receive, capture)
+        duration_ms = (time.perf_counter() - started_at) * 1000
 
         if start_message is None:
             return
@@ -245,7 +595,12 @@ class MediaRoutingUiMiddleware:
             int(start_message.get("status") or 200) == 200
             and "application/json" in content_type
         ):
-            guarded_body = guard_media_route_payload(request_body, body)
+            guarded_body = guard_media_route_payload(
+                request_body,
+                body,
+                duration_ms=duration_ms,
+                record=True,
+            )
             if guarded_body != body:
                 body = guarded_body
                 headers = [
