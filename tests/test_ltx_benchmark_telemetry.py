@@ -50,6 +50,12 @@ class LtxBenchmarkTelemetryTests(unittest.TestCase):
         self.assertIn('"thermal_trace": thermal_trace', source)
         self.assertIn("Thermal = powermetrics Start→Peak→Ende", source)
 
+    def test_powermetrics_keeps_sudo_ticket_tty_and_stops_child_safely(self):
+        source = Path("scripts/benchmark-ltx-video.py").read_text()
+        self.assertNotIn("start_new_session=True", source)
+        self.assertIn("process.send_signal(signal.SIGINT)", source)
+        self.assertNotIn("os.killpg(process.pid, signal.SIGINT)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
