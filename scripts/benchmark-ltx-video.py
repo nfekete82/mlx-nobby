@@ -61,6 +61,25 @@ def progress_text(job):
     return phase, None, None, total, phase
 
 
+def _print_fast_mlx_muxing_if_missed(model, phase, last_signature, total, elapsed):
+    """Surface MLX's very short final mux phase when polling skips over it.
+
+    The MLX provider emits an explicit muxing=98% event before it completes, but
+    on a fast local run that state can be shorter than the benchmark polling
+    interval.  If the terminal poll jumps directly from denoising to completed,
+    render the known finalization transition once instead of hiding it.
+    """
+    if model != "ltx-2.5-mlx-q4" or phase != "completed":
+        return
+    previous_phase = last_signature[0] if last_signature else None
+    if previous_phase in {"muxing", "completed"}:
+        return
+    suffix = ""
+    if isinstance(total, int) and total > 0:
+        suffix = f" {total}/{total}"
+    print(f"    muxing{suffix} (98 %) · {elapsed_text(elapsed)}", flush=True)
+
+
 def run_job(base_url, model, args, repeat):
     created_at = time.monotonic()
     payload = {
@@ -90,8 +109,15 @@ def run_job(base_url, model, args, repeat):
         now = time.monotonic()
         phase, percentage, step, total, label = progress_text(job)
         signature = (phase, percentage, step, total)
-        heartbeat_due = now - last_output_at >= HEARTBEAT_SECONDS
+        # Once real step metadata exists, repeating exactly the same step every
+        # 30 seconds adds noise rather than information. Keep heartbeats only
+        # for opaque phases/backends that cannot expose a current step.
+        heartbeat_due = step is None and now - last_output_at >= HEARTBEAT_SECONDS
         if signature != last_signature or heartbeat_due:
+            if signature != last_signature:
+                _print_fast_mlx_muxing_if_missed(
+                    model, phase, last_signature, total, now - created_at,
+                )
             print(f"    {label} · {elapsed_text(now - created_at)}", flush=True)
             last_signature = signature
             last_output_at = now
