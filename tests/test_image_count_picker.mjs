@@ -48,6 +48,7 @@ const context = {
     Array,
     Number,
     String,
+    Object,
     crypto: {
         randomUUID: () => 'generated-variant-group',
     },
@@ -206,9 +207,50 @@ const grouped = {
 };
 assert.equal(helpers.isInitialImageMessage(grouped), false);
 
+const sourceArtifact = {
+    artifact_id: 'batch-artifact',
+    image_id: 'batch-image',
+    prompt: 'A cinematic portrait',
+    width: 512,
+    height: 512,
+    quality: 'standard',
+    negative_prompt: 'old negative prompt',
+};
+const batchArtifact = helpers.applyImageBatchSettings(sourceArtifact, {
+    format: 'landscape',
+    width: 768,
+    height: 432,
+    quality: 'quality',
+    negativePrompt: 'deformed face, malformed hands, extra fingers',
+});
+assert.equal(batchArtifact.width, 768);
+assert.equal(batchArtifact.height, 432);
+assert.equal(batchArtifact.quality, 'quality');
+assert.equal(
+    batchArtifact.negative_prompt,
+    'deformed face, malformed hands, extra fingers',
+);
+assert.equal(sourceArtifact.width, 512);
+assert.equal(sourceArtifact.height, 512);
+assert.equal(sourceArtifact.quality, 'standard');
+assert.equal(sourceArtifact.negative_prompt, 'old negative prompt');
+
+const clearedNegativePrompt = helpers.applyImageBatchSettings(sourceArtifact, {
+    width: 432,
+    height: 768,
+    quality: 'fast',
+    negativePrompt: '',
+});
+assert.equal(clearedNegativePrompt.width, 432);
+assert.equal(clearedNegativePrompt.height, 768);
+assert.equal(clearedNegativePrompt.quality, 'fast');
+assert.equal(Object.hasOwn(clearedNegativePrompt, 'negative_prompt'), false);
+
 assert.match(commonSource, /image-count-picker\.js\?v=20260929-image-count-v2/);
-assert.match(commonSource, /loadImageCountPicker\(\);/);
+assert.match(source, /20260930-image-count-v3/);
+assert.match(source, /settings: selectedImageBatchSettings\(\)/);
+assert.match(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
 assert.match(source, /mlx-i18n-ready/);
 assert.match(source, /mlx-language-changed/);
 
-console.log('Image count picker, localization, and 1-6 grouping passed.');
+console.log('Image count picker, batch settings, localization, and 1-6 grouping passed.');
