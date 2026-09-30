@@ -57,7 +57,6 @@ class VideoMlxProviderTests(unittest.TestCase):
     def test_distilled_q4_command_matches_nobby_8_plus_3_profile(self):
         model = video_registry.builtin_mlx_model()
         with mock.patch.object(video_providers_mlx, "LTX_MLX_CLI", Path("/runtime/ltx-2-mlx")), \
-             mock.patch.object(video_providers_mlx, "LTX_MLX_GEMMA_DIR", Path("/models/gemma")), \
              mock.patch.object(video_registry, "model_path", return_value=Path("/models/ltx-q4")), \
              mock.patch.object(video_providers_mlx, "DEFAULT_LOW_RAM", True):
             command = video_providers_mlx._command(
@@ -68,7 +67,7 @@ class VideoMlxProviderTests(unittest.TestCase):
         self.assertEqual(command[command.index("--stage1-steps") + 1], "8")
         self.assertEqual(command[command.index("--stage2-steps") + 1], "3")
         self.assertEqual(command[command.index("--model") + 1], "/models/ltx-q4")
-        self.assertEqual(command[command.index("--gemma") + 1], "/models/gemma")
+        self.assertNotIn("--gemma", command)
         self.assertIn("--low-ram", command)
 
     def test_preview_uses_one_plus_one_steps(self):
@@ -142,6 +141,14 @@ class VideoProviderDispatchTests(unittest.TestCase):
         template = Path("launchd/templates/de.nobby.mlx-video.plist.template").read_text()
         self.assertIn("video_service_dispatch:app", template)
         self.assertIn("LTX_MLX_LOW_RAM", template)
+        self.assertNotIn("LTX_MLX_GEMMA_DIR", template)
+
+    def test_setup_uses_pack_local_gemma4_and_pinned_upstream(self):
+        setup = Path("scripts/setup-ltx-video-mlx").read_text()
+        self.assertIn("1724ca673d59f023a8a95efee06e5d36d61c2765", setup)
+        self.assertIn("text_encoder.safetensors", setup)
+        self.assertIn("text_encoder_config.json", setup)
+        self.assertNotIn("gemma-3-12b-it-4bit", setup)
 
 
 if __name__ == "__main__":
