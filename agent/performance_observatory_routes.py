@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 import math
+import os
 from pathlib import Path
+import socket
 import time
+import urllib.parse
 
 from fastapi import FastAPI
 
@@ -16,6 +19,7 @@ import runtime_coordinator
 
 DEFAULT_LIMIT = 40
 MAX_LIMIT = 100
+LTX_URL = os.environ.get("LTX_URL", "http://127.0.0.1:18060").rstrip("/")
 
 
 def _number(value):
@@ -28,6 +32,13 @@ def _number(value):
 def _rounded(value, digits=2):
     value = _number(value)
     return None if value is None else round(value, digits)
+
+
+def _limit(value, default=DEFAULT_LIMIT):
+    try:
+        return max(1, min(MAX_LIMIT, int(value)))
+    except (TypeError, ValueError):
+        return default
 
 
 def _percentile(values, fraction):
@@ -83,10 +94,7 @@ def _safe_model_identifier(value):
 
 def _model_calls(limit=DEFAULT_LIMIT):
     """Return recent content-free model-call measurements from observability."""
-    try:
-        limit = max(1, min(MAX_LIMIT, int(limit)))
-    except (TypeError, ValueError):
-        limit = DEFAULT_LIMIT
+    limit = _limit(limit)
 
     with observability._TRACE_LOCK:
         traces = deepcopy(list(observability._TRACES.items()))
@@ -188,7 +196,17 @@ def _duration_ms(start, finish):
     return round((finish - start) * 1000.0, 2)
 
 
+def _runtime_reuse(raw):
+    result = raw.get("result") if isinstance(raw, dict) else None
+    result = result if isinstance(result, dict) else {}
+    value = result.get("runtime_reused")
+    if isinstance(value, bool):
+        return "warm" if value else "cold"
+    return None
+
+
 def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
+    limit = _limit(limit)
     snapshot = queue_snapshot if isinstance(queue_snapshot, dict) else media_queue.snapshot(limit=100)
     raw_jobs = snapshot.get("jobs") if isinstance(snapshot.get("jobs"), list) else []
 
@@ -205,14 +223,22 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "status": str(raw.get("status") or "unknown")[:40],
             "phase": str(raw.get("phase") or "")[:80] or None,
             "model": _safe_model_identifier(raw.get("model")),
+            "runtime_start": _runtime_reuse(raw),
             "queue_wait_ms": _duration_ms(created, started),
             "generation_ms": _duration_ms(started, finished),
             "total_ms": _duration_ms(created, finished),
+            "created_at": _rounded(created, 3),
             "finished_at": _rounded(finished, 3),
         })
 
-    jobs.sort(key=lambda item: item.get("finished_at") or 0, reverse=True)
-    recent = jobs[:max(1, min(MAX_LIMIT, int(limit or DEFAULT_LIMIT)))]
+    terminal = {"completed", "failed", "cancelled"}
+    jobs.sort(
+        key=lambda item: (
+            0 if item.get("status") not in terminal else 1,
+            -float(item.get("finished_at") or item.get("created_at") or 0),
+        )
+    )
+    recent = jobs[:limit]
     completed = [job for job in jobs if job["status"] == "completed"]
 
     kinds = {}
@@ -223,6 +249,8 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "generation_ms": metric_series(job.get("generation_ms") for job in selected),
             "queue_wait_ms": metric_series(job.get("queue_wait_ms") for job in selected),
             "total_ms": metric_series(job.get("total_ms") for job in selected),
+            "warm_starts": sum(job.get("runtime_start") == "warm" for job in selected),
+            "cold_starts": sum(job.get("runtime_start") == "cold" for job in selected),
         }
 
     return {
@@ -261,10 +289,28 @@ def _service_health(url):
         "loaded": loaded,
         "active": active,
         "model": _safe_model_identifier(
-            value.get("model") or value.get("current_model") or nested.get("model")
+            value.get("model")
+            or value.get("current_model")
+            or value.get("running_model")
+            or value.get("runtime_model")
+            or nested.get("model")
         ),
         "detail": None,
     }
+
+
+def _ltx_runtime_loaded():
+    """Detect the video worker without relying on process-local provider state."""
+    try:
+        parsed = urllib.parse.urlsplit(LTX_URL)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 18060
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            return False
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def runtime_snapshot(status_provider=None):
@@ -274,6 +320,11 @@ def runtime_snapshot(status_provider=None):
         chat = {"online": False, "error": str(exc)}
     chat = chat if isinstance(chat, dict) else {}
 
+    image = _service_health(runtime_coordinator.IMAGE_URL)
+    video = _service_health(runtime_coordinator.VIDEO_URL)
+    if video.get("available"):
+        video["loaded"] = bool(video.get("loaded") or _ltx_runtime_loaded())
+
     return {
         "chat": {
             "available": bool(chat.get("online")),
@@ -282,12 +333,8 @@ def runtime_snapshot(status_provider=None):
             "model": _safe_model_identifier(chat.get("model")),
             "state": "warm" if chat.get("online") else "cold",
         },
-        "image": {
-            **_service_health(runtime_coordinator.IMAGE_URL),
-        },
-        "video": {
-            **_service_health(runtime_coordinator.VIDEO_URL),
-        },
+        "image": image,
+        "video": video,
     }
 
 
@@ -303,10 +350,7 @@ def _normalize_runtime_states(runtimes):
 
 
 def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
-    try:
-        limit = max(1, min(MAX_LIMIT, int(limit)))
-    except (TypeError, ValueError):
-        limit = DEFAULT_LIMIT
+    limit = _limit(limit)
 
     queue_snapshot = media_queue.snapshot(limit=100)
     return {
@@ -323,7 +367,7 @@ def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
         "notes": {
             "model_history": "in-memory since the current Agent process started",
             "media_history": "durable media queue history",
-            "runtime_state": "live loaded/unloaded state, not a historical startup classification",
+            "runtime_state": "live loaded/unloaded state; video jobs also expose historical warm/cold reuse when available",
         },
     }
 
