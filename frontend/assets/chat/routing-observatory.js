@@ -6,38 +6,15 @@
 
     const API = '/api/routing/decisions';
     const ROUTES = [
-        ['chat', 'Chat'],
-        ['image', 'Bild'],
-        ['video_generate', 'Video'],
-        ['shorts_generate', 'Short'],
-        ['agent', 'Agent'],
-        ['web_search', 'Websuche']
+        'chat',
+        'image',
+        'video_generate',
+        'shorts_generate',
+        'agent',
+        'web_search'
     ];
 
-    const COPY = {
-        de: {
-            title: 'Routing Observatory',
-            description: 'Zeigt, warum Nobby eine Route gewählt hat. Feedback wird lokal als Regression-Kandidat gespeichert.',
-            refresh: 'Aktualisieren',
-            loading: 'Routing-Entscheidungen werden geladen …',
-            empty: 'Noch keine Routing-Entscheidungen vorhanden.',
-            loadError: 'Routing-Daten konnten nicht geladen werden.',
-            prompt: 'Prompt',
-            route: 'Route',
-            confidence: 'Confidence',
-            reason: 'Grund',
-            feedback: 'Feedback',
-            right: 'Richtig',
-            wrong: 'Falsch',
-            save: 'Speichern',
-            cancel: 'Abbrechen',
-            total: 'Entscheidungen',
-            guarded: 'abgefangen',
-            wrongCount: 'Fehler markiert',
-            savedRight: 'Als richtig markiert',
-            savedWrong: 'Korrektur gespeichert',
-            choose: 'Sollte sein …'
-        },
+    const FALLBACK = {
         en: {
             title: 'Routing Observatory',
             description: 'Shows why Nobby selected a route. Feedback is stored locally as a regression candidate.',
@@ -59,20 +36,31 @@
             wrongCount: 'marked wrong',
             savedRight: 'Marked correct',
             savedWrong: 'Correction saved',
-            choose: 'Should be …'
-        }
+            choose: 'Should be …',
+            route_chat: 'Chat',
+            route_image: 'Image',
+            route_image_edit: 'Image edit',
+            route_image_upscale: 'Upscale',
+            route_video: 'Video',
+            route_video_generate: 'Video',
+            route_video_animate: 'Animation',
+            route_shorts_generate: 'Short',
+            route_agent: 'Agent',
+            route_coding_agent: 'Agent',
+            route_web_search: 'Web search',
+            reason_router_decision: 'Router decision',
+            reason_high_confidence: 'High confidence',
+            reason_medium_confidence_explicit_intent: 'Explicit intent',
+            reason_medium_confidence_requires_explicit_intent: 'Explicit intent required',
+            reason_low_confidence_fallback: 'Low confidence fallback',
+            reason_explicit_shorts_intent_required: 'Explicit Shorts intent required',
+            reason_long_form_chat_fallback: 'Long-form chat fallback',
+            reason_conservative_fallback: 'Conservative fallback'
+        },
+        de: {}
     };
 
-    const REASONS = {
-        router_decision: { de: 'Router-Entscheidung', en: 'Router decision' },
-        high_confidence: { de: 'Hohe Confidence', en: 'High confidence' },
-        medium_confidence_explicit_intent: { de: 'Explizite Absicht', en: 'Explicit intent' },
-        medium_confidence_requires_explicit_intent: { de: 'Explizite Absicht fehlt', en: 'Explicit intent required' },
-        low_confidence_fallback: { de: 'Confidence zu niedrig', en: 'Low confidence fallback' },
-        explicit_shorts_intent_required: { de: 'Short-Auftrag nicht explizit', en: 'Explicit Shorts intent required' },
-        long_form_chat_fallback: { de: 'Langer Text → Chat', en: 'Long-form chat fallback' },
-        conservative_fallback: { de: 'Konservativer Fallback', en: 'Conservative fallback' }
-    };
+    let copy = FALLBACK;
 
     let card = null;
     let tableBody = null;
@@ -83,34 +71,41 @@
     let retryTimer = null;
 
     function locale() {
-        const current = window.MLXI18n?.getLocale?.() || navigator.language || 'en';
+        const current = window.MLXI18n?.getLanguage?.()
+            || window.MLXI18n?.getLocale?.()
+            || navigator.language
+            || 'en';
         return String(current).toLowerCase().startsWith('de') ? 'de' : 'en';
     }
 
     function t(key) {
-        return COPY[locale()]?.[key] || COPY.en[key] || key;
+        return copy[locale()]?.[key]
+            || copy.en?.[key]
+            || FALLBACK.en[key]
+            || key;
+    }
+
+    async function loadTranslations() {
+        try {
+            const response = await fetch('/i18n/routing-observatory.json', {
+                cache: 'no-cache'
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const payload = await response.json();
+            if (payload?.de && payload?.en) copy = payload;
+        } catch (error) {
+            console.warn('[MLX Routing Observatory] translations unavailable', error);
+        }
     }
 
     function routeLabel(target) {
-        const map = {
-            chat: 'Chat',
-            image: locale() === 'de' ? 'Bild' : 'Image',
-            image_edit: locale() === 'de' ? 'Bildbearbeitung' : 'Image edit',
-            image_upscale: 'Upscale',
-            video: 'Video',
-            video_generate: 'Video',
-            video_animate: locale() === 'de' ? 'Animation' : 'Animation',
-            shorts_generate: 'Short',
-            agent: 'Agent',
-            coding_agent: 'Agent',
-            web_search: locale() === 'de' ? 'Websuche' : 'Web search'
-        };
-        return map[target] || target || '—';
+        return t('route_' + target) || target || '—';
     }
 
     function reasonLabel(reason) {
-        const item = REASONS[reason];
-        return item?.[locale()] || reason || '—';
+        const key = 'reason_' + reason;
+        const translated = t(key);
+        return translated === key ? (reason || '—') : translated;
     }
 
     function formatConfidence(value) {
@@ -141,8 +136,8 @@
         card.id = 'routingObservatory';
 
         const header = el('div', 'routing-observatory-header');
-        const copy = el('div', 'routing-observatory-copy');
-        copy.append(
+        const copyBlock = el('div', 'routing-observatory-copy');
+        copyBlock.append(
             el('h4', '', t('title')),
             el('p', '', t('description'))
         );
@@ -151,7 +146,7 @@
         refreshButton.type = 'button';
         refreshButton.addEventListener('click', () => refresh());
 
-        header.append(copy, refreshButton);
+        header.append(copyBlock, refreshButton);
 
         state = el('div', 'routing-observatory-stats');
         status = el('div', 'routing-observatory-status', t('loading'));
@@ -233,10 +228,10 @@
         const wrapper = el('div', 'routing-feedback-editor');
         const select = document.createElement('select');
         select.setAttribute('aria-label', t('choose'));
-        ROUTES.forEach(([value, label]) => {
+        ROUTES.forEach(value => {
             const option = document.createElement('option');
             option.value = value;
-            option.textContent = label;
+            option.textContent = routeLabel(value);
             select.appendChild(option);
         });
         select.value = decision.target === 'chat' ? 'image' : 'chat';
@@ -391,7 +386,7 @@
             if (initialize()) return;
             if (attempts < 120) retryTimer = setTimeout(tryInitialize, 50);
         };
-        tryInitialize();
+        loadTranslations().finally(tryInitialize);
     }
 
     window.MLXRoutingObservatory = {
@@ -400,16 +395,18 @@
     };
 
     document.addEventListener('mlx-language-changed', () => {
-        if (!card) return;
-        card.remove();
-        card = null;
-        tableBody = null;
-        state = null;
-        status = null;
-        refreshButton = null;
-        initialized = false;
-        clearTimeout(retryTimer);
-        initialize();
+        loadTranslations().finally(() => {
+            if (!card) return;
+            card.remove();
+            card = null;
+            tableBody = null;
+            state = null;
+            status = null;
+            refreshButton = null;
+            initialized = false;
+            clearTimeout(retryTimer);
+            initialize();
+        });
     });
 
     if (document.readyState === 'loading') {
