@@ -1,4 +1,4 @@
-"""Provider dispatcher for the stable MPS and experimental native-MLX video backends."""
+"""Provider dispatcher for the stable MPS and native-MLX video backends."""
 from __future__ import annotations
 
 import video_providers as mps
@@ -16,12 +16,56 @@ def _is_mlx(model):
     return str(model.get("provider") or "") == "ltx-mlx"
 
 
+def _mlx_progress_event(params, event):
+    """Restore cumulative MLX step metadata from the worker progress value.
+
+    The persistent worker maps completed denoising steps onto 0..90% and keeps
+    the remaining 10% for decode/mux.  The provider currently forwards that
+    progress value but not the worker's current_step/total_steps fields.  Keep
+    the service contract exact until those fields are forwarded natively.
+    """
+    enriched = dict(event or {})
+    if enriched.get("step") is not None and enriched.get("total_steps") is not None:
+        return enriched
+
+    phase = str(enriched.get("phase") or "").lower()
+    progress = enriched.get("progress")
+    if phase != "denoising" or not isinstance(progress, (int, float)) or isinstance(progress, bool):
+        return enriched
+
+    value = float(progress)
+    if value > 1:
+        value /= 100
+    if value <= 0 or value > 0.9:
+        return enriched
+
+    try:
+        total_steps = int(params.get("steps") or (2 if params.get("quality") == "preview" else 11))
+    except (TypeError, ValueError):
+        total_steps = 2 if params.get("quality") == "preview" else 11
+    if total_steps <= 0:
+        return enriched
+
+    current_step = int(round(value * total_steps / 0.9))
+    if 1 <= current_step <= total_steps:
+        enriched["step"] = current_step
+        enriched["total_steps"] = total_steps
+    return enriched
+
+
 def availability(model):
     return mlx.availability(model) if _is_mlx(model) else mps.availability(model)
 
 
 def generate(model, params, output, **kwargs):
     if _is_mlx(model):
+        callback = kwargs.get("progress_callback")
+        if callback is not None:
+            def progress_callback(event):
+                callback(_mlx_progress_event(params, event))
+
+            kwargs = dict(kwargs)
+            kwargs["progress_callback"] = progress_callback
         return mlx.generate(model, params, output, **kwargs)
     return mps.generate(model, params, output, **kwargs)
 
