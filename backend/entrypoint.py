@@ -3,6 +3,7 @@
 from backend.app import AGENT_URL, agent_json_request, app, mlx_chat_stream
 from backend.automation_routes import install_routes as install_automation_routes
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
+from backend.image_pipeline_routes import install_routes as install_image_pipeline_routes
 from backend.media_prompt_meta_guard import install_media_prompt_meta_guard
 from backend.media_routing_ui import (
     MediaRoutingUiMiddleware,
@@ -43,6 +44,7 @@ app.add_middleware(MediaRoutingUiMiddleware)
 app.add_middleware(NegativePromptUiMiddleware)
 
 install_automation_routes(app, agent_json_request)
+install_image_pipeline_routes(app, agent_json_request)
 install_memory_manager_routes(app, agent_json_request)
 install_model_scout_routes(app, agent_json_request)
 install_shorts_studio_routes(app, agent_json_request)
