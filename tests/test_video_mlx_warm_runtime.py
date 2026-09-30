@@ -75,11 +75,17 @@ class VideoMlxWarmRuntimeTests(unittest.TestCase):
         self.assertIn("results.append(failed_result(model, exc))", source)
         self.assertIn("Kein Benchmark-Backend konnte einen Lauf abschließen", source)
 
-    def test_benchmark_prints_periodic_heartbeat(self):
+    def test_benchmark_heartbeats_only_for_opaque_progress(self):
         source = Path("scripts/benchmark-ltx-video.py").read_text()
         self.assertIn("HEARTBEAT_SECONDS", source)
-        self.assertIn("heartbeat_due", source)
+        self.assertIn("heartbeat_due = step is None", source)
         self.assertIn("elapsed_text", source)
+
+    def test_benchmark_surfaces_fast_mlx_muxing_transition(self):
+        source = Path("scripts/benchmark-ltx-video.py").read_text()
+        self.assertIn("def _print_fast_mlx_muxing_if_missed", source)
+        self.assertIn('model != "ltx-2.5-mlx-q4"', source)
+        self.assertIn('print(f"    muxing{suffix} (98 %)', source)
 
 
 if __name__ == "__main__":
