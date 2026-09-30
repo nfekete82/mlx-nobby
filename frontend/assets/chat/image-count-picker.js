@@ -1,9 +1,10 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20260930-image-count-v3';
+    const SCRIPT_VERSION = '20260930-image-count-v4';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
+    const PREWARM_TTL_MS = 60 * 1000;
     const MIN_IMAGE_COUNT = 1;
     const MAX_IMAGE_COUNT = 6;
     const IMAGE_QUALITIES = new Set([
@@ -34,6 +35,8 @@
     let pickerObserver = null;
     let checkTimer = null;
     let picker = null;
+    let lastPrewarmKey = '';
+    let lastPrewarmAt = 0;
 
     function t(key) {
         return dictionary[key] || FALLBACK[key] || key;
@@ -165,14 +168,55 @@
         }
     }
 
+    function latestImagePrompt(session = currentSession()) {
+        const messages = Array.isArray(session?.messages)
+            ? session.messages
+            : [];
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const message = messages[index];
+            if (message?.role !== 'user') continue;
+            const content = typeof message?.content === 'string'
+                ? message.content.trim()
+                : '';
+            if (content) return content.slice(0, 2000);
+        }
+        return String(
+            document.getElementById?.('input')?.value || ''
+        ).trim().slice(0, 2000);
+    }
+
+    function requestImagePrewarm() {
+        const prompt = latestImagePrompt();
+        if (!prompt || typeof fetch !== 'function') return false;
+
+        const now = Date.now();
+        if (
+            prompt === lastPrewarmKey &&
+            now - lastPrewarmAt < PREWARM_TTL_MS
+        ) {
+            return false;
+        }
+        lastPrewarmKey = prompt;
+        lastPrewarmAt = now;
+
+        fetch('/api/image/prewarm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'auto', prompt })
+        }).catch(() => {});
+        return true;
+    }
+
     function syncPickerVisibility() {
         if (!picker) return;
 
         const modalOpen = !picker.modal.hidden;
         const imageMode = modalOpen && !picker.negativePromptField.hidden;
+        const justOpened = modalOpen && !picker.wasModalOpen;
 
-        if (modalOpen && !picker.wasModalOpen) {
+        if (justOpened) {
             picker.select.value = '1';
+            if (imageMode) requestImagePrewarm();
         }
         picker.wasModalOpen = modalOpen;
 
@@ -496,11 +540,13 @@
     window.MLXImageCountPicker = {
         install: installPicker,
         check: maybeExpandActiveBatch,
+        prewarm: requestImagePrewarm,
         __test: {
             applyImageBatchSettings,
             artifactForMessage,
             firstImageMessageAfter,
             isInitialImageMessage,
+            latestImagePrompt,
             mergeInitialImageWithGeneratedVariants,
             normalizeImageCount,
             regeneratedMessageForArtifact,
