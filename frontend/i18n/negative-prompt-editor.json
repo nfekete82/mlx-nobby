@@ -1,0 +1,22 @@
+{
+  "de": {
+    "helper": "Preset-Chips ergänzen oder entfernen einzelne Begriffe. Dein eigener Text bleibt frei editierbar.",
+    "saveDefault": "Als Standard speichern",
+    "loadDefault": "Standard verwenden",
+    "clear": "Leeren",
+    "saved": "Standard gespeichert.",
+    "removed": "Standard entfernt.",
+    "loaded": "Standard geladen.",
+    "emptyDefault": "Noch kein Standard gespeichert."
+  },
+  "en": {
+    "helper": "Preset chips add or remove individual terms. Your custom text stays editable.",
+    "saveDefault": "Save as default",
+    "loadDefault": "Use default",
+    "clear": "Clear",
+    "saved": "Default saved.",
+    "removed": "Default removed.",
+    "loaded": "Default loaded.",
+    "emptyDefault": "No saved default yet."
+  }
+}
