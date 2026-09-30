@@ -1,0 +1,153 @@
+#!/bin/bash
+set -euo pipefail
+
+RUNTIME_ROOT="${WAN_MLX_RUNTIME_ROOT:-${HOME}/.local/share/mlx-nobby/wan22-mlx}"
+SOURCE_DIR="${RUNTIME_ROOT}/src"
+VENV_DIR="${RUNTIME_ROOT}/.venv"
+MODEL_ROOT="${WAN_MLX_MODEL_ROOT:-${HOME}/.local/share/mlx-nobby/models}"
+MODEL_ID="wan2.2-ti2v-5b-mlx-q8"
+MODEL_DIR="${MODEL_ROOT}/${MODEL_ID}"
+UPSTREAM_URL="https://github.com/Blaizzy/mlx-video.git"
+UPSTREAM_PIN="87db56a51758fefb748a359b90a5283bb8ba4837"
+MODEL_REPO="Anes1032/Wan2.2-TI2V-5B-mlx-q8"
+MODEL_REVISION="9624723c94ddf509832555c45e223a035baa7d1c"
+TOKENIZER_REPO="google/umt5-xxl"
+READY_MARKER="${MODEL_DIR}/.mlx-nobby-ready"
+
+PYTHON_BOOTSTRAP="${WAN_MLX_BOOTSTRAP_PYTHON:-}"
+if [ -z "${PYTHON_BOOTSTRAP}" ]; then
+    if command -v python3.11 >/dev/null 2>&1; then
+        PYTHON_BOOTSTRAP="$(command -v python3.11)"
+    else
+        PYTHON_BOOTSTRAP="$(command -v python3)"
+    fi
+fi
+
+cat <<EOF
+============================================================
+MLX NOBBY — WAN 2.2 TI2V 5B MLX Q8 SETUP
+============================================================
+Runtime:  ${RUNTIME_ROOT}
+Upstream: Blaizzy/mlx-video
+Pin:      ${UPSTREAM_PIN}
+Model:    ${MODEL_REPO}
+Revision: ${MODEL_REVISION}
+
+Software license: MIT (mlx-video)
+Model license:    Apache-2.0 (Wan 2.2 derivative)
+EOF
+
+mkdir -p "${RUNTIME_ROOT}" "${MODEL_ROOT}"
+
+if [ ! -d "${SOURCE_DIR}/.git" ]; then
+    echo "[1/5] mlx-video klonen"
+    rm -rf "${SOURCE_DIR}"
+    git clone --quiet "${UPSTREAM_URL}" "${SOURCE_DIR}"
+else
+    echo "[1/5] mlx-video Repository aktualisieren"
+    git -C "${SOURCE_DIR}" fetch --quiet origin
+fi
+
+git -C "${SOURCE_DIR}" checkout --quiet --detach "${UPSTREAM_PIN}"
+CURRENT_PIN="$(git -C "${SOURCE_DIR}" rev-parse HEAD)"
+if [ "${CURRENT_PIN}" != "${UPSTREAM_PIN}" ]; then
+    echo "ERROR: Unerwarteter mlx-video Commit: ${CURRENT_PIN}" >&2
+    exit 1
+fi
+
+if [ ! -x "${VENV_DIR}/bin/python" ]; then
+    echo "[2/5] Isolierte Python-Runtime anlegen"
+    "${PYTHON_BOOTSTRAP}" -m venv "${VENV_DIR}"
+else
+    echo "[2/5] Isolierte Python-Runtime vorhanden"
+fi
+
+"${VENV_DIR}/bin/python" -m pip install --quiet --upgrade pip
+"${VENV_DIR}/bin/python" -m pip install --quiet -e "${SOURCE_DIR}" "huggingface_hub[hf_xet]"
+"${VENV_DIR}/bin/python" -m pip check
+
+if [ ! -f "${READY_MARKER}" ]; then
+    echo "[3/5] Wan 2.2 TI2V 5B MLX Q8 herunterladen (~20 GB)"
+    MODEL_REPO="${MODEL_REPO}" MODEL_REVISION="${MODEL_REVISION}" MODEL_DIR="${MODEL_DIR}" \
+    "${VENV_DIR}/bin/python" - <<'PY'
+import os
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id=os.environ["MODEL_REPO"],
+    revision=os.environ["MODEL_REVISION"],
+    local_dir=os.environ["MODEL_DIR"],
+    max_workers=8,
+)
+PY
+else
+    echo "[3/5] Wan-Modell bereits markiert"
+fi
+
+echo "[4/5] UMT5-Tokenizer lokal cachen"
+TOKENIZER_REPO="${TOKENIZER_REPO}" "${VENV_DIR}/bin/python" - <<'PY'
+import os
+from huggingface_hub import HfApi, snapshot_download
+
+repo = os.environ["TOKENIZER_REPO"]
+info = HfApi().model_info(repo, revision="main")
+snapshot_download(
+    repo_id=repo,
+    revision="main",
+    allow_patterns=[
+        "config.json",
+        "spiece.model",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+    ],
+)
+print(f"Tokenizer revision: {info.sha}")
+PY
+
+echo "[5/5] Installation validieren"
+MODEL_DIR="${MODEL_DIR}" "${VENV_DIR}/bin/python" - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["MODEL_DIR"])
+required = [
+    "config.json",
+    "model.safetensors",
+    "t5_encoder.safetensors",
+    "vae.safetensors",
+]
+missing = [name for name in required if not (root / name).is_file()]
+if missing:
+    raise SystemExit("Fehlende Modelldateien: " + ", ".join(missing))
+config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+if str(config.get("model_version")) != "2.2" or config.get("model_type") != "ti2v":
+    raise SystemExit("Unerwartete Wan-Modellkonfiguration")
+quant = config.get("quantization") or {}
+if int(quant.get("bits") or 0) != 8:
+    raise SystemExit("Erwartete Q8-Quantisierung fehlt in config.json")
+PY
+
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZER_REPO="${TOKENIZER_REPO}" \
+"${VENV_DIR}/bin/python" - <<'PY'
+import os
+from transformers import AutoTokenizer
+
+AutoTokenizer.from_pretrained(os.environ["TOKENIZER_REPO"], local_files_only=True)
+PY
+
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+"${VENV_DIR}/bin/python" -m mlx_video.models.wan_2.generate --help >/dev/null
+
+touch "${READY_MARKER}"
+
+cat <<EOF
+
+Wan 2.2 TI2V 5B MLX Q8 ist bereit.
+  Runtime: ${VENV_DIR}/bin/python
+  Model:   ${MODEL_DIR}
+
+Der bestehende LTX-Pfad bleibt Standard. Nach einem Nobby-Neustart kann Wan
+explizit mit dem Video-Benchmark getestet werden.
+EOF

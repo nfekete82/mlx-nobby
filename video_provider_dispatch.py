@@ -1,8 +1,9 @@
-"""Provider dispatcher for the stable MPS and experimental native-MLX video backends."""
+"""Provider dispatcher for stable MPS and experimental native-MLX video backends."""
 from __future__ import annotations
 
 import video_providers as mps
 import video_providers_mlx as mlx
+import video_providers_wan as wan
 
 
 ProviderCancelled = mps.ProviderCancelled
@@ -12,21 +13,37 @@ i2v_aspect_ratio = mps.i2v_aspect_ratio
 i2v_target_size = mps.i2v_target_size
 
 
+def _provider(model):
+    return str(model.get("provider") or "")
+
+
 def _is_mlx(model):
-    return str(model.get("provider") or "") == "ltx-mlx"
+    return _provider(model) == "ltx-mlx"
+
+
+def _is_wan(model):
+    return _provider(model) == "wan-mlx"
 
 
 def availability(model):
-    return mlx.availability(model) if _is_mlx(model) else mps.availability(model)
+    if _is_mlx(model):
+        return mlx.availability(model)
+    if _is_wan(model):
+        return wan.availability(model)
+    return mps.availability(model)
 
 
 def generate(model, params, output, **kwargs):
     if _is_mlx(model):
         return mlx.generate(model, params, output, **kwargs)
+    if _is_wan(model):
+        return wan.generate(model, params, output, **kwargs)
     return mps.generate(model, params, output, **kwargs)
 
 
 def unload(runtime):
+    if wan.owns_runtime(runtime):
+        return wan.unload(runtime)
     if mlx.owns_runtime(runtime):
         return mlx.unload(runtime)
     return mps.unload(runtime)
@@ -36,6 +53,8 @@ def warm_runtime_status(model=None):
     if model is not None:
         if _is_mlx(model):
             return dict(mlx.warm_runtime_status())
+        if _is_wan(model):
+            return dict(wan.warm_runtime_status())
         status = dict(mps.warm_runtime_status())
         status["backend"] = "pytorch-mps"
         return status
