@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+import image_registry
+import quality_profiles
 import sdxl_worker
 
 
@@ -29,6 +31,21 @@ def test_sdxl_scheduler_default_is_existing_dpmpp_2m_karras():
         "solver_order": 2,
         "use_karras_sigmas": True,
     }
+
+
+def test_juggernaut_production_defaults_match_validated_ragnarok_baseline():
+    model = next(
+        item
+        for item in image_registry.builtin_models()
+        if item["id"] == image_registry.JUGGERNAUT_XL_ID
+    )
+    standard = quality_profiles.resolve_image_profile(model, "standard")
+
+    assert sdxl_worker.DEFAULT_SCHEDULER == "dpmpp-2m-karras"
+    assert model["default_steps"] == 30
+    assert model["default_guidance"] == 5.0
+    assert standard["steps"] == 30
+    assert standard["guidance"] == 5.0
 
 
 def test_sdxl_scheduler_sde_preset_uses_sde_dpmsolver_plus_plus():
