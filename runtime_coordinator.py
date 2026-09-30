@@ -46,6 +46,7 @@ def _float_env(name, default):
 
 MEMORY_RESERVE_GB = _float_env("MLX_RUNTIME_MEMORY_RESERVE_GB", 6.0)
 MEDIA_MIN_HEADROOM_GB = _float_env("MLX_RUNTIME_MEDIA_HEADROOM_GB", 4.0)
+VIDEO_MIN_HEADROOM_GB = _float_env("MLX_RUNTIME_VIDEO_HEADROOM_GB", 14.0)
 PRESSURE_ELEVATED_FREE_PERCENT = _float_env(
     "MLX_RUNTIME_PRESSURE_ELEVATED_PERCENT", 18.0
 )
@@ -430,27 +431,36 @@ def video_runtime(
     requester=request_json,
     lock_path=LOCK_PATH,
 ):
-    """Hand off image/chat resources to video and restore prior chat state."""
+    """Hand off resources to video while preserving a healthy warm chat runtime."""
     with runtime_lease(
         cancel_event,
         lock_path=lock_path,
         workload="video",
     ):
-        before = memory_budget_snapshot()
         image_health = release_idle_image_runtime(
             cancel_event,
             requester=requester,
         )
         _check_cancelled(cancel_event)
-        restore_chat = chat_loaded()
+
+        # Measure after releasing idle image weights. This avoids paying a chat
+        # cold-start when reclaiming the image runtime already created enough
+        # unified-memory headroom for LTX.
+        before = memory_budget_snapshot()
+        relief_needed = memory_relief_needed(
+            before,
+            min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+        )
+        restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
         preflight = {
             "workload": "video",
             "memory_before": before,
-            "memory_relief_needed": memory_relief_needed(before),
+            "memory_relief_needed": relief_needed,
+            "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": not bool(image_health.get("loaded")),
-            "chat_released": bool(restore_chat),
+            "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
