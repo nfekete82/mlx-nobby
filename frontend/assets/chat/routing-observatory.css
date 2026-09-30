@@ -1,0 +1,236 @@
+.routing-observatory-card {
+    display: grid;
+    gap: 16px;
+}
+
+.routing-observatory-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.routing-observatory-copy h4 {
+    margin: 0 0 6px;
+}
+
+.routing-observatory-copy p {
+    margin: 0;
+    max-width: 780px;
+    color: var(--muted, #7f8a99);
+    line-height: 1.45;
+}
+
+.routing-observatory-refresh,
+.routing-feedback-actions button,
+.routing-feedback-editor button,
+.routing-feedback-editor select {
+    font: inherit;
+}
+
+.routing-observatory-refresh,
+.routing-feedback-actions button,
+.routing-feedback-editor button {
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+    border-radius: 9px;
+    background: color-mix(in srgb, currentColor 5%, transparent);
+    color: inherit;
+    padding: 7px 10px;
+    cursor: pointer;
+}
+
+.routing-observatory-refresh:hover,
+.routing-feedback-actions button:hover,
+.routing-feedback-editor button:hover {
+    background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.routing-observatory-refresh:disabled,
+.routing-feedback-cell.is-busy {
+    opacity: .55;
+    pointer-events: none;
+}
+
+.routing-observatory-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.routing-observatory-stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-radius: 999px;
+    padding: 5px 9px;
+    color: var(--muted, #7f8a99);
+    font-size: .78rem;
+}
+
+.routing-observatory-stat strong {
+    color: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.routing-observatory-status {
+    padding: 10px 0;
+    color: var(--muted, #7f8a99);
+    font-size: .88rem;
+}
+
+.routing-observatory-table-wrap {
+    overflow-x: auto;
+    border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    border-radius: 12px;
+}
+
+.routing-observatory-table {
+    width: 100%;
+    min-width: 880px;
+    border-collapse: collapse;
+    font-size: .82rem;
+}
+
+.routing-observatory-table th,
+.routing-observatory-table td {
+    padding: 11px 12px;
+    vertical-align: top;
+    text-align: left;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.routing-observatory-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: color-mix(in srgb, var(--panel, #15181d) 96%, transparent);
+    color: var(--muted, #7f8a99);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.routing-observatory-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.routing-observatory-table tr.is-guarded {
+    background: color-mix(in srgb, #e5a13b 6%, transparent);
+}
+
+.routing-prompt-cell {
+    min-width: 300px;
+    max-width: 440px;
+}
+
+.routing-prompt-preview {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+}
+
+.routing-prompt-meta,
+.routing-route-original,
+.routing-duration {
+    margin-top: 5px;
+    color: var(--muted, #7f8a99);
+    font-size: .72rem;
+}
+
+.routing-prompt-meta {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.routing-route-badge,
+.routing-feedback-saved {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    white-space: nowrap;
+}
+
+.routing-confidence {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.routing-confidence.is-high {
+    font-weight: 650;
+}
+
+.routing-confidence.is-medium {
+    opacity: .82;
+}
+
+.routing-confidence.is-low {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+.routing-reason-cell {
+    min-width: 150px;
+}
+
+.routing-feedback-cell {
+    min-width: 176px;
+}
+
+.routing-feedback-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.routing-feedback-correct {
+    font-weight: 600;
+}
+
+.routing-feedback-wrong {
+    opacity: .82;
+}
+
+.routing-feedback-saved.is-correct {
+    font-weight: 600;
+}
+
+.routing-feedback-saved.is-wrong {
+    border-style: dashed;
+}
+
+.routing-feedback-editor {
+    display: grid;
+    gap: 7px;
+}
+
+.routing-feedback-editor select {
+    width: 100%;
+    min-width: 140px;
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+    border-radius: 9px;
+    background: var(--panel, #15181d);
+    color: inherit;
+    padding: 7px 9px;
+}
+
+.routing-feedback-editor-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.routing-feedback-save {
+    font-weight: 600;
+}
+
+@media (max-width: 760px) {
+    .routing-observatory-header {
+        flex-direction: column;
+    }
+
+    .routing-observatory-refresh {
+        width: 100%;
+    }
+}

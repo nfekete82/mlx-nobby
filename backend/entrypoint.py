@@ -3,7 +3,10 @@
 from backend.app import AGENT_URL, agent_json_request, app, mlx_chat_stream
 from backend.automation_routes import install_routes as install_automation_routes
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
-from backend.media_routing_ui import MediaRoutingUiMiddleware
+from backend.media_routing_ui import (
+    MediaRoutingUiMiddleware,
+    install_routes as install_routing_observatory_routes,
+)
 from backend.memory_manager_routes import (
     MemoryManagerUiMiddleware,
     install_routes as install_memory_manager_routes,
@@ -37,6 +40,7 @@ install_speech_streaming_routes(app, AGENT_URL)
 install_voice_manager_routes(app, AGENT_URL)
 install_version_routes(app)
 install_system_health_routes(app, agent_json_request)
+install_routing_observatory_routes(app)
 install_chat_reliability_routes(
     app,
     stream_factory=mlx_chat_stream,
