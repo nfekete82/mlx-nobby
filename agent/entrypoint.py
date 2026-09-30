@@ -18,6 +18,7 @@ from agent.app import (
     switch_model_runtime,
 )
 from agent.automation_routes import install_routes as install_automation_routes
+from agent.image_pipeline_routes import install_routes as install_image_pipeline_routes
 from agent.media_queue_performance import install as install_media_queue_performance
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
@@ -37,6 +38,7 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 app.add_middleware(MemoryChatMiddleware)
 
 install_media_queue_performance()
+install_image_pipeline_routes(app)
 install_memory_routes(app)
 install_model_scout_routes(
     app,
