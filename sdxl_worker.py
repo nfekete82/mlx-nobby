@@ -46,6 +46,8 @@ def main():
 
     pipeline = None
     loaded_model = None
+    loaded_scheduler = None
+    scheduler_base_config = None
 
     for line in sys.stdin:
         request_id = None
@@ -67,16 +69,20 @@ def main():
                     local_files_only=True,
                     use_safetensors=True,
                 )
+                scheduler_base_config = pipeline.scheduler.config
                 pipeline = pipeline.to("mps")
                 loaded_model = model_key
+                loaded_scheduler = None
 
             scheduler_name, scheduler_kwargs = scheduler_settings(
                 params.get("scheduler")
             )
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                pipeline.scheduler.config,
-                **scheduler_kwargs,
-            )
+            if loaded_scheduler != scheduler_name:
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                    scheduler_base_config,
+                    **scheduler_kwargs,
+                )
+                loaded_scheduler = scheduler_name
 
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 
