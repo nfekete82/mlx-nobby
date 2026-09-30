@@ -10,7 +10,6 @@
     <key>LTX_APP_DATA_DIR</key><string>__HOME_DIR__/Library/Application Support/LTXDesktop</string>
     <key>LTX_MLX_RUNTIME_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/ltx-2-mlx</string>
     <key>LTX_MLX_MODEL_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/models</string>
-    <key>LTX_MLX_GEMMA_DIR</key><string>__HOME_DIR__/.local/share/mlx-nobby/models/gemma-3-12b-it-4bit</string>
     <key>LTX_MLX_LOW_RAM</key><string>1</string>
   </dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer>
