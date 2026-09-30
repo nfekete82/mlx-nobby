@@ -36,9 +36,9 @@ test('negative prompt editor persists an optional global default', () => {
     assert.match(editor, /localStorage\.setItem/);
     assert.match(editor, /localStorage\.removeItem/);
     assert.match(editor, /if \(!ui \|\| ui\.field\.hidden \|\| ui\.input\.value\.trim\(\)\) return;/);
-    assert.match(editor, /data\.negativePromptSaveDefault/);
-    assert.match(editor, /data\.negativePromptLoadDefault/);
-    assert.match(editor, /data\.negativePromptClear/);
+    assert.match(editor, /save\.dataset\.negativePromptSaveDefault/);
+    assert.match(editor, /load\.dataset\.negativePromptLoadDefault/);
+    assert.match(editor, /clear\.dataset\.negativePromptClear/);
 });
 
 
