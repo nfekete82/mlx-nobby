@@ -320,7 +320,6 @@ def _start_thermal_sampler(enabled):
             stdout=log,
             stderr=subprocess.STDOUT,
             text=True,
-            start_new_session=True,
         )
     except Exception:
         path = log.name
@@ -342,7 +341,7 @@ def _stop_thermal_sampler(state):
     try:
         if process.poll() is None:
             try:
-                os.killpg(process.pid, signal.SIGINT)
+                process.send_signal(signal.SIGINT)
                 process.wait(timeout=5)
             except (OSError, subprocess.TimeoutExpired):
                 if process.poll() is None:
