@@ -76,6 +76,13 @@ def unload(runtime):
     return mps.unload(runtime)
 
 
+def reset_mlx_warm_runtime():
+    """Stop only the idle native-MLX worker and report its previous state."""
+    before = dict(mlx.warm_runtime_status())
+    mlx.shutdown_warm_runtime()
+    return before
+
+
 def warm_runtime_status(model=None):
     if model is not None:
         if _is_mlx(model):

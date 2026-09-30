@@ -30,6 +30,18 @@ def request_json(method, url, payload=None, timeout=30):
         raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
 
 
+def reset_mlx_runtime(base_url):
+    result = request_json(
+        "POST",
+        base_url.rstrip("/") + "/runtime/mlx/reset",
+        {},
+        timeout=30,
+    )
+    if not result.get("ok"):
+        raise RuntimeError("MLX-Runtime konnte nicht zurückgesetzt werden")
+    return result
+
+
 def gb(value):
     if not isinstance(value, (int, float)):
         return None
@@ -221,6 +233,11 @@ def main():
     parser.add_argument("--aspect-ratio", choices=("16:9", "9:16"), default="16:9")
     parser.add_argument("--prompt", default="Cinematic tracking shot of a red sports car driving through rain at night, realistic reflections, smooth motion")
     parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument(
+        "--cold-warm-cold",
+        action="store_true",
+        help="run exactly cold -> warm -> forced-cold for one native-MLX model",
+    )
     parser.add_argument("--poll", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--json", action="store_true")
@@ -233,10 +250,26 @@ def main():
     if missing:
         raise RuntimeError("Unbekannte Video-Modelle: " + ", ".join(missing))
 
+    if args.cold_warm_cold:
+        if len(args.models) != 1:
+            raise RuntimeError("--cold-warm-cold benötigt genau ein Modell")
+        model = args.models[0]
+        if available[model].get("provider") != "ltx-mlx":
+            raise RuntimeError("--cold-warm-cold ist nur für das native MLX-Backend verfügbar")
+        reset = reset_mlx_runtime(base_url)
+        print(
+            "\nIsolation Cold → Warm → Cold: "
+            f"MLX-Worker zurückgesetzt (vorher geladen: {'ja' if reset.get('was_loaded') else 'nein'}).",
+            flush=True,
+        )
+        repeat_count = 3
+    else:
+        repeat_count = max(1, args.repeats)
+
     results = []
-    for repeat in range(1, max(1, args.repeats) + 1):
+    for repeat in range(1, repeat_count + 1):
         for model in args.models:
-            print(f"\n[{repeat}/{max(1, args.repeats)}] {model}", flush=True)
+            print(f"\n[{repeat}/{repeat_count}] {model}", flush=True)
             if not available[model].get("available"):
                 reason = available[model].get("availability_note") or "Backend nicht verfügbar"
                 print(f"  FAILED: {reason}", file=sys.stderr)
@@ -247,6 +280,14 @@ def main():
             except Exception as exc:
                 print(f"  FAILED: {exc}", file=sys.stderr)
                 results.append(failed_result(model, exc))
+
+        if args.cold_warm_cold and repeat == 2:
+            reset = reset_mlx_runtime(base_url)
+            print(
+                "\n  MLX-Worker nach Warm-Lauf gezielt zurückgesetzt "
+                f"(vorher geladen: {'ja' if reset.get('was_loaded') else 'nein'}).",
+                flush=True,
+            )
 
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
