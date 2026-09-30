@@ -33,12 +33,26 @@ def unload(runtime):
 
 
 def warm_runtime_status(model=None):
-    if model is not None and _is_mlx(model):
-        return {
-            "loaded": False,
-            "idle_timeout_seconds": 0,
-            "backend": "mlx-cli",
-        }
-    status = dict(mps.warm_runtime_status())
-    status["backend"] = "pytorch-mps"
-    return status
+    if model is not None:
+        if _is_mlx(model):
+            return dict(mlx.warm_runtime_status())
+        status = dict(mps.warm_runtime_status())
+        status["backend"] = "pytorch-mps"
+        return status
+
+    mlx_status = dict(mlx.warm_runtime_status())
+    if mlx_status.get("loaded"):
+        return mlx_status
+    mps_status = dict(mps.warm_runtime_status())
+    mps_status["backend"] = "pytorch-mps"
+    if mps_status.get("loaded"):
+        return mps_status
+    return {
+        "loaded": False,
+        "idle_timeout_seconds": max(
+            float(mlx_status.get("idle_timeout_seconds") or 0),
+            float(mps_status.get("idle_timeout_seconds") or 0),
+        ),
+        "backend": "none",
+        "model": None,
+    }

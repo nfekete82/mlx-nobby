@@ -107,7 +107,8 @@ class VideoMlxProviderTests(unittest.TestCase):
             def run(_command, **_kwargs):
                 output.write_bytes(b"mp4")
 
-            with mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")), \
+            with mock.patch.object(video_providers_mlx, "PERSISTENT_WORKER", False), \
+                 mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")), \
                  mock.patch.object(video_providers_mlx, "validate_first_frame", return_value=source), \
                  mock.patch.object(video_providers_mlx, "_prepare_first_frame", side_effect=prepare), \
                  mock.patch.object(video_providers_mlx, "_run_process", side_effect=run), \

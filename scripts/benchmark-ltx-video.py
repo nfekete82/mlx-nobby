@@ -85,6 +85,8 @@ def run_job(base_url, model, args, repeat):
     before = result.get("memory_before") or job.get("memory_before") or {}
     after = result.get("memory_after") or job.get("memory_after") or {}
     return {
+        "status": "completed",
+        "error": None,
         "model": model,
         "provider": result.get("provider"),
         "backend": result.get("backend") or result.get("provider"),
@@ -109,29 +111,48 @@ def run_job(base_url, model, args, repeat):
     }
 
 
+def failed_result(model, exc):
+    return {
+        "status": "failed",
+        "error": str(exc),
+        "model": model,
+        "provider": None,
+        "backend": None,
+        "runtime_start": "—",
+        "wall_seconds": None,
+        "provider_seconds": None,
+        "ram_peak_gb": None,
+        "swap_peak_gb": None,
+    }
+
+
 def print_table(results):
     print("\nErgebnisse")
-    print("=" * 118)
+    print("=" * 132)
     header = (
-        f"{'Model':28} {'Backend':15} {'Start':6} {'Size':13} "
+        f"{'Model':28} {'Status':9} {'Backend':15} {'Start':6} {'Size':13} "
         f"{'Wall':>9} {'Provider':>9} {'RAM peak':>10} {'Swap':>8}"
     )
     print(header)
-    print("-" * 118)
+    print("-" * 132)
     for item in results:
         size = f"{item.get('width') or '?'}x{item.get('height') or '?'}"
         provider = item.get("provider_seconds")
         provider_text = f"{provider:.1f}s" if isinstance(provider, (int, float)) else "—"
+        wall = item.get("wall_seconds")
+        wall_text = f"{wall:.1f}s" if isinstance(wall, (int, float)) else "—"
         ram = item.get("ram_peak_gb")
         swap = item.get("swap_peak_gb")
         print(
-            f"{item['model'][:28]:28} {str(item.get('backend') or '—')[:15]:15} "
-            f"{item['runtime_start'][:6]:6} {size:13} "
-            f"{item['wall_seconds']:8.1f}s {provider_text:>9} "
+            f"{item['model'][:28]:28} {item.get('status', '—')[:9]:9} "
+            f"{str(item.get('backend') or '—')[:15]:15} {str(item.get('runtime_start') or '—')[:6]:6} "
+            f"{size:13} {wall_text:>9} {provider_text:>9} "
             f"{(f'{ram:.1f} GB' if ram is not None else '—'):>10} "
             f"{(f'{swap:.1f} GB' if swap is not None else '—'):>8}"
         )
-    print("=" * 118)
+        if item.get("error"):
+            print(f"  ↳ {str(item['error'])[:118]}")
+    print("=" * 132)
 
 
 def main():
@@ -157,25 +178,28 @@ def main():
     if missing:
         raise RuntimeError("Unbekannte Video-Modelle: " + ", ".join(missing))
 
-    unavailable = [
-        model for model in args.models
-        if not available[model].get("available")
-    ]
-    if unavailable:
-        for model in unavailable:
-            print(f"{model}: {available[model].get('availability_note')}", file=sys.stderr)
-        raise RuntimeError("Nicht alle Benchmark-Backends sind verfügbar")
-
     results = []
     for repeat in range(1, max(1, args.repeats) + 1):
         for model in args.models:
             print(f"\n[{repeat}/{max(1, args.repeats)}] {model}", flush=True)
-            results.append(run_job(base_url, model, args, repeat))
+            if not available[model].get("available"):
+                reason = available[model].get("availability_note") or "Backend nicht verfügbar"
+                print(f"  FAILED: {reason}", file=sys.stderr)
+                results.append(failed_result(model, reason))
+                continue
+            try:
+                results.append(run_job(base_url, model, args, repeat))
+            except Exception as exc:
+                print(f"  FAILED: {exc}", file=sys.stderr)
+                results.append(failed_result(model, exc))
 
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
     else:
         print_table(results)
+
+    if not any(item.get("status") == "completed" for item in results):
+        raise RuntimeError("Kein Benchmark-Backend konnte einen Lauf abschließen")
 
 
 if __name__ == "__main__":
