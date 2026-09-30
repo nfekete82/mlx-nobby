@@ -68,6 +68,10 @@ class LTXWarmRuntimeTests(unittest.TestCase):
             "_start_runtime",
             return_value=runtime,
         ) as start, mock.patch.object(
+            video_providers,
+            "_chat_runtime_loaded",
+            return_value=True,
+        ), mock.patch.object(
             video_providers.threading,
             "Timer",
             _FakeTimer,
@@ -87,6 +91,24 @@ class LTXWarmRuntimeTests(unittest.TestCase):
         self.assertTrue(reused_second)
         self.assertTrue(status["loaded"])
         start.assert_called_once()
+
+    def test_video_runtime_is_not_kept_warm_when_chat_was_evicted(self):
+        runtime = (_FakeProcess(), _FakeLog())
+        with mock.patch.object(
+            video_providers,
+            "_start_runtime",
+            return_value=runtime,
+        ), mock.patch.object(
+            video_providers,
+            "_chat_runtime_loaded",
+            return_value=False,
+        ):
+            acquired, _ = video_providers._acquire_runtime(threading.Event())
+            video_providers.unload(acquired)
+
+        self.assertTrue(runtime[0].terminated)
+        self.assertTrue(runtime[1].closed)
+        self.assertFalse(video_providers.warm_runtime_status()["loaded"])
 
     def test_failed_runtime_can_be_force_discarded(self):
         runtime = (_FakeProcess(), _FakeLog())
