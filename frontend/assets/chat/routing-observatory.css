@@ -87,7 +87,7 @@
 
 .routing-observatory-table {
     width: 100%;
-    min-width: 880px;
+    min-width: 1080px;
     border-collapse: collapse;
     font-size: .82rem;
 }
@@ -132,8 +132,9 @@
 }
 
 .routing-prompt-meta,
-.routing-route-original,
-.routing-duration {
+.routing-route-change,
+.routing-confidence-source,
+.routing-reason-meta {
     margin-top: 5px;
     color: var(--muted, #7f8a99);
     font-size: .72rem;
@@ -143,8 +144,13 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.routing-route-cell {
+    min-width: 112px;
+}
+
 .routing-route-badge,
-.routing-feedback-saved {
+.routing-feedback-saved,
+.routing-guard-badge {
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
@@ -153,7 +159,21 @@
     white-space: nowrap;
 }
 
+.routing-route-cell.is-original .routing-route-badge {
+    opacity: .72;
+}
+
+.routing-route-cell.is-final.is-changed .routing-route-badge {
+    font-weight: 650;
+    outline: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.routing-route-change {
+    white-space: nowrap;
+}
+
 .routing-confidence {
+    min-width: 90px;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
@@ -171,8 +191,29 @@
     text-underline-offset: 3px;
 }
 
+.routing-confidence-source {
+    font-weight: 400;
+    text-decoration: none;
+}
+
 .routing-reason-cell {
-    min-width: 150px;
+    min-width: 190px;
+}
+
+.routing-guard-badge {
+    margin-bottom: 6px;
+    border: 1px solid color-mix(in srgb, #e5a13b 32%, transparent);
+    background: color-mix(in srgb, #e5a13b 10%, transparent);
+    font-size: .7rem;
+    font-weight: 650;
+}
+
+.routing-reason-text {
+    line-height: 1.35;
+}
+
+.routing-reason-meta {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .routing-feedback-cell {
