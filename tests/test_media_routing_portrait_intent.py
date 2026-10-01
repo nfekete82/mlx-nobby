@@ -26,6 +26,20 @@ def test_portrait_generation_intent_matches_common_creation_prompts():
     )
 
 
+def test_portrait_how_to_questions_are_not_generation_intent():
+    prompts = [
+        "Wie erstelle ich ein gutes Porträt einer Frau bei natürlichem Fensterlicht?",
+        "Wie kann ich ein fotorealistisches Porträt erstellen?",
+        "Kannst du mir erklären, wie ich ein Porträt generiere?",
+        "How do I create a photorealistic portrait with window light?",
+        "What is the best way to create a portrait with natural light?",
+    ]
+
+    for prompt in prompts:
+        assert portrait_runtime.is_instructional_portrait_question(prompt)
+        assert not portrait_runtime.is_explicit_portrait_generation(prompt)
+
+
 def test_portrait_request_survives_web_confidence_guard():
     portrait_runtime.install_runtime()
     prompt = (
@@ -47,6 +61,27 @@ def test_portrait_request_survives_web_confidence_guard():
     assert observatory["confidence"] == 0.98
     assert observatory["confidence_source"] == "heuristic"
     assert observatory["guarded"] is False
+
+
+def test_portrait_how_to_question_is_demoted_to_chat():
+    portrait_runtime.install_runtime()
+    prompt = "Wie erstelle ich ein gutes Porträt einer Frau bei natürlichem Fensterlicht?"
+    request = json.dumps({"prompt": prompt}).encode("utf-8")
+    response = json.dumps({"target": "image"}).encode("utf-8")
+
+    guarded = json.loads(
+        media_routing_ui.guard_media_route_payload(request, response)
+    )
+
+    assert guarded["target"] == "chat"
+    assert guarded["routing_guard"] == "instructional_portrait_question"
+    observatory = guarded["routing_observatory"]
+    assert observatory["original_target"] == "image"
+    assert observatory["target"] == "chat"
+    assert observatory["confidence"] == 0.62
+    assert observatory["confidence_source"] == "heuristic"
+    assert observatory["reason"] == "instructional_portrait_question"
+    assert observatory["guarded"] is True
 
 
 def test_plain_portrait_discussion_is_not_promoted_to_explicit_image_intent():
