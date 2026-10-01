@@ -39,7 +39,7 @@ class VisionRouteApiTests(
             },
         }
 
-    def test_safe_image_selects_normal_vision(
+    def test_safe_image_selects_uncensored_vision(
         self,
     ):
         classification = (
@@ -82,11 +82,11 @@ class VisionRouteApiTests(
 
         self.assertEqual(
             result["role"],
-            "vision",
+            "vision_uncensored",
         )
 
         ensure.assert_called_once_with(
-            "vision"
+            "vision_uncensored"
         )
 
     def test_nsfw_image_selects_adult_vision(

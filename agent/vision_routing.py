@@ -1,6 +1,6 @@
 """Deterministic routing helpers for local vision models.
 
-This module deliberately contains no model-loading code.  Content
+This module deliberately contains no model-loading code. Content
 classification and model execution stay separate so classifiers can be
 replaced without changing the vision runtime.
 """
@@ -64,21 +64,20 @@ def select_vision_role(
     uncensored_role_available: bool = True,
     uncensored_min_confidence: float = 0.60,
 ) -> str:
-    """Choose the logical model role for a classified image.
+    """Choose the logical model role for image understanding.
 
-    Adult content is routed only when the classifier is sufficiently
-    confident. Unknown or ambiguous classifications deliberately use the
-    normal vision role.
+    MLX Nobby prefers the uncensored-capable VLM for every multimodal turn
+    whenever that role is available. Safety classification remains useful
+    metadata for diagnostics and observability, but it no longer decides
+    which VLM handles the request.
+
+    ``classification`` and ``uncensored_min_confidence`` stay in the public
+    signature for compatibility with existing callers and telemetry.
     """
 
-    if classification is None:
-        return DEFAULT_VISION_ROLE
+    _ = classification, uncensored_min_confidence
 
-    if (
-        uncensored_role_available
-        and classification.label in ADULT_LABELS
-        and classification.confidence >= uncensored_min_confidence
-    ):
+    if uncensored_role_available:
         return UNCENSORED_VISION_ROLE
 
     return DEFAULT_VISION_ROLE

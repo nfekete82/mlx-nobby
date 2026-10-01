@@ -9,13 +9,13 @@ from agent.vision_routing import (
 
 
 class VisionRoutingTests(unittest.TestCase):
-    def test_no_classification_uses_default_vision(self):
+    def test_no_classification_prefers_uncensored_vision(self):
         self.assertEqual(
             select_vision_role(None),
-            DEFAULT_VISION_ROLE,
+            UNCENSORED_VISION_ROLE,
         )
 
-    def test_safe_image_uses_default_vision(self):
+    def test_safe_image_prefers_uncensored_vision(self):
         classification = VisionClassification(
             "safe",
             confidence=0.99,
@@ -23,10 +23,10 @@ class VisionRoutingTests(unittest.TestCase):
 
         self.assertEqual(
             select_vision_role(classification),
-            DEFAULT_VISION_ROLE,
+            UNCENSORED_VISION_ROLE,
         )
 
-    def test_adult_image_uses_adult_vision(self):
+    def test_adult_image_uses_uncensored_vision(self):
         classification = VisionClassification(
             "adult_explicit",
             confidence=0.95,
@@ -37,7 +37,7 @@ class VisionRoutingTests(unittest.TestCase):
             UNCENSORED_VISION_ROLE,
         )
 
-    def test_low_confidence_adult_falls_back_to_default(self):
+    def test_low_confidence_adult_still_prefers_uncensored_vision(self):
         classification = VisionClassification(
             "adult_explicit",
             confidence=0.40,
@@ -45,10 +45,10 @@ class VisionRoutingTests(unittest.TestCase):
 
         self.assertEqual(
             select_vision_role(classification),
-            DEFAULT_VISION_ROLE,
+            UNCENSORED_VISION_ROLE,
         )
 
-    def test_ambiguous_content_never_uses_adult_role(self):
+    def test_ambiguous_content_still_prefers_uncensored_vision(self):
         classification = VisionClassification(
             "age_ambiguous",
             confidence=0.99,
@@ -56,7 +56,7 @@ class VisionRoutingTests(unittest.TestCase):
 
         self.assertEqual(
             select_vision_role(classification),
-            DEFAULT_VISION_ROLE,
+            UNCENSORED_VISION_ROLE,
         )
 
     def test_missing_uncensored_runtime_falls_back(self):
