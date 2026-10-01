@@ -37,7 +37,25 @@ def test_portrait_how_to_questions_are_not_generation_intent():
 
     for prompt in prompts:
         assert portrait_runtime.is_instructional_portrait_question(prompt)
+        assert portrait_runtime.is_portrait_chat_question(prompt)
         assert not portrait_runtime.is_explicit_portrait_generation(prompt)
+
+
+def test_portrait_discussion_questions_are_chat_intent():
+    prompts = [
+        "Was hältst du von Porträtfotografie?",
+        "Wie findest du dieses Porträt?",
+        "Was ist Porträtfotografie?",
+        "What do you think about portrait photography?",
+    ]
+
+    for prompt in prompts:
+        assert portrait_runtime.is_portrait_chat_question(prompt)
+        assert not portrait_runtime.is_explicit_portrait_generation(prompt)
+
+    assert not portrait_runtime.is_portrait_chat_question(
+        "Kannst du ein Porträt erstellen?"
+    )
 
 
 def test_portrait_request_survives_web_confidence_guard():
@@ -84,11 +102,33 @@ def test_portrait_how_to_question_is_demoted_to_chat():
     assert observatory["guarded"] is True
 
 
+def test_portrait_discussion_question_is_demoted_to_chat():
+    portrait_runtime.install_runtime()
+    prompt = "Was hältst du von Porträtfotografie?"
+    request = json.dumps({"prompt": prompt}).encode("utf-8")
+    response = json.dumps({"target": "image", "confidence": 0.99}).encode("utf-8")
+
+    guarded = json.loads(
+        media_routing_ui.guard_media_route_payload(request, response)
+    )
+
+    assert guarded["target"] == "chat"
+    assert guarded["routing_guard"] == "portrait_chat_question"
+    observatory = guarded["routing_observatory"]
+    assert observatory["original_target"] == "image"
+    assert observatory["target"] == "chat"
+    assert observatory["confidence"] == 0.99
+    assert observatory["confidence_source"] == "router"
+    assert observatory["reason"] == "portrait_chat_question"
+    assert observatory["guarded"] is True
+
+
 def test_plain_portrait_discussion_is_not_promoted_to_explicit_image_intent():
     portrait_runtime.install_runtime()
     prompt = "Wie findest du dieses Porträt?"
 
     assert not media_routing_ui._explicit_intent(prompt, "image")
+    assert media_routing_ui.conservative_media_target(prompt, "image") == "chat"
 
 
 def test_production_backend_installs_portrait_guard_before_requests():
