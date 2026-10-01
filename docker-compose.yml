@@ -9,6 +9,7 @@ services:
       - "127.0.0.1:${MLX_WEB_PORT:-8090}:8000"
     environment:
       AGENT_URL: "${AGENT_URL:-http://host.docker.internal:8010}"
+      MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT: "${MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT:-60}"
       MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-250}"
       MLX_ALLOWED_HOSTS: "${MLX_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}"
       MLX_NOBBY_BUILD_SHA: "${MLX_NOBBY_BUILD_SHA:-unknown}"

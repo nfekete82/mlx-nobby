@@ -20,6 +20,13 @@ FIRST_BYTE_TIMEOUT = max(
     10.0,
     float(os.environ.get("MLX_CHAT_FIRST_BYTE_TIMEOUT", "30")),
 )
+VISION_FIRST_BYTE_TIMEOUT = max(
+    FIRST_BYTE_TIMEOUT,
+    float(os.environ.get("MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT", "60")),
+)
+VISION_HEARTBEAT_INTERVAL = 5.0
+VISION_HEARTBEAT = b": vision request pending\n\n"
+
 STREAM_STALL_TIMEOUT = max(
     15.0,
     float(os.environ.get("MLX_CHAT_STREAM_STALL_TIMEOUT", "45")),
@@ -230,17 +237,51 @@ async def _close_iterator(iterator, pending_task=None):
                 await result
 
 
-async def _wait_for_next(iterator, timeout: float):
-    task = asyncio.create_task(iterator.__anext__())
-    done, _ = await asyncio.wait({task}, timeout=timeout)
-    return task in done, task
+def _has_vision_input(request: ReliableChatRequest) -> bool:
+    # Match the gateway's image_url handling, including images in history.
+    for message in request.messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "image_url":
+                continue
+            image = part.get("image_url")
+            url = image.get("url") if isinstance(image, dict) else image
+            if isinstance(url, str) and url:
+                return True
+    return False
 
 
-async def _wait_existing_task(task, timeout: float):
-    if timeout <= 0:
-        return False, task
-    done, _ = await asyncio.wait({task}, timeout=timeout)
-    return task in done, task
+async def _vision_iterator(request, stream_factory):
+    # The gateway factory performs synchronous context/routing HTTP calls.
+    # Keep those off the event loop so the watchdog and heartbeats can run.
+    response = await asyncio.to_thread(stream_factory, request)
+    iterator = response.body_iterator.__aiter__()
+    try:
+        async for chunk in iterator:
+            yield chunk
+    finally:
+        await _close_iterator(iterator)
+
+
+async def _wait_with_heartbeats(task, timeout: float, vision: bool):
+    """Wait on ONE upstream read; transport heartbeats never reset its deadline."""
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            yield False
+            return
+        interval = min(remaining, VISION_HEARTBEAT_INTERVAL) if vision else remaining
+        done, _ = await asyncio.wait({task}, timeout=interval)
+        if task in done:
+            yield True
+            return
+        if time.monotonic() >= deadline:
+            yield False
+            return
+        yield None  # Heartbeat only, not upstream activity or model output.
 
 
 def _media_is_active(snapshot: dict) -> bool:
@@ -256,135 +297,170 @@ async def _reliable_stream(
 ):
     emitted = False
     attempt = 0
+    vision = _has_vision_input(request)
+    first_timeout = VISION_FIRST_BYTE_TIMEOUT if vision else FIRST_BYTE_TIMEOUT
 
     while attempt < 2:
         attempt += 1
-        response = stream_factory(request)
-        iterator = response.body_iterator.__aiter__()
+        prefill_deadline = time.monotonic() + first_timeout
+        if vision:
+            iterator = _vision_iterator(request, stream_factory).__aiter__()
+        else:
+            response = stream_factory(request)
+            iterator = response.body_iterator.__aiter__()
         semantic = _SemanticSseTracker()
-
-        ready, pending = await _wait_for_next(iterator, FIRST_BYTE_TIMEOUT)
-
-        if not ready:
-            snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
-
-            if _media_is_active(snapshot):
-                ready, pending = await _wait_existing_task(
-                    pending,
-                    MEDIA_WAIT_TIMEOUT - FIRST_BYTE_TIMEOUT,
-                )
-
-        if not ready:
-            await _close_iterator(iterator, pending)
-
-            if attempt >= 2:
-                yield _sse_error(
-                    "Die Chat-Runtime antwortet weiterhin nicht. Bitte erneut versuchen.",
-                    "stream_stalled",
-                    retryable=True,
-                )
-                return
-
-            snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
-            previous_pid = snapshot.get("agent_pid")
-            recovery = await asyncio.to_thread(
-                _request_recovery,
-                agent_url,
-                "chat_first_byte_timeout",
-            )
-
-            if not recovery.get("scheduled"):
-                yield _sse_error(
-                    "Die Chat-Runtime reagiert nicht und konnte nicht automatisch neu gestartet werden.",
-                    "recovery_blocked",
-                    retryable=True,
-                )
-                return
-
-            ready_after_restart = await asyncio.to_thread(
-                _agent_ready_with_new_pid,
-                agent_url,
-                previous_pid,
-                RECOVERY_READY_TIMEOUT,
-            )
-            if not ready_after_restart:
-                yield _sse_error(
-                    "Der Agent wurde neu gestartet, ist aber noch nicht wieder bereit.",
-                    "recovery_timeout",
-                    retryable=True,
-                )
-                return
-
-            continue
+        pending = None
 
         try:
-            first = await pending
-        except StopAsyncIteration:
-            await _close_iterator(iterator)
-            yield _sse_error(
-                "Der Chat-Stream wurde ohne Antwort beendet.",
-                "empty_stream",
-                retryable=True,
-            )
-            return
-        except Exception as exc:
-            await _close_iterator(iterator)
-            yield _sse_error(
-                f"Chat-Stream konnte nicht gestartet werden: {exc}",
-                "stream_start_failed",
-                retryable=True,
-            )
-            return
+            if vision:
+                yield VISION_HEARTBEAT
+            pending = asyncio.create_task(iterator.__anext__())
+            async for ready in _wait_with_heartbeats(
+                pending,
+                max(0.0, prefill_deadline - time.monotonic()) if vision else first_timeout,
+                vision,
+            ):
+                if ready is None:
+                    yield VISION_HEARTBEAT
 
-        semantic.feed(first)
-        emitted = True
-        yield first
-
-        while True:
-            ready, pending = await _wait_for_next(iterator, STREAM_STALL_TIMEOUT)
             if not ready:
                 snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
+
+                if _media_is_active(snapshot):
+                    prefill_deadline += max(0.0, MEDIA_WAIT_TIMEOUT - first_timeout)
+                    media_remaining = (
+                        max(0.0, prefill_deadline - time.monotonic())
+                        if vision else max(0.0, MEDIA_WAIT_TIMEOUT - first_timeout)
+                    )
+                    async for ready in _wait_with_heartbeats(pending, media_remaining, vision):
+                        if ready is None:
+                            yield VISION_HEARTBEAT
+
+            if not ready:
                 await _close_iterator(iterator, pending)
 
-                if not _media_is_active(snapshot):
-                    await asyncio.to_thread(
-                        _request_recovery,
-                        agent_url,
-                        "chat_stream_stalled_after_output",
-                    )
-
-                yield _sse_error(
-                    "Die laufende Antwort ist hängen geblieben. Der Agent wird wiederhergestellt; bitte die Anfrage erneut senden.",
-                    "stream_stalled_after_output",
-                    retryable=True,
-                )
-                return
-
-            try:
-                chunk = await pending
-            except StopAsyncIteration:
-                semantic.finish()
-                await _close_iterator(iterator)
-
-                if not semantic.completed_meaningfully:
+                if attempt >= 2:
                     yield _sse_error(
-                        "Das Modell hat die Anfrage beendet, ohne Inhalt zu liefern. Bitte erneut versuchen.",
-                        "empty_response",
+                        "Die Chat-Runtime antwortet weiterhin nicht. Bitte erneut versuchen.",
+                        "stream_stalled",
                         retryable=True,
                     )
+                    return
+
+                snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
+                previous_pid = snapshot.get("agent_pid")
+                recovery = await asyncio.to_thread(
+                    _request_recovery,
+                    agent_url,
+                    "chat_first_byte_timeout",
+                )
+
+                if not recovery.get("scheduled"):
+                    yield _sse_error(
+                        "Die Chat-Runtime reagiert nicht und konnte nicht automatisch neu gestartet werden.",
+                        "recovery_blocked",
+                        retryable=True,
+                    )
+                    return
+
+                ready_after_restart = await asyncio.to_thread(
+                    _agent_ready_with_new_pid,
+                    agent_url,
+                    previous_pid,
+                    RECOVERY_READY_TIMEOUT,
+                )
+                if not ready_after_restart:
+                    yield _sse_error(
+                        "Der Agent wurde neu gestartet, ist aber noch nicht wieder bereit.",
+                        "recovery_timeout",
+                        retryable=True,
+                    )
+                    return
+
+                continue
+
+            try:
+                first = await pending
+            except StopAsyncIteration:
+                await _close_iterator(iterator)
+                yield _sse_error(
+                    "Der Chat-Stream wurde ohne Antwort beendet.",
+                    "empty_stream",
+                    retryable=True,
+                )
                 return
             except Exception as exc:
                 await _close_iterator(iterator)
                 yield _sse_error(
-                    f"Die laufende Antwort wurde unterbrochen: {exc}",
-                    "stream_interrupted",
+                    f"Chat-Stream konnte nicht gestartet werden: {exc}",
+                    "stream_start_failed",
                     retryable=True,
                 )
                 return
 
-            semantic.feed(chunk)
+            semantic.feed(first)
             emitted = True
-            yield chunk
+            yield first
+
+            while True:
+                prefill = vision and not semantic.completed_meaningfully
+                timeout = (
+                    max(0.0, prefill_deadline - time.monotonic())
+                    if prefill else STREAM_STALL_TIMEOUT
+                )
+                pending = asyncio.create_task(iterator.__anext__())
+                async for ready in _wait_with_heartbeats(pending, timeout, vision):
+                    if ready is None:
+                        yield VISION_HEARTBEAT
+                if not ready:
+                    snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
+                    await _close_iterator(iterator, pending)
+
+                    if not _media_is_active(snapshot):
+                        await asyncio.to_thread(
+                            _request_recovery,
+                            agent_url,
+                            "chat_first_byte_timeout" if prefill else "chat_stream_stalled_after_output",
+                        )
+
+                    yield _sse_error(
+                        (
+                            "Die Chat-Runtime liefert weiterhin keinen Inhalt. Bitte erneut versuchen."
+                            if prefill else
+                            "Die laufende Antwort ist hängen geblieben. Der Agent wird wiederhergestellt; bitte die Anfrage erneut senden."
+                        ),
+                        "stream_stalled" if prefill else "stream_stalled_after_output",
+                        retryable=True,
+                    )
+                    return
+
+                try:
+                    chunk = await pending
+                except StopAsyncIteration:
+                    semantic.finish()
+                    await _close_iterator(iterator)
+
+                    if not semantic.completed_meaningfully:
+                        yield _sse_error(
+                            "Das Modell hat die Anfrage beendet, ohne Inhalt zu liefern. Bitte erneut versuchen.",
+                            "empty_response",
+                            retryable=True,
+                        )
+                    return
+                except Exception as exc:
+                    await _close_iterator(iterator)
+                    yield _sse_error(
+                        f"Die laufende Antwort wurde unterbrochen: {exc}",
+                        "stream_interrupted",
+                        retryable=True,
+                    )
+                    return
+
+                semantic.feed(chunk)
+                emitted = True
+                yield chunk
+        finally:
+            await _close_iterator(iterator, pending)
 
     if not emitted:
         yield _sse_error(

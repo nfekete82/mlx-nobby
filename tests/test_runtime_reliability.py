@@ -211,9 +211,11 @@ def test_zero_byte_stall_recovers_and_retries_once(monkeypatch):
     assert recoveries == ["chat_first_byte_timeout"]
 
 
-def test_media_wait_does_not_trigger_agent_recovery(monkeypatch):
+@pytest.mark.parametrize("vision", [False, True])
+def test_media_wait_does_not_trigger_agent_recovery(monkeypatch, vision):
     monkeypatch.setattr(web_routes, "FIRST_BYTE_TIMEOUT", 0.01)
     monkeypatch.setattr(web_routes, "MEDIA_WAIT_TIMEOUT", 0.10)
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 0.01)
 
     async def delayed_for_media():
         await asyncio.sleep(0.03)
@@ -232,7 +234,10 @@ def test_media_wait_does_not_trigger_agent_recovery(monkeypatch):
         lambda *args: (_ for _ in ()).throw(AssertionError("must not recover media")),
     )
 
-    request = web_routes.ReliableChatRequest(messages=[{"role": "user", "content": "Hi"}])
+    request = (
+        _vision_request() if vision else
+        web_routes.ReliableChatRequest(messages=[{"role": "user", "content": "Hi"}])
+    )
     body = asyncio.run(_collect(web_routes._reliable_stream(
         request,
         stream_factory=factory,
@@ -241,3 +246,210 @@ def test_media_wait_does_not_trigger_agent_recovery(monkeypatch):
 
     assert b"After media" in body
     assert factory.calls == 1
+
+
+def _vision_request():
+    return web_routes.ReliableChatRequest(messages=[{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe this image"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,ZmFrZQ=="}},
+        ],
+    }])
+
+
+def _watchdog_setup(monkeypatch):
+    monkeypatch.setattr(web_routes, "FIRST_BYTE_TIMEOUT", 0.02)
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 0.20)
+    monkeypatch.setattr(web_routes, "STREAM_STALL_TIMEOUT", 0.03)
+    monkeypatch.setattr(web_routes, "VISION_HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr(web_routes, "_agent_diagnostics", lambda url: {
+        "status": "ok", "agent_pid": 10,
+        "lease": {"active_workload": "chat"},
+        "runtime": {"online": True},
+    })
+    recoveries = []
+    monkeypatch.setattr(web_routes, "_request_recovery", lambda url, reason: (
+        recoveries.append(reason) or {"scheduled": True}
+    ))
+    monkeypatch.setattr(web_routes, "_agent_ready_with_new_pid", lambda *args: True)
+    return recoveries
+
+
+@pytest.mark.parametrize("metadata", [False, True])
+def test_long_vision_prefill_sends_heartbeats_without_recovery(monkeypatch, metadata):
+    recoveries = _watchdog_setup(monkeypatch)
+
+    async def prefill():
+        if metadata:
+            yield b'event: sources\ndata: {"sources":[]}\n\n'
+        await asyncio.sleep(0.08)  # Beyond both text first-byte and stall limits.
+        yield b'data: {"type":"content","text":"An image"}\n\n'
+        yield b'event: done\ndata: {}\n\n'
+
+    factory = _StreamFactory([prefill])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=factory, agent_url="http://agent",
+    )))
+    assert body.startswith(web_routes.VISION_HEARTBEAT)
+    assert body.count(web_routes.VISION_HEARTBEAT) >= 2
+    assert body.count(b'"text":"An image"') == 1
+    assert b'event: error' not in body
+    assert factory.calls == 1
+    assert recoveries == []
+
+
+def test_text_timeout_unchanged_with_vision_budget(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+
+    async def slow():
+        await asyncio.sleep(0.08)
+        yield b'data: {"type":"content","text":"Too late"}\n\n'
+
+    async def fast():
+        yield b'data: {"type":"content","text":"Retry"}\n\n'
+
+    factory = _StreamFactory([slow, fast])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        web_routes.ReliableChatRequest(messages=[{"role": "user", "content": "Hi"}]),
+        stream_factory=factory, agent_url="http://agent",
+    )))
+    assert body == b'data: {"type":"content","text":"Retry"}\n\n'
+    assert factory.calls == 2
+    assert recoveries == ["chat_first_byte_timeout"]
+
+
+def test_dead_vision_runtime_recovers_once_despite_heartbeats(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 0.05)
+    closed = []
+
+    async def dead():
+        try:
+            await asyncio.sleep(5)
+            yield b"never"
+        finally:
+            closed.append(True)
+
+    factory = _StreamFactory([dead])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=factory, agent_url="http://agent",
+    )))
+    assert body.count(web_routes.VISION_HEARTBEAT) >= 2
+    assert b'"code": "stream_stalled"' in body
+    assert factory.calls == 2
+    assert recoveries == ["chat_first_byte_timeout"]
+    assert len(closed) == 2
+
+
+def test_vision_metadata_cannot_extend_absolute_prefill_deadline(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 0.05)
+    closed = []
+
+    async def metadata_only():
+        try:
+            while True:
+                yield b'event: metrics\ndata: {}\n\n'
+                await asyncio.sleep(0.005)
+        finally:
+            closed.append(True)
+
+    factory = _StreamFactory([metadata_only])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=factory, agent_url="http://agent",
+    )))
+    assert b'event: error' in body
+    assert recoveries == ["chat_first_byte_timeout"]
+    assert closed == [True]
+
+
+def test_vision_after_output_uses_normal_stall_deadline(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+
+    async def stalls_after_output():
+        yield b'data: {"type":"content","text":"First"}\n\n'
+        await asyncio.sleep(5)
+        yield b"never"
+
+    factory = _StreamFactory([stalls_after_output])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=factory, agent_url="http://agent",
+    )))
+    assert b'"code": "stream_stalled_after_output"' in body
+    assert recoveries == ["chat_stream_stalled_after_output"]
+    assert factory.calls == 1
+
+
+def test_vision_factory_does_not_block_heartbeat_or_watchdog(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+
+    async def answer():
+        yield b'data: {"type":"content","text":"Image"}\n\n'
+
+    factory = _StreamFactory([answer])
+
+    def slow_factory(request):
+        time.sleep(0.08)  # Simulate synchronous context/routing HTTP calls.
+        return factory(request)
+
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=slow_factory, agent_url="http://agent",
+    )))
+    assert body.count(web_routes.VISION_HEARTBEAT) >= 2
+    assert b'"text":"Image"' in body
+    assert recoveries == []
+
+
+def test_vision_disconnect_cancels_pending_read(monkeypatch):
+    _watchdog_setup(monkeypatch)
+    closed = []
+
+    async def dead():
+        try:
+            await asyncio.sleep(5)
+            yield b"never"
+        finally:
+            closed.append(True)
+
+    async def disconnect():
+        stream = web_routes._reliable_stream(
+            _vision_request(), stream_factory=_StreamFactory([dead]), agent_url="http://agent",
+        )
+        assert await anext(stream) == web_routes.VISION_HEARTBEAT
+        assert await anext(stream) == web_routes.VISION_HEARTBEAT
+        await stream.aclose()
+
+    asyncio.run(disconnect())
+    assert closed == [True]
+
+
+@pytest.mark.parametrize("image", ["https://example.test/image.png", {"url": "data:image/png;base64,AA=="}])
+def test_vision_detection_includes_image_history(image):
+    request = web_routes.ReliableChatRequest(messages=[
+        {"role": "user", "content": [{"type": "image_url", "image_url": image}]},
+        {"role": "assistant", "content": "A photo"},
+        {"role": "user", "content": "Explain more"},
+    ])
+    assert web_routes._has_vision_input(request)
+
+
+def test_dead_vision_runtime_retry_returns_answer(monkeypatch):
+    recoveries = _watchdog_setup(monkeypatch)
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 0.05)
+
+    async def dead():
+        await asyncio.sleep(5)
+        yield b"never"
+
+    async def recovered():
+        yield b'data: {"type":"content","text":"Vision recovered"}\n\n'
+
+    factory = _StreamFactory([dead, recovered])
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        _vision_request(), stream_factory=factory, agent_url="http://agent",
+    )))
+    assert b'Vision recovered' in body
+    assert b'event: error' not in body
+    assert factory.calls == 2
+    assert recoveries == ["chat_first_byte_timeout"]
