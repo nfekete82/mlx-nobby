@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Expanded the Routing Observatory with separate original/final route columns,
+  confidence source, guard/intent diagnostics, and localized guard reasons.
+- Fixed portrait routing so instructional questions such as "Wie erstelle ich
+  ein Porträt?" remain normal chat while explicit portrait-generation requests
+  continue to use the image route.
+- Added routing architecture documentation and refreshed the README service
+  topology to include the native video dispatcher on port 8060.
+
 ## v1.4.1
 
 - Reduced chat persistence pressure by coalescing burst saves while keeping the
