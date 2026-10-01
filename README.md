@@ -362,6 +362,10 @@ isolation. See [SECURITY.md](SECURITY.md) for reporting and operating guidance.
 
 ## Development and tests
 
+See [the performance audit](docs/PERFORMANCE_AUDIT.md) for measured hotspots,
+regressions, and reproducible text/vision benchmarks with
+`scripts/benchmark-chat.py`.
+
 Install the CPU-only test environment and run the local checks:
 
 ```sh

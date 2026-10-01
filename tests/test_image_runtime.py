@@ -4711,6 +4711,7 @@ def _optimizer_response(content=None, body=None):
 
 
 def _run_mocked_image_edit_optimizer(prompt, content=None, body=None):
+    from contextlib import nullcontext
     import agent.app as agent
 
     runtime = {
@@ -4720,7 +4721,7 @@ def _run_mocked_image_edit_optimizer(prompt, content=None, body=None):
             "backend": "mlx_lm",
         },
     }
-    with patch.object(
+    with patch.object(agent.runtime_coordinator, "chat_runtime", return_value=nullcontext()), patch.object(
         agent,
         "ensure_model_for_role",
         return_value=runtime,
@@ -4902,10 +4903,11 @@ def test_image_edit_prompt_optimizer_falls_back_for_invalid_responses():
 
 
 def test_image_edit_prompt_optimizer_falls_back_when_model_unavailable():
+    from contextlib import nullcontext
     import agent.app as agent
 
     original = "Tatoos entfernen"
-    with patch.object(
+    with patch.object(agent.runtime_coordinator, "chat_runtime", return_value=nullcontext()), patch.object(
         agent,
         "ensure_model_for_role",
         side_effect=RuntimeError("model unavailable"),
@@ -4920,6 +4922,7 @@ def test_image_edit_prompt_optimizer_falls_back_when_model_unavailable():
 
 
 def test_image_edit_prompt_optimizer_falls_back_on_network_error():
+    from contextlib import nullcontext
     import agent.app as agent
 
     original = "Mach den Hintergrund unscharf"
@@ -4930,7 +4933,7 @@ def test_image_edit_prompt_optimizer_falls_back_on_network_error():
             "backend": "mlx_lm",
         },
     }
-    with patch.object(
+    with patch.object(agent.runtime_coordinator, "chat_runtime", return_value=nullcontext()), patch.object(
         agent,
         "ensure_model_for_role",
         return_value=runtime,

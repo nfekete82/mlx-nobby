@@ -4,6 +4,27 @@
     const REFRESH_MS = 10000;
     const CSS_ID = 'mlx-system-health-css';
     const API_ROOT = '/api/mlx/system';
+    let visibilityObserver = null;
+
+    function refreshIfVisible() {
+        if (!root || document.hidden || root.closest('[hidden]')) return;
+        const settings = root.closest('.settings');
+        if (settings && !settings.classList.contains('open')) return;
+        return refresh();
+    }
+
+    function observeVisibility() {
+        if (typeof MutationObserver !== 'undefined') {
+            visibilityObserver = new MutationObserver(refreshIfVisible);
+            for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+                visibilityObserver.observe(parent, {
+                    attributes: true,
+                    attributeFilter: ['class', 'hidden']
+                });
+            }
+        }
+        document.addEventListener('visibilitychange', refreshIfVisible);
+    }
 
     const FALLBACK = {
         title: 'System Health & Self-Healing',
@@ -508,8 +529,9 @@
             refresh
         );
 
-        await refresh();
-        timerId = setInterval(refresh, REFRESH_MS);
+        observeVisibility();
+        await refreshIfVisible();
+        timerId = setInterval(refreshIfVisible, REFRESH_MS);
     }
 
     window.MLXSystemHealth = {
@@ -532,5 +554,7 @@
 
     window.addEventListener?.('beforeunload', () => {
         if (timerId != null) clearInterval(timerId);
+        visibilityObserver?.disconnect();
+        document.removeEventListener('visibilitychange', refreshIfVisible);
     });
 })();

@@ -1,4 +1,5 @@
 import io
+from contextlib import nullcontext
 import json
 import tempfile
 import unittest
@@ -279,6 +280,7 @@ class AgentProviderCompatibilityTests(unittest.TestCase):
     def test_default_adapter_reuses_actual_role_switch_logic(self):
         resolved = {"repo": "local/model", "alias": "agent", "backend": "mlx_lm", "available": True}
         with (
+            mock.patch.object(self.agent.runtime_coordinator, "chat_runtime", return_value=nullcontext()),
             mock.patch.object(self.agent, "resolve_model_role", side_effect=[{**resolved, "requires_switch": True}, {**resolved, "requires_switch": False}]) as resolve,
             mock.patch.object(self.agent, "switch_model_runtime", return_value={"ok": True}) as switch,
             mock.patch.object(self.agent, "load_config", return_value={"PORT": 8000}),

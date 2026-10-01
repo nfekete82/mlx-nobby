@@ -1,6 +1,7 @@
 """Synchronous agent-model contract and the existing local MLX transport."""
 
 from dataclasses import dataclass
+from contextlib import nullcontext
 import json
 import time
 from typing import Callable, ContextManager, Protocol
@@ -101,10 +102,13 @@ class MLXProvider:
         runtime_lock: ContextManager,
         ensure_model_for_role: Callable[[str], dict],
         load_config: Callable[[], dict],
+        *,
+        runtime_lease: Callable[[RunContext | None], ContextManager] | None = None,
     ):
         self.runtime_lock = runtime_lock
         self.ensure_model_for_role = ensure_model_for_role
         self.load_config = load_config
+        self.runtime_lease = runtime_lease or (lambda _context: nullcontext())
 
     def complete(self, request: ModelRequest, *, run_context: RunContext | None = None) -> ModelResponse:
         _check_cancelled(run_context)
@@ -119,7 +123,9 @@ class MLXProvider:
         )
         wait_started = time.monotonic()
         try:
-            with self.runtime_lock:
+            # Production injects the same lease used by chat streaming. Take
+            # it BEFORE the model lock; role resolution also enters the lease.
+            with self.runtime_lease(run_context), self.runtime_lock:
                 metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
                 _check_cancelled(run_context)
                 return self._complete(request, run_context, metrics)
@@ -127,6 +133,9 @@ class MLXProvider:
             metrics.fail(exc.code)
             raise
         except Exception as exc:
+            if run_context is not None and run_context.cancelled:
+                metrics.fail("cancelled")
+                raise ProviderError("cancelled", "Agent-Modellaufruf wurde abgebrochen") from exc
             metrics.fail("provider_error")
             raise ProviderError("provider_error", str(exc)) from exc
 

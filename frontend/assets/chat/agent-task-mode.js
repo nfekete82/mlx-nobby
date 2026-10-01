@@ -1,6 +1,8 @@
 (() => {
     'use strict';
 
+    if (window.MLXAgentTaskMode) return;
+
     const FALLBACK = {
         workspace_required: 'Workspace mode requires an active coding workspace.',
         workspace_check_failed: 'The active workspace could not be checked.',
@@ -13,6 +15,9 @@
     let dictionary = {};
     let workspaceObserver = null;
     let workspaceSyncScheduled = false;
+    let workspaceSyncRequested = false;
+    let workspaceRequest = null;
+    let mounted = false;
 
     function t(key, variables = {}) {
         let value = dictionary[key] || FALLBACK[key] || key;
@@ -60,12 +65,19 @@
     }
 
     async function activeWorkspace() {
-        const response = await fetch('/api/mlx/code/workspaces', {
-            cache: 'no-store'
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json();
-        return data?.active_workspace || null;
+        // Share only an outstanding read. Every later submission still checks
+        // the server so workspace changes are never hidden by a TTL cache.
+        if (!workspaceRequest) {
+            workspaceRequest = (async () => {
+                const response = await fetch('/api/mlx/code/workspaces', {
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error(await response.text());
+                const data = await response.json();
+                return data?.active_workspace || null;
+            })().finally(() => { workspaceRequest = null; });
+        }
+        return workspaceRequest;
     }
 
     function isWorkspaceMode() {
@@ -76,8 +88,12 @@
         const header = document.getElementById('activeWorkspaceHeader');
         if (!header) return;
         const active = isWorkspaceMode();
-        header.dataset.agentMode = active ? 'task' : 'chat';
-        header.setAttribute('data-workspace-task-active', active ? 'true' : 'false');
+        const mode = active ? 'task' : 'chat';
+        const marker = active ? 'true' : 'false';
+        if (header.dataset.agentMode !== mode) header.dataset.agentMode = mode;
+        if (header.getAttribute('data-workspace-task-active') !== marker) {
+            header.setAttribute('data-workspace-task-active', marker);
+        }
     }
 
     async function syncWorkspaceState() {
@@ -91,11 +107,18 @@
     }
 
     function scheduleWorkspaceSync() {
+        workspaceSyncRequested = true;
         if (workspaceSyncScheduled) return;
         workspaceSyncScheduled = true;
         queueMicrotask(async () => {
-            workspaceSyncScheduled = false;
-            await syncWorkspaceState();
+            try {
+                while (workspaceSyncRequested) {
+                    workspaceSyncRequested = false;
+                    await syncWorkspaceState();
+                }
+            } finally {
+                workspaceSyncScheduled = false;
+            }
         });
     }
 
@@ -364,13 +387,15 @@
         workspaceObserver = new MutationObserver(scheduleWorkspaceSync);
         workspaceObserver.observe(header, {
             attributes: true,
-            childList: true,
-            subtree: true,
-            characterData: true
+            // renderActiveWorkspace writes this on selection/deactivation.
+            // Our own agent-mode attributes must never trigger another read.
+            attributeFilter: ['data-active']
         });
     }
 
     function mount() {
+        if (mounted) return;
+        mounted = true;
         installApprovalAdapter();
         interceptComposer();
         observeWorkspaceHeader();
