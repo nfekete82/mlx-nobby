@@ -122,7 +122,7 @@ class VisionRuntimeRoutingTests(
 
         return provider, result
 
-    def test_safe_image_uses_normal_vision(
+    def test_safe_image_uses_uncensored_vision(
         self,
     ):
         provider, result = self._run_vision(
@@ -134,12 +134,12 @@ class VisionRuntimeRoutingTests(
 
         self.assertEqual(
             provider.roles,
-            ["vision"],
+            ["vision_uncensored"],
         )
 
         self.assertEqual(
             result["vision_role"],
-            "vision",
+            "vision_uncensored",
         )
 
     def test_nsfw_image_uses_adult_vision(
@@ -215,7 +215,7 @@ class VisionRuntimeRoutingTests(
             result,
         )
 
-    def test_nsfl_does_not_route_to_adult(
+    def test_nsfl_uses_uncensored_vision_when_available(
         self,
     ):
         provider, result = self._run_vision(
@@ -227,12 +227,12 @@ class VisionRuntimeRoutingTests(
 
         self.assertEqual(
             provider.roles,
-            ["vision"],
+            ["vision_uncensored"],
         )
 
         self.assertEqual(
             result["vision_role"],
-            "vision",
+            "vision_uncensored",
         )
 
 
