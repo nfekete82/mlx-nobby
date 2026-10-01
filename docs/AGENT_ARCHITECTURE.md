@@ -21,6 +21,12 @@ API / Integration in app.py
 ```
 
 - Modellaufrufe der migrierten Runtime laufen über `ModelProvider`.
+- Die Produktionsfactory injiziert die bestehende `chat_runtime()`-Lease in
+  `MLXProvider`. Gemeinsame Lock-Reihenfolge: Runtime-Lease → Modell-Lock,
+  gehalten bis zum Abschluss des Modellaufrufs. Rollenauflösung darf die Lease
+  im selben Thread erneut betreten. Der Image-Edit-Prompt-Helfer verwendet
+  dieselbe Reihenfolge; Cancellation während des Provider-Lease-Waits bleibt
+  ein strukturierter `cancelled`-Fehler.
 - Tool-Aufrufe der Runtime laufen über `ToolRegistry`.
 - `PermissionEngine` entscheidet `ALLOW`, `CONFIRM` oder `DENY`.
 - Der Workspace wird einmal pro Run im `RunContext` gebunden.
@@ -230,6 +236,19 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   wurde der Release-Stand lokal mit echter MLX-Inferenz Ende zu Ende validiert.
 
 ## Chat-Streaming und Reliability
+
+Workspace-Modus liest den Server bei Initialisierung, Header-`data-active`-
+Änderung, Fokus/Wiederanzeigen und Submission. Der Header-Observer ignoriert
+die selbst gesetzten Agent-Modus-Attribute. Gleichzeitige Reads teilen nur die
+laufende Promise, ohne TTL-Cache; Änderungen während eines Syncs erhalten einen
+nachgelagerten Refresh. Composer-Handler werden einmal installiert.
+Explizite deutsche Schreibverbote (`Ändere keine Dateien`, `Keine Dateien
+ändern`) aktivieren den bestehenden Read-only-Abschluss nach erfolgreichem
+`code_read`, ohne weitere Modellplanung oder Patch-Anforderung. Explizites
+`file_analyze` verwendet weiterhin seinen Analysepfad.
+Performance Observatory und System Health fragen automatisch nur bei sichtbarem
+Dokument und sichtbarem, geöffnetem Settings-Panel ab; Öffnen aktualisiert sofort.
+Messverfahren, Lock-Reproduktion und Grenzen: [Performance-Audit](PERFORMANCE_AUDIT.md).
 
 `backend/chat_reliability_routes.py` kapselt den vorhandenen Gateway über
 `/api/chat/reliable-stream`; das Frontend leitet normale Chat-Stream-Requests
