@@ -27,6 +27,22 @@ context.MLXChatSessions = { currentSession: () => activeSession, saveSessions() 
 context.MLXChatRendering = { renderMessages() {} };
 
 const api = window.MLXChatGeneration;
+const { mediaPreviewAvailable, normalizeMediaPreviewQuality } = api.__test;
+assert.equal(mediaPreviewAvailable('video', null, null), true);
+assert.equal(mediaPreviewAvailable('image', null, null), false);
+for (const [fileContext, artifactId] of [
+    [{ kind: 'image', stored_path: '/managed/current.png' }, null],
+    [{ kind: 'image', image_count: 2 }, null],
+    [null, 'image-1234567890-abcdef123456'],
+]) {
+    const available = mediaPreviewAvailable('video', fileContext, artifactId);
+    assert.equal(available, false);
+    assert.equal(normalizeMediaPreviewQuality('preview', available), 'standard');
+    for (const quality of ['fast', 'standard', 'quality']) {
+        assert.equal(normalizeMediaPreviewQuality(quality, available), quality);
+    }
+}
+assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
@@ -45,6 +61,14 @@ assert.deepEqual(
     [5]
 );
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video').profile, 'standard');
+const uncensoredOptions = api.__test.videoOptionsForRequest(
+    {}, 'video', 5, 'standard', 'landscape', 'uncensored'
+);
+assert.equal(uncensoredOptions.profile, 'uncensored');
+assert.deepEqual(Object.keys(uncensoredOptions).sort(), ['aspect_ratio', 'duration', 'profile']);
+assert.match(chatHtml, /id="videoProfile"[\s\S]*?<option value="standard" selected>Standard<\/option>[\s\S]*?<option value="uncensored">Uncensored<\/option>/);
+assert.match(source, /selectedVideoProfile = profileSelect.value/);
 assert.equal(
     api.__test.videoOptionsForRequest(
         { video: { seed: 9 } },
@@ -234,7 +258,7 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261001-central-media-intent/);
+assert.match(chatHtml, /chat\/generation\.js\?v=20261001-i2v-preview/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=20260926-shorts-progress/);
 assert.match(chatHtml, /chat\.js\?v=20260926-shorts-progress/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');

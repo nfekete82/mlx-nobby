@@ -77,6 +77,7 @@ const qualityButtons = [
     new ModalTestElement({ quality: 'fast' }),
     new ModalTestElement({ quality: 'standard' }),
     new ModalTestElement({ quality: 'quality' }),
+    new ModalTestElement({ quality: 'preview' }),
 ];
 const modalBackdrop = new ModalTestElement();
 const modalElements = new Map([
@@ -1897,3 +1898,48 @@ for (const [prompt, target] of [
     assert.equal(routedActionPayloads.at(-1).file_context.image_count, 2, prompt);
     assert.equal(routedActionPayloads.at(-1).resolved_target, target, prompt);
 }
+
+// Exercise the actual modal and outgoing payload with a stale preview choice.
+const previewButton = qualityButtons.find(button => button.dataset.mediaQuality === 'preview');
+const originalAnimationFrame = context.requestAnimationFrame;
+let sessionQuality = 'preview';
+context.MLXChatRuntime.getSessionMediaQuality = () => sessionQuality;
+context.MLXChatRuntime.handleMediaQualityChange = () => {
+    sessionQuality = modalElements.get('mediaQuality').value;
+};
+for (const sourceKind of ['t2v', 'upload', 'artifact']) {
+    for (const profile of ['standard', 'uncensored']) {
+        session.messages = sourceKind === 'artifact' ? [{
+            role: 'assistant',
+            tool_result: { tool: 'image_generate', status: 'completed', artifacts: [imageArtifact] },
+        }] : [];
+        session.workspace = sourceKind === 'artifact'
+            ? { active_artifact_id: imageArtifact.artifact_id } : {};
+        selectedAttachments = sourceKind === 'upload' ? [imageAttachment] : [];
+        sessionQuality = 'preview';
+        const isI2v = sourceKind !== 't2v';
+        const prompt = isI2v ? 'Animiere dieses Bild' : 'Erstelle ein Video von einer Meeresküste';
+        routeTargets.set(prompt, 'video');
+        modalElements.set('videoProfile', new ModalTestElement({ id: 'videoProfile' }));
+        modalElements.set('videoProfileField', new ModalTestElement({ id: 'videoProfileField' }));
+        context.requestAnimationFrame = callback => {
+            assert.equal(previewButton.hidden, isI2v);
+            assert.equal(sessionQuality, isI2v ? 'standard' : 'preview');
+            // Even a synthetic click cannot select hidden preview for I2V.
+            previewButton.click();
+            assert.equal(modalElements.get('videoDuration').value, isI2v ? '5' : '2');
+            modalElements.get('videoProfile').value = profile;
+            callback();
+            modalElements.get('mediaQualityModalConfirm').click();
+        };
+        input.value = prompt;
+        await window.MLXChatGeneration.sendMessage();
+        const payload = routedActionPayloads.at(-1);
+        assert.equal(payload.quality, isI2v ? 'standard' : 'preview');
+        assert.equal(payload.video_options.profile, profile);
+        assert.equal(payload.video_options.duration, isI2v ? 5 : 2);
+        if (sourceKind === 'artifact') assert.equal(payload.active_artifact_id, imageArtifact.artifact_id);
+        if (sourceKind === 'upload') assert.equal(payload.file_context.kind, 'image');
+    }
+}
+context.requestAnimationFrame = originalAnimationFrame;

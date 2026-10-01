@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ltx_pipelines_mlx.distilled import DistilledPipeline
+from video_profiles import prepare_uncensored_loras, request_loras
 
 HOST = os.environ.get("LTX_MLX_WORKER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LTX_MLX_WORKER_PORT", "18061"))
@@ -100,12 +101,12 @@ def _install_progress_hook(pipe, stage1_steps, stage2_steps):
 
 
 def _generate(payload):
+    global _PIPELINE
     if not _GENERATION_LOCK.acquire(blocking=False):
         raise RuntimeError("LTX-MLX worker is already generating")
     started = time.monotonic()
-    stage1_steps = int(payload["stage1_steps"])
-    stage2_steps = int(payload["stage2_steps"])
-    total_steps = max(1, stage1_steps + stage2_steps)
+    pipe = _PIPELINE
+    succeeded = False
     with _STATE_LOCK:
         reused = _STATE["generation_count"] > 0
         _STATE.update(
@@ -113,14 +114,31 @@ def _generate(payload):
             phase="generating",
             progress=0.01,
             current_step=0,
-            total_steps=total_steps,
+            total_steps=None,
             last_error=None,
         )
     try:
+        if pipe is not None:
+            pipe._pending_loras = []
+        profile = payload.get("profile", "standard")
+        loras = request_loras(profile)
+        prepare_uncensored_loras(loras)
+        stage1_steps = int(payload["stage1_steps"])
+        stage2_steps = int(payload["stage2_steps"])
+        total_steps = max(1, stage1_steps + stage2_steps)
+        with _STATE_LOCK:
+            _STATE["total_steps"] = total_steps
         output = Path(str(payload["output"])).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
         image = payload.get("image")
         pipe = _pipeline()
+        pipe._pending_loras = []
+        pipe._pending_loras = loras
+        adapters = "".join(
+            f" adapter={Path(path).name} strength={strength}"
+            for path, strength in loras
+        )
+        print(f"[profile] selected={profile} loras={len(loras)}{adapters}", flush=True)
         _install_progress_hook(pipe, stage1_steps, stage2_steps)
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),
@@ -137,6 +155,7 @@ def _generate(payload):
         if not output.is_file():
             raise RuntimeError("LTX-MLX worker produced no video")
         elapsed = time.monotonic() - started
+        succeeded = True
         with _STATE_LOCK:
             _STATE["generation_count"] += 1
             _STATE.update(
@@ -165,6 +184,16 @@ def _generate(payload):
             )
         raise
     finally:
+        if pipe is not None:
+            pipe._pending_loras = []
+        print("[profile] reset pending_loras=0", flush=True)
+        if not succeeded:
+            # Upstream frees loaded weights on success only. Discard a failed
+            # pipeline so a later request cannot reuse adapter-bearing weights.
+            with _STATE_LOCK:
+                _PIPELINE = None
+                _STATE["pipeline_initialized"] = False
+                _STATE.update(busy=False, phase="ready")
         _GENERATION_LOCK.release()
 
 

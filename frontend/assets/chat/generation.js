@@ -53,6 +53,15 @@ function isVideoRequest(prompt) {
     return VIDEO_ANIMATE_PATTERN.test(value) || VIDEO_GENERATE_PATTERN.test(value);
 }
 
+function mediaPreviewAvailable(mediaKind, fileContext, activeArtifactId) {
+    return mediaKind === 'video' &&
+        fileContext?.kind !== 'image' && !activeArtifactId;
+}
+
+function normalizeMediaPreviewQuality(quality, previewAvailable) {
+    return quality === 'preview' && !previewAvailable ? 'standard' : quality;
+}
+
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20]),
@@ -172,7 +181,8 @@ function videoOptionsForRequest(
     mediaKind,
     duration = 5,
     quality = 'standard',
-    format = 'landscape'
+    format = 'landscape',
+    profile = 'standard'
 ) {
     const existing = options?.video || null;
 
@@ -182,6 +192,7 @@ function videoOptionsForRequest(
 
     return {
         ...(existing || {}),
+        profile,
         duration: normalizeVideoDuration(
             duration,
             quality
@@ -2560,6 +2571,21 @@ const imageFiles =
             let selectedMediaQuality =
                 MLXChatRuntime.getSessionMediaQuality?.() ||
                 'standard';
+            const previewAvailable = mediaPreviewAvailable(
+                mediaQualityKind, fileContext, activeArtifactIdForEdit
+            );
+            const normalizedMediaQuality = mediaQualityKind
+                ? normalizeMediaPreviewQuality(selectedMediaQuality, previewAvailable)
+                : selectedMediaQuality;
+            if (mediaQualityKind === 'video' && normalizedMediaQuality !== selectedMediaQuality) {
+                const legacySelect = document.getElementById('mediaQuality');
+                if (legacySelect) {
+                    legacySelect.value = normalizedMediaQuality;
+                    MLXChatRuntime.handleMediaQualityChange?.();
+                }
+            }
+            selectedMediaQuality = normalizedMediaQuality;
+            let selectedVideoProfile = 'standard';
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
             )
@@ -2599,6 +2625,12 @@ const imageFiles =
                     document.getElementById('videoDurationField');
                 const durationSelect =
                     document.getElementById('videoDuration');
+                const profileField = document.getElementById('videoProfileField');
+                const profileSelect = document.getElementById('videoProfile');
+                if (profileField && profileSelect) {
+                    profileField.hidden = mediaQualityKind !== 'video';
+                    profileSelect.value = 'standard';
+                }
                 const negativePromptField =
                     document.getElementById('imageNegativePromptField');
                 const negativePromptInput =
@@ -2636,13 +2668,6 @@ const imageFiles =
                 {
                     // Default is Standard; subsequent jobs reuse this session's choice.
                     let choice = selectedMediaQuality;
-
-                    if (
-                        mediaQualityKind !== 'video' &&
-                        choice === 'preview'
-                    ) {
-                        choice = 'standard';
-                    }
 
                     const renderFormatOptions = () => {
                         if (!formatField || !formatSelect) {
@@ -2748,7 +2773,7 @@ const imageFiles =
 
                             button.hidden =
                                 isPreview &&
-                                mediaQualityKind !== 'video';
+                                !previewAvailable;
 
                             const active =
                                 !button.hidden &&
@@ -2862,10 +2887,11 @@ const imageFiles =
                         };
 
                         const onQuality = event => {
-                            choice =
+                            choice = normalizeMediaPreviewQuality(
                                 event.currentTarget
                                     .dataset.mediaQuality ||
-                                'standard';
+                                'standard', previewAvailable
+                            );
 
                             renderChoice();
                         };
@@ -2901,6 +2927,9 @@ const imageFiles =
                                         duration,
                                         choice
                                     );
+                            }
+                            if (mediaQualityKind === 'video' && profileSelect) {
+                                selectedVideoProfile = profileSelect.value;
                             }
 
                             if (
@@ -2997,7 +3026,9 @@ const imageFiles =
                         return;
                     }
 
-                    selectedMediaQuality = result;
+                    selectedMediaQuality = normalizeMediaPreviewQuality(
+                        result, previewAvailable
+                    );
 
                     /*
                      * Keep the old session setting in sync for existing
@@ -3060,7 +3091,8 @@ const imageFiles =
                     mediaQualityKind,
                     selectedVideoDuration,
                     selectedMediaQuality,
-                    selectedMediaFormat
+                    selectedMediaFormat,
+                    selectedVideoProfile
                 ),
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,
@@ -4382,6 +4414,8 @@ resetSessionRuntime: resetSessionRuntime,
             updateShortsJobMessage: updateShortsJobMessage,
             watchShortsJob: watchShortsJob,
             isVideoRequest: isVideoRequest,
+            mediaPreviewAvailable: mediaPreviewAvailable,
+            normalizeMediaPreviewQuality: normalizeMediaPreviewQuality,
             videoOptionsForRequest: videoOptionsForRequest,
             videoDurationsForQuality: videoDurationsForQuality,
             normalizeVideoDuration: normalizeVideoDuration,

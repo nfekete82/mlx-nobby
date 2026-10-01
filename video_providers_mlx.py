@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import video_registry
+from video_profiles import request_loras
 from video_providers import (
     ProviderCancelled,
     _prepare_first_frame,
@@ -328,6 +329,8 @@ def _command(model, params, output, *, image=None):
         command.append("--low-ram")
     if image is not None:
         command.extend(["--image", str(image)])
+    for path, strength in request_loras(params.get("profile", "standard")):
+        command.extend(["--lora", path, str(strength)])
     return command
 
 
@@ -388,6 +391,7 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
                 "stage1_steps": 1 if params.get("quality") == "preview" else 8,
                 "stage2_steps": 1 if params.get("quality") == "preview" else 3,
                 "image": str(image) if image is not None else None,
+                "profile": params.get("profile", "standard"),
             }
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(_json_request, "POST", "/generate", payload, 7200)
@@ -425,9 +429,19 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
 
 def generate(model, params, output, *, cancel_event, response_callback=None,
              progress_callback=None, phase_callback=None):
+    loras = request_loras(params.get("profile", "standard"))
     ready, reason = availability(model)
     if not ready:
         raise RuntimeError(reason)
+
+    if loras and not PERSISTENT_WORKER:
+        try:
+            subprocess.run(
+                [str(LTX_MLX_PYTHON), str(Path(__file__).with_name("video_profiles.py"))],
+                check=True, capture_output=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise ValueError("uncensored: Adapter konnte nicht vorbereitet werden") from exc
 
     source = validate_first_frame(params.get("first_frame"))
     if params.get("quality") == "preview" and source is not None:

@@ -65,6 +65,7 @@ class VideoPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     prompt: str = Field(min_length=3, max_length=4000)
     model: str = "auto"
+    profile: Literal["standard", "uncensored"] = "standard"
     resolution: Literal["preview", "540p", "720p", "1080p"] | None = None
     duration: int = Field(default=5)
     fps: Literal[8, 24] = 24
