@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from backend.media_routing_ui import (
     MEDIA_ROUTING_SCRIPT,
     conservative_media_target,
@@ -135,3 +137,18 @@ def test_guard_leaves_invalid_json_untouched():
     response = b'{"target":"image"}'
 
     assert guard_media_route_payload(b"not-json", response) == response
+
+
+@pytest.mark.parametrize("original_target", ["chat", "image", "shorts_generate"])
+def test_shorts_content_constraints_preserve_execution_in_ui_guard(original_target):
+    prompt = (
+        "Erstelle ein 20-sekündiges YouTube Short über einen Kaffeevollautomaten im Büro. "
+        "Keine Logos, keine Marken, keine Wasserzeichen und keinen generierten Text direkt im Bild."
+    )
+    request = json.dumps({"prompt": prompt}).encode()
+    response = json.dumps({"target": original_target}).encode()
+
+    guarded = json.loads(guard_media_route_payload(request, response))
+
+    assert guarded["intent"] == guarded["target"] == "shorts_generate"
+    assert guarded["execution_requested"] is True
