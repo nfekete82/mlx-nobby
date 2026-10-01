@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.3.0-informational)
+![Release](https://img.shields.io/badge/release-v1.4.1-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -26,6 +26,8 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 - Local embeddings, knowledge sources, and retrieval-augmented generation (RAG)
 - Hierarchical semantic routing for chat, multimodal, research, coding, and
   creative requests
+- Routing Observatory with original/final route, confidence, guard reason,
+  regression feedback, and local diagnostics
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
 - Local text-to-speech with Serena voice and pause/resume playback in chat
@@ -67,6 +69,7 @@ flowchart LR
     Agent --> Images[Image service<br/>:8030]
     Agent --> Router[MLX-VLM router<br/>:8040]
     Agent --> Speech[Speech service<br/>:8050]
+    Agent --> Video[Video service<br/>:8060]
 ```
 
 | Port | Component | Runs in | Default exposure |
@@ -77,10 +80,17 @@ flowchart LR
 | 8030 | Image service | macOS | `127.0.0.1` |
 | 8040 | MLX-VLM router | macOS | `127.0.0.1` |
 | 8050 | Speech service | macOS | `127.0.0.1` |
+| 8060 | Video service / LTX dispatch | macOS | `127.0.0.1` |
 | 8090 | Web application | Docker | `127.0.0.1` |
 
 MLX must remain native. Moving MLX into the Docker image would remove the
 intended Apple Silicon runtime path.
+
+Routing is intentionally observable after classification: the router result is
+kept as the original target, conservative/confidence guards can produce the
+final target, and the local Routing Observatory records the reason and feedback.
+See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
+regression workflow.
 
 ## Requirements
 
@@ -116,7 +126,8 @@ MLX-compatible model before starting your first chat.
 The installer validates macOS and Apple Silicon, creates or updates the five
 isolated service environments, links `~/bin/mlx` to the repository-managed
 `scripts/mlx`, creates a minimal local runtime configuration if none exists,
-and starts the Docker web application.
+and starts the Docker web application. The video dispatcher currently reuses
+the isolated image environment rather than adding a sixth Python environment.
 Existing MLX configuration and model aliases are preserved. LaunchAgent files
 are installed only when the configured router model directory exists.
 
@@ -207,6 +218,9 @@ Do not merge these requirements into one environment.
 | `image-venv` | 3.11 | `requirements/images.txt` |
 | `speech-venv` | 3.13 | `requirements/speech.txt` |
 
+The video dispatcher on port 8060 runs from `image-venv`; it does not currently
+have a separate requirements environment.
+
 See [Dependency setup](docs/DEPENDENCIES.md) for manual installation,
 constraints, tested versions, optional MFLUX setup, and offline import checks.
 
@@ -253,7 +267,7 @@ Embedding packages may contact Hugging Face when a referenced model is not
 already cached. Use local model paths and the offline variables documented in
 `docs/DEPENDENCIES.md` when network-free behavior is required.
 
-## Images and speech
+## Images, video and speech
 
 The image service supports the repository's DiffusionKit provider and an
 optional, separately installed MFLUX CLI. An opt-in SDXL provider uses a local
@@ -274,6 +288,10 @@ Completed images are stored as chat artifacts. Qwen Image Edit supports
 iterative editing from the active image artifact of the current session, so a
 generated or edited image can be refined in subsequent prompts without
 re-uploading it.
+
+The native video dispatcher runs on port 8060 and coordinates local LTX 2.5
+text-to-video and image-to-video work while reusing the isolated image Python
+environment. Video jobs remain separate from the Docker web application.
 
 The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
