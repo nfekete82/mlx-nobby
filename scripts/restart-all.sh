@@ -16,6 +16,9 @@ ACTION="restart-all"
 AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
 AGENT_LABEL="de.nobby.mlx-agent"
 AGENT_PLIST="$HOME/Library/LaunchAgents/${AGENT_LABEL}.plist"
+IMAGE_URL="${MLX_NOBBY_IMAGE_URL:-http://127.0.0.1:8030}"
+IMAGE_LABEL="de.nobby.mlx-images"
+IMAGE_PLIST="$HOME/Library/LaunchAgents/${IMAGE_LABEL}.plist"
 LAUNCHD_DOMAIN="gui/$(id -u)"
 
 report_lifecycle() {
@@ -103,6 +106,80 @@ wait_agent_ready() {
 
     echo "ERROR: Agent wurde nach dem Reload nicht rechtzeitig bereit."
     return 1
+}
+
+wait_image_unloaded() {
+    local attempt
+    for attempt in $(seq 1 100); do
+        if ! launchctl print "$LAUNCHD_DOMAIN/$IMAGE_LABEL" >/dev/null 2>&1 && \
+           ! lsof -tiTCP:8030 -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "ERROR: Image-Service wurde nach bootout nicht rechtzeitig vollständig entladen."
+    return 1
+}
+
+wait_image_ready() {
+    local attempt
+    for attempt in $(seq 1 300); do
+        if launchctl print "$LAUNCHD_DOMAIN/$IMAGE_LABEL" >/dev/null 2>&1 && \
+           lsof -tiTCP:8030 -sTCP:LISTEN >/dev/null 2>&1 && \
+           curl -fsS --connect-timeout 1 --max-time 2 \
+               "$IMAGE_URL/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    echo "ERROR: Image-Service wurde nicht rechtzeitig bereit."
+    return 1
+}
+
+ensure_image_launchagent_ready() {
+    if wait_image_ready; then
+        echo "Image-Service ist bereit."
+        return 0
+    fi
+
+    if [ ! -f "$IMAGE_PLIST" ]; then
+        echo "ERROR: Image LaunchAgent fehlt: $IMAGE_PLIST"
+        return 1
+    fi
+
+    echo "Image-Service ist nach restart-all nicht bereit; LaunchAgent wird repariert..."
+
+    if launchctl print "$LAUNCHD_DOMAIN/$IMAGE_LABEL" >/dev/null 2>&1; then
+        launchctl bootout "$LAUNCHD_DOMAIN/$IMAGE_LABEL" || true
+    fi
+
+    wait_image_unloaded || return 1
+
+    local attempt
+    local bootstrap_ok=0
+    for attempt in $(seq 1 20); do
+        if launchctl bootstrap "$LAUNCHD_DOMAIN" "$IMAGE_PLIST"; then
+            bootstrap_ok=1
+            break
+        fi
+        echo "Image bootstrap Versuch $attempt fehlgeschlagen; neuer Versuch..."
+        sleep 0.25
+    done
+
+    if [ "$bootstrap_ok" -ne 1 ]; then
+        echo "ERROR: Image LaunchAgent konnte nicht geladen werden."
+        return 1
+    fi
+
+    if ! wait_image_ready; then
+        launchctl print "$LAUNCHD_DOMAIN/$IMAGE_LABEL" 2>&1 || true
+        tail -n 80 "$HOME/.config/mlx-web/image-error.log" 2>/dev/null || true
+        return 1
+    fi
+
+    echo "Image-Service wurde erfolgreich wiederhergestellt."
 }
 
 reload_agent_launchagent() {
@@ -204,7 +281,38 @@ report_lifecycle \
     3 \
     "MLX-Dienste werden neu gestartet."
 
+# Keep going long enough to repair the image LaunchAgent even when the inner
+# service manager exits non-zero. The original failure is still propagated
+# after the recovery attempt so unrelated restart failures never get hidden.
+set +e
 "$MLX_BIN" restart-all
+restart_status=$?
+set -e
+
+image_recovery_status=0
+ensure_image_launchagent_ready || image_recovery_status=$?
+
+if [ "$image_recovery_status" -ne 0 ]; then
+    report_lifecycle \
+        "failed" \
+        "restart-services" \
+        2 \
+        3 \
+        "Image-Service konnte nach dem Neustart nicht wiederhergestellt werden." \
+        "image service unavailable on port 8030"
+    exit "$image_recovery_status"
+fi
+
+if [ "$restart_status" -ne 0 ]; then
+    report_lifecycle \
+        "failed" \
+        "restart-services" \
+        2 \
+        3 \
+        "MLX-Dienste meldeten beim Neustart einen Fehler; Image-Service wurde dennoch wiederhergestellt." \
+        "mlx restart-all exited with status $restart_status"
+    exit "$restart_status"
+fi
 
 report_lifecycle \
     "completed" \
