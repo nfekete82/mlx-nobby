@@ -120,7 +120,8 @@ def _generate(payload):
     try:
         if pipe is not None:
             pipe._pending_loras = []
-        loras = request_loras(payload.get("profile", "standard"))
+        profile = payload.get("profile", "standard")
+        loras = request_loras(profile)
         prepare_uncensored_loras(loras)
         stage1_steps = int(payload["stage1_steps"])
         stage2_steps = int(payload["stage2_steps"])
@@ -133,6 +134,11 @@ def _generate(payload):
         pipe = _pipeline()
         pipe._pending_loras = []
         pipe._pending_loras = loras
+        adapters = "".join(
+            f" adapter={Path(path).name} strength={strength}"
+            for path, strength in loras
+        )
+        print(f"[profile] selected={profile} loras={len(loras)}{adapters}", flush=True)
         _install_progress_hook(pipe, stage1_steps, stage2_steps)
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),
@@ -180,6 +186,7 @@ def _generate(payload):
     finally:
         if pipe is not None:
             pipe._pending_loras = []
+        print("[profile] reset pending_loras=0", flush=True)
         if not succeeded:
             # Upstream frees loaded weights on success only. Discard a failed
             # pipeline so a later request cannot reuse adapter-bearing weights.

@@ -1,4 +1,6 @@
 import importlib.util
+from contextlib import redirect_stdout
+from io import StringIO
 import os
 import plistlib
 import tempfile
@@ -82,6 +84,47 @@ class VideoUncensoredProfileTests(unittest.TestCase):
         self.worker._generate(self.params)
         self.assertEqual(self.calls[-1][0], [])
         self.loader.assert_not_called()
+
+    def test_worker_profile_logs_success(self):
+        for profile in ('standard', 'uncensored'):
+            with self.subTest(profile=profile), redirect_stdout(StringIO()) as log:
+                self.worker._generate(self.params | {'profile': profile})
+            selected = f'[profile] selected={profile} loras={int(profile == "uncensored")}'
+            if profile == 'uncensored':
+                selected += ' adapter=adapter.safetensors strength=0.75'
+            self.assertEqual(log.getvalue().splitlines(), [selected, '[profile] reset pending_loras=0'])
+            self.assertNotIn(str(self.adapter), log.getvalue())
+            self.assertNotIn(self.params['prompt'], log.getvalue())
+
+    def test_worker_profile_logs_multiple_loras_and_flushes(self):
+        loras = [(str(self.adapter), 0.75), (str(self.adapter.parent / 'second.safetensors'), 1.0)]
+        with mock.patch.object(self.worker, 'request_loras', return_value=loras), \
+             mock.patch.object(self.worker, 'prepare_uncensored_loras'), \
+             mock.patch('builtins.print') as output:
+            self.worker._generate(self.params | {'profile': 'uncensored'})
+        self.assertEqual(output.call_args_list, [
+            mock.call('[profile] selected=uncensored loras=2 adapter=adapter.safetensors strength=0.75'
+                      ' adapter=second.safetensors strength=1.0', flush=True),
+            mock.call('[profile] reset pending_loras=0', flush=True),
+        ])
+
+    def test_worker_profile_logs_reset_on_generation_error(self):
+        for error in (RuntimeError('generation failed'), KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__), redirect_stdout(StringIO()) as log:
+                self.pipe.generate_and_save.side_effect = error
+                with self.assertRaises(type(error)):
+                    self.worker._generate(self.params | {'profile': 'uncensored'})
+            self.assertEqual(log.getvalue().splitlines(), [
+                '[profile] selected=uncensored loras=1 adapter=adapter.safetensors strength=0.75',
+                '[profile] reset pending_loras=0',
+            ])
+            self.assertNotIn(str(self.adapter), log.getvalue())
+
+    def test_worker_invalid_profile_logs_only_reset(self):
+        with redirect_stdout(StringIO()) as log:
+            with self.assertRaises(ValueError):
+                self.worker._generate(self.params | {'profile': 'unknown'})
+        self.assertEqual(log.getvalue(), '[profile] reset pending_loras=0\n')
 
     def test_invalid_adapter_preparation_stops_before_generation(self):
         self.loader.side_effect = RuntimeError('invalid adapter /private/internal/path')
