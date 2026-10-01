@@ -5,6 +5,9 @@ from backend.automation_routes import install_routes as install_automation_route
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
 from backend.image_pipeline_routes import install_routes as install_image_pipeline_routes
 from backend.media_prompt_meta_guard import install_media_prompt_meta_guard
+from backend.media_routing_portrait_intent import (
+    install_runtime as install_media_routing_portrait_intent_runtime,
+)
 from backend.media_routing_ui import (
     MediaRoutingUiMiddleware,
     install_routes as install_routing_observatory_routes,
@@ -34,6 +37,7 @@ from backend.voice_manager_routes import install_routes as install_voice_manager
 
 
 install_media_prompt_meta_guard()
+install_media_routing_portrait_intent_runtime()
 
 app.add_middleware(MemoryManagerUiMiddleware)
 app.add_middleware(SystemHealthUiMiddleware)
