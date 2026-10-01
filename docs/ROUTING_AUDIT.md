@@ -83,16 +83,27 @@ This is a conservative German/English command parser, not a general language
 parser. Unsupported languages, indirect execution wishes and novel ellipses
 fall back to chat. Unquoted multi-clause prose containing imperative media
 commands can still be interpreted as execution; quote pasted prompt examples.
-Negation in media clauses is conservative and can suppress a legitimate mixed
-request. The final independent media command wins when several are requested;
+Execution negation spanning independent clauses remains conservative and can
+suppress a legitimate mixed request. The final independent media command wins when several are requested;
 there is no newly implemented multi-job orchestration. Existing media source
 ownership, revision checks, queue behavior and permissions remain authoritative.
 Tests mock models and job launch; they do not render real media or assess VLM
 answer quality.
 
+## Scoped negation
+
+Negation before the command, a negative output determiner (`kein Bild`), or a
+negated command without an appearance property still withholds execution.
+Negation after the command that qualifies a requested appearance (`nicht so dunkel`, `not so bright`) does not cancel the edit. Image referents such as
+`hair` and `background` are excluded from the appearance-property vocabulary,
+so `edit not the background` still withholds execution. This scope analysis
+lives exclusively in the shared policy and applies to preflight, dispatch,
+web guards and runtime tools. German/English endpoint regressions cover both
+scopes and stale media hints.
+
 ## Validation
 
-- Full Python suite: 1,140 passed plus 296 subtests, with two existing dependency
+- Full Python suite: 1,167 passed plus 296 subtests, with two existing dependency
   deprecation warnings. Run with `PATH="$PWD/agent-venv/bin:$PATH"` so subprocess
   Python syntax checks use the project interpreter.
 - JavaScript suite: 115 passed, including browser regression cases.

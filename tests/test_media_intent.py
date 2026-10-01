@@ -43,6 +43,21 @@ MATRIX = [
     ("starte LTX", False, "video"),
     ("sexy nude portrait", True, "chat"),
     ("Bild von ihr", True, "chat"),
+    ("mach sie nicht so dunkel", True, "image_edit"),
+    ("mach das Bild nicht so warm", True, "image_edit"),
+    ("mach ihre Haare nicht so hell", True, "image_edit"),
+    ("make her hair not so dark", True, "image_edit"),
+    ("make the background not so bright", True, "image_edit"),
+    ("mach ihre Haare nicht heller", True, "image_edit"),
+    ("edit the background not too bright", True, "image_edit"),
+    ("mach das Bild nicht dunkel", True, "image_edit"),
+    ("mach das Bild nicht", True, "chat"),
+    ("bearbeite das Bild nicht", True, "chat"),
+    ("edit not the background", True, "chat"),
+    ("don't edit this image", True, "chat"),
+    ("mach nicht das Bild dunkel", True, "chat"),
+    ("erstelle einen Prompt für ein Bild nicht so dunkel", True, "chat"),
+    ("write a prompt for hair not so dark", True, "chat"),
     ("Do not generate an image", True, "chat"),
     ('Explain "generate an image"', True, "chat"),
     ("generiere mir einen Prompt für ein Bild", True, "chat"),
@@ -141,3 +156,24 @@ def test_attachment_metadata_uses_same_context_policy_in_agent_and_web(context):
     route = app.preflight_chat_action(app.ChatActionRequest(**request))
     guarded = json.loads(guard_media_route_payload(json.dumps(request).encode(), json.dumps(route).encode()))
     assert route["target"] == guarded["target"] == "image_edit"
+
+
+@pytest.mark.parametrize("prompt", [
+    "generiere kein Bild", "do not generate an image",
+    "erstelle kein Video", "don't animate this image",
+    "generiere niemals ein Bild", "never animate this image",
+])
+@pytest.mark.parametrize("has_image", [False, True])
+def test_execution_negation_blocks_preflight_and_stale_media_action(prompt, has_image):
+    test_matrix_across_real_endpoints(prompt, has_image, "chat")
+    # A client hint or explicit UI action must not override withheld execution.
+    request = app.ChatActionRequest(
+        prompt=prompt, file_context=IMAGE if has_image else None,
+        action="image_generate", resolved_target="image",
+    )
+    with patch.object(app, "_start_chat_image_job") as image, patch.object(app, "_start_chat_video_job") as video:
+        result = app.run_chat_action(request)
+    assert result["tool"] == "normal_chat"
+    assert result["data"]["routing"]["execution_requested"] is False
+    image.assert_not_called()
+    video.assert_not_called()

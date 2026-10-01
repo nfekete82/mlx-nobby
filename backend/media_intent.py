@@ -61,7 +61,7 @@ OBJECTS = {
 }
 MODIFIERS = set(
     "rot blau grün gruen gelb schwarz weiß weiss blond heller dunkler dunkel "
-    "hell wärmer waermer kälter kaelter jünger juenger älter aelter unscharf scharf weg "
+    "hell warm wärmer waermer kälter kaelter jünger juenger älter aelter unscharf scharf weg "
     "hintergrund farbe farben gesicht haare bart kleidung stil realistischer ganzkörper ganzkoerper größer "
     "groesser kleiner red blue green yellow black white blonde lighter darker dark "
     "bright younger older blurry blurred sharp background color colour face hair beard "
@@ -73,6 +73,33 @@ NEGATIONS = set(
     "nicht kein keine keinen keines niemals not never don't dont "
     .split()
 )
+
+
+# Negation can qualify a requested appearance rather than cancel the command.
+# Keep image referents out of this vocabulary: "not the background" withholds
+# an operation, while "background not so bright" specifies its desired result.
+EDIT_PROPERTIES = MODIFIERS - set(
+    "hintergrund farbe farben gesicht haare bart kleidung stil ganzkörper ganzkoerper "
+    "background color colour face hair beard clothing style full body zoom".split()
+)
+DEGREE_WORDS = {"so", "zu", "too", "as", "very", "ganz", "sehr", "viel", "much"}
+
+
+def _negates_execution(words, command):
+    """Bind negation to the command or to the following appearance property."""
+    for index, word in enumerate(words):
+        if word not in NEGATIONS:
+            continue
+        if command is not None and index > command and word in {"nicht", "not"}:
+            following = index + 1
+            while following < len(words) and words[following] in DEGREE_WORDS:
+                following += 1
+            if following < len(words) and words[following] in EDIT_PROPERTIES:
+                continue
+        # Negation before the verb, a negative output determiner (kein Bild),
+        # or a command without a negated property cancels execution.
+        return True
+    return False
 
 
 def has_image_context(context=None, active_artifact_id=None):
@@ -139,14 +166,14 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
         words = re.findall(r"[^\W_]+(?:'t)?", clause, re.UNICODE)
         if not words:
             continue
-        if set(words) & NEGATIONS and (has_image or set(words) & topics):
+        command = next((i for i, word in enumerate(words)
+                        if word in CREATE | EDIT | ANIMATE | START), None)
+        if _negates_execution(words, command) and (has_image or set(words) & topics):
             negated = True
             continue
         if (words[0] in QUESTIONS or set(words[:6]) & DISCUSS) and (has_image or set(words) & topics):
             text_intent = "prompt_writing" if set(words) & TEXT_OBJECTS else "discussion"
             continue
-        command = next((i for i, word in enumerate(words)
-                        if word in CREATE | EDIT | ANIMATE | START), None)
         # Bind to the command's output, rather than a preceding context noun.
         objects = [(i, word) for i, word in enumerate(words)
                    if word in TEXT_OBJECTS or word in OBJECTS]
