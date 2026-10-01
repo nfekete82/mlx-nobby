@@ -1,15 +1,16 @@
 {
   "de": {
     "title": "Routing Observatory",
-    "description": "Zeigt, warum Nobby eine Route gewählt hat. Feedback wird lokal als Regression-Kandidat gespeichert.",
+    "description": "Zeigt Router-Entscheidung, finale Route, Confidence und Guard-Grund. Feedback wird lokal als Regression-Kandidat gespeichert.",
     "refresh": "Aktualisieren",
     "loading": "Routing-Entscheidungen werden geladen …",
     "empty": "Noch keine Routing-Entscheidungen vorhanden.",
     "loadError": "Routing-Daten konnten nicht geladen werden.",
     "prompt": "Prompt",
-    "route": "Route",
+    "originalRoute": "Ursprüngliche Route",
+    "finalRoute": "Finale Route",
     "confidence": "Confidence",
-    "reason": "Grund",
+    "guardReason": "Guard / Grund",
     "feedback": "Feedback",
     "right": "Richtig",
     "wrong": "Falsch",
@@ -39,19 +40,21 @@
     "reason_low_confidence_fallback": "Confidence zu niedrig",
     "reason_explicit_shorts_intent_required": "Short-Auftrag nicht explizit",
     "reason_long_form_chat_fallback": "Langer Text → Chat",
+    "reason_instructional_portrait_question": "Frage zur Porträterstellung → Chat",
     "reason_conservative_fallback": "Konservativer Fallback"
   },
   "en": {
     "title": "Routing Observatory",
-    "description": "Shows why Nobby selected a route. Feedback is stored locally as a regression candidate.",
+    "description": "Shows the router decision, final route, confidence and guard reason. Feedback is stored locally as a regression candidate.",
     "refresh": "Refresh",
     "loading": "Loading routing decisions …",
     "empty": "No routing decisions yet.",
     "loadError": "Routing data could not be loaded.",
     "prompt": "Prompt",
-    "route": "Route",
+    "originalRoute": "Original route",
+    "finalRoute": "Final route",
     "confidence": "Confidence",
-    "reason": "Reason",
+    "guardReason": "Guard / reason",
     "feedback": "Feedback",
     "right": "Correct",
     "wrong": "Wrong",
@@ -81,6 +84,7 @@
     "reason_low_confidence_fallback": "Low confidence fallback",
     "reason_explicit_shorts_intent_required": "Explicit Shorts intent required",
     "reason_long_form_chat_fallback": "Long-form chat fallback",
+    "reason_instructional_portrait_question": "Instructional portrait question → chat",
     "reason_conservative_fallback": "Conservative fallback"
   }
 }
