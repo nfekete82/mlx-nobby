@@ -192,7 +192,9 @@ assert.deepEqual(
 );
 
 const fullConversationStream = [
+    ': vision request pending\n\n',
     'event: sources\ndata: {"sources":[{"title":"Source"}]}\n\n',
+    ': vision request pending\n\n',
     'data: {"type":"reasoning","text":"Überlege 🧠"}\n\n',
     'data: {"type":"content","text":"Grüße 🌍"}\n\n',
     'event: metrics\ndata: {"trace_id":"trace-turn-001",',

@@ -229,6 +229,34 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
 - Die automatisierten Tests verwenden überwiegend Fake/Mock Provider. Zusätzlich
   wurde der Release-Stand lokal mit echter MLX-Inferenz Ende zu Ende validiert.
 
+## Chat-Streaming und Reliability
+
+`backend/chat_reliability_routes.py` kapselt den vorhandenen Gateway über
+`/api/chat/reliable-stream`; das Frontend leitet normale Chat-Stream-Requests
+über diesen Pfad. `image_url`-Blöcke in den Nachrichten einschließlich History
+aktivieren das Vision-Budget (Standard 60 s, mindestens das Textbudget).
+Textchat behält 30 s bis zum ersten Gateway-Chunk und 45 s bei Stream-Stillstand.
+
+Vision sendet sofort und bei ausstehenden Reads alle 5 s SSE-Kommentare.
+Pro Read bleibt genau ein Task aktiv. Heartbeats sind Transportaktivität und
+weder Modellfortschritt noch eine erfolgreiche Antwort. Vor inhaltlicher Ausgabe
+bleibt eine absolute Frist aktiv; auch Sources/Metrics verlängern sie nicht.
+Danach gilt der normale 45-s-Stall-Watchdog. Die synchrone Vision-Gateway-
+Vorbereitung läuft in einem Worker-Thread, damit sie den Watchdog nicht blockiert.
+Der vorhandene Vision-Aufruf bleibt `stream: false`: das Gateway liefert
+Modellausgabe erst nach dem vollständigen HTTP-Response.
+
+Vor dem ersten Upstream-Chunk kann die Reliability-Schicht einmal Recovery
+anfordern und nach Bereitschaft mit neuer PID erneut versuchen. Nach bereits
+weitergereichten Upstream-Chunks beendet sie einen Stall mit SSE-Fehler und
+Recovery-Anforderung ohne Replay. Der Schutz aktiver Bild-/Video-Jobs und das
+Media-Wartebudget von 300 s bleiben bestehen. Disconnect/Timeout schließen den
+Iterator und canceln ausstehende Async-Reads; bereits laufende synchrone
+HTTP-Aufrufe in Threads werden dadurch nicht aktiv beendet.
+
+Root Cause, Messwerte, Konfiguration und Regressionen:
+[Vision streaming reliability](VISION_STREAMING_RELIABILITY.md).
+
 ## Relevante Tests
 
 | Datei unter `tests/` | Schwerpunkt |

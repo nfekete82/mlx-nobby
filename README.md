@@ -97,6 +97,12 @@ Observatory records intent, original/final route and reason with redacted previe
 See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
 regression workflow.
 
+Image chat allows 60 seconds before assistant output (text chat: 30 seconds)
+and sends SSE heartbeats while waiting. Heartbeats keep the connection active
+without extending recovery deadlines. The web process can override the vision
+budget with `MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT`; see
+[Vision streaming reliability](docs/VISION_STREAMING_RELIABILITY.md).
+
 ## Requirements
 
 - macOS on Apple Silicon (`arm64`)
