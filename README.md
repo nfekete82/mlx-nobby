@@ -305,6 +305,15 @@ The native video dispatcher runs on port 8060 and coordinates local LTX 2.5
 text-to-video and image-to-video work while reusing the isolated image Python
 environment. Video jobs remain separate from the Docker web application.
 
+Video profile `standard` is the default and uses no request LoRA. The optional
+`uncensored` profile uses a local adapter configured exclusively on the server
+with `LTX_MLX_UNCENSORED_LORA` and `LTX_MLX_UNCENSORED_LORA_STRENGTH` (default
+`1.0`, finite number). Export these variables when running
+`scripts/install-launchd.sh` to include them in the video LaunchAgent; supply
+them again when reinstalling its configuration. The worker inherits the service
+environment. Missing or invalid configuration fails without automatic fallback.
+Both text-to-video and image-to-video use the existing LTX-MLX model and runtime.
+
 The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
 Chat messages can also be read aloud with the local Qwen3 TTS model and Serena

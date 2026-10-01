@@ -172,7 +172,8 @@ function videoOptionsForRequest(
     mediaKind,
     duration = 5,
     quality = 'standard',
-    format = 'landscape'
+    format = 'landscape',
+    profile = 'standard'
 ) {
     const existing = options?.video || null;
 
@@ -182,6 +183,7 @@ function videoOptionsForRequest(
 
     return {
         ...(existing || {}),
+        profile,
         duration: normalizeVideoDuration(
             duration,
             quality
@@ -2560,6 +2562,7 @@ const imageFiles =
             let selectedMediaQuality =
                 MLXChatRuntime.getSessionMediaQuality?.() ||
                 'standard';
+            let selectedVideoProfile = 'standard';
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
             )
@@ -2599,6 +2602,12 @@ const imageFiles =
                     document.getElementById('videoDurationField');
                 const durationSelect =
                     document.getElementById('videoDuration');
+                const profileField = document.getElementById('videoProfileField');
+                const profileSelect = document.getElementById('videoProfile');
+                if (profileField && profileSelect) {
+                    profileField.hidden = mediaQualityKind !== 'video';
+                    profileSelect.value = 'standard';
+                }
                 const negativePromptField =
                     document.getElementById('imageNegativePromptField');
                 const negativePromptInput =
@@ -2902,6 +2911,9 @@ const imageFiles =
                                         choice
                                     );
                             }
+                            if (mediaQualityKind === 'video' && profileSelect) {
+                                selectedVideoProfile = profileSelect.value;
+                            }
 
                             if (
                                 resolvedTarget === 'image' &&
@@ -3060,7 +3072,8 @@ const imageFiles =
                     mediaQualityKind,
                     selectedVideoDuration,
                     selectedMediaQuality,
-                    selectedMediaFormat
+                    selectedMediaFormat,
+                    selectedVideoProfile
                 ),
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,

@@ -7985,9 +7985,12 @@ def _video_payload(request, operation):
     allowed = {
         "model", "resolution", "duration", "fps", "seed", "resize_mode",
         "width", "height", "aspect_ratio",
+        "profile",
     }
     if set(options) - allowed:
         raise HTTPException(422, "Unbekannte Videoparameter")
+    if options.get("profile", "standard") not in ("standard", "uncensored"):
+        raise HTTPException(422, "Video profile muss standard oder uncensored sein")
     payload.update(options)
     if operation == "i2v":
         stored_path = str((request.file_context or {}).get("stored_path") or "").strip()

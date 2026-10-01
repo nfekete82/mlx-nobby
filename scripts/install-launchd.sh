@@ -57,6 +57,23 @@ render_template() {
         -e "s|__MLX_SERVE_BIN__|${MLX_SERVE_BIN}|g" \
         "${source}" > "${temporary}"
 
+    if [ "$(basename "${source}")" = "de.nobby.mlx-video.plist.template" ]; then
+        "${RUNTIME_PYTHON}" - "${temporary}" <<'PY'
+import os
+import plistlib
+import sys
+
+path = sys.argv[1]
+with open(path, "rb") as handle:
+    data = plistlib.load(handle)
+for name in ("LTX_MLX_UNCENSORED_LORA", "LTX_MLX_UNCENSORED_LORA_STRENGTH"):
+    if name in os.environ:
+        data["EnvironmentVariables"][name] = os.environ[name]
+with open(path, "wb") as handle:
+    plistlib.dump(data, handle, sort_keys=False)
+PY
+    fi
+
     plutil -lint "${temporary}" >/dev/null
 
     RENDER_CHANGED=1

@@ -11,6 +11,8 @@
     <key>LTX_MLX_RUNTIME_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/ltx-2-mlx</string>
     <key>LTX_MLX_MODEL_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/models</string>
     <key>LTX_MLX_LOW_RAM</key><string>1</string>
+    <key>LTX_MLX_UNCENSORED_LORA</key><string></string>
+    <key>LTX_MLX_UNCENSORED_LORA_STRENGTH</key><string>1.0</string>
   </dict>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer>
   <key>StandardOutPath</key><string>__CONFIG_DIR__/video.log</string>

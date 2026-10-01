@@ -45,6 +45,14 @@ assert.deepEqual(
     [5]
 );
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video').profile, 'standard');
+const uncensoredOptions = api.__test.videoOptionsForRequest(
+    {}, 'video', 5, 'standard', 'landscape', 'uncensored'
+);
+assert.equal(uncensoredOptions.profile, 'uncensored');
+assert.deepEqual(Object.keys(uncensoredOptions).sort(), ['aspect_ratio', 'duration', 'profile']);
+assert.match(chatHtml, /id="videoProfile"[\s\S]*?<option value="standard" selected>Standard<\/option>[\s\S]*?<option value="uncensored">Uncensored<\/option>/);
+assert.match(source, /selectedVideoProfile = profileSelect.value/);
 assert.equal(
     api.__test.videoOptionsForRequest(
         { video: { seed: 9 } },

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import video_providers as mps
 import video_providers_mlx as mlx
+from video_profiles import validate_profile
 
 
 ProviderCancelled = mps.ProviderCancelled
@@ -58,6 +59,9 @@ def availability(model):
 
 
 def generate(model, params, output, **kwargs):
+    profile = validate_profile(params.get("profile", "standard"))
+    if profile == "uncensored" and not _is_mlx(model):
+        raise ValueError("uncensored benötigt den LTX-MLX-Provider")
     if _is_mlx(model):
         callback = kwargs.get("progress_callback")
         if callback is not None:
