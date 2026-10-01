@@ -83,6 +83,11 @@ EDIT_PROPERTIES = MODIFIERS - set(
     "background color colour face hair beard clothing style full body zoom".split()
 )
 DEGREE_WORDS = {"so", "zu", "too", "as", "very", "ganz", "sehr", "viel", "much"}
+CONTENT_CONSTRAINTS = {
+    "logo", "logos", "marke", "marken", "brand", "brands", "branding",
+    "wasserzeichen", "watermark", "watermarks", "text", "voiceover",
+}
+CONTENT_QUALIFIERS = {"generierter", "generierte", "generierten", "generiertes", "generated"}
 
 
 def _negates_execution(words, command):
@@ -90,6 +95,15 @@ def _negates_execution(words, command):
     for index, word in enumerate(words):
         if word not in NEGATIONS:
             continue
+        following = index + 1
+        while following < len(words) and words[following] in CONTENT_QUALIFIERS:
+            following += 1
+        if following < len(words) and words[following] in CONTENT_CONSTRAINTS:
+            # "Kein Text im Bild" restricts content, not media execution. In a
+            # command clause, require an already bound media output so that
+            # "Erstelle keinen Text ..." still withholds the requested output.
+            if command is None or any(word in OBJECTS for word in words[command + 1:index]):
+                continue
         if command is not None and index > command and word in {"nicht", "not"}:
             following = index + 1
             while following < len(words) and words[following] in DEGREE_WORDS:

@@ -10,6 +10,13 @@ from backend.media_routing_ui import guard_media_route_payload
 
 IMAGE = {"kind": "image", "mime_type": "image/png", "stored_path": "/tmp/context.png"}
 MATRIX = [
+    ("Erstelle ein 20-sekündiges YouTube Short über einen Kaffeevollautomaten im Büro. Keine Logos, keine Marken, keine Wasserzeichen und keinen generierten Text direkt im Bild.", False, "shorts_generate"),
+    ("Erstelle ein 20-sekündiges Short über Office Benefits. Kein Voiceover. Nutze Captions.", False, "shorts_generate"),
+    ("Erstelle kein Video über Office Benefits.", False, "chat"),
+    ("Mach keinen Short.", False, "chat"),
+    ("Kein Bild erzeugen.", False, "chat"),
+    ("Erstelle ein Bild von einem Auto. Keine Logos.", False, "image"),
+    ("Erstelle ein Video über Berlin 2040. Kein Text im Bild.", False, "video"),
     ("beschreibe sie", True, "chat"),
     ("welcher Prompt ist gut für LTX?", True, "chat"),
     ("erstelle mir einen Prompt für LTX 2.5", True, "chat"),
@@ -89,10 +96,12 @@ def test_matrix_across_real_endpoints(prompt, has_image, target):
         decision = route.json()
         assert decision["target"] == target
         assert decision["execution_requested"] == (target != "chat")
+        if target == "shorts_generate":
+            assert decision["intent"] == "shorts_generate"
         assert not image.called and not video.called and not shorts.called
         guarded = json.loads(guard_media_route_payload(json.dumps(payload).encode(), route.content))
         assert guarded["target"] == target
-        result = client.post("/api/chat/actions", json=payload)
+        result = client.post("/api/chat/actions", json=payload | {"resolved_target": guarded["target"]})
         assert result.status_code == 200
         assert image.called == (target in {"image", "image_edit"})
         assert video.called == (target == "video")
@@ -164,6 +173,10 @@ def test_attachment_metadata_uses_same_context_policy_in_agent_and_web(context):
     "generiere kein Bild", "do not generate an image",
     "erstelle kein Video", "don't animate this image",
     "generiere niemals ein Bild", "never animate this image",
+    "Mach keinen Short.", "Kein Bild erzeugen.",
+    "Erstelle ein Short. Erstelle kein Video.",
+    "Erstelle ein Short, aber generiere es nicht.",
+    "Erstelle keinen Text für ein Bild.",
 ])
 @pytest.mark.parametrize("has_image", [False, True])
 def test_execution_negation_blocks_preflight_and_stale_media_action(prompt, has_image):
@@ -179,3 +192,16 @@ def test_execution_negation_blocks_preflight_and_stale_media_action(prompt, has_
     assert result["data"]["routing"]["execution_requested"] is False
     image.assert_not_called()
     video.assert_not_called()
+
+
+@pytest.mark.parametrize("constraint", [
+    "Keine Logos", "keine Marken", "keine Wasserzeichen",
+    "keinen generierten Text direkt im Bild", "kein Voiceover", "kein Text im Bild",
+])
+@pytest.mark.parametrize("separator", [". ", ", ", " und "])
+@pytest.mark.parametrize("has_image", [False, True])
+def test_content_constraints_do_not_cancel_shorts_execution(constraint, separator, has_image):
+    prompt = "Erstelle ein 20-sekündiges Short über Office Benefits" + separator + constraint
+    decision = decide_media_intent(prompt, has_image=has_image)
+    assert decision.intent == decision.target == "shorts_generate"
+    assert decision.execution_requested is True
