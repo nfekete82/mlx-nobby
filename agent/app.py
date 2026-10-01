@@ -7578,7 +7578,7 @@ def optimize_image_edit_prompt(prompt):
         return fallback
 
     try:
-        with MODEL_RUNTIME_LOCK:
+        with runtime_coordinator.chat_runtime(), MODEL_RUNTIME_LOCK:
             call_metrics.set_queue_wait(
                 (time.monotonic() - wait_started) * 1000
             )
@@ -10733,6 +10733,9 @@ def agent_model_provider() -> ModelProvider:
         runtime_lock=MODEL_RUNTIME_LOCK,
         ensure_model_for_role=ensure_model_for_role,
         load_config=load_config,
+        runtime_lease=lambda context: runtime_coordinator.chat_runtime(
+            context.cancellation if context is not None else None,
+        ),
     )
 
 

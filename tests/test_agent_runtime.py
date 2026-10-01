@@ -27,6 +27,36 @@ class FakeProvider:
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    def test_explicit_german_no_file_changes_finishes_after_read_without_replanning(self):
+        for prohibition in ("Ändere keine Dateien.", "Keine Dateien ändern."):
+            with self.subTest(prohibition=prohibition):
+                self.hooks = replace(
+                    self.hooks,
+                    coding_read_only_fast_final_requested=evidence.coding_read_only_fast_final_requested,
+                )
+                runtime = self.runtime(["MLX Nobby"])
+                result = runtime.run(
+                    "Lies README.md und nenne den Projektnamen. " + prohibition,
+                    mode="coding",
+                    observations=[{
+                        "action": "code_read", "status": "completed",
+                        "result": {"content": "# MLX Nobby"},
+                    }],
+                )
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["answer"], "MLX Nobby")
+                self.assertEqual(len(self.provider.calls), 1)
+                self.assertEqual(self.planner_limits, [])
+                self.assertFalse(any(s["action"] == "patch_required" for s in result["steps"]))
+
+    def test_new_read_only_markers_do_not_match_positive_mutations_or_file_analyze(self):
+        self.assertFalse(evidence.coding_read_only_fast_final_requested(
+            "Ändere README.md und implementiere die neue Funktion."
+        ))
+        self.assertFalse(evidence.coding_read_only_fast_final_requested(
+            "Use file_analyze on README.md. Ändere keine Dateien."
+        ))
+
     def test_explicit_file_analysis_job_does_not_take_read_only_code_shortcut(self):
         self.assertFalse(evidence.coding_read_only_fast_final_requested(
             "Use file_analyze on hello.py. Do not modify files."

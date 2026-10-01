@@ -112,6 +112,8 @@ def coding_read_only_fast_final_requested(goal):
         return False
 
     markers = (
+        "aendere keine dateien",
+        "keine dateien aendern",
         "aendere noch nichts",
         "noch nichts aendern",
         "nichts aendern",
@@ -1341,4 +1343,3 @@ def degraded_empty_web_search_count(observations):
             count += 1
 
     return count
-
