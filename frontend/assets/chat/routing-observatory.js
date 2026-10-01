@@ -17,15 +17,16 @@
     const FALLBACK = {
         en: {
             title: 'Routing Observatory',
-            description: 'Shows why Nobby selected a route. Feedback is stored locally as a regression candidate.',
+            description: 'Shows the router decision, final route, confidence and guard reason. Feedback is stored locally as a regression candidate.',
             refresh: 'Refresh',
             loading: 'Loading routing decisions …',
             empty: 'No routing decisions yet.',
             loadError: 'Routing data could not be loaded.',
             prompt: 'Prompt',
-            route: 'Route',
+            originalRoute: 'Original route',
+            finalRoute: 'Final route',
             confidence: 'Confidence',
-            reason: 'Reason',
+            guardReason: 'Guard / reason',
             feedback: 'Feedback',
             right: 'Correct',
             wrong: 'Wrong',
@@ -55,13 +56,13 @@
             reason_low_confidence_fallback: 'Low confidence fallback',
             reason_explicit_shorts_intent_required: 'Explicit Shorts intent required',
             reason_long_form_chat_fallback: 'Long-form chat fallback',
+            reason_instructional_portrait_question: 'Instructional portrait question → chat',
             reason_conservative_fallback: 'Conservative fallback'
         },
         de: {}
     };
 
     let copy = FALLBACK;
-
     let card = null;
     let tableBody = null;
     let state = null;
@@ -99,13 +100,17 @@
     }
 
     function routeLabel(target) {
-        return t('route_' + target) || target || '—';
+        if (!target) return '—';
+        const key = 'route_' + target;
+        const translated = t(key);
+        return translated === key ? target : translated;
     }
 
     function reasonLabel(reason) {
+        if (!reason) return '—';
         const key = 'reason_' + reason;
         const translated = t(key);
-        return translated === key ? (reason || '—') : translated;
+        return translated === key ? reason : translated;
     }
 
     function formatConfidence(value) {
@@ -145,7 +150,6 @@
         refreshButton = el('button', 'routing-observatory-refresh', t('refresh'));
         refreshButton.type = 'button';
         refreshButton.addEventListener('click', () => refresh());
-
         header.append(copyBlock, refreshButton);
 
         state = el('div', 'routing-observatory-stats');
@@ -155,9 +159,14 @@
         const table = el('table', 'routing-observatory-table');
         const thead = document.createElement('thead');
         const headRow = document.createElement('tr');
-        [t('prompt'), t('route'), t('confidence'), t('reason'), t('feedback')].forEach(label => {
-            headRow.appendChild(el('th', '', label));
-        });
+        [
+            t('prompt'),
+            t('originalRoute'),
+            t('finalRoute'),
+            t('confidence'),
+            t('guardReason'),
+            t('feedback')
+        ].forEach(label => headRow.appendChild(el('th', '', label)));
         thead.appendChild(headRow);
         tableBody = document.createElement('tbody');
         table.append(thead, tableBody);
@@ -281,6 +290,12 @@
         cell.appendChild(actions);
     }
 
+    function renderRouteCell(target, className) {
+        const cell = el('td', 'routing-route-cell ' + className);
+        cell.appendChild(el('span', 'routing-route-badge', routeLabel(target)));
+        return cell;
+    }
+
     function renderRow(decision) {
         const row = document.createElement('tr');
         if (decision.guarded) row.classList.add('is-guarded');
@@ -296,15 +311,12 @@
         );
         promptCell.append(prompt, meta);
 
-        const routeCell = el('td', 'routing-route-cell');
-        const route = el('span', 'routing-route-badge', routeLabel(decision.target));
-        routeCell.appendChild(route);
-        if (decision.guarded && decision.original_target !== decision.target) {
-            routeCell.appendChild(el(
-                'div',
-                'routing-route-original',
-                routeLabel(decision.original_target) + ' → ' + routeLabel(decision.target)
-            ));
+        const originalRoute = decision.original_target || decision.target;
+        const originalCell = renderRouteCell(originalRoute, 'is-original');
+        const finalCell = renderRouteCell(decision.target, 'is-final');
+        if (decision.guarded && originalRoute !== decision.target) {
+            finalCell.classList.add('is-changed');
+            finalCell.appendChild(el('div', 'routing-route-change', '← ' + routeLabel(originalRoute)));
         }
 
         const confidenceCell = el(
@@ -313,22 +325,39 @@
             formatConfidence(decision.confidence)
         );
         if (decision.confidence_source) {
-            confidenceCell.title = decision.confidence_source;
+            confidenceCell.appendChild(el(
+                'div',
+                'routing-confidence-source',
+                decision.confidence_source
+            ));
         }
 
-        const reasonCell = el('td', 'routing-reason-cell', reasonLabel(decision.reason));
+        const reasonCell = el('td', 'routing-reason-cell');
+        if (decision.guarded) {
+            reasonCell.appendChild(el('span', 'routing-guard-badge', t('guarded')));
+        }
+        reasonCell.appendChild(el('div', 'routing-reason-text', reasonLabel(decision.reason)));
+
+        const reasonMeta = [];
+        if (decision.intent) reasonMeta.push(decision.intent);
         if (decision.duration_ms !== null && decision.duration_ms !== undefined) {
-            reasonCell.appendChild(el(
-                'div',
-                'routing-duration',
-                Number(decision.duration_ms).toFixed(0) + ' ms'
-            ));
+            reasonMeta.push(Number(decision.duration_ms).toFixed(0) + ' ms');
+        }
+        if (reasonMeta.length) {
+            reasonCell.appendChild(el('div', 'routing-reason-meta', reasonMeta.join(' · ')));
         }
 
         const feedbackCell = el('td', 'routing-feedback-cell');
         renderFeedback(decision, feedbackCell);
 
-        row.append(promptCell, routeCell, confidenceCell, reasonCell, feedbackCell);
+        row.append(
+            promptCell,
+            originalCell,
+            finalCell,
+            confidenceCell,
+            reasonCell,
+            feedbackCell
+        );
         return row;
     }
 
