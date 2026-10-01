@@ -481,6 +481,7 @@ class VideoServiceTests(unittest.TestCase):
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
              mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
+             mock.patch.object(video_service.runtime_coordinator, "memory_budget_snapshot", return_value={"headroom_gb": 0, "pressure": "critical"}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=True), \
              mock.patch.object(video_service, "_chat_command", side_effect=commands.append), \
              mock.patch.object(video_service, "_memory_snapshot", return_value={}), \

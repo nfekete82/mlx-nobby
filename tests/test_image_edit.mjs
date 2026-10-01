@@ -926,12 +926,15 @@ context.fetch = async (url, options) => {
         return {
             ok: true,
             async json() {
-                return { target: 'image_edit' };
+                return { target: JSON.parse(options.body).prompt === 'Was wurde verändert?' ? 'chat' : 'image_edit' };
             },
         };
     }
 
     if (url === '/api/mlx/chat/actions') {
+        if (JSON.parse(options.body).prompt === 'Was wurde verändert?') {
+            return { ok: true, async json() { return { tool: 'normal_chat', status: 'not_applicable', data: {} }; } };
+        }
         return {
             ok: true,
             async json() {
@@ -1068,7 +1071,7 @@ assert.equal(
         .some(request =>
             request.url === '/api/mlx/chat/actions'
         ),
-    false,
+    true,
 );
 
 selectedAttachments = [imageAttachment];
@@ -1757,7 +1760,7 @@ selectedAttachments = [];
 const routedActionPayloads = [];
 const routeTargets = new Map([
     [
-        'Photorealistic portrait of a woman in natural window light',
+        'Create a photorealistic portrait of a woman in natural window light',
         'image',
     ],
     ['Erstelle ein Bild von einem Leuchtturm', 'image'],
@@ -1800,7 +1803,7 @@ context.fetch = async (url, options) => {
 
 for (const [prompt, expectedTarget, expectedModal] of [
     [
-        'Photorealistic portrait of a woman in natural window light',
+        'Create a photorealistic portrait of a woman in natural window light',
         'image',
         'Choose image quality',
     ],
@@ -1847,3 +1850,50 @@ for (const [prompt, expectedTarget, expectedModal] of [
 console.log(
     'Image jobs, routing, progress, cancellation, artifacts, and errors passed.',
 );
+
+// Text output with a reference image never opens a media execution modal.
+for (const prompt of [
+    'erstelle mir einen prompt für ltx 2.5 wie sie sexy schaut, einen kussmund macht und sich bewegt',
+    'Improve this prompt for an image',
+    'Create a video prompt',
+    'Write a Short script',
+]) {
+    routeTargets.set(prompt, 'chat');
+    selectedAttachments = [imageAttachment];
+    const modalCount = modalOpenEvents.length;
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    assert.equal(modalOpenEvents.length, modalCount, prompt);
+    assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat', prompt);
+    assert.equal(routedActionPayloads.at(-1).file_context.kind, 'image', prompt);
+}
+
+// A failed preflight cannot authorize jobs through local regexes or options.
+const workingFetch = context.fetch;
+context.fetch = async (url, options) => {
+    if (url === '/api/mlx/chat/actions/route') throw new Error('router unavailable');
+    return workingFetch(url, options);
+};
+for (const prompt of ['Create an image', 'Create a video', 'Improve this prompt for an image']) {
+    selectedAttachments = [imageAttachment];
+    const modalCount = modalOpenEvents.length;
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    assert.equal(modalOpenEvents.length, modalCount, prompt);
+    assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat', prompt);
+}
+
+context.fetch = workingFetch;
+for (const [prompt, target] of [
+    ['Describe both images', 'chat'],
+    ['Create a portrait', 'image'],
+]) {
+    routeTargets.set(prompt, target);
+    selectedAttachments = [imageAttachment, { ...imageAttachment, name: 'second.png' }];
+    const requestCount = requests.length;
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    assert.equal(requests[requestCount].url, '/api/mlx/chat/actions/route', prompt);
+    assert.equal(routedActionPayloads.at(-1).file_context.image_count, 2, prompt);
+    assert.equal(routedActionPayloads.at(-1).resolved_target, target, prompt);
+}

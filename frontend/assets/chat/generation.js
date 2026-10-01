@@ -2361,23 +2361,7 @@ const imageFiles =
         return;
     }
 
-    const explicitImageCreationRequest =
-        isImageGenerationRequest(prompt);
-
-    const routesCurrentImageToVision =
-        (
-            imageFiles.length > 1 ||
-            visionImages.length > 1
-        ) &&
-        !explicitImageCreationRequest &&
-        !explicitImageEditRequest &&
-        !explicitVideoAnimateRequest;
-
-    if (
-        !routesFileOperation &&
-        !textFiles.length &&
-        !routesCurrentImageToVision
-    ) {
+    if (!routesFileOperation && !textFiles.length) {
         let pendingImageMessage = null;
         try {
             let currentImageContext = null;
@@ -2459,7 +2443,10 @@ const imageFiles =
                 preferredVideoSource?.origin === 'chat_upload'
                     ? preferredVideoSource.source
                     : null;
-            const fileContext = currentImageContext || historicalVideoUpload ||
+            const imageRoutingContext = imageFiles.length
+                ? { kind: 'image', image_count: imageFiles.length }
+                : null;
+            const fileContext = currentImageContext || historicalVideoUpload || imageRoutingContext ||
                 (explicitVideoAnimateRequest
                     ? null
                     : documentFiles[0] || priorFileAttachments[0] || null);
@@ -2469,8 +2456,8 @@ const imageFiles =
             // from conversation context even when the deterministic edit
             // patterns do not recognize the wording.
             const activeArtifactIdForEdit =
-                !currentImageContext && !historicalVideoUpload &&
-                (refersToExistingImage || explicitImageEditRequest || explicitVideoAnimateRequest)
+                !imageFiles.length && !currentImageContext && !historicalVideoUpload &&
+                (refersToExistingImage || explicitImageEditRequest || explicitVideoAnimateRequest || Boolean(activeWorkspaceImageArtifact))
                     ? (
                         (preferredVideoSource?.origin === 'active_artifact'
                             ? preferredVideoSource.source?.artifact_id
@@ -2480,36 +2467,8 @@ const imageFiles =
                     )
                     : null;
 
-            /*
-             * Explicit patterns remain fast paths. Unknown wording is
-             * classified by the backend router before any media modal or
-             * action request is started.
-             */
-            const explicitVideoCreationRequest =
-                /\b(?:erstelle|erzeuge|generiere|mach|create|generate|make)\b[\s\S]{0,100}\b(?:video|clip|animation)\b/i.test(prompt) ||
-                /\b(?:video|clip|animation)\b[\s\S]{0,100}\b(?:erstellen|erzeugen|generieren|create|generate)\b/i.test(prompt);
-
-            const conversationContext =
-                buildAgentConversationContext(
-                    session,
-                    userMessage
-                );
-
-            const localFastPathTarget =
-                (
-                    explicitVideoAnimateRequest ||
-                    explicitVideoCreationRequest ||
-                    Boolean(options?.video)
-                )
-                    ? 'video'
-                    : explicitImageEditRequest
-                        ? 'image_edit'
-                        : (
-                            explicitImageCreationRequest ||
-                            Boolean(options?.image)
-                        )
-                            ? 'image'
-                            : null;
+            // The server owns execution intent; local hints only bind resources.
+            const conversationContext = buildAgentConversationContext(session, userMessage);
             let resolvedTarget = null;
 
             try {
@@ -2548,7 +2507,8 @@ const imageFiles =
                     'chat',
                     'image',
                     'image_edit',
-                    'video'
+                    'video',
+                    'shorts_generate'
                 ].includes(serverTarget)) {
                     throw new Error(
                         'Invalid chat action route target'
@@ -2557,15 +2517,22 @@ const imageFiles =
 
                 resolvedTarget = serverTarget;
             } catch (error) {
-                if (!localFastPathTarget) {
-                    throw error;
-                }
+                console.warn('[MLX Router] Preflight failed; continuing in chat', error);
+                resolvedTarget = 'chat';
+            }
 
-                console.warn(
-                    '[MLX Router] Preflight failed; using explicit fast path',
-                    error
-                );
-                resolvedTarget = localFastPathTarget;
+            if (resolvedTarget === 'chat' && !imageFiles.length && !visionImages.length && activeArtifactIdForEdit && activeImageArtifact) {
+                // Load visual context after authoritative routing, even if a local
+                // edit hint matched words inside a prompt-writing request.
+                visionImages.push({
+                    kind: 'image',
+                    name: activeImageArtifact.name || 'generated-image.png',
+                    type: activeImageArtifact.mime_type || 'image/png',
+                    image_id: activeImageArtifact.image_id,
+                    artifact_id: activeImageArtifact.artifact_id,
+                    data_url: await imageArtifactDataUrl(activeImageArtifact)
+                });
+                MLXChatSessions.saveSessions();
             }
 
             const mediaQualityKind =

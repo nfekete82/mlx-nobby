@@ -40,7 +40,7 @@ Alle folgenden Pfade liegen unter `agent/`.
 | `runtime.py` | `AgentRuntime`, bestehender Agent-Loop, Limits, Guards, Delegation, Progress, Cancellation und Approval-Resume. |
 | `tool_registry.py` | `Tool`-Metadaten, Katalog, Dispatch und Permission-Gate; gesonderte Ausführung einer konsumierten Freigabe. |
 | `permissions.py` | `PermissionEngine`, Policy, Risiken, Entscheidungen und strukturierter `ToolPermissionError`; prüft auch Kontext und Pfadgrenzen. |
-| `run_state.py` | Fester `RunContext`, Run-/Chat-/Workspace-Identität, erlaubte Wurzeln, Cancellation und ContextVar-Bindung. |
+| `run_state.py` | Fester `RunContext`, Run-/Chat-/Workspace-Identität, ursprüngliches Nutzerziel, erlaubte Wurzeln, Cancellation und ContextVar-Bindung. |
 | `model_provider.py` | `ModelProvider`, `ModelRequest`, `ModelResponse`, `ProviderError` und lokaler `MLXProvider`. |
 | `prompts.py` | Bestehende Planungs-/Abschluss-Prompts, JSON-Parsing und Format-Reparatur, Subagent-Berichte; Modellzugriff wird injiziert. |
 | `evidence.py` | Evidence-Verträge, Kompaktierung, Coding-Antwortregeln, Quellenbewertung und Delegations-/Research-Helfer. |
@@ -48,6 +48,30 @@ Alle folgenden Pfade liegen unter `agent/`.
 | `code_workspaces.py` | Workspace-Verwaltung, sichere Dateioperationen und bestehender Patch-/Diff-/Test-/Apply-/Verify-Workflow. |
 | `vision_classifier.py`, `vision_routing.py` | Lokale ONNX-Bildklassifikation und Auswahl einer passenden Vision-Rolle für den normalen multimodalen Chat-Pfad. |
 | `app.py` | FastAPI-Endpunkte, Zusammensetzen der Abhängigkeiten, lokale Modellintegration, Progress-Speicher und Compatibility-Funktionen. Enthält weiterhin andere Anwendungslogik. |
+
+## Chat- und Medienrouting
+
+`backend/media_intent.py` ist die gemeinsame, nebenwirkungsfreie
+Intent-Decision-Layer für Agent, Web-Preflight und Runtime-Medientools.
+`RoutingDecision` enthält `intent`, `target`, `execution_requested`,
+`media_context`, `confidence`, `reason`, `guard` und `fallback`.
+Textausgaben wie Prompts/Skripte und Fragen haben Vorrang; Bildanhänge und
+Adult-Begriffe liefern Kontext, keine Ausführungsabsicht. Eine unabhängige
+explizite Medienanweisung kann einen kombinierten Text-/Medienauftrag ausführen.
+Semantische Klassifikation darf ohne Ausführungsabsicht keine Medienjobs starten.
+
+Preflight und Aktionsendpunkt verwenden dieselbe Entscheidung. Ein übermitteltes
+`resolved_target` autorisiert keine Ausführung; `chat` unterbindet Medienjobs
+nach fehlgeschlagenem Preflight. Browser-Regex-Hinweise dienen der Quellenbindung.
+Runtime-Medientools prüfen `RunContext.user_goal`, sodass umformulierte oder
+delegierte Tool-Ziele keine neue Medienabsicht einführen. Bestehende Pipeline-,
+Ownership-, Revision- und Permission-Prüfungen bleiben erhalten.
+
+Bildkontext ohne Medienausführung geht an den VLM-Chat: bevorzugt
+`vision_uncensored`, sonst `vision`. Der Safety-Classifier liefert ausschließlich
+Metadaten für Observability und beeinflusst die Rollenwahl nicht. Web-Telemetrie speichert Intent, Ziele, Gründe,
+Hash und Länge, aber keine Prompt- oder Bildinhalte. Details, vorherige Reihenfolge
+und Grenzen: [Routing-Audit](ROUTING_AUDIT.md).
 
 ## Ablauf eines Runs
 

@@ -1,3 +1,4 @@
+from backend.media_intent import decide_media_intent, has_image_context, MEDIA_ACTIONS
 import asyncio
 from copy import deepcopy
 from pathlib import Path
@@ -3974,7 +3975,7 @@ class ChatActionRequest(BaseModel):
     video_options: dict | None = None
     quality: Literal["preview", "fast", "standard", "quality"] | None = None
     resolved_target: Literal[
-        "chat", "image", "image_edit", "video",
+        "chat", "image", "image_edit", "video", "shorts_generate",
     ] | None = None
     conversation_context: list[dict] | None = None
     instruction: str | None = None
@@ -4477,193 +4478,21 @@ def _looks_like_disk_usage_request(prompt):
 
 
 
-_IMAGE_FILE_EXTENSIONS = {
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".webp",
-    ".gif",
-    ".bmp",
-    ".tif",
-    ".tiff",
-    ".heic",
-    ".heif",
-    ".avif",
-}
-
-
 def _file_context_is_image(file_context):
-    """Return True only for file contexts that actually represent images."""
-    if not isinstance(file_context, dict):
-        return False
+    return has_image_context(file_context)
 
-    kind = str(
-        file_context.get("kind") or ""
-    ).strip().lower()
-
-    if kind == "image":
-        return True
-
-    mime_type = str(
-        file_context.get("mime_type")
-        or file_context.get("mime")
-        or ""
-    ).strip().lower()
-
-    if mime_type.startswith("image/"):
-        return True
-
-    candidate = str(
-        file_context.get("stored_path")
-        or file_context.get("path")
-        or file_context.get("name")
-        or file_context.get("filename")
-        or ""
-    ).strip().lower()
-
-    if candidate:
-        from pathlib import Path as _Path
-
-        if _Path(candidate).suffix.lower() in _IMAGE_FILE_EXTENSIONS:
-            return True
-
-    return False
-
-
-_IMAGE_EDIT_VERB_PATTERN = re.compile(
-    r"\b(?:"
-    r"bearbeit(?:e|en)?|"
-    r"änder(?:e|n)?|aender(?:e|n)?|"
-    r"veränder(?:e|n)?|veraender(?:e|n)?|"
-    r"färb(?:e|en)?|faerb(?:e|en)?|"
-    r"entfern(?:e|en)?|"
-    r"lösch(?:e|en)?|loesch(?:e|en)?|"
-    r"ersetz(?:e|en)?|"
-    r"füg(?:e|en)?|fueg(?:e|en)?|"
-    r"retuschier(?:e|en)?|"
-    r"korrigier(?:e|en)?|"
-    r"verbesser(?:e|n)?|"
-    r"change|edit|modify|recolor|remove|replace|add|retouch|blur"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_EDIT_MAKE_PATTERN = re.compile(
-    r"\b(?:mach|mache|make)\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_EDIT_MODIFIER_PATTERN = re.compile(
-    r"\b(?:"
-    r"rot|blau|grün|gruen|gelb|schwarz|weiß|weiss|blond|"
-    r"heller|dunkler|dunkel|hell|wärmer|waermer|kälter|kaelter|"
-    r"jünger|juenger|älter|aelter|"
-    r"unscharf|scharf|weg|"
-    r"hintergrund|farbe|farben|person|objekt|gesicht|haare|"
-    r"bart|kleidung|stil|"
-    r"schwarzweiß|schwarz-weiss|schwarz-weiß|"
-    r"größer|groesser|kleiner|entfernt|"
-    r"red|blue|green|yellow|black|white|blonde?|"
-    r"lighter|darker|dark|bright|younger|older|"
-    r"blurry|blurred|sharp|"
-    r"background|color|colour|object|face|hair|beard|"
-    r"realistischer|"
-    r"clothing|style|remove|removed|warmer|cooler|more realistic"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_EDIT_FOLLOWUP_PATTERN = re.compile(
-    r"^\s*"
-    r"(?:(?:und\s+)?(?:jetzt|nun|noch|then|now)\b.*)?"
-    r"(?:bitte\s+)?"
-    r"(?:(?:mehr|etwas|ein\s+bisschen|more|a\s+bit)\s+)?"
-    r"(?:"
-    r"ganzkörper|ganzkoerper|full[ -]?body|"
-    r"dunkler|heller|wärmer|waermer|kälter|kaelter|"
-    r"realistischer|jünger|juenger|älter|aelter|"
-    r"unscharf|schärfer|schaerfer|"
-    r"weiter\s+(?:raus|weg)|näher|naeher|"
-    r"länger|laenger|kürzer|kuerzer|"
-    r"darker|lighter|warmer|cooler|more realistic|"
-    r"younger|older|blurrier|sharper|"
-    r"zoom(?:ed)?\s+out|zoom(?:ed)?\s+in|longer|shorter"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_QUESTION_PATTERN = re.compile(
-    r"^\s*(?:"
-    r"was|wie|welche|welcher|welches|wer|wo|wann|warum|"
-    r"ist|sind|hat|haben|"
-    r"what|how|which|who|where|when|why|"
-    r"is|are|does|do|has|have"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_CREATION_VERB_PATTERN = re.compile(
-    r"\b(?:"
-    r"erstelle|erstellen|generiere|generieren|"
-    r"erzeuge|erzeugen|zeichne|zeichnen|mach|mache|"
-    r"create|generate|draw|make"
-    r")\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_NOUN_PATTERN = re.compile(
-    r"\b(?:bild|foto|illustration|image|photo|picture)\b",
-    re.IGNORECASE,
-)
-
-_IMAGE_NOUN_OF_PATTERN = re.compile(
-    r"\b(?:bild|foto|illustration|image|photo|picture)\s+(?:von|of)\b",
-    re.IGNORECASE,
-)
-
-_VIDEO_ANIMATE_PATTERN = re.compile(
-    r"\b(?:animier(?:e|en)?\s+(?:dieses|das|mein)?\s*(?:bild|foto)|"
-    r"mach(?:e)?\s+(?:daraus|hieraus)\s+(?:ein\s+)?video|"
-    r"erzeug(?:e|en)?\s+(?:daraus|hieraus)\s+(?:eine\s+)?animation|"
-    r"turn\s+(?:this|that)\s+(?:image|picture)\s+into\s+(?:a\s+)?video|"
-    r"animate\s+(?:this|that)?\s*(?:image|picture))\b",
-    re.IGNORECASE,
-)
-_SHORTS_NOUN_PATTERN = re.compile(
-    r"\b(?:shorts?|short[\s-]*videos?|youtube[\s-]+shorts?|"
-    r"tiktoks?(?:[\s-]+videos?)?|reels?|kurzvideos?)\b",
-    re.IGNORECASE,
-)
-_SHORTS_REQUEST_VERB_PATTERN = re.compile(
-    r"\b(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|"
-    r"mach|mache|produziere|produzieren|möchte|moechte|will|brauche|"
-    r"create|generate|make|produce|want|need)\b",
-    re.IGNORECASE,
-)
-_VIDEO_GENERATE_PATTERN = re.compile(
-    r"\b(?:erstelle|generiere|erzeuge|mach(?:e)?|create|generate|make)\b"
-    r".{0,40}\b(?:video|clip)\b",
-    re.IGNORECASE,
-)
 
 
 def _looks_like_shorts_generation_request(prompt):
-    value = str(prompt or "")
-    return bool(
-        _SHORTS_NOUN_PATTERN.search(value)
-        and _SHORTS_REQUEST_VERB_PATTERN.search(value)
-    )
+    return decide_media_intent(prompt).intent == "shorts_generate"
 
 
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
-    if _looks_like_shorts_generation_request(value):
-        return "shorts_generate"
-    if _VIDEO_ANIMATE_PATTERN.search(value):
-        return "video_animate"
-    if _VIDEO_GENERATE_PATTERN.search(value):
-        return "video_generate"
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    if media.handles_turn:
+        return media.chat_routing()["intent"]
     try:
         active_code_workspace = code_workspaces.active_workspace() is not None
     except ValueError:
@@ -4750,12 +4579,6 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
 
     # An attached image is stronger context than the active coding
     # workspace for an explicit image-edit request.
-    if (
-        file_context
-        and _file_context_is_image(file_context)
-        and _looks_like_image_edit_request(value)
-    ):
-        return "image_edit"
 
     if workspace_read_request:
         return "coding_agent"
@@ -4836,15 +4659,7 @@ def _deterministic_chat_action(prompt, file_context=None, conversation_context=N
         return "orchestrator"
     if _looks_like_disk_usage_request(value):
         return "diagnostic_agent"
-    if (
-        file_context
-        and _file_context_is_image(file_context)
-        and _looks_like_image_edit_request(value)
-    ):
-        return "image_edit"
 
-    if _looks_like_image_generation_request(value):
-        return "image_generate"
     if "indexiere" in value:
         return "knowledge_add"
     if any(word in value for word in ("wie viele dateien", "knowledge status", "status der wissensbasis")):
@@ -5503,6 +5318,10 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     requests.  Those candidates are deliberately ignored here so that ordinary
     prose is classified semantically before an agent loop can start.
     """
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    if media.handles_turn:
+        return media.chat_routing()["intent"]
+
     candidate = _deterministic_chat_action(
         prompt,
         file_context,
@@ -6274,6 +6093,10 @@ def classify_chat_action_details(
     classifier=None,
     manager_classifier=None,
 ):
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    if media.handles_turn:
+        return media.chat_routing()
+
     deterministic=_direct_chat_action(
         prompt,
         file_context,
@@ -6371,6 +6194,9 @@ def classify_chat_action_details(
         if manager_error:
             result["manager_error"] = manager_error
         return result
+
+    if intent in MEDIA_ACTIONS:
+        return media.chat_routing() | {"original_intent": intent, "guard": "execution_required"}
 
     requires_tools=semantic.get("requires_tools")
 
@@ -9130,37 +8956,7 @@ def route_chat_action(request: ChatActionRequest):
 
 
 def _looks_like_image_edit_request(prompt):
-    value = str(prompt or "").strip()
-
-    if not value:
-        return False
-
-    if _IMAGE_QUESTION_PATTERN.search(value):
-        return False
-
-    if _IMAGE_EDIT_VERB_PATTERN.search(value):
-        return True
-
-    if _IMAGE_EDIT_FOLLOWUP_PATTERN.search(value):
-        return True
-
-    if (
-        _IMAGE_EDIT_MAKE_PATTERN.search(value)
-        and _IMAGE_EDIT_MODIFIER_PATTERN.search(value)
-    ):
-        return True
-
-    return bool(
-        (
-            re.search(r"\b(?:hintergrund|background)\b", value, re.IGNORECASE)
-            and re.search(
-                r"\b(?:unscharf|dunkler|heller|blurry|blurred|darker|lighter)\b",
-                value,
-                re.IGNORECASE,
-            )
-        )
-        or re.search(r"\b(?:andere|andre)\s+farb(?:e|en)\b", value, re.IGNORECASE)
-    )
+    return decide_media_intent(prompt, has_image=True).intent == "image_edit"
 
 
 def _image_source_routing_context(request):
@@ -9176,15 +8972,7 @@ def _image_source_routing_context(request):
 
 
 def _looks_like_image_generation_request(prompt):
-    value = str(prompt or "").strip()
-
-    return bool(
-        _IMAGE_NOUN_OF_PATTERN.search(value)
-        or (
-            _IMAGE_CREATION_VERB_PATTERN.search(value)
-            and _IMAGE_NOUN_PATTERN.search(value)
-        )
-    )
+    return decide_media_intent(prompt).intent == "image_generate"
 
 
 def _runtime_target(action):
@@ -9197,62 +8985,34 @@ def _runtime_target(action):
 
 
 def _chat_preflight_target(action):
-    if action == "image_edit":
-        return "image_edit"
+    if action in {"image_edit", "shorts_generate"}:
+        return action
     return _runtime_target(action)
 
 
 def _resolved_media_action(request, routing_file_context):
-    """Validate and expand a client-provided preflight media target."""
-    target = request.resolved_target
-    action_target = {
-        "image_generate": "image",
-        "image_edit": "image_edit",
-        "video_generate": "video",
-        "video_animate": "video",
-    }.get(request.action)
-
-    if target is not None and action_target is not None and action_target != target:
-        raise HTTPException(422, "Action passt nicht zum aufgelösten Ziel")
-
-    if target not in {"image", "image_edit", "video"}:
-        return None
-
-    if target == "image_edit":
-        if not _file_context_is_image(routing_file_context):
-            raise HTTPException(422, "Bildbearbeitung benötigt ein Quellbild")
-        return "image_edit"
-
-    if target == "image":
-        return "image_generate"
-
-    if request.action in {"video_generate", "video_animate"}:
-        return request.action
-
-    if (
-        _VIDEO_ANIMATE_PATTERN.search(request.prompt)
-        or _file_context_is_image(routing_file_context)
-    ):
-        return "video_animate"
-    return "video_generate"
+    """Client targets are hints; execution is authorized from the instruction."""
+    media = decide_media_intent(
+        request.prompt,
+        has_image=_file_context_is_image(routing_file_context),
+        action=request.action,
+    )
+    return media.intent if media.execution_requested else None
 
 
 @app.post("/api/chat/actions/route")
 def preflight_chat_action(request: ChatActionRequest):
     """Classify a turn without starting a job or changing model runtime."""
     routing_file_context = _image_source_routing_context(request)
-    direct = _direct_chat_action(
+    media = decide_media_intent(
         request.prompt,
-        routing_file_context,
-        request.conversation_context,
+        has_image=_file_context_is_image(routing_file_context),
+        action=request.action,
     )
-    if direct is None:
-        direct = classify_chat_action_details(
-            request.prompt,
-            routing_file_context,
-            request.conversation_context,
-        ).get("intent")
-    return {"target": _chat_preflight_target(direct)}
+    if media.handles_turn or request.resolved_target:
+        return media.payload()
+    routing = classify_chat_action_details(request.prompt, routing_file_context, request.conversation_context)
+    return media.payload() | routing | {"target": _chat_preflight_target(routing["intent"])}
 
 
 @app.post("/api/chat/actions")
@@ -9261,85 +9021,22 @@ def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
 
-    resolved_media_action = _resolved_media_action(
-        request,
-        routing_file_context,
+    media = decide_media_intent(
+        request.prompt,
+        has_image=_file_context_is_image(routing_file_context),
+        action=request.action,
     )
-
-    if resolved_media_action is not None:
-        routing = {
-            "intent": resolved_media_action,
-            "confidence": 1.0,
-            "requires_tools": True,
-            "reason": "Validated media preflight target",
-            "method": "preflight_target",
-        }
-    elif _looks_like_shorts_generation_request(request.prompt):
-        routing = {
-            "intent": "shorts_generate", "confidence": 1.0,
-            "requires_tools": True, "reason": "Deterministic Shorts request",
-            "method": "deterministic_shorts_generate",
-        }
-    elif request.action in {"video_generate", "video_animate"}:
-        routing = {
-            "intent": request.action, "confidence": 1.0,
-            "requires_tools": True, "reason": "Explicit video action",
-            "method": "explicit_video",
-        }
-    elif _VIDEO_ANIMATE_PATTERN.search(request.prompt):
-        routing = {
-            "intent": "video_animate", "confidence": 1.0,
-            "requires_tools": True, "reason": "Deterministic image animation request",
-            "method": "deterministic_video_animate",
-        }
-    elif _VIDEO_GENERATE_PATTERN.search(request.prompt):
-        routing = {
-            "intent": "video_generate", "confidence": 1.0,
-            "requires_tools": True, "reason": "Deterministic video request",
-            "method": "deterministic_video_generate",
-        }
-    elif request.action == "image_upscale":
-        routing = {
-            "intent": "image_upscale",
-            "confidence": 1.0,
-            "requires_tools": True,
-            "reason": "Explicit image upscale action",
-            "method": "explicit_image_upscale",
-        }
-
-    elif (
-        _file_context_is_image(routing_file_context)
-        and _looks_like_image_edit_request(request.prompt)
-    ):
-        routing = {
-            "intent": "image_edit",
-            "confidence": 1.0,
-            "requires_tools": True,
-            "reason": (
-                "Image attachment with explicit "
-                "image-edit instruction"
-            ),
-            "method": "deterministic_image_edit",
-        }
+    if request.resolved_target == "chat" and media.execution_requested:
+        routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
+        routing["guard"] = "preflight_chat_fallback"
+    elif media.handles_turn or request.resolved_target in {"image", "image_edit", "video", "shorts_generate"}:
+        routing = media.chat_routing()
 
     elif isinstance(routing_file_context, dict) and routing_file_context.get("document_id"):
         routing = {
             "intent": "research_agent", "confidence": 1.0,
             "requires_tools": True, "reason": "Gebundenes Chat-Dokument",
             "method": "deterministic_document",
-        }
-
-    elif (
-        _file_context_is_image(request.file_context)
-        or (request.active_artifact_id and re.search(
-            r"\b(?:bild|foto|image|picture|darauf|dieses bild|das bild)\b",
-            request.prompt, re.IGNORECASE,
-        ))
-    ):
-        routing = {
-            "intent": "normal_chat", "confidence": 1.0,
-            "requires_tools": False, "reason": "Gebundenes Chat-Bild",
-            "method": "deterministic_vision",
         }
 
     else:
@@ -9366,7 +9063,8 @@ def run_chat_action(request: ChatActionRequest):
 
     action = routing["intent"]
     routing = dict(routing)
-    routing["target"] = _runtime_target(action)
+    routing["target"] = _chat_preflight_target(action)
+    routing.setdefault("execution_requested", False)
 
     if (
         action in SEMANTIC_ROUTER_AGENT_INTENTS
@@ -9385,6 +9083,15 @@ def run_chat_action(request: ChatActionRequest):
             "Semantischer Agent-Intent war nicht eindeutig genug."
         )
         action = "normal_chat"
+
+    if action in MEDIA_ACTIONS and not routing.get("execution_requested"):
+        routing = media.chat_routing() | {"original_intent": action, "guard": "execution_required"}
+        action = "normal_chat"
+
+    def routed_result(result):
+        result = dict(result)
+        result["data"] = dict(result.get("data") or {}) | {"routing": routing}
+        return result
 
     if action.startswith("file_"):
         return chat_tool_result(action, "requires_file_route", {"message": "Bestehende Datei-Pipeline verwenden"})
@@ -9416,13 +9123,13 @@ def run_chat_action(request: ChatActionRequest):
 
     if action == "shorts_generate":
         try:
-            return _shorts_job_tool_result(_start_chat_shorts_job(request))
+            return routed_result(_shorts_job_tool_result(_start_chat_shorts_job(request)))
         except HTTPException as exc:
             if exc.status_code == 409:
                 raise
-            return chat_tool_result(action, "failed", error=str(exc.detail))
+            return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc.detail))
         except Exception as exc:
-            return chat_tool_result(action, "failed", error=str(exc))
+            return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc))
 
     if action in {
         "image_generate",
@@ -9434,7 +9141,7 @@ def run_chat_action(request: ChatActionRequest):
             return chat_tool_result(
                 action,
                 job.get("status", "queued"),
-                {"job": job},
+                {"job": job, "routing": routing},
             )
         except HTTPException as exc:
             if exc.status_code == 409:
@@ -9442,25 +9149,27 @@ def run_chat_action(request: ChatActionRequest):
             return chat_tool_result(
                 action,
                 "failed",
+                {"routing": routing},
                 error=str(exc.detail),
             )
         except Exception as exc:
             return chat_tool_result(
                 action,
                 "failed",
+                {"routing": routing},
                 error=str(exc),
             )
 
     if action in {"video_generate", "video_animate"}:
         try:
             job = _start_chat_video_job(action, request)
-            return _video_job_tool_result(job)
+            return routed_result(_video_job_tool_result(job))
         except HTTPException as exc:
             if exc.status_code == 409:
                 raise
-            return chat_tool_result(action, "failed", error=str(exc.detail))
+            return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc.detail))
         except Exception as exc:
-            return chat_tool_result(action, "failed", error=str(exc))
+            return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc))
 
     handler = TOOLS.get(action)
     if not handler:
@@ -12753,6 +12462,7 @@ def _chat_run_context(request, run_id):
         document_ids=tuple(dict.fromkeys(documents)),
         artifact_ids=tuple(dict.fromkeys(artifacts)),
         resources_bound=True, chat_revision=request.chat_revision,
+        user_goal=request.goal,
         workspace_id=request.workspace_id, workspace_bound=request.workspace_bound,
         conversation=tuple(
             (str(item.get("role")), str(item.get("content"))[:2000])

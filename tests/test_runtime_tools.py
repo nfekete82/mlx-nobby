@@ -124,7 +124,7 @@ class RuntimeToolAdapterTests(unittest.TestCase):
     def test_image_job_adapter_preserves_chat_contract(self):
         with mock.patch.object(self.app, "read_chat", return_value={"revision": 2}), \
              mock.patch.object(self.app, "_start_chat_image_job", return_value={"id": "job-one", "status": "queued"}) as start:
-            job = self.approved("image_generate", query="A red square")
+            job = self.approved("image_generate", goal="Create an image", query="A red square")
         self.assertEqual(job["status"], "queued")
         request = start.call_args.args[1]
         self.assertEqual((request.chat_id, request.chat_revision, request.prompt),
@@ -132,7 +132,7 @@ class RuntimeToolAdapterTests(unittest.TestCase):
         image_id = "image-1234567890-abcdef123456"
         with mock.patch.object(self.app, "read_chat", return_value={"revision": 2, "image_id": "1234567890-abcdef123456"}), \
              mock.patch.object(self.app, "_start_chat_image_job", return_value={"id": "job-two", "status": "queued"}):
-            self.assertEqual(self.approved("image_edit", query="Make it blue", options={"artifact_id": image_id})["id"], "job-two")
+            self.assertEqual(self.approved("image_edit", goal="Make it blue", query="Make it blue", options={"artifact_id": image_id})["id"], "job-two")
         with mock.patch.object(self.app.image_api, "request", return_value={"chat_id": "other-chat", "operation": "generate", "status": "queued"}):
             with self.assertRaisesRegex(ValueError, "IMAGE_JOB_OUTSIDE_CHAT"):
                 self.execute("image_job_status", query="a" * 24)
@@ -161,7 +161,7 @@ class RuntimeToolAdapterTests(unittest.TestCase):
              mock.patch.object(shorts_planner, "plan_short", return_value=project) as plan, \
              mock.patch.object(shorts_jobs, "create_short_job", return_value=created) as create, \
              mock.patch.object(shorts_jobs, "start_short_job") as start:
-            result = self.approved("shorts_generate", query=prompt)
+            result = self.approved("shorts_generate", goal=prompt, query=prompt)
 
         plan.assert_called_once_with(prompt, provider, run_context=self.context)
         create.assert_called_once_with(
@@ -182,7 +182,7 @@ class RuntimeToolAdapterTests(unittest.TestCase):
              mock.patch.object(shorts_jobs, "create_short_job") as create, \
              mock.patch.object(shorts_jobs, "start_short_job") as start:
             with self.assertRaises(shorts_planner.ShortPlanningError) as caught:
-                self.approved("shorts_generate", query="Erstelle ein Short")
+                self.approved("shorts_generate", goal="Erstelle ein Short", query="Erstelle ein Short")
 
         self.assertIs(caught.exception, error)
         create.assert_not_called()

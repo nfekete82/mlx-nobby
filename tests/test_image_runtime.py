@@ -3332,94 +3332,35 @@ class ImageRuntimeTests(unittest.TestCase):
                     result = agent.preflight_chat_action(
                         agent.ChatActionRequest(prompt=prompt)
                     )
-                    self.assertEqual(result, {"target": "image"})
+                    self.assertEqual(result["target"], "chat")
+                    self.assertFalse(result["execution_requested"])
 
         image_job.assert_not_called()
         video_job.assert_not_called()
 
     def test_media_preflight_targets_chat_video_and_image_edit(self):
-        with patch.object(
-            agent,
-            "semantic_intent_classifier",
-            return_value={
-                "intent": "normal_chat",
-                "confidence": 0.99,
-                "requires_tools": False,
-                "reason": "ordinary chat",
-            },
+        for prompt, context, target in (
+            ("Why is the sky blue?", None, "chat"),
+            ("Create a video of waves on a beach", None, "video"),
+            ("Make the background darker", {"kind": "image"}, "image_edit"),
         ):
-            self.assertEqual(
-                agent.preflight_chat_action(
-                    agent.ChatActionRequest(prompt="Why is the sky blue?")
-                ),
-                {"target": "chat"},
-            )
+            with patch.object(agent, "semantic_intent_classifier", return_value={
+                "intent": "normal_chat", "confidence": .99, "requires_tools": False,
+            }):
+                decision = agent.preflight_chat_action(agent.ChatActionRequest(prompt=prompt, file_context=context))
+            self.assertEqual(decision["target"], target)
+            self.assertEqual(decision["execution_requested"], target != "chat")
 
-        self.assertEqual(
-            agent.preflight_chat_action(
-                agent.ChatActionRequest(
-                    prompt="Create a video of waves on a beach"
-                )
-            ),
-            {"target": "video"},
-        )
-        self.assertEqual(
-            agent.preflight_chat_action(
-                agent.ChatActionRequest(
-                    prompt="Make the background darker",
-                    file_context={
-                        "kind": "image",
-                        "mime_type": "image/png",
-                        "stored_path": "/tmp/source.png",
-                    },
-                )
-            ),
-            {"target": "image_edit"},
-        )
-
-    def test_resolved_media_target_skips_second_router_pass(self):
+    def test_resolved_media_target_does_not_authorize_execution(self):
         request = self.make_chat_action_request(
-            prompt="beautiful sunset over the Alps",
-            resolved_target="image",
+            prompt="beautiful sunset over the Alps", resolved_target="image",
         )
-        queued_job = {
-            "id": "a" * 24,
-            "operation": "generate",
-            "status": "queued",
-        }
-
-        with patch.object(
-            agent,
-            "classify_chat_action_details",
-        ) as classify, patch.object(
-            agent,
-            "_start_chat_image_job",
-            return_value=queued_job,
-        ) as start_job:
+        with patch.object(agent, "classify_chat_action_details") as classify, patch.object(agent, "_start_chat_image_job") as start_job:
             result = agent.run_chat_action(request)
-
         classify.assert_not_called()
-        start_job.assert_called_once_with("image_generate", request)
-        self.assertEqual(result["tool"], "image_generate")
+        start_job.assert_not_called()
+        self.assertEqual(result["tool"], "normal_chat")
 
-        with self.assertRaises(HTTPException) as mismatch:
-            agent.run_chat_action(
-                self.make_chat_action_request(
-                    prompt="Edit this",
-                    action="image_edit",
-                    resolved_target="image",
-                )
-            )
-        self.assertEqual(mismatch.exception.status_code, 422)
-
-        with self.assertRaises(HTTPException) as missing_source:
-            agent.run_chat_action(
-                self.make_chat_action_request(
-                    prompt="Make it warmer",
-                    resolved_target="image_edit",
-                )
-            )
-        self.assertEqual(missing_source.exception.status_code, 422)
 
 
     def test_delete_chat_images_tolerates_file_disappearing_before_unlink(self):

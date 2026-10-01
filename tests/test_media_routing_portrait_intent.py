@@ -18,7 +18,7 @@ def test_portrait_generation_intent_matches_common_creation_prompts():
     assert portrait_runtime.is_explicit_portrait_generation(
         "Generiere einen Headshot mit weichem Studiolicht."
     )
-    assert portrait_runtime.is_explicit_portrait_generation(
+    assert not portrait_runtime.is_explicit_portrait_generation(
         "Porträt von einer Frau bei Sonnenuntergang."
     )
     assert not portrait_runtime.is_explicit_portrait_generation(
@@ -76,8 +76,8 @@ def test_portrait_request_survives_web_confidence_guard():
     observatory = guarded["routing_observatory"]
     assert observatory["original_target"] == "image"
     assert observatory["target"] == "image"
-    assert observatory["confidence"] == 0.98
-    assert observatory["confidence_source"] == "heuristic"
+    assert observatory["confidence"] == 1.0
+    assert observatory["confidence_source"] == "central_media_intent"
     assert observatory["guarded"] is False
 
 
@@ -92,13 +92,13 @@ def test_portrait_how_to_question_is_demoted_to_chat():
     )
 
     assert guarded["target"] == "chat"
-    assert guarded["routing_guard"] == "instructional_portrait_question"
+    assert guarded["routing_guard"] == "text_request_priority"
     observatory = guarded["routing_observatory"]
     assert observatory["original_target"] == "image"
     assert observatory["target"] == "chat"
-    assert observatory["confidence"] == 0.62
-    assert observatory["confidence_source"] == "heuristic"
-    assert observatory["reason"] == "instructional_portrait_question"
+    assert observatory["confidence"] == 1.0
+    assert observatory["confidence_source"] == "central_media_intent"
+    assert observatory["reason"] == "text_request_priority"
     assert observatory["guarded"] is True
 
 
@@ -113,13 +113,13 @@ def test_portrait_discussion_question_is_demoted_to_chat():
     )
 
     assert guarded["target"] == "chat"
-    assert guarded["routing_guard"] == "portrait_chat_question"
+    assert guarded["routing_guard"] == "text_request_priority"
     observatory = guarded["routing_observatory"]
     assert observatory["original_target"] == "image"
     assert observatory["target"] == "chat"
-    assert observatory["confidence"] == 0.99
-    assert observatory["confidence_source"] == "router"
-    assert observatory["reason"] == "portrait_chat_question"
+    assert observatory["confidence"] == 1.0
+    assert observatory["confidence_source"] == "central_media_intent"
+    assert observatory["reason"] == "text_request_priority"
     assert observatory["guarded"] is True
 
 

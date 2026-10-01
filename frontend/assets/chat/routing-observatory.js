@@ -57,6 +57,9 @@
             reason_explicit_shorts_intent_required: 'Explicit Shorts intent required',
             reason_long_form_chat_fallback: 'Long-form chat fallback',
             reason_instructional_portrait_question: 'Instructional portrait question → chat',
+            reason_text_request_priority: 'Text request takes priority → chat',
+            reason_execution_required: 'No explicit media execution → chat',
+            reason_central_media_intent: 'Central intent decision',
             reason_conservative_fallback: 'Conservative fallback'
         },
         de: {}
