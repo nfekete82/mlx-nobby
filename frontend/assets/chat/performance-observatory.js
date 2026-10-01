@@ -74,6 +74,27 @@
     let refreshTimer = null;
     let busy = false;
     let mountAttempts = 0;
+    let visibilityObserver = null;
+
+    function refreshIfVisible() {
+        if (!root || document.hidden || root.closest('[hidden]')) return;
+        const settings = root.closest('.settings');
+        if (settings && !settings.classList.contains('open')) return;
+        return refresh();
+    }
+
+    function observeVisibility() {
+        if (typeof MutationObserver !== 'undefined') {
+            visibilityObserver = new MutationObserver(refreshIfVisible);
+            for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+                visibilityObserver.observe(parent, {
+                    attributes: true,
+                    attributeFilter: ['class', 'hidden']
+                });
+            }
+        }
+        document.addEventListener('visibilitychange', refreshIfVisible);
+    }
 
     function locale() {
         const current = window.MLXI18n?.getLocale?.()
@@ -523,8 +544,9 @@
         root = buildRoot();
         const health = document.getElementById('systemHealthV1');
         legacyGrid.parentElement.insertBefore(root, health || legacyGrid);
-        await refresh();
-        refreshTimer = setInterval(refresh, REFRESH_MS);
+        observeVisibility();
+        await refreshIfVisible();
+        refreshTimer = setInterval(refreshIfVisible, REFRESH_MS);
         return true;
     }
 
@@ -549,5 +571,7 @@
 
     window.addEventListener?.('beforeunload', () => {
         if (refreshTimer != null) clearInterval(refreshTimer);
+        visibilityObserver?.disconnect();
+        document.removeEventListener('visibilitychange', refreshIfVisible);
     });
 })();
