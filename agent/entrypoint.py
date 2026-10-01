@@ -20,6 +20,7 @@ from agent.app import (
 from agent.automation_routes import install_routes as install_automation_routes
 from agent.image_generation_intent_runtime import install_runtime as install_image_generation_intent_runtime
 from agent.image_pipeline_routes import install_routes as install_image_pipeline_routes
+from agent.image_prompt_quality_runtime import install_runtime as install_image_prompt_quality_runtime
 from agent.media_queue_performance import install as install_media_queue_performance
 from agent.memory_middleware import MemoryChatMiddleware
 from agent.memory_routes import install_routes as install_memory_routes
@@ -39,6 +40,7 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 app.add_middleware(MemoryChatMiddleware)
 
 install_image_generation_intent_runtime()
+install_image_prompt_quality_runtime()
 install_media_queue_performance()
 install_image_pipeline_routes(app)
 install_memory_routes(app)
