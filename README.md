@@ -66,7 +66,9 @@ flowchart LR
     Web -->|host.docker.internal:8010| Agent[macOS agent<br/>:8010]
     Agent --> Runtime[MLX-LM runtime<br/>:8000]
     Agent --> Embeddings[Embedding service<br/>:8020]
+    Embeddings --> MLXServe[MLX-Serve<br/>:11234]
     Agent --> Images[Image service<br/>:8030]
+    Images --> MLXServe
     Agent --> Router[MLX-VLM router<br/>:8040]
     Agent --> Speech[Speech service<br/>:8050]
     Agent --> Video[Video service<br/>:8060]
@@ -82,6 +84,7 @@ flowchart LR
 | 8050 | Speech service | macOS | `127.0.0.1` |
 | 8060 | Video service / LTX dispatch | macOS | `127.0.0.1` |
 | 8090 | Web application | Docker | `127.0.0.1` |
+| 11234 | MLX-Serve shared model endpoint | macOS | `127.0.0.1` |
 
 MLX must remain native. Moving MLX into the Docker image would remove the
 intended Apple Silicon runtime path.
