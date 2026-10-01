@@ -27,14 +27,14 @@ Start keine periodischen Workspace-Requests mehr. Ihr medianer API-Verkehr sinkt
 von **14.946 auf 18 Requests/min**. Der konkurrierende Lock-Test blockierte vorher
 in allen fünf Läufen; nachher kommen beide Threads in allen fünf Läufen weiter.
 
-**Grenze der Hostmessung:** Ein bereits offener Chrome-Tab führt noch den alten
-JavaScript-Code aus. Eine Container-Aktualisierung ersetzt diesen Code im
-laufenden Tab nicht. Chrome erlaubt hier kein JavaScript über Apple Events;
-ein Reload mit Prüfung auf Entwürfe/laufende Aufgaben war deshalb nicht möglich.
-Der Benutzer wurde um einen sicheren Reload gebeten. Die weiterhin hohe
-Host-Request-Rate und Agent-CPU sind kein Nachweis für ein Versagen des neuen
-Codes. Eine vollständige Host-Nachher-Messung ohne diesen alten Client steht aus.
-Es wird kein belegter Gewinn an Modell-TTFT, Tokens/s oder Unified Memory behauptet.
+**Finale Hostprüfung nach Benutzer-Reload:** Fünf passive Idle-Fenster mit genau
+einem frisch hart neu geladenen Nobby-Tab zeigen **null Workspace-Requests**.
+Agent-CPU sinkt gegenüber der passiven Altclient-Serie von **84,56 % auf 0,82 %**
+eines Kerns, OrbStack von **189,43 % auf 1,43 %**. Die Gesamt-CPU ist
+**87,68–94,81 % idle**. Es gibt keinen verbleibenden Hinweis auf die Request-Schleife
+oder ungewöhnliche Nobby-Idle-Last. Der kontrollierte Dienstvergleich und die
+Grenzen der Gesamt-Host-/RAM-Vergleichbarkeit stehen unten. Es wird kein belegter
+Gewinn an Modell-TTFT, Tokens/s oder Unified Memory behauptet.
 
 ## Messverfahren
 
@@ -183,7 +183,7 @@ Memory-Leak oder Memory-Fix. `ps`-RSS und MLX/Metal-Speicher werden nicht addier
 `memory_pressure` ist ein macOS-Verfügbarkeitssignal und keine exakte
 Unified-Memory-Bilanz.
 
-### Finale passive Hostmessung
+### Passive Hostmessung vor dem Benutzer-Reload (Altclient)
 
 Nach allen fünf Änderungen wurden erneut fünf Fenster à zehn Sekunden ohne
 zusätzliche Modell-Benchmarks erfasst. Der alte Chrome-Tab blieb aktiv:
@@ -195,8 +195,138 @@ aktive Altclient-Last. Der kleine RSS-Anstieg in diesem kurzen Fenster reicht
 nicht zur Diagnose eines Leaks und wird nicht als Memory-Verbesserung dargestellt.
 
 Die abschließenden zwei kurzen Vision-Webrequests nach dem fünften Fix lieferten
-Inhalt ohne Fehler. Eine Host-CPU-/RAM-Nachher-Messung unter vollständig neu
-geladenen Browserclients bleibt offen.
+Inhalt ohne Fehler. Die anschließende Hostprüfung mit neu geladenem Client folgt unten.
+
+### Finaler Whole-Host-Idle-Vergleich nach dem Benutzer-Reload
+
+**1. Oktober 2026, 15:14:50–15:15:41 CEST.** Der Benutzer bestätigte, dass alle
+alten Nobby-Tabs geschlossen sind und genau ein frisch hart neu geladener Tab
+läuft. Zehn Sekunden zusätzliche Ruhezeit, anschließend fünf passive Fenster
+von jeweils 10,037–10,043 s. Keine Inferenz, Tests, zusätzlichen HTTP-Probes,
+Dienstneustarts oder Runtime-Änderungen während dieser Messung. Normale
+Status-/Notification-Timer und andere Desktop-Anwendungen bleiben aktiv.
+
+Vergleichsbasis ist die unmittelbar vorher dokumentierte passive **5 × 10 s**
+Altclient-Serie nach denselben fünf Codeänderungen. Agent **17962**, OrbStack
+**920** und Modellserver **79089** bleiben dieselben Prozesse; der anschließende
+Status bestätigt dasselbe Modell und `thinking: false`. Die Intervention ist
+Schließen der Altclients plus Hard-Reload, kein weiterer Backend-Patch. Das ist
+ein Vergleich der Nobby-Idle-Last bei korrigiertem Client, kein vollständig
+isoliertes A/B des gesamten Desktops oder verschiedener Backend-Versionen.
+
+| Fenster | Workspace-Requests | Agent-Requests/min | Agent-CPU, ein Kern | OrbStack-CPU, ein Kern | Host-CPU idle | PhysMem used / unused laut `top` |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | 0 | 11,95 | 0,80 % | 1,49 % | 91,54 % | 40G / 7173M |
+| 2 | 0 | 17,93 | 0,90 % | 1,39 % | 93,78 % | 40G / 7362M |
+| 3 | 0 | 17,93 | 0,90 % | 1,49 % | 94,81 % | 40G / 7479M |
+| 4 | 0 | 11,95 | 0,70 % | 1,49 % | 87,68 % | 42G / 5414M |
+| 5 | 0 | 17,92 | 0,80 % | 1,29 % | 91,70 % | 42G / 5394M |
+
+`top -l 6 -s 10 -n 0` liefert nach Verwerfen der ersten CPU-Anzeige fünf
+Intervallwerte. Diese laufen parallel zu den Prozess-/Logfenstern, nicht exakt
+an deren Grenzen; `top` und Snapshot-Aufrufe erzeugen selbst etwas Messlast.
+Die Hostwerte sind über **18 logische Kerne** normalisiert. Prozess-CPU wird
+aus kumulierter CPU-Zeit berechnet, nicht aus dem geglätteten `ps %cpu`:
+`100 × (CPU-Sekunden Ende − Anfang) / verstrichene Sekunden`.
+
+| Vergleich | Altclient, passive Vorher-Serie | Ein neu geladener Nobby-Tab |
+| --- | ---: | ---: |
+| Workspace-Calls/min, Median / p95 | 60.327 / 61.112 | 0 / 0 |
+| Alle Agent-Calls/min, Median / p95 | 60.345 / 61.124 | 17,92 / 17,93 |
+| Agent-CPU aus gesamtem Zeit-Delta | 84,56 % | 0,82 % |
+| OrbStack-CPU aus gesamtem Zeit-Delta | 189,43 % | 1,43 % |
+| Agent-RSS, beobachteter Bereich | 390,22–396,12 MiB | 403,70–404,50 MiB |
+| OrbStack-RSS, beobachteter Bereich | 1232,23–1250,27 MiB | 998,67–1057,22 MiB |
+| `memory_pressure -Q`, Verfügbarkeitssignal | 53–89 % | 87–89 % |
+| Gesamt-Host-CPU, Median idle / größter Busy-Wert | kein entsprechender Fünf-Fenster-Baselinewert | 91,70 % / 12,32 % |
+| PhysMem-/Swap-/VM-Zähler pro Fenster | nicht in der passiven Baseline erfasst | unten dokumentiert |
+
+Insgesamt **13** Agent-Requests: zehn `GET /api/status`, drei
+`GET /api/automations/notifications?limit=50&unread_only=false`. **Kein einziger**
+`GET /api/code/workspaces`, keine Diagnose-Panel-Requests und keine Chat-Requests
+in 50,201 s. Das Log wächst um insgesamt **944 Bytes**. Die Vorher-Serie enthält
+zusätzlich wenige Initialisierungs-Probes; sie erklären den damaligen Sturm nicht.
+Die zuvor hohe Agent-/OrbStack-Last verschwindet mit dem Altclient. Das ist ein
+belegter Rückgang dieser Prozesslast, keine aus fehlenden Baselinewerten
+berechnete Gesamt-Host-CPU-Verbesserung.
+
+**RAM / Unified Memory:** `hw.memsize` = **51.539.607.552 Bytes (48 GiB)**.
+`top` meldet während der fünf Intervalle gerundet **40–42G used**, **5394–7479M
+unused**, **3981–4808M wired** und **863–868M compressor**; Angaben hier bewusst
+in den originalen `top`-Einheiten. Sechs `vm_stat`-Snapshots mit 16.384-Byte-Seiten:
+freie Seiten **306.540–448.137**, aktive **1.155.011–1.199.639**, inaktive
+**1.133.447–1.177.114**, wired **254.806–311.242**, vom Compressor belegte
+**55.202–55.553**. Swap belegt **7065,75 → 7057,75 MiB** von 8192 MiB;
+**804 Swapins** (12,56 MiB), **0 neue Swapouts**, keine neuen Pageouts.
+Hoher bereits belegter Swap allein ist kein Nachweis aktuellen Speicherdrucks.
+Modellserver-RSS bleibt **311,39 MiB**, CPU über die Serie **0,86 %** eines Kerns.
+RSS bildet die Metal-/Unified-Memory-Allokation des Modells nicht vollständig ab;
+RSS, `top`-PhysMem und der frühere Inferenzpeak werden nicht addiert.
+
+**Restlast und Grenzen:** Größter beständiger Prozess ist WindowServer mit
+**28,58–45,41 % eines Kerns** (gesamt 37,19 %), gefolgt von wechselnden Chrome-
+und Desktop-Prozessen. Im vierten Fenster entstehen zusätzliche Chrome-Renderer;
+das fällt mit dem Anstieg von 40G auf 42G zusammen. Ihre Seitenzuordnung wurde
+nicht ermittelt; dieser zeitliche Zusammenhang beweist keine Memory-Root-Cause.
+Nobby-Agent und Modellserver bleiben dabei nahezu konstant, Workspace-Requests
+bei null. Die Gesamt-CPU bleibt mindestens 87,68 % idle; keine ungewöhnliche
+fortbestehende Host-Last verlangt hier einen weiteren Nobby-Fix. Der Desktop war
+nicht vollständig kontrolliert. Insbesondere ist **kein belegter RAM-Gewinn**
+festzustellen: Agent-RSS liegt sogar etwas höher als vorher. OrbStack-RSS ist
+niedriger, aber daraus folgt keine generelle Unified-Memory- oder Leak-Verbesserung.
+Eine 50-s-Idle-Stichprobe ersetzt keinen längeren Memory-Soak.
+
+#### Reproduktion der passiven Hostmessung
+
+Nach Hard-Reload nur einen Nobby-Tab offen lassen, keine Chat-/Media-Aufträge
+starten und während der Messung keine Tests laufen lassen. Im Repository-Root
+folgender Standardbibliothek-Aufruf; er liest das bestehende Log nur ab dessen
+Ende und verändert weder Dienste noch Runtime-Einstellungen. Die JSON-Datei
+enthält Zeitstempel, vollständige Prozess-/VM-Snapshots, Request-Zähler und die
+sechs `top`-Ausgaben. Erste `top`-CPU-Anzeige verwerfen; Prozess-CPU nach obiger
+Formel aus jeweils benachbarten Snapshots berechnen. Systemmessung auf macOS
+gegebenenfalls außerhalb einer Prozess-/Netzwerk-Sandbox ausführen.
+
+```sh
+python3 - <<'PY_IDLE'
+import collections, json, pathlib, re, subprocess, time
+
+def capture(*args):
+    return subprocess.check_output(args, text=True)
+
+def snapshot():
+    return {"at": time.monotonic(),
+            "ps": capture("ps", "-axo", "pid,ppid,%cpu,rss,time,comm"),
+            "vm": capture("vm_stat"),
+            "pressure": capture("memory_pressure", "-Q"),
+            "swap": capture("sysctl", "-n", "vm.swapusage")}
+
+time.sleep(10)
+out = {"hardware": capture("sysctl", "-n", "hw.memsize", "hw.logicalcpu"),
+       "snapshots": [], "windows": []}
+with pathlib.Path("agent.log").open("rb") as log, \
+        pathlib.Path("/tmp/nobby-idle-top.txt").open("w+") as top_log:
+    log.seek(0, 2)
+    top = subprocess.Popen(["top", "-l", "6", "-s", "10", "-n", "0"],
+                           stdout=top_log)
+    before = snapshot()
+    out["snapshots"].append(before)
+    for _ in range(5):
+        time.sleep(max(0, before["at"] + 10 - time.monotonic()))
+        after = snapshot()
+        data = log.read()
+        requests = collections.Counter(re.findall(
+            r' - "([A-Z]+ [^\"]+) HTTP/', data.decode(errors="replace")))
+        out["windows"].append({"seconds": after["at"] - before["at"],
+                               "requests": dict(requests), "log_bytes": len(data)})
+        out["snapshots"].append(after)
+        before = after
+    top.wait()
+    top_log.seek(0)
+    out["top"] = top_log.read()
+pathlib.Path("/tmp/nobby-idle-host.json").write_text(json.dumps(out, indent=2))
+PY_IDLE
+```
 
 ### Lange Vision-Prefills und konkurrierende Workloads
 
@@ -435,6 +565,12 @@ git status --short
 git diff --stat
 ```
 
-Offen: Hostmessung nach Reload des alten Chrome-Tabs, ausreichend viele echte
+Finale Wiederholung nach dem Benutzer-Reload und der Berichtsergänzung:
+**194 relevante Python-Tests + 81 Subtests** (Workspace, Agent, Provider,
+Lock-Reihenfolge, Benchmark und Runtime-/Vision-Reliability) sowie alle
+**125 JavaScript-Tests** bestanden. `git diff --check` ebenfalls ohne Befund;
+die bestehende Starlette/httpx-Deprecation-Warnung bleibt unverändert.
+
+Offen: ausreichend viele echte
 Cold-Runs für eine Cold-p95 und ein längerer Memory-Soak. Diese Resultate werden
 nicht als durchgeführt dargestellt. `docs/.last_sync_commit` bleibt unverändert.
