@@ -19,6 +19,27 @@ def test_user_regression_prompt_for_juggernaut_is_meta_chat_request():
     )
 
 
+def test_user_ltx_prompt_request_with_reference_image_language_stays_chat():
+    prompt = (
+        "ich brauche den perfekten prompt für ltx 2.5 damit sie einen "
+        "kussmund macht lächelt und den kopf leicht bewegt"
+    )
+
+    assert is_media_prompt_meta_request(prompt)
+
+    install_media_prompt_meta_guard()
+    guarded = _guard(
+        prompt,
+        target="video",
+        confidence=0.99,
+    )
+
+    assert guarded["target"] == "chat"
+    assert guarded["routing_guard"] == "media_prompt_meta_chat"
+    assert guarded["routing_observatory"]["reason"] == "media_prompt_meta_chat"
+    assert guarded["routing_observatory"]["guarded"] is True
+
+
 def test_prompt_optimization_is_meta_chat_request():
     assert is_media_prompt_meta_request("Optimiere diesen Prompt bitte für Juggernaut XL.")
     assert is_media_prompt_meta_request("Welchen Prompt würdest du für SDXL verwenden?")

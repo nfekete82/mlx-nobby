@@ -136,7 +136,84 @@ def _sse_error(message: str, code: str, *, retryable: bool) -> bytes:
         },
         ensure_ascii=False,
     )
-    return f"data: {payload}\n\n".encode("utf-8")
+    return (
+        "event: error\n"
+        f"data: {payload}\n\n"
+    ).encode("utf-8")
+
+
+class _SemanticSseTracker:
+    """Track whether an SSE stream produced actual assistant output.
+
+    Metrics, source metadata and a terminal ``done`` event are transport
+    bookkeeping, not a model answer. Without this distinction a vision backend
+    can return an empty OpenAI response and still look successful to the
+    reliability layer, leaving a blank assistant bubble in the UI.
+    """
+
+    def __init__(self):
+        self.buffer = ""
+        self.has_output = False
+        self.has_error = False
+
+    def feed(self, chunk) -> None:
+        if isinstance(chunk, bytes):
+            text = chunk.decode("utf-8", errors="replace")
+        else:
+            text = str(chunk)
+
+        self.buffer += text.replace("\r\n", "\n")
+
+        while "\n\n" in self.buffer:
+            event, self.buffer = self.buffer.split("\n\n", 1)
+            self._observe(event)
+
+    def finish(self) -> None:
+        if self.buffer.strip():
+            self._observe(self.buffer)
+        self.buffer = ""
+
+    def _observe(self, event: str) -> None:
+        event_name = "message"
+        data_lines = []
+
+        for line in event.splitlines():
+            if line.startswith("event:"):
+                event_name = line[6:].strip().lower()
+            elif line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())
+
+        if event_name == "error":
+            self.has_error = True
+            return
+
+        if not data_lines:
+            return
+
+        try:
+            payload = json.loads("\n".join(data_lines))
+        except Exception:
+            return
+
+        if not isinstance(payload, dict):
+            return
+
+        if payload.get("error"):
+            self.has_error = True
+            return
+
+        text = str(payload.get("text") or "").strip()
+        payload_type = str(payload.get("type") or "").strip().lower()
+
+        if text and (
+            payload_type in {"content", "reasoning"}
+            or event_name == "message"
+        ):
+            self.has_output = True
+
+    @property
+    def completed_meaningfully(self) -> bool:
+        return self.has_output or self.has_error
 
 
 async def _close_iterator(iterator, pending_task=None):
@@ -184,6 +261,7 @@ async def _reliable_stream(
         attempt += 1
         response = stream_factory(request)
         iterator = response.body_iterator.__aiter__()
+        semantic = _SemanticSseTracker()
 
         ready, pending = await _wait_for_next(iterator, FIRST_BYTE_TIMEOUT)
 
@@ -258,6 +336,7 @@ async def _reliable_stream(
             )
             return
 
+        semantic.feed(first)
         emitted = True
         yield first
 
@@ -284,7 +363,15 @@ async def _reliable_stream(
             try:
                 chunk = await pending
             except StopAsyncIteration:
+                semantic.finish()
                 await _close_iterator(iterator)
+
+                if not semantic.completed_meaningfully:
+                    yield _sse_error(
+                        "Das Modell hat die Anfrage beendet, ohne Inhalt zu liefern. Bitte erneut versuchen.",
+                        "empty_response",
+                        retryable=True,
+                    )
                 return
             except Exception as exc:
                 await _close_iterator(iterator)
@@ -295,6 +382,7 @@ async def _reliable_stream(
                 )
                 return
 
+            semantic.feed(chunk)
             emitted = True
             yield chunk
 
