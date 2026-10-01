@@ -7,7 +7,10 @@ copy of the manager is `scripts/mlx`.
 
 ## Isolated environments and Python versions
 
-Each service has its own virtual environment. In particular, current MLX runtime
+Native capabilities are split across isolated Python environments. Most service
+families own an environment; the video dispatcher intentionally reuses
+`image-venv` because it coordinates the external/local LTX runtimes and does not
+need a sixth Python dependency stack. In particular, current MLX runtime
 packages and the legacy DiffusionKit image provider require incompatible MLX
 versions. Do not install these manifests into one environment.
 
@@ -21,6 +24,9 @@ versions. Do not install these manifests into one environment.
 | `test-venv` | `requirements/test.txt` | 3.13.15 |
 | Web container | `requirements/web.txt` | 3.13 (`python:3.13-slim`) |
 | Optional MFLUX environment | `requirements/mflux.txt` | 3.13.15 |
+
+The image environment is also the Python host for `video_service_dispatch` on
+port 8060. LTX model/runtime assets remain outside the virtual environment.
 
 As of 2026-09-10, all manifests were installed from public PyPI into empty
 environments on Apple Silicon (`arm64`), macOS 26.6.2, with Python 3.11.15 or
@@ -109,6 +115,17 @@ because the image adapter invokes its console commands. The commands used
 by the repository were present and accepted the adapter's arguments. Package
 installation and help checks downloaded no model weights.
 
+### Video dispatcher
+
+The video service is started by `de.nobby.mlx-video` on `127.0.0.1:8060` and
+runs `video_service_dispatch:app` with `image-venv/bin/python`. The dispatcher
+coordinates the configured LTX runtime rather than embedding a second complete
+video dependency stack in the repository virtual environments.
+
+The LaunchAgent template defines the local LTX runtime/model roots and keeps the
+service loopback-only. Video model data is runtime data and is not tracked in
+the repository.
+
 ### Vision routing
 
 An optional ONNX classifier can be used by the vision routing layer. Its
@@ -161,7 +178,8 @@ test-venv/bin/python -m pip install -r requirements/test.txt
 The native service commands and working directories are defined in
 `launchd/templates/`. `scripts/install-launchd.sh` renders them for the
 current checkout. All five service environments and the local router model must
-exist first. Existing generated plist files are not tracked.
+exist first. The video LaunchAgent uses the existing `image-venv`. Existing
+generated plist files are not tracked.
 
 The runtime configuration lives at `~/.config/mlx-server/config`. The installer
 creates this safe starting point only when the file does not already exist:
@@ -201,7 +219,7 @@ models. Run these from the repository root with native Metal access:
 ```sh
 embedding-venv/bin/python -c 'import embedding_service; print(embedding_service.MODEL_ID)'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 speech-venv/bin/python -c 'from mlx_audio.stt import load; import sentencepiece, zstandard; import speech.app'
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 image-venv/bin/python -c 'from diffusionkit.mlx import FluxPipeline; import image_service'
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 image-venv/bin/python -c 'from diffusionkit.mlx import FluxPipeline; import image_service; import video_service_dispatch'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 runtime-venv/bin/python -c 'import mlx.core, mlx_lm, mlx_vlm'
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 mflux-venv/bin/mflux-generate --help
 ```
