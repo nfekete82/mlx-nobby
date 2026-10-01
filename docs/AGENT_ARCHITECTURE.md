@@ -79,6 +79,19 @@ Metadaten für Observability und beeinflusst die Rollenwahl nicht. Web-Telemetri
 Hash und Länge, aber keine Prompt- oder Bildinhalte. Details, vorherige Reihenfolge
 und Grenzen: [Routing-Audit](ROUTING_AUDIT.md).
 
+`backend/routing_observatory.py` ergänzt einen thread-sicheren Ringpuffer mit 500
+Events im Webprozess. Der bestehende Media-Guard erfasst Preflight-Entscheidungen;
+eine passive ASGI-Middleware erfasst Chat-/Vision-SSE, Action-/Agent-Antworten und
+Media-Dispatch. Rollen und tatsächliche Modelle stammen aus vorhandenen
+ModelCallMetrics oder Job-Antworten; Router-Modelle werden separat ausgewiesen.
+Vorhandene Job-Statusabfragen aktualisieren Events ohne zusätzliche Polls.
+Ein ContextVar korreliert geplante Chat-Recovery mit dem aktuellen Event.
+`/api/routing/events`, `/stats` und DELETE `/events` liefern gefilterte Diagnosen.
+Die Tools-Ansicht pollt nur sichtbar, alle zehn Sekunden, ohne parallele Refreshes.
+Normale Events werden nicht persistiert; explizites Feedback nutzt den bestehenden
+JSON-Store. Schema, Datenschutz und Prozess-/Job-Grenzen:
+[Routing Observatory](ROUTING_OBSERVATORY.md).
+
 ## Ablauf eines Runs
 
 1. `POST /api/agent/run` validiert Eingaben und erzeugt den RunContext vor der Planung.
