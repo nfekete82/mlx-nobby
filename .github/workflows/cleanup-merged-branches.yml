@@ -1,0 +1,40 @@
+name: Cleanup merged branches
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Delete merged branch
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          case "$HEAD_BRANCH" in
+            main|backup/*)
+              echo "Protected branch, keeping: $HEAD_BRANCH"
+              exit 0
+              ;;
+          esac
+
+          if git ls-remote --exit-code --heads origin "refs/heads/$HEAD_BRANCH" >/dev/null 2>&1; then
+            echo "Deleting merged branch: $HEAD_BRANCH"
+            git push origin --delete "$HEAD_BRANCH"
+          else
+            echo "Branch already absent: $HEAD_BRANCH"
+          fi
