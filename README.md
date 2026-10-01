@@ -93,8 +93,9 @@ Prompt writing, scripts and questions stay in chat, including with reference
 images. Media jobs require explicit execution intent; attachments, adult terms
 and classifier confidence cannot start them. Image chat prefers the configured
 `vision_uncensored` role, falling back to `vision` when unavailable. The Routing
-Observatory records intent, original/final route and reason with redacted previews.
-See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
+Observatory under **Settings → Tools** shows guarded preflight decisions and actual
+chat/vision, agent and media actions in a local in-memory buffer. Prompts stay
+redacted; only submitted feedback uses the existing local store. See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
 regression workflow.
 
 Image chat allows 60 seconds before assistant output (text chat: 30 seconds)

@@ -946,6 +946,9 @@ def mlx_chat_stream(request: ChatRequest):
         }:
             vision_role = "vision"
 
+        from backend.routing_observatory import observe_vision_selection
+        observe_vision_selection(vision_route | {"role": vision_role})
+
         status = get_json(
             f"{AGENT_URL}/api/status",
             timeout=5,

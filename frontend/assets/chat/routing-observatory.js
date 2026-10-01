@@ -5,6 +5,7 @@
     window.__mlxNobbyRoutingObservatory = true;
 
     const API = '/api/routing/decisions';
+    const EVENTS_API = '/api/routing/events';
     const ROUTES = [
         'chat',
         'image',
@@ -17,6 +18,10 @@
     const FALLBACK = {
         en: {
             title: 'Routing Observatory',
+            time: 'Time', model: 'Model', duration: 'Routing time', status: 'Status', details: 'Details',
+            fallbackRate: 'Fallback Rate', errorRate: 'Error Rate', medianTime: 'Median Routing Time',
+            all: 'All', filter_route: 'Route', filter_source: 'Source', filter_success: 'Success',
+            filter_fallback: 'Fallback', filter_model_role: 'Model role',
             description: 'Shows the router decision, final route, confidence and guard reason. Feedback is stored locally as a regression candidate.',
             refresh: 'Refresh',
             loading: 'Loading routing decisions …',
@@ -73,6 +78,33 @@
     let refreshButton = null;
     let initialized = false;
     let retryTimer = null;
+    let visibilityObserver = null;
+    let liveTimer = null;
+    let busy = false;
+    let lastRefresh = 0;
+    let filters = null;
+
+    function visible() {
+        if (!card || document.hidden || card.closest('[hidden]')) return false;
+        const settings = card.closest('.settings');
+        return !settings || settings.classList.contains('open');
+    }
+
+    function visibilityChanged() {
+        clearTimeout(liveTimer);
+        liveTimer = null;
+        if (visible()) refresh({ quiet: true });
+    }
+
+    function observeVisibility() {
+        visibilityObserver?.disconnect();
+        if (typeof MutationObserver !== 'undefined') {
+            visibilityObserver = new MutationObserver(visibilityChanged);
+            for (let parent = card.parentElement; parent; parent = parent.parentElement) {
+                visibilityObserver.observe(parent, { attributes: true, attributeFilter: ['hidden', 'class'] });
+            }
+        }
+    }
 
     function locale() {
         const current = window.MLXI18n?.getLanguage?.()
@@ -163,11 +195,14 @@
         const thead = document.createElement('thead');
         const headRow = document.createElement('tr');
         [
+            t('time'),
             t('prompt'),
-            t('originalRoute'),
             t('finalRoute'),
+            t('model'),
             t('confidence'),
             t('guardReason'),
+            t('duration'),
+            t('status'),
             t('feedback')
         ].forEach(label => headRow.appendChild(el('th', '', label)));
         thead.appendChild(headRow);
@@ -175,7 +210,29 @@
         table.append(thead, tableBody);
         scroller.appendChild(table);
 
-        card.append(header, state, status, scroller);
+        filters = el('form', 'routing-observatory-filters');
+        for (const [name, choices] of Object.entries({
+            route: [...ROUTES, 'image_edit', 'video', 'video_animate'], source: ['chat', 'vision', 'media', 'agent', 'image', 'video', 'router'],
+            success: ['true', 'false'], fallback: ['true', 'false'],
+            model_role: ['chat', 'vision', 'vision_uncensored', 'agent', 'router', 'image', 'video']
+        })) {
+            const label = el('label', '', t('filter_' + name) + ' ');
+            const select = el('select', '');
+            select.name = name;
+            const all = el('option', '', t('all'));
+            all.value = '';
+            select.appendChild(all);
+            choices.forEach(value => {
+                const option = el('option', '', value);
+                option.value = value;
+                select.appendChild(option);
+            });
+            select.addEventListener('change', () => { lastRefresh = 0; refresh(); });
+            label.appendChild(select);
+            filters.appendChild(label);
+        }
+        filters.addEventListener('submit', event => event.preventDefault());
+        card.append(header, state, filters, status, scroller);
         pane.appendChild(card);
     }
 
@@ -188,14 +245,14 @@
         return item;
     }
 
-    function renderStats(decisions) {
+    function renderStats(summary) {
         if (!state) return;
-        const guarded = decisions.filter(item => item.guarded).length;
-        const wrong = decisions.filter(item => item.feedback?.correct === false).length;
+        const percent = value => (100 * (value || 0)).toFixed(1) + ' %';
         state.replaceChildren(
-            stat(t('total'), decisions.length),
-            stat(t('guarded'), guarded),
-            stat(t('wrongCount'), wrong)
+            stat(t('total'), summary.total_events || 0),
+            stat(t('fallbackRate'), percent(summary.fallback_rate)),
+            stat(t('errorRate'), percent(summary.error_rate)),
+            stat(t('medianTime'), summary.routing_p50_ms == null ? '—' : Number(summary.routing_p50_ms).toFixed(1) + ' ms')
         );
     }
 
@@ -315,7 +372,6 @@
         promptCell.append(prompt, meta);
 
         const originalRoute = decision.original_target || decision.target;
-        const originalCell = renderRouteCell(originalRoute, 'is-original');
         const finalCell = renderRouteCell(decision.target, 'is-final');
         if (decision.guarded && originalRoute !== decision.target) {
             finalCell.classList.add('is-changed');
@@ -353,20 +409,40 @@
         const feedbackCell = el('td', 'routing-feedback-cell');
         renderFeedback(decision, feedbackCell);
 
+        const details = el('details', 'routing-event-details');
+        details.appendChild(el('summary', '', t('details')));
+        details.appendChild(el('pre', '', JSON.stringify({
+            phase: decision.phase, source: decision.source,
+            intent_signals: decision.intent_signals, guards: decision.guards,
+            attachment_types: decision.attachment_types, attachment_count: decision.attachment_count,
+            fallback: decision.fallback, fallback_reason: decision.fallback_reason,
+            runtime_wait_ms: decision.latency_ms?.runtime_wait,
+            first_semantic_output_ms: decision.latency_ms?.first_semantic_output,
+            total_ms: decision.latency_ms?.total,
+            selected_tool: decision.selected_tool, router_model: decision.router_model,
+            model: decision.model, model_role: decision.selected_model_role,
+            request_id: decision.request_id, original_route: originalRoute,
+            error_code: decision.error_code
+        }, null, 2)));
+        reasonCell.appendChild(details);
+        const outcome = decision.success == null ? '—' : decision.success ? '✓' : '✕';
         row.append(
+            el('td', '', new Date((decision.timestamp || decision.created_at) * 1000).toLocaleTimeString()),
             promptCell,
-            originalCell,
             finalCell,
+            el('td', '', decision.model || decision.selected_model_role || '—'),
             confidenceCell,
             reasonCell,
+            el('td', '', decision.latency_ms?.routing == null ? '—' : Number(decision.latency_ms.routing).toFixed(1) + ' ms'),
+            el('td', '', outcome + ' ' + (decision.phase || '')),
             feedbackCell
         );
         return row;
     }
 
-    function render(decisions) {
+    function render(decisions, summary) {
         tableBody.replaceChildren();
-        renderStats(decisions);
+        renderStats(summary);
 
         if (!decisions.length) {
             status.hidden = false;
@@ -379,7 +455,11 @@
     }
 
     async function refresh(options = {}) {
-        if (!card || !tableBody) return;
+        if (!card || !tableBody || !visible() || busy) return;
+        if (options.quiet && Date.now() - lastRefresh < 10000) return;
+        busy = true;
+        lastRefresh = Date.now();
+        clearTimeout(liveTimer);
         if (!options.quiet) {
             refreshButton.disabled = true;
             status.hidden = false;
@@ -387,16 +467,25 @@
         }
 
         try {
-            const response = await fetch(API + '?limit=50', { cache: 'no-store' });
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const query = new URLSearchParams();
+            for (const select of filters.querySelectorAll('select')) {
+                if (select.value) query.set(select.name, select.value);
+            }
+            const [response, statsResponse] = await Promise.all([
+                fetch(EVENTS_API + '?' + query + '&limit=50', { cache: 'no-store' }),
+                fetch('/api/routing/stats?' + query, { cache: 'no-store' })
+            ]);
+            if (!response.ok || !statsResponse.ok) throw new Error('Routing API failed');
             const payload = await response.json();
-            render(Array.isArray(payload.decisions) ? payload.decisions : []);
+            render(Array.isArray(payload.events) ? payload.events : [], await statsResponse.json());
         } catch (error) {
             console.error('[MLX Routing Observatory] load failed', error);
             status.hidden = false;
             status.textContent = t('loadError');
         } finally {
+            busy = false;
             if (refreshButton) refreshButton.disabled = false;
+            if (visible()) liveTimer = setTimeout(() => refresh({ quiet: true }), 10000);
         }
     }
 
@@ -407,6 +496,7 @@
 
         initialized = true;
         buildCard(pane);
+        observeVisibility();
         refresh();
         return true;
     }
@@ -426,6 +516,8 @@
         initialize
     };
 
+    document.addEventListener('visibilitychange', visibilityChanged);
+
     document.addEventListener('mlx-language-changed', () => {
         loadTranslations().finally(() => {
             if (!card) return;
@@ -437,6 +529,8 @@
             refreshButton = null;
             initialized = false;
             clearTimeout(retryTimer);
+            clearTimeout(liveTimer);
+            lastRefresh = 0;
             initialize();
         });
     });

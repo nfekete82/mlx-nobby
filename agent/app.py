@@ -9001,6 +9001,7 @@ def _resolved_media_action(request, routing_file_context):
 
 
 @app.post("/api/chat/actions/route")
+@observability.observed_turn
 def preflight_chat_action(request: ChatActionRequest):
     """Classify a turn without starting a job or changing model runtime."""
     routing_file_context = _image_source_routing_context(request)
