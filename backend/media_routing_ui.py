@@ -12,15 +12,16 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from backend.media_intent import decide_media_intent, has_image_context
+from backend import routing_observatory as observatory
 
 
 MEDIA_ROUTING_SCRIPT = (
     b'<script src="/assets/chat/media-routing-fallback.js?v=20260929-chat-fallback-v1"></script>'
 )
 ROUTING_OBSERVATORY_ASSETS = (
-    b'<link rel="stylesheet" href="/assets/chat/routing-observatory.css?v=20260930-routing-v1">\n'
+    b'<link rel="stylesheet" href="/assets/chat/routing-observatory.css?v=20261001-routing-v2">\n'
     + MEDIA_ROUTING_SCRIPT
-    + b'\n<script src="/assets/chat/routing-observatory.js?v=20260930-routing-v1"></script>'
+    + b'\n<script src="/assets/chat/routing-observatory.js?v=20261001-routing-v2"></script>'
 )
 MEDIA_ROUTE_PATH = "/api/mlx/chat/actions/route"
 ROUTING_DECISION_LIMIT = 500
@@ -164,6 +165,11 @@ def save_routing_feedback(
 
     with ROUTING_OBSERVATORY_LOCK:
         payload = _read_observatory_store()
+        if not any(item.get("id") == decision_id for item in payload["decisions"]):
+            event = next((item for item in observatory.events(limit=500) if item["id"] == decision_id), None)
+            if event:
+                payload["decisions"].append(event)
+                payload["decisions"] = payload["decisions"][-ROUTING_DECISION_LIMIT:]
         for decision in payload["decisions"]:
             if decision.get("id") != decision_id:
                 continue
@@ -175,6 +181,7 @@ def save_routing_feedback(
             }
             decision["regression_candidate"] = not correct
             _write_observatory_store(payload)
+            observatory.update_event(decision_id, feedback=decision["feedback"], regression_candidate=not correct)
             return decision
 
     raise HTTPException(404, "Routing-Entscheidung nicht gefunden.")
@@ -198,7 +205,7 @@ def guard_media_route_payload(
     duration_ms: float | None = None,
     record: bool = False,
 ) -> bytes:
-    """Guard route responses and optionally persist an observability trace."""
+    """Guard route responses and optionally record an in-memory trace."""
     try:
         request_payload = json.loads(request_body.decode("utf-8"))
         response_payload = json.loads(response_body.decode("utf-8"))
@@ -262,8 +269,22 @@ def guard_media_route_payload(
 
     if record:
         try:
-            record_routing_decision(trace)
-        except (OSError, TypeError, ValueError):
+            event = observatory.record_event(
+                prompt=prompt, source="router", route=guarded_target,
+                request_id=request_payload.get("trace_id"), event_id=decision_id,
+                confidence=media.confidence if media.handles_turn or original_target in ACTIVE_MEDIA_TARGETS else response_payload.get("confidence"),
+                reason=trace["reason"] if media.handles_turn or original_target in ACTIVE_MEDIA_TARGETS else response_payload.get("method") or "router_decision",
+                guards=[media.guard] if media.guard else [], signals=[media.intent],
+                fallback=bool(response_payload.get("fallback")),
+                fallback_reason=media.reason if response_payload.get("fallback") else None,
+                attachments=observatory.request_metadata(request_payload)[1],
+                vision=has_image, routing_ms=trace["duration_ms"],
+                success=True, phase="preflight",
+            )
+            observatory.apply_response(event, {"model_metrics": response_payload.get("model_metrics")})
+            event["original_target"] = original_target
+            observatory.update_event(decision_id, **{key: value for key, value in event.items() if key != "id"})
+        except (OSError, TypeError, ValueError, AttributeError, KeyError):
             # Observability must never block a chat/media route.
             pass
 
@@ -275,10 +296,12 @@ def guard_media_route_payload(
 
 
 def install_routes(app) -> None:
+    observatory.install_routes(app)
+
     @app.get("/api/routing/decisions")
     def routing_decisions(limit: int = 50):
         return {
-            "decisions": list_routing_decisions(limit),
+            "decisions": observatory.events(limit=limit),
             "max_retained": ROUTING_DECISION_LIMIT,
         }
 
@@ -395,6 +418,19 @@ class MediaRoutingUiMiddleware:
                 ]
                 headers.append((b"content-length", str(len(body)).encode("ascii")))
                 start_message["headers"] = headers
+
+        if int(start_message.get("status") or 200) >= 400:
+            try:
+                payload = json.loads(request_body)
+                prompt, attachments = observatory.request_metadata(payload)
+                observatory.record_event(
+                    prompt=prompt, source="router", request_id=payload.get("trace_id"),
+                    attachments=attachments, vision="image" in attachments,
+                    routing_ms=round(duration_ms, 3), success=False,
+                    error_code=f"http_{start_message['status']}", phase="preflight",
+                )
+            except (ValueError, TypeError, AttributeError):
+                pass
 
         await send(start_message)
         await send({"type": "http.response.body", "body": body, "more_body": False})

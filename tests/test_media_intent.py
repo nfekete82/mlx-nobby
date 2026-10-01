@@ -129,11 +129,13 @@ def test_observability_never_persists_prompt_or_attachment(tmp_path, monkeypatch
     monkeypatch.setattr(routing, "ROUTING_OBSERVATORY_FILE", store)
     request = {"prompt": "Describe Alice PrivateName", "file_context": {**IMAGE, "base64": "SECRET_IMAGE_BYTES"}}
     guard_media_route_payload(json.dumps(request).encode(), b'{"target":"image","confidence":0.99}', record=True)
-    saved = store.read_text()
+    from backend import routing_observatory
+    assert not store.exists()
+    saved = json.dumps(routing_observatory.events(limit=1))
     assert "Alice" not in saved and "PrivateName" not in saved and "SECRET_IMAGE_BYTES" not in saved
-    decision = json.loads(saved)["decisions"][0]
-    assert decision["intent"] == "vision_chat" or decision["intent"] == "discussion"
-    assert decision["execution_requested"] is False
+    decision = json.loads(saved)[0]
+    assert decision["intent_signals"][0] in {"vision_chat", "discussion"}
+    assert decision["selected_route"] == "chat"
 
 
 def test_browser_chat_fallback_cannot_be_promoted_at_execution():

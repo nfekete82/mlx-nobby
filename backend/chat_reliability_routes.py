@@ -86,12 +86,16 @@ def _agent_diagnostics(agent_url: str) -> dict:
 
 def _request_recovery(agent_url: str, reason: str) -> dict:
     try:
-        return _json_request(
+        result = _json_request(
             "POST",
             agent_url.rstrip("/") + "/api/runtime/reliability/recover",
             {"reason": reason, "force": False},
             timeout=5,
         )
+        if result.get("scheduled"):
+            from backend.routing_observatory import observe_fallback
+            observe_fallback("runtime_recovery")
+        return result
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         try:

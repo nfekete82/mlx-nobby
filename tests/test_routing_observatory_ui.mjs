@@ -60,3 +60,57 @@ test('routing observatory translates portrait question guard reason', () => {
     assert.match(translations, /reason_instructional_portrait_question/);
     assert.match(translations, /Frage zur Porträterstellung/);
 });
+
+test('hidden routing pane stays idle and visible refreshes cannot overlap', async () => {
+    const { default: vm } = await import('node:vm');
+    let shown = false;
+    let mutation;
+    const pendingFetch = [];
+    const calls = [];
+    const timers = new Map();
+    const listeners = new Map();
+    class Node {
+        constructor() { this.children = []; this.classList = { contains: () => shown }; }
+        append(...nodes) { this.children.push(...nodes); }
+        appendChild(node) { this.children.push(node); node.parentElement = this; return node; }
+        replaceChildren(...nodes) { this.children = nodes; }
+        addEventListener() {}
+        setAttribute() {}
+        closest(selector) { return selector === '[hidden]' ? (shown ? null : {}) : { classList: { contains: () => shown } }; }
+        querySelectorAll() { return []; }
+    }
+    const pane = new Node();
+    const document = {
+        readyState: 'complete', hidden: false,
+        querySelector: () => pane,
+        createElement: () => new Node(),
+        createTextNode: text => ({ textContent: text }),
+        addEventListener: (name, fn) => listeners.set(name, fn)
+    };
+    const window = {};
+    const context = { window, document, navigator: {language:'en'}, console, URLSearchParams,
+        MutationObserver: class { constructor(fn) { mutation = fn; } observe() {} disconnect() {} },
+        setTimeout: (fn, delay) => { const id = timers.size + 1; timers.set(id,{fn,delay}); return id; },
+        clearTimeout: id => timers.delete(id),
+        fetch: async url => {
+            calls.push(url);
+            if (url.includes('/i18n/')) return {ok:true,json:async()=>({})};
+            await new Promise(resolve => { pendingFetch.push(resolve); });
+            return {ok:true,json:async()=> url.includes('/stats') ? {total_events:0} : {events:[]}};
+        }
+    };
+    vm.runInNewContext(ui, context);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(url => url.includes('/api/')).length, 0);
+    shown = true;
+    mutation();
+    for (let i = 0; i < 20; i++) mutation();
+    assert.equal(calls.filter(url => url.includes('/api/')).length, 2);
+    // Closing the pane cancels its timer while in-flight responses complete.
+    shown = false;
+    listeners.get('visibilitychange')();
+    assert.equal(timers.size, 0);
+    pendingFetch.forEach(resolve => resolve());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(url => url.includes('/api/')).length, 2);
+});

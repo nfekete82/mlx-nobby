@@ -27,6 +27,7 @@ from backend.performance_observatory_routes import (
     PerformanceObservatoryUiMiddleware,
     install_routes as install_performance_observatory_routes,
 )
+from backend.routing_observatory import RoutingObservationMiddleware
 from backend.settings_ui_routes import SettingsUiMiddleware
 from backend.shorts_studio_routes import install_routes as install_shorts_studio_routes
 from backend.speech_streaming_routes import install_routes as install_speech_streaming_routes
@@ -47,6 +48,7 @@ app.add_middleware(PerformanceObservatoryUiMiddleware)
 app.add_middleware(ModelScoutUiMiddleware)
 app.add_middleware(SettingsUiMiddleware)
 app.add_middleware(MediaRoutingUiMiddleware)
+app.add_middleware(RoutingObservationMiddleware)
 app.add_middleware(NegativePromptUiMiddleware)
 app.add_middleware(ImageFollowupUiMiddleware)
 app.add_middleware(ImageRegenerateUiMiddleware)
