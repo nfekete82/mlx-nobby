@@ -89,9 +89,11 @@ flowchart LR
 MLX must remain native. Moving MLX into the Docker image would remove the
 intended Apple Silicon runtime path.
 
-Routing is intentionally observable after classification: the router result is
-kept as the original target, conservative/confidence guards can produce the
-final target, and the local Routing Observatory records the reason and feedback.
+Prompt writing, scripts and questions stay in chat, including with reference
+images. Media jobs require explicit execution intent; attachments, adult terms
+and classifier confidence cannot start them. Image chat prefers the configured
+`vision_uncensored` role, falling back to `vision` when unavailable. The Routing
+Observatory records intent, original/final route and reason with redacted previews.
 See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
 regression workflow.
 

@@ -71,7 +71,7 @@ class ChatRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(route["data"]["routing"]["intent"], "normal_chat")
         self.assertEqual(
             route["data"]["routing"]["method"],
-            "deterministic_vision",
+            "central_media_intent",
         )
         self.assertFalse(
             route["data"]["routing"]["requires_tools"]
@@ -93,7 +93,7 @@ class ChatRuntimeIntegrationTests(unittest.TestCase):
         self.assertNotEqual(route["tool"], "diagnostic_agent")
         self.assertEqual(
             route["data"]["routing"]["method"],
-            "deterministic_vision",
+            "central_media_intent",
         )
 
     def test_workspace_read_write_git_and_tests_route_to_runtime(self):

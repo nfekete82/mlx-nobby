@@ -24,11 +24,11 @@ def test_media_routing_script_requires_body_marker():
     assert inject_media_routing_script(body) == body
 
 
-def test_short_semantic_image_prompt_keeps_router_decision():
+def test_short_semantic_image_prompt_requires_execution():
     assert conservative_media_target(
         "Eine Katze im Astronautenanzug auf dem Mond",
         "image",
-    ) == "image"
+    ) == "chat"
 
 
 def test_long_normal_prose_is_demoted_to_chat():
@@ -50,13 +50,13 @@ def test_long_explicit_image_request_stays_image():
     assert conservative_media_target(prompt, "image") == "image"
 
 
-def test_long_visual_prompt_without_command_stays_image():
+def test_long_visual_prompt_without_command_requires_execution():
     prompt = (
         "Cinematic portrait, photorealistic, studio lighting, 85mm lens, bokeh, "
         "highly detailed skin, shallow depth of field, dramatic composition. "
     ) * 8
 
-    assert conservative_media_target(prompt, "image") == "image"
+    assert conservative_media_target(prompt, "image") == "chat"
 
 
 def test_long_normal_prose_is_not_routed_to_shorts():
@@ -102,8 +102,8 @@ def test_long_shorts_request_at_end_keeps_router_decision():
 def test_unrelated_targets_are_never_changed():
     long_prompt = "normaler Text " * 100
 
-    assert conservative_media_target(long_prompt, "image_edit") == "image_edit"
-    assert conservative_media_target(long_prompt, "video") == "video"
+    assert conservative_media_target(long_prompt, "image_edit") == "chat"
+    assert conservative_media_target(long_prompt, "video") == "chat"
     assert conservative_media_target(long_prompt, "chat") == "chat"
 
 
@@ -115,8 +115,8 @@ def test_guard_rewrites_only_target_and_marks_reason():
     guarded = json.loads(guard_media_route_payload(request, response))
 
     assert guarded["target"] == "chat"
-    assert guarded["confidence"] == 0.61
-    assert guarded["routing_guard"] == "long_form_chat_fallback"
+    assert guarded["confidence"] == 1.0
+    assert guarded["routing_guard"] == "execution_required"
 
 
 def test_shorts_guard_rewrites_target_and_marks_reason():
@@ -127,8 +127,8 @@ def test_shorts_guard_rewrites_target_and_marks_reason():
     guarded = json.loads(guard_media_route_payload(request, response))
 
     assert guarded["target"] == "chat"
-    assert guarded["confidence"] == 0.73
-    assert guarded["routing_guard"] == "explicit_shorts_intent_required"
+    assert guarded["confidence"] == 1.0
+    assert guarded["routing_guard"] == "text_request_priority"
 
 
 def test_guard_leaves_invalid_json_untouched():

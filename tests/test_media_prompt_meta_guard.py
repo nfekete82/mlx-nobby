@@ -35,8 +35,8 @@ def test_user_ltx_prompt_request_with_reference_image_language_stays_chat():
     )
 
     assert guarded["target"] == "chat"
-    assert guarded["routing_guard"] == "media_prompt_meta_chat"
-    assert guarded["routing_observatory"]["reason"] == "media_prompt_meta_chat"
+    assert guarded["routing_guard"] == "text_request_priority"
+    assert guarded["routing_observatory"]["reason"] == "text_request_priority"
     assert guarded["routing_observatory"]["guarded"] is True
 
 
@@ -64,8 +64,8 @@ def test_high_confidence_image_router_is_demoted_for_prompt_writing():
     )
 
     assert guarded["target"] == "chat"
-    assert guarded["routing_guard"] == "media_prompt_meta_chat"
-    assert guarded["routing_observatory"]["reason"] == "media_prompt_meta_chat"
+    assert guarded["routing_guard"] == "text_request_priority"
+    assert guarded["routing_observatory"]["reason"] == "text_request_priority"
     assert guarded["routing_observatory"]["guarded"] is True
 
 

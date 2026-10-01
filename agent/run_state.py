@@ -23,6 +23,7 @@ class RunContext:
     document_ids: tuple[str, ...] = ()
     artifact_ids: tuple[str, ...] = ()
     conversation: tuple[tuple[str, str], ...] = ()
+    user_goal: str | None = None
     resources_bound: bool = False
     chat_revision: int | None = None
     started_at: float = field(default_factory=time.time)
@@ -45,13 +46,14 @@ class RunContext:
     @classmethod
     def start(cls, run_id=None, chat_id=None, *, upload_paths=(), document_ids=(),
               artifact_ids=(), resources_bound=False, chat_revision=None,
-              workspace_id=None, workspace_bound=False, conversation=()):
+              workspace_id=None, workspace_bound=False, conversation=(), user_goal=None):
         workspace = (
             code_workspaces._workspace(workspace_id) if workspace_id else None
         ) if workspace_bound else code_workspaces.active_workspace(validate=False)
         root = Path(workspace["root_path"]).resolve() if workspace else None
         return cls(
             run_id=run_id or uuid.uuid4().hex,
+            user_goal=user_goal,
             chat_id=chat_id,
             workspace_id=workspace["workspace_id"] if workspace else None,
             workspace_root=root,

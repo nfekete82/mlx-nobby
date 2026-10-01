@@ -27,8 +27,8 @@ def test_low_confidence_media_route_falls_back_to_chat():
     routed = _route("Eine Katze auf dem Mond", "image", 0.54)
 
     assert routed["target"] == "chat"
-    assert routed["routing_guard"] == "low_confidence_fallback"
-    assert routed["routing_observatory"]["confidence"] == 0.54
+    assert routed["routing_guard"] == "execution_required"
+    assert routed["routing_observatory"]["confidence"] == 1.0
     assert routed["routing_observatory"]["guarded"] is True
 
 
@@ -36,7 +36,7 @@ def test_medium_confidence_requires_explicit_intent():
     routed = _route("Eine Katze auf dem Mond", "image", 0.78)
 
     assert routed["target"] == "chat"
-    assert routed["routing_guard"] == "medium_confidence_requires_explicit_intent"
+    assert routed["routing_guard"] == "execution_required"
 
 
 def test_medium_confidence_explicit_image_request_is_allowed():
@@ -44,14 +44,14 @@ def test_medium_confidence_explicit_image_request_is_allowed():
 
     assert routed["target"] == "image"
     assert "routing_guard" not in routed
-    assert routed["routing_observatory"]["reason"] == "medium_confidence_explicit_intent"
+    assert routed["routing_observatory"]["reason"] == "Explicit command bound to media output"
 
 
-def test_high_confidence_media_route_is_allowed_without_command():
+def test_high_confidence_cannot_authorize_media_without_command():
     routed = _route("Eine Katze auf dem Mond", "image", 0.95)
 
-    assert routed["target"] == "image"
-    assert routed["routing_observatory"]["reason"] == "high_confidence"
+    assert routed["target"] == "chat"
+    assert routed["routing_observatory"]["reason"] == "execution_required"
 
 
 def test_explicit_action_without_router_confidence_gets_full_confidence():
@@ -63,7 +63,7 @@ def test_explicit_action_without_router_confidence_gets_full_confidence():
 
     assert routed["target"] == "image"
     assert routed["routing_observatory"]["confidence"] == 1.0
-    assert routed["routing_observatory"]["confidence_source"] == "heuristic"
+    assert routed["routing_observatory"]["confidence_source"] == "central_media_intent"
 
 
 def test_long_chat_guard_wins_even_with_high_router_confidence():
@@ -71,7 +71,7 @@ def test_long_chat_guard_wins_even_with_high_router_confidence():
     routed = _route(prompt, "image", 0.99)
 
     assert routed["target"] == "chat"
-    assert routed["routing_guard"] == "long_form_chat_fallback"
+    assert routed["routing_guard"] == "text_request_priority"
 
 
 def test_routing_store_retains_preview_hash_and_feedback(tmp_path, monkeypatch):
@@ -86,14 +86,14 @@ def test_routing_store_retains_preview_hash_and_feedback(tmp_path, monkeypatch):
         "original_target": "image",
         "target": "chat",
         "confidence": 0.72,
-        "reason": "medium_confidence_requires_explicit_intent",
+        "reason": "execution_required",
         "guarded": True,
     })
 
     decisions = routing.list_routing_decisions(20)
     assert len(decisions) == 1
     assert decisions[0]["id"] == decision["id"]
-    assert decisions[0]["prompt_preview"] == prompt
+    assert decisions[0]["prompt_preview"] == "[redacted]"
     assert decisions[0]["prompt_sha256"] == routing.hashlib.sha256(prompt.encode()).hexdigest()
     assert "prompt" not in decisions[0]
 

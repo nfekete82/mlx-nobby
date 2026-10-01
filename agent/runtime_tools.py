@@ -13,6 +13,7 @@ import tempfile
 from agent import code_workspaces, knowledge, run_state
 from agent.model_provider import ModelRequest
 from agent.runtime import current_runtime
+from backend.media_intent import MEDIA_ACTIONS, decide_media_intent
 
 
 OUTPUT_LIMIT = 12000
@@ -558,6 +559,15 @@ def _document_tool(action, query, instruction, options):
 
 def execute(action, goal, query=None, instruction=None, files=None, options=None):
     options = _options(options)
+    if action in MEDIA_ACTIONS:
+        context = _context()
+        decision = decide_media_intent(
+            context.user_goal or goal,
+            has_image=bool(context.upload_paths or context.artifact_ids
+                           or options.get("artifact_id") or options.get("upload_path")),
+        )
+        if not decision.execution_requested or decision.intent != action:
+            raise ValueError("MEDIA_EXECUTION_NOT_REQUESTED")
     if action == "workspace_status":
         context = _context()
         return code_workspaces.status(context.workspace()["workspace_id"])

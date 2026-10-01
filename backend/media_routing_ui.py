@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import threading
 import time
 import uuid
 from pathlib import Path
 
 from fastapi import HTTPException
+from backend.media_intent import decide_media_intent, has_image_context
 
 
 MEDIA_ROUTING_SCRIPT = (
@@ -23,8 +23,6 @@ ROUTING_OBSERVATORY_ASSETS = (
     + b'\n<script src="/assets/chat/routing-observatory.js?v=20260930-routing-v1"></script>'
 )
 MEDIA_ROUTE_PATH = "/api/mlx/chat/actions/route"
-LONG_PROMPT_CHARS = 600
-CHAT_LIKE_PROMPT_CHARS = 320
 ROUTING_DECISION_LIMIT = 500
 ROUTING_OBSERVATORY_FILE = Path(
     os.environ.get(
@@ -36,6 +34,7 @@ ROUTING_OBSERVATORY_LOCK = threading.RLock()
 
 ACTIVE_MEDIA_TARGETS = {
     "image",
+    "image_edit",
     "shorts_generate",
     "video",
     "video_generate",
@@ -49,63 +48,6 @@ FEEDBACK_TARGETS = {
     "agent",
     "web_search",
 }
-
-_EXPLICIT_IMAGE_REQUEST = re.compile(
-    r"(?:\b(?:erstelle|erstell|erzeugen|erzeuge|generiere|generieren|zeichne|zeichnen|male|malen|"
-    r"mache|mach|render(?:e|n)?|create|generate|draw|paint|make|render)\b"
-    r"[\s\S]{0,140}?\b(?:bild|foto|illustration|grafik|image|photo|picture|graphic)\b)"
-    r"|(?:\b(?:bild|foto|illustration|grafik|image|photo|picture|graphic)\b"
-    r"[\s\S]{0,140}?\b(?:erstellen|erzeuge|erzeugen|generiere|generieren|zeichnen|malen|"
-    r"machen|rendern|create|generate|draw|paint|make|render)\b)",
-    re.IGNORECASE,
-)
-
-_SHORTS_MEDIA_NOUN = (
-    r"(?:youtube\s+shorts?|shorts|short[- ]videos?|kurzvideos?|"
-    r"tiktok(?:[- ]videos?)?|reels?|(?:ein(?:en)?|a)\s+short)"
-)
-_SHORTS_CREATE_VERB = (
-    r"(?:erstelle|erstell|erstellen|mach|mache|machen|generiere|generieren|"
-    r"erzeuge|erzeugen|produziere|produzieren|baue|bauen|schneide|schneiden|"
-    r"create|generate|produce|build)"
-)
-_EXPLICIT_SHORTS_REQUEST = re.compile(
-    rf"(?:\b{_SHORTS_CREATE_VERB}\b[\s\S]{{0,160}}?\b{_SHORTS_MEDIA_NOUN}\b)"
-    rf"|(?:\b{_SHORTS_MEDIA_NOUN}\b[\s\S]{{0,160}}?\b{_SHORTS_CREATE_VERB}\b)"
-    r"|(?:\b(?:turn|convert)\b[\s\S]{0,160}?\b(?:into|to)\b"
-    r"[\s\S]{0,60}?\b(?:youtube\s+short|short[- ]video|tiktok(?:[- ]video)?|reel)\b)",
-    re.IGNORECASE,
-)
-
-_EXPLICIT_VIDEO_REQUEST = re.compile(
-    r"(?:\b(?:erstelle|erstell|erzeugen|erzeuge|generiere|generieren|mache|mach|"
-    r"produziere|produzieren|animiere|animieren|create|generate|make|produce|animate)\b"
-    r"[\s\S]{0,140}?\b(?:video|clip|animation|film|movie)\b)"
-    r"|(?:\b(?:video|clip|animation|film|movie)\b[\s\S]{0,140}?"
-    r"\b(?:erstellen|erzeugen|generieren|machen|produzieren|animieren|create|generate|"
-    r"make|produce|animate)\b)",
-    re.IGNORECASE,
-)
-
-_VISUAL_PROMPT_HINT = re.compile(
-    r"\b(?:photorealistic|fotorealistisch|cinematic|cinematisch|portrait|porträt|portraitaufnahme|"
-    r"composition|komposition|lighting|beleuchtung|lens|objektiv|bokeh|depth of field|tiefenschärfe|"
-    r"aspect ratio|seitenverhältnis|negative prompt|watercolor|aquarell|concept art|konzeptkunst|"
-    r"studio lighting|volumetric|ultra detailed|highly detailed|8k|4k|close[ -]?up|nahaufnahme|"
-    r"full[ -]?body|ganzkörper|camera shot|kameraperspektive)\b",
-    re.IGNORECASE,
-)
-
-_CHAT_LIKE_LEAD = re.compile(
-    r"^\s*(?:erklär(?:e|en)?|analysier(?:e|en)?|prüf(?:e|en)?|pruef(?:e|en)?|fass(?:e|en)?|"
-    r"zusammenfass(?:e|en)?|schau(?:e)?|bewert(?:e|en)?|vergleich(?:e|en)?|hilf(?:e)?|"
-    r"was|wie|warum|wann|wo|wer|welche|welcher|welches|ist|sind|hat|haben|"
-    r"kannst\s+du|könntest\s+du|koenntest\s+du|ich\s+habe|hier\s+ist|folgender|folgende|"
-    r"explain|analy[sz]e|check|review|summari[sz]e|compare|help|what|how|why|when|where|who|"
-    r"can\s+you|could\s+you|i\s+have|here\s+is|the\s+following)\b",
-    re.IGNORECASE,
-)
-
 
 def _is_chat_html_path(path: str) -> bool:
     return path in {"/", "/chat", "/settings"} or path.startswith("/settings/")
@@ -122,186 +64,22 @@ def inject_media_routing_script(body: bytes) -> bytes:
     return body
 
 
-def _visual_prompt_hint_count(prompt: str) -> int:
-    return len({match.group(0).casefold() for match in _VISUAL_PROMPT_HINT.finditer(prompt)})
-
-
-def _has_explicit_shorts_request(prompt: str) -> bool:
-    """Require an actual Shorts creation instruction, especially for pasted prose."""
-    text = str(prompt or "").strip()
-    if not text:
-        return False
-
-    if len(text) <= LONG_PROMPT_CHARS:
-        search_text = text
-    else:
-        # A real request around pasted source material normally sits at the start
-        # or the end. Ignoring the middle prevents quoted prose from triggering a job.
-        search_text = text[:400] + "\n" + text[-400:]
-
-    return bool(_EXPLICIT_SHORTS_REQUEST.search(search_text))
-
-
-def _explicit_intent(prompt: str, target: str, action: str | None = None) -> bool:
-    text = str(prompt or "").strip()
-    action = str(action or "").strip()
-
-    if action:
-        if target == "image" and action.startswith("image_"):
-            return True
-        if target in {"video", "video_generate", "video_animate"} and action.startswith("video_"):
-            return True
-
-    if target == "image":
-        return bool(_EXPLICIT_IMAGE_REQUEST.search(text))
-    if target == "shorts_generate":
-        return _has_explicit_shorts_request(text)
-    if target in {"video", "video_generate", "video_animate"}:
-        return bool(_EXPLICIT_VIDEO_REQUEST.search(text))
-    return False
-
-
-def _dedicated_media_prompt(prompt: str, target: str) -> bool:
-    return target == "image" and _visual_prompt_hint_count(str(prompt or "")) >= 3
-
-
-def _coerce_confidence(value) -> float | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        confidence = float(value)
-    except (TypeError, ValueError):
-        return None
-    if confidence < 0 or confidence > 1:
-        return None
-    return round(confidence, 4)
-
-
-def _derived_confidence(prompt: str, target: str, action: str | None = None) -> float | None:
-    if _explicit_intent(prompt, target, action):
-        return 1.0 if action else 0.98
-
-    if target == "image":
-        if _dedicated_media_prompt(prompt, target):
-            return 0.86
-        return 0.62
-
-    if target == "shorts_generate":
-        return 0.45
-
-    if target in {"video", "video_generate", "video_animate"}:
-        return 0.60
-
-    return None
-
-
-def route_confidence(
-    prompt: str,
-    target: str,
-    response_payload: dict,
-    action: str | None = None,
-) -> tuple[float | None, str]:
-    router_confidence = _coerce_confidence(response_payload.get("confidence"))
-    if router_confidence is not None:
-        return router_confidence, "router"
-
-    derived = _derived_confidence(prompt, target, action)
-    if derived is not None:
-        return derived, "heuristic"
-
-    return None, "unavailable"
+def _explicit_intent(prompt, target, action=None):
+    decision = decide_media_intent(prompt, has_image=target == "image_edit", action=action)
+    return decision.execution_requested and decision.target == target
 
 
 def conservative_media_target(prompt: str, target: str) -> str:
-    """Demote weak media classifications back to normal chat.
-
-    Image generation remains available for explicit requests and dedicated
-    visual prompts. Shorts generation is stricter because it starts a costly,
-    multi-step media workflow: mentions of Shorts, TikTok or Reels alone are
-    never enough; an explicit creation instruction is required.
-    """
-    text = str(prompt or "").strip()
-
-    if target == "shorts_generate":
-        return target if _has_explicit_shorts_request(text) else "chat"
-
-    if target != "image":
+    """Media requires explicit execution, irrespective of model confidence."""
+    if target not in ACTIVE_MEDIA_TARGETS:
         return target
-
-    if not text:
-        return target
-
-    if _EXPLICIT_IMAGE_REQUEST.search(text):
-        return target
-
-    if _visual_prompt_hint_count(text) >= 3:
-        return target
-
-    if len(text) >= LONG_PROMPT_CHARS:
-        return "chat"
-
-    if len(text) >= CHAT_LIKE_PROMPT_CHARS and _CHAT_LIKE_LEAD.search(text):
-        return "chat"
-
-    return target
-
-
-def confidence_guard_target(
-    prompt: str,
-    target: str,
-    confidence: float | None,
-    action: str | None = None,
-) -> tuple[str, str | None]:
-    """Apply the conservative confidence policy to active media actions."""
-    if target not in ACTIVE_MEDIA_TARGETS or confidence is None:
-        return target, None
-
-    if confidence >= 0.90:
-        return target, "high_confidence"
-
-    if confidence < 0.65:
-        return "chat", "low_confidence_fallback"
-
-    if _explicit_intent(prompt, target, action) or _dedicated_media_prompt(prompt, target):
-        return target, "medium_confidence_explicit_intent"
-
-    return "chat", "medium_confidence_requires_explicit_intent"
+    decision = decide_media_intent(prompt, has_image=target == "image_edit")
+    return decision.target if decision.execution_requested else "chat"
 
 
 def _normalized_prompt_preview(prompt: str, limit: int = 220) -> str:
-    normalized = " ".join(str(prompt or "").split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: max(0, limit - 1)].rstrip() + "…"
-
-
-def _intent_name(prompt: str, target: str, action: str | None = None) -> str:
-    if _explicit_intent(prompt, target, action):
-        if target == "image":
-            return "explicit_image"
-        if target == "shorts_generate":
-            return "explicit_short"
-        if target in {"video", "video_generate", "video_animate"}:
-            return "explicit_video"
-    if _dedicated_media_prompt(prompt, target):
-        return "visual_prompt"
-    if target == "chat":
-        return "normal_chat"
-    return "router_classification"
-
-
-def _guard_reason(
-    prompt: str,
-    original_target: str,
-    conservative_target: str,
-) -> str | None:
-    if conservative_target == original_target:
-        return None
-    if original_target == "shorts_generate":
-        return "explicit_shorts_intent_required"
-    if original_target == "image":
-        return "long_form_chat_fallback"
-    return "conservative_fallback"
+    """Compatibility helper: raw text is never an observatory preview."""
+    return "[redacted]"
 
 
 def _empty_store() -> dict:
@@ -321,10 +99,15 @@ def _read_observatory_store() -> dict:
     if not isinstance(decisions, list):
         return _empty_store()
 
-    return {
-        "version": 1,
-        "decisions": [item for item in decisions if isinstance(item, dict)][-ROUTING_DECISION_LIMIT:],
-    }
+    sanitized = []
+    for item in decisions[-ROUTING_DECISION_LIMIT:]:
+        if isinstance(item, dict):
+            safe = dict(item)
+            safe["prompt_preview"] = "[redacted]"
+            safe.pop("prompt", None)
+            safe.pop("file_context", None)
+            sanitized.append(safe)
+    return {"version": 1, "decisions": sanitized}
 
 
 def _write_observatory_store(payload: dict) -> None:
@@ -344,6 +127,9 @@ def _write_observatory_store(payload: dict) -> None:
 
 def record_routing_decision(decision: dict) -> dict:
     record = dict(decision)
+    record["prompt_preview"] = "[redacted]"
+    record.pop("prompt", None)
+    record.pop("file_context", None)
     record.setdefault("id", uuid.uuid4().hex)
     record.setdefault("created_at", time.time())
 
@@ -425,27 +211,19 @@ def guard_media_route_payload(
     prompt = str(request_payload.get("prompt") or "")
     action = str(request_payload.get("action") or "") or None
     original_target = str(response_payload.get("target") or "")
-    conservative_target = conservative_media_target(prompt, original_target)
-    reason = _guard_reason(prompt, original_target, conservative_target)
-
-    confidence, confidence_source = route_confidence(
-        prompt,
-        original_target,
-        response_payload,
-        action,
-    )
-
-    guarded_target = conservative_target
-    confidence_reason = None
-    if guarded_target == original_target:
-        guarded_target, confidence_reason = confidence_guard_target(
-            prompt,
-            original_target,
-            confidence,
-            action,
-        )
+    has_image = has_image_context(request_payload.get("file_context"), request_payload.get("active_artifact_id"))
+    media = decide_media_intent(prompt, has_image=has_image, action=action)
+    guarded_target = original_target
+    reason = None
+    if original_target in ACTIVE_MEDIA_TARGETS or media.handles_turn:
+        guarded_target = media.target
         if guarded_target != original_target:
-            reason = confidence_reason
+            reason = media.guard or "central_media_intent"
+    if original_target in ACTIVE_MEDIA_TARGETS or media.handles_turn:
+        response_payload.update(media.payload() | {"target": guarded_target})
+    else:
+        response_payload.setdefault("execution_requested", False)
+        response_payload.setdefault("media_context", media.media_context)
 
     if guarded_target != original_target:
         response_payload["target"] = guarded_target
@@ -455,15 +233,18 @@ def guard_media_route_payload(
     trace = {
         "id": decision_id,
         "created_at": time.time(),
-        "prompt_preview": _normalized_prompt_preview(prompt),
+        "prompt_preview": "[redacted]",
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         "prompt_chars": len(prompt),
-        "intent": _intent_name(prompt, original_target, action),
+        "intent": response_payload.get("intent", media.intent),
+        "execution_requested": media.execution_requested,
+        "media_context": media.media_context,
+        "guard": media.guard,
         "original_target": original_target,
         "target": guarded_target,
-        "confidence": confidence,
-        "confidence_source": confidence_source,
-        "reason": reason or confidence_reason or "router_decision",
+        "confidence": media.confidence,
+        "confidence_source": "central_media_intent",
+        "reason": reason or media.reason,
         "guarded": guarded_target != original_target,
         "fallback": guarded_target if guarded_target != original_target else None,
         "duration_ms": round(float(duration_ms), 2) if duration_ms is not None else None,
@@ -473,8 +254,8 @@ def guard_media_route_payload(
         "id": decision_id,
         "original_target": original_target,
         "target": guarded_target,
-        "confidence": confidence,
-        "confidence_source": confidence_source,
+        "confidence": media.confidence,
+        "confidence_source": "central_media_intent",
         "reason": trace["reason"],
         "guarded": trace["guarded"],
     }
