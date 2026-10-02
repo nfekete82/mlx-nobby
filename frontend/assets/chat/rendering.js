@@ -16,6 +16,10 @@
         return value;
     }
 
+    function referenceText(key, fallback) {
+        return window.MLXI18n?.t('generation.' + key, fallback) ?? fallback;
+    }
+
     let state;
     let currentSession;
     let isGenerating;
@@ -1789,6 +1793,8 @@ function renderImageArtifactCard(message) {
 
     const details = document.createElement('div'); details.className = 'batch-chat-details';
     details.textContent = [
+        artifact.reference_used ? referenceText('reference_used', 'Reference image used ✓') : '',
+        artifact.reference_used ? referenceText('reference_mode_' + artifact.reference_mode, artifact.reference_mode === 'same_identity' ? 'Same person' : 'Similar person') : '',
         artifact.model,
         artifact.provider,
         artifact.width && artifact.height ? artifact.width + ' × ' + artifact.height : '',
@@ -1835,6 +1841,9 @@ function renderImageJobCard(message) {
     const job = message.image_job;
     if (!job || job.status === 'completed') return null;
     const presentation = imageJobPresentation(job);
+    if (job.semantic_operation === 'reference_generate' && ACTIVE_IMAGE_JOB_STATUSES.has(job.status)) {
+        presentation.title = referenceText('reference_generating', 'Creating an image using the reference …');
+    }
 
     const card = document.createElement('section');
     card.className = 'batch-chat-card image-job-card';

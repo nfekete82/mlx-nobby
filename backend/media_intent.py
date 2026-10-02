@@ -7,14 +7,15 @@ Semantic classifiers may refine non-media routes, never authorize media jobs.
 from dataclasses import asdict, dataclass
 import re
 from pathlib import Path
+from backend.image_reference import reference_mode, REFERENCE_VERBS, REFERENCE_FOLLOWUP
 
 MEDIA_ACTIONS = frozenset({
-    "image_generate", "image_edit", "image_upscale", "video_generate",
+    "image_generate", "image_edit", "image_reference_generate", "image_upscale", "video_generate",
     "video_animate", "shorts_generate",
 })
 TARGETS = {
     "image_generate": "image", "image_edit": "image_edit",
-    "image_upscale": "image", "video_generate": "video",
+    "image_reference_generate": "image_edit", "image_upscale": "image", "video_generate": "video",
     "video_animate": "video", "shorts_generate": "shorts_generate",
 }
 CREATE = set(
@@ -141,6 +142,7 @@ class RoutingDecision:
     reason: str
     guard: str | None = None
     fallback: str | None = None
+    reference_mode: str | None = None
 
     @property
     def handles_turn(self):
@@ -158,7 +160,7 @@ class RoutingDecision:
         }
 
 
-def decide_media_intent(prompt, *, has_image=False, action=None):
+def decide_media_intent(prompt, *, has_image=False, action=None, reference_context=None):
     """Decide from the current instruction, never from conversation history.
 
     Explicit UI actions authorize bare media descriptions. They cannot override
@@ -174,6 +176,7 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
     media_context = "image" if has_image else None
     text_intent = None
     topics = set(OBJECTS) | TEXT_OBJECTS | {"ltx", "porträtfotografie", "portraitfotografie", "photography"}
+    mode = reference_mode(text)
     execution = None
     negated = False
     for clause in clauses:
@@ -181,7 +184,7 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
         if not words:
             continue
         command = next((i for i, word in enumerate(words)
-                        if word in CREATE | EDIT | ANIMATE | START), None)
+                        if word in CREATE | EDIT | ANIMATE | START | REFERENCE_VERBS), None)
         if _negates_execution(words, command) and (has_image or set(words) & topics):
             negated = True
             continue
@@ -197,6 +200,10 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
             text_intent = "prompt_writing"
             continue
         if command is None:
+            if has_image and reference_context in {'same_identity', 'resemblance'} and REFERENCE_FOLLOWUP.search(clause):
+                mode = reference_context
+                execution = 'image_reference_generate'
+                continue
             leading = next((word for word in words if word not in {"bitte", "please", "jetzt", "nun", "noch", "now", "then", "mehr", "etwas", "ein", "bisschen", "more", "a", "bit"}), "")
             if has_image and leading in MODIFIERS | {"weiter"}:
                 execution = "image_edit"
@@ -205,6 +212,12 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
         if set(words[:command]) & {"damit", "wenn", "if", "so", "dass", "that"}:
             continue
         verb = words[command]
+        if verb in CREATE and re.search(r'\b(?:aus|from)\b.*\b(?:bild|image|foto|photo)\b.*\b(?:video|clip|film)\b', clause):
+            execution = 'video_animate' if has_image else 'video_generate'
+            continue
+        if mode and first_object not in {'video', 'clip', 'animation', 'film', 'movie', 'short', 'shorts', 'reel', 'tiktok'} and verb in CREATE | REFERENCE_VERBS:
+            execution = 'image_reference_generate'
+            continue
         if verb in ANIMATE:
             execution = "video_animate"
         elif verb in START and "ltx" in words[command + 1:]:
@@ -225,7 +238,8 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
                 execution = "image_edit"
     if execution and not negated:
         return RoutingDecision(execution, TARGETS[execution], True, media_context,
-                               1.0, "Explicit command bound to media output")
+                               1.0, "Explicit command bound to media output",
+                               reference_mode=mode if execution == "image_reference_generate" else None)
     if text_intent or negated:
         intent = text_intent or "discussion"
         return RoutingDecision(intent, "chat", False, media_context, 1.0,
@@ -233,7 +247,7 @@ def decide_media_intent(prompt, *, has_image=False, action=None):
                                "text_request_priority", "chat")
     if action in MEDIA_ACTIONS:
         return RoutingDecision(action, TARGETS[action], True, media_context, 1.0,
-                               "Explicit media UI action")
+                               "Explicit media UI action", reference_mode=mode if action == "image_reference_generate" else None)
     return RoutingDecision("vision_chat" if has_image else "normal_chat", "chat",
                            False, media_context, 1.0,
                            "Image is context only" if has_image else "No explicit media execution",

@@ -112,7 +112,13 @@
     "page_read_failed": "Note: Page {page} could not be read from document \"{name}\".",
     "web_search_no_results": "The web search returned no matching results.",
     "shorts_draft_created": "Short draft created. Edit it in Shorts Studio, then select Render Short.",
-    "shorts_draft_failed": "The Short draft could not be created. Please try again."
+    "shorts_draft_failed": "The Short draft could not be created. Please try again.",
+    "reference_used": "Reference image used ✓",
+    "reference_mode_same_identity": "Same person",
+    "reference_mode_resemblance": "Similar person",
+    "reference_generating": "Creating an image using the reference …",
+    "reference_select_source": "Please select the reference image.",
+    "reference_source_required": "A reference image is required for this request."
   },
   "models": {
     "unnamed": "Unnamed model",

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 import image_registry as registry
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 import runtime_coordinator
@@ -72,6 +72,23 @@ class Edit(BaseModel):
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     quality: Literal["fast", "standard", "quality"] | None = None
+
+    semantic_operation: Literal['edit', 'reference_generate'] = 'edit'
+    reference_mode: Literal['same_identity', 'resemblance'] | None = None
+    reference_artifact_id: str | None = None
+    original_prompt: str | None = None
+    width: int | None = Field(default=None, ge=256, le=1216)
+    height: int | None = Field(default=None, ge=256, le=1216)
+    auto_size: bool = False
+    negative_prompt: str | None = None
+
+    @model_validator(mode='after')
+    def reference_contract(self):
+        if self.semantic_operation == 'reference_generate' and self.reference_mode is None:
+            raise ValueError('Reference generation requires a reference mode')
+        if (self.width is None) != (self.height is None):
+            raise ValueError('Both target dimensions are required')
+        return self
 
 
 class Upscale(BaseModel):
@@ -627,7 +644,7 @@ def _prepare_fast_edit_source(source, model):
         converted.save(working, "PNG")
 
         print(
-            f"[image-edit] source={source} "
+            f"[image-edit] "
             f"original={width}x{height} "
             f"working={converted.width}x{converted.height} "
             f"pixels={converted.width * converted.height}",
@@ -643,10 +660,25 @@ def _edit_result(
     provider_options=None,
     prepared_callback=None,
     saving_callback=None,
+    resolved=None,
+    resolved_callback=None,
 ):
     global _running
 
-    model = _edit_model(request.model)
+    is_reference = request.semantic_operation == 'reference_generate'
+    if resolved is None:
+        try:
+            model = _edit_model(request.model)
+        except HTTPException:
+            if is_reference:
+                raise HTTPException(503, 'Kein kompatibles lokales Modell für Referenzbilder verfügbar.') from None
+            raise
+        if is_reference:
+            ready, _ = availability(model)
+            if not model.get('enabled', True) or not ready:
+                raise HTTPException(503, 'Kein kompatibles lokales Modell für Referenzbilder verfügbar.')
+    else:
+        model = copy.deepcopy(resolved['model'])
 
     if "image_edit" not in model.get("capabilities", []):
         raise HTTPException(
@@ -659,26 +691,39 @@ def _edit_result(
         source,
         model,
     )
-    params = request.model_dump()
+    params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
+        'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
+        'width', 'height', 'auto_size'}))
     params["source_path"] = str(edit_source)
 
     # Qwen must render at the prepared working resolution too. Resizing only
     # the source image is not enough because MFLUX may otherwise select a
     # substantially larger output canvas.
-    if model.get("model_family") == "qwen-image-edit":
+    if resolved is None and model.get("model_family") == "qwen-image-edit":
         from PIL import Image
 
         with Image.open(edit_source) as prepared_image:
             params["width"], params["height"] = prepared_image.size
 
-    params["steps"] = _resolved_steps(model, request.steps, request.quality)
-    profile = resolve_image_profile(model, request.quality) if request.quality else None
-    params["guidance"] = (
-        request.guidance
-        if request.guidance is not None
-        else profile["guidance"] if profile else model["default_guidance"]
-    )
-    params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
+    if resolved is None:
+        params['steps'] = _resolved_steps(model, request.steps, request.quality)
+        profile = resolve_image_profile(model, request.quality) if request.quality else None
+        params['guidance'] = request.guidance if request.guidance is not None else profile['guidance'] if profile else model['default_guidance']
+        params['seed'] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
+        if is_reference and request.width is not None:
+            # Qwen's advertised width/height flags support a target canvas.
+            # Other edit providers retain their existing source-size policy.
+            if model.get('model_family') == 'qwen-image-edit':
+                edge = min(1024, (profile or {}).get('long_edge') or 768)
+                params['width'], params['height'] = dimensions_for_long_edge(request.width, request.height, edge)
+    elif request.seed is not None:
+        params['seed'] = request.seed
+    if is_reference and resolved_callback:
+        canonical = {'model': copy.deepcopy(model), 'params': {**copy.deepcopy(params), 'source_path': str(source)},
+                     'request': request.model_dump(), 'operation': 'edit',
+                     'quality_profile': resolved.get('quality_profile') if resolved else profile,
+                     'requested_model': request.model, 'requested_seed': request.seed}
+        resolved_callback(canonical)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     image_id = f"{int(time.time())}-{secrets.token_hex(6)}"
     path = OUTPUT / f"{image_id}.png"
@@ -716,6 +761,12 @@ def _edit_result(
         "seed": params["seed"],
         "steps": params["steps"],
         "quality": request.quality,
+        'semantic_operation': request.semantic_operation,
+        'reference_used': is_reference,
+        'reference_mode': request.reference_mode,
+        'reference_relation': request.reference_mode,
+        'reference_artifact_id': request.reference_artifact_id,
+        'original_prompt': request.original_prompt or request.prompt,
         "created_at": time.time(),
     }
 
@@ -1064,7 +1115,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
                 **({"resolved": resolved} if resolved is not None else {}),
                 **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                   if operation == "generate" else {}),
+                   if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
             )
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
@@ -1078,7 +1129,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             "status": "completed", "phase": "completed", "current_step": total_steps,
             "progress": 1.0, "result": result, "finished_at": time.time(),
         }
-        if operation == "generate":
+        if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate"):
             from image_variants import persist_record
             canonical = _jobs[job_id].get("_canonical")
             completed["variants_available"] = canonical is not None
@@ -1198,6 +1249,8 @@ def create_image_job(request: ImageJobCreate):
         daemon=True,
     )
     job["_thread"] = thread
+    if request.operation == 'edit' and image_request.semantic_operation == 'reference_generate':
+        job.update(semantic_operation='reference_generate', reference_mode=image_request.reference_mode, reference_relation=image_request.reference_mode, reference_used=True)
 
     with _jobs_lock:
         _prune_jobs_locked()
