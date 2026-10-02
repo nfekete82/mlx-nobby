@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import urllib.parse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 
 SYSTEM_HEALTH_SCRIPT = (
@@ -129,6 +129,40 @@ class SystemHealthUiMiddleware:
 
 def install_routes(app: FastAPI, agent_json_request) -> None:
     paths = {getattr(route, "path", None) for route in app.router.routes}
+
+    def queue_request(method, path, **kwargs):
+        try:
+            return agent_json_request(method, path, **kwargs)
+        except HTTPException as exc:
+            # Retain Agent status semantics without exposing provider errors,
+            # local paths or tracebacks returned by a failed upstream request.
+            detail = {
+                404: "Job nicht gefunden",
+                409: "Job kann nicht mehr abgebrochen werden",
+                422: "Ungültiger Job-Typ, Job-ID oder Anfrage",
+                503: "Agent nicht erreichbar oder Zeitlimit überschritten",
+            }.get(exc.status_code, "Queue-Anfrage fehlgeschlagen")
+            raise HTTPException(exc.status_code, detail) from exc
+
+    if "/api/system/job-queue" not in paths:
+        @app.get("/api/system/job-queue")
+        def job_queue(limit: int = 40):
+            return queue_request(
+                "GET",
+                "/api/system/job-queue?" + urllib.parse.urlencode({"limit": limit}),
+                timeout=20,
+            )
+
+    if "/api/system/job-queue/{kind}/{job_id}/cancel" not in paths:
+        @app.post("/api/system/job-queue/{kind}/{job_id}/cancel")
+        def job_queue_cancel(kind: str, job_id: str):
+            return queue_request(
+                "POST",
+                "/api/system/job-queue/" + urllib.parse.quote(kind, safe="") +
+                "/" + urllib.parse.quote(job_id, safe="") + "/cancel",
+                payload={},
+                timeout=70,
+            )
 
     if "/api/mlx/system/health-v1" not in paths:
         @app.get("/api/mlx/system/health-v1")

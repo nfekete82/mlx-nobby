@@ -517,3 +517,28 @@ test('editor labels use complete shared German/English translations and can swit
     assert.ok(textContent(h.body).includes('Total duration'));
     assert.ok(!textContent(h.body).includes('editor_'));
 });
+
+test('successful History cancellation reloads server status without retrying or duplicating', async () => {
+    const h = harness(), history = installHistory(h);
+    let cancelled = false;
+    h.window.fetch = async (path, init = {}) => {
+        h.calls.push({path, init});
+        if (path.endsWith('/cancel')) {
+            assert.equal(init.method, 'POST');
+            cancelled = true;
+            return {ok: true, json: async () => ({ok: true, kind: 'shorts', job: {id: 'active', status: 'cancelled'}})};
+        }
+        assert.equal(path, '/api/mlx/shorts-jobs?limit=100');
+        return {ok: true, json: async () => ({projects: [{id: 'active', title: 'Cancelled fixture', status: cancelled ? 'cancelled' : 'running'}]})};
+    };
+    const card = history.__test.renderProject({id: 'active', status: 'running'});
+    await card.querySelectorAll('button').find(b => b.textContent === 'Abbrechen').fire('click', {stopPropagation() {}});
+    assert.equal(cancelled, true);
+    assert.deepEqual(h.calls.map(c => c.path), [
+        '/api/system/job-queue/shorts/active/cancel', '/api/mlx/shorts-jobs?limit=100'
+    ]);
+    assert.equal(h.calls.filter(c => c.init.method === 'POST').length, 1);
+    assert.equal(history.getProjects()[0].status, 'cancelled');
+    const updated = history.__test.renderProject(history.getProjects()[0]);
+    assert.ok(!updated.querySelectorAll('button').some(b => b.textContent === 'Abbrechen'));
+});

@@ -21,9 +21,8 @@ production starts only when you select Render Short. Autosave preserves changes
 before navigation and rendering. Version-1 projects and existing scene revisions
 remain supported, with retries reusing valid completed media.
 See [Shorts API and production behavior](docs/SHORTS_STUDIO.md) for contracts,
-voiceover timing and provider readiness. The current web job queue and Shorts
-Cancel button are unavailable because their proxy routes are missing; the
-canonical guide records this existing limitation.
+voiceover timing and provider readiness. The web job queue shows media jobs,
+and active Shorts jobs can be cancelled from History or the queue.
 
 ## Features
 
