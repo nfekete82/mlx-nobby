@@ -2,7 +2,7 @@
 
 (() => {
     const CSS_ID = 'mlx-image-variant-gallery-css';
-    const SCRIPT_VERSION = '20260929-gallery-v1';
+    const SCRIPT_VERSION = '20261002-image-reference';
     const ACTIVE_STATUSES = new Set([
         'queued',
         'loading',
@@ -174,6 +174,9 @@
             );
         }
         if (status === 'cancelled') return t('cancelled');
+        if (job.semantic_operation === 'reference_generate') {
+            return window.MLXI18n?.t('generation.reference_generating', 'Creating an image using the reference …') ?? 'Creating an image using the reference …';
+        }
         if (status === 'queued') return t('waiting');
         return t('generating');
     }
@@ -228,7 +231,9 @@
         const meta = document.createElement('div');
         meta.className = 'image-variant-meta';
         meta.textContent = [
+            artifact.reference_used ? (window.MLXI18n?.t('generation.reference_used', 'Reference image used ✓') ?? 'Reference image used ✓') : '',
             artifact.model,
+            artifact.reference_used ? artifact.provider : '',
             artifact.seed != null ? 'Seed ' + artifact.seed : ''
         ].filter(Boolean).join(' · ');
         if (meta.textContent) slot.appendChild(meta);

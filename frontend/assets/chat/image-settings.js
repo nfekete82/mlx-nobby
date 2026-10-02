@@ -201,6 +201,16 @@ function imageT(key, fallback = '', variables = {}) {
             return null;
         }
 
+        if (artifact?.semantic_operation === 'reference_generate') {
+            if (!artifact.source_path) return null;
+            return {prompt: artifact.original_prompt || prompt,
+                referenceMode: artifact.reference_mode,
+                referenceContext: {kind: 'image', stored_path: artifact.source_path,
+                    reference_artifact_id: artifact.reference_artifact_id},
+                imageOptions: {model: artifact.model, width: artifact.width, height: artifact.height,
+                    steps: artifact.steps, guidance: artifact.guidance, auto_size: false},
+                quality: IMAGE_QUALITIES.has(artifact.quality) ? artifact.quality : null};
+        }
         const imageOptions = {
             prompt,
             model: String(artifact?.model || 'auto'),
@@ -301,10 +311,12 @@ function imageT(key, fallback = '', variables = {}) {
                     },
                     body: JSON.stringify({
                         prompt: prepared.prompt,
-                        action: 'image_generate',
+                        action: prepared.referenceMode ? 'image_reference_generate' : 'image_generate',
+                        reference_mode: prepared.referenceMode || null,
+                        file_context: prepared.referenceContext || null,
                         image_options: prepared.imageOptions,
                         quality: prepared.quality,
-                        resolved_target: 'image',
+                        resolved_target: prepared.referenceMode ? 'image_edit' : 'image',
                         conversation_context: [],
                         trace_id: newTraceId(),
                         chat_id: session.id,
@@ -341,7 +353,7 @@ function imageT(key, fallback = '', variables = {}) {
                 return false;
             }
 
-            if (toolResult?.tool !== 'image_generate') {
+            if (toolResult?.tool !== (prepared.referenceMode ? 'image_edit' : 'image_generate')) {
                 throw new Error(
                     imageT(
                         'generation.image_regenerate_unexpected_action',
@@ -493,7 +505,7 @@ function imageT(key, fallback = '', variables = {}) {
         // upscales intentionally keep their existing enhancement-only UI.
         if (
             !source?.prompt ||
-            source?.source_path ||
+            (source?.source_path && source?.semantic_operation !== 'reference_generate') ||
             source?.scale
         ) {
             return enhanceMenu;
@@ -576,7 +588,7 @@ function imageT(key, fallback = '', variables = {}) {
     }
     const script = document.createElement('script');
     script.id = 'mlx-image-variant-gallery-script';
-    script.src = '/assets/chat/image-variant-gallery.js?v=20260929-gallery-v1';
+    script.src = '/assets/chat/image-variant-gallery.js?v=20261002-image-reference';
     script.async = false;
     document.head.appendChild(script);
 })();

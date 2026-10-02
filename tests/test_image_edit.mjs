@@ -1943,3 +1943,41 @@ for (const sourceKind of ['t2v', 'upload', 'artifact']) {
     }
 }
 context.requestAnimationFrame = originalAnimationFrame;
+
+
+// Reference routing uses the current upload or explicit workspace selection.
+// An old historical image and ambiguous attachments cannot authorize a source.
+for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup']) {
+    const referenceArtifact = {...imageArtifact, semantic_operation: 'reference_generate',
+        reference_mode: 'same_identity', source_path: '/uploads/original-reference.png',
+        reference_artifact_id: 'original-reference'};
+    session.messages = [{role: 'assistant', tool_result: {tool: 'image_edit', status: 'completed',
+        artifacts: [kind === 'followup' ? referenceArtifact : imageArtifact]}}];
+    session.workspace = ['selected', 'followup'].includes(kind) ? {active_artifact_id: imageArtifact.artifact_id} : {};
+    selectedAttachments = kind === 'upload' ? [imageAttachment] : kind === 'multiple' ?
+        [imageAttachment, {...imageAttachment, name: 'second.png'}] : [];
+    const referencePayloads = [];
+    context.fetch = async (url, options) => {
+        if (url === '/api/mlx/chat/actions/route') {
+            return {ok: true, async json() {return {target: 'image_edit', intent: 'image_reference_generate', reference_mode: 'same_identity'};}};
+        }
+        if (url.startsWith('/api/mlx/images/')) return {ok: true, async blob() {return new Blob(['fixture'], {type: 'image/png'});}};
+        assert.equal(url, '/api/mlx/chat/actions');
+        referencePayloads.push(JSON.parse(options.body));
+        return {ok: true, async json() {return {tool: 'image_edit', status: 'failed', data: {}, artifacts: [], error: 'fixture provider unavailable'};}};
+    };
+    input.value = kind === 'followup' ? 'Jetzt draußen im Regen.' : 'Erstelle ein neues Bild derselben Person.';
+    await window.MLXChatGeneration.sendMessage();
+    if (['historical', 'multiple'].includes(kind)) {
+        assert.equal(referencePayloads.length, 0, kind + ' must not choose an arbitrary source');
+    } else {
+        assert.equal(referencePayloads.length, 1, kind);
+        const body = referencePayloads[0];
+        assert.equal(body.reference_mode, 'same_identity');
+        assert.equal(body.resolved_target, 'image_edit');
+        assert.equal(body.image_options.auto_size, true);
+        if (kind === 'upload') assert.equal(body.file_context.stored_path, '/uploads/stored.png');
+        if (kind === 'selected') assert.equal(body.active_artifact_id, imageArtifact.artifact_id);
+        if (kind === 'followup') assert.equal(body.file_context.stored_path, referenceArtifact.source_path);
+    }
+}

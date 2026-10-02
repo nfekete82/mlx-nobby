@@ -219,7 +219,8 @@ def guard_media_route_payload(
     action = str(request_payload.get("action") or "") or None
     original_target = str(response_payload.get("target") or "")
     has_image = has_image_context(request_payload.get("file_context"), request_payload.get("active_artifact_id"))
-    media = decide_media_intent(prompt, has_image=has_image, action=action)
+    media = decide_media_intent(prompt, has_image=has_image, action=action,
+        reference_context=request_payload["file_context"].get("reference_mode") if isinstance(request_payload.get("file_context"), dict) else None)
     guarded_target = original_target
     reason = None
     if original_target in ACTIVE_MEDIA_TARGETS or media.handles_turn:

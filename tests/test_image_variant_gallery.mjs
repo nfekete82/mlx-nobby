@@ -102,3 +102,9 @@ assert.equal(
 );
 
 console.log('Image variant gallery grouping passed.');
+
+assert.equal(helpers.statusText({image_job: {status: 'running', semantic_operation: 'reference_generate'}}),
+    'Creating an image using the reference …');
+assert.equal(helpers.artifactForMessage({tool_result: {tool: 'image_edit', artifacts: [{
+    image_id: 'reference-output', semantic_operation: 'reference_generate', reference_used: true
+}]}}).reference_used, true);
