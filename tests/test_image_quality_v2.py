@@ -2,6 +2,9 @@ import io
 import os
 import tempfile
 import unittest
+import pytest
+
+pytestmark = pytest.mark.usefixtures('mflux_cli_contract')
 from pathlib import Path
 from unittest import mock
 

@@ -140,7 +140,12 @@ def registry_call(function, *args, **kwargs):
 
 def describe(model):
     available, reason = availability(model)
-    return model | {"available": available, "availability_note": reason}
+    result = model | {"available": available, "availability_note": reason}
+    if model['provider'] == 'mflux':
+        from image_providers import MFLUX_BIN, probe_mflux_cli
+        capabilities = probe_mflux_cli(str(MFLUX_BIN / registry.FAMILIES[model['model_family']][0]))
+        result['cli_capabilities'] = capabilities | {'supported_flags': sorted(capabilities['supported_flags'])}
+    return result
 
 
 def _chat_server_loaded():
@@ -424,7 +429,7 @@ def _auto_generation_model(prompt):
         fallback = candidate(model["id"])
         if fallback:
             return fallback
-    return registry_call(registry.get_model)
+    raise HTTPException(503, "Kein kompatibler lokaler Bildgenerator verfügbar")
 
 
 def _generation_model(model_id, prompt):
@@ -993,6 +998,8 @@ def _run_image_job(job_id, operation, request):
         _update_job(
             job_id,
             model=model["id"],
+            provider=model['provider'],
+            model_family=model['model_family'],
             total_steps=(
                 params.get("steps")
                 if operation != "upscale"
@@ -1069,7 +1076,7 @@ def _run_image_job(job_id, operation, request):
             detail = str(exc.detail) if isinstance(exc, HTTPException) else _provider_failure(exc)
             _update_job(
                 job_id, status="failed", result=None,
-                error=detail, finished_at=time.time(),
+                error=detail, finished_at=time.time(), **getattr(exc, 'diagnosis', {}),
             )
     finally:
         _update_job(job_id, _process=None)

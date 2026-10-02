@@ -114,7 +114,7 @@ def _route_generation_model(model_id, prompt):
                 break
 
     if selected is None:
-        selected = core.registry_call(registry.get_model)
+        raise HTTPException(503, 'Kein kompatibler lokaler Bildgenerator verfügbar')
 
     route = _safe_route(plan, selected=selected["id"])
     _route_local.last = route

@@ -111,9 +111,17 @@ the image service looks for them under `~/.local/bin` and
 `MLX_IMAGE_REALESRGAN_MODELS` override those paths.
 
 The optional standalone CLI is `mflux==0.19.1`. It is installed separately
-because the image adapter invokes its console commands. The commands used
-by the repository were present and accepted the adapter's arguments. Package
-installation and help checks downloaded no model weights.
+because the image adapter invokes its console commands. `mflux_capabilities.py`
+probes each executable's `--help` offline and caches its actual argument contract.
+The reviewed 0.19.1 CLI sources and the installed 0.20.0 runtime support the
+required generation/edit flags, but neither supports `--json-events` or Qwen
+Edit's former `--canvas-policy`. Source aspect is passed through resolved
+width/height; optional JSON progress is used only when the CLI advertises it.
+Qwen's supported loader expects an unquantized text/vision encoder. Packed
+quantized encoder weights are rejected during availability checks by reading
+local safetensors headers, without loading tensors. The dependency pin remains
+0.19.1; no runtime upgrades or model downloads were performed for this fix.
+See [MFLUX compatibility diagnosis](MFLUX_COMPATIBILITY.md).
 
 ### Video dispatcher
 
