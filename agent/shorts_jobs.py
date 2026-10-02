@@ -973,6 +973,22 @@ def cancel_short_job(job_id, request_fn=None):
     return _finish_cancelled(job_id, request_fn)
 
 
+def cancel_chat_jobs(chat_id):
+    with _jobs_lock:
+        ids = [job_id for job_id, job in _load_jobs().items()
+               if job.get("chat_id") == chat_id and job.get("status") in ACTIVE_STATUSES]
+    cancelled = []
+    for job_id in ids:
+        try:
+            cancel_short_job(job_id)
+            cancelled.append(job_id)
+        except ValueError:
+            # A worker may have completed between the snapshot and cancellation.
+            if get_short_job(job_id).get("status") not in TERMINAL_STATUSES:
+                raise
+    return cancelled
+
+
 def resume_short_jobs():
     with _jobs_lock:
         jobs = _load_jobs()
