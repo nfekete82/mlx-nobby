@@ -534,6 +534,38 @@ assert.ok(saves > 0);
 assert.ok(renders > 0);
 assert.equal(warnings.length, 13);
 
+// The start API may report completion before it attaches a public artifact.
+const earlyMessage = {role: 'assistant', content: '', image_generation_pending: true};
+const earlySession = session('early-image-completion', [earlyMessage]);
+activeSession = earlySession;
+assert.equal(recovery.updateImageJobMessage(earlySession, earlyMessage,
+    toolResult('completed', 'a'.repeat(24))), false);
+assert.equal(earlyMessage.image_job.status, 'saving');
+fetchImpl = async () => response(toolResult('completed', 'a'.repeat(24)));
+assert.equal(recovery.resumeImageJobsForSession(earlySession), 1);
+await settle();
+assert.equal(earlyMessage.image_generation_pending, true);
+assert.equal(timeouts.size, 1, 'completed without an artifact continues polling');
+fetchImpl = async () => response(toolResult('completed', 'a'.repeat(24), {artifact: imageArtifact}));
+const [earlyTimerId, earlyTimer] = timeouts.entries().next().value;
+timeouts.delete(earlyTimerId); earlyTimer.callback();
+await settle();
+assert.equal(earlyMessage.image_job.status, 'completed');
+assert.equal(earlyMessage.image_generation_pending, false);
+assert.equal(earlyMessage.tool_result.artifacts[0].image_id, imageArtifact.image_id);
+assert.equal(timeouts.size, 0);
+
+const unboundMessage = storedMessage('running', 'b'.repeat(24));
+delete unboundMessage.image_job;
+const unboundSession = session('unbound-image-job', [unboundMessage]);
+activeSession = unboundSession;
+fetchImpl = async () => response(toolResult('failed', 'b'.repeat(24), {error: 'fixture failed'}));
+assert.equal(recovery.resumeImageJobsForSession(unboundSession), 1);
+await settle();
+assert.equal(unboundMessage.image_job.status, 'failed');
+assert.match(unboundMessage.content, /fixture failed/);
+assert.equal(timeouts.size, 0);
+
 console.log(
     'Image job resume: restore, source of truth, retries, idempotency, ' +
     'session isolation, completion, failure, cancellation, and 404 passed.',
