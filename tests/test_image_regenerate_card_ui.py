@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_image_card_removes_fixed_three_variant_button():
-    source = b"""        const fragment = document.createDocumentFragment();
+    source = b"""    generation.createImageUpscaleMenu = source => {
+        const fragment = document.createDocumentFragment();
         const regenerate = document.createElement('button');
         const variants = document.createElement('button');
 
@@ -85,3 +86,52 @@ def test_production_backend_installs_image_regenerate_ui():
 
     assert "from backend.image_regenerate_ui import ImageRegenerateUiMiddleware" in source
     assert "app.add_middleware(ImageRegenerateUiMiddleware)" in source
+
+
+def test_production_served_module_has_no_dangling_variant_references():
+    import subprocess
+    from fastapi.testclient import TestClient
+    from backend.entrypoint import app
+
+    source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
+    patched = image_regenerate_ui.patch_image_settings_source(source)
+    assert patched != source
+    wrapper = patched.split(b"generation.createImageUpscaleMenu = source => {", 1)[1]
+    wrapper = wrapper.split(b"return fragment;", 1)[0]
+    assert b"variants" not in wrapper
+    assert b"regenerate.addEventListener" in wrapper
+    assert b"fragment.append(regenerate, enhanceMenu)" in wrapper
+    assert b"async function generateImageVariants" in patched
+    assert image_regenerate_ui.patch_image_settings_source(patched) == patched
+    with TestClient(app, base_url="http://localhost") as client:
+        served = client.get("/assets/chat/image-settings.js?v=regression")
+    assert served.status_code == 200
+    assert served.content == patched
+    assert int(served.headers["content-length"]) == len(patched)
+    subprocess.run(["node", "--input-type=commonjs", "-e", r"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync(0, 'utf8');
+const start = source.indexOf('    generation.createImageUpscaleMenu = source => {');
+const end = source.indexOf('        return fragment;', start) + '        return fragment;'.length;
+class Element {
+  constructor() { this.children = []; this.listeners = {}; this.isConnected = true; }
+  append(...children) { this.children.push(...children); }
+  addEventListener(name, listener) { this.listeners[name] = listener; }
+}
+const context = {generation: {}, document: {createElement: () => new Element(), createDocumentFragment: () => new Element()},
+  originalCreateImageUpscaleMenu: () => new Element(), imageT: (_key, fallback) => fallback,
+  regenerateImageArtifact: async () => false};
+vm.runInNewContext(source.slice(start, end) + '\n    };', context);
+const card = context.generation.createImageUpscaleMenu({prompt: 'create an image of a woman'});
+if (card.children.length !== 2) throw new Error('Missing regeneration or enhancement control');
+card.children[0].listeners.click().then(() => {
+  if (card.children[0].disabled) throw new Error('Failed regeneration must remain retryable');
+});
+"""], input=served.content, check=True, capture_output=True)
+
+
+def test_unknown_card_module_is_served_intact():
+    source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
+    changed = source.replace(b"variants.addEventListener('click'", b"variants.addEventListener('pointerup'")
+    assert image_regenerate_ui.patch_image_settings_source(changed) == changed
