@@ -155,7 +155,7 @@
     function updateLauncher() {
         if (!ui?.launcher) return;
         const count = activeCount();
-        ui.launcher.textContent = count > 0
+        ui.launcherLabel.textContent = count > 0
             ? `${t('launcher')} · ${count}`
             : t('launcher');
         ui.launcher.dataset.active = count > 0 ? 'true' : 'false';
@@ -487,7 +487,10 @@
         if (ui || !document.body) return ui;
         loadStyles();
 
-        const launcher = createElement('button', 'mlx-shorts-history-launcher', t('launcher'));
+        const launcher = createElement('button', 'mlx-shorts-history-launcher');
+        launcher.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="m10 8 6 4-6 4Z"></path></svg>';
+        const launcherLabel = createElement('span', 'sidebar-action-label', t('launcher'));
+        launcher.appendChild(launcherLabel);
         launcher.type = 'button';
         launcher.setAttribute('aria-label', t('title'));
 
@@ -559,6 +562,7 @@
 
         ui = {
             launcher,
+            launcherLabel,
             overlay,
             panel,
             title,

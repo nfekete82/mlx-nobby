@@ -170,27 +170,6 @@
             .mlx-shorts-studio-launcher {
                 display: none !important;
             }
-            .sidebar-bottom .mlx-shorts-history-launcher.sidebar-action {
-                position: static;
-                right: auto;
-                bottom: auto;
-                z-index: auto;
-                width: 100%;
-                padding: 10px;
-                border: 0;
-                border-radius: 9px;
-                background: transparent;
-                color: var(--muted);
-                font: inherit;
-                font-size: 12px;
-                font-weight: 400;
-                box-shadow: none;
-                text-align: left;
-            }
-            .sidebar-bottom .mlx-shorts-history-launcher.sidebar-action:hover {
-                background: var(--panel2);
-                color: var(--text);
-            }
         `;
         document.head.appendChild(style);
     }

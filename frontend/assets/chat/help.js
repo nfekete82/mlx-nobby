@@ -345,7 +345,7 @@
             topButton.setAttribute('aria-label', t('Hilfe öffnen', 'Open help'));
             topButton.title = t('Hilfe öffnen', 'Open help');
         }
-        if (sideButton) sideButton.textContent = `❔ ${t('Hilfe', 'Help')}`;
+        if (sideButton) sideButton.querySelector('.sidebar-action-label').textContent = t('Hilfe', 'Help');
         renderTopics(search?.value || '');
         renderTopic();
     }
@@ -436,7 +436,9 @@
 
         const sidebarBottom = document.querySelector('.sidebar-bottom');
         if (sidebarBottom && !document.getElementById('mlxSidebarHelpButton')) {
-            const button = make('button', 'sidebar-action', `❔ ${t('Hilfe', 'Help')}`);
+            const button = make('button', 'sidebar-action');
+            button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"></path><path d="M12 17h.01"></path></svg>';
+            button.appendChild(make('span', 'sidebar-action-label', t('Hilfe', 'Help')));
             button.id = 'mlxSidebarHelpButton';
             button.type = 'button';
             button.addEventListener('click', () => openHelp());
