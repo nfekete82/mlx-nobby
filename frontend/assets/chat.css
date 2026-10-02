@@ -6595,29 +6595,33 @@ body.mlx-empty-chat .composer {
 
 }
 
-/* Floating large preview for sent image attachments. */
-.image-hover-preview {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    max-width: min(75vw, 900px);
-    max-height: 80vh;
-    width: auto;
-    height: auto;
-    transform: translate(-50%, -50%);
-    object-fit: contain;
-    border-radius: 12px;
-    z-index: 100000;
-    pointer-events: none;
-    background: #0b0f16;
-    box-shadow:
-        0 24px 80px rgba(0, 0, 0, 0.75),
-        0 0 0 1px rgba(255, 255, 255, 0.14);
-}
+/* One click/tap preview for chat attachments, generated images and galleries. */
+.message-attachment-preview,
+.image-artifact-preview,
+.image-variant-preview-link { cursor: zoom-in; }
 
-.message-attachment-preview {
-    cursor: zoom-in;
+.message-attachment-preview:hover,
+.image-artifact-preview:hover,
+.message-attachment-preview:focus-visible,
+.image-artifact-preview:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.image-preview-dialog {
+    box-sizing: border-box;
+    width: min(95vw, 1200px);
+    max-width: 95vw;
+    max-height: 90vh;
+    max-height: 90dvh;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
 }
+.image-preview-dialog::backdrop { background: rgba(0, 0, 0, .8); }
+.image-preview-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.image-preview-dialog img { display: block; margin: auto; width: auto; height: auto; max-width: 100%; max-height: calc(90vh - 80px); max-height: calc(90dvh - 80px); object-fit: contain; }
+body.image-preview-open { overflow: hidden; }
+.image-job-card .assistant-thinking-dot { margin-right: 10px; }
 
 /* ==========================================================
    MLX Nobby – Composer Attachment Layout

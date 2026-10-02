@@ -3243,10 +3243,9 @@ const imageFiles =
 
             if (
                 isImageJobTool(toolResult.tool) &&
-                pendingImageMessage &&
-                toolResult.data?.job?.id
+                pendingImageMessage
             ) {
-                updateImageJobMessage(
+                const terminal = updateImageJobMessage(
                     session,
                     pendingImageMessage,
                     toolResult
@@ -3257,14 +3256,7 @@ const imageFiles =
                     contentUpdated: true
                 });
 
-                if (
-                    [
-                        'queued',
-                        'loading',
-                        'running',
-                        'saving'
-                    ].includes(toolResult.status)
-                ) {
+                if (!terminal) {
                     watchImageJob(
                         session,
                         pendingImageMessage
@@ -3791,11 +3783,24 @@ function updateImageJobMessage(
     const job = toolResult?.data?.job;
 
     if (!job?.id) {
-        return true;
+        message.tool_result = toolResult;
+        message.image_generation_pending = ACTIVE_IMAGE_JOB_STATUSES.has(toolResult?.status);
+        if (!message.image_generation_pending) {
+            message.content = toolResult?.status === 'completed' && toolResult.artifacts?.some(artifact => artifact?.image_id)
+                ? '' : toolFailureSummary(toolResult);
+        }
+        return !message.image_generation_pending;
     }
 
     const previousJob = message.image_job;
     const nextJob = { ...job };
+    // The start response can finish before its artifact has been attached.
+    // Keep polling until the completed result is actually displayable.
+    if (nextJob.status === 'completed' && !toolResult.artifacts?.some(artifact => artifact?.image_id)) {
+        nextJob.status = 'saving';
+        toolResult = { ...toolResult, status: 'saving',
+            data: { ...toolResult.data, job: nextJob } };
+    }
 
     if (imageJobHasStep(nextJob)) {
         const sameStep =
@@ -3840,7 +3845,7 @@ function updateImageJobMessage(
     }
 
     message.tool_result = toolResult;
-    message.image_generation_pending = false;
+    message.image_generation_pending = ACTIVE_IMAGE_JOB_STATUSES.has(nextJob.status);
 
     if (toolResult.status === 'completed') {
         const artifact = toolResult.artifacts?.[0];
@@ -4176,6 +4181,9 @@ function resumeImageJobsForSession(session) {
 
     let started = 0;
     for (const message of session.messages) {
+        if (!message.image_job && IMAGE_JOB_TOOLS.has(message?.tool_result?.tool) && message.tool_result.data?.job?.id) {
+            updateImageJobMessage(session, message, message.tool_result);
+        }
         const job = message?.image_job;
         if (
             !IMAGE_JOB_TOOLS.has(message?.tool_result?.tool) ||

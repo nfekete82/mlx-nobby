@@ -1182,6 +1182,14 @@ class TestElement {
         return child;
     }
 
+    prepend(child) {
+        this.children.unshift(child);
+    }
+
+    setAttribute(name, value) {
+        this[name] = String(value);
+    }
+
     addEventListener(type, callback) {
         this.listeners[type] = callback;
     }
@@ -1394,6 +1402,39 @@ const runningJobMessage = {
     },
 };
 const runningJobCard = renderImageJobCard(runningJobMessage);
+
+// A visible placeholder must survive the first response and artifact binding.
+const delayedImage = {role: 'assistant', image_generation_pending: true, content: ''};
+assert.ok(renderImageJobCard(delayedImage));
+assert.equal(renderImageJobCard(delayedImage).role, 'status');
+const delayedSession = {messages: [delayedImage], workspace: {}};
+assert.equal(routing.updateImageJobMessage(delayedSession, delayedImage,
+    {tool: 'image_generate', status: 'queued', data: {}, artifacts: []}), false);
+assert.ok(renderImageJobCard(delayedImage), 'pending card remains before the job ID is bound');
+const delayedResult = status => ({tool: 'image_generate', status,
+    data: {job: {id: 'd'.repeat(24), operation: 'generate', status}}, artifacts: []});
+assert.equal(routing.updateImageJobMessage(delayedSession, delayedImage, delayedResult('queued')), false);
+assert.equal(delayedImage.image_generation_pending, true);
+assert.ok(renderImageJobCard(delayedImage));
+assert.equal(routing.updateImageJobMessage(delayedSession, delayedImage, delayedResult('completed')), false);
+assert.equal(delayedImage.image_job.status, 'saving');
+assert.equal(delayedImage.image_generation_pending, true);
+assert.ok(renderImageJobCard(delayedImage));
+const completedImage = delayedResult('completed');
+completedImage.artifacts = [imageArtifact];
+assert.equal(routing.updateImageJobMessage(delayedSession, delayedImage, completedImage), true);
+assert.equal(delayedImage.image_generation_pending, false);
+assert.equal(renderImageJobCard(delayedImage), null);
+assert.ok(renderImageArtifactCard(delayedImage));
+const failedImage = {role: 'assistant', image_generation_pending: true};
+const failedResult = delayedResult('failed');
+failedResult.error = 'provider failed';
+routing.updateImageJobMessage({workspace: {}}, failedImage, failedResult);
+assert.ok(renderImageJobCard(failedImage));
+assert.match(failedImage.content, /provider failed/);
+assert.ok(renderImageJobCard({tool_result: {tool: 'image_generate', status: 'failed', error: 'not available'}}));
+const recoveredCard = renderImageJobCard({tool_result: delayedResult('running')});
+assert.ok(recoveredCard, 'saved tool result still renders before convenience job binding');
 const runningJobElements = descendants(runningJobCard);
 assert.match(
     runningJobElements.find(

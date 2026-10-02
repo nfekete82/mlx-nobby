@@ -307,6 +307,9 @@
     }
   },
   "rendering": {
+    "image_preview_open": "Große Bildvorschau öffnen",
+    "image_preview_title": "Bildvorschau",
+    "image_preview_close": "Bildvorschau schließen",
     "cancel": "Abbrechen",
     "image_editing": "Bild wird bearbeitet …",
     "image_generating": "Bild wird erzeugt …",
