@@ -42,7 +42,7 @@ assert.match(help, /function insertPrompt\(prompt\)/);
 assert.match(help, /input\.dispatchEvent\(new Event\('input'/);
 assert.match(help, /document\.addEventListener\('mlx-language-changed', refreshCopy\)/);
 assert.match(help, /document\.addEventListener\('mlx-i18n-ready', refreshCopy\)/);
-assert.match(help, /FFmpeg/);
+assert.match(help, /Render Short/);
 assert.match(help, /mlx doctor/);
 assert.match(help, /\.\/scripts\/restart-all\.sh/);
 assert.match(help, /window\.MLXHelp/);

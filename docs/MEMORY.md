@@ -30,12 +30,13 @@ audit snapshots so forgotten text is not retained only as consolidation history.
 ## Semantic retrieval
 
 Memory v1.1 introduced the existing local embedding service on port `8020`.
-With the default setup this is backed by
-`mlx-community/Qwen3-Embedding-4B-4bit-DWQ` through mlx-serve.
+The configured `embedding` role/service supplies the model; the supplied adapter
+default is `mlx-community/Qwen3-Embedding-4B-4bit-DWQ` through mlx-serve, not a
+requirement that this particular model is installed.
 
 Retrieval is hybrid:
 
-- Qwen3 cosine similarity is the primary semantic signal.
+- Local embedding cosine similarity is the primary semantic signal.
 - Lexical overlap still contributes to ranking.
 - Importance, confidence, recency, and pinned status remain ranking signals.
 - Low-similarity semantic noise is rejected unless the memory is pinned.

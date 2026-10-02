@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Refreshed the bilingual Help Center and technical documentation for current
+  Shorts drafts/rendering and APIs, image workflows, memory, automations, local
+  API integrations and runtime tooling; added help, link and route regression
+  coverage without changing product behavior.
+
 ## v1.6.0
 
 - Added a local OpenAI-compatible inference gateway with `/v1/models`,

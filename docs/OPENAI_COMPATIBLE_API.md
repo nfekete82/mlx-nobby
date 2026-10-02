@@ -61,6 +61,11 @@ currently loaded VLM model (use your configured runtime port). A model's
 Context capacity is not a guarantee that your hardware can serve that many
 tokens. Max output is a per-request budget, not the model's context capacity.
 
+### Historical validation (v1.6.0)
+
+These client/model measurements describe the release validation, not required
+installed model settings or a fresh run of this documentation audit.
+
 The installed Cline 4.1.22 provider source was checked against its
 [official tagged implementation](https://github.com/cline/cline/blob/v4.1.22/sdk/packages/llms/src/providers/vendors/openai-compatible.ts)
 and installed AI SDK transport: it appends `/chat/completions` to the base URL,

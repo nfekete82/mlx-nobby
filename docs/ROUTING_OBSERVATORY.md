@@ -154,7 +154,7 @@ The existing routing and runtime reliability suites remain applicable.
 
 ### Live validation (2026-10-01)
 
-A separate web process from this branch was tested in headless Chrome against
+Historical validation: a separate web process from the routing-observatory change was tested in headless Chrome against
 the existing local Agent and native services. Browser requests used the same
 production endpoints; the diagnostics navigation was exercised through the UI.
 No configured model roles were changed.

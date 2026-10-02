@@ -16,12 +16,14 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 ## Shorts backend
 
 Shorts Studio offers a pre-production editor, saved drafts and History with
-explicit job selection, retry, duplication and cancellation. Chat creates a draft;
+explicit job selection, retry and duplication. Chat creates a draft;
 production starts only when you select Render Short. Autosave preserves changes
 before navigation and rendering. Version-1 projects and existing scene revisions
 remain supported, with retries reusing valid completed media.
 See [Shorts API and production behavior](docs/SHORTS_STUDIO.md) for contracts,
-voiceover timing and provider readiness.
+voiceover timing and provider readiness. The current web job queue and Shorts
+Cancel button are unavailable because their proxy routes are missing; the
+canonical guide records this existing limitation.
 
 ## Features
 
@@ -199,6 +201,23 @@ mlx restart-all
 Then open <http://127.0.0.1:8090>. The web container reaches the native agent
 through `host.docker.internal`; it does not contain the MLX runtimes.
 
+## Help and feature documentation
+
+Open Help from the chat sidebar for German/English instructions on images,
+Shorts drafts/rendering, voice, workspace tasks, memory, automations, diagnostics
+and local API integrations. Canonical technical references:
+
+- [Workspace Agent Task Mode](docs/AGENT_TASK_MODE.md)
+- [Memory](docs/MEMORY.md), [Memory Manager](docs/MEMORY_MANAGER.md) and
+  [Context Inspector](docs/MEMORY_CONTEXT_INSPECTOR.md)
+- [Automations and notifications](docs/AUTOMATIONS.md)
+- [Image galleries](docs/IMAGE_GALLERY_VARIANTS.md) and
+  [reference generation](docs/IMAGE_REFERENCE_GENERATION.md)
+- [System Health](docs/SYSTEM_HEALTH.md),
+  [Performance Observatory](docs/PERFORMANCE_OBSERVATORY.md) and
+  [Routing Observatory](docs/ROUTING_OBSERVATORY.md)
+- [OpenAI-compatible API / Cline](docs/OPENAI_COMPATIBLE_API.md)
+
 ## MLX manager
 
 The maintained manager source is `scripts/mlx`; the installer creates
@@ -225,6 +244,19 @@ mlx thinking off
 mlx chat
 mlx ask "Your question"
 ```
+
+For ordinary native-service recovery, use `mlx doctor`, `mlx status` and
+`mlx restart-all`. `mlx restart` affects the LLM runtime only. `mlx restart-all`
+retains a healthy Agent and does not rebuild/restart the Docker web application.
+After pulling changed code, run the repository update helper:
+
+```sh
+./scripts/restart-all.sh
+mlx doctor
+```
+
+That helper rebuilds the web frontend, reloads Agent code and checks service
+revisions. It is different from a routine runtime restart.
 
 Commands that download a Hugging Face repository require network access and
 may require local Hugging Face authentication for gated models. Never put an

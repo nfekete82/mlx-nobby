@@ -6,6 +6,10 @@ Audit vom **1. Oktober 2026**, Ausgangscommit
 Memory, Webcontainer auf 8090, Agent auf 8010 und `mlx_vlm` auf 8000.
 Aktives Modell: `~/Models/Qwen3.8-27B-Abliterated-MLX-4bit`.
 
+Dies ist ein historischer Messbericht. Modellnamen, lokale Pfade und Branch
+bezeichnen die damalige Testkonfiguration, keine Produktvorgaben. Die aktuelle
+Diagnoseoberfläche beschreibt [Performance Observatory](PERFORMANCE_OBSERVATORY.md).
+
 ## Ergebnis und Gültigkeitsbereich
 
 Fünf gezielte Änderungen wurden umgesetzt:
