@@ -118,7 +118,9 @@
     "reference_mode_resemblance": "Similar person",
     "reference_generating": "Creating an image using the reference …",
     "reference_select_source": "Please select the reference image.",
-    "reference_source_required": "A reference image is required for this request."
+    "reference_source_required": "A reference image is required for this request.",
+    "image_variants_unavailable": "Variants are unavailable for this image. Generate a new image first.",
+    "image_variants_failed": "The variants could not be started. Please try again."
   },
   "models": {
     "unnamed": "Unnamed model",

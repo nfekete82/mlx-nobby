@@ -11,5 +11,8 @@
   "download": "Download",
   "progress": "{percent}% · Step {current}/{total}",
   "progress_percent": "{percent}%",
-  "loading": "Starting …"
+  "retry": "Retry missing variants",
+  "loading": "Starting …",
+  "cancel": "Cancel variants",
+  "unavailable": "Variants are unavailable for this image. Generate a new image first."
 }

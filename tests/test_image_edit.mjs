@@ -1981,3 +1981,28 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
         if (kind === 'followup') assert.equal(body.file_context.stored_path, referenceArtifact.source_path);
     }
 }
+
+// A late poll cannot regress cancellation or a newer retry of the same slot.
+const variantPollMessage = {role: 'assistant', image_variant_group_id: '1'.repeat(24),
+    image_job: {id: '7'.repeat(24), status: 'queued'},
+    tool_result: {tool: 'image_generate', status: 'queued'}};
+session.messages.push(variantPollMessage);
+let finishPoll;
+context.fetch = () => new Promise(resolve => {finishPoll = resolve;});
+assert.equal(window.MLXChatGeneration.resumeImageJobsForSession(session), 1);
+variantPollMessage.image_job = {...variantPollMessage.image_job, status: 'cancelled'};
+finishPoll({ok: true, json: async () => ({tool: 'image_generate', status: 'running',
+    data: {job: {id: '7'.repeat(24), status: 'running'}}, artifacts: []})});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(variantPollMessage.image_job.status, 'cancelled');
+assert.equal(window.MLXChatGeneration.isWatchingImageJob(variantPollMessage), false);
+variantPollMessage.image_job = {id: '7'.repeat(24), status: 'queued'};
+assert.equal(window.MLXChatGeneration.resumeImageJobsForSession(session), 1);
+const retryState = {id: '7'.repeat(24), status: 'queued', retry: true};
+variantPollMessage.image_job = retryState;
+finishPoll({ok: true, json: async () => ({tool: 'image_generate', status: 'running',
+    data: {job: {id: '7'.repeat(24), status: 'running'}}, artifacts: []})});
+await new Promise(resolve => setImmediate(resolve));
+assert.strictEqual(variantPollMessage.image_job, retryState);
+// Stop the watcher without changing any successful artifacts.
+variantPollMessage.image_job = {...retryState, status: 'cancelled'};

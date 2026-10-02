@@ -260,7 +260,7 @@ const versionMatch = source.match(
     /const SCRIPT_VERSION = '([^']+)'/,
 );
 assert.ok(versionMatch, 'image count picker must expose a script version');
-assert.equal(versionMatch[1], '20261002-image-reference');
+assert.equal(versionMatch[1], '20261002-gallery-final');
 assert.ok(
     commonSource.includes(
         'image-count-picker.js?v=' + versionMatch[1],
@@ -268,8 +268,9 @@ assert.ok(
     'common.js must load the same image count picker build as the script version',
 );
 assert.match(commonSource, /loadImageCountPicker\(\);/);
-assert.match(source, /settings: selectedImageBatchSettings\(\)/);
-assert.match(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
+assert.doesNotMatch(source, /settings: selectedImageBatchSettings\(\)/);
+assert.doesNotMatch(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
+assert.doesNotMatch(source.slice(source.indexOf("async function generateAdditionalImages"), source.indexOf("async function maybeExpandActiveBatch")), /regenerateImageArtifact/);
 assert.match(source, /fetch\('\/api\/image\/prewarm'/);
 assert.match(source, /if \(imageMode\) requestImagePrewarm\(\);/);
 assert.match(source, /mlx-i18n-ready/);
@@ -283,3 +284,16 @@ assert.equal(helpers.isInitialImageMessage({role: 'assistant', tool_result: {
 assert.equal(helpers.isInitialImageMessage({role: 'assistant', tool_result: {
     tool: 'image_edit', status: 'completed', artifacts: [{}]
 }}), false);
+
+// The count picker passes the completed source unchanged to one canonical batch.
+const calls = [];
+window.MLXImageRegenerate = {submitVariantBatch: async (...args) => {calls.push(args); return extras;},
+    regenerateImageArtifact: () => {throw new Error('Must use canonical batch');}};
+const capturedSource = {...sourceArtifact, generation_job_id: 'a'.repeat(24)};
+const stillCurrent = () => true;
+assert.strictEqual(await helpers.generateAdditionalImages(capturedSource, session, 5, first, stillCurrent), extras);
+assert.strictEqual(calls[0][0], capturedSource);
+assert.equal(calls[0][1], 6);
+assert.equal(calls[0][2].includeBase, true);
+assert.strictEqual(calls[0][2].firstMessage, first);
+assert.strictEqual(calls[0][2].isCurrent, stillCurrent);
