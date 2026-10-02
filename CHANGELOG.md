@@ -2,9 +2,15 @@
 
 ## Unreleased
 
-- Added a stateless local OpenAI-compatible inference gateway with virtual
-  model roles, native streaming/tool-call transport, disconnect propagation,
-  runtime coordination, explicit unauthenticated loopback semantics and tests.
+## v1.6.0
+
+- Added a local OpenAI-compatible inference gateway with `/v1/models`,
+  `/v1/chat/completions` and configurable virtual coding/chat/agent model roles.
+- Added native SSE streaming, tool-call transport, usage forwarding and client
+  cancellation under the existing Runtime Coordinator. External requests remain
+  stateless without Nobby chat persistence or memory/RAG/workspace activation.
+- Validated Cline 4.1.22 agent turns, file operations and cancellation; documented
+  Cline setup and the unauthenticated loopback-only API. Cline executes its tools.
 
 ## v1.5.0
 
