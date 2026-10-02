@@ -77,6 +77,7 @@
     "image_upscale_source_required": "Please select an image to enhance.",
     "image_upscale_unexpected_action": "The image enhancement action was not accepted.",
     "image_job_cancelled": "Image job cancelled.",
+    "image_artifact_unavailable": "The image job completed, but its image could not be published.",
     "image_job_unavailable": "The running image job is no longer available. The image service may have restarted.",
     "media_quality_title_video": "Choose video quality",
     "media_quality_title_image": "Choose image quality",
