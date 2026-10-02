@@ -1773,6 +1773,12 @@ function renderBatchCard(message) {
     card.appendChild(controls); return card;
 }
 
+function prepareImagePreview(image) {
+    image.tabIndex = 0;
+    image.setAttribute('role', 'button');
+    image.title = rt('image_preview_open', 'Open larger image preview');
+}
+
 function renderImageArtifactCard(message) {
     const artifact = [
         'image_generate',
@@ -1786,6 +1792,7 @@ function renderImageArtifactCard(message) {
     card.className = 'batch-chat-card image-artifact-card';
     const image = document.createElement('img');
     image.className = 'image-artifact-preview';
+    prepareImagePreview(image);
     image.src = '/api/mlx/images/' + encodeURIComponent(artifact.image_id);
     image.alt = artifact.prompt || rt('generated_image', 'Generated image');
     image.loading = 'lazy';
@@ -1838,8 +1845,16 @@ function renderImageArtifactCard(message) {
 }
 
 function renderImageJobCard(message) {
-    const job = message.image_job;
-    if (!job || job.status === 'completed') return null;
+    const result = message.tool_result;
+    let job = message.image_job || (['image_generate', 'image_edit', 'image_upscale'].includes(result?.tool) ? result.data?.job : null);
+    const hasImage = result?.artifacts?.some(artifact => artifact?.image_id);
+    if (job?.status === 'completed' && hasImage) return null;
+    if (job?.status === 'completed') job = { ...job, status: 'saving' };
+    if (!job && message.image_generation_pending) job = { status: 'queued' };
+    if (!job && ['image_generate', 'image_edit', 'image_upscale'].includes(result?.tool) && ['failed', 'cancelled'].includes(result.status)) {
+        job = { status: result.status, error: result.error };
+    }
+    if (!job) return null;
     const presentation = imageJobPresentation(job);
     if (job.semantic_operation === 'reference_generate' && ACTIVE_IMAGE_JOB_STATUSES.has(job.status)) {
         presentation.title = referenceText('reference_generating', 'Creating an image using the reference …');
@@ -1849,6 +1864,12 @@ function renderImageJobCard(message) {
     card.className = 'batch-chat-card image-job-card';
     const title = document.createElement('strong');
     title.textContent = presentation.title;
+    if (presentation.active) {
+        const spinner = document.createElement('span');
+        spinner.className = 'assistant-thinking-dot';
+        title.prepend(spinner);
+        card.setAttribute('role', 'status');
+    }
     card.appendChild(title);
 
     const details = document.createElement('div');
@@ -1857,7 +1878,7 @@ function renderImageJobCard(message) {
     card.appendChild(details);
     appendMediaProgress(card, job, presentation);
 
-    if ([
+    if (job.id && [
         'queued',
         'loading',
         'running',
@@ -3250,6 +3271,7 @@ function renderMessages(options = {}) {
 
                         preview.alt =
                             file.name || rt('image', 'Image');
+                        prepareImagePreview(preview);
 
                         chip.appendChild(
                             preview
@@ -3414,32 +3436,4 @@ function renderAll(options = {}) {
         });
     });
 
-})();
-
-/* Large hover preview for image attachments in chat messages. */
-(function initImageAttachmentHoverPreview() {
-    function removePreview() {
-        document.querySelectorAll('.image-hover-preview')
-            .forEach(element => element.remove());
-    }
-
-    document.addEventListener('mouseover', event => {
-        const image = event.target.closest?.('.message-attachment-preview');
-        if (!image) return;
-
-        removePreview();
-
-        const preview = document.createElement('img');
-        preview.className = 'image-hover-preview';
-        preview.src = image.src;
-        preview.alt = image.alt || '';
-        document.body.appendChild(preview);
-    });
-
-    document.addEventListener('mouseout', event => {
-        const image = event.target.closest?.('.message-attachment-preview');
-        if (!image) return;
-
-        removePreview();
-    });
 })();
