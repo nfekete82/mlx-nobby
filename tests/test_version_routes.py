@@ -5,10 +5,10 @@ from backend import version_routes
 
 
 def test_version_file_matches_release():
-    assert version_routes.VERSION_FILE.read_text(encoding="utf-8").strip() == "1.4.1"
+    assert version_routes.VERSION_FILE.read_text(encoding="utf-8").strip() == "1.5.0"
     info = version_routes.version_info()
     assert info["name"] == "MLX Nobby"
-    assert info["version"] == "1.4.1"
+    assert info["version"] == "1.5.0"
 
 
 def test_version_environment_overrides(monkeypatch):
