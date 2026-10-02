@@ -4178,7 +4178,7 @@ async function resetSessionRuntime(session) {
 
 function resumeImageJobsForSession(session) {
     for (const watcher of imageJobWatchers.values()) {
-        if (watcher.session !== session) {
+        if (watcher.session !== session || !imageJobWatcherIsCurrent(watcher)) {
             stopImageJobWatcher(watcher);
         }
     }
