@@ -162,7 +162,7 @@ CHAT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
-CHATS_LOCK = threading.Lock()
+CHATS_LOCK = threading.RLock()
 MODEL_RUNTIME_LOCK = threading.RLock()
 install_service_routes(app, lambda: int(load_config().get("PORT", 8000)), MODEL_RUNTIME_LOCK)
 JOB_PERSISTENCE_LOCK = threading.Lock()
@@ -309,8 +309,40 @@ def normalize_chat(raw_chat, expected_id=None):
     return without_streaming_fields(chat)
 
 
+def deleted_chat_ids():
+    """Durable tombstones reject late saves, including from other browser tabs."""
+    path = CHAT_DIRECTORY / ".deleted-chat-ids.json"
+    if not path.exists():
+        return set()
+    try:
+        ids = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(ids, list) or any(
+            not isinstance(value, str) or not CHAT_ID_PATTERN.fullmatch(value)
+            for value in ids
+        ):
+            raise ValueError("invalid deleted chat IDs")
+        return set(ids)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Chat deletion state could not be read: {exc}")
+
+
+def write_deleted_chat_ids(ids):
+    CHAT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    path = CHAT_DIRECTORY / ".deleted-chat-ids.json"
+    temporary = CHAT_DIRECTORY / f".deleted-chat-ids.{uuid.uuid4().hex}.tmp"
+    try:
+        temporary.write_text(json.dumps(sorted(ids)), encoding="utf-8")
+        os.replace(temporary, path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Chat history could not be deleted: {exc}")
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def read_chat(chat_id):
     path = chat_path(chat_id)
+    if chat_id in deleted_chat_ids():
+        return None
 
     if not path.exists():
         return None
@@ -1106,7 +1138,7 @@ def system_shutdown_ai():
 @app.get("/api/chats")
 def get_chats():
     with CHATS_LOCK:
-        return {"chats": list_chats()}
+        return {"chats": list_chats(), "deleted_ids": sorted(deleted_chat_ids())}
 
 
 @app.get("/api/chats/{chat_id}")
@@ -1142,6 +1174,8 @@ def put_chat(chat_id: str, request: ChatSessionRequest):
         )
 
     with CHATS_LOCK:
+        if chat_id in deleted_chat_ids():
+            raise HTTPException(status_code=410, detail="Chat history was deleted")
         existing = read_chat(chat_id)
 
         if (
@@ -1295,6 +1329,68 @@ def reset_chat(chat_id: str):
         "image_job_cancellation": image_job_cancellation,
         "chat": reset,
     }
+
+
+def cancel_chat_media_jobs(chat_id, chat):
+    """Cancel chat-owned queues and Shorts even if not saved in messages yet."""
+    from agent import media_queue
+
+    results = {"image": _best_effort_cancel_chat_image_jobs(chat_id)}
+    for kind, cancel in (
+        ("video", lambda: media_queue.cancel_chat("video", chat_id)),
+        ("shorts", lambda: shorts_jobs.cancel_chat_jobs(chat_id)),
+    ):
+        try:
+            results[kind] = {"ok": True, "result": cancel()}
+        except Exception as exc:
+            results[kind] = {"ok": False, "error": str(exc)}
+    # Older native video jobs may predate the Agent media queue.
+    for message in (chat or {}).get("messages", []):
+        job = message.get("video_job") if isinstance(message, dict) else None
+        if isinstance(job, dict) and job.get("id") and job.get("status") not in {"completed", "failed", "cancelled"}:
+            try:
+                video_api.request("POST", f"/jobs/{job['id']}/cancel", payload={})
+            except Exception as exc:
+                results.setdefault("native_video_errors", []).append(str(exc))
+    return results
+
+
+@app.delete("/api/chats")
+def delete_all_chats(request: dict | None = None):
+    requested_ids = (request or {}).get("ids", [])
+    if not isinstance(requested_ids, list):
+        raise HTTPException(status_code=400, detail="ids must be a list")
+    for chat_id in requested_ids:
+        validate_chat_id(chat_id)
+
+    with CHATS_LOCK:
+        previous = deleted_chat_ids()
+        chats = list_chats()
+        # Refuse partial deletion if any live chat cannot be read.
+        unreadable = [path.stem for path in CHAT_DIRECTORY.glob("*.json")
+                      if CHAT_ID_PATTERN.fullmatch(path.stem)
+                      and path.stem not in previous
+                      and not any(chat["id"] == path.stem for chat in chats)]
+        if unreadable:
+            raise HTTPException(status_code=500, detail="A chat could not be read before deletion")
+        by_id = {chat["id"]: chat for chat in chats}
+        ids = set(by_id) | set(requested_ids)
+        # Atomic logical deletion before cleanup: late PUTs cannot recreate files.
+        write_deleted_chat_ids(previous | ids)
+        cancellations = {chat_id: cancel_chat_media_jobs(chat_id, by_id.get(chat_id)) for chat_id in ids}
+        deleted_images, failed_images, failed_files = [], [], []
+        for chat in chats:
+            try:
+                chat_path(chat["id"]).unlink(missing_ok=True)
+            except OSError:
+                failed_files.append(chat["id"])
+            deleted, failed = delete_chat_images(chat)
+            deleted_images.extend(deleted)
+            failed_images.extend(failed)
+
+    return {"ok": True, "deleted_count": len(chats),
+            "deleted_images": deleted_images, "failed_images": failed_images,
+            "failed_files": failed_files, "job_cancellation": cancellations}
 
 
 @app.delete("/api/chats/{chat_id}")
@@ -8112,12 +8208,13 @@ def _start_chat_video_job(action, request):
     )
     operation = "i2v" if action == "video_animate" or has_bound_image else "t2v"
     payload = _video_payload(request, operation)
-    chat_id, chat_revision = _validated_image_job_chat_identity(request)
-    return video_api.request("POST", "/jobs", {
-        "operation": operation, "payload": payload, "chat_id": chat_id,
-        "chat_revision": chat_revision,
-        **({"run_id": request.run_id} if request.run_id else {}),
-    }, timeout=15)
+    with CHATS_LOCK:
+        chat_id, chat_revision = _validated_image_job_chat_identity(request)
+        return video_api.request("POST", "/jobs", {
+            "operation": operation, "payload": payload, "chat_id": chat_id,
+            "chat_revision": chat_revision,
+            **({"run_id": request.run_id} if request.run_id else {}),
+        }, timeout=15)
 
 
 def _video_job_tool_result(job):
@@ -8265,14 +8362,16 @@ def _start_chat_shorts_job(request):
     project = plan_short(
         request.prompt, agent_model_provider(), run_context=run_context,
     )
-    job = shorts_jobs.create_short_job(
-        project,
-        chat_id=chat_id,
-        run_id=run_context.run_id,
-        chat_revision=chat_revision,
-    )
-    shorts_jobs.start_short_job(job["id"])
-    return job
+    with CHATS_LOCK:
+        _validated_image_job_chat_identity(request)
+        job = shorts_jobs.create_short_job(
+            project,
+            chat_id=chat_id,
+            run_id=run_context.run_id,
+            chat_revision=chat_revision,
+        )
+        shorts_jobs.start_short_job(job["id"])
+        return job
 
 
 def _image_artifact(result, action):
@@ -8403,23 +8502,24 @@ def _start_chat_image_job(action, request):
             "Unbekannte Image-Job-Aktion",
         )
     payload = payload_builder(request)
-    chat_id, chat_revision = _validated_image_job_chat_identity(request)
+    with CHATS_LOCK:
+        chat_id, chat_revision = _validated_image_job_chat_identity(request)
 
-    if action == "image_generate" and payload.get("model", "auto") == "auto":
-        payload["model"] = load_model_roles()["image"]
+        if action == "image_generate" and payload.get("model", "auto") == "auto":
+            payload["model"] = load_model_roles()["image"]
 
-    return image_api.request(
-        "POST",
-        "/jobs",
-        {
-            "operation": "edit" if action == "image_reference_generate" else action.removeprefix("image_"),
-            "payload": payload,
-            "chat_id": chat_id,
-            "chat_revision": chat_revision,
-            **({"run_id": request.run_id} if request.run_id else {}),
-        },
-        timeout=10,
-    )
+        return image_api.request(
+            "POST",
+            "/jobs",
+            {
+                "operation": "edit" if action == "image_reference_generate" else action.removeprefix("image_"),
+                "payload": payload,
+                "chat_id": chat_id,
+                "chat_revision": chat_revision,
+                **({"run_id": request.run_id} if request.run_id else {}),
+            },
+            timeout=10,
+        )
 
 
 def _image_job_tool_result(job):
@@ -8577,9 +8677,10 @@ def _variant_group_tool_result(result):
 
 @app.post("/api/image/jobs/variants")
 def image_variants_api(request: VariantBatch):
-    _validated_image_job_chat_identity(request)
-    result = image_api.request("POST", "/jobs/variants", request.model_dump(), timeout=10)
-    return _variant_group_tool_result(result)
+    with CHATS_LOCK:
+        _validated_image_job_chat_identity(request)
+        result = image_api.request("POST", "/jobs/variants", request.model_dump(), timeout=10)
+        return _variant_group_tool_result(result)
 
 
 def _variant_group_request(method, group_id, chat_id, chat_revision, suffix=""):

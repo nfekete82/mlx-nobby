@@ -160,12 +160,17 @@
 
         </div>
 
-        <button
-            id="newChat"
-            class="new-chat"
-        >
-            ＋ <span data-i18n="ui.new_chat" data-i18n="ui.new_chat">Neuer Chat</span>
-        </button>
+        <div class="new-chat-actions">
+            <button id="newChat" class="new-chat">
+                ＋ <span data-i18n="ui.new_chat">Neuer Chat</span>
+            </button>
+            <details id="chatHistoryMenu" class="chat-history-menu">
+                <summary aria-label="Chat-Menü" data-i18n-aria-label="ui.chat_history_menu">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                </summary>
+                <button id="deleteAllChats" type="button" data-i18n="ui.delete_all_chats">Alle Chats löschen</button>
+            </details>
+        </div>
 
         <div
             id="chatList"

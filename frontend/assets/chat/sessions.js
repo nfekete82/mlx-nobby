@@ -22,6 +22,10 @@ function sessionT(key, fallback = '', variables = {}) {
     let onSessionSelected;
     let serverReady = false;
     let serverSyncing = false;
+    let clearingHistory = false;
+    let confirmingHistory = false;
+    let historyEpoch = 0;
+    const pendingPersists = new Set();
 
     function configure(options) {
         state = options.state;
@@ -194,17 +198,16 @@ function sessionT(key, fallback = '', variables = {}) {
 
 
     async function persistSession(session) {
-        if (!serverReady || !validSession(session)) {
+        if (clearingHistory || !serverReady || !validSession(session) || !state.sessions.includes(session)) {
             return;
         }
 
+        const epoch = historyEpoch;
+        let request;
         try {
             const sentSession = withoutStreamingFields(session);
             const sentMessages = JSON.stringify(sentSession.messages);
-            const {
-                response,
-                data
-            } = await MLXCommon.fetchJson(
+            request = MLXCommon.fetchJson(
                 '/api/mlx/chats/' + encodeURIComponent(session.id),
                 MLXCommon.jsonRequest(
                     'PUT',
@@ -212,7 +215,10 @@ function sessionT(key, fallback = '', variables = {}) {
                 )
             );
 
-            if (!response.ok || !validSession(data.chat)) {
+            pendingPersists.add(request);
+            const { response, data } = await request;
+
+            if (clearingHistory || epoch !== historyEpoch || !response.ok || !validSession(data.chat)) {
                 return;
             }
 
@@ -235,7 +241,9 @@ function sessionT(key, fallback = '', variables = {}) {
                 }
             }
 
-        } catch {}
+        } catch {} finally {
+            pendingPersists.delete(request);
+        }
     }
 
     async function deleteServerSession(id) {
@@ -270,6 +278,7 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     function saveSessions() {
+        if (clearingHistory) return;
         cacheSessions();
 
         if (serverReady) {
@@ -278,11 +287,12 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     async function syncWithServer() {
-        if (serverSyncing) {
+        if (serverSyncing || clearingHistory) {
             return;
         }
 
         serverSyncing = true;
+        const epoch = historyEpoch;
 
         try {
             const {
@@ -290,13 +300,14 @@ function sessionT(key, fallback = '', variables = {}) {
                 data
             } = await MLXCommon.fetchJson('/api/mlx/chats');
 
-            if (!response.ok || !Array.isArray(data.chats)) {
+            if (clearingHistory || epoch !== historyEpoch || !response.ok || !Array.isArray(data.chats)) {
                 return;
             }
 
+            const deletedIds = new Set(data.deleted_ids || []);
             const localById = new Map(
                 state.sessions
-                    .filter(validSession)
+                    .filter(session => validSession(session) && !deletedIds.has(session.id))
                     .map(normalizeRecoveredMediaState)
                     .map(session => [session.id, session])
             );
@@ -359,7 +370,7 @@ function sessionT(key, fallback = '', variables = {}) {
 
         } catch {
             // Keep localStorage as the fallback when the agent is unavailable.
-            if (!state.sessions.length) {
+            if (!clearingHistory && epoch === historyEpoch && !state.sessions.length) {
                 createSession();
             }
         } finally {
@@ -410,6 +421,7 @@ function sessionT(key, fallback = '', variables = {}) {
     }
 
     function createSession() {
+        if (clearingHistory) return;
         const session = {
             id: uid(),
             title: sessionT('sessions.new_chat', 'New chat'),
@@ -426,6 +438,65 @@ function sessionT(key, fallback = '', variables = {}) {
         onSessionSelected();
         saveSessions();
         renderAll();
+    }
+
+    async function deleteAllSessions() {
+        if (clearingHistory || confirmingHistory) return false;
+        confirmingHistory = true;
+        try {
+            const confirmed = await window.MLXConfirm?.({
+                title: sessionT('ui.delete_all_chats_title', 'Delete all chats?'),
+                message: sessionT('ui.delete_all_chats_message', 'This removes the entire chat history and cannot be undone.'),
+                confirmLabel: sessionT('ui.delete_all_chats', 'Delete all chats'),
+                cancelLabel: sessionT('ui.cancel', 'Cancel'),
+            });
+            if (!confirmed) return false;
+
+            clearingHistory = true;
+            historyEpoch++;
+            const oldSessions = [...state.sessions];
+            oldSessions.forEach(bumpRuntimeRevision);
+            await Promise.all(oldSessions.map(session =>
+                window.MLXChatGeneration?.resetSessionRuntime?.(session)
+            ));
+            // Finish writes already sent before committing the bulk deletion.
+            await Promise.allSettled([...pendingPersists]);
+            const { response, data } = await MLXCommon.fetchJson(
+                '/api/mlx/chats',
+                MLXCommon.jsonRequest('DELETE', { ids: oldSessions.map(session => session.id) })
+            );
+            if (!response.ok || data.ok !== true) {
+                throw new Error('Chat history deletion failed');
+            }
+
+            state.sessions = [];
+            state.activeId = null;
+            localStorage.removeItem(STORAGE_KEY);
+            window.MLXChatAttachments?.clearAttachments?.();
+            try {
+                await window.MLXChatWorkspace?.deactivate?.();
+            } catch (error) {
+                console.warn('Chat workspace detach failed:', error);
+            }
+            serverReady = true;
+            clearingHistory = false;
+            createSession();
+            return true;
+        } catch (error) {
+            console.warn('Chat history deletion failed:', error);
+            await window.MLXConfirm?.({
+                title: sessionT('ui.delete_all_chats_failed', 'Chat history could not be deleted'),
+                message: sessionT('ui.delete_all_chats_failed_message', 'The server is unavailable or deletion failed. Your chat history has been retained. Please try again.'),
+                confirmLabel: sessionT('common.close', 'Close'),
+                cancelLabel: sessionT('common.close', 'Close'),
+            });
+            return false;
+        } finally {
+            confirmingHistory = false;
+            clearingHistory = false;
+            cacheSessions();
+            renderAll();
+        }
     }
 
     function renameSession(id) {
@@ -778,6 +849,7 @@ function sessionT(key, fallback = '', variables = {}) {
         createSession: createSession,
         renameSession: renameSession,
         deleteSession: deleteSession,
+        deleteAllSessions: deleteAllSessions,
         deleteMessages: deleteMessages,
         selectSession: selectSession,
         updateTitle: updateTitle,

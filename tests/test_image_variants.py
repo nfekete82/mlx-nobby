@@ -468,3 +468,47 @@ def test_private_record_permissions(runtime, simple_source):
     directory = service.OUTPUT / '.variants'
     assert directory.stat().st_mode & 0o777 == 0o700
     assert (directory / ('job-' + first['id'] + '.json')).stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize('count', [3, 6])
+def test_delete_all_chats_stops_running_variant_workers(runtime, monkeypatch, simple_source, count):
+    from agent import media_queue, shorts_jobs
+
+    first, _ = simple_source
+    entered = threading.Event()
+
+    def blocked(model, params, output, cancel_event, **kwargs):
+        entered.set()
+        assert cancel_event.wait(3)
+        raise RuntimeError('cancelled test provider')
+
+    monkeypatch.setattr(service, 'run_provider', blocked)
+    monkeypatch.setattr(agent, 'CHAT_DIRECTORY', service.OUTPUT / 'chats')
+    agent.write_chat({'id': 'variants-test', 'title': 'Variants', 'created': 1,
+                      'updated': 2, 'messages': [{'role': 'user', 'content': 'Generate variants'}]})
+    response = runtime.post('/jobs/variants', json={
+        'base_job_id': first['id'], 'count': count,
+        'chat_id': 'variants-test', 'chat_revision': 0})
+    assert response.status_code == 202, response.text
+    jobs = response.json()['jobs']
+    assert entered.wait(2)
+
+    def bridge(method, path, payload=None, **kwargs):
+        response = runtime.request(method, path, json=payload)
+        assert response.status_code < 400, response.text
+        return response.json()
+
+    monkeypatch.setattr(agent.image_api, 'request', bridge)
+    monkeypatch.setattr(media_queue, 'cancel_chat', lambda *_: [])
+    monkeypatch.setattr(shorts_jobs, 'cancel_chat_jobs', lambda *_: [])
+    result = agent.delete_all_chats()
+    assert result['ok'] and result['deleted_count'] == 1
+    assert result['job_cancellation']['variants-test']['image']['ok']
+    assert all(wait(runtime, job['id'])['status'] == 'cancelled' for job in jobs)
+    assert agent.get_chats()['chats'] == []
+    assert not service._lock.locked()
+    # The retained native group record cannot be retried through a deleted chat.
+    with pytest.raises(agent.HTTPException) as exc:
+        agent.image_variants_api(agent.VariantBatch(
+            base_job_id=first['id'], count=count, chat_id='variants-test', chat_revision=0))
+    assert exc.value.status_code == 404
