@@ -592,6 +592,12 @@
   "ui.alternative_vision_description": "Alternative model for image analysis and fallback tasks",
   "ui.embeddings_description": "Knowledge base and semantic search",
   "ui": {
+    "chat_history_menu": "Chat menu",
+    "delete_all_chats": "Delete all chats",
+    "delete_all_chats_title": "Really delete all chats?",
+    "delete_all_chats_message": "This action removes the entire chat history and cannot be undone.",
+    "delete_all_chats_failed": "Chat history could not be deleted",
+    "delete_all_chats_failed_message": "The server is unavailable or deletion failed. Your chat history has been retained. Please try again.",
     "general": "General",
     "media_quality": "Quality",
     "quality_preview": "Preview",

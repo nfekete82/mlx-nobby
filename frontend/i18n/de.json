@@ -592,6 +592,12 @@
   "ui.alternative_vision_description": "Alternatives Modell für Bildanalyse und Fallback-Aufgaben",
   "ui.embeddings_description": "Wissensbasis und semantische Suche",
   "ui": {
+    "chat_history_menu": "Chat-Menü",
+    "delete_all_chats": "Alle Chats löschen",
+    "delete_all_chats_title": "Alle Chats wirklich löschen?",
+    "delete_all_chats_message": "Diese Aktion entfernt die gesamte Chat-Historie und kann nicht rückgängig gemacht werden.",
+    "delete_all_chats_failed": "Chat-Historie konnte nicht gelöscht werden",
+    "delete_all_chats_failed_message": "Der Server ist nicht erreichbar oder das Löschen ist fehlgeschlagen. Die Chat-Historie bleibt erhalten. Bitte erneut versuchen.",
     "general": "Allgemein",
     "media_quality": "Qualität",
     "quality_preview": "Vorschau",

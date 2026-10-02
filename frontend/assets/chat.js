@@ -555,6 +555,18 @@ function openDesktopSidebar() {
 }
 
 
+document.getElementById('deleteAllChats')?.addEventListener('click', async event => {
+    document.getElementById('chatHistoryMenu')?.removeAttribute('open');
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+        await MLXChatSessions.deleteAllSessions();
+    } finally {
+        button.disabled = false;
+    }
+});
+
+
 railExpand?.addEventListener(
     'click',
     openDesktopSidebar

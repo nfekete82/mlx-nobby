@@ -1525,6 +1525,13 @@ def mlx_reset_chat(chat_id: str):
     )
 
 
+@app.delete("/api/mlx/chats")
+def mlx_delete_all_chats(request: dict | None = None):
+    return agent_json_request(
+        "DELETE", "/api/chats", payload=request or {}, timeout=60,
+    )
+
+
 @app.delete("/api/mlx/chats/{chat_id}")
 def mlx_delete_chat(chat_id: str):
     return agent_json_request(
