@@ -131,6 +131,8 @@ def _observed_generate_result(
     provider_options=None,
     prepared_callback=None,
     saving_callback=None,
+    resolved=None,
+    resolved_callback=None,
 ):
     started = time.monotonic()
     prepared_at = None
@@ -171,6 +173,8 @@ def _observed_generate_result(
             provider_options=options,
             prepared_callback=observed_prepared,
             saving_callback=observed_saving,
+            **({"resolved": resolved} if resolved is not None else {}),
+            **({"resolved_callback": resolved_callback} if resolved_callback is not None else {}),
         )
     except Exception:
         route = copy.deepcopy(getattr(_route_local, "last", None))

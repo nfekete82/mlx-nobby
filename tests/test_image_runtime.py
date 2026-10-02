@@ -744,6 +744,7 @@ class ImageRuntimeTests(unittest.TestCase):
             provider_options=None,
             prepared_callback=None,
             saving_callback=None,
+            resolved_callback=None,
         ):
             entered_provider.set()
 

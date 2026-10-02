@@ -220,6 +220,23 @@ def image_unload(): return image_json_request('/unload', {}, timeout=10)
 def image_generate_compatible(request: dict): return image_generate(request)
 
 
+@app.post('/api/mlx/image-jobs/variants')
+def image_variants(request: dict):
+    return agent_json_request('POST', '/api/image/jobs/variants', request, timeout=10)
+
+
+@app.get('/api/mlx/image-variant-groups/{group_id}')
+def image_variant_group(group_id: str, chat_id: str, chat_revision: int):
+    query = urllib.parse.urlencode({'chat_id': chat_id, 'chat_revision': chat_revision})
+    return agent_json_request('GET', '/api/image/variant-groups/' + urllib.parse.quote(group_id, safe='') + '?' + query, timeout=10)
+
+
+@app.post('/api/mlx/image-variant-groups/{group_id}/cancel')
+def image_variant_group_cancel(group_id: str, chat_id: str, chat_revision: int):
+    query = urllib.parse.urlencode({'chat_id': chat_id, 'chat_revision': chat_revision})
+    return agent_json_request('POST', '/api/image/variant-groups/' + urllib.parse.quote(group_id, safe='') + '/cancel?' + query, {}, timeout=10)
+
+
 @app.get('/api/mlx/image-jobs/{job_id}')
 def image_job(job_id: str):
     return agent_json_request(

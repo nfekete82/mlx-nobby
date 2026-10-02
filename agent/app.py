@@ -25,6 +25,7 @@ from agent import profile
 from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
+from image_variants import VariantBatch
 from agent import video_api
 from agent import shorts_jobs
 from agent.shorts_planner import plan_short
@@ -89,7 +90,7 @@ from agent.batch_processing import (
 from agent import batch_state
 from backend import observability
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from agent.batch_state import atomic_write_text, atomic_write_with
@@ -7907,6 +7908,7 @@ def _image_generate_payload(request):
 
     payload = {
         "prompt": prompt,
+        "original_prompt": source_prompt,
         "model": "auto",
         "width": width,
         "height": height,
@@ -8263,6 +8265,11 @@ def _image_artifact(result, action):
         "created_at": result.get("created_at", time.time()),
         "source_job_id": image_id,
     }
+    for key in ("original_prompt", "negative_prompt", "resolved_model", "requested_model",
+                "auto_size", "quality_profile", "requested_width", "requested_height",
+                "variant_group_id", "variant_index", "variant_count", "source_generation_job_id", "variants_available"):
+        if key in result:
+            artifact[key] = result[key]
     if action in {"image_edit", "image_upscale"}:
         artifact["source_path"] = result.get("source_path")
     if action == "image_upscale":
@@ -8378,6 +8385,7 @@ def _image_job_tool_result(job):
         artifact = _image_artifact(job.get("result") or {}, action)
         artifact["chat_id"] = job.get("chat_id")
         artifact["run_id"] = job.get("run_id")
+        artifact["generation_job_id"] = job.get("native_job_id") or job.get("id")
         data["image"] = artifact
         artifacts.append(artifact)
 
@@ -8505,6 +8513,41 @@ def image_activate_api(model_id: str):
 @app.post("/api/image/unload")
 def image_unload_api():
     return image_api.request("POST", "/unload", {})
+
+
+def _variant_group_tool_result(result):
+    return {"variant_group_id": result["variant_group_id"],
+            "variant_count": result["variant_count"], "status": result["status"],
+            "persistence_available": result["persistence_available"],
+            "base": _image_job_tool_result(result["base_job"]),
+            "jobs": [_image_job_tool_result(job) for job in result["jobs"]]}
+
+
+@app.post("/api/image/jobs/variants")
+def image_variants_api(request: VariantBatch):
+    _validated_image_job_chat_identity(request)
+    result = image_api.request("POST", "/jobs/variants", request.model_dump(), timeout=10)
+    return _variant_group_tool_result(result)
+
+
+def _variant_group_request(method, group_id, chat_id, chat_revision, suffix=""):
+    import urllib.parse
+    from types import SimpleNamespace
+    image_api.job_id(group_id)
+    _validated_image_job_chat_identity(SimpleNamespace(chat_id=chat_id, chat_revision=chat_revision))
+    query = urllib.parse.urlencode({"chat_id": chat_id, "chat_revision": chat_revision})
+    result = image_api.request(method, "/variant-groups/" + group_id + suffix + "?" + query, timeout=10)
+    return _variant_group_tool_result(result)
+
+
+@app.get("/api/image/variant-groups/{group_id}")
+def image_variant_group_api(group_id: str, chat_id: str, chat_revision: int = Query(ge=0)):
+    return _variant_group_request("GET", group_id, chat_id, chat_revision)
+
+
+@app.post("/api/image/variant-groups/{group_id}/cancel")
+def image_variant_group_cancel_api(group_id: str, chat_id: str, chat_revision: int = Query(ge=0)):
+    return _variant_group_request("POST", group_id, chat_id, chat_revision, "/cancel")
 
 
 @app.get("/api/image/jobs/{job_id}")

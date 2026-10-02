@@ -1,8 +1,10 @@
 """Native, local image service. Images stay on disk, never in API payloads."""
+import copy
 import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 import urllib.request
@@ -28,6 +30,7 @@ from image_providers import (
     realesrgan_command,
 )
 from local_security import LocalRequestGuard
+from image_variants import install as install_image_variants
 
 OUTPUT = Path.home() / ".config/mlx-web/images"
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -56,6 +59,7 @@ class Generate(BaseModel):
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     quality: Literal["fast", "standard", "quality"] | None = None
     auto_size: bool = False
+    original_prompt: str | None = None
 
 
 class Edit(BaseModel):
@@ -474,42 +478,20 @@ def _generate_result(
     provider_options=None,
     prepared_callback=None,
     saving_callback=None,
+    resolved=None,
+    resolved_callback=None,
 ):
     global _running
 
-    if request.width % 16 or request.height % 16:
-        raise HTTPException(422, "width and height must be divisible by 16")
-    model = _generation_model(request.model, request.prompt)
-    maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
-    if request.width > maximum_edge or request.height > maximum_edge:
-        raise HTTPException(
-            422,
-            f"width and height must not exceed {maximum_edge} for this model",
-        )
-    params = request.model_dump()
-    negative_prompt = str(request.negative_prompt or "").strip()
-    if negative_prompt:
-        params["negative_prompt"] = negative_prompt
-    else:
-        params.pop("negative_prompt", None)
-    profile = resolve_image_profile(model, request.quality) if request.quality else None
-    params["steps"] = _resolved_steps(model, request.steps, request.quality)
-    params["guidance"] = (
-        request.guidance
-        if request.guidance is not None
-        else profile["guidance"] if profile else model["default_guidance"]
-    )
-    if request.auto_size and profile and profile.get("long_edge"):
-        params["width"], params["height"] = dimensions_for_long_edge(
-            request.width, request.height, profile["long_edge"],
-        )
-    params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
-    if model["provider"] == "diffusionkit" and params["steps"] > 8:
-        raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
-    if model["model_family"] == "flux2-klein" and "base" not in model["base_model"] and params["guidance"] != 1:
-        raise HTTPException(422, "FLUX.2 Klein distilled benötigt Guidance 1")
-    if model["model_family"] == "z-image-turbo" and params["guidance"] != 0:
-        raise HTTPException(422, "Z-Image Turbo unterstützt keine CFG-Guidance; 0 verwenden")
+    if resolved is None:
+        resolved = _resolve_generation(request)
+    model = copy.deepcopy(resolved["model"])
+    params = copy.deepcopy(resolved["params"])
+    profile = copy.deepcopy(resolved["quality_profile"])
+    if request.seed is not None:
+        params["seed"] = request.seed
+    if resolved_callback:
+        resolved_callback({**copy.deepcopy(resolved), "params": copy.deepcopy(params)})
     OUTPUT.mkdir(parents=True, exist_ok=True)
     image_id = f"{int(time.time())}-{secrets.token_hex(6)}"
     path = OUTPUT / f"{image_id}.png"
@@ -551,23 +533,63 @@ def _generate_result(
     if saving_callback:
         saving_callback()
     return {
-        "id": image_id,
-        "path": str(path),
-        "mime_type": "image/png",
-        "width": params["width"],
-        "height": params["height"],
-        "prompt": request.prompt,
-        "model": model["id"],
-        "provider": model["provider"],
-        "model_family": model["model_family"],
+        "id": image_id, "path": str(path), "mime_type": "image/png",
+        "width": params["width"], "height": params["height"],
+        "prompt": params["prompt"], "original_prompt": request.original_prompt or request.prompt,
+        "negative_prompt": params.get("negative_prompt"),
+        "model": model["id"], "resolved_model": model["id"],
+        "requested_model": resolved["requested_model"],
+        "provider": model["provider"], "model_family": model["model_family"],
         "quantization": model["quantization"],
         "loras": [l for l in model["loras"] if l["enabled"]],
-        "guidance": params["guidance"],
-        "seed": params["seed"],
-        "steps": params["steps"],
-        "quality": request.quality,
+        "guidance": params["guidance"], "seed": params["seed"],
+        "steps": params["steps"], "quality": params.get("quality"),
+        "auto_size": params["auto_size"], "quality_profile": profile,
+        "requested_width": request.width, "requested_height": request.height,
         "created_at": time.time(),
     }
+
+
+def _resolve_generation(request):
+    """Resolve once; the resulting model/config and provider params are immutable batch inputs."""
+    if request.width % 16 or request.height % 16:
+        raise HTTPException(422, "width and height must be divisible by 16")
+    model = _generation_model(request.model, request.prompt)
+    maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
+    if request.width > maximum_edge or request.height > maximum_edge:
+        raise HTTPException(
+            422,
+            f"width and height must not exceed {maximum_edge} for this model",
+        )
+    params = request.model_dump(exclude={"original_prompt"})
+    negative_prompt = str(request.negative_prompt or "").strip()
+    if negative_prompt:
+        params["negative_prompt"] = negative_prompt
+    else:
+        params.pop("negative_prompt", None)
+    profile = resolve_image_profile(model, request.quality) if request.quality else None
+    params["steps"] = (
+        request.steps if request.steps is not None
+        else profile["steps"] if profile else _resolved_steps(model, None)
+    )
+    params["guidance"] = (
+        request.guidance
+        if request.guidance is not None
+        else profile["guidance"] if profile else model["default_guidance"]
+    )
+    if request.auto_size and profile and profile.get("long_edge"):
+        params["width"], params["height"] = dimensions_for_long_edge(
+            request.width, request.height, profile["long_edge"],
+        )
+    params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
+    if model["provider"] == "diffusionkit" and params["steps"] > 8:
+        raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
+    if model["model_family"] == "flux2-klein" and "base" not in model["base_model"] and params["guidance"] != 1:
+        raise HTTPException(422, "FLUX.2 Klein distilled benötigt Guidance 1")
+    if model["model_family"] == "z-image-turbo" and params["guidance"] != 0:
+        raise HTTPException(422, "Z-Image Turbo unterstützt keine CFG-Guidance; 0 verwenden")
+    return {"model": copy.deepcopy(model), "params": params,
+            "quality_profile": profile, "requested_model": request.model, "requested_seed": request.seed}
 
 
 def _prepare_fast_edit_source(source, model):
@@ -986,7 +1008,7 @@ def _provider_progress(job_id, event):
         _update_job(job_id, **changes)
 
 
-def _run_image_job(job_id, operation, request):
+def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=True):
     global _active_job_id
 
     output_path = None
@@ -1040,20 +1062,37 @@ def _run_image_job(job_id, operation, request):
                 provider_options=provider_options,
                 prepared_callback=prepared,
                 saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+                **({"resolved": resolved} if resolved is not None else {}),
+                **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                   if operation == "generate" else {}),
             )
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
         with _jobs_lock:
-            total_steps = _jobs.get(job_id, {}).get("total_steps")
-        _update_job(
-            job_id,
-            status="completed",
-            phase="completed",
-            current_step=total_steps,
-            progress=1.0,
-            result=result,
-            finished_at=time.time(),
-        )
+            job = _jobs[job_id]
+            for key in ("variant_group_id", "variant_index", "variant_count", "source_generation_job_id"):
+                if key in job:
+                    result[key] = job[key]
+            total_steps = job.get("total_steps")
+        completed = {
+            "status": "completed", "phase": "completed", "current_step": total_steps,
+            "progress": 1.0, "result": result, "finished_at": time.time(),
+        }
+        if operation == "generate":
+            from image_variants import persist_record
+            canonical = _jobs[job_id].get("_canonical")
+            completed["variants_available"] = canonical is not None
+            completed["result"] = {**result, "variants_available": canonical is not None}
+            if canonical is not None:
+                try:
+                    persist_record(sys.modules[__name__], "job-" + job_id, {
+                        "job": {**_job_snapshot(_jobs[job_id]), **completed}, "canonical": canonical,
+                    })
+                except Exception:
+                    # Reproduction metadata is optional: preserve the completed image.
+                    completed["variants_available"] = False
+                    completed["result"]["variants_available"] = False
+        _update_job(job_id, **completed)
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output_path is not None:
             output_path.unlink(missing_ok=True)
@@ -1083,7 +1122,8 @@ def _run_image_job(job_id, operation, request):
         with _jobs_lock:
             if _active_job_id == job_id:
                 _active_job_id = None
-        _lock.release()
+        if release_lock:
+            _lock.release()
 
 
 def _prune_jobs_locked():
@@ -1307,3 +1347,6 @@ def cancel_image_job(job_id: str):
 
     with _jobs_lock:
         return _job_snapshot(_jobs[job_id])
+
+# POST /jobs/variants coexists with GET /jobs/{job_id}.
+create_image_variants = install_image_variants(sys.modules[__name__])
