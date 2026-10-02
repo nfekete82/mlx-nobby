@@ -449,53 +449,162 @@ function imageT(key, fallback = '', variables = {}) {
         return started;
     }
 
-    async function generateImageVariants(artifact, count = 3) {
-        const prepared = regenerationOptions(artifact);
-        const session = window.MLXChatSessions?.currentSession?.();
-        const variantCount = Math.max(
-            2,
-            Math.min(6, Math.round(Number(count) || 3))
-        );
+    const variantRequests = new Map();
+    const JOB_ID = /^[a-f0-9]{24}$/;
 
-        if (!prepared || !session) {
-            return false;
-        }
+    function variantSourceAvailable(artifact) {
+        return JOB_ID.test(String(artifact?.generation_job_id || '')) && artifact?.variants_available !== false;
+    }
 
-        const groupId = newTraceId('image-variant-group');
-        const pendingMessages = Array.from(
-            { length: variantCount },
-            (_unused, index) => pendingImageMessage(
-                artifact,
-                index + 1,
-                variantCount,
-                groupId
-            )
-        );
-
-        session.messages.push(...pendingMessages);
+    function variantError(session, unavailable = false) {
+        if (window.MLXChatSessions?.currentSession?.() !== session) return;
+        session.messages.push({role: 'assistant', content: imageT(
+            unavailable ? 'generation.image_variants_unavailable' : 'generation.image_variants_failed',
+            unavailable ? 'Variants are unavailable for this image. Generate a new image first.' : 'The variants could not be started. Please try again.'
+        )});
         persistAndRender(session);
+    }
 
-        let startedCount = 0;
+    function groupUrl(groupId, session, revision, suffix = '') {
+        return '/api/mlx/image-variant-groups/' + encodeURIComponent(groupId) + suffix +
+            '?chat_id=' + encodeURIComponent(session.id) + '&chat_revision=' + revision;
+    }
 
-        for (const pendingMessage of pendingMessages) {
-            if (
-                await submitPreparedImage(
-                    prepared,
-                    session,
-                    pendingMessage
-                )
-            ) {
-                startedCount += 1;
+    function applyVariantBatch(session, batch, baseId, includeBase, firstMessage = null, cancelled = false) {
+        const selected = session.workspace?.active_artifact_id;
+        const groupId = batch.variant_group_id;
+        if (includeBase && firstMessage) {
+            firstMessage.image_variant_group_id = groupId;
+            firstMessage.image_variant_index = 1;
+            firstMessage.image_variant_count = batch.variant_count;
+            generation.updateImageJobMessage(session, firstMessage, batch.base);
+        }
+        const messages = batch.jobs.map(result => {
+            const toolResult = cancelled && activeImageJob(result.data.job.status)
+                ? {...result, status: 'cancelled', artifacts: [], data: {...result.data,
+                    job: {...result.data.job, status: 'cancelled', phase: 'cancelled'}}} : result;
+            const job = toolResult.data.job;
+            let message = session.messages.find(item =>
+                item.image_variant_group_id === groupId && item.image_variant_index === job.variant_index);
+            if (!message) {
+                message = pendingImageMessage(null, job.variant_index, batch.variant_count, groupId);
+                delete message.image_regenerated_from_artifact_id;
+                session.messages.push(message);
             }
-        }
-
+            message.image_variant_base_job_id = baseId;
+            message.image_variant_include_base = includeBase;
+            generation.updateImageJobMessage(session, message, toolResult);
+            return message;
+        });
+        if (selected != null) session.workspace.active_artifact_id = selected;
         persistAndRender(session);
+        generation.resumeImageJobsForSession?.(session);
+        return messages;
+    }
 
-        if (startedCount > 0) {
-            generation.resumeImageJobsForSession?.(session);
+    async function submitVariantBatch(artifact, count, options = {}) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        if (!session) return null;
+        if (!variantSourceAvailable(artifact)) {
+            variantError(session, true);
+            return null;
         }
+        const revision = persistentChatRevision(session);
+        const key = session.id + ':' + (options.groupId || 'new');
+        const token = {};
+        variantRequests.set(key, token);
+        const current = () => variantRequests.get(key) === token &&
+            window.MLXChatSessions?.currentSession?.() === session &&
+            persistentChatRevision(session) === revision &&
+            (!options.firstMessage || session.messages.includes(options.firstMessage)) &&
+            (!options.isCurrent || options.isCurrent());
+        try {
+            const response = await fetch('/api/mlx/image-jobs/variants', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({base_job_id: artifact.generation_job_id,
+                    count: Math.max(2, Math.min(6, Math.round(Number(count) || 3))),
+                    include_base: Boolean(options.includeBase), chat_id: session.id,
+                    chat_revision: revision, variant_group_id: options.groupId || null})
+            });
+            if (!response.ok) throw new Error('Variant batch failed');
+            const batch = await response.json();
+            if (!current()) {
+                if (!options.groupId) {
+                    await fetch(groupUrl(batch.variant_group_id, session, revision, '/cancel'),
+                        {method: 'POST'}).catch(() => {});
+                }
+                return null;
+            }
+            const messages = applyVariantBatch(session, batch, artifact.generation_job_id,
+                Boolean(options.includeBase), options.firstMessage);
+            return messages;
+        } catch (_error) {
+            if (current()) variantError(session);
+            return null;
+        } finally {
+            if (variantRequests.get(key) === token) variantRequests.delete(key);
+        }
+    }
 
-        return startedCount === variantCount;
+    async function generateImageVariants(artifact, count = 3) {
+        return Boolean(await submitVariantBatch(artifact, count));
+    }
+
+    async function retryImageVariants(groupId) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        const message = session?.messages?.find(item =>
+            item.image_variant_group_id === groupId && item.image_variant_base_job_id);
+        if (!message) { if (session) variantError(session, true); return false; }
+        return Boolean(await submitVariantBatch({generation_job_id: message.image_variant_base_job_id},
+            message.image_variant_count, {groupId, includeBase: message.image_variant_include_base}));
+    }
+
+    async function refreshImageVariants(groupId) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        const message = session?.messages?.find(item => item.image_variant_group_id === groupId && item.image_variant_base_job_id);
+        if (!session || !message || !JOB_ID.test(groupId)) return false;
+        const revision = persistentChatRevision(session);
+        const key = session.id + ':' + groupId;
+        if (variantRequests.has(key)) return false;
+        const token = {};
+        variantRequests.set(key, token);
+        try {
+            const response = await fetch(groupUrl(groupId, session, revision));
+            if (!response.ok) return false;
+            const batch = await response.json();
+            if (variantRequests.get(key) !== token || window.MLXChatSessions?.currentSession?.() !== session ||
+                persistentChatRevision(session) !== revision || !session.messages.includes(message)) return false;
+            applyVariantBatch(session, batch, message.image_variant_base_job_id, message.image_variant_include_base);
+            return true;
+        } catch (_error) {
+            return false;
+        } finally {
+            if (variantRequests.get(key) === token) variantRequests.delete(key);
+        }
+    }
+
+    async function cancelImageVariants(groupId) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        const message = session?.messages?.find(item => item.image_variant_group_id === groupId && item.image_variant_base_job_id);
+        if (!session || !message || !JOB_ID.test(groupId)) return false;
+        const revision = persistentChatRevision(session);
+        const key = session.id + ':' + groupId;
+        const token = {};
+        variantRequests.set(key, token);
+        try {
+            const response = await fetch(groupUrl(groupId, session, revision, '/cancel'), {method: 'POST'});
+            if (!response.ok) throw new Error('Variant cancellation failed');
+            const batch = await response.json();
+            if (variantRequests.get(key) !== token || window.MLXChatSessions?.currentSession?.() !== session ||
+                persistentChatRevision(session) !== revision || !session.messages.includes(message)) return false;
+            applyVariantBatch(session, batch, message.image_variant_base_job_id, message.image_variant_include_base, null, true);
+            return true;
+        } catch (_error) {
+            if (variantRequests.get(key) === token) variantError(session);
+            return false;
+        } finally {
+            if (variantRequests.get(key) === token) variantRequests.delete(key);
+        }
     }
 
     generation.createImageUpscaleMenu = source => {
@@ -529,7 +638,10 @@ function imageT(key, fallback = '', variables = {}) {
             'ui.regenerate',
             'Regenerate'
         );
-        variants.title = variants.textContent;
+        variants.disabled = !variantSourceAvailable(source);
+        variants.title = variants.disabled
+            ? imageT('generation.image_variants_unavailable', 'Variants are unavailable for this image. Generate a new image first.')
+            : variants.textContent;
 
         regenerate.addEventListener('click', async () => {
             regenerate.disabled = true;
@@ -544,7 +656,7 @@ function imageT(key, fallback = '', variables = {}) {
 
             if (!started && regenerate.isConnected) {
                 regenerate.disabled = false;
-                variants.disabled = false;
+                variants.disabled = !variantSourceAvailable(source);
                 regenerate.textContent = originalLabel;
             }
         });
@@ -562,7 +674,7 @@ function imageT(key, fallback = '', variables = {}) {
 
             if (!started && variants.isConnected) {
                 regenerate.disabled = false;
-                variants.disabled = false;
+                variants.disabled = !variantSourceAvailable(source);
                 variants.textContent = originalLabel;
             }
         });
@@ -574,6 +686,11 @@ function imageT(key, fallback = '', variables = {}) {
     window.MLXImageRegenerate = {
         regenerateImageArtifact,
         generateImageVariants,
+        submitVariantBatch,
+        retryImageVariants,
+        cancelImageVariants,
+        refreshImageVariants,
+        variantSourceAvailable,
         regenerationOptions
     };
 })();
@@ -588,7 +705,7 @@ function imageT(key, fallback = '', variables = {}) {
     }
     const script = document.createElement('script');
     script.id = 'mlx-image-variant-gallery-script';
-    script.src = '/assets/chat/image-variant-gallery.js?v=20261002-image-reference';
+    script.src = '/assets/chat/image-variant-gallery.js?v=20261002-gallery-final';
     script.async = false;
     document.head.appendChild(script);
 })();

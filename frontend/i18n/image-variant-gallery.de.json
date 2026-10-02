@@ -11,5 +11,8 @@
   "download": "Herunterladen",
   "progress": "{percent}% · Schritt {current}/{total}",
   "progress_percent": "{percent}%",
-  "loading": "Wird gestartet …"
+  "retry": "Fehlende Varianten erneut erzeugen",
+  "loading": "Wird gestartet …",
+  "cancel": "Varianten abbrechen",
+  "unavailable": "Für dieses Bild sind keine Varianten verfügbar. Bitte zuerst ein neues Bild erzeugen."
 }

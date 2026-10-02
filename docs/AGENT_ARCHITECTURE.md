@@ -419,7 +419,7 @@ Der Agent prüft die aktuelle Chatrevision; der Image-Service prüft die
 Gruppenzugehörigkeit. `generation_job_id` verwendet bei Queue-Jobs die native
 Image-Service-ID, nicht die äußere Queue-ID.
 
-`image_variants.py` orchestriert normale Generate-Jobs sequenziell unter der
+`image_variants.py` orchestriert Generate- und Referenz-Edit-Jobs sequenziell unter der
 bestehenden Service-Sperre und Runtime-Koordination. Der erfolgreiche Quelljob
 friert Modell/Provider einschließlich LoRAs, tatsächlich gerenderten Prompt,
 Negativprompt, native Maße und Qualitätsparameter privat ein. Nur Seeds ändern
@@ -447,4 +447,10 @@ niemals Bilddateien. Außerhalb dieser Aufbewahrung ist Wiederherstellung nicht
 zugesichert. Cancellation nutzt die bestehende Job-Cancellation; fertige Slots
 bleiben erhalten, weitere Slots starten nach Abbruch nicht.
 
-Die Gallery-/Bildanzahl-Anbindung ist kein Bestandteil dieses Backendvertrags.
+Die Bildanzahl-Anbindung ergänzt nach dem ersten fertigen Bild einen kanonischen
+Batch mit `include_base=true`; die Variantenaktion verwendet `include_base=false`.
+Die Gallery ordnet Slots anhand der serverseitigen Gruppenmetadaten und nutzt
+die Gruppen-Endpunkte für selektiven Retry und Cancellation. Ungültige Legacy-
+Job-IDs deaktivieren Variantenaktionen. Chat-/Revisions- und Request-Guards
+verhindern veraltete Antworten; fertige Bilder und aktive Auswahl bleiben erhalten.
+Siehe [Gallery-Vertrag](IMAGE_GALLERY_VARIANTS.md) für Browser-Verhalten und Tests.
