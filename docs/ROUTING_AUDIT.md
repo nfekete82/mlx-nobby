@@ -1,5 +1,8 @@
 # Routing audit (2026-10-01)
 
+Historical before/after report; the initial findings are not the current runtime
+contract. Current diagnostics: [Routing Observatory](ROUTING_OBSERVATORY.md).
+
 Baseline: main / origin/main `7f2dc86` (fetched before changes).
 
 ## Findings before changes

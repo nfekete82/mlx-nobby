@@ -1,6 +1,8 @@
 # Juggernaut XL Ragnarok defaults
 
-Validated local production baseline for `~/Models/JuggernautXL/juggernaut-xl-ragnarok.safetensors` on Apple Silicon:
+Profile defaults in `quality_profiles.py` for the opt-in `juggernaut-xl` SDXL
+registry entry. A compatible local checkpoint is required; the registry
+provides a suggested path but does not imply the model is installed:
 
 - scheduler: `dpmpp-2m-karras` (DPM++ 2M Karras)
 - standard steps: `30`
@@ -20,7 +22,7 @@ Automatic Real-ESRGAN `photo-2x` post-processing is disabled for the production 
 
 ## Photorealistic people
 
-Juggernaut remains the production model for the SDXL path. The runtime does not silently switch models or override the selected steps/guidance profile.
+When the `juggernaut-xl` entry is selected, these safeguards apply to its SDXL path. The runtime does not silently switch models or override the selected steps/guidance profile.
 
 For photorealistic human prompts only, the agent adds restrained photographic realism anchors for skin texture, pores, facial asymmetry, eyes, hair, fabric, physically plausible light, tonal variation and a lightly unretouched photographic look. This is intended to reduce the waxy/airbrushed appearance that short generic prompts can produce without turning every image request into a long style prompt.
 

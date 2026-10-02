@@ -1,0 +1,42 @@
+# Performance Observatory
+
+Open **Settings → System → Server** (route `/settings/advanced/server`). The
+read-only panel complements [System Health](SYSTEM_HEALTH.md) with live local
+model/media measurements and unified-memory estimates.
+
+## Measurements and limits
+
+- Model calls: TTFT, throughput, queue wait and timing summaries from existing
+  content-free observability traces. Model history lasts for the agent process.
+- Media: recent image/video/Shorts jobs, generation/queue/total timings and
+  supplied warm/cold-start metadata from durable queue history.
+- System: memory budget, available/headroom estimates, pressure, swap, loaded
+  runtime state and the current coordinator lease.
+
+Unknown/nonfinite values are omitted from metric series, not treated as zeros.
+Series include count, latest, average, p50/p95 and min/max; this endpoint uses
+linear percentile interpolation. A runtime marked warm indicates observed
+loaded state, not a universal latency guarantee. Estimates and small samples
+must not be presented as native measured token counts or a complete Metal-memory
+accounting. The [performance audit](PERFORMANCE_AUDIT.md) is a dated measurement
+report, not a guarantee for the currently selected model or host.
+
+The UI refreshes automatically only when its settings panel and browser document
+are visible, coalesces overlapping refreshes, and refreshes when opened. It does
+not change model selection, runtime scheduling, quality or job state.
+
+## Local API
+
+- Agent: `GET /api/performance/observatory?limit=40`
+- Web: `GET /api/mlx/performance/observatory?limit=40`
+
+Limit is clamped to 1–100. The response contains `ok`, `version=2`, `captured_at`,
+`model`, `media`, `system={memory, runtimes, runtime_lease}` and retention notes.
+`version=2` describes this diagnostic response schema, not the Nobby release
+or the OpenAI-compatible `/v1` API.
+
+Implementation: `agent/performance_observatory_routes.py`,
+`backend/performance_observatory_routes.py`, `backend/observability.py`,
+`runtime_coordinator.py`, `frontend/assets/chat/performance-observatory.js`.
+Tests: `tests/test_performance_observatory.py` and
+`tests/test_performance_observatory_ui.mjs`.

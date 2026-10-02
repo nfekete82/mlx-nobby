@@ -30,8 +30,8 @@
                         ]
                     },
                     {
-                        title: t('Tipp', 'Tip'),
-                        body: t('Je klarer Ziel, Format und gewünschter Stil beschrieben sind, desto gezielter kann nobby arbeiten.', 'The clearer you describe the goal, output format, and desired style, the more precisely nobby can work.')
+                        title: t('Chats und Jobs', 'Chats and jobs'),
+                        body: t('Chats bleiben in der Seitenleiste gespeichert. Alle Chats löschen verlangt eine Bestätigung und kann nicht rückgängig gemacht werden. Files & Jobs zeigt Dateioperationen und Ergebnisse; die Job Queue ist in dieser Web-Version derzeit nicht verfügbar. Je klarer Ziel, Format und Stil sind, desto gezielter kann nobby arbeiten.', 'Chats are saved in the sidebar. Delete all chats requires confirmation and cannot be undone. Files & Jobs shows file operations and results; the job queue is currently unavailable in this web version. Clear goals, output format, and style help nobby work precisely.')
                     }
                 ],
                 examples: [
@@ -42,7 +42,7 @@
                 id: 'images',
                 icon: '🖼️',
                 title: t('Bilder erstellen', 'Create images'),
-                summary: t('Prompts, Qualität, Formate und Bildbearbeitung.', 'Prompts, quality, formats, and image editing.'),
+                summary: t('1–6 Bilder, Gallery, Varianten, Referenzbilder und Bearbeitung.', '1–6 images, gallery, variants, reference images, and editing.'),
                 sections: [
                     {
                         title: t('Guter Bild-Prompt', 'A good image prompt'),
@@ -50,12 +50,16 @@
                         steps: [
                             t('Motiv und Umgebung festlegen.', 'Define the subject and environment.'),
                             t('Stil, Licht und Perspektive ergänzen.', 'Add style, lighting, and perspective.'),
-                            t('Format und Qualitätsstufe auswählen.', 'Choose format and quality level.')
+                            t('1–6 Bilder, Format, Qualität und optional einen Negative Prompt wählen.', 'Choose 1–6 images, format, quality, and optionally a negative prompt.')
                         ]
                     },
                     {
                         title: t('Bild bearbeiten', 'Edit an image'),
-                        body: t('Hänge ein vorhandenes Bild an und beschreibe nur die gewünschte Änderung. nobby routet die Anfrage an ein passendes Bildbearbeitungsmodell.', 'Attach an existing image and describe only the change you want. nobby routes the request to an appropriate image-editing model.')
+                        body: t('Hänge ein Bild an oder wähle ein aktives Bild und beschreibe die Änderung. Für ein neues Motiv mit derselben oder einer ähnlichen Person fordere ausdrücklich ein Referenzbild an. Beide Wege benötigen ein verfügbares lokales Edit-Modell; die Identität ist nicht garantiert.', 'Attach an image or select an active image and describe the change. For a new scene with the same or a similar person, explicitly request reference image generation. Both paths need an available local edit model; identity is not guaranteed.')
+                    },
+                    {
+                        title: t('Gallery und Bildaktionen', 'Gallery and image actions'),
+                        body: t('Wähle in der Gallery das Bild für weitere Schritte. Ein Klick auf das Bild öffnet die Vorschau; Download speichert es. Bild verbessern skaliert es hoch, Regenerate erzeugt ein neues Ergebnis, Varianten ändern den Seed bei gleichen wirksamen Einstellungen. Retry wiederholt fehlgeschlagene Slots; Abbrechen behält fertige Bilder. Qualität, Format, Negative Prompt und verfügbare Aktionen hängen vom Modell und Provider ab. Technische Details: docs/IMAGE_GALLERY_VARIANTS.md und docs/IMAGE_REFERENCE_GENERATION.md.', 'Select a gallery image for follow-up actions. Click the image to open its preview; Download saves it. Improve image upscales it, Regenerate creates a new result, and variants change the seed with the same effective settings. Retry repeats failed slots; cancelling keeps completed images. Quality, format, negative prompt, and available actions depend on the model and provider. Technical details: docs/IMAGE_GALLERY_VARIANTS.md and docs/IMAGE_REFERENCE_GENERATION.md.')
                     }
                 ],
                 examples: [
@@ -87,21 +91,23 @@
                 id: 'shorts',
                 icon: '📱',
                 title: t('Shorts erstellen', 'Create Shorts'),
-                summary: t('Kompletter Media Composer aus einem einzigen Prompt.', 'Complete Media Composer from a single prompt.'),
+                summary: t('Im Chat planen, als Draft prüfen und ausdrücklich rendern.', 'Plan in chat, review a draft, and explicitly render it.'),
                 sections: [
                     {
-                        title: t('Was automatisch passiert', 'What happens automatically'),
-                        body: t('Der Shorts Composer plant die Szenen, erzeugt die Videoclips, erstellt das Voiceover, fügt Hintergrundmusik und Untertitel hinzu und setzt alles mit FFmpeg zu einem fertigen MP4 zusammen.', 'The Shorts Composer plans scenes, generates video clips, creates the voiceover, adds background music and subtitles, and combines everything with FFmpeg into a final MP4.'),
+                        title: t('Vom Draft zum fertigen Short', 'From draft to finished Short'),
+                        body: t('Planung und Produktion sind getrennt. Im Chat plant nobby den Short, speichert einen Draft und beendet den Turn. Dabei werden keine Bilder oder Videos produziert. Erst Render Short im Studio startet den Produktionsjob.', 'Planning and production are separate. In chat, nobby plans the Short, saves a draft, and ends the turn. No images or videos are produced at this stage. Only Render Short in Studio starts the production job.'),
                         steps: [
-                            t('Thema und gewünschte Länge beschreiben.', 'Describe the topic and desired length.'),
-                            t('Optional Stil, Stimmung und Zielplattform ergänzen.', 'Optionally add style, mood, and target platform.'),
-                            t('nobby plant und produziert die Szenen automatisch.', 'nobby plans and produces the scenes automatically.'),
-                            t('Fortschritt verfolgen und das fertige Video im Chat öffnen.', 'Follow progress and open the finished video in chat.')
+                            t('Thema, Länge, Stil und Zielplattform im Chat beschreiben.', 'Describe topic, duration, style, and target platform in chat.'),
+                            t('Den gespeicherten Draft über die Chat-Nachricht im Shorts Studio öffnen.', 'Open the saved draft in Shorts Studio from the chat message.'),
+                            t('Draft prüfen: Briefing, Szenen, Narration und sichtbare Captions bearbeiten und bei Bedarf neu planen.', 'Review the draft: edit briefing, scenes, narration, and visible captions; replan if needed.'),
+                            t('Optional Expert Settings für Kamera, Kontinuität, Stimme, Musik, SFX und Übergänge öffnen.', 'Optionally open Expert Settings for camera, continuity, voice, music, SFX, and transitions.'),
+                            t('Render Short wählen. Erst jetzt beginnt die Video-, Voiceover- und FFmpeg-Produktion gemäß deinen Einstellungen.', 'Select Render Short. Video, voiceover, and FFmpeg production now begins according to your settings.'),
+                            t('Fortschritt in History verfolgen und das fertige Video öffnen oder downloaden.', 'Follow progress in History and open or download the finished video.')
                         ]
                     },
                     {
-                        title: t('Für bessere Ergebnisse', 'For better results'),
-                        body: t('Ein klares Thema plus Dauer und Stil reicht meistens aus. Du musst die einzelnen Szenen nicht selbst planen.', 'A clear topic plus duration and style is usually enough. You do not need to plan each scene yourself.')
+                        title: t('Drafts, History und Retry', 'Drafts, History, and retry'),
+                        body: t('Änderungen werden automatisch gespeichert; bei einem Speicherfehler im Editor bleiben und erneut speichern. History bietet Retry für fehlgeschlagene oder abgebrochene Jobs, Duplicate für fertige Projekte und einen Cancel-Button für aktive Jobs. Der Cancel-Button funktioniert in dieser Web-Version derzeit nicht. Retry erstellt eine neue Revision und verwendet gültige fertige Medien erneut. Bei zu langem Voiceover Narration kürzen oder Sprechgeschwindigkeit anpassen. Verträge und Fehlerdetails: docs/SHORTS_STUDIO.md.', 'Changes autosave; if saving fails, stay in the editor and save again. History offers Retry for failed or cancelled jobs, Duplicate for completed projects, and a Cancel button for active jobs. The Cancel button currently does not work in this web version. Retry creates a new revision and reuses valid completed media. If voiceover is too long, shorten narration or adjust voice speed. Contracts and error details: docs/SHORTS_STUDIO.md.')
                     }
                 ],
                 examples: [
@@ -120,8 +126,8 @@
                         body: t('Nutze die Vorlesefunktion an einer Antwort oder aktiviere automatisches Vorlesen. Die gewählte Stimme und Geschwindigkeit gelten für die Sprachausgabe.', 'Use the read-aloud action on a response or enable automatic reading. The selected voice and speed apply to speech output.')
                     },
                     {
-                        title: t('Eigene lokale Stimme', 'Your own local voice'),
-                        body: t('Wenn eine geklonte Stimme eingerichtet ist, kannst du sie wie andere Stimmen auswählen. Sprachdateien bleiben lokal und gehören nicht ins öffentliche Repository.', 'If a cloned voice is configured, you can select it like any other voice. Voice files stay local and do not belong in the public repository.')
+                        title: t('Diktat und lokale Stimmen', 'Dictation and local voices'),
+                        body: t('Starte Diktat über das Mikrofon, erlaube den Browserzugriff und stoppe die Aufnahme. Die lokale Transkription wird ins Eingabefeld übernommen; prüfe sie vor dem Absenden. Im Stimmenmanager kannst du lokale Stimmen testen und verwalten. Eine eingerichtete geklonte Stimme ist ebenfalls auswählbar.', 'Start dictation using the microphone, allow browser access, and stop recording. Local transcription fills the prompt box; review it before sending. Use the voice manager to test and manage local voices. A configured cloned voice can also be selected.')
                     }
                 ],
                 examples: []
@@ -134,7 +140,7 @@
                 sections: [
                     {
                         title: t('Wann Agent verwenden?', 'When should I use Agent?'),
-                        body: t('Agent eignet sich für mehrstufige Aufgaben, bei denen nobby Dateien, Code, lokale Tools oder einen Workspace selbstständig verwenden soll.', 'Agent is useful for multi-step tasks where nobby should work with files, code, local tools, or a workspace on its own.')
+                        body: t('Mit aktivem Coding-Workspace läuft jede Eingabe als workspacegebundene Agent-Aufgabe; ohne Workspace kehrst du zum normalen Chat zurück. Fragen und Reviews können rein lesend bleiben. Für Änderungen prüfst du Diff und Testergebnis vor der Freigabe zum Anwenden. Anhänge werden in diesem Workspace-Modus nicht unterstützt. Details: docs/AGENT_TASK_MODE.md.', 'With an active coding workspace, every prompt runs as a workspace-bound agent task; closing the workspace returns to normal chat. Questions and reviews can remain read-only. For changes, review the diff and test result before approving application. Attachments are not supported in this workspace mode. Details: docs/AGENT_TASK_MODE.md.')
                     },
                     {
                         title: t('Freigaben', 'Approvals'),
@@ -172,12 +178,81 @@
                 sections: [
                     {
                         title: t('Rollen', 'Roles'),
-                        body: t('MLX nobby kann unterschiedliche Modelle für Chat, Agent, Coding, Vision, Bilder und Embeddings verwenden. Ein Modellwechsel sollte nur die dafür vorgesehenen Rollen verändern.', 'MLX nobby can use different models for Chat, Agent, Coding, Vision, images, and embeddings. A model switch should only change the intended roles.')
+                        body: t('Die Rollen sind chat, agent, coding, vision, vision_uncensored, image und embedding. Bildverständnis bevorzugt vision_uncensored, wenn verfügbar, sonst vision. Wähle Rollen passend zu den lokal verfügbaren Modellen; Video und Sprache haben eigene Dienste.', 'The roles are chat, agent, coding, vision, vision_uncensored, image, and embedding. Image understanding prefers vision_uncensored when available, otherwise vision. Assign roles to suitable locally available models; video and speech have their own services.')
                     },
                     {
                         title: t('Modellwahl', 'Choosing a model'),
-                        body: t('Nutze ein schnelles Modell für alltägliche Aufgaben und ein stärkeres Modell für komplexes Coding, lange Analysen oder anspruchsvolle Vision-Aufgaben.', 'Use a fast model for everyday work and a stronger model for complex coding, long analysis, or demanding vision tasks.')
+                        body: t('Model Scout in der Modellansicht sucht auf Hugging Face und bewertet lokale Kompatibilität. Ein Discovery-Score ist kein Qualitätsbenchmark. Downloads und lokale A/B-Benchmarks startest du ausdrücklich; Benchmarks wechseln das geladene Modell vorübergehend.', 'Model Scout in the model view searches Hugging Face and checks local compatibility. A discovery score is not a quality benchmark. Downloads and local A/B benchmarks are explicit actions; benchmarks temporarily switch the loaded model.')
                     }
+                ],
+                examples: []
+            },
+            {
+                id: 'memory',
+                icon: '💭',
+                title: t("Memory & Kontext", "Memory & context"),
+                summary: t("Erinnerungen, Memory Manager und Context Inspector.", "Memories, Memory Manager, and Context Inspector."),
+                sections: [
+                    {
+                        title: t("Erinnern und vergessen", "Remember and forget"),
+                        body: t("Mit „Merk dir: …“ speicherst du dauerhafte Fakten oder Vorlieben. „Vergiss …“ entfernt passende Erinnerungen einschließlich verbundener historischer Varianten. Normale Fragen werden nicht automatisch gespeichert. Relevante Erinnerungen ergänzen lokale Chat-/Agent-Antworten; aktuelle Anweisungen haben Vorrang.", "Use “Remember that …” to store durable facts or preferences. “Forget …” removes matching memories including connected historical variants. Ordinary questions are not automatically stored. Relevant memories enrich local chat/agent responses; current instructions take precedence.")
+                    },
+                    {
+                        title: t("Verwalten und prüfen", "Manage and inspect"),
+                        body: t("Unter Einstellungen → Memory kannst du suchen, hinzufügen, bearbeiten, pinnen, deaktivieren und löschen. Bereinigen konsolidiert Duplikate; absorbierte Varianten bleiben deaktiviert prüfbar. Der Context Inspector zeigt für eine Testfrage den ausgewählten Kontext, ohne Nutzungszähler zu ändern. Details: docs/MEMORY.md, docs/MEMORY_MANAGER.md und docs/MEMORY_CONTEXT_INSPECTOR.md.", "Under Settings → Memory you can search, add, edit, pin, disable, and delete entries. Clean up consolidates duplicates; absorbed variants remain available for inspection while disabled. The Context Inspector shows selected context for a test query without changing usage counters. Details: docs/MEMORY.md, docs/MEMORY_MANAGER.md, and docs/MEMORY_CONTEXT_INSPECTOR.md.")
+                    },
+                ],
+                examples: []
+            },
+            {
+                id: 'automations',
+                icon: '⏰',
+                title: t("Automationen & Benachrichtigungen", "Automations & notifications"),
+                summary: t("Lokale Zeitpläne, Ergebnisse und Benachrichtigungen.", "Local schedules, results, and notifications."),
+                sections: [
+                    {
+                        title: t("Aufgaben planen", "Schedule tasks"),
+                        body: t("Unter Einstellungen → Automationen erstellst du Agent-Aufgaben oder Model-Scout-Suchen. Wähle manuell, stündlich, täglich oder wöchentlich und prüfe Zeitzone und Workspace. Der native Agent muss laufen; Freigaberegeln gelten weiterhin. Eine wartende Freigabe erfordert deine Entscheidung.", "Under Settings → Automations create agent tasks or Model Scout searches. Choose manual, hourly, daily, or weekly execution and check timezone and workspace. The native agent must be running; approval rules still apply. A pending approval requires your decision.")
+                    },
+                    {
+                        title: t("Ergebnisse prüfen", "Review results"),
+                        body: t("Ausführungen und Benachrichtigungen bleiben lokal gespeichert. Im Benachrichtigungsbereich kannst du Ergebnisse öffnen und als gelesen markieren; macOS-Zustellung kann von lokalen Berechtigungen abhängen. Nach Agent-Neustart werden unterbrochene Ausführungen als fehlgeschlagen markiert, nicht automatisch fortgesetzt. Details: docs/AUTOMATIONS.md.", "Runs and notifications are stored locally. Open results and mark them read in the notification area; macOS delivery can depend on local permissions. After an agent restart, interrupted runs are marked failed rather than automatically resumed. Details: docs/AUTOMATIONS.md.")
+                    },
+                ],
+                examples: []
+            },
+            {
+                id: 'diagnostics',
+                icon: '📊',
+                title: t("System & Diagnose", "System & diagnostics"),
+                summary: t("System Health, Self-Healing, Routing und Performance Observatory.", "System Health, self-healing, routing, and Performance Observatory."),
+                sections: [
+                    {
+                        title: t("System Health", "System Health"),
+                        body: t("Unter Einstellungen → System → Server findest du Dienstzustand, laufende Jobs und Diagnose. Kopiere die Diagnose für Fehlerberichte. Restart startet einen ausgewählten Dienst; Self-Healing kann ungesunde Dienste neu starten und festhängende Bild-/Videojobs erneut anfordern. Prüfe laufende Arbeit vor diesen Aktionen. Details: docs/SYSTEM_HEALTH.md.", "Under Settings → System → Server inspect service health, active jobs, and diagnosis. Copy diagnosis for bug reports. Restart restarts one selected service; self-healing can restart unhealthy services and retry stuck image/video jobs. Review active work before these actions. Details: docs/SYSTEM_HEALTH.md.")
+                    },
+                    {
+                        title: t("Routing und Performance", "Routing and performance"),
+                        body: t("Routing Observatory unter Einstellungen → Tools zeigt Route, Rolle, Guards und Fallbacks mit redigierten Prompts. Feedback ändert das Routing nicht automatisch. Performance Observatory in der Serveransicht zeigt lokale Wartezeiten und Modell-/Medienmetriken; unbekannte Werte sind keine Nullmessung. Diagnoseansichten aktualisieren automatisch nur sichtbar. Details: docs/ROUTING_OBSERVATORY.md und docs/PERFORMANCE_OBSERVATORY.md.", "Routing Observatory under Settings → Tools shows routes, roles, guards, and fallbacks with redacted prompts. Feedback does not automatically change routing. Performance Observatory in the Server view shows local waits and model/media metrics; unknown values are not measured zeros. Diagnostic views refresh automatically only while visible. Details: docs/ROUTING_OBSERVATORY.md and docs/PERFORMANCE_OBSERVATORY.md.")
+                    },
+                ],
+                examples: []
+            },
+            {
+                id: 'api-integrations',
+                icon: '🔌',
+                title: t("API & Integrationen", "API & integrations"),
+                summary: t("OpenAI-kompatible lokale API, virtuelle Rollen und Cline.", "OpenAI-compatible local API, virtual roles, and Cline."),
+                sections: [
+                    {
+                        title: t("Lokaler Endpunkt", "Local endpoint"),
+                        body: t("Base URL: http://127.0.0.1:8090/v1. GET /v1/models listet verfügbare virtuelle Rollen: mlx-nobby/coding, mlx-nobby/chat und mlx-nobby/agent. POST /v1/chat/completions unterstützt Text, Streaming und native Tool Calls je nach Modell. /v1 bezeichnet die API-Version, nicht den Nobby-Release.", "Base URL: http://127.0.0.1:8090/v1. GET /v1/models lists available virtual roles: mlx-nobby/coding, mlx-nobby/chat, and mlx-nobby/agent. POST /v1/chat/completions supports text, streaming, and native tool calls depending on the model. /v1 is the API version, not the Nobby release."),
+                        code: "http://127.0.0.1:8090/v1"
+                    },
+                    {
+                        title: t("Cline und Sicherheit", "Cline and security"),
+                        body: t("Wähle in Cline OpenAI Compatible, die Base URL und mlx-nobby/coding. Cline führt seine Tools selbst aus. Die API ist stateless: der Client sendet den Verlauf; es entstehen keine Nobby-Chat-Historie und kein Memory-/RAG-Kontext. Keine Authentifizierung, nur Loopback; niemals direkt im LAN/Internet freigeben. Ein API-Key-Platzhalter ist kein Schutz. Ausführliche Einrichtung: docs/OPENAI_COMPATIBLE_API.md.", "In Cline select OpenAI Compatible, the base URL, and mlx-nobby/coding. Cline executes its own tools. The API is stateless: the client sends history; requests create no Nobby chat history and receive no memory/RAG context. No authentication, loopback only; never expose it directly to a LAN or the internet. An API-key placeholder provides no protection. Full setup: docs/OPENAI_COMPATIBLE_API.md.")
+                    },
                 ],
                 examples: []
             },
@@ -194,8 +269,8 @@
                     },
                     {
                         title: t('Dienste neu starten', 'Restart services'),
-                        body: t('Wenn Quellcode aktualisiert wurde, aber ein alter Prozess noch läuft, starte die Dienste kontrolliert neu und prüfe danach erneut den Status.', 'If source code was updated but an old process is still running, restart the services cleanly and check status again.'),
-                        code: './scripts/restart-all.sh'
+                        body: t('mlx restart startet den LLM-Runtime-Prozess neu. mlx restart-all startet die nativen Dienste neu, lässt aber einen gesunden Agenten laufen und baut das Web-Frontend nicht neu. Nach einem Code-Update nutze im Repository ./scripts/restart-all.sh: es baut das Web-Frontend neu und lädt auch den Agent-Code. Danach mlx doctor prüfen.', 'mlx restart restarts the LLM runtime process. mlx restart-all restarts native services but retains a healthy agent and does not rebuild the web frontend. After a code update, run ./scripts/restart-all.sh from the repository: it rebuilds the web frontend and reloads agent code too. Then check mlx doctor.'),
+                        code: 'mlx status\nmlx restart-all'
                     },
                     {
                         title: t('Wichtig', 'Important'),

@@ -10,7 +10,7 @@ agent :8010  -- /api/image/* -->  image service :8030
                                       |
                          image-models.json registry
                                       |
-                   diffusionkit, mflux or local SDXL provider
+                   mlxserve, diffusionkit, mflux or local SDXL provider
                                       |
                          PNG on local disk
 ```
@@ -21,6 +21,11 @@ the agent exposes the existing download route and creates the existing chat
 artifact. The browser therefore keeps no image bytes in localStorage.
 
 `FLUX.1-schnell` through DiffusionKit remains the enabled legacy fallback.
+The optional `mlxserve-qwen-image-2.1` registry entry uses the shared local
+MLX-Serve endpoint (default `127.0.0.1:11234`) for Qwen Image 2.1 text-to-image
+generation. It starts disabled in the built-in registry; enable it only when
+its local model/runtime is available. The selected `image` role/default registry
+entry determines the provider; no particular installed model is assumed.
 MFLUX entries are opt-in and are only reported as available when their local
 Hugging Face snapshot (or an allowed `~/Models` path) is present. The service
 does not download weights. MFLUX 0.19.1 is called through the installed native CLI
@@ -83,3 +88,17 @@ Relevant regression suites include:
 - `tests/test_image_edit.mjs`
 - `tests/test_image_job_resume.mjs`
 - `tests/test_multi_image_vision.mjs`
+
+## Gallery, regeneration and references
+
+The browser supports 1–6 images, gallery selection, click previews, download,
+explicit upscaling and regeneration. Variant batches freeze effective provider
+settings and vary seeds; retry retains completed valid slots. See the canonical
+[gallery contract](docs/IMAGE_GALLERY_VARIANTS.md). Reference generation uses a
+compatible Edit model and the original reference, with no text-to-image fallback;
+see [reference images](docs/IMAGE_REFERENCE_GENERATION.md). Negative-prompt,
+quality and format behavior depend on the provider/model.
+
+The supplied image LaunchAgent sets `MLX_IMAGE_QUALITY_UPSCALE=off`; manual
+processes default to `auto`. Explicit upscaling remains available when its local
+binary/models are installed.

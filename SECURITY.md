@@ -33,6 +33,11 @@ files before every public contribution.
 ## Authentication and network access
 
 The project does not provide authentication for internet-facing deployment.
+The [OpenAI-compatible API](docs/OPENAI_COMPATIBLE_API.md) at
+`http://127.0.0.1:8090/v1` has **no authentication** and is for loopback use only.
+Other local processes can call it. A client API-key placeholder is not validated
+and supplies no protection. Do not expose this gateway directly to LAN/internet;
+Cline executes its own tools with the client's permissions.
 Keep all supplied listeners bound to localhost unless you have added an
 appropriate authentication, TLS, and network-isolation layer.
 

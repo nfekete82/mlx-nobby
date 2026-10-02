@@ -1,6 +1,8 @@
 # System Health & Self-Healing v1
 
-System Health extends the existing Advanced → Server settings view with a local diagnostic dashboard.
+Open **Settings → System → Server** for the local diagnostic dashboard
+(the route remains `/settings/advanced/server`). The same view includes the
+[Performance Observatory](PERFORMANCE_OBSERVATORY.md).
 
 ## Services
 

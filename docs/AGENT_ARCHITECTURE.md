@@ -226,15 +226,14 @@ Legacy-Aktionen behalten ihre Spezialprüfungen:
   ausgelagerten Prompt-, Evidence- und Approval-Module an.
 - Rollen-/Modellauflösung, Modell-Lock und Progress-/Pending-Speicher bleiben in der
   bestehenden Integration. Es wurde keine neue Event-Plattform eingeführt.
-- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `image` und `embedding`
-  werden in der bestehenden Integration aufgelöst; zusätzliche lokale
-  Vision-Rollen können optional als Fallback eingebunden werden.
+- Die Modellrollen `chat`, `agent`, `coding`, `vision`, `vision_uncensored`,
+  `image` und `embedding` werden in der bestehenden Integration aufgelöst.
   BGE-M3 ist für die Embedding-Rolle kompatibel.
 - Der Web-Backend-Chat-Pfad fragt bei Bildnachrichten die Vision-Route des
-  Agenten ab. Ein optionaler lokaler ONNX-Klassifikator kann bei passender
-  Konfiguration zwischen verfügbaren Vision-Rollen wählen. Bei Fehlern oder
-  unklarer Klassifikation bleibt die Standard-Vision-Rolle aktiv. Das
-  Klassifikatormodell wird bei Bedarf heruntergeladen; seine separaten
+  Agenten ab. `vision_uncensored` wird unabhängig von der Klassifikation bevorzugt,
+  sofern verfügbar; andernfalls wird `vision` verwendet. Ein optionaler lokaler
+  ONNX-Klassifikator liefert nur Diagnose-Metadaten. Das Klassifikatormodell
+  wird bei Bedarf heruntergeladen; seine separaten
   Python-Abhängigkeiten installiert der Standardinstaller nicht.
 - Freigaben und Progress sind weiterhin prozesslokal; keine neue dauerhafte
   Speicherung oder Wiederaufnahme nach einem Prozessneustart implementiert.
@@ -364,7 +363,8 @@ nur vorhandene, reguläre, nichtleere Medien. Invalidierung folgt Szeneninhalt,
 Qualität und Character-Anker. Retry prüft wiederverwendbare Medien vor
 `shorts_preflight.py`: vollständige Videos benötigen keinen Bilddienst; vorhandene
 Keyframes erlauben I2V ohne Bildgenerierung. Neue Keyframes benötigen weiterhin
-kompatible GROUP-1-Provider. Compose-Retry übernimmt gültiges fertiges TTS.
+kompatible verfügbare Keyframe-Generatoren. Compose-Retry übernimmt gültiges
+fertiges TTS.
 
 `shorts_composer.py` erzeugt v2-Szenen-TTS und die FFmpeg-Timeline mit lokalen
 Musik-/SFX-Tracks und Übergängen. Benannte Grenzen erlauben 50 ms Messabweichung
@@ -403,7 +403,8 @@ Job-ID-Prüfungen schützen vor verspäteten Fetch-/Poll-/Retry-Antworten;
 Scene-Revisionen bleiben nutzbar. Gemeinsame Fehlerdarstellung verwendet bekannte
 Codes und Dauerfelder statt interner Exception-Texte. Editor/History verwenden
 `frontend/i18n/shorts-studio.json`; Chat-Texte bleiben in den zentralen DE/EN-Dateien.
-Die gemergten GROUP-1-/GROUP-2-Backendmodule bleiben unverändert.
+Planung, Produktion und Medienwiederverwendung nutzen die oben beschriebenen
+Backendmodule.
 
 
 ## Kanonische Image-Varianten-Batches

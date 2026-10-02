@@ -149,8 +149,10 @@ agent-venv/bin/python -m pip install -r requirements/vision-classifier.txt
 The classifier stores its ONNX model under
 `~/.cache/mlx-web/vision/image-safety-classifier-l.onnx` on first use. Set
 `MLX_VISION_CLASSIFIER_MODEL` to an existing local model file to avoid that
-download. Missing classifier dependencies, download errors, and uncertain
-classifications fall back to the regular `vision` role.
+download. Classification is diagnostic metadata and does not choose the model.
+`agent/vision_routing.py` prefers the available `vision_uncensored` role for every
+image-understanding turn, otherwise `vision`; missing classifier dependencies,
+download errors or uncertain labels do not override that preference.
 
 ## Installation
 

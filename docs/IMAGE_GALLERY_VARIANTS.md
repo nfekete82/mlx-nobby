@@ -1,5 +1,18 @@
 # Canonical image galleries
 
+## User actions
+
+Choose 1–6 images in the generation picker. After the first image completes,
+additional slots run sequentially. Select a gallery image for follow-up work,
+click its preview to open it, or download it. Improve image is explicit upscaling;
+Regenerate requests a fresh result. Variants preserve effective settings and
+change seeds. Retry repairs unsuccessful slots, and Cancel keeps finished images.
+Available actions depend on the saved job/provider; legacy artifacts cannot
+guarantee variants. See [reference generation](IMAGE_REFERENCE_GENERATION.md)
+for new scenes using a person reference rather than an ordinary edit.
+
+## Batch contract
+
 The image-count picker waits for the first completed image, then sends one
 `POST /api/mlx/image-jobs/variants` request with its native
 `generation_job_id`, the chosen count and `include_base=true`. The artifact's
