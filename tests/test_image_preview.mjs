@@ -55,8 +55,8 @@ for (const kind of ['message-attachment-preview', 'image-artifact-preview', 'ima
     fire('click', image.parent || image);
     dialog.events.click({target: dialog});
     assert.equal(dialog.open, false, 'backdrop closes the same dialog');
-    if (kind !== 'image-variant-preview') {
-        assert.equal(fire('keydown', image, {key: 'Enter'}).prevented, true);
+    for (const key of ['Enter', ' ']) {
+        assert.equal(fire('keydown', image.parent || image, {key}).prevented, true);
         assert.equal(dialog.open, true);
         dialog.close();
     }
