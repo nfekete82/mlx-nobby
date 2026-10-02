@@ -56,6 +56,15 @@ class LocalRequestGuard:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
+
+        def rejection(message, status):
+            if scope.get("path") in {"/v1/models", "/v1/chat/completions"}:
+                return JSONResponse({"error": {
+                    "message": message, "type": "invalid_request_error",
+                    "code": "local_access_required" if status == 403 else "request_too_large",
+                }}, status)
+            return JSONResponse({"detail": message}, status)
+
         headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope["headers"]}
         try:
             host = urlsplit("//" + headers.get("host", ""))
@@ -71,7 +80,7 @@ class LocalRequestGuard:
         except ValueError:
             allowed = False
         if not allowed:
-            return await JSONResponse({"detail": "Nur lokale Zugriffe vom selben Ursprung sind erlaubt"}, 403)(scope, receive, send)
+            return await rejection("Nur lokale Zugriffe vom selben Ursprung sind erlaubt", 403)(scope, receive, send)
         length = headers.get("content-length")
         if length is not None:
             try:
@@ -79,7 +88,7 @@ class LocalRequestGuard:
             except ValueError:
                 size = -1
             if size < 0 or size > self.max_body:
-                return await JSONResponse({"detail": "Ungültige oder zu große Anfrage"}, 413)(scope, receive, send)
+                return await rejection("Ungültige oder zu große Anfrage", 413)(scope, receive, send)
 
         # Count streaming bodies too, before the multipart parser can spool
         # unlimited data. Replace parser error responses with a consistent 413.
@@ -102,7 +111,7 @@ class LocalRequestGuard:
             if exceeded:
                 if not rejected:
                     rejected = True
-                    await JSONResponse({"detail": "Anfrage ist zu groß"}, 413)(scope, receive, send)
+                    await rejection("Anfrage ist zu groß", 413)(scope, receive, send)
                 return
             await send(self._with_identity_headers(message))
 

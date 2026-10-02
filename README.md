@@ -25,6 +25,10 @@ voiceover timing and provider readiness.
 
 ## Features
 
+- Local [OpenAI-compatible inference API](docs/OPENAI_COMPATIBLE_API.md) for
+  external clients, with virtual model roles, streaming and native tool-call
+  transport, validated with real Cline 4.1.22 agent turns.
+
 - Local LLM chat with streaming, model switching, thinking controls, and saved
   conversations
 - Model aliases, Hugging Face downloads, cache inspection, and background jobs
