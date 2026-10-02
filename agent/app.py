@@ -8129,9 +8129,14 @@ def _shorts_job_progress(job):
     else:
         percent = 5
 
+    if (job.get('project') or {}).get('consistency_mode'):
+        from agent.shorts_diagnostics import progress_fields
+        percent = progress_fields(job)['progress'] * 100
+
     labels = {
         "queued": "Planung abgeschlossen",
         "planning": "Planung",
+        "keyframe": "Keyframe wird erstellt",
         "video": "Video",
         "video_completed": "Video abgeschlossen",
         "tts": "Voiceover",
@@ -8144,6 +8149,7 @@ def _shorts_job_progress(job):
     descriptions = {
         "queued": "Produktionsplan ist bereit; der Job wartet auf die Ausführung.",
         "planning": "Der Produktionsplan wird erstellt.",
+        "keyframe": "Der Keyframe der aktuellen Szene wird erstellt.",
         "video": "Die Szenenvideos werden nacheinander erzeugt.",
         "video_completed": "Alle Szenenvideos sind fertig.",
         "tts": "Das Voiceover wird erzeugt.",
@@ -8156,7 +8162,7 @@ def _shorts_job_progress(job):
     display_phase = status if status in {"completed", "failed", "cancelled"} else phase
     scene_number = (
         min(current_scene + 1, scene_count)
-        if phase in {"queued", "planning", "video"}
+        if phase in {"queued", "planning", "keyframe", "video"}
         else current_scene
     )
     return {
@@ -8173,6 +8179,11 @@ def _shorts_job_tool_result(job):
     status = str(job.get("status") or "failed")
     presented = deepcopy(job)
     presented.update(_shorts_job_progress(job))
+    if status == 'failed' and not presented.get('error_stage'):
+        from agent.shorts_diagnostics import failure_fields
+        presented.update(failure_fields(job, job.get('error', '')))
+    if status == "failed":
+        presented["error"] = presented.get("error_message") or "Der Short konnte nicht gerendert werden."
     data, artifacts = {"job": presented}, []
     if status == "completed" and job.get("final_path"):
         artifact = {
@@ -8193,7 +8204,7 @@ def _shorts_job_tool_result(job):
         artifacts.append(artifact)
     return chat_tool_result(
         "shorts_generate", status, data, artifacts=artifacts,
-        error=job.get("error"),
+        error=presented.get("error"),
     )
 
 

@@ -14,6 +14,9 @@ def _route_exists(app, path, method):
 
 def install_routes(app, agent_json_request):
     """Register Shorts Studio proxy routes exactly once."""
+    from backend.shorts_draft_routes import install_routes as install_drafts
+    install_drafts(app, agent_json_request)
+
     history_path = "/api/mlx/shorts-jobs"
     if not _route_exists(app, history_path, "GET"):
         @app.get(history_path)
@@ -38,6 +41,10 @@ def install_routes(app, agent_json_request):
             )
 
     delete_path = "/api/mlx/shorts-jobs/{job_id}"
+    if not _route_exists(app, delete_path + '/retry', 'POST'):
+        @app.post('/api/mlx/shorts-jobs/{job_id}/retry', status_code=202)
+        def retry(job_id: str):
+            return agent_json_request('POST', f'/api/shorts-jobs/{urllib.parse.quote(job_id, safe="")}/retry', {}, timeout=60)
     if not _route_exists(app, delete_path, "DELETE"):
         @app.delete(delete_path)
         def delete_short(job_id: str):

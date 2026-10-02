@@ -37,13 +37,15 @@ def completed_source(tmp_path, monkeypatch):
     configure_store(tmp_path, monkeypatch)
     value = project()
     job = shorts_jobs.create_short_job(value, chat_id="chat-one", chat_revision=4)
+    for index in range(1, 5):
+        (tmp_path / f'{index:024x}.mp4').write_bytes(b'video-fixture')
     results = [
         {
             "scene_id": scene.id,
             "duration": scene.duration,
             "status": "completed",
             "video_job_id": f"{index:024x}",
-            "path": f"/videos/{index:024x}.mp4",
+            "path": str(tmp_path / f"{index:024x}.mp4"),
         }
         for index, scene in enumerate(value.scenes, 1)
     ]

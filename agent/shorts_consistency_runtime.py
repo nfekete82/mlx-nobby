@@ -63,7 +63,9 @@ def _finish_cancelled(job_id, video_request_fn):
     return shorts_jobs._finish_cancelled(job_id, video_request_fn)
 
 
-def _fail(job_id, error):
+def _fail(job_id, error, child=None):
+    from agent.shorts_diagnostics import failure_fields
+    diagnosis = failure_fields(shorts_jobs.get_short_job(job_id), error, child)
     return shorts_jobs._update_job(
         job_id,
         status="failed",
@@ -72,6 +74,7 @@ def _fail(job_id, error):
         active_video_job_id=None,
         error=str(error),
         finished_at=time.time(),
+        **diagnosis,
     )
 
 
@@ -94,7 +97,7 @@ def _image_edit_available():
         for model in data.get("models", []):
             if (
                 model.get("enabled")
-                and model.get("available") is not False
+                and model.get("available") is True
                 and "image_edit" in (model.get("capabilities") or [])
             ):
                 available = True
@@ -153,6 +156,10 @@ def run_consistent_short_job(
     )
 
     try:
+        from agent.shorts_preflight import preflight_project
+        readiness = preflight_project(ShortProject.model_validate(job['project']), request_fn=_image_request,
+                                      scene_results=job.get('scene_results'), keyframe_results=job.get('keyframe_results'))
+        shorts_jobs._update_job(job_id, warnings=readiness['warnings'], provider_preflight=readiness)
         while True:
             job = shorts_jobs.get_short_job(job_id)
             if job.get("status") in shorts_jobs.TERMINAL_STATUSES:
@@ -206,7 +213,11 @@ def run_consistent_short_job(
             keyframe = keyframes.get(scene_model.id)
 
             if keyframe is None:
-                anchor_path = _identity_anchor_path(project, keyframes, scene_index)
+                anchor_path = (None if scene_model.id in job.get('anchor_fallback_scenes', [])
+                               else _identity_anchor_path(project, keyframes, scene_index))
+                if scene_index > 0 and project.character_consistency and not anchor_path:
+                    warnings = list(dict.fromkeys([*(job.get('warnings') or []), 'character_anchor_fallback']))
+                    shorts_jobs._update_job(job_id, warnings=warnings)
                 child_id = job.get("active_image_job_id")
                 if not child_id:
                     try:
@@ -230,6 +241,7 @@ def run_consistent_short_job(
                         active_image_job_id=child_id,
                         active_video_job_id=None,
                         phase="keyframe",
+                        child_progress=0.,
                     )
 
                 try:
@@ -244,6 +256,8 @@ def run_consistent_short_job(
                         continue
                     raise
                 status = str(child.get("status") or "")
+                shorts_jobs._update_job(job_id, child_progress=child.get('progress') or 0.,
+                                        active_provider=child.get('provider'), active_model=child.get('model'))
                 if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
                     return _finish_cancelled(job_id, video_request_fn)
 
@@ -285,7 +299,12 @@ def run_consistent_short_job(
                     continue
 
                 if status == "failed":
-                    return _fail(job_id, child.get("error") or "keyframe job failed")
+                    if anchor_path and child.get('error_code') == 'IMAGE_PROVIDER_INCOMPATIBLE':
+                        shorts_jobs._update_job(job_id, active_image_job_id=None, child_progress=0.,
+                            anchor_fallback_scenes=[*(job.get('anchor_fallback_scenes') or []), scene_model.id],
+                            warnings=list(dict.fromkeys([*(job.get('warnings') or []), 'character_anchor_fallback'])))
+                        continue
+                    return _fail(job_id, child.get("error") or "keyframe job failed", child)
                 if status == "cancelled":
                     latest = shorts_jobs.get_short_job(job_id)
                     if latest.get("cancel_requested"):
@@ -319,6 +338,7 @@ def run_consistent_short_job(
                     active_video_job_id=child_id,
                     active_image_job_id=None,
                     phase="video",
+                    child_progress=0.,
                 )
 
             try:
@@ -334,6 +354,7 @@ def run_consistent_short_job(
                     continue
                 raise
             status = str(child.get("status") or "")
+            shorts_jobs._update_job(job_id, child_progress=child.get('progress') or 0.)
             if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
                 return _finish_cancelled(job_id, video_request_fn)
 
@@ -365,7 +386,7 @@ def run_consistent_short_job(
                 continue
 
             if status == "failed":
-                return _fail(job_id, child.get("error") or "video job failed")
+                return _fail(job_id, child.get("error") or "video job failed", child)
             if status == "cancelled":
                 latest = shorts_jobs.get_short_job(job_id)
                 if latest.get("cancel_requested"):
