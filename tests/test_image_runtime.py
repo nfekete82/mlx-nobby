@@ -1803,6 +1803,7 @@ class ImageRuntimeTests(unittest.TestCase):
             agent.image_generate_api({"prompt": "hello"})
         self.assertEqual(request.call_args.args[2]["model"], "mflux-qwen-image")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_bad_ids_paths_families_and_parameters(self):
         model = registry.load_registry()["models"][2]
         for invalid in ({"id": "../escape"}, {"local_path": "/etc"}, {"local_path": "relative"},
@@ -2288,6 +2289,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertTrue(Path(completed["result"]["path"]).is_file())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_failure_has_no_result_or_partial_artifact(self):
         output_paths = []
 
@@ -2314,6 +2316,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertFalse(output_paths[0].exists())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_cancel_cleans_output_and_allows_the_next_job(self):
         registry.update_model(
             "mflux-qwen-image-edit-2511",
@@ -2387,6 +2390,7 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertIsNotNone(completed["result"])
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_cancel_after_worker_exit_is_cancelled(self):
         started = threading.Event()
 
