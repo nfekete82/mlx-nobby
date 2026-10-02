@@ -16,12 +16,14 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 ## Shorts backend
 
 Shorts Studio offers a pre-production editor, saved drafts and History with
-explicit job selection, retry, duplication and cancellation. Chat creates a draft;
+explicit job selection, retry and duplication. Chat creates a draft;
 production starts only when you select Render Short. Autosave preserves changes
 before navigation and rendering. Version-1 projects and existing scene revisions
 remain supported, with retries reusing valid completed media.
 See [Shorts API and production behavior](docs/SHORTS_STUDIO.md) for contracts,
-voiceover timing and provider readiness.
+voiceover timing and provider readiness. The current web job queue and Shorts
+Cancel button are unavailable because their proxy routes are missing; the
+canonical guide records this existing limitation.
 
 ## Features
 
