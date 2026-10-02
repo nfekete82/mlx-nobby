@@ -1815,10 +1815,14 @@ function renderImageArtifactCard(message) {
     download.className = 'message-action-btn'; download.textContent = 'Download';
     download.href = '/api/mlx/images/' + encodeURIComponent(artifact.image_id) + '?download=1';
     controls.appendChild(download);
-    const enhanceMenu = window.MLXChatGeneration
-        ?.createImageUpscaleMenu?.(artifact);
-    if (enhanceMenu) {
-        controls.appendChild(enhanceMenu);
+    // Optional image actions must not abort publication of the image itself.
+    // A failing extension previously cleared the chat before this card attached.
+    try {
+        const enhanceMenu = window.MLXChatGeneration
+            ?.createImageUpscaleMenu?.(artifact);
+        if (enhanceMenu) controls.appendChild(enhanceMenu);
+    } catch (error) {
+        console.warn('Could not render image actions', error);
     }
 
     const info = document.createElement('details');

@@ -3722,6 +3722,7 @@ const ACTIVE_IMAGE_JOB_STATUSES = new Set([
     'saving'
 ]);
 const IMAGE_JOB_ID_PATTERN = /^[a-f0-9]{24}$/;
+const IMAGE_ARTIFACT_PUBLICATION_TIMEOUT_SECONDS = 60;
 
 // Transient image-service failures are expected during a local service
 // restart. Keep retrying with bounded backoff long enough for the service
@@ -3794,12 +3795,19 @@ function updateImageJobMessage(
 
     const previousJob = message.image_job;
     const nextJob = { ...job };
-    // The start response can finish before its artifact has been attached.
-    // Keep polling until the completed result is actually displayable.
-    if (nextJob.status === 'completed' && !toolResult.artifacts?.some(artifact => artifact?.image_id)) {
-        nextJob.status = 'saving';
-        toolResult = { ...toolResult, status: 'saving',
+    // Persist the deadline so reloads cannot keep an incomplete success alive forever.
+    if (nextJob.status === 'completed' && !toolResult.artifacts?.[0]?.image_id) {
+        message.image_artifact_wait_started_at ??= nowSeconds;
+        const expired = nowSeconds - message.image_artifact_wait_started_at >=
+            IMAGE_ARTIFACT_PUBLICATION_TIMEOUT_SECONDS;
+        const error = expired ? gt('image_artifact_unavailable',
+            'The image job completed, but its image could not be published.') : null;
+        nextJob.status = expired ? 'failed' : 'saving';
+        nextJob.error = error;
+        toolResult = { ...toolResult, status: nextJob.status, error,
             data: { ...toolResult.data, job: nextJob } };
+    } else if (nextJob.status === 'completed') {
+        delete message.image_artifact_wait_started_at;
     }
 
     if (imageJobHasStep(nextJob)) {
@@ -4181,7 +4189,9 @@ function resumeImageJobsForSession(session) {
 
     let started = 0;
     for (const message of session.messages) {
-        if (!message.image_job && IMAGE_JOB_TOOLS.has(message?.tool_result?.tool) && message.tool_result.data?.job?.id) {
+        if (IMAGE_JOB_TOOLS.has(message?.tool_result?.tool) && message.tool_result.data?.job?.id &&
+            (!message.image_job || (message.image_job.status === 'completed' &&
+                !message.tool_result.artifacts?.[0]?.image_id))) {
             updateImageJobMessage(session, message, message.tool_result);
         }
         const job = message?.image_job;
