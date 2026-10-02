@@ -9,6 +9,7 @@ import threading
 import time
 import types
 import unittest
+import pytest
 import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
@@ -23,6 +24,8 @@ import image_service as service
 import sdxl_worker
 from agent import app as agent
 from quality_profiles import resolve_image_profile
+
+pytestmark = pytest.mark.usefixtures('mflux_cli_contract')
 
 
 FAKE_SDXL_WORKER = r'''
@@ -1763,7 +1766,8 @@ class ImageRuntimeTests(unittest.TestCase):
             seen.append(params.copy())
             Image.new("RGB", (params["width"], params["height"]), "red").save(path)
         prompt = 'adult portrait; $(never-run) --model example'
-        with patch.object(service, "run_provider", side_effect=generate):
+        with patch.object(service, "run_provider", side_effect=generate), \
+             patch.object(service, "availability", return_value=(True, "ready")):
             response = self.client.post("/generate", json={"prompt": prompt, "seed": 0})
             variation = self.client.post("/generate", json={"prompt": prompt})
         self.assertEqual(response.status_code, 200)
@@ -1799,6 +1803,7 @@ class ImageRuntimeTests(unittest.TestCase):
             agent.image_generate_api({"prompt": "hello"})
         self.assertEqual(request.call_args.args[2]["model"], "mflux-qwen-image")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_bad_ids_paths_families_and_parameters(self):
         model = registry.load_registry()["models"][2]
         for invalid in ({"id": "../escape"}, {"local_path": "/etc"}, {"local_path": "relative"},
@@ -1909,10 +1914,7 @@ class ImageRuntimeTests(unittest.TestCase):
             command[command.index("--height") + 1],
             "904",
         )
-        self.assertEqual(
-            command[command.index("--canvas-policy") + 1],
-            "source-aspect",
-        )
+        self.assertNotIn('--canvas-policy', command)
 
     def test_provider_timeout_terminates_the_entire_process_group(self):
         model = registry.get_model(
@@ -2039,7 +2041,7 @@ class ImageRuntimeTests(unittest.TestCase):
                 )
 
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
-        self.assertIn("--json-events", popen.call_args.args[0])
+        self.assertNotIn("--json-events", popen.call_args.args[0])
         killpg.assert_called_once_with(4321, providers.signal.SIGTERM)
         process.wait.assert_called_once_with(
             timeout=providers.PROCESS_TERMINATION_TIMEOUT
@@ -2287,6 +2289,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertTrue(Path(completed["result"]["path"]).is_file())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_failure_has_no_result_or_partial_artifact(self):
         output_paths = []
 
@@ -2313,6 +2316,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertFalse(output_paths[0].exists())
         self.assertEqual(self.client.get("/health").json()["status"], "ready")
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_cancel_cleans_output_and_allows_the_next_job(self):
         registry.update_model(
             "mflux-qwen-image-edit-2511",
@@ -2386,6 +2390,7 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertIsNotNone(completed["result"])
 
+    @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_image_job_cancel_after_worker_exit_is_cancelled(self):
         started = threading.Event()
 

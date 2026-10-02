@@ -18,6 +18,7 @@ from pathlib import Path
 
 import runtime_coordinator
 from image_registry import FAMILIES, MODEL_ROOTS, validate_path
+from mflux_capabilities import probe_mflux_cli, mflux_contract, mflux_weight_contract
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
 
@@ -286,6 +287,13 @@ class ProviderCancelled(RuntimeError):
     """Raised when a caller cancels an active provider process."""
 
 
+class ProviderFailure(RuntimeError):
+    def __init__(self, message, *, error_code='IMAGE_PROVIDER_FAILED', provider=None, model=None, detail=None):
+        super().__init__(message)
+        self.diagnosis = {'error_code': error_code, 'error_provider': provider,
+                          'error_model': model, 'error_detail_safe': detail or message}
+
+
 def _read_runtime_events(stream, remainder, callback, expected_steps):
     chunk = stream.read()
 
@@ -510,7 +518,12 @@ def availability(model):
             return False, "Eine aktivierte lokale LoRA-Datei fehlt"
         if lora.get("repository") and not repository_is_available(lora["repository"]):
             return False, "Eine aktivierte LoRA ist nicht im lokalen Hugging-Face-Cache vorhanden"
-    return True, "Lokale Gewichte vorhanden; Provider-Kompatibilität wird bei Generierung geprüft"
+    if model['provider'] == 'mflux':
+        compatible, reason = mflux_weight_contract(model, root)
+        if not compatible:
+            return False, reason
+        return mflux_contract(model, command)
+    return True, "Lokale Gewichte vorhanden"
 
 
 def sdxl_files(model):
@@ -536,9 +549,14 @@ def sdxl_files(model):
 
 def mflux_command(model, params, output):
     family = model["model_family"]
+    executable = MFLUX_BIN / FAMILIES[family][0]
+    ready, reason = mflux_contract(model, executable)
+    if not ready:
+        raise ProviderFailure(reason, error_code='IMAGE_PROVIDER_INCOMPATIBLE', provider='mflux', model=model.get('id'))
+    flags = probe_mflux_cli(str(executable))['supported_flags']
 
-    # Qwen Image Edit has its own CLI contract. Pass its edit canvas
-    # explicitly, but do not pass generic base-model/quantize arguments.
+    # Source aspect is already resolved by the service into width/height.
+    # Qwen Edit 0.19.1/0.20.0 have no --canvas-policy; quantize only on request.
     if family == "qwen-image-edit":
         source_path = params.get("source_path")
 
@@ -559,8 +577,6 @@ def mflux_command(model, params, output):
             str(params["width"]),
             "--height",
             str(params["height"]),
-            "--canvas-policy",
-            "source-aspect",
             "--steps",
             str(params["steps"]),
             "--guidance",
@@ -626,11 +642,11 @@ def mflux_command(model, params, output):
         str(params["seed"]),
         "--output",
         str(output),
-        "--mlx-cache-limit-gb",
-        str(memory_policy["cache_gb"]),
     ]
 
-    if memory_policy["low_ram"]:
+    if '--mlx-cache-limit-gb' in flags:
+        command += ['--mlx-cache-limit-gb', str(memory_policy['cache_gb'])]
+    if memory_policy["low_ram"] and '--low-ram' in flags:
         command.append("--low-ram")
 
     if family != "z-image-turbo":
@@ -1138,7 +1154,7 @@ def run_provider(
 ):
     ready, reason = availability(model)
     if not ready:
-        raise RuntimeError(reason)
+        raise ProviderFailure(reason, error_code='IMAGE_PROVIDER_INCOMPATIBLE', provider=model['provider'], model=model['id'])
     if cancel_event is not None and cancel_event.is_set():
         raise ProviderCancelled("Image job was cancelled")
     environment = os.environ.copy()
@@ -1192,8 +1208,10 @@ def run_provider(
     else:
         command = mflux_command(model, params, output)
         worker_input = None
-        if progress_callback is not None:
+        if progress_callback is not None and '--json-events' in probe_mflux_cli(command[0])['supported_flags']:
             command.append("--json-events")
+        elif progress_callback is not None:
+            progress_callback({'phase': 'generating'})
     # Do not expose prompts/tokens or unfiltered provider tracebacks. Spool output.
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
@@ -1250,11 +1268,24 @@ def run_provider(
             diagnostics.seek(0, 2)
             diagnostics.seek(max(0, diagnostics.tell() - 65536))
             message = diagnostics.read().decode("utf-8", errors="replace").lower()
+            # Full output stays local. API diagnostics omit prompts and private paths.
+            diagnostics.seek(0)
+            try:
+                log = Path(output).with_suffix('.provider.log')
+                with open(log, 'wb', opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
+                    stream.write(diagnostics.read())
+            except OSError:
+                pass  # Logging must not mask the provider failure.
             if "all zero" in message or "weights appear corrupt" in message:
                 raise RuntimeError("Lokale Modellgewichte sind beschädigt (Nullgewichte). Es wurden keine Dateien verändert oder heruntergeladen.")
             if "unrecognized arguments" in message:
-                raise RuntimeError("Installierte MFLUX-CLI ist mit den Provider-Parametern nicht kompatibel")
-            raise RuntimeError(f"{model['provider']} konnte das lokale Modell/LoRA nicht ausführen (Exit {process.returncode}). Cache und Provider-Kompatibilität prüfen; es wurde nichts heruntergeladen.")
+                # Only retain flag names, never CLI values, prompts or private paths.
+                rejected = sorted(set(re.findall(r'--[a-z][a-z0-9-]*', message.split('unrecognized arguments:', 1)[-1])))
+                raise ProviderFailure("Installierte MFLUX-CLI ist mit den Provider-Parametern nicht kompatibel",
+                                      error_code='IMAGE_PROVIDER_INCOMPATIBLE', provider=model['provider'], model=model['id'],
+                                      detail=f"{Path(command[0]).name}: Exit {process.returncode}; unbekannte Argumente: {', '.join(rejected)}")
+            raise ProviderFailure(f"{model['provider']} konnte das lokale Modell/LoRA nicht ausführen (Exit {process.returncode}). Cache und Provider-Kompatibilität prüfen; es wurde nichts heruntergeladen.",
+                                  provider=model['provider'], model=model['id'], detail=f'{Path(command[0]).name}: Exit {process.returncode}')
     _validate_provider_output(params, output)
     _maybe_quality_upscale(
         params,
