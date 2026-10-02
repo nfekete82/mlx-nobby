@@ -89,12 +89,15 @@ def installed_shorts_routes():
     from fastapi import FastAPI
     from agent.shorts_studio_routes import install_routes as install_agent
     from backend.shorts_studio_routes import install_routes as install_web
+    from backend.system_health_routes import install_routes as install_system
     agent, web = FastAPI(), FastAPI()
     install_agent(agent)
     install_web(web, lambda *args, **kwargs: {})
+    install_system(web, lambda *args, **kwargs: {})
     def pairs(app):
         return {(method, route.path) for route in app.routes
-                if 'shorts' in getattr(route, 'path', '') for method in route.methods}
+                if ('shorts' in getattr(route, 'path', '') or '/job-queue/' in getattr(route, 'path', ''))
+                for method in route.methods}
     a, w = pairs(agent), pairs(web)
     # Legacy status/download declarations; no agent app import that resumes jobs.
     a |= {x for x in declared_routes(ROOT / 'agent/app.py') if x[1].startswith('/api/shorts')}

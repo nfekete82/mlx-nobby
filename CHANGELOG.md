@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed the web job-queue and cancellation proxies so Queue status and Shorts
+  cancellation work through the normal web UI.
+
 - Refreshed the bilingual Help Center and technical documentation for current
   Shorts drafts/rendering and APIs, image workflows, memory, automations, local
   API integrations and runtime tooling; added help, link and route regression

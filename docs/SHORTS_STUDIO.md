@@ -12,7 +12,7 @@
 6. Select **Render Short** to start production.
 7. Follow the selected job in History. Open/download the completed video.
    Failed/cancelled jobs offer Retry; completed projects offer Duplicate;
-   active jobs display Cancel (see the web limitation below).
+   active jobs display Cancel.
 
 ## Draft lifecycle
 
@@ -64,11 +64,12 @@ IDs when the full chain is needed.
 Retry is restricted to failed/cancelled jobs. Duplicate in History creates a
 draft from a completed job; it does not render immediately. Cancel uses the
 agent unified job queue route, not a Shorts-specific `/cancel` route.
-A terminal job cannot be cancelled (409). **Known web limitation:** History/Queue
-buttons request `/api/system/job-queue/shorts/{job_id}/cancel`, but the current
-web entrypoint does not install that proxy and returns 404. The queue list proxy
-is missing too. This documentation change does not repair product routes; use
-the local agent API for cancellation until that separate bug is fixed.
+A terminal job cannot be cancelled (409). History/Queue buttons use the web
+proxy `/api/system/job-queue/shorts/{job_id}/cancel` (POST, no body), which
+forwards to the same Agent path. The queue loads through
+`GET /api/system/job-queue?limit=40`. The Agent handles cancellation, including
+active child jobs; drafts and completed media remain available. Cancellation
+does not create a revision.
 
 ## Media reuse
 
@@ -136,14 +137,16 @@ names. All paths are relative to their service (agent normally 8010; web 8090).
 | POST | `/api/shorts/jobs/{job_id}/scenes/{scene_id}/revise` | `/api/mlx/shorts-jobs/{job_id}/scenes/{scene_id}/revise` | SceneRevisionRequest → `{job}` | 202 / 202 |
 | DELETE | `/api/shorts-jobs/failed` | `/api/mlx/shorts-jobs/failed` | None → cleanup summary | 200 / 200 |
 | DELETE | `/api/shorts-jobs/{job_id}` | `/api/mlx/shorts-jobs/{job_id}` | None → project deletion summary | 200 / 200 |
-| POST | `/api/system/job-queue/{kind}/{job_id}/cancel` | — | Set `kind=shorts`; no body → `{ok, kind, job}` | 200 / — |
+| POST | `/api/system/job-queue/{kind}/{job_id}/cancel` | `/api/system/job-queue/{kind}/{job_id}/cancel` | Set `kind=shorts`; no body → `{ok, kind, job}` | 200 / 200 |
 | GET | `/api/shorts/{job_id}` | `/api/mlx/shorts/{job_id}` | Optional `download=true` → completed MP4 | 200 / 200 |
 | GET | `/api/shorts/jobs/{job_id}/scenes/{scene_id}/{kind}` | `/api/mlx/shorts/jobs/{job_id}/scenes/{scene_id}/{kind}` | `kind=video` or `keyframe` → completed scene file | 200 / 200 |
 | GET | `/api/shorts/library/{kind}/{track:path}` | `/api/mlx/shorts/library/{kind}/{track:path}` | `kind=music` or `sfx`; relative track → local audio file | 200 / 200 |
 
 Web draft actions use a generic action route and return 200 for successful
 render/duplicate even when the agent returns 202/201. An unknown action returns
-404. There is no installed web proxy for the unified queue/cancellation paths.
+404. Queue/cancellation proxies preserve Agent status codes: unknown jobs return
+404, terminal jobs 409 and invalid kinds/IDs 422; an unreachable Agent returns
+503. Web error details use safe fallback messages.
 Static drafts/capabilities and failed-cleanup routes precede parameter catch-alls.
 
 ### Request schemas
