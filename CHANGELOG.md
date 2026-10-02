@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.5.0
+
 - Added the Shorts pre-production editor, draft selection, explicit History/job
   navigation, retry/duplicate/cancel controls and chat draft references. Chat
   planning ends before rendering; production starts explicitly in Studio.
@@ -27,6 +29,46 @@
   continue to use the image route.
 - Added routing architecture documentation and refreshed the README service
   topology to include the native video dispatcher on port 8060.
+
+- Added reference-image generation with persisted source identity, model-aware
+  routing and reference-aware image actions. Regeneration keeps reference paths
+  and source metadata private.
+- Added canonical image variant batches pinned to the first image's resolved
+  model and settings, durable group recovery, selectable 1–6 outputs, and gallery
+  selection, download, enhancement, retry and cancellation controls.
+- Added Image Pipeline V2 intent routing, model prewarm and telemetry, adaptive
+  image runtime settings, a Quality+ pipeline and editable negative prompts.
+- Added SDXL scheduler selection and benchmarking with validated Juggernaut
+  defaults; preserved prompt semantics, batch settings and native portrait quality.
+- Fixed MFLUX compatibility checks, image-service restart recovery, variant
+  gallery runtime and stale served-script caching. Completed images survive
+  follow-up action failures, with bounded artifact-publication waiting.
+
+- Added Agent Task Mode, persistent workspace mode and git-style task diff
+  comparison. Improved empty chat drafts and reorganized settings navigation.
+- Added Model Scout discovery, tuning markers and filters, local A/B benchmarks,
+  and model comparison/adoption workflows with lazy frontend loading.
+- Added persistent local automations, restart recovery and a notification inbox
+  for completed or failed automation runs.
+- Added confirmed deletion of all chat history with chat-scoped media cancellation,
+  artifact/cache cleanup and protection against late saves and stale server sync.
+- Added one shared click/tap image-preview dialog for attachments, generated images
+  and galleries, including keyboard controls and focus return; removed automatic
+  gallery hover enlargement and improved sidebar navigation and SVG icons.
+
+- Added passive chat/vision/media routing observations, centralized conservative
+  media intent and confidence guards. Prompt-writing requests stay in chat,
+  cancellation falls back to chat, and content constraints remain distinct from
+  execution bans.
+- Added Performance Observatory V2 and improved chat/video runtime handoffs,
+  workspace polling and runtime-lock contention. Vision streaming tolerates long
+  prefill and reports empty responses; read-aloud handles stalled TTS safely.
+- Added a warm native LTX 2.5 MLX video worker, promoted Q4 to the default backend,
+  and added an optional uncensored profile; removed the experimental Wan backend.
+- Improved LTX cumulative progress, heartbeat and benchmark output, with
+  cold/warm/cold isolation, macOS system/thermal telemetry and a reference baseline.
+- Repaired CI validation and tightened workflow triggers; enabled automatic
+  cleanup of merged pull-request branches.
 
 ## v1.4.1
 
