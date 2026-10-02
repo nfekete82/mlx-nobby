@@ -202,10 +202,11 @@ function imageT(key, fallback = '', variables = {}) {
         }
 
         if (artifact?.semantic_operation === 'reference_generate') {
-            if (!artifact.source_path) return null;
+            const sourceJobId = artifact.reference_source_job_id || artifact.generation_job_id;
+            if (!/^[a-f0-9]{24}$/.test(sourceJobId || '')) return null;
             return {prompt: artifact.original_prompt || prompt,
                 referenceMode: artifact.reference_mode,
-                referenceContext: {kind: 'image', stored_path: artifact.source_path,
+                referenceContext: {kind: 'image', reference_source_job_id: sourceJobId,
                     reference_artifact_id: artifact.reference_artifact_id},
                 imageOptions: {model: artifact.model, width: artifact.width, height: artifact.height,
                     steps: artifact.steps, guidance: artifact.guidance, auto_size: false},

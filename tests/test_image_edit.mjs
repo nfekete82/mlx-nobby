@@ -1949,7 +1949,8 @@ context.requestAnimationFrame = originalAnimationFrame;
 // An old historical image and ambiguous attachments cannot authorize a source.
 for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup']) {
     const referenceArtifact = {...imageArtifact, semantic_operation: 'reference_generate',
-        reference_mode: 'same_identity', source_path: '/uploads/original-reference.png',
+        reference_mode: 'same_identity', generation_job_id: 'f'.repeat(24),
+        source_path: '/uploads/original-reference.png',
         reference_artifact_id: 'original-reference'};
     session.messages = [{role: 'assistant', tool_result: {tool: 'image_edit', status: 'completed',
         artifacts: [kind === 'followup' ? referenceArtifact : imageArtifact]}}];
@@ -1978,7 +1979,11 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
         assert.equal(body.image_options.auto_size, true);
         if (kind === 'upload') assert.equal(body.file_context.stored_path, '/uploads/stored.png');
         if (kind === 'selected') assert.equal(body.active_artifact_id, imageArtifact.artifact_id);
-        if (kind === 'followup') assert.equal(body.file_context.stored_path, referenceArtifact.source_path);
+        if (kind === 'followup') {
+            assert.equal(body.file_context.reference_source_job_id, referenceArtifact.generation_job_id);
+            assert.equal(Object.hasOwn(body.file_context, 'stored_path'), false);
+            assert.equal(JSON.stringify(body).includes(referenceArtifact.source_path), false);
+        }
     }
 }
 
