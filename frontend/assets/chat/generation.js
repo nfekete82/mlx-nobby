@@ -2532,6 +2532,21 @@ const imageFiles =
                 resolvedTarget = 'chat';
             }
 
+            if (resolvedTarget === 'shorts_generate') {
+                const response = await fetch('/api/mlx/shorts/plan', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, chat_id: session.id })
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(gt('shorts_draft_failed', 'The Short draft could not be created. Please try again.'));
+                if (MLXChatSessions.currentSession() !== session || !session.messages.includes(userMessage)) return;
+                session.messages.push({ role: 'assistant', content: gt('shorts_draft_created', 'Short draft created. Edit it in Shorts Studio, then select Render Short.'), shorts_draft: payload.draft });
+                MLXChatSessions.saveSessions();
+                MLXChatRendering.renderAll({ contentUpdated: true });
+                await window.MLXShortsStudio?.openDraft?.(payload.draft);
+                return;
+            }
+
             if (resolvedTarget === 'chat' && !imageFiles.length && !visionImages.length && activeArtifactIdForEdit && activeImageArtifact) {
                 // Load visual context after authoritative routing, even if a local
                 // edit hint matched words inside a prompt-writing request.

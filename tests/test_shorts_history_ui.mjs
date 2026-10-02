@@ -22,13 +22,9 @@ test('Shorts history loads grouped project endpoint', () => {
 });
 
 
-test('Shorts history reopens a persisted job in Shorts Studio', () => {
-    assert.match(
-        historySource,
-        /\/api\/mlx\/shorts-jobs\/\$\{encodeURIComponent\(project\.id\)\}/
-    );
-    assert.match(historySource, /MLXShortsStudio\?\.getActiveJob/);
-    assert.match(historySource, /MLXShortsStudio\?\.open/);
+test('Shorts history explicitly selects a job rather than reopening implicit state', () => {
+    assert.match(historySource, /MLXShortsStudio\?\.loadJob\?\.\(project\.id\)/);
+    assert.doesNotMatch(historySource, /attempt < 20/);
 });
 
 

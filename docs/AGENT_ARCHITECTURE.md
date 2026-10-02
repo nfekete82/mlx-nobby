@@ -380,3 +380,27 @@ Job-/History-Antworten zeigen sichere Diagnosemeldungen, interne Fehler bleiben
 im lokalen Store. Additive Job-Metadaten bleiben lesbar; das Projektschema bleibt
 streng. Die bestehenden Frontend-Verträge bleiben erhalten. Details und API-Pfade:
 [Shorts backend API](SHORTS_STUDIO.md).
+
+
+## Shorts-Studio-Frontend
+
+`generation.js` verwendet für neue Shorts die Plan-/Draft-API und speichert die
+Draft-Referenz in der Chat-Nachricht. Der Chat-Turn endet danach;
+`rendering.js` bietet das erneute Öffnen des serverseitigen Drafts. Die bestehende
+Voice-Instruction wird auch auf Plan-Requests angewendet.
+
+`shorts-project-editor.js` trennt Draft/Plan von explizitem Renderstart und nutzt
+ausschließlich das v2-Schema. Expertenoptionen ergänzen Szenenreihenfolge,
+Voice/Consistency, Übergänge und lokale Musik/SFX. Autosave-Timer sind an den
+aktuellen Draft gebunden; eine gemeinsame Action-Queue serialisiert Saves und
+Navigation. History, Draft-/Jobwechsel, Schließen und Rendern flushen Änderungen.
+Save-Fehler behalten den Draft und blockieren die Navigation sichtbar; unsichere
+Seitenwechsel erhalten den Browser-Leave-Guard.
+
+`shorts-studio.js` verwaltet explizite Jobauswahl und Polling. Selection-Epochen und
+Job-ID-Prüfungen schützen vor verspäteten Fetch-/Poll-/Retry-Antworten;
+`shorts-history.js` prüft denselben Token vor Retry-/Duplicate-Navigation. Legacy
+Scene-Revisionen bleiben nutzbar. Gemeinsame Fehlerdarstellung verwendet bekannte
+Codes und Dauerfelder statt interner Exception-Texte. Editor/History verwenden
+`frontend/i18n/shorts-studio.json`; Chat-Texte bleiben in den zentralen DE/EN-Dateien.
+Die gemergten GROUP-1-/GROUP-2-Backendmodule bleiben unverändert.

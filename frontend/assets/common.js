@@ -358,7 +358,7 @@
                 'mlx-tts-cache'
             );
             await loadScript(
-                '/assets/chat/user-voice.js?v=20260926-user-voice-2',
+                '/assets/chat/user-voice.js?v=20261002-shorts-studio-ui',
                 'mlx-user-voice-controls'
             );
         } catch (error) {
@@ -436,7 +436,7 @@
         if (!document.getElementById('input')) return;
         try {
             await loadScript(
-                '/assets/chat/shorts-history.js?v=20260928-shorts-history-v1',
+                '/assets/chat/shorts-history.js?v=20261002-studio-ui',
                 'mlx-shorts-history'
             );
         } catch (error) {
