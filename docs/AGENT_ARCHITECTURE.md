@@ -404,3 +404,47 @@ Scene-Revisionen bleiben nutzbar. Gemeinsame Fehlerdarstellung verwendet bekannt
 Codes und Dauerfelder statt interner Exception-Texte. Editor/History verwenden
 `frontend/i18n/shorts-studio.json`; Chat-Texte bleiben in den zentralen DE/EN-Dateien.
 Die gemergten GROUP-1-/GROUP-2-Backendmodule bleiben unverändert.
+
+
+## Kanonische Image-Varianten-Batches
+
+Der Backendvertrag ergänzt bestehende Generate-Jobs, ohne eine zweite
+Rendering-Pipeline einzuführen. `POST /api/mlx/image-jobs/variants` proxyt über
+`POST /api/image/jobs/variants` zu `POST /jobs/variants` im Image-Service.
+Der Request enthält `base_job_id`, `chat_id`, `chat_revision`, `count` (2–6),
+`include_base` und optional `variant_group_id` für Retry. Status und Abbruch
+liegen unter `/api/mlx/image-variant-groups/{id}` beziehungsweise dessen
+`/cancel`-Unterroute; beide benötigen Chat-ID und Revision als Queryparameter.
+Der Agent prüft die aktuelle Chatrevision; der Image-Service prüft die
+Gruppenzugehörigkeit. `generation_job_id` verwendet bei Queue-Jobs die native
+Image-Service-ID, nicht die äußere Queue-ID.
+
+`image_variants.py` orchestriert normale Generate-Jobs sequenziell unter der
+bestehenden Service-Sperre und Runtime-Koordination. Der erfolgreiche Quelljob
+friert Modell/Provider einschließlich LoRAs, tatsächlich gerenderten Prompt,
+Negativprompt, native Maße und Qualitätsparameter privat ein. Nur Seeds ändern
+sich: eindeutige Zufallswerte oder deterministische Offsets modulo `2**32` bei
+explizitem Quellseed. Retry behält Slot-IDs und Seeds und erzeugt nur fehlende,
+ungültige oder fehlgeschlagene Slots neu. Quelljob und Quellbild bleiben
+unverändert; Basisbild-Gruppenmetadaten werden nur in einer Antwortkopie ergänzt.
+Slots tragen `variant_group_id`, `variant_index`, `variant_count` und
+`source_generation_job_id`. Einzeljob-Polling bleibt unverändert.
+
+Private JSON-Datensätze in `images/.variants/` verwenden den vorhandenen atomaren
+Persistence-Helper, Verzeichnisrechte 0700 und Dateirechte 0600. Die kanonische
+Konfiguration wird nicht als öffentliche Job-Metadaten ausgegeben. Fehler dieser
+Zusatzpersistenz zerstören keine erfolgreichen Bilder; der Einzeljob bleibt
+completed und meldet `variants_available=false`. Batch-Startfehler liefern einen
+sicheren 503-Fehler, markieren registrierte Slots terminal und geben die Sperre
+frei. Nach Neustart werden unterbrochene Slots als retrybedürftig rekonstruiert.
+Nur vorhandene, reguläre und nicht leere Bilddateien gelten als wiederverwendbar.
+
+Die bestehende `_MAX_RETAINED_JOBS`-Grenze begrenzt auch private Gruppen und
+unabhängige Quelljob-Datensätze. Behaltene Gruppen pinnen ihren Quelljob und bis
+zu sechs Slots; aktive Gruppen und ihre Abhängigkeiten werden nicht entfernt.
+Die Aufbewahrung ist damit begrenzt und entfernt ausschließlich Metadaten,
+niemals Bilddateien. Außerhalb dieser Aufbewahrung ist Wiederherstellung nicht
+zugesichert. Cancellation nutzt die bestehende Job-Cancellation; fertige Slots
+bleiben erhalten, weitere Slots starten nach Abbruch nicht.
+
+Die Gallery-/Bildanzahl-Anbindung ist kein Bestandteil dieses Backendvertrags.
