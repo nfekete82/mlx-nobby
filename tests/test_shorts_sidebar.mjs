@@ -179,3 +179,26 @@ test('legacy Shorts Studio floating launcher is forcibly hidden', () => {
     assert.match(style.textContent, /\.mlx-shorts-studio-launcher\s*\{[^}]*display:\s*none\s*!important/s);
     assert.equal(studioLauncher.parentElement, body);
 });
+
+
+test('Help, Shorts and Settings use matching decorative SVG icons and label columns', () => {
+    const help = fs.readFileSync('frontend/assets/chat/help.js', 'utf8');
+    const history = fs.readFileSync('frontend/assets/chat/shorts-history.js', 'utf8');
+    const html = fs.readFileSync('frontend/chat.html', 'utf8');
+    const settings = html.match(/<button id="sidebarSettingsButton"[^>]*>([\s\S]*?)<\/button>/)[1];
+    const icons = [
+        help.match(/button\.innerHTML = '(<svg[^']+)'/)[1],
+        history.match(/launcher\.innerHTML = '(<svg[^']+)'/)[1],
+        settings,
+    ];
+    for (const icon of icons) {
+        assert.match(icon, /width="18" height="18"/);
+        assert.match(icon, /viewBox="0 0 24 24"/);
+        assert.match(icon, /fill="none" stroke="currentColor" stroke-width="1\.8"/);
+        assert.match(icon, /aria-hidden="true"/);
+    }
+    assert.match(settings, /class="sidebar-action-label" data-i18n="ui.settings"/);
+    assert.match(help, /sideButton\.querySelector\('\.sidebar-action-label'\)\.textContent/);
+    assert.match(history, /ui\.launcherLabel\.textContent = count/);
+    assert.doesNotMatch(history, /ui\.launcher\.textContent\s*=/);
+});
