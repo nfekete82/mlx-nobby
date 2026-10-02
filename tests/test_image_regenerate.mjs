@@ -132,13 +132,13 @@ const context = {
             const includeBase = payload.include_base;
             return { ok: true, async json() {
                 return {
-                    variant_group_id: payload.variant_group_id || (includeBase ? 'gallery-group' : 'server-group'),
+                    variant_group_id: payload.variant_group_id || (includeBase ? '8'.repeat(24) : '7'.repeat(24)),
                     variant_count: payload.count,
                     base: { tool: 'image_generate', status: 'completed', data: { job: { id: artifact.generation_job_id, status: 'completed' } }, artifacts: [artifact] },
                     jobs: Array.from({ length: payload.count - (includeBase ? 1 : 0) }, (_, index) => ({
                         tool: 'image_generate', status: 'queued', artifacts: [],
-                        data: { job: { id: String.fromCharCode(98 + index).repeat(24), operation: 'generate', status: 'queued',
-                            variant_group_id: payload.variant_group_id || (includeBase ? 'gallery-group' : 'server-group'),
+                        data: { job: { id: (index + 10).toString(16).repeat(24), operation: 'generate', status: 'queued',
+                            variant_group_id: payload.variant_group_id || (includeBase ? '8'.repeat(24) : '7'.repeat(24)),
                             variant_index: index + (includeBase ? 2 : 1), variant_count: payload.count } }
                     }))
                 };
@@ -276,7 +276,7 @@ assert.equal(
 assert.ok(variantMessages.every(message => message.image_job.status === 'queued'));
 assert.deepEqual(
     variantMessages.map(message => message.image_job.id),
-    ['b'.repeat(24), 'c'.repeat(24), 'd'.repeat(24)],
+    ['a'.repeat(24), 'b'.repeat(24), 'c'.repeat(24)],
 );
 
 const variantRequest = requests[1];
@@ -290,9 +290,9 @@ assert.deepEqual(JSON.parse(variantRequest.options.body), {
     variant_group_id: null,
 });
 assert.ok(variantMessages.every(message => !message.image_regenerated_from_artifact_id));
-assert.equal(await window.MLXImageRegenerate.retryImageVariants('server-group'), true);
+assert.equal(await window.MLXImageRegenerate.retryImageVariants('7'.repeat(24)), true);
 assert.equal(session.messages.length, 4, 'Retry updates existing slots');
-assert.equal(JSON.parse(requests[2].options.body).variant_group_id, 'server-group');
+assert.equal(JSON.parse(requests[2].options.body).variant_group_id, '7'.repeat(24));
 
 const galleryFirst = { role: 'assistant', tool_result: { artifacts: [artifact] } };
 session.messages.push(galleryFirst);
@@ -302,7 +302,7 @@ const additional = await window.MLXImageRegenerate.submitVariantBatch(artifact, 
 assert.equal(additional.length, 5);
 assert.equal(galleryFirst.image_variant_index, 1);
 assert.equal(galleryFirst.image_variant_count, 6);
-assert.equal(galleryFirst.image_variant_group_id, 'gallery-group');
+assert.equal(galleryFirst.image_variant_group_id, '8'.repeat(24));
 assert.deepEqual(additional.map(message => message.image_variant_index), [2, 3, 4, 5, 6]);
 assert.equal(JSON.parse(requests[3].options.body).include_base, true);
 assert.equal(Object.hasOwn(JSON.parse(requests[3].options.body), 'image_options'), false);
@@ -465,3 +465,43 @@ assert.equal(await api.cancelImageVariants(groupId), true);
 resolveRefresh(ok(batch(groupId, 'running')));
 assert.equal(await refresh, false);
 assert.ok(slots.slice(1).every(m => m.image_job.status === 'cancelled'));
+
+// Presentation failure after an accepted POST cannot append a startup error,
+// lose polling or create a second batch. Exercise the production update method.
+const originalRender = window.MLXChatRendering.renderAll;
+const originalUpdate = window.MLXChatGeneration.updateImageJobMessage;
+const diagnosticWarnings = [];
+context.console = {...console, warn: (...args) => diagnosticWarnings.push(args)};
+session.messages = [];
+context.fetch = async () => ok(batch('5'.repeat(24)));
+window.MLXChatRendering.renderAll = () => {throw new TypeError('gallery render failed');};
+const resumeBeforeFailure = resumeCalls;
+assert.equal((await api.submitVariantBatch(artifact, 3)).length, 3);
+assert.equal(session.messages.length, 3);
+assert.equal(resumeCalls, resumeBeforeFailure + 1);
+assert.match(session.messages[0].image_variant_ui_error, /has started/);
+assert.ok(session.messages.every(message => !message.content.includes('could not be started')));
+window.MLXChatRendering.renderAll = originalRender;
+
+// All jobs remain recoverable when metadata preparation fails midway.
+session.messages = [];
+let preparations = 0;
+window.MLXChatGeneration.updateImageJobMessage = (...args) => {
+    if (++preparations === 2) throw new ReferenceError('presentation helper failed');
+    return originalUpdate(...args);
+};
+assert.equal((await api.submitVariantBatch(artifact, 3)).length, 3);
+assert.equal(session.messages.length, 3);
+assert.deepEqual(session.messages.map(message => message.image_job.id), ['1'.repeat(24), '2'.repeat(24), '3'.repeat(24)]);
+assert.ok(session.messages.every(message => message.image_variant_group_id === '5'.repeat(24)));
+assert.ok(session.messages.every(message => !message.content.includes('could not be started')));
+window.MLXChatGeneration.updateImageJobMessage = originalUpdate;
+
+// A malformed final slot never leaves an applied first slot behind.
+session.messages = [];
+const malformed = batch('6'.repeat(24));
+malformed.jobs[2].data.job.variant_index = 1;
+context.fetch = async () => ok(malformed);
+assert.equal(await api.submitVariantBatch(artifact, 3), null);
+assert.equal(session.messages.length, 0);
+assert.ok(diagnosticWarnings.length >= 3);
