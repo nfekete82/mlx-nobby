@@ -2484,7 +2484,8 @@ const imageFiles =
             let referenceMode = null;
             if (!imageFiles.length && activeWorkspaceImageArtifact?.semantic_operation === 'reference_generate') {
                 fileContext = { kind: 'image', artifact_id: activeWorkspaceImageArtifact.artifact_id,
-                    stored_path: activeWorkspaceImageArtifact.source_path,
+                    reference_source_job_id: activeWorkspaceImageArtifact.reference_source_job_id ||
+                        activeWorkspaceImageArtifact.generation_job_id,
                     reference_artifact_id: activeWorkspaceImageArtifact.reference_artifact_id,
                     reference_mode: activeWorkspaceImageArtifact.reference_mode };
             }
