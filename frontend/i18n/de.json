@@ -77,6 +77,7 @@
     "image_upscale_source_required": "Bitte wähle ein Bild zum Verbessern aus.",
     "image_upscale_unexpected_action": "Die Bildverbesserung wurde nicht angenommen.",
     "image_job_cancelled": "Bildauftrag abgebrochen.",
+    "image_artifact_unavailable": "Der Bildjob wurde abgeschlossen, aber das Bild konnte nicht bereitgestellt werden.",
     "image_job_unavailable": "Der laufende Bildjob ist nicht mehr verfügbar. Der Image-Service wurde möglicherweise neu gestartet.",
     "media_quality_title_video": "Videoqualität wählen",
     "media_quality_title_image": "Bildqualität wählen",

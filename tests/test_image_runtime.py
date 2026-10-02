@@ -3045,6 +3045,35 @@ class ImageRuntimeTests(unittest.TestCase):
         )
         self.assertNotIn("workspace", agent.read_chat("second-chat"))
 
+    def test_real_native_response_publishes_artifact_and_backend_png(self):
+        from backend import app as backend
+        fixture = json.loads((Path(__file__).parent / "fixtures" / "image_final_artifact.json").read_text())
+        native = fixture["native_completed"]
+        result = native["result"]
+        image_path = agent.IMAGE_DIRECTORY / f"{result['id']}.png"
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (result["width"], result["height"]), "white").save(image_path)
+        result["path"] = str(image_path)
+        with patch.object(agent.image_api, "request", return_value=native):
+            final = agent.image_job_api(native["id"])
+        self.assertEqual(final["tool"], "image_generate")
+        self.assertEqual(final["artifacts"][0]["image_id"], result["id"])
+        self.assertEqual(final["data"]["image"], final["artifacts"][0])
+        with TestClient(agent.app, base_url="http://localhost") as client:
+            png = client.get(f"/api/images/{result['id']}")
+        self.assertEqual(png.status_code, 200)
+        self.assertEqual(png.headers["content-type"], "image/png")
+        self.assertTrue(png.content.startswith(b"\x89PNG\r\n\x1a\n"))
+        upstream = MagicMock()
+        upstream.__enter__.return_value = upstream
+        upstream.read.return_value = png.content
+        upstream.headers = png.headers
+        with patch.object(backend.urllib.request, "urlopen", return_value=upstream), TestClient(backend.app, base_url="http://localhost") as client:
+            response = client.get(f"/api/mlx/images/{result['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertEqual(response.content, png.content)
+
     def test_completed_image_generate_job_returns_an_artifact(self):
         image_id = "1234567890-fedcba654321"
         result = agent._image_job_tool_result({

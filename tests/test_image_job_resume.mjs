@@ -149,7 +149,7 @@ function storedMessage(status, jobId, options = {}) {
             tool: options.tool || 'image_edit',
             status,
             data: { job: { id: jobId, status } },
-            artifacts: [],
+            artifacts: options.artifact ? [options.artifact] : [],
             error: null,
         },
     };
@@ -496,7 +496,7 @@ assert.equal(recovery.isWatchingImageJob(delayedMessage), true);
 stopAllWatchers();
 
 const ignoredSession = session('ignored-session', [
-    storedMessage('completed', '8'.repeat(24)),
+    storedMessage('completed', '8'.repeat(24), {artifact: imageArtifact}),
     storedMessage('running', 'invalid-job-id'),
     storedMessage('running', '9'.repeat(24), { tool: 'normal_chat' }),
     { role: 'assistant', content: 'Text only' },
@@ -570,3 +570,29 @@ console.log(
     'Image job resume: restore, source of truth, retries, idempotency, ' +
     'session isolation, completion, failure, cancellation, and 404 passed.',
 );
+
+const publicationMessage = storedMessage('running', 'c'.repeat(24), {tool: 'image_generate'});
+const publicationSession = session('publication-deadline', [publicationMessage]);
+const incomplete = toolResult('completed', 'c'.repeat(24), {tool: 'image_generate'});
+assert.equal(recovery.updateImageJobMessage(publicationSession, publicationMessage, incomplete, 100), false);
+assert.equal(publicationMessage.image_job.status, 'saving');
+const reloadedPublication = JSON.parse(JSON.stringify(publicationMessage));
+assert.equal(reloadedPublication.image_artifact_wait_started_at, 100);
+assert.equal(recovery.updateImageJobMessage(publicationSession, reloadedPublication, incomplete, 159), false);
+assert.equal(recovery.updateImageJobMessage(publicationSession, reloadedPublication, incomplete, 160), true);
+assert.equal(reloadedPublication.image_job.status, 'failed');
+assert.match(reloadedPublication.content, /could not be published/);
+assert.equal(reloadedPublication.image_generation_pending, false);
+assert.equal(recovery.updateImageJobMessage(publicationSession, publicationMessage,
+    toolResult('completed', 'c'.repeat(24), {tool: 'image_generate', artifact: imageArtifact}), 159), true);
+assert.equal(publicationMessage.image_artifact_wait_started_at, undefined);
+assert.equal(publicationMessage.tool_result.artifacts[0].image_id, imageArtifact.image_id);
+
+const completedWithoutArtifact = storedMessage('completed', 'd'.repeat(24), {tool: 'image_generate'});
+const completedWithoutArtifactSession = session('incomplete-reload', [completedWithoutArtifact]);
+activeSession = completedWithoutArtifactSession;
+fetchImpl = async () => response(toolResult('failed', 'd'.repeat(24), {error: 'Publication failed'}));
+assert.equal(recovery.resumeImageJobsForSession(completedWithoutArtifactSession), 1);
+await settle();
+assert.match(completedWithoutArtifact.content, /Publication failed/);
+assert.equal(timeouts.size, 0);

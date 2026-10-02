@@ -2052,3 +2052,31 @@ await new Promise(resolve => setImmediate(resolve));
 assert.strictEqual(variantPollMessage.image_job, retryState);
 // Stop the watcher without changing any successful artifacts.
 variantPollMessage.image_job = {...retryState, status: 'cancelled'};
+
+// Real local SDXL responses: publication succeeded, but the deployed actions
+// extension threw before the image card was attached to the chat.
+const realImageSequence = JSON.parse(fs.readFileSync(
+    new URL('./fixtures/image_final_artifact.json', import.meta.url), 'utf8'));
+const realMessage = {role: 'assistant', content: ''};
+const realSession = {messages: [realMessage]};
+const updateRealImage = window.MLXChatGeneration.__test.updateImageJobMessage;
+assert.equal(updateRealImage(realSession, realMessage, realImageSequence.start_queued), false);
+assert.ok(renderImageJobCard(realMessage));
+assert.equal(updateRealImage(realSession, realMessage, realImageSequence.backend_running), false);
+assert.ok(renderImageJobCard(realMessage));
+assert.equal(updateRealImage(realSession, realMessage, realImageSequence.backend_completed), true);
+const originalActions = renderingWindow.MLXChatGeneration.createImageUpscaleMenu;
+const actionWarnings = [];
+renderingContext.console = { ...console, warn: (...args) => actionWarnings.push(args) };
+renderingWindow.MLXChatGeneration.createImageUpscaleMenu = () => {
+    throw new ReferenceError('variants is not defined');
+};
+for (const message of [realMessage, JSON.parse(JSON.stringify(realMessage))]) {
+    const card = renderImageArtifactCard(message);
+    assert.ok(card, 'completed image renders even when optional actions throw, including reload');
+    assert.equal(card.children.find(child => child.tagName === 'IMG').src,
+        '/api/mlx/images/' + realImageSequence.native_completed.result.id);
+    assert.equal(renderImageJobCard(message), null);
+}
+assert.equal(actionWarnings.length, 2);
+renderingWindow.MLXChatGeneration.createImageUpscaleMenu = originalActions;
