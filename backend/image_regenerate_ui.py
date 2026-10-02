@@ -5,64 +5,38 @@ from __future__ import annotations
 
 IMAGE_SETTINGS_JS_PATH = "/assets/chat/image-settings.js"
 
-_VARIANT_DECLARATION = "        const variants = document.createElement('button');\n"
-_VARIANT_SETUP = """        variants.type = 'button';
-        variants.className = 'message-action-btn';
-        variants.textContent = '3× ' + imageT(
-            'ui.regenerate',
-            'Regenerate'
-        );
-        variants.title = variants.textContent;
-
-"""
-_VARIANT_HANDLER = """        variants.addEventListener('click', async () => {
-            regenerate.disabled = true;
-            variants.disabled = true;
-            const originalLabel = variants.textContent;
-            variants.textContent = imageT(
-                'common.loading',
-                'Loading…'
-            );
-
-            const started = await generateImageVariants(source, 3);
-
-            if (!started && variants.isConnected) {
-                regenerate.disabled = false;
-                variants.disabled = false;
-                variants.textContent = originalLabel;
-            }
-        });
-
-"""
-
 
 def patch_image_settings_source(body: bytes) -> bytes:
-    """Keep single regeneration while removing the hard-coded 3× card action.
+    """Remove the fixed-count shortcut atomically from the served card actions.
 
-    Multi-image generation remains available through the normal image-count
-    picker and the variant-gallery runtime; only the redundant card shortcut is
-    removed.
+    Match block boundaries rather than the availability-dependent contents.
+    If the module shape changes, serve it intact instead of leaving references
+    to a deleted button declaration.
     """
-    patched = body
-
-    replacements = (
-        (_VARIANT_DECLARATION, ""),
-        (_VARIANT_SETUP, ""),
-        ("            variants.disabled = true;\n", ""),
-        ("                variants.disabled = false;\n", ""),
-        (_VARIANT_HANDLER, ""),
-        (
-            "        fragment.append(regenerate, variants, enhanceMenu);",
-            "        fragment.append(regenerate, enhanceMenu);",
-        ),
-    )
-
-    for old, new in replacements:
-        old_bytes = old.encode("utf-8")
-        if old_bytes in patched:
-            patched = patched.replace(old_bytes, new.encode("utf-8"), 1)
-
-    return patched
+    wrapper = b"    generation.createImageUpscaleMenu = source => {"
+    declaration = b"        const variants = document.createElement('button');\n"
+    setup = b"        variants.type = 'button';"
+    regenerate = b"        regenerate.addEventListener('click', async () => {"
+    handler = b"        variants.addEventListener('click', async () => {"
+    append = b"        fragment.append(regenerate, variants, enhanceMenu);"
+    markers = (wrapper, declaration, setup, regenerate, handler, append)
+    if any(body.count(marker) != 1 for marker in markers):
+        return body
+    positions = [body.index(marker) for marker in markers]
+    if positions != sorted(positions):
+        return body
+    prefix = body[:positions[0]]
+    suffix = body[positions[-1] + len(append):]
+    card = body[positions[0]:positions[-1]]
+    card = card[:card.index(handler)]
+    card = card[:card.index(setup)] + card[card.index(regenerate):]
+    card = card.replace(declaration, b"")
+    # Only the single-regeneration handler remains in this scoped block.
+    card = b"".join(line for line in card.splitlines(keepends=True)
+                    if b"variants.disabled =" not in line)
+    if b"variants" in card:
+        return body
+    return prefix + card + b"        fragment.append(regenerate, enhanceMenu);" + suffix
 
 
 class ImageRegenerateUiMiddleware:
