@@ -271,6 +271,7 @@ def _mirror_native(job_id, native):
     for key in (
         "status", "phase", "progress", "current_step", "total_steps",
         "model", "result", "error", "started_at", "finished_at",
+        "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
     ):
         if key in native:
             copied[key] = native.get(key)

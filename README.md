@@ -13,6 +13,14 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
+## Shorts backend
+
+The Shorts backend supports version-2 plans, durable drafts, scene revisions and
+retries that reuse valid completed media. Version-1 projects and existing Studio
+clients remain supported. Planning and draft saving do not start rendering.
+See [Shorts API and production behavior](docs/SHORTS_STUDIO.md) for contracts,
+voiceover timing and provider readiness.
+
 ## Features
 
 - Local LLM chat with streaming, model switching, thinking controls, and saved

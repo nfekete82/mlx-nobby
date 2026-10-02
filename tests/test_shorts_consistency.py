@@ -65,12 +65,16 @@ def completed_source(tmp_path, monkeypatch):
     keyframe_results = []
     for index, scene in enumerate(value.scenes, 1):
         image_id = f"170000000{index}-abcdef12345{index}"
+        image = tmp_path / f"{image_id}.png"
+        video = tmp_path / f"{index:024x}.mp4"
+        image.write_bytes(b"image-fixture")
+        video.write_bytes(b"video-fixture")
         keyframe_results.append({
             "scene_id": scene.id,
             "status": "completed",
             "image_job_id": f"{index:024x}",
             "image_id": image_id,
-            "path": f"/images/{image_id}.png",
+            "path": str(image),
             "prompt": f"keyframe {index}",
         })
         scene_results.append({
@@ -78,9 +82,9 @@ def completed_source(tmp_path, monkeypatch):
             "duration": scene.duration,
             "status": "completed",
             "video_job_id": f"{index + 10:024x}",
-            "path": f"/videos/{index:024x}.mp4",
+            "path": str(video),
             "keyframe_image_id": image_id,
-            "keyframe_path": f"/images/{image_id}.png",
+            "keyframe_path": str(image),
         })
     shorts_jobs._update_job(
         job["id"],

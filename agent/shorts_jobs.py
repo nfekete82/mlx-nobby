@@ -112,6 +112,11 @@ def _update_job(job_id, **changes):
             raise KeyError("short job not found")
         if job.get("status") in TERMINAL_STATUSES:
             return deepcopy(job)
+        if changes.get('status') == 'failed':
+            from agent.shorts_diagnostics import failure_fields
+            fields = failure_fields(job, changes.get('error', ''))
+            fields.update({k: v for k, v in changes.items() if k.startswith('error_')})
+            changes.update(fields)
         job.update(changes)
         jobs[job_id] = job
         _save_jobs(jobs)
@@ -145,7 +150,7 @@ def _request_tts(payload):
 def narration_for_project(project):
     if not isinstance(project, ShortProject):
         project = ShortProject.model_validate(project)
-    return "\n\n".join(scene.narration for scene in project.scenes)
+    return "\n\n".join(scene.narration for scene in project.scenes if scene.voice_enabled and scene.narration)
 
 
 def tts_payload_for_project(project):
@@ -220,6 +225,11 @@ Style: Default,Arial,54,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+    alignment = {"bottom": 2, "center": 5, "top": 8}[project.captions.position]
+    header = header.replace("Arial,54,", f"Arial,{project.captions.size},")
+    header = header.replace(",1,3,1,2,42,42,140,1", f",1,3,1,{alignment},42,42,140,1")
+    if project.captions.style == "plain":
+        header = header.replace(",-1,0,0,0,", ",0,0,0,0,")
     events = []
     start = 0
     for scene in project.scenes:
@@ -227,7 +237,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         events.append(
             "Dialogue: 0,"
             f"{_ass_timestamp(start)},{_ass_timestamp(end)},"
-            f"Default,,0,0,0,,{_ass_text(scene.narration)}"
+            f"Default,,0,0,0,,{_ass_text(scene.caption)}"
         )
         start = end
     return header + "\n".join(events) + "\n"
@@ -324,6 +334,11 @@ def _select_music_track(job_id, job):
 
 def _compose_command(job, output_path):
     project = ShortProject.model_validate(job["project"])
+    if project.schema_version == 2:
+        from agent.shorts_composer import compose_command
+        return compose_command(job, output_path)
+    from agent.shorts_planner import quality_capabilities
+    width, height = quality_capabilities()[project.quality]["dimensions"]
     results = {
         result["scene_id"]: result
         for result in job.get("scene_results", [])
@@ -340,9 +355,9 @@ def _compose_command(job, output_path):
         label = f"v{index}"
         filters.append(
             f"[{index}:v:0]"
-            "scale=576:1024:force_original_aspect_ratio=decrease:"
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease:"
             "force_divisible_by=2,"
-            "pad=576:1024:(ow-iw)/2:(oh-ih)/2:color=black,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
             f"fps=30,setsar=1,tpad=stop_mode=clone:stop_duration={scene.duration},"
             f"trim=duration={scene.duration},"
             f"setpts=PTS-STARTPTS[{label}]"
@@ -350,7 +365,7 @@ def _compose_command(job, output_path):
         video_labels.append(f"[{label}]")
 
     audio_index = len(project.scenes)
-    if project.voice_enabled:
+    if project.voice_enabled and narration_for_project(project):
         tts_path = str(job.get("tts_path") or "")
         if not tts_path:
             raise RuntimeError("completed TTS has no audio path")
@@ -414,16 +429,27 @@ def _scene_request(job, scene):
     return {
         "operation": "t2v",
         "payload": {
-            "prompt": scene["video_prompt"],
+            "prompt": scene["video_prompt"] + ("\nCamera: " + scene["camera"] if scene.get("camera") else ""),
             "duration": scene["duration"],
             "aspect_ratio": job["project"]["aspect_ratio"],
             # Fast supports every duration accepted by ShortProject.
-            "quality": "fast",
+            "quality": job["project"].get("quality", "fast"),
         },
         "chat_id": job["chat_id"],
         "run_id": job["run_id"],
         "chat_revision": job["chat_revision"],
     }
+
+
+def valid_media_file(path):
+    """Cheap reuse check shared by revisions and resource preflight."""
+    if not path:
+        return False
+    try:
+        file = Path(path)
+        return file.is_file() and file.stat().st_size > 0
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def _completed_scene_ids(job):
@@ -453,6 +479,12 @@ def _cancel_active_video(job, request_fn):
 
 def _finish_cancelled(job_id, request_fn):
     job = get_short_job(job_id)
+    if job.get('active_image_job_id'):
+        from agent import image_api
+        try:
+            image_api.request('POST', '/jobs/' + image_api.job_id(job['active_image_job_id']) + '/cancel', {}, timeout=30)
+        except Exception:
+            pass
     _cancel_active_video(job, request_fn)
     with _jobs_lock:
         jobs = _load_jobs()
@@ -464,6 +496,8 @@ def _finish_cancelled(job_id, request_fn):
         compose_was_started = job.get("compose_status") == "running"
         job.update(
             cancel_requested=True,
+            active_image_job_id=None,
+            active_video_job_id=None,
             status="cancelled",
             phase="cancelled",
             tts_status=(
@@ -511,7 +545,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         )
 
     project = ShortProject.model_validate(job["project"])
-    if not project.voice_enabled:
+    if not project.voice_enabled or not narration_for_project(project):
         now = time.time()
         return _update_job(
             job_id,
@@ -538,7 +572,11 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         error=None,
     )
     narration = narration_for_project(project)
-    audio = tts_request_fn(tts_payload_for_project(project))
+    if project.schema_version == 2:
+        from agent.shorts_composer import scene_tts
+        audio = scene_tts(job_id, project, tts_request_fn)
+    else:
+        audio = tts_request_fn(tts_payload_for_project(project))
     if not isinstance(audio, bytes) or not audio:
         raise RuntimeError("speech service returned invalid audio")
 
@@ -591,7 +629,17 @@ def _run_compose(job_id, request_fn, compose_fn):
         )
 
     project = ShortProject.model_validate(job["project"])
-    music_status, music_style, music_path = _select_music_track(job_id, job)
+    if project.schema_version == 2:
+        from agent.shorts_composer import scene_music, select_track
+        selections = [{"scene_id": scene.id, "path": str(path) if path else None}
+                      for scene in project.scenes
+                      for path in [select_track(MUSIC_DIRECTORY, scene_music(project, scene))]]
+        music_status = "selected" if any(item["path"] for item in selections) else "disabled"
+        music_style = project.music_style or "cinematic"
+        music_path = None
+        _update_job(job_id, scene_music_results=selections)
+    else:
+        music_status, music_style, music_path = _select_music_track(job_id, job)
     job = _update_job(
         job_id,
         music_status=music_status,
@@ -706,6 +754,8 @@ def run_short_job(
                     tts_status="failed",
                     tts_finished_at=time.time(),
                 )
+            from agent.shorts_diagnostics import failure_fields
+            changes.update(failure_fields(latest, exc))
             return _update_job(job_id, **changes)
 
     _update_job(
@@ -862,6 +912,8 @@ def run_short_job(
                 compose_status="failed",
                 compose_finished_at=time.time(),
             )
+        from agent.shorts_diagnostics import failure_fields
+        changes.update(failure_fields(latest, exc))
         return _update_job(
             job_id,
             **changes,

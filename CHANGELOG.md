@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added Shorts-v2 backend plans, normalization, versioned drafts, capabilities,
+  scene media APIs and revision/retry proxies while retaining v1 projects.
+- Added per-scene TTS, static scene captions, transitions and local music/SFX
+  composition with the existing quality profiles and model services.
+- Fixed voiceover timing with per-scene FFmpeg compression up to 1.15x and safe
+  duration diagnostics beyond that limit; completed videos remain available.
+- Fixed retry preflight to require image generation only for missing keyframes,
+  validate reused media as regular nonempty files and retain completed TTS after
+  a compose failure. Public job/history errors use safe diagnostic messages.
+
 - Expanded the Routing Observatory with separate original/final route columns,
   confidence source, guard/intent diagnostics, and localized guard reasons.
 - Fixed portrait routing so instructional questions such as "Wie erstelle ich

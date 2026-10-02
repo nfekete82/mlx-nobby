@@ -25,7 +25,7 @@ def _completed_scene_results(job):
     return {
         str(result.get("scene_id")): deepcopy(result)
         for result in job.get("scene_results", [])
-        if result.get("status") == "completed" and result.get("path")
+        if result.get("status") == "completed" and shorts_jobs.valid_media_file(result.get("path"))
     }
 
 
@@ -33,7 +33,7 @@ def _completed_keyframe_results(job):
     return {
         str(result.get("scene_id")): deepcopy(result)
         for result in job.get("keyframe_results", [])
-        if result.get("status") == "completed" and result.get("path")
+        if result.get("status") == "completed" and shorts_jobs.valid_media_file(result.get("path"))
     }
 
 
@@ -77,6 +77,8 @@ def create_scene_revision(
 
     if narration is not None:
         scene_data["narration"] = str(narration).strip()
+        if project.schema_version == 1 and scene_data["caption"] == project.scenes[index].narration:
+            scene_data["caption"] = scene_data["narration"]
     if video_prompt is not None:
         scene_data["video_prompt"] = str(video_prompt).strip()
     project_data["scenes"][index] = scene_data
@@ -193,3 +195,71 @@ def create_scene_revision(
         error=None,
         cancel_requested=False,
     )
+
+
+def create_project_revision(source_job_id, project, *, force_scene_id=None, preflight=False):
+    """Compare complete edited projects; compositor-only edits retain scene media."""
+    source = shorts_jobs.get_short_job(source_job_id)
+    before = ShortProject.model_validate(source["project"])
+    project = ShortProject.model_validate(project.model_dump(mode="json"))
+    old_scenes = {scene.id: scene for scene in before.scenes}
+    videos = _completed_scene_results(source)
+    keyframes = _completed_keyframe_results(source)
+    consistency_changed = any(getattr(before, key) != getattr(project, key) for key in (
+        "consistency_mode", "character_consistency", "style_consistency", "style_strength", "visual_bible"))
+    invalid = set()
+    invalid_frames = set()
+    for scene in project.scenes:
+        old = old_scenes.get(scene.id)
+        if old is None or scene.video_prompt != old.video_prompt or scene.camera != old.camera:
+            invalid.add(scene.id)
+            invalid_frames.add(scene.id)
+        if old and scene.duration != old.duration:
+            invalid.add(scene.id)
+    if force_scene_id:
+        invalid.add(force_scene_id)
+        invalid_frames.add(force_scene_id)
+    anchor_changed = (project.consistency_mode and project.character_consistency and
+                      (before.scenes[0].id != project.scenes[0].id or project.scenes[0].id in invalid_frames))
+    if consistency_changed or anchor_changed:
+        videos, keyframes = {}, {}
+    else:
+        videos = {k: v for k, v in videos.items() if k not in invalid and before.quality == project.quality}
+        keyframes = {k: v for k, v in keyframes.items() if k not in invalid_frames}
+    readiness = None
+    if preflight:
+        from agent.shorts_preflight import preflight_project
+        readiness = preflight_project(project, scene_results=list(videos.values()),
+                                      keyframe_results=list(keyframes.values()))
+    job = shorts_jobs.create_short_job(project, chat_id=source["chat_id"],
+                                       chat_revision=source.get("chat_revision", 0))
+    return shorts_jobs._update_job(
+        job["id"], parent_job_id=source["id"], revision_kind="project",
+        scene_results=[videos[s.id] for s in project.scenes if s.id in videos],
+        keyframe_results=[keyframes[s.id] for s in project.scenes if s.id in keyframes],
+        current_scene=next((i for i, s in enumerate(project.scenes) if s.id not in videos), len(project.scenes)),
+        **({"warnings": readiness["warnings"], "provider_preflight": readiness} if readiness else {}),
+    )
+
+
+def retry_short_job(source_job_id):
+    """Retry via a new revision, retaining only existing completed media."""
+    from agent.shorts_preflight import preflight_project
+    source = shorts_jobs.get_short_job(source_job_id)
+    if source['status'] not in {'failed', 'cancelled'}:
+        raise ValueError('Nur fehlgeschlagene oder abgebrochene Shorts können erneut versucht werden')
+    project = ShortProject.model_validate(source['project'])
+    videos = list(_completed_scene_results(source).values())
+    frames = list(_completed_keyframe_results(source).values())
+    readiness = preflight_project(project, scene_results=videos, keyframe_results=frames)
+    job = create_project_revision(source_job_id, project)
+    changes = {}
+    if source.get('tts_status') == 'completed' and shorts_jobs.valid_media_file(source.get('tts_path')):
+        changes.update(tts_status='completed', tts_path=source['tts_path'],
+                       tts_metadata=source.get('tts_metadata'),
+                       tts_started_at=source.get('tts_started_at'),
+                       tts_finished_at=source.get('tts_finished_at'))
+    job = shorts_jobs._update_job(job['id'], revision_kind='retry',
+        warnings=readiness['warnings'], provider_preflight=readiness, **changes)
+    shorts_jobs.start_short_job(job['id'])
+    return job

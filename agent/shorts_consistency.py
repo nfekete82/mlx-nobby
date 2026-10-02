@@ -60,7 +60,7 @@ def scene_keyframe_prompt(project, scene, scene_index=0, *, identity_anchor=Fals
 
     strength = round(project.style_strength * 100)
     bible = visual_bible_text(project)
-    scene_text = _clean(scene.video_prompt, 900)
+    scene_text = _clean(scene.video_prompt + (" Camera: " + scene.camera if scene.camera else ""), 900)
     if identity_anchor:
         opening = (
             "Edit the supplied reference image into a new cinematic 9:16 scene. "
@@ -121,12 +121,12 @@ def consistent_video_job_request(job, scene, keyframe_path):
     return {
         "operation": "i2v",
         "payload": {
-            "prompt": scene["video_prompt"],
+            "prompt": scene["video_prompt"] + ("\nCamera: " + scene["camera"] if scene.get("camera") else ""),
             "duration": scene["duration"],
             "aspect_ratio": job["project"]["aspect_ratio"],
             "first_frame": str(keyframe_path),
             "resize_mode": "cover",
-            "quality": "fast",
+            "quality": job["project"].get("quality", "fast"),
         },
         "chat_id": job["chat_id"],
         "run_id": job["run_id"],

@@ -87,7 +87,7 @@ class ShortsHistoryTests(unittest.TestCase):
 
         active = result["projects"][0]
         self.assertEqual(active["status"], "running")
-        self.assertEqual(active["progress"], 0.5)
+        self.assertEqual(active["progress"], 0.4)
         self.assertFalse(active["has_video"])
 
     def test_history_limit_is_clamped(self):

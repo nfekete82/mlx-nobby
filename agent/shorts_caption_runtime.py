@@ -137,7 +137,7 @@ def _patched_run_compose(job_id, request_fn, compose_fn):
     project = ShortProject.model_validate(job["project"])
     aligned_ass = None
 
-    if project.subtitles_enabled and project.voice_enabled:
+    if project.subtitles_enabled and project.voice_enabled and project.schema_version == 1:
         try:
             alignment = _alignment_for_job(job_id, job)
             if alignment is not None:
@@ -151,6 +151,12 @@ def _patched_run_compose(job_id, request_fn, compose_fn):
                 caption_alignment_error=str(exc)[:2000],
             )
             aligned_ass = None
+    elif project.subtitles_enabled and project.schema_version == 2:
+        shorts_jobs._update_job(
+            job_id,
+            caption_alignment_status="scene_timed",
+            caption_alignment_error=None,
+        )
     elif project.subtitles_enabled:
         shorts_jobs._update_job(
             job_id,

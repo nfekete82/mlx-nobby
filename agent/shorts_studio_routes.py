@@ -89,12 +89,15 @@ def _history_summary(job, *, root_id, revision_count):
     except (TypeError, ValueError):
         current_scene = 0
 
+    from agent.shorts_diagnostics import progress_fields
+    progress = progress_fields(job)['progress']
     if status == "completed":
         progress = 1.0
-    elif scenes:
-        progress = current_scene / len(scenes)
-    else:
-        progress = 0.0
+
+    diagnosis = {k: v for k, v in job.items() if k.startswith('error_')}
+    if status == 'failed' and not diagnosis.get('error_stage'):
+        from agent.shorts_diagnostics import failure_fields
+        diagnosis = failure_fields(job, job.get('error', ''))
 
     return {
         "id": str(job.get("id") or ""),
@@ -105,6 +108,7 @@ def _history_summary(job, *, root_id, revision_count):
         "status": status,
         "phase": str(job.get("phase") or status),
         "duration": project.get("duration") or 0,
+        "quality": project.get('quality', 'fast'),
         "voice": project.get("voice"),
         "voice_speed": project.get("voice_speed", 1.0),
         "scene_count": len(scenes),
@@ -115,8 +119,11 @@ def _history_summary(job, *, root_id, revision_count):
         "finished_at": job.get("finished_at"),
         "updated_at": _job_timestamp(job),
         "chat_id": job.get("chat_id"),
-        "error": job.get("error"),
+        "error": (diagnosis.get("error_message") or "Der Short konnte nicht gerendert werden.") if status == "failed" else job.get("error"),
         "has_video": bool(status == "completed" and job.get("final_path")),
+        'thumbnail_scene_id': next((r.get('scene_id') for r in job.get('keyframe_results', []) if r.get('status') == 'completed'), None),
+        'warnings': job.get('warnings', []),
+        **diagnosis,
     }
 
 
@@ -282,6 +289,9 @@ def delete_failed_short_projects():
 
 def install_routes(app):
     """Register Shorts Studio routes exactly once on an existing FastAPI app."""
+    from agent.shorts_draft_routes import install_routes as install_drafts
+    install_drafts(app)
+
     history_path = "/api/shorts-jobs"
     if not _route_exists(app, history_path, "GET"):
         @app.get(history_path)
@@ -295,6 +305,16 @@ def install_routes(app):
             return delete_failed_short_projects()
 
     delete_path = "/api/shorts-jobs/{job_id}"
+    if not _route_exists(app, delete_path + '/retry', 'POST'):
+        @app.post('/api/shorts-jobs/{job_id}/retry', status_code=202)
+        def retry(job_id: str):
+            from agent.shorts_studio import retry_short_job
+            try:
+                return {'job': retry_short_job(job_id)}
+            except KeyError as exc:
+                raise HTTPException(404, 'Shorts job not found') from exc
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
     if not _route_exists(app, delete_path, "DELETE"):
         @app.delete(delete_path)
         def delete_short(job_id: str):

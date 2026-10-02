@@ -346,3 +346,37 @@ git diff --check
 ```
 
 Syntaxprüfungen sind mit `ast.parse(Path(datei).read_text(), filename=datei)` möglich.
+
+
+## Shorts-v2 backend
+
+`shorts_planner.py` validiert v1/v2-Projekte und die bestehenden LTX-Qualitätsprofile.
+`shorts_normalization.py` normalisiert optionale Präsentationsfelder und lokale
+Audioverfügbarkeit, ohne Kernfehler oder explizite Voice-/Quality-Einstellungen
+zu verdecken. `shorts_drafts.py` persistiert atomar in `shorts/drafts.json`;
+Versionsprüfung verhindert das Überschreiben zwischenzeitlicher Änderungen.
+Planung und Speichern starten keine Medienjobs.
+
+`shorts_jobs.py` behält den dauerhaften Job-Store und die Video → TTS → Compose
+Pipeline. `shorts_consistency_runtime.py` ergänzt Keyframes/I2V mit den bestehenden
+Image-/Video-Diensten. `shorts_studio.py` erstellt neue Revisionen und übernimmt
+nur vorhandene, reguläre, nichtleere Medien. Invalidierung folgt Szeneninhalt,
+Qualität und Character-Anker. Retry prüft wiederverwendbare Medien vor
+`shorts_preflight.py`: vollständige Videos benötigen keinen Bilddienst; vorhandene
+Keyframes erlauben I2V ohne Bildgenerierung. Neue Keyframes benötigen weiterhin
+kompatible GROUP-1-Provider. Compose-Retry übernimmt gültiges fertiges TTS.
+
+`shorts_composer.py` erzeugt v2-Szenen-TTS und die FFmpeg-Timeline mit lokalen
+Musik-/SFX-Tracks und Übergängen. Benannte Grenzen erlauben 50 ms Messabweichung
+und höchstens 1.15x `atempo` pro Szene. Größere Überlängen liefern
+`VOICEOVER_TOO_LONG` mit Szenen-ID, Nummer und Ist-/Solldauer. Modelle, Narration
+und globale Sprechgeschwindigkeit bleiben unverändert. `shorts_caption_runtime.py`
+verwendet für v2 statische Szenen-Captions; v1 behält Word-Alignment.
+
+Die Studio-Route-Installer installieren zusätzlich die Draft-/Medienrouten auf
+Agent- und Web-Seite; statische Pfade stehen vor dem alten Download-Catch-all.
+`shorts_diagnostics.py` ergänzt Fortschritt und sichere Fehlerfelder. Öffentliche
+Job-/History-Antworten zeigen sichere Diagnosemeldungen, interne Fehler bleiben
+im lokalen Store. Additive Job-Metadaten bleiben lesbar; das Projektschema bleibt
+streng. Die bestehenden Frontend-Verträge bleiben erhalten. Details und API-Pfade:
+[Shorts backend API](SHORTS_STUDIO.md).
