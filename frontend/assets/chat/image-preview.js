@@ -59,7 +59,8 @@
     });
     document.addEventListener('keydown', event => {
         if (!['Enter', ' '].includes(event.key)) return;
-        const image = event.target.matches?.('.message-attachment-preview, .image-artifact-preview') ? event.target : null;
+        const image = event.target.matches?.(selector) ? event.target :
+            event.target.matches?.('.image-variant-preview-link') ? event.target.querySelector('.image-variant-preview') : null;
         if (!image) return;
         event.preventDefault();
         open(image);

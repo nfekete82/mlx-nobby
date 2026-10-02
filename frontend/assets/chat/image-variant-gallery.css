@@ -73,48 +73,10 @@
     object-fit: contain;
 }
 
-/*
- * Desktop hover preview. The enlarged image must remain pointer-active so the
- * parent link keeps its :hover state while the pointer moves from the original
- * thumbnail onto the preview. Otherwise the preview repeatedly closes and
- * reopens, which looks like the backdrop is flickering.
- */
-@media (hover: hover) and (pointer: fine) {
-    .image-variant-preview-link:hover {
-        overflow: visible;
-        z-index: 10000;
-    }
-
-    .image-variant-preview-link:hover::before {
-        content: '';
-        position: fixed;
-        inset: 0;
-        z-index: 10000;
-        pointer-events: none;
-        background: rgba(3, 7, 14, 0.76);
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
-    }
-
-    .image-variant-preview-link:hover .image-variant-preview {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        z-index: 10001;
-        width: auto;
-        height: auto;
-        max-width: min(88vw, 1100px);
-        max-height: 86vh;
-        object-fit: contain;
-        border-radius: 14px;
-        background: #080b12;
-        box-shadow:
-            0 28px 90px rgba(0, 0, 0, 0.68),
-            0 0 0 1px rgba(255, 255, 255, 0.13);
-        transform: translate(-50%, -50%);
-        cursor: zoom-out;
-        pointer-events: auto;
-    }
+.image-variant-preview-link:hover,
+.image-variant-preview-link:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
 }
 
 .image-variant-placeholder {
