@@ -2387,6 +2387,19 @@ function renderMessages(options = {}) {
             const videoJobCard = renderVideoJobCard(message);
             if (videoJobCard) content.appendChild(videoJobCard);
 
+            if (message.shorts_draft?.id) {
+                const openDraft = document.createElement('button');
+                openDraft.type = 'button';
+                openDraft.textContent = rt('shorts_draft_open', 'Open draft in Shorts Studio');
+                openDraft.addEventListener('click', async () => {
+                    try {
+                        const response = await fetch('/api/mlx/shorts/drafts/' + encodeURIComponent(message.shorts_draft.id));
+                        if (!response.ok) throw new Error('Draft unavailable');
+                        await window.MLXShortsStudio?.openDraft?.((await response.json()).draft);
+                    } catch (_) { openDraft.textContent = rt('shorts_draft_unavailable', 'Draft unavailable'); }
+                });
+                content.appendChild(openDraft);
+            }
             const shortsJobCard = renderShortsJobCard(message);
             if (shortsJobCard) content.appendChild(shortsJobCard);
 

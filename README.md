@@ -15,9 +15,11 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ## Shorts backend
 
-The Shorts backend supports version-2 plans, durable drafts, scene revisions and
-retries that reuse valid completed media. Version-1 projects and existing Studio
-clients remain supported. Planning and draft saving do not start rendering.
+Shorts Studio offers a pre-production editor, saved drafts and History with
+explicit job selection, retry, duplication and cancellation. Chat creates a draft;
+production starts only when you select Render Short. Autosave preserves changes
+before navigation and rendering. Version-1 projects and existing scene revisions
+remain supported, with retries reusing valid completed media.
 See [Shorts API and production behavior](docs/SHORTS_STUDIO.md) for contracts,
 voiceover timing and provider readiness.
 

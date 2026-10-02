@@ -1,9 +1,8 @@
-# Shorts backend API
+# Shorts Studio
 
 The agent owns planning, drafts, durable production jobs, revisions and media.
-The web backend proxies these contracts; the existing Studio and History clients
-remain supported. This document describes the backend, without introducing a new
-editor or client workflow.
+The web backend proxies these contracts. The pre-production editor and History
+use them directly; existing Studio scene revisions remain supported.
 
 ## Projects and planning
 
@@ -87,3 +86,40 @@ provider/model, `error_message` and `error_detail_safe`. Known timing failures a
 specific; unknown failures use a safe stage message. Raw internal errors stay in
 the local job store, while public job/history errors and planner HTTP 502 replies
 are sanitized. Existing clients can continue to use the `error` field.
+
+
+## Browser workflow
+
+Open Shorts Studio to create a draft or select an existing draft or History item.
+Chat routes new Shorts requests to the planning API, stores a draft reference in
+the assistant message and ends the turn. It does not start image/video production.
+The message button reopens that server draft. Selected voice settings are passed
+to planning through the existing Studio voice instruction.
+
+The editor separates planning from production: edit title/briefing, style,
+quality, narration and visible captions, then plan and explicitly select Render
+Short. Expert mode exposes scene order/duration, camera/video prompts, voice and
+speed, character/style continuity, transitions and local music/SFX. All fields
+use the existing backend schema. Source previews show the previous render until
+new production finishes. For source revisions the render endpoint decides image
+readiness after comparing reusable media; its draft preflight summary alone does
+not block compositor-only edits.
+
+Edits autosave after one second. Saves and navigation are serialized: History,
+draft/job switches, closing and rendering flush pending changes before continuing.
+A failed save preserves the editor and visibly blocks navigation. Obsolete timer
+callbacks cannot save a newly selected draft. Leaving the browser page with
+unsaved changes triggers its standard leave-page confirmation. Explicit draft
+deletion remains a delete operation.
+
+History offers status/progress, scene counts, elapsed time, previews and explicit
+job selection, plus retry, completed-project duplication and active-job cancel.
+Selection tokens prevent older fetch/poll/retry/duplicate responses from replacing
+a newer selection. Retry opens the new backend revision; duplication creates a
+server draft. Legacy scene revisions remain available in the job viewer.
+
+Known `VOICEOVER_TOO_LONG` metadata produces a localized duration message in
+German/English. Unknown error texts and HTTP details are never displayed directly;
+stage-specific or generic safe messages remain. Editor labels use the shared
+`shorts-studio.json` translations. Editor and History panels adapt to narrow
+viewports; expert options remain in collapsible sections.

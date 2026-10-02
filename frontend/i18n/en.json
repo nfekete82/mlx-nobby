@@ -110,7 +110,9 @@
     "error_markdown": "**Error:** {message}",
     "selected_image_model": "the selected image model",
     "page_read_failed": "Note: Page {page} could not be read from document \"{name}\".",
-    "web_search_no_results": "The web search returned no matching results."
+    "web_search_no_results": "The web search returned no matching results.",
+    "shorts_draft_created": "Short draft created. Edit it in Shorts Studio, then select Render Short.",
+    "shorts_draft_failed": "The Short draft could not be created. Please try again."
   },
   "models": {
     "unnamed": "Unnamed model",
@@ -404,7 +406,9 @@
     "progress": "Progress:",
     "llm_skipped_count": "LLM skipped:",
     "minutes": "minutes",
-    "records_suffix": " records"
+    "records_suffix": " records",
+    "shorts_draft_open": "Open draft in Shorts Studio",
+    "shorts_draft_unavailable": "Draft unavailable"
   },
   "runtime_ui": {
     "error": "Error:",

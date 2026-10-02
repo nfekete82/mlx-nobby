@@ -164,3 +164,11 @@ test('Shorts Studio keeps English UI translations available', () => {
     assert.equal(window.MLXShortsStudio.translate('apply_revision'), 'Apply revision');
     assert.equal(window.MLXShortsStudio.statusLabel('completed'), 'Completed');
 });
+
+test('pre-production planning inherits voice settings without calling the legacy render action',async()=>{
+    const {window,calls}=harness();
+    await window.fetch('/api/mlx/shorts/plan',{method:'POST',body:JSON.stringify({prompt:'Create a 20-second Short about coffee',chat_id:'chat-one'})});
+    assert.equal(calls.length,1);assert.equal(calls[0].input,'/api/mlx/shorts/plan');
+    const payload=JSON.parse(calls[0].init.body);
+    assert.match(payload.prompt,/voice=Pervin/);assert.match(payload.prompt,/voice_speed=1\.1/);
+});

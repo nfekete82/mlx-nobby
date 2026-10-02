@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added the Shorts pre-production editor, draft selection, explicit History/job
+  navigation, retry/duplicate/cancel controls and chat draft references. Chat
+  planning ends before rendering; production starts explicitly in Studio.
+- Fixed pending autosave loss on History, draft/job switches, close and render.
+  Saves/navigation are serialized; failed saves preserve edits and block leaving.
+- Added German/English editor translations, structured voiceover-duration UI
+  errors, safe unknown-error fallbacks and stale selection-response guards.
+
 - Added Shorts-v2 backend plans, normalization, versioned drafts, capabilities,
   scene media APIs and revision/retry proxies while retaining v1 projects.
 - Added per-scene TTS, static scene captions, transitions and local music/SFX

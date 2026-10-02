@@ -28,6 +28,9 @@
         feedback_queued: 'Revision queued.',
         error_revision_failed: 'Revision failed ({status})',
         error_missing_job: 'Revision response did not contain a Shorts job.',
+        missing_job: 'The previously selected Short is no longer available.',
+        preview_unavailable: 'Preview unavailable.',
+        error_service_unavailable: 'The Shorts service is unavailable. Please try again.',
         status_unknown: 'Unknown',
         status_ready: 'Ready',
         status_rendering: 'Rendering',
@@ -54,6 +57,7 @@
     };
 
     let activeJob = null;
+    let selectionEpoch = 0;
     let activeSceneId = null;
     let pollTimer = null;
     let studio = null;
@@ -130,6 +134,7 @@
         return Boolean(
             candidate &&
             typeof candidate === 'object' &&
+            candidate.kind !== 'shorts_draft' &&
             typeof candidate.id === 'string' &&
             candidate.project &&
             Array.isArray(candidate.project.scenes)
@@ -146,7 +151,8 @@
         return candidates.find(isShortsJob) || null;
     }
 
-    function observeResponse(response) {
+    function observeResponse(response, epoch) {
+        if (response.ok === false) return;
         if (!response || typeof response.clone !== 'function') return;
         let cloned;
         try {
@@ -158,7 +164,7 @@
         cloned.json()
             .then(payload => {
                 const job = extractJob(payload);
-                if (job) setActiveJob(job);
+                if (job && epoch === selectionEpoch && (!activeJob || activeJob.id === job.id)) setActiveJob(job);
             })
             .catch(() => {});
     }
@@ -246,6 +252,7 @@
         clearPollTimer();
         if (!job || TERMINAL_STATUSES.has(String(job.status || ''))) return;
         const expectedId = job.id;
+        const epoch = selectionEpoch;
         pollTimer = setTimeout(async () => {
             pollTimer = null;
             try {
@@ -253,14 +260,18 @@
                     `/api/mlx/shorts-jobs/${encodeURIComponent(expectedId)}`,
                     { cache: 'no-cache' }
                 );
-                if (!response.ok) return;
+                if (response.status === 404) {
+                    if (epoch === selectionEpoch && activeJob?.id === expectedId) await recoverMissingJob();
+                    return;
+                }
+                if (!response.ok) { if (epoch === selectionEpoch && activeJob?.id === expectedId) { setFeedback(translate('error_service_unavailable'), true); schedulePoll(activeJob); } return; }
                 const payload = await response.json();
                 const next = extractJob(payload);
-                if (next && activeJob?.id === expectedId) {
+                if (next?.id === expectedId && epoch === selectionEpoch && activeJob?.id === expectedId) {
                     setActiveJob(next);
                 }
             } catch (_) {
-                if (activeJob?.id === expectedId) {
+                if (epoch === selectionEpoch && activeJob?.id === expectedId) {
                     schedulePoll(activeJob);
                 }
             }
@@ -272,7 +283,7 @@
         if (document.querySelector('link[data-mlx-shorts-studio-style]')) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = '/assets/chat/shorts-studio.css?v=20260928-shorts-studio-v2';
+        link.href = '/assets/chat/shorts-studio.css?v=20261002-studio-ui';
         link.dataset.mlxShortsStudioStyle = '1';
         document.head.appendChild(link);
     }
@@ -309,7 +320,7 @@
         overlay.appendChild(panel);
         document.body.append(launcher, overlay);
 
-        launcher.addEventListener('click', () => overlay.classList.add('is-open'));
+        launcher.addEventListener('click', () => openProjectEditor());
         close.addEventListener('click', () => overlay.classList.remove('is-open'));
         overlay.addEventListener('click', event => {
             if (event.target === overlay) overlay.classList.remove('is-open');
@@ -336,6 +347,7 @@
 
     async function submitRevision(forceRegenerateVideo) {
         const job = activeJob;
+        const epoch = selectionEpoch;
         const scene = getScene(job, activeSceneId);
         if (!job || !scene || job.status !== 'completed') return;
 
@@ -367,9 +379,11 @@
                 }
             );
             const data = await response.json().catch(() => ({}));
+            if (epoch !== selectionEpoch || activeJob?.id !== job.id) return;
+            if (response.status === 404) { await recoverMissingJob(); return; }
             if (!response.ok) {
                 throw new Error(
-                    data?.detail || translate('error_revision_failed', { status: response.status })
+                    translate('error_revision_failed', { status: response.status })
                 );
             }
             const revised = extractJob(data);
@@ -378,7 +392,8 @@
             setActiveJob(revised);
             setFeedback(translate('feedback_queued'));
         } catch (error) {
-            setFeedback(error?.message || String(error), true);
+            if (epoch !== selectionEpoch || activeJob?.id !== job.id) return;
+            setFeedback(translate('error_service_unavailable'), true);
             renderStudio();
         }
     }
@@ -405,10 +420,11 @@
             video.controls = true;
             video.preload = 'metadata';
             video.src = `/api/mlx/shorts/${encodeURIComponent(activeJob.id)}`;
+            video.addEventListener('error', () => { video.hidden = true; preview.append(createElement('p', 'mlx-shorts-studio-status', translate('preview_unavailable'))); }, { once: true });
             preview.appendChild(video);
         } else {
             const placeholder = createElement('div', 'mlx-shorts-studio-status');
-            placeholder.textContent = `${translate('rendering_prefix')}: ${statusLabel(activeJob.phase || activeJob.status || 'queued')}`;
+            placeholder.textContent = TERMINAL_STATUSES.has(activeJob.status) ? statusLabel(activeJob.status) : `${translate('rendering_prefix')}: ${statusLabel(activeJob.phase || activeJob.status || 'queued')}`;
             preview.appendChild(placeholder);
         }
         const status = createElement('div', 'mlx-shorts-studio-status');
@@ -418,23 +434,50 @@
         status.textContent = revisionInfo + (
             activeJob.status === 'completed'
                 ? translate('help_completed')
-                : translate('help_rendering')
+                : TERMINAL_STATUSES.has(activeJob.status) ? '' : translate('help_rendering')
         );
         preview.appendChild(status);
+        window.MLXShortsHistory?.renderJobStatus?.(preview, activeJob);
         ui.body.appendChild(preview);
+        const projectActions = createElement('div', 'mlx-shorts-studio-actions');
+        const editProject = createElement('button', '', translate('edit_project'));
+        editProject.disabled = activeJob.status !== 'completed';
+        editProject.addEventListener('click', async () => {
+            await loadProjectEditor();
+            ui.overlay.classList.remove('is-open');
+            window.MLXShortsProjectEditor.editJob(activeJob);
+        });
+        projectActions.append(editProject);
+        if (['failed', 'cancelled'].includes(activeJob.status)) {
+            const retry = createElement('button', '', translate('history_retry'));
+            retry.addEventListener('click', async () => {
+                retry.disabled = true;
+                const expectedId = activeJob.id, epoch = selectionEpoch;
+                try {
+                    const response = await fetch(`/api/mlx/shorts-jobs/${encodeURIComponent(expectedId)}/retry`, {method:'POST'});
+                    if (!response.ok) throw new Error(translate('error_service_unavailable'));
+                    const next = extractJob(await response.json());
+                    if (epoch === selectionEpoch && activeJob?.id === expectedId) setActiveJob(next);
+                } catch (_) { if (epoch === selectionEpoch && activeJob?.id === expectedId) setFeedback(translate('error_service_unavailable'), true); retry.disabled = false; }
+            });
+            projectActions.append(retry);
+        }
+        ui.body.append(projectActions);
 
         const sceneGrid = createElement('section', 'mlx-shorts-studio-scenes');
         scenes.forEach((scene, index) => {
             const button = createElement('button', 'mlx-shorts-studio-scene');
             button.type = 'button';
             if (scene.id === activeSceneId) button.classList.add('is-active');
-            const strong = createElement('strong', '', `${translate('scene')} ${index + 1}`);
+            const strong = createElement('strong', '', `${translate('scene')} ${index + 1}${scene.title ? ' · ' + scene.title : ''}`);
             const info = createElement(
                 'span',
                 '',
                 `${scene.duration}s · ${statusLabel(sceneResultStatus(activeJob, scene.id))}`
             );
             button.append(strong, info);
+            if (scene.caption) button.append(createElement('span', '', scene.caption));
+            if (scene.transition) button.append(createElement('span', '', `${scene.music?.style || project.music_style || 'Auto'} · ${scene.transition.type}`));
             button.addEventListener('click', () => {
                 activeSceneId = scene.id;
                 renderStudio();
@@ -447,6 +490,16 @@
         const draft = getSceneDraft(activeJob, selected);
         const projectDraft = getProjectDraft(activeJob);
         const editor = createElement('section', 'mlx-shorts-studio-editor');
+        const completedMedia = (activeJob.scene_results || []).find(result => result.scene_id === selected.id && result.status === 'completed');
+        if (completedMedia?.path) {
+            const scenePreview = document.createElement('video');
+            scenePreview.controls = true;
+            scenePreview.preload = 'metadata';
+            scenePreview.className = 'mlx-shorts-scene-preview';
+            scenePreview.src = `/api/mlx/shorts/jobs/${encodeURIComponent(activeJob.id)}/scenes/${encodeURIComponent(selected.id)}/video`;
+            scenePreview.addEventListener('error', () => { scenePreview.hidden = true; editor.append(createElement('p', 'mlx-shorts-studio-status', translate('preview_unavailable'))); }, { once: true });
+            editor.append(scenePreview);
+        }
 
         const narrationField = createElement('div', 'mlx-shorts-studio-field');
         const narrationLabel = createElement('label', '', translate('narration'));
@@ -516,6 +569,7 @@
     function setActiveJob(job) {
         if (!isShortsJob(job)) return;
         const changedJob = activeJob?.id !== job.id;
+        if (changedJob) selectionEpoch += 1;
         activeJob = job;
         if (changedJob && !getScene(job, activeSceneId)) {
             activeSceneId = job.project.scenes[0]?.id || null;
@@ -536,6 +590,7 @@
 
     function loadStudioTranslations() {
         if (translationsPromise) return translationsPromise;
+        if (window.__MLXShortsStudioTranslations) return Promise.resolve(studioTranslations);
         translationsPromise = previousFetch('/i18n/shorts-studio.json', { cache: 'no-cache' })
             .then(response => {
                 if (!response.ok || typeof response.json !== 'function') {
@@ -546,6 +601,7 @@
             .then(payload => {
                 if (payload && typeof payload === 'object') {
                     studioTranslations = payload;
+                    window.__MLXShortsStudioTranslations = payload;
                 }
                 refreshLanguage();
                 return studioTranslations;
@@ -561,7 +617,7 @@
         const path = requestPath(input);
         let forwardedInit = init;
 
-        if (path === '/api/mlx/chat/actions' && init?.body) {
+        if (['/api/mlx/chat/actions', '/api/mlx/shorts/plan'].includes(path) && init?.body) {
             try {
                 const body = JSON.parse(init.body);
                 const instruction = studioVoiceInstruction(body?.prompt);
@@ -577,12 +633,12 @@
             } catch (_) {}
         }
 
+        const epoch = selectionEpoch;
         const response = await previousFetch(input, forwardedInit);
         if (
-            path === '/api/mlx/chat/actions' ||
-            path.startsWith('/api/mlx/shorts-jobs/')
+            path === '/api/mlx/chat/actions'
         ) {
-            observeResponse(response);
+            observeResponse(response, epoch);
         }
         return response;
     };
@@ -604,7 +660,70 @@
         }
     }
 
+
+    let editorPromise = null;
+    function loadProjectEditor() {
+        if (window.MLXShortsProjectEditor) return Promise.resolve();
+        if (!editorPromise) editorPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/assets/chat/shorts-project-editor.js?v=20261002-studio-ui';
+            script.onload = resolve;
+            script.onerror = () => { editorPromise = null; reject(new Error(translate('error_service_unavailable'))); };
+            document.head.append(script);
+        });
+        return editorPromise;
+    }
+    function clearActiveJob() {
+        selectionEpoch += 1;
+        clearPollTimer(); activeJob = null; activeSceneId = null;
+        sceneDrafts.clear(); projectDrafts.clear();
+        if (studio) { studio.overlay.classList.remove('is-open'); studio.body.replaceChildren(); studio.meta.textContent = ''; }
+    }
+    async function recoverMissingJob() {
+        clearActiveJob();
+        await openProjectEditor();
+        window.MLXShortsProjectEditor?.showNotice?.(translate('missing_job'));
+    }
+    async function loadJob(jobId) {
+        if (typeof jobId !== 'string' || !jobId.trim()) { await recoverMissingJob(); return false; }
+        if (await window.MLXShortsProjectEditor?.resetSelection?.() === false) return false;
+        clearActiveJob();
+        const epoch = selectionEpoch;
+        const response = await window.fetch('/api/mlx/shorts-jobs/' + encodeURIComponent(jobId), { cache: 'no-store' });
+        if (epoch !== selectionEpoch) return false;
+        if (response.status === 404) { await recoverMissingJob(); return false; }
+        if (!response.ok) {
+            await openProjectEditor();
+            window.MLXShortsProjectEditor?.showNotice?.(translate('error_service_unavailable'));
+            throw new Error(translate('error_service_unavailable'));
+        }
+        const job = extractJob(await response.json());
+        if (epoch !== selectionEpoch) return false;
+        if (!job || job.id !== jobId) throw new Error(translate('error_missing_job'));
+        setActiveJob(job);
+        window.MLXShortsStudio.openJob();
+        return true;
+    }
+    function jobsDeleted(jobIds) {
+        window.MLXShortsProjectEditor?.sourceDeleted?.(jobIds);
+        if (activeJob && jobIds.includes(activeJob.id)) {
+            clearActiveJob();
+            window.MLXShortsProjectEditor?.resetSelection?.();
+        }
+    }
+    async function openProjectEditor(draft = null) {
+        clearActiveJob();
+        ensureStudio();
+        await Promise.all([loadProjectEditor(), loadStudioTranslations()]);
+        return window.MLXShortsProjectEditor.open(draft);
+    }
+
     window.MLXShortsStudio = {
+        setActiveJob, clearActiveJob, loadJob, jobsDeleted,
+        selectionToken: () => selectionEpoch,
+        openDraft: openProjectEditor,
+        async newDraft() { ensureStudio(); await Promise.all([loadProjectEditor(), loadStudioTranslations()]); return window.MLXShortsProjectEditor.newDraft(); },
+        openJob() { const ui = ensureStudio(); if (ui && activeJob) ui.overlay.classList.add('is-open'); },
         isShortsPrompt,
         studioVoiceInstruction,
         extractJob,
@@ -614,9 +733,6 @@
         getActiveJob() {
             return activeJob;
         },
-        open() {
-            const ui = ensureStudio();
-            if (ui && activeJob) ui.overlay.classList.add('is-open');
-        }
+        open() { return openProjectEditor(); }
     };
 })();

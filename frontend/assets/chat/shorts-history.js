@@ -39,7 +39,19 @@
         delete_failed_title: 'Delete failed Shorts?',
         delete_failed_message: 'Permanently delete {count} failed Shorts project(s), including revisions and Shorts-owned files?',
         delete_failed_confirm: 'Delete failed',
-        delete_error: 'Could not delete Shorts project: {message}'
+        delete_error: 'Could not delete Shorts project: {message}',
+        retry: 'Try again', details: 'Details', duplicate: 'Duplicate', cancel: 'Cancel',
+        quality_fast: 'Draft', quality_standard: 'Standard', quality_quality: 'Publication',
+        scene_progress: 'Scene {scene} of {count}', elapsed: 'Elapsed', render_duration: 'Render time',
+        phase_keyframe: 'Creating keyframe', phase_video: 'Rendering video', phase_tts: 'Generating voice',
+        phase_compose: 'Composing final video', phase_queued: 'Waiting for resources',
+        error_image: 'The local image generator could not create the keyframe.',
+        error_incompatible: 'The keyframe generator is incompatible with the installed MFLUX version.',
+        error_video: 'The scene video could not be rendered.', error_tts: 'Voice generation failed.',
+        error_voiceover_duration: 'Narration in scene {scene} is too long. {audio} s of speech for a {duration} s scene. Please shorten the text or increase voice speed.',
+        error_compose: 'The final video could not be composed.', error_generic: 'The Short could not be rendered.',
+        anchor_warning: 'Character anchor unavailable – using regular visual consistency.',
+        action_error: 'The action could not be completed.'
     };
 
     let ui = null;
@@ -85,7 +97,7 @@
         if (document.querySelector('link[data-mlx-shorts-history-style]')) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = '/assets/chat/shorts-history.css?v=20260928-shorts-history-v1';
+        link.href = '/assets/chat/shorts-history.css?v=20261002-studio-ui';
         link.dataset.mlxShortsHistoryStyle = '1';
         document.head.appendChild(link);
     }
@@ -153,7 +165,7 @@
         const parts = [];
         if (Number(project.duration) > 0) parts.push(`${project.duration}s`);
         if (Number(project.scene_count) > 0) parts.push(`${project.scene_count} ${t('scenes')}`);
-        parts.push(`${t('voice')}: ${project.voice || t('default_voice')}`);
+        parts.push(t('quality_' + (project.quality || 'fast')));
         return parts.join(' · ');
     }
 
@@ -161,6 +173,91 @@
         const count = Number(project.revision_count || 0);
         if (!count) return '';
         return `${count} ${t(count === 1 ? 'revision' : 'revisions')}`;
+    }
+
+    function voiceoverDurationMessage(job) {
+        if (job.error_code !== 'VOICEOVER_TOO_LONG' ||
+            !Number.isInteger(job.error_scene_number) || job.error_scene_number < 1 ||
+            !Number.isFinite(job.error_audio_duration) || job.error_audio_duration <= 0 ||
+            !Number.isFinite(job.error_scene_duration) || job.error_scene_duration <= 0) return null;
+        const format = value => value.toLocaleString(language(), {
+            minimumFractionDigits: 1, maximumFractionDigits: 1
+        });
+        return t('error_voiceover_duration', {
+            scene: job.error_scene_number,
+            audio: format(job.error_audio_duration), duration: format(job.error_scene_duration)
+        });
+    }
+
+    function renderJobStatus(parent, job) {
+        const phase = job.error_stage || job.phase || 'queued';
+        const count = job.scene_count || job.project?.scenes?.length || 0;
+        const scene = job.error_scene_number || Math.min(Number(job.current_scene || 0) + 1, count);
+        if (job.status !== 'completed' && job.status !== 'cancelled') {
+            const phaseLabel = t(['keyframe', 'video', 'tts', 'compose'].includes(phase) ? 'phase_' + phase : 'phase_queued');
+            parent.appendChild(createElement('div', 'mlx-shorts-history-card-meta',
+                (count && ['keyframe', 'video'].includes(phase) ? t('scene_progress', {scene, count}) + ' · ' : '') + phaseLabel));
+        }
+        if (job.status === 'failed') {
+            const code = job.error_code || '';
+            const errorKey = code === 'IMAGE_PROVIDER_INCOMPATIBLE' ? 'error_incompatible' :
+                ({keyframe:'error_image',video:'error_video',tts:'error_tts',compose:'error_compose'}[phase] || 'error_generic');
+            parent.appendChild(createElement('p', 'mlx-shorts-history-error', voiceoverDurationMessage(job) || t(errorKey)));
+            const details = createElement('details', 'mlx-shorts-history-diagnosis');
+            details.appendChild(createElement('summary', '', t('details')));
+            details.appendChild(createElement('p', '', voiceoverDurationMessage(job) || (code === 'IMAGE_PROVIDER_INCOMPATIBLE' ? [t('error_incompatible'), job.error_provider, job.error_model, job.error_detail_safe].filter(Boolean).join(' · ') : t(errorKey))));
+            parent.appendChild(details);
+        }
+        if (ACTIVE_STATUSES.has(job.status)) {
+            const raw = job.progress_percent !== undefined ? job.progress_percent / 100 : job.progress;
+            const value = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : Math.min(.95, ((job.current_scene || 0) + (job.phase === 'video' ? .25 : 0) + (job.child_progress || 0) * (job.phase === 'keyframe' ? .25 : .75)) / Math.max(1, count) * .8);
+            const progress = createElement('progress', 'mlx-shorts-history-progress');
+            progress.max = 1; progress.value = value; progress.setAttribute('aria-label', t('active'));
+            parent.appendChild(progress);
+            parent.appendChild(createElement('span', 'mlx-shorts-history-card-meta', Math.round(value * 100) + '%'));
+        }
+        if (job.started_at) {
+            const elapsed = Math.max(0, Math.round((job.finished_at || Date.now()/1000) - job.started_at));
+            parent.appendChild(createElement('div', 'mlx-shorts-history-card-details', `${t(job.finished_at ? 'render_duration' : 'elapsed')}: ${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,'0')}`));
+        }
+        if ((job.warnings || []).includes('character_anchor_fallback')) parent.appendChild(createElement('p', 'mlx-shorts-studio-warning', t('anchor_warning')));
+    }
+
+    function actionButton(parent, label, action) {
+        const button = createElement('button', '', t(label)); button.type = 'button';
+        button.addEventListener('click', async event => {
+            event.stopPropagation(); button.disabled = true;
+            try { await action(); } catch (error) { window.alert(t('action_error'));  }
+            finally { button.disabled = false; }
+        });
+        parent.appendChild(button); return button;
+    }
+
+    async function retryProject(project) {
+        const token = window.MLXShortsStudio?.selectionToken?.();
+        const response = await window.fetch(`/api/mlx/shorts-jobs/${encodeURIComponent(project.id)}/retry`, {method:'POST'});
+        if (!response.ok) throw new Error(await responseDetail(response));
+        const payload = await response.json();
+        if (token !== window.MLXShortsStudio?.selectionToken?.()) return;
+        window.MLXShortsStudio?.setActiveJob?.(payload.job);
+        close(); window.MLXShortsStudio?.openJob?.();
+    }
+
+    async function duplicateProject(project) {
+        const token = window.MLXShortsStudio?.selectionToken?.();
+        const response = await window.fetch(`/api/mlx/shorts-jobs/${encodeURIComponent(project.id)}`);
+        if (!response.ok) throw new Error(t('action_error'));
+        const payload = await response.json();
+        const job = window.MLXShortsStudio?.extractJob?.(payload) || payload.data?.job || payload.result?.job || payload.job || payload;
+        if (!job.project || job.id !== project.id) throw new Error(t('action_error'));
+        if (token !== window.MLXShortsStudio?.selectionToken?.()) return;
+        const draftResponse = await window.fetch('/api/mlx/shorts/drafts', {method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({project:job.project, chat_id:job.chat_id || 'shorts-studio', source_job_id:job.status === 'completed' ? job.id : null})});
+        if (!draftResponse.ok) throw new Error(t('action_error'));
+        const result = await draftResponse.json();
+        if (token !== window.MLXShortsStudio?.selectionToken?.()) return;
+        close();
+        await window.MLXShortsStudio?.openDraft?.(result.draft);
     }
 
     async function confirmAction(options) {
@@ -171,29 +268,17 @@
     }
 
     async function responseDetail(response) {
-        try {
-            const payload = await response.json();
-            return payload?.detail || payload?.error || `HTTP ${response.status}`;
-        } catch (_) {
-            return `HTTP ${response.status}`;
-        }
+        return response.status >= 500 ? t('unavailable') : t('action_error');
     }
 
     async function openProject(project) {
-        const response = await window.fetch(
-            `/api/mlx/shorts-jobs/${encodeURIComponent(project.id)}`,
-            { cache: 'no-store' }
-        );
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        await response.json().catch(() => ({}));
-
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-            if (window.MLXShortsStudio?.getActiveJob?.()?.id === project.id) break;
-            await new Promise(resolve => setTimeout(resolve, 25));
-        }
-
+        const opened = await window.MLXShortsStudio?.loadJob?.(project.id);
+        if (opened === false) return;
         close();
-        window.MLXShortsStudio?.open?.();
+        if (!opened) {
+            projects = projects.filter(item => item.id !== project.id);
+            render();
+        }
     }
 
     function openVideo(project) {
@@ -220,9 +305,11 @@
             `/api/mlx/shorts-jobs/${encodeURIComponent(project.id)}`,
             { method: 'DELETE' }
         );
-        if (!response.ok) {
+        if (!response.ok && response.status !== 404) {
             throw new Error(await responseDetail(response));
         }
+        const payload = response.ok ? await response.json().catch(() => ({})) : {};
+        window.MLXShortsStudio?.jobsDeleted?.(payload.deleted_job_ids || [project.id]);
 
         const rootId = String(project.root_job_id || project.id);
         projects = projects.filter(item => String(item.root_job_id || item.id) !== rootId);
@@ -248,6 +335,8 @@
         if (!response.ok) {
             throw new Error(await responseDetail(response));
         }
+        const payload = await response.json().catch(() => ({}));
+        window.MLXShortsStudio?.jobsDeleted?.(payload.deleted_job_ids || []);
         await loadProjects(false);
     }
 
@@ -274,8 +363,16 @@
                 } catch (_) {}
             }, { once: true });
             preview.appendChild(video);
+        } else if (project.thumbnail_scene_id) {
+            const image = createElement('img'); image.alt = project.title || 'Short';
+            image.src = `/api/mlx/shorts/jobs/${encodeURIComponent(project.id)}/scenes/${encodeURIComponent(project.thumbnail_scene_id)}/keyframe`;
+            preview.appendChild(image);
         } else {
             preview.appendChild(createElement('span', '', '▶'));
+        }
+        if (project.has_video) {
+            const play = actionButton(preview, 'video', () => openVideo(project));
+            play.textContent = '▶ ' + t('video');
         }
 
         const body = createElement('div', 'mlx-shorts-history-card-body');
@@ -294,13 +391,8 @@
         const date = `${t('created')}: ${formatDate(project.created_at)}`;
         details.textContent = [revision, date].filter(Boolean).join(' · ');
 
-        if (project.status === 'failed' && project.error) {
-            const error = createElement('div', 'mlx-shorts-history-error', String(project.error));
-            error.title = String(project.error);
-            body.append(top, meta, details, error);
-        } else {
-            body.append(top, meta, details);
-        }
+        body.append(top, meta, details);
+        renderJobStatus(body, project);
 
         const actions = createElement('div', 'mlx-shorts-history-actions');
         const openButton = createElement('button', '', t('open'));
@@ -317,6 +409,13 @@
             }
         });
         actions.appendChild(openButton);
+        if (['failed','cancelled'].includes(project.status)) actionButton(actions, 'retry', () => retryProject(project));
+        if (project.status === 'completed') actionButton(actions, 'duplicate', () => duplicateProject(project));
+        if (ACTIVE_STATUSES.has(project.status)) actionButton(actions, 'cancel', async () => {
+            const response = await window.fetch(`/api/system/job-queue/shorts/${encodeURIComponent(project.id)}/cancel`, {method:'POST'});
+            if (!response.ok) throw new Error(t('action_error'));
+            await loadProjects(false);
+        });
 
         if (project.has_video) {
             const videoButton = createElement('button', '', t('video'));
@@ -439,12 +538,7 @@
         refreshButton.addEventListener('click', () => loadProjects(true));
         newButton.addEventListener('click', () => {
             close();
-            const input = document.getElementById('input');
-            if (!input) return;
-            if (!String(input.value || '').trim()) input.value = t('prompt');
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.focus();
-            input.setSelectionRange(input.value.length, input.value.length);
+            window.MLXShortsStudio?.newDraft?.();
         });
         toolbarActions.append(deleteFailedButton, refreshButton, newButton);
         toolbar.append(filters, toolbarActions);
@@ -454,7 +548,7 @@
         overlay.appendChild(panel);
         document.body.append(launcher, overlay);
 
-        launcher.addEventListener('click', open);
+        launcher.addEventListener('click', () => window.MLXShortsStudio?.open?.());
         closeButton.addEventListener('click', close);
         overlay.addEventListener('click', event => {
             if (event.target === overlay) close();
@@ -564,7 +658,6 @@
     function init() {
         ensureUi();
         loadTranslations();
-        loadProjects(false);
         document.addEventListener('mlx-language-changed', refreshLanguage);
     }
 
@@ -575,11 +668,14 @@
     }
 
     window.MLXShortsHistory = {
+        renderJobStatus,
         open,
         close,
         refresh: () => loadProjects(true),
         getProjects: () => projects.slice(),
         __test: {
+            openProject, deleteProject, renderProject, retryProject, duplicateProject,
+            voiceoverDurationMessage,
             statusClass,
             projectRevisionText,
             visibleProjects,
