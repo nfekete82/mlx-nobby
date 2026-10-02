@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.6.1
+
 - Fixed the web job-queue and cancellation proxies so Queue status and Shorts
   cancellation work through the normal web UI.
 
