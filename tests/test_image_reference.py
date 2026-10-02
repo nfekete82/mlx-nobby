@@ -302,6 +302,88 @@ def test_backend_reference_followup_without_frontend_mode(runtime):
     assert calls[0][1]['source_path'] == str(source)
 
 
+@pytest.mark.parametrize('use_variant', [False, True])
+def test_public_reference_job_recovers_private_original_source(runtime, use_variant):
+    native, client, source, calls = runtime
+    started = client.post('/api/chat/actions', json=request(source)).json()
+    job = wait(native, started['data']['job']['id'])
+    if use_variant:
+        group = client.post('/api/image/jobs/variants', json={
+            'base_job_id': job['id'], 'count': 3,
+            'chat_id': 'reference-test', 'chat_revision': 0}).json()
+        job = wait(native, group['jobs'][-1]['data']['job']['id'])
+    public = client.get('/api/image/jobs/' + job['id']).json()
+    artifact = public['artifacts'][0]
+    assert 'source_path' not in artifact
+    assert 'source_path' not in public['data']['job']['result']
+    assert str(source) not in str(public)
+    assert artifact['reference_source_job_id'] == job['id']
+    # Original relationship comes from the private record, not client metadata.
+    payload = request(source, prompt='Jetzt draußen im Regen.', file_context={
+        'kind': 'image', 'artifact_id': artifact['artifact_id'],
+        'reference_source_job_id': artifact['reference_source_job_id'],
+        'reference_artifact_id': 'untrusted-client-value',
+        'reference_mode': artifact['reference_mode']},
+        image_options={'seed': 42})
+    if not use_variant:
+        payload['action'] = 'image_reference_generate'
+        payload['reference_mode'] = artifact['reference_mode']
+        del payload['file_context']['artifact_id']
+    # Resolve after native jobs have been evicted/restarted.
+    service._jobs.clear()
+    response = client.post('/api/chat/actions', json=payload)
+    assert response.status_code == 200, response.text
+    regenerated = wait(native, response.json()['data']['job']['id'])
+    assert regenerated['status'] == 'completed'
+    assert regenerated['result']['reference_artifact_id'] == 'uploaded-reference'
+    assert regenerated['result']['reference_mode'] == 'same_identity'
+    assert regenerated['result']['id'] != artifact['image_id']
+    assert calls[-1][1]['source_path'] == str(source)
+    assert calls[-1][1]['seed'] == 42
+
+
+@pytest.mark.parametrize('failure', ['missing', 'invalid', 'foreign_chat', 'stale_revision'])
+def test_reference_job_source_never_falls_back_to_generated_artifact(runtime, failure):
+    native, client, source, calls = runtime
+    started = client.post('/api/chat/actions', json=request(source)).json()
+    job = wait(native, started['data']['job']['id'])
+    identifier = job['id']
+    if failure == 'missing':
+        identifier = '0' * 24
+    elif failure == 'invalid':
+        identifier = '../private'
+    payload = request(source, file_context={
+        'kind': 'image', 'artifact_id': 'image-' + job['result']['id'],
+        'reference_source_job_id': identifier,
+        'reference_mode': 'same_identity'})
+    if failure == 'foreign_chat':
+        payload['chat_id'] = 'other-chat'
+    elif failure == 'stale_revision':
+        payload['chat_revision'] = 1
+    response = client.post('/api/chat/actions', json=payload)
+    assert response.status_code == 200
+    assert response.json()['status'] == 'failed'
+    expected = ('Ungültige Image-Job-ID' if failure == 'invalid' else
+                'Ursprüngliches Referenzbild ist nicht verfügbar. Bitte erneut anhängen.')
+    assert response.json()['error'] == expected
+    assert response.json()['artifacts'] == []
+    assert len(calls) == 1
+    # An explicit current upload has priority even over an unavailable record.
+    payload = request(source)
+    payload['file_context']['reference_source_job_id'] = identifier
+    result = client.post('/api/chat/actions', json=payload).json()
+    assert wait(native, result['data']['job']['id'])['status'] == 'completed'
+    assert calls[-1][1]['source_path'] == str(source)
+
+
+def test_queue_public_reference_result_hides_source_without_mutating_private_job():
+    from agent import media_queue
+    private = {'id': 'a' * 24, 'status': 'completed', 'result': {
+        'semantic_operation': 'reference_generate', 'source_path': '/private/reference.png'}}
+    assert 'source_path' not in media_queue._public(private)['result']
+    assert private['result']['source_path'] == '/private/reference.png'
+
+
 def test_unknown_reference_errors_are_safe(runtime, monkeypatch):
     _, client, source, calls = runtime
     def fail(*args):

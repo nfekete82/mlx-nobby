@@ -317,11 +317,16 @@ const referenceArtifact = {
     ...artifact,
     semantic_operation: 'reference_generate', reference_used: true,
     reference_mode: 'same_identity', reference_artifact_id: 'uploaded-reference',
-    source_path: '/local/uploads/reference.png', original_prompt: 'Create the same person in an office.'
+    reference_source_job_id: 'f'.repeat(24), original_prompt: 'Create the same person in an office.'
 };
 const referencePrepared = window.MLXImageRegenerate.regenerationOptions(referenceArtifact);
 assert.equal(referencePrepared.referenceMode, 'same_identity');
-assert.equal(referencePrepared.referenceContext.stored_path, referenceArtifact.source_path);
+assert.equal(Object.hasOwn(referencePrepared.referenceContext, 'stored_path'), false);
+assert.equal(window.MLXImageRegenerate.regenerationOptions({...referenceArtifact,
+    reference_source_job_id: undefined}).referenceContext.reference_source_job_id, artifact.generation_job_id);
+assert.equal(window.MLXImageRegenerate.regenerationOptions({...referenceArtifact,
+    reference_source_job_id: undefined, generation_job_id: undefined, source_path: '/private/reference.png'}), null);
+assert.equal(referencePrepared.referenceContext.reference_source_job_id, referenceArtifact.reference_source_job_id);
 assert.equal(referencePrepared.referenceContext.reference_artifact_id, 'uploaded-reference');
 assert.equal(referencePrepared.imageOptions.model, artifact.model);
 assert.equal(Object.hasOwn(referencePrepared.imageOptions, 'seed'), false);
@@ -332,7 +337,8 @@ context.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
     assert.equal(body.action, 'image_reference_generate');
     assert.equal(body.reference_mode, 'same_identity');
-    assert.equal(body.file_context.stored_path, referenceArtifact.source_path);
+    assert.equal(Object.hasOwn(body.file_context, 'stored_path'), false);
+    assert.equal(body.file_context.reference_source_job_id, referenceArtifact.reference_source_job_id);
     assert.equal(body.resolved_target, 'image_edit');
     assert.equal(Object.hasOwn(body.image_options, 'seed'), false);
     return {ok: true, async json() {return {tool: 'image_edit', status: 'queued',

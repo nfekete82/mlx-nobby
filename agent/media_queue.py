@@ -143,6 +143,9 @@ def _public(job):
         if key != "request" and not key.startswith("_")
     }
 
+    if (value.get("result") or {}).get("semantic_operation") == "reference_generate":
+        value["result"].pop("source_path", None)
+
     # ``dispatching`` is an internal queue hand-off state between the Agent
     # and the native media service. Older clients do not know that state and
     # can mistake it for a terminal result, which stops their job poller and

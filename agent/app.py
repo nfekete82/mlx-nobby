@@ -26,7 +26,7 @@ from agent import profile
 from agent import code_workspaces
 from agent import disk_usage
 from agent import image_api
-from image_variants import VariantBatch
+from image_variants import VariantBatch, load_record
 from agent import video_api
 from agent import shorts_jobs
 from agent.shorts_planner import plan_short
@@ -7340,12 +7340,31 @@ def tool_web_search(request):
     return result
 
 
-def _image_source_path(request):
+def _image_reference_record(request):
+    """Recover the original reference from existing private reproduction data."""
+    identifier = image_api.job_id(request.file_context['reference_source_job_id'])
+    record = load_record(IMAGE_DIRECTORY, 'job-' + identifier)
+    job = record.get('job', {}) if record else {}
+    canonical = record.get('canonical', {}) if record else {}
+    original_request = canonical.get('request')
+    if (not isinstance(original_request, dict)
+            or job.get('status') != 'completed'
+            or job.get('chat_id') != request.chat_id
+            or job.get('chat_revision') != request.chat_revision
+            or original_request.get('semantic_operation') != 'reference_generate'
+            or not canonical.get('params', {}).get('source_path')):
+        raise HTTPException(404, 'Ursprüngliches Referenzbild ist nicht verfügbar. Bitte erneut anhängen.')
+    return record
+
+
+def _image_source_path(request, *, reference_record=None):
     file_context = request.file_context or {}
     stored_path = str(file_context.get("stored_path") or "").strip()
 
     if stored_path:
         source = Path(stored_path).expanduser()
+    elif reference_record is not None:
+        source = Path(reference_record["canonical"]["params"]["source_path"])
     else:
         artifact_id = (
             file_context.get("artifact_id")
@@ -7695,12 +7714,15 @@ def _image_edit_payload(request):
     intent = decide_media_intent(request.prompt, has_image=True, reference_context=context.get('reference_mode')).intent
     is_reference = intent == 'image_reference_generate' or request.action == 'image_reference_generate' or request.reference_mode is not None
     mode = (reference_mode(request.prompt) or request.reference_mode or context.get("reference_mode")) if is_reference else None
+    reference_record = None
     if is_reference:
         if context.get('image_count', 0) > 1 and not context.get('selected_reference'):
             raise HTTPException(422, 'Bitte wähle das Referenzbild aus.')
-        if not context.get('stored_path') and not context.get('artifact_id') and not request.active_artifact_id:
+        if not context.get('stored_path') and context.get('reference_source_job_id'):
+            reference_record = _image_reference_record(request)
+        if not context.get('stored_path') and reference_record is None and not context.get('artifact_id') and not request.active_artifact_id:
             raise HTTPException(422, 'Für diese Anfrage wird ein Referenzbild benötigt.')
-    source = _image_source_path(request)
+    source = _image_source_path(request, reference_record=reference_record)
 
     options = dict(request.image_options or {})
     allowed = {
@@ -7740,10 +7762,13 @@ def _image_edit_payload(request):
     payload.update(options)
     if is_reference:
         mode = mode or 'same_identity'
+        reference_artifact_id = (context.get('reference_artifact_id') or context.get('file_id')
+                                 if context.get('stored_path') else
+                                 context.get('artifact_id') or request.active_artifact_id)
+        if reference_record is not None:
+            reference_artifact_id = reference_record['canonical']['request'].get('reference_artifact_id')
         payload.update(semantic_operation='reference_generate', reference_mode=mode,
-                       reference_artifact_id=(context.get('reference_artifact_id') or context.get('file_id')
-                                              if context.get('stored_path') else
-                                              context.get('artifact_id') or request.active_artifact_id),
+                       reference_artifact_id=reference_artifact_id,
                        original_prompt=request.prompt)
         payload['prompt'] = reference_instruction(mode, payload['prompt'])
     return payload
@@ -8291,7 +8316,7 @@ def _image_artifact(result, action):
                 "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id"):
         if key in result:
             artifact[key] = result[key]
-    if action in {"image_edit", "image_upscale"}:
+    if action in {"image_edit", "image_upscale"} and result.get("semantic_operation") != "reference_generate":
         artifact["source_path"] = result.get("source_path")
     if action == "image_upscale":
         artifact.update({
@@ -8400,7 +8425,10 @@ def _start_chat_image_job(action, request):
 def _image_job_tool_result(job):
     action = "image_" + str(job.get("operation") or "")
     status = str(job.get("status") or "failed")
-    data = {"job": job}
+    public_job = deepcopy(job)
+    if (public_job.get("result") or {}).get("semantic_operation") == "reference_generate":
+        public_job["result"].pop("source_path", None)
+    data = {"job": public_job}
     artifacts = []
 
     if status == "completed":
@@ -8408,6 +8436,8 @@ def _image_job_tool_result(job):
         artifact["chat_id"] = job.get("chat_id")
         artifact["run_id"] = job.get("run_id")
         artifact["generation_job_id"] = job.get("native_job_id") or job.get("id")
+        if artifact.get("semantic_operation") == "reference_generate":
+            artifact["reference_source_job_id"] = artifact["generation_job_id"]
         data["image"] = artifact
         artifacts.append(artifact)
 
