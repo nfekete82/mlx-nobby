@@ -277,7 +277,7 @@ class TransferResponse(Response):
         sender = asyncio.create_task(deliver())
         try:
             await asyncio.wait((listener, sender), return_when=asyncio.FIRST_COMPLETED)
-            if sender.done():
+            if sender.done() and not sender.cancelled():
                 await sender
         finally:
             self.transfer.abort()

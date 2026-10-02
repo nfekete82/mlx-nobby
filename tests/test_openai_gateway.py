@@ -307,6 +307,20 @@ def test_cancellation_while_waiting_for_shared_model_lock(gateway):
     assert gateway.events == ["lease", "release"]
 
 
+def test_simultaneous_disconnect_and_sender_cancellation():
+    async def run():
+        transfer = Transfer(lambda state: state.cancel.wait(1))
+        async def receive():
+            # No yield: listener and sender both finish before wait resumes.
+            return {"type": "http.disconnect"}
+        async def send(message):
+            pytest.fail("A disconnected client must not receive a response")
+        await TransferResponse(transfer, True)({"type": "http"}, receive, send)
+        await asyncio.to_thread(transfer.thread.join, 2)
+        assert not transfer.thread.is_alive()
+    asyncio.run(run())
+
+
 def test_memory_middleware_never_enriches_external_requests(gateway, monkeypatch):
     from agent.memory_middleware import MemoryChatMiddleware
     from agent import memory_lifecycle
