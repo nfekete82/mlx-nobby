@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a stateless local OpenAI-compatible inference gateway with virtual
+  model roles, native streaming/tool-call transport, disconnect propagation,
+  runtime coordination, explicit unauthenticated loopback semantics and tests.
+
 ## v1.5.0
 
 - Added the Shorts pre-production editor, draft selection, explicit History/job

@@ -17,6 +17,8 @@ from agent.app import (
     status as runtime_status,
     switch_model_runtime,
 )
+from agent import app as gateway_host
+from backend.openai_gateway import install_routes as install_openai_gateway
 from agent.automation_routes import install_routes as install_automation_routes
 from agent.image_generation_intent_runtime import install_runtime as install_image_generation_intent_runtime
 from agent.image_pipeline_routes import install_routes as install_image_pipeline_routes
@@ -38,6 +40,8 @@ from agent.voice_manager_routes import install_routes as install_voice_manager_r
 # ModelProvider. Enrich that path at the ASGI boundary while leaving strict
 # helper/model calls untouched.
 app.add_middleware(MemoryChatMiddleware)
+
+install_openai_gateway(app, host=gateway_host)
 
 install_image_generation_intent_runtime()
 install_image_prompt_quality_runtime()
