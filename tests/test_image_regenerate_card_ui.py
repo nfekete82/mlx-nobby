@@ -135,3 +135,28 @@ def test_unknown_card_module_is_served_intact():
     source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
     changed = source.replace(b"variants.addEventListener('click'", b"variants.addEventListener('pointerup'")
     assert image_regenerate_ui.patch_image_settings_source(changed) == changed
+
+
+def test_served_variant_runtime_executes_real_batches(tmp_path):
+    import subprocess
+    from email.utils import formatdate
+    from fastapi.testclient import TestClient
+    from backend.entrypoint import app
+
+    source = ROOT / "frontend/assets/chat/image-settings.js"
+    # Prior middleware responses retained this source timestamp, allowing a
+    # browser to reuse broken transformed bytes after a middleware-only fix.
+    validators = {"If-Modified-Since": formatdate(source.stat().st_mtime, usegmt=True),
+                  "If-None-Match": '"old-transformed-script"', "Range": "bytes=0-10"}
+    with TestClient(app, base_url="http://localhost") as client:
+        served = client.get("/assets/chat/image-settings.js?v=20261002-gallery-final", headers=validators)
+    assert served.status_code == 200
+    assert served.headers["cache-control"] == "no-store"
+    assert "last-modified" not in served.headers
+    assert "etag" not in served.headers
+    assert int(served.headers["content-length"]) == len(served.content)
+    assert served.content == image_regenerate_ui.patch_image_settings_source(source.read_bytes())
+    module = tmp_path / "served-image-settings.js"
+    module.write_bytes(served.content)
+    subprocess.run(["node", str(ROOT / "tests/test_image_variant_served.mjs"), str(module)],
+                   cwd=ROOT, check=True, capture_output=True, text=True)

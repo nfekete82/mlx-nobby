@@ -471,36 +471,98 @@ function imageT(key, fallback = '', variables = {}) {
             '?chat_id=' + encodeURIComponent(session.id) + '&chat_revision=' + revision;
     }
 
-    function applyVariantBatch(session, batch, baseId, includeBase, firstMessage = null, cancelled = false) {
-        const selected = session.workspace?.active_artifact_id;
-        const groupId = batch.variant_group_id;
-        if (includeBase && firstMessage) {
-            firstMessage.image_variant_group_id = groupId;
-            firstMessage.image_variant_index = 1;
-            firstMessage.image_variant_count = batch.variant_count;
-            generation.updateImageJobMessage(session, firstMessage, batch.base);
+    function validateVariantBatch(batch, includeBase) {
+        const count = batch?.variant_count;
+        if (!JOB_ID.test(String(batch?.variant_group_id || '')) ||
+            !Number.isInteger(count) || count < 2 || count > 6 ||
+            !Array.isArray(batch.jobs) || batch.jobs.length !== count - (includeBase ? 1 : 0) ||
+            !JOB_ID.test(String(batch.base?.data?.job?.id || '')) ||
+            batch.base?.status !== 'completed' || !batch.base.artifacts?.[0]?.image_id) {
+            throw new Error('Invalid image variant batch');
         }
+        const ids = new Set();
+        const indices = new Set();
+        for (const result of batch.jobs) {
+            const job = result?.data?.job;
+            if (!JOB_ID.test(String(job?.id || '')) || ids.has(job.id) ||
+                !['image_generate', 'image_edit'].includes(result.tool) ||
+                !['queued', 'loading', 'running', 'saving', 'completed', 'failed', 'cancelled'].includes(job.status) ||
+                result.status !== job.status || job.variant_group_id !== batch.variant_group_id ||
+                job.variant_count !== count || !Number.isInteger(job.variant_index) ||
+                job.variant_index < (includeBase ? 2 : 1) || job.variant_index > count || indices.has(job.variant_index)) {
+                throw new Error('Invalid image variant slot');
+            }
+            ids.add(job.id);
+            indices.add(job.variant_index);
+        }
+    }
+
+    function variantUiError(session, groupId, error) {
+        console.warn('[image-variants] Could not display the started batch ' + groupId, error);
+        const message = session.messages.find(item => item.image_variant_group_id === groupId);
+        if (message) message.image_variant_ui_error = imageT(
+            'generation.image_variants_display_failed',
+            'The image batch has started, but its display could not be updated. Reload the chat to recover it.'
+        );
+    }
+
+    function applyVariantBatch(session, batch, baseId, includeBase, firstMessage = null, cancelled = false) {
+        validateVariantBatch(batch, includeBase);
+        const groupId = batch.variant_group_id;
+        const selected = session.workspace?.active_artifact_id;
+        const preparedSession = {...session, workspace: {...(session.workspace || {})}};
+        const updates = [];
+        let preparationError = null;
+        const prepare = (existing, result, index) => {
+            const message = {...(existing || pendingImageMessage(null, index, batch.variant_count, groupId)),
+                image_variant_group_id: groupId, image_variant_index: index,
+                image_variant_count: batch.variant_count, image_variant_base_job_id: baseId,
+                image_variant_include_base: includeBase, image_variant_ui_error: null};
+            delete message.image_regenerated_from_artifact_id;
+            try {
+                generation.updateImageJobMessage(preparedSession, message, result);
+            } catch (error) {
+                preparationError = error;
+                // Keep the authoritative jobs recoverable even if an extension
+                // fails while preparing presentation metadata.
+                message.image_job = {...result.data.job};
+                message.tool_result = result;
+                message.image_generation_pending = activeImageJob(result.status);
+                message.content = ['failed', 'cancelled'].includes(result.status)
+                    ? result.error || imageT('generation.action_failed', 'The action could not be completed.') : '';
+            }
+            updates.push({existing, message});
+            return message;
+        };
+        const baseMessage = firstMessage || session.messages.find(item =>
+            item.image_variant_group_id === groupId && item.image_variant_index === 1);
+        if (includeBase && baseMessage) prepare(baseMessage, batch.base, 1);
         const messages = batch.jobs.map(result => {
             const toolResult = cancelled && activeImageJob(result.data.job.status)
                 ? {...result, status: 'cancelled', artifacts: [], data: {...result.data,
                     job: {...result.data.job, status: 'cancelled', phase: 'cancelled'}}} : result;
             const job = toolResult.data.job;
-            let message = session.messages.find(item =>
+            const existing = session.messages.find(item =>
                 item.image_variant_group_id === groupId && item.image_variant_index === job.variant_index);
-            if (!message) {
-                message = pendingImageMessage(null, job.variant_index, batch.variant_count, groupId);
-                delete message.image_regenerated_from_artifact_id;
-                session.messages.push(message);
-            }
-            message.image_variant_base_job_id = baseId;
-            message.image_variant_include_base = includeBase;
-            generation.updateImageJobMessage(session, message, toolResult);
-            return message;
+            return prepare(existing, toolResult, job.variant_index);
         });
-        if (selected != null) session.workspace.active_artifact_id = selected;
-        persistAndRender(session);
-        generation.resumeImageJobsForSession?.(session);
-        return messages;
+        // Commit only after every slot was validated and prepared. Preserve message
+        // identities so existing job watchers keep observing the same objects.
+        for (const {existing, message} of updates) if (existing) Object.assign(existing, message);
+        session.messages.push(...updates.filter(update => !update.existing).map(update => update.message));
+        if (selected != null) preparedSession.workspace.active_artifact_id = selected;
+        session.workspace = preparedSession.workspace;
+        if (preparationError) variantUiError(session, groupId, preparationError);
+        try {
+            persistAndRender(session);
+        } catch (error) {
+            variantUiError(session, groupId, error);
+        } finally {
+            // Rendering failure must never prevent polling jobs that really started.
+            try { generation.resumeImageJobsForSession?.(session); }
+            catch (error) { variantUiError(session, groupId, error); }
+        }
+        return messages.map(message => updates.find(update => update.message === message)?.existing || message);
     }
 
     async function submitVariantBatch(artifact, count, options = {}) {
@@ -520,15 +582,24 @@ function imageT(key, fallback = '', variables = {}) {
             (!options.firstMessage || session.messages.includes(options.firstMessage)) &&
             (!options.isCurrent || options.isCurrent());
         try {
-            const response = await fetch('/api/mlx/image-jobs/variants', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({base_job_id: artifact.generation_job_id,
-                    count: Math.max(2, Math.min(6, Math.round(Number(count) || 3))),
-                    include_base: Boolean(options.includeBase), chat_id: session.id,
-                    chat_revision: revision, variant_group_id: options.groupId || null})
-            });
-            if (!response.ok) throw new Error('Variant batch failed');
-            const batch = await response.json();
+            let batch;
+            // Phase A: start exactly one backend batch. Only this boundary may
+            // report that starting the batch failed.
+            try {
+                const response = await fetch('/api/mlx/image-jobs/variants', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({base_job_id: artifact.generation_job_id,
+                        count: Math.max(2, Math.min(6, Math.round(Number(count) || 3))),
+                        include_base: Boolean(options.includeBase), chat_id: session.id,
+                        chat_revision: revision, variant_group_id: options.groupId || null})
+                });
+                if (!response.ok) throw new Error('Variant batch failed');
+                batch = await response.json();
+                if (!JOB_ID.test(String(batch?.variant_group_id || ''))) throw new Error('Invalid image batch ID');
+            } catch (_error) {
+                if (current()) variantError(session);
+                return null;
+            }
             if (!current()) {
                 if (!options.groupId) {
                     await fetch(groupUrl(batch.variant_group_id, session, revision, '/cancel'),
@@ -536,12 +607,15 @@ function imageT(key, fallback = '', variables = {}) {
                 }
                 return null;
             }
-            const messages = applyVariantBatch(session, batch, artifact.generation_job_id,
-                Boolean(options.includeBase), options.firstMessage);
-            return messages;
-        } catch (_error) {
-            if (current()) variantError(session);
-            return null;
+            // Phase B: backend jobs already exist. UI failures cannot become a
+            // startup failure or trigger another POST.
+            try {
+                return applyVariantBatch(session, batch, artifact.generation_job_id,
+                    Boolean(options.includeBase), options.firstMessage);
+            } catch (error) {
+                if (current()) variantUiError(session, batch.variant_group_id, error);
+                return null;
+            }
         } finally {
             if (variantRequests.get(key) === token) variantRequests.delete(key);
         }
@@ -601,7 +675,7 @@ function imageT(key, fallback = '', variables = {}) {
             applyVariantBatch(session, batch, message.image_variant_base_job_id, message.image_variant_include_base, null, true);
             return true;
         } catch (_error) {
-            if (variantRequests.get(key) === token) variantError(session);
+            if (variantRequests.get(key) === token) variantUiError(session, groupId, new Error('Image variant cancellation failed'));
             return false;
         } finally {
             if (variantRequests.get(key) === token) variantRequests.delete(key);

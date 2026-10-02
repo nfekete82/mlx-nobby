@@ -186,15 +186,19 @@
     }
 
     function enhanceOnlyMenu(artifact) {
-        const controls = window.MLXChatGeneration
-            ?.createImageUpscaleMenu?.(artifact);
-        if (!controls) return null;
+        try {
+            const controls = window.MLXChatGeneration
+                ?.createImageUpscaleMenu?.(artifact);
+            if (!controls) return null;
 
-        if (controls.classList?.contains('image-upscale-menu')) {
-            return controls;
+            if (controls.classList?.contains('image-upscale-menu')) {
+                return controls;
+            }
+            return controls.querySelector?.('.image-upscale-menu') || null;
+        } catch (error) {
+            console.warn('[image-variants] Could not render optional image actions', error);
+            return null;
         }
-
-        return controls.querySelector?.('.image-upscale-menu') || null;
     }
 
     function selectArtifact(session, artifact) {
@@ -370,6 +374,13 @@
         counter.textContent = completedCount + '/' + group.count;
         header.append(title, counter);
         gallery.appendChild(header);
+        const displayError = group.items.find(item => item.message.image_variant_ui_error);
+        if (displayError) {
+            const notice = document.createElement('p');
+            notice.setAttribute('role', 'status');
+            notice.textContent = displayError.message.image_variant_ui_error;
+            gallery.appendChild(notice);
+        }
 
         const grid = document.createElement('div');
         grid.className = 'image-variant-grid';

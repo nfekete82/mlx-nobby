@@ -57,6 +57,12 @@ class ImageRegenerateUiMiddleware:
             return
 
         child_scope = dict(scope)
+        # Source-file validators do not describe this middleware's transformed
+        # bytes. A middleware-only fix must replace previously cached scripts.
+        child_scope["headers"] = [
+            (key, value) for key, value in scope.get("headers", [])
+            if key.lower() not in {b"if-modified-since", b"if-none-match", b"range", b"if-range"}
+        ]
         extensions = dict(scope.get("extensions") or {})
         extensions.pop("http.response.pathsend", None)
         child_scope["extensions"] = extensions
@@ -105,8 +111,9 @@ class ImageRegenerateUiMiddleware:
                 headers = [
                     (key, value)
                     for key, value in list(start_message.get("headers") or [])
-                    if key.lower() not in {b"content-length", b"etag"}
+                    if key.lower() not in {b"content-length", b"etag", b"last-modified", b"cache-control", b"accept-ranges"}
                 ]
+                headers.append((b"cache-control", b"no-store"))
                 headers.append((
                     b"content-length",
                     str(len(body)).encode("ascii"),

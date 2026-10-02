@@ -596,3 +596,21 @@ assert.equal(recovery.resumeImageJobsForSession(completedWithoutArtifactSession)
 await settle();
 assert.match(completedWithoutArtifact.content, /Publication failed/);
 assert.equal(timeouts.size, 0);
+
+// Server synchronization replaces recovered message objects in the same
+// session. Retire their old watchers before starting the replacement messages.
+const replacedMessage = storedMessage('queued', 'e'.repeat(24), {tool: 'image_generate'});
+const replacedSession = session('variant-reload-server-sync', [replacedMessage]);
+activeSession = replacedSession;
+fetchImpl = async () => response(toolResult('queued', 'e'.repeat(24), {tool: 'image_generate'}));
+assert.equal(recovery.resumeImageJobsForSession(replacedSession), 1);
+await settle();
+assert.equal(timeouts.size, 1);
+const replacementMessage = JSON.parse(JSON.stringify(replacedMessage));
+replacedSession.messages = [replacementMessage];
+fetchImpl = async () => response(toolResult('completed', 'e'.repeat(24), {tool: 'image_generate', artifact: imageArtifact}));
+assert.equal(recovery.resumeImageJobsForSession(replacedSession), 1);
+await settle();
+assert.equal(replacementMessage.image_job.status, 'completed');
+assert.equal(replacementMessage.tool_result.artifacts[0].image_id, imageArtifact.image_id);
+assert.equal(timeouts.size, 0);

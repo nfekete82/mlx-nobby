@@ -394,22 +394,13 @@
             );
             if (!isCurrent()) return false;
 
-            const groupId = mergeInitialImageWithGeneratedVariants(
-                firstMessage,
-                extras,
-                request.count
-            );
-
-            if (!groupId) {
-                console.warn('[image-count] Could not group image batch.');
+            // The canonical batch runtime already applied, grouped, persisted and
+            // rendered these messages. Do not remap slots or publish them twice.
+            if (extras.length !== request.count - 1 || !firstMessage.image_variant_group_id) {
+                console.warn('[image-count] Could not apply image batch.');
                 return false;
             }
 
-            session.updated = Date.now();
-            window.MLXChatSessions?.saveSessions?.();
-            window.MLXChatRendering?.renderAll?.({
-                contentUpdated: true
-            });
             return true;
         } catch (error) {
             console.warn('[image-count] Image batch expansion failed:', error);
