@@ -234,6 +234,10 @@ def enqueue(kind, request_payload):
         "started_at": None,
         "finished_at": None,
     }
+    payload = request_payload.get('payload')
+    if kind == 'image' and isinstance(payload, dict) and payload.get('semantic_operation') == 'reference_generate':
+        job.update(semantic_operation='reference_generate', reference_mode=payload.get('reference_mode'), reference_relation=payload.get('reference_mode'), reference_used=True)
+
     with _jobs_lock:
         _ensure_loaded_locked()
         _prune_locked()
@@ -271,6 +275,7 @@ def _mirror_native(job_id, native):
     for key in (
         "status", "phase", "progress", "current_step", "total_steps",
         "model", "result", "error", "started_at", "finished_at",
+        "semantic_operation", "reference_mode", "reference_relation", "reference_used",
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
     ):
         if key in native:

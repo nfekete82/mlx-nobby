@@ -112,7 +112,13 @@
     "page_read_failed": "Hinweis: Seite {page} konnte im Dokument \"{name}\" nicht gelesen werden.",
     "web_search_no_results": "Die Websuche hat keine passenden Ergebnisse gefunden.",
     "shorts_draft_created": "Short-Entwurf erstellt. Im Shorts Studio bearbeiten und mit „Short rendern“ starten.",
-    "shorts_draft_failed": "Der Short-Entwurf konnte nicht erstellt werden. Bitte erneut versuchen."
+    "shorts_draft_failed": "Der Short-Entwurf konnte nicht erstellt werden. Bitte erneut versuchen.",
+    "reference_used": "Referenzbild verwendet ✓",
+    "reference_mode_same_identity": "Dieselbe Person",
+    "reference_mode_resemblance": "Ähnliche Person",
+    "reference_generating": "Bild mit Referenz wird erstellt …",
+    "reference_select_source": "Bitte wähle das Referenzbild aus.",
+    "reference_source_required": "Für diese Anfrage wird ein Referenzbild benötigt."
   },
   "models": {
     "unnamed": "Unbenanntes Modell",

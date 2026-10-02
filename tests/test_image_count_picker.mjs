@@ -260,7 +260,7 @@ const versionMatch = source.match(
     /const SCRIPT_VERSION = '([^']+)'/,
 );
 assert.ok(versionMatch, 'image count picker must expose a script version');
-assert.equal(versionMatch[1], '20260930-image-count-v4');
+assert.equal(versionMatch[1], '20261002-image-reference');
 assert.ok(
     commonSource.includes(
         'image-count-picker.js?v=' + versionMatch[1],
@@ -276,3 +276,10 @@ assert.match(source, /mlx-i18n-ready/);
 assert.match(source, /mlx-language-changed/);
 
 console.log('Image count picker loader, prewarm, batch settings, localization, and 1-6 grouping passed.');
+
+assert.equal(helpers.isInitialImageMessage({role: 'assistant', tool_result: {
+    tool: 'image_edit', status: 'completed', artifacts: [{semantic_operation: 'reference_generate'}]
+}}), true);
+assert.equal(helpers.isInitialImageMessage({role: 'assistant', tool_result: {
+    tool: 'image_edit', status: 'completed', artifacts: [{}]
+}}), false);

@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20260930-image-count-v4';
+    const SCRIPT_VERSION = '20261002-image-reference';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
     const PREWARM_TTL_MS = 60 * 1000;
@@ -93,7 +93,9 @@
         const tool = String(message?.tool_result?.tool || '');
         const operation = String(message?.image_job?.operation || '');
 
-        return tool === 'image_generate' ||
+        return (tool === 'image_edit' && message?.tool_result?.artifacts?.[0]?.semantic_operation === 'reference_generate') ||
+            message?.image_job?.semantic_operation === 'reference_generate' ||
+            tool === 'image_generate' ||
             operation === 'generate' ||
             Boolean(message?.image_generation_pending);
     }

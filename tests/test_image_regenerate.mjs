@@ -289,3 +289,34 @@ assert.ok(saveCalls >= 4);
 assert.ok(renderCalls >= 4);
 
 console.log('Image regenerate and three-variant actions passed.');
+
+
+const referenceArtifact = {
+    ...artifact,
+    semantic_operation: 'reference_generate', reference_used: true,
+    reference_mode: 'same_identity', reference_artifact_id: 'uploaded-reference',
+    source_path: '/local/uploads/reference.png', original_prompt: 'Create the same person in an office.'
+};
+const referencePrepared = window.MLXImageRegenerate.regenerationOptions(referenceArtifact);
+assert.equal(referencePrepared.referenceMode, 'same_identity');
+assert.equal(referencePrepared.referenceContext.stored_path, referenceArtifact.source_path);
+assert.equal(referencePrepared.referenceContext.reference_artifact_id, 'uploaded-reference');
+assert.equal(referencePrepared.imageOptions.model, artifact.model);
+assert.equal(Object.hasOwn(referencePrepared.imageOptions, 'seed'), false);
+const priorRequestCount = requests.length;
+context.fetch = async (url, options) => {
+    requests.push({url, options});
+    assert.equal(url, '/api/mlx/chat/actions');
+    const body = JSON.parse(options.body);
+    assert.equal(body.action, 'image_reference_generate');
+    assert.equal(body.reference_mode, 'same_identity');
+    assert.equal(body.file_context.stored_path, referenceArtifact.source_path);
+    assert.equal(body.resolved_target, 'image_edit');
+    assert.equal(Object.hasOwn(body.image_options, 'seed'), false);
+    return {ok: true, async json() {return {tool: 'image_edit', status: 'queued',
+        data: {job: {id: 'a'.repeat(24), operation: 'edit', status: 'queued', semantic_operation: 'reference_generate'}}};}};
+};
+assert.equal(await window.MLXImageRegenerate.regenerateImageArtifact(referenceArtifact), true);
+assert.equal(requests.length, priorRequestCount + 1);
+const referenceControls = window.MLXChatGeneration.createImageUpscaleMenu(referenceArtifact);
+assert.equal(referenceControls.children[0].textContent, 'Neu generieren');

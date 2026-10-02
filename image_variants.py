@@ -1,4 +1,4 @@
-"""Sequential normal Generate jobs from a private, frozen source configuration."""
+"""Sequential Generate/reference Edit jobs from a private frozen configuration."""
 import copy
 import json
 import os
@@ -145,9 +145,10 @@ def install(service):
                     continue
                 with service._jobs_lock:
                     service._active_job_id = job["id"]
-                request = service.Generate.model_validate(group["request"])
+                operation = group.get("operation", "generate")
+                request = (service.Edit if operation == "edit" else service.Generate).model_validate(group["request"])
                 request.seed = job["seed"]
-                service._run_image_job(job["id"], "generate", request,
+                service._run_image_job(job["id"], operation, request,
                                        resolved=group["canonical"], release_lock=False)
                 persist(group)
                 if job["status"] != "completed":
@@ -235,8 +236,10 @@ def install(service):
                     base = dict(record["job"], _canonical=record["canonical"])
             if not base or base.get("chat_id") != request.chat_id or base.get("chat_revision") != request.chat_revision:
                 raise HTTPException(404, "Base image job not found for this chat revision")
-            if base.get("operation") != "generate" or not reusable(base) or not base.get("_canonical") or base.get("variants_available") is False:
-                raise HTTPException(409, "Variants require an available completed Generate job")
+            reference_edit = (base.get("operation") == "edit" and
+                              base.get("result", {}).get("semantic_operation") == "reference_generate")
+            if (base.get("operation") != "generate" and not reference_edit) or not reusable(base) or not base.get("_canonical") or base.get("variants_available") is False:
+                raise HTTPException(409, "Variants require an available completed Generate or reference Edit job")
             group = None
             if request.variant_group_id:
                 group = owned_group(request.variant_group_id, request.chat_id, request.chat_revision)
@@ -252,10 +255,14 @@ def install(service):
                 cancel_event = threading.Event()
                 if group is None:
                     canonical = copy.deepcopy(base["_canonical"])
-                    payload = {key: value for key, value in canonical["params"].items() if key in service.Generate.model_fields}
-                    payload.update(original_prompt=base["result"].get("original_prompt"),
-                                   width=base["result"].get("requested_width", payload["width"]),
-                                   height=base["result"].get("requested_height", payload["height"]), model=canonical["requested_model"])
+                    operation = "edit" if reference_edit else "generate"
+                    if reference_edit:
+                        payload = copy.deepcopy(canonical["request"])
+                    else:
+                        payload = {key: value for key, value in canonical["params"].items() if key in service.Generate.model_fields}
+                        payload.update(original_prompt=base["result"].get("original_prompt"),
+                                       width=base["result"].get("requested_width", payload["width"]),
+                                       height=base["result"].get("requested_height", payload["height"]), model=canonical["requested_model"])
                     group_id = secrets.token_hex(12)
                     base_seed = canonical["params"]["seed"]
                     if canonical.get("requested_seed") is not None:
@@ -270,7 +277,7 @@ def install(service):
                     jobs = []
                     first_index = 2 if request.include_base else 1
                     for index in range(first_index, request.count + 1):
-                        jobs.append({"id": secrets.token_hex(12), "operation": "generate", "chat_id": request.chat_id,
+                        jobs.append({"id": secrets.token_hex(12), "operation": operation, "chat_id": request.chat_id,
                             "chat_revision": request.chat_revision, "run_id": base["run_id"],
                             "status": "queued", "phase": "queued", "progress": 0.0,
                             "model": canonical["model"]["id"], "provider": canonical["model"]["provider"],
@@ -279,8 +286,12 @@ def install(service):
                             "result": None, "error": None, "created_at": time.time(), "started_at": None, "finished_at": None,
                             "variant_group_id": group_id, "variant_index": index, "variant_count": request.count,
                             "source_generation_job_id": base["id"], "_cancel_event": cancel_event, "_process": None, "_output_path": None})
+                    if reference_edit:
+                        for member in jobs:
+                            member.update(semantic_operation="reference_generate", reference_used=True,
+                                          reference_mode=payload["reference_mode"], reference_relation=payload["reference_mode"])
                     group = {"id": group_id, "base_id": base["id"], "count": request.count,
-                             "include_base": request.include_base, "jobs": jobs, "canonical": canonical, "request": payload,
+                             "include_base": request.include_base, "jobs": jobs, "canonical": canonical, "request": payload, "operation": operation,
                              "base_job": service._job_snapshot(base), "request_chat_id": request.chat_id,
                              "request_chat_revision": request.chat_revision}
                     for old_id, old in list(groups.items()):

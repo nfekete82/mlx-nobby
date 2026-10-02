@@ -1,4 +1,5 @@
 from backend.media_intent import decide_media_intent, has_image_context, MEDIA_ACTIONS
+from backend.image_reference import reference_mode, reference_instruction
 import asyncio
 from copy import deepcopy
 from pathlib import Path
@@ -3967,9 +3968,10 @@ class ChatFileRouteRequest(BaseModel):
 class ChatActionRequest(BaseModel):
     prompt: str
     action: Literal[
-        "image_generate", "image_edit", "image_upscale",
+        "image_generate", "image_edit", "image_reference_generate", "image_upscale",
         "video_generate", "video_animate",
     ] | None = None
+    reference_mode: Literal["same_identity", "resemblance"] | None = None
     file_context: dict | None = None
     active_artifact_id: str | None = None
     image_options: dict | None = None
@@ -7689,6 +7691,15 @@ def optimize_image_edit_prompt(prompt):
 
 
 def _image_edit_payload(request):
+    context = request.file_context or {}
+    intent = decide_media_intent(request.prompt, has_image=True, reference_context=context.get('reference_mode')).intent
+    is_reference = intent == 'image_reference_generate' or request.action == 'image_reference_generate' or request.reference_mode is not None
+    mode = (reference_mode(request.prompt) or request.reference_mode or context.get("reference_mode")) if is_reference else None
+    if is_reference:
+        if context.get('image_count', 0) > 1 and not context.get('selected_reference'):
+            raise HTTPException(422, 'Bitte wähle das Referenzbild aus.')
+        if not context.get('stored_path') and not context.get('artifact_id') and not request.active_artifact_id:
+            raise HTTPException(422, 'Für diese Anfrage wird ein Referenzbild benötigt.')
     source = _image_source_path(request)
 
     options = dict(request.image_options or {})
@@ -7699,6 +7710,8 @@ def _image_edit_payload(request):
         "guidance",
         "seed",
     }
+    if is_reference:
+        allowed |= {'width', 'height', 'auto_size', 'negative_prompt'}
     if set(options) - allowed:
         raise HTTPException(
             422,
@@ -7725,7 +7738,14 @@ def _image_edit_payload(request):
         payload["quality"] = request.quality
 
     payload.update(options)
-
+    if is_reference:
+        mode = mode or 'same_identity'
+        payload.update(semantic_operation='reference_generate', reference_mode=mode,
+                       reference_artifact_id=(context.get('reference_artifact_id') or context.get('file_id')
+                                              if context.get('stored_path') else
+                                              context.get('artifact_id') or request.active_artifact_id),
+                       original_prompt=request.prompt)
+        payload['prompt'] = reference_instruction(mode, payload['prompt'])
     return payload
 
 
@@ -8267,7 +8287,8 @@ def _image_artifact(result, action):
     }
     for key in ("original_prompt", "negative_prompt", "resolved_model", "requested_model",
                 "auto_size", "quality_profile", "requested_width", "requested_height",
-                "variant_group_id", "variant_index", "variant_count", "source_generation_job_id", "variants_available"):
+                "variant_group_id", "variant_index", "variant_count", "source_generation_job_id", "variants_available",
+                "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id"):
         if key in result:
             artifact[key] = result[key]
     if action in {"image_edit", "image_upscale"}:
@@ -8347,6 +8368,7 @@ def _start_chat_image_job(action, request):
     payload_builders = {
         "image_generate": _image_generate_payload,
         "image_edit": _image_edit_payload,
+        "image_reference_generate": _image_edit_payload,
         "image_upscale": _image_upscale_payload,
     }
     payload_builder = payload_builders.get(action)
@@ -8365,7 +8387,7 @@ def _start_chat_image_job(action, request):
         "POST",
         "/jobs",
         {
-            "operation": action.removeprefix("image_"),
+            "operation": "edit" if action == "image_reference_generate" else action.removeprefix("image_"),
             "payload": payload,
             "chat_id": chat_id,
             "chat_revision": chat_revision,
@@ -9042,6 +9064,8 @@ def _runtime_target(action):
 
 
 def _chat_preflight_target(action):
+    if action == "image_reference_generate":
+        return "image_edit"
     if action in {"image_edit", "shorts_generate"}:
         return action
     return _runtime_target(action)
@@ -9053,6 +9077,7 @@ def _resolved_media_action(request, routing_file_context):
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
         action=request.action,
+        reference_context=(routing_file_context or {}).get("reference_mode"),
     )
     return media.intent if media.execution_requested else None
 
@@ -9066,6 +9091,7 @@ def preflight_chat_action(request: ChatActionRequest):
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
         action=request.action,
+        reference_context=(routing_file_context or {}).get("reference_mode"),
     )
     if media.handles_turn or request.resolved_target:
         return media.payload()
@@ -9083,6 +9109,7 @@ def run_chat_action(request: ChatActionRequest):
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
         action=request.action,
+        reference_context=(routing_file_context or {}).get("reference_mode"),
     )
     if request.resolved_target == "chat" and media.execution_requested:
         routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
@@ -9192,12 +9219,13 @@ def run_chat_action(request: ChatActionRequest):
     if action in {
         "image_generate",
         "image_edit",
+        "image_reference_generate",
         "image_upscale",
     }:
         try:
             job = _start_chat_image_job(action, request)
             return chat_tool_result(
-                action,
+                "image_edit" if action == "image_reference_generate" else action,
                 job.get("status", "queued"),
                 {"job": job, "routing": routing},
             )
@@ -9215,7 +9243,7 @@ def run_chat_action(request: ChatActionRequest):
                 action,
                 "failed",
                 {"routing": routing},
-                error=str(exc),
+                error='Das Referenzbild konnte nicht verarbeitet werden.' if action == 'image_reference_generate' else str(exc),
             )
 
     if action in {"video_generate", "video_animate"}:

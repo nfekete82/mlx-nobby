@@ -2457,7 +2457,7 @@ const imageFiles =
             const imageRoutingContext = imageFiles.length
                 ? { kind: 'image', image_count: imageFiles.length }
                 : null;
-            const fileContext = currentImageContext || historicalVideoUpload || imageRoutingContext ||
+            let fileContext = currentImageContext || historicalVideoUpload || imageRoutingContext ||
                 (explicitVideoAnimateRequest
                     ? null
                     : documentFiles[0] || priorFileAttachments[0] || null);
@@ -2466,7 +2466,7 @@ const imageFiles =
             // router. This lets the router resolve natural image follow-ups
             // from conversation context even when the deterministic edit
             // patterns do not recognize the wording.
-            const activeArtifactIdForEdit =
+            let activeArtifactIdForEdit =
                 !imageFiles.length && !currentImageContext && !historicalVideoUpload &&
                 (refersToExistingImage || explicitImageEditRequest || explicitVideoAnimateRequest || Boolean(activeWorkspaceImageArtifact))
                     ? (
@@ -2481,6 +2481,13 @@ const imageFiles =
             // The server owns execution intent; local hints only bind resources.
             const conversationContext = buildAgentConversationContext(session, userMessage);
             let resolvedTarget = null;
+            let referenceMode = null;
+            if (!imageFiles.length && activeWorkspaceImageArtifact?.semantic_operation === 'reference_generate') {
+                fileContext = { kind: 'image', artifact_id: activeWorkspaceImageArtifact.artifact_id,
+                    stored_path: activeWorkspaceImageArtifact.source_path,
+                    reference_artifact_id: activeWorkspaceImageArtifact.reference_artifact_id,
+                    reference_mode: activeWorkspaceImageArtifact.reference_mode };
+            }
 
             try {
                 const routeResponse = await fetch(
@@ -2527,7 +2534,19 @@ const imageFiles =
                 }
 
                 resolvedTarget = serverTarget;
+                if (route.intent === 'image_reference_generate') {
+                    referenceMode = route.reference_mode || activeWorkspaceImageArtifact?.reference_mode || 'same_identity';
+                    // A historical fallback is not an explicitly selected reference.
+                    activeArtifactIdForEdit = imageFiles.length ? null : activeWorkspaceImageArtifact?.artifact_id || null;
+                    if (imageFiles.length > 1) {
+                        throw new Error(gt('reference_select_source', 'Please select the reference image.'));
+                    }
+                    if (!currentImageContext && !activeArtifactIdForEdit) {
+                        throw new Error(gt('reference_source_required', 'A reference image is required for this request.'));
+                    }
+                }
             } catch (error) {
+                if (referenceMode) throw error;
                 console.warn('[MLX Router] Preflight failed; continuing in chat', error);
                 resolvedTarget = 'chat';
             }
@@ -3069,8 +3088,8 @@ const imageFiles =
                 pendingImageMessage = {
                     role: 'assistant',
                     content: gt(
-                        'image_generating',
-                        'Generating the image locally with the selected image model …'
+                        referenceMode ? 'reference_generating' : 'image_generating',
+                        referenceMode ? 'Creating an image using the reference …' : 'Generating the image locally with the selected image model …'
                     ),
                     image_generation_pending: true
                 };
@@ -3092,13 +3111,14 @@ const imageFiles =
 
             const actionPayload = {
                 prompt: prompt,
+                reference_mode: referenceMode,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
                 image_options: imageOptionsForRequest(
                     options,
                     mediaQualityKind,
                     selectedMediaFormat,
-                    resolvedTarget === 'image',
+                    resolvedTarget === 'image' || Boolean(referenceMode),
                     selectedNegativePrompt
                 ),
                 video_options: videoOptionsForRequest(
