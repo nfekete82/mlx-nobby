@@ -3879,7 +3879,9 @@ function imageJobWatcherIsCurrent(watcher) {
     return !watcher.stopped &&
         imageJobWatchers.get(watcher.jobId) === watcher &&
         MLXChatSessions.currentSession() === watcher.session &&
-        watcher.session.messages.includes(watcher.message);
+        watcher.session.messages.includes(watcher.message) &&
+        watcher.message.image_job?.id === watcher.jobId &&
+        ACTIVE_IMAGE_JOB_STATUSES.has(watcher.message.image_job?.status);
 }
 
 function stopImageJobWatcher(watcher) {
@@ -3991,6 +3993,7 @@ function watchImageJob(session, message) {
             return;
         }
 
+        const expectedJob = message.image_job;
         try {
             const response = await fetch(
                 '/api/mlx/image-jobs/' +
@@ -3998,6 +4001,10 @@ function watchImageJob(session, message) {
             );
             if (!imageJobWatcherIsCurrent(watcher)) {
                 stopImageJobWatcher(watcher);
+                return;
+            }
+            if (message.image_job !== expectedJob) {
+                scheduleImageJobPoll(watcher, poll);
                 return;
             }
             if (!response.ok) {
@@ -4018,11 +4025,19 @@ function watchImageJob(session, message) {
                 stopImageJobWatcher(watcher);
                 return;
             }
+            if (message.image_job !== expectedJob) {
+                scheduleImageJobPoll(watcher, poll);
+                return;
+            }
+            const selected = session.workspace?.active_artifact_id;
             const terminal = updateImageJobMessage(
                 session,
                 message,
                 toolResult
             );
+            if (selected != null && message.image_variant_group_id) {
+                session.workspace.active_artifact_id = selected;
+            }
             failures = 0;
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderMessages({
@@ -4036,6 +4051,10 @@ function watchImageJob(session, message) {
         } catch (error) {
             if (!imageJobWatcherIsCurrent(watcher)) {
                 stopImageJobWatcher(watcher);
+                return;
+            }
+            if (message.image_job !== expectedJob) {
+                scheduleImageJobPoll(watcher, poll);
                 return;
             }
             failures += 1;

@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20261002-image-reference';
+    const SCRIPT_VERSION = '20261002-gallery-final';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
     const PREWARM_TTL_MS = 60 * 1000;
@@ -298,17 +298,19 @@
 
         const session = currentSession();
         const count = normalizeImageCount(picker.select.value);
-        if (!session || count <= 1) return;
+        if (!session) return;
 
         const key = requestKey(session);
         if (!key) return;
+        if (count <= 1) { pendingRequests.delete(key); return; }
 
         pendingRequests.set(key, {
             baselineLength: Array.isArray(session.messages)
                 ? session.messages.length
                 : 0,
             count,
-            settings: selectedImageBatchSettings(),
+            session,
+            revision: Number(session.revision) || 0,
             createdAt: Date.now(),
             expanding: false
         });
@@ -341,40 +343,12 @@
         ) || null;
     }
 
-    async function generateAdditionalImages(
-        artifact,
-        session,
-        additionalCount,
-        batchSettings = null
-    ) {
-        const regenerate =
-            window.MLXImageRegenerate?.regenerateImageArtifact;
-        if (typeof regenerate !== 'function') return [];
-
-        const target = Math.max(
-            0,
-            Math.min(MAX_IMAGE_COUNT - 1, Number(additionalCount) || 0)
-        );
-        const extras = [];
-        const regenerationArtifact =
-            applyImageBatchSettings(artifact, batchSettings);
-
-        for (let index = 0; index < target; index += 1) {
-            const before = Array.isArray(session.messages)
-                ? session.messages.length
-                : 0;
-
-            await regenerate(regenerationArtifact);
-
-            const added = regeneratedMessageForArtifact(
-                session.messages.slice(before),
-                regenerationArtifact
-            );
-            if (!added) break;
-            extras.push(added);
-        }
-
-        return extras;
+    async function generateAdditionalImages(artifact, session, additionalCount, firstMessage = null, isCurrent = null) {
+        const submit = window.MLXImageRegenerate?.submitVariantBatch;
+        if (typeof submit !== 'function') return [];
+        return await submit(artifact, normalizeImageCount(Number(additionalCount) + 1), {
+            includeBase: true, firstMessage, isCurrent
+        }) || [];
     }
 
     async function maybeExpandActiveBatch() {
@@ -389,6 +363,9 @@
         const key = requestKey(session);
         const request = pendingRequests.get(key);
         if (!session || !request || request.expanding) return false;
+        const isCurrent = () => currentSession() === session && request.session === session &&
+            pendingRequests.get(key) === request && (Number(session.revision) || 0) === request.revision;
+        if (!isCurrent()) return false;
 
         const firstMessage = firstImageMessageAfter(
             session,
@@ -412,8 +389,10 @@
                 artifact,
                 session,
                 request.count - 1,
-                request.settings
+                firstMessage,
+                isCurrent
             );
+            if (!isCurrent()) return false;
 
             const groupId = mergeInitialImageWithGeneratedVariants(
                 firstMessage,
@@ -436,7 +415,7 @@
             console.warn('[image-count] Image batch expansion failed:', error);
             return false;
         } finally {
-            pendingRequests.delete(key);
+            if (pendingRequests.get(key) === request) pendingRequests.delete(key);
         }
     }
 
@@ -547,6 +526,7 @@
             applyImageBatchSettings,
             artifactForMessage,
             firstImageMessageAfter,
+            generateAdditionalImages,
             isInitialImageMessage,
             latestImagePrompt,
             mergeInitialImageWithGeneratedVariants,

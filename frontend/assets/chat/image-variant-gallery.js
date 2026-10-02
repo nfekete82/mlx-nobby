@@ -2,7 +2,7 @@
 
 (() => {
     const CSS_ID = 'mlx-image-variant-gallery-css';
-    const SCRIPT_VERSION = '20261002-image-reference';
+    const SCRIPT_VERSION = '20261002-gallery-final';
     const ACTIVE_STATUSES = new Set([
         'queued',
         'loading',
@@ -23,9 +23,13 @@
         download: 'Download',
         progress: '{percent}% · Step {current}/{total}',
         progress_percent: '{percent}%',
-        loading: 'Starting …'
+        loading: 'Starting …',
+        retry: 'Retry missing variants',
+        cancel: 'Cancel variants',
+        unavailable: 'Variants are unavailable for this image. Generate a new image first.'
     };
 
+    const checkedGroups = new Set();
     let dictionary = {};
     let observer = null;
     let collapsing = false;
@@ -87,7 +91,7 @@
         });
 
         return Array.from(groups.values())
-            .filter(group => group.items.length >= 2)
+            .filter(group => group.items.length >= 1)
             .map(group => ({
                 ...group,
                 items: group.items.sort((left, right) => {
@@ -381,6 +385,46 @@
         }
         gallery.appendChild(grid);
 
+        const failed = group.items.some(item =>
+            ['failed', 'cancelled'].includes(item.message.image_job?.status) ||
+            (item.message.image_job?.status === 'completed' && !artifactForMessage(item.message)));
+        const active = group.items.some(item => ACTIVE_STATUSES.has(item.message.image_job?.status));
+        const checkKey = session.id + ':' + (Number(session.revision) || 0) + ':' + group.id;
+        if (!active && !checkedGroups.has(checkKey) && /^[a-f0-9]{24}$/.test(group.id) &&
+            window.MLXImageRegenerate?.refreshImageVariants) {
+            checkedGroups.add(checkKey);
+            window.MLXImageRegenerate.refreshImageVariants(group.id).catch(() => {});
+        }
+        if (active && group.items.some(item => item.message.image_variant_base_job_id)) {
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'message-action-btn';
+            cancel.textContent = t('cancel');
+            cancel.addEventListener('click', async () => {
+                cancel.disabled = true;
+                try { await window.MLXImageRegenerate?.cancelImageVariants?.(group.id); }
+                finally { if (cancel.isConnected) cancel.disabled = false; }
+            });
+            gallery.appendChild(cancel);
+        }
+        if (failed && !active) {
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'message-action-btn';
+            retry.textContent = t('retry');
+            retry.disabled = !group.items.some(item => /^[a-f0-9]{24}$/.test(String(item.message.image_variant_base_job_id || '')));
+            if (retry.disabled) retry.title = t('unavailable');
+            retry.addEventListener('click', async () => {
+                retry.disabled = true;
+                try {
+                    await window.MLXImageRegenerate?.retryImageVariants?.(group.id);
+                } finally {
+                    retry.disabled = false;
+                }
+            });
+            gallery.appendChild(retry);
+        }
+
         const sourceArtifact = group.items
             .map(item => artifactForMessage(item.message))
             .find(Boolean);
@@ -391,12 +435,17 @@
             more.type = 'button';
             more.className = 'message-action-btn';
             more.textContent = t('more', { count: group.count });
+            more.disabled = active || !window.MLXImageRegenerate?.variantSourceAvailable?.(sourceArtifact);
+            if (!active && more.disabled) more.title = t('unavailable');
             more.addEventListener('click', async () => {
                 more.disabled = true;
                 const original = more.textContent;
                 more.textContent = t('loading');
-                const started = await window.MLXImageRegenerate
-                    ?.generateImageVariants?.(sourceArtifact, group.count);
+                let started = false;
+                try {
+                    started = await window.MLXImageRegenerate
+                        ?.generateImageVariants?.(sourceArtifact, group.count);
+                } catch (_error) {}
                 if (!started && more.isConnected) {
                     more.disabled = false;
                     more.textContent = original;
@@ -499,6 +548,7 @@
         install,
         __test: {
             artifactForMessage,
+            buildGalleryArticle,
             groupVariantMessages,
             imageProgress,
             statusText
