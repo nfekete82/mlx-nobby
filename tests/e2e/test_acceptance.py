@@ -237,12 +237,15 @@ def test_settings_models_runtime_storage_downloads(ui):
     page.get_by_role('button', name='Settings', exact=True).click()
     page.locator('button[data-organizer-section="models"]').click()
     page.locator('[data-organizer-model-tab="runtime"]').click()
+    # Selecting the tab can display cached data while its refresh is still in flight.
+    # Wait for the production loading contract before clicking replaceable details.
+    expect(page.locator('#modelConsoleContent')).to_have_attribute('aria-busy', 'false')
     expect(page.locator('#modelConsoleContent')).to_contain_text('Qwen')
     details = page.locator('#modelConsoleContent details').first
     expect(details).to_be_visible()
     assert not details.evaluate('(d) => d.open')
     details.locator('summary').click()
-    assert details.evaluate('(d) => d.open')
+    expect(details).to_have_attribute('open', '')
     page.locator('[data-organizer-model-tab="storage"]').click()
     expect(page.locator('#modelConsoleContent')).to_contain_text('64')
     page.locator('[data-organizer-model-tab="downloads"]').click()
