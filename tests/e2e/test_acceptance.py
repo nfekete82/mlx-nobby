@@ -232,13 +232,12 @@ def test_video_cancel_stops_polling_and_retains_revision(ui):
 
 
 def test_settings_models_runtime_storage_downloads(ui):
-    page, _, _ = ui
+    page, agent, _ = ui
+    page.clock.install()
     open_sidebar(page)
     page.get_by_role('button', name='Settings', exact=True).click()
     page.locator('button[data-organizer-section="models"]').click()
     page.locator('[data-organizer-model-tab="runtime"]').click()
-    # Selecting the tab can display cached data while its refresh is still in flight.
-    # Wait for the production loading contract before clicking replaceable details.
     expect(page.locator('#modelConsoleContent')).to_have_attribute('aria-busy', 'false')
     expect(page.locator('#modelConsoleContent')).to_contain_text('Qwen')
     details = page.locator('#modelConsoleContent details').first
@@ -246,6 +245,29 @@ def test_settings_models_runtime_storage_downloads(ui):
     assert not details.evaluate('(d) => d.open')
     details.locator('summary').click()
     expect(details).to_have_attribute('open', '')
+    details.locator('summary').click()
+    assert not details.evaluate('(d) => d.open')
+    # Keep the real downstream response pending while the user interacts.
+    for opened, pid, periodic in [(True, 2345, False), (False, 3456, False), (True, 4567, True)]:
+        agent.model_system_entered.clear()
+        agent.model_system_gate.clear()
+        agent.model_pid = pid
+        try:
+            if periodic:
+                page.clock.run_for(15000)
+            else:
+                page.evaluate('void window.MLXModelConsole.load({force: true})')
+            assert agent.model_system_entered.wait(5), 'Runtime refresh did not reach Agent'
+            expect(page.locator('#modelConsoleContent')).to_have_attribute('aria-busy', 'true')
+            expect(details).to_be_visible()
+            if details.evaluate('(d) => d.open') is not opened:
+                details.locator('summary').click()
+            assert details.evaluate('(d) => d.open') is opened
+        finally:
+            agent.model_system_gate.set()
+        expect(page.locator('#modelConsoleContent')).to_contain_text(str(pid))
+        assert details.evaluate('(d) => d.open') is opened
+        expect(page.locator('#modelConsoleContent')).to_have_attribute('aria-busy', 'false')
     page.locator('[data-organizer-model-tab="storage"]').click()
     expect(page.locator('#modelConsoleContent')).to_contain_text('64')
     page.locator('[data-organizer-model-tab="downloads"]').click()
