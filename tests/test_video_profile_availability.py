@@ -90,3 +90,14 @@ def test_launchd_reinstall_preserves_adapter_and_explicit_empty_disables():
             values = plistlib.loads(rendered.read_bytes())['EnvironmentVariables']
             assert values['LTX_MLX_UNCENSORED_LORA'] == expected
             assert values['LTX_MLX_UNCENSORED_LORA_STRENGTH'] == '0.8'
+
+
+def test_chat_shows_friendly_preflight_message_with_optional_technical_details():
+    detail = {'code': 'video_profile_unavailable', 'message': 'Uncensored is not configured',
+              'technical_detail': 'LTX_MLX_UNCENSORED_LORA missing'}
+    with mock.patch.object(agent, '_start_chat_video_job', side_effect=HTTPException(422, detail)):
+        result = agent.run_chat_action(agent.ChatActionRequest(
+            prompt='Create a video of a red ball', resolved_target='video', video_options={'profile': 'uncensored'}))
+    assert result['status'] == 'failed'
+    assert result['error'] == detail['message']
+    assert result['data']['profile_availability'] == detail
