@@ -56,6 +56,7 @@ def web(tmp_path_factory):
         finally:
             agent.speech_gate.set()
             agent.stream_gate.set()
+            agent.model_system_gate.set()
             process.terminate()
             try:
                 process.wait(timeout=5)
@@ -135,3 +136,4 @@ def ui(request, browser, web):
             artifact.rmdir()
         agent.speech_gate.set()
         agent.stream_gate.set()
+        agent.model_system_gate.set()

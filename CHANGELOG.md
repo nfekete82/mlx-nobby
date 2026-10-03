@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve Model Runtime technical-detail state during background refreshes.
+
 - Added local real-runtime acceptance checks for chat, speech, image and video generation/playback.
 
 - Added browser end-to-end regression coverage for chat, speech, image and video workflows.
