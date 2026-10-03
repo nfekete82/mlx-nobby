@@ -145,6 +145,8 @@ dist/
 htmlcov/
 .coverage*
 node_modules/
+test-results/
+playwright-report/
 coverage/
 .config/
 # Deliberate public image assets belong here, after privacy review.

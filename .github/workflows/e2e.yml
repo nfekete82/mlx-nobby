@@ -1,0 +1,38 @@
+name: Browser acceptance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install CPU-only test dependencies
+        run: |
+          python -m pip install -r requirements/test.txt
+          python -m pip check
+          python -m playwright install --with-deps chromium --only-shell
+      - name: Browser acceptance (isolated production app and fixture Agent)
+        run: MLX_TEST_PYTHON=$(command -v python) ./scripts/mlx test-e2e
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance-failures
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

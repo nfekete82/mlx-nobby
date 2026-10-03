@@ -5,3 +5,4 @@ httpx==0.28.1
 pillow==12.3.0
 coverage==7.10.7
 pytest==9.1.1
+playwright==1.63.0
