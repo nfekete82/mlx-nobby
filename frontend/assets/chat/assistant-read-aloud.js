@@ -186,11 +186,35 @@
     }
 
     function setStatus(state, text, isError = false) {
+        state.statusText = String(text || '');
+        state.statusError = Boolean(isError);
         const status = statusNode(state.article);
         if (!status) return;
         status.hidden = !text;
         status.classList.toggle('is-error', Boolean(isError));
         status.textContent = String(text || '');
+    }
+
+    function restoreMessage(article) {
+        const state = activeState;
+        if (!state || state.cancelled || !state.sessionId ||
+            article.dataset.speechSessionId !== state.sessionId ||
+            article.dataset.speechMessageIndex !== state.messageIndex ||
+            extractAssistantText(article) !== state.text) return;
+
+        const button = article.querySelector('.mlx-message-speech-button');
+        if (!button) return;
+        const title = state.button.title;
+        state.article = article;
+        state.button = button;
+        setIcon(state, state.phase);
+        button.classList.toggle('is-generating', state.phase === 'generating');
+        if (state.phase === 'generating') button.setAttribute('aria-busy', 'true');
+        else button.removeAttribute('aria-busy');
+        button.disabled = false;
+        button.title = title;
+        button.setAttribute('aria-label', title);
+        setStatus(state, state.statusText, state.statusError);
     }
 
     function resetButton(state) {
@@ -419,6 +443,9 @@
         const state = {
             article,
             button,
+            sessionId: article.dataset?.speechSessionId,
+            messageIndex: article.dataset?.speechMessageIndex,
+            text,
             chunks,
             language: article.lang || language(),
             current: 0,
@@ -455,10 +482,10 @@
 
                 const voice = voiceSettings();
                 setIcon(state, 'generating');
-                button.classList.add('is-generating');
-                button.setAttribute('aria-busy', 'true');
-                button.title = t('stop');
-                button.setAttribute('aria-label', button.title);
+                state.button.classList.add('is-generating');
+                state.button.setAttribute('aria-busy', 'true');
+                state.button.title = t('stop');
+                state.button.setAttribute('aria-label', state.button.title);
                 setStatus(state, t('generating', {
                     voice: voice.label,
                     current: state.current,
@@ -468,8 +495,8 @@
                 const blob = await requestSpeech(state, chunks[index]);
                 if (state.cancelled || activeState !== state) return;
 
-                button.classList.remove('is-generating');
-                button.removeAttribute('aria-busy');
+                state.button.classList.remove('is-generating');
+                state.button.removeAttribute('aria-busy');
                 const completed = await playBlob(
                     state,
                     blob,
@@ -516,7 +543,7 @@
         start(button).catch(error => {
             // Pause/resume runs outside the generation loop's try/catch.
             const state = activeState;
-            if (state !== previousState || state?.button !== button) return;
+            if (!state || state !== previousState) return;
             stopState(state, { clearStatus: false });
             setStatus(state, t('failed'), true);
             console.error('[assistant-read-aloud]', error);
@@ -539,6 +566,7 @@
 
     window.MLXAssistantReadAloud = {
         stop: () => stopState(activeState),
+        restoreMessage,
         __test: {
             extractAssistantText,
             normalizeVisibleText,

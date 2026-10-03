@@ -2728,6 +2728,10 @@ function renderMessages(options = {}) {
 
             messagesInner.appendChild(article);
 
+            article.dataset.speechSessionId = String(session.id);
+            article.dataset.speechMessageIndex = String(index);
+            window.MLXAssistantReadAloud?.restoreMessage(article);
+
             continue;
 
         } else {
