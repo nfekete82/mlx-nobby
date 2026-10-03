@@ -354,9 +354,16 @@ Video profile `standard` is the default and uses no request LoRA. The optional
 `uncensored` profile uses a local adapter configured exclusively on the server
 with `LTX_MLX_UNCENSORED_LORA` and `LTX_MLX_UNCENSORED_LORA_STRENGTH` (default
 `1.0`, finite number). Export these variables when running
-`scripts/install-launchd.sh` to include them in the video LaunchAgent; supply
-them again when reinstalling its configuration. The worker inherits the service
-environment. Missing or invalid configuration fails without automatic fallback.
+`scripts/install-launchd.sh` to include them in the video LaunchAgent. Subsequent
+installs preserve these values from `~/Library/LaunchAgents/de.nobby.mlx-video.plist`
+unless explicitly overridden in the installer's environment. Export an empty
+`LTX_MLX_UNCENSORED_LORA` to disable the adapter. Docker `.env` does not configure
+native launchd services. The worker inherits the service environment.
+The video model API reports optional profile availability using a lightweight
+local file/readability check; it never loads or downloads adapters for this check.
+Missing or invalid configuration rejects explicit Uncensored requests before
+queueing or runtime acquisition, without automatic fallback. New video requests
+start with Standard; the dialog disables Uncensored when it is not configured.
 Both text-to-video and image-to-video use the existing LTX-MLX model and runtime.
 
 The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed

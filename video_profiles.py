@@ -36,6 +36,34 @@ def request_loras(profile="standard"):
     return [(str(path), strength)]
 
 
+def profile_capabilities(model):
+    """Check optional adapters offline without importing MLX or loading weights."""
+    reason = None
+    try:
+        if model.get("provider") != "ltx-mlx":
+            raise ValueError("uncensored benötigt den LTX-MLX-Provider")
+        request_loras("uncensored")
+    except ValueError as exc:
+        reason = str(exc)
+    return {"standard_available": True, "uncensored_available": reason is None,
+            "uncensored_unavailable_reason": reason}
+
+
+def preflight_profile(profile, model):
+    validate_profile(profile)
+    if profile == "uncensored":
+        capabilities = profile_capabilities(model)
+        if not capabilities["uncensored_available"]:
+            from fastapi import HTTPException
+
+            raise HTTPException(422, {
+                "code": "video_profile_unavailable", "profile": profile,
+                "message": "Das Uncensored-Video-Profil ist nicht eingerichtet. / "
+                           "The Uncensored video profile is not configured.",
+                "technical_detail": capabilities["uncensored_unavailable_reason"],
+            })
+
+
 def prepare_uncensored_loras(loras):
     if not loras:
         return

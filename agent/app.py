@@ -9384,7 +9384,12 @@ def run_chat_action(request: ChatActionRequest):
         except HTTPException as exc:
             if exc.status_code == 409:
                 raise
-            return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc.detail))
+            detail = exc.detail
+            data = {"routing": routing}
+            if isinstance(detail, dict) and detail.get("code") == "video_profile_unavailable":
+                data["profile_availability"] = detail
+                detail = detail["message"]
+            return chat_tool_result(action, "failed", data, error=str(detail))
         except Exception as exc:
             return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc))
 

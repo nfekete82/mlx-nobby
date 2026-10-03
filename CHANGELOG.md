@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Validate optional Uncensored video profile availability before queueing jobs,
+  show unavailable profiles in the dialog, and preserve launchd adapter settings.
+
 - Simplified the Models settings information hierarchy by removing repeated
   Runtime/storage details and making model summaries context-aware.
 

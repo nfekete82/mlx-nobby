@@ -49,7 +49,7 @@ class ServiceError(RuntimeError):
     def __init__(self, status_code, detail):
         super().__init__(str(detail))
         self.status_code = int(status_code)
-        self.detail = str(detail)
+        self.detail = detail
 
 
 def _service_url(kind):
@@ -206,6 +206,15 @@ def enqueue(kind, request_payload):
     kind = _validated_kind(kind)
     if not isinstance(request_payload, dict):
         raise HTTPException(422, "Media-Job benötigt ein JSON-Objekt")
+
+    payload = request_payload.get("payload")
+    if kind == "video" and isinstance(payload, dict) and payload.get("profile") == "uncensored":
+        # Ask the service owning the adapter environment before persisting a
+        # queue job or waking the heavy-runtime scheduler.
+        try:
+            _service_request("video", "POST", "/preflight", request_payload)
+        except ServiceError as exc:
+            raise HTTPException(exc.status_code, exc.detail) from exc
 
     job_id = uuid.uuid4().hex[:24]
     now = time.time()

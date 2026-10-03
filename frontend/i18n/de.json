@@ -122,7 +122,8 @@
     "reference_source_required": "Für diese Anfrage wird ein Referenzbild benötigt.",
     "image_variants_unavailable": "Für dieses Bild sind keine Varianten verfügbar. Bitte zuerst ein neues Bild erzeugen.",
     "image_variants_display_failed": "Der Bild-Batch wurde gestartet, aber die Anzeige konnte nicht aktualisiert werden. Lade den Chat neu, um ihn wiederherzustellen.",
-    "image_variants_failed": "Die Varianten konnten nicht gestartet werden. Bitte erneut versuchen."
+    "image_variants_failed": "Die Varianten konnten nicht gestartet werden. Bitte erneut versuchen.",
+    "video_uncensored_unavailable": "Uncensored — nicht eingerichtet"
   },
   "models": {
     "unnamed": "Unbenanntes Modell",
