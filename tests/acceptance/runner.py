@@ -453,7 +453,12 @@ class Acceptance:
     def cancel_video(self):
         initial = self.start_job('video')
         job_id = initial['data']['job']['id']
-        active, _ = self.poll('video', job_id, 90, until=lambda job: bool(job.get('native_job_id')) and job['status'] not in TERMINAL)
+        active, _ = self.poll('video', job_id, 90,
+                              until=lambda job: bool(job.get('native_job_id')) and job['status'] == 'generating')
+        native_id = active['data']['job']['native_job_id']
+        native_before = self.native_json(self.args.video_url + '/jobs/' + native_id)
+        assert native_before['status'] in {'loading', 'generating'}, 'Cancel requires an active native worker'
+        assert self.native_json(self.args.video_url + '/health').get('active_generation') is True
         result = self.json('POST', f'/api/mlx/video-jobs/{job_id}/cancel', {}, timeout=40)
         cancelled, _ = self.poll('video', job_id, 60)
         assert cancelled['status'] == 'cancelled'
@@ -465,7 +470,8 @@ class Acceptance:
         stable = self.json('GET', f'/api/mlx/video-jobs/{job_id}')
         assert stable['status'] == 'cancelled' and not stable['artifacts']
         assert self.native_json(self.args.video_url + '/health').get('active_generation') is False
-        return {'cancel_2xx': True, 'native_cancelled': True, 'no_completed_result': True}
+        return {'native_active_before_cancel': True, 'cancel_2xx': True,
+                'native_cancelled': True, 'no_completed_result': True}
 
     def profiles(self):
         self.readiness('video')
