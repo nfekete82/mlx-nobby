@@ -202,7 +202,8 @@
       "stopped": "Runtime gestoppt",
       "restarted": "Runtime neu gestartet",
       "loaded": "{model} wurde geladen",
-      "loading_sentence": "{model} wird geladen."
+      "loading_sentence": "{model} wird geladen.",
+      "uptime": "Laufzeit"
     },
     "models": {
       "installed": "Installierte Modelle",
@@ -235,10 +236,12 @@
       "cache_size": "Cache-Größe",
       "free_ram": "RAM frei",
       "source": "Quelle",
-      "local_filesystem": "Lokales Dateisystem"
+      "local_filesystem": "Lokales Dateisystem",
+      "system": "System",
+      "cache_path": "Cache-Pfad"
     },
     "downloads": {
-      "title": "Downloads & Jobs",
+      "title": "Jobs",
       "tab_title": "Downloads",
       "description": "Download-Jobs der Model Console.",
       "none": "Aktuell sind keine Download-Jobs vorhanden.",
@@ -306,6 +309,26 @@
       "delete_cache_message": "Die lokal gespeicherten Hugging-Face-Dateien für „{model}“ werden dauerhaft gelöscht.",
       "delete_local_message": "„{model}“ wird dauerhaft gelöscht. Falls keine zweite lokale Kopie existiert, muss das Modell später erneut heruntergeladen werden. Der Konfigurations-Alias bleibt erhalten.",
       "remove_model_message": "„{model}“ wird aus der Konfiguration entfernt. Heruntergeladene Modelldateien bleiben erhalten."
+    },
+    "overview": {
+      "search": "Modelle durchsuchen …",
+      "filter": "Modelle filtern",
+      "all": "Alle Modelle",
+      "active_only": "Nur aktiv",
+      "vision_filter": "Vision / VLM",
+      "text_only": "Nur Text / LLM",
+      "local_filter": "Lokal",
+      "hf_filter": "Hugging Face",
+      "sort": "Modelle sortieren",
+      "active_first": "Aktiv zuerst",
+      "by_name": "Nach Name",
+      "by_alias": "Nach Alias",
+      "installed": "{count} installiert",
+      "visible": "{count} von {total} sichtbar",
+      "vision": "{count} Vision",
+      "local": "{count} lokal",
+      "active": "{count} aktiv",
+      "empty": "Keine Modelle passen zu Suche und Filter."
     }
   },
   "rendering": {

@@ -31,7 +31,10 @@ const context = {
     clearTimeout() {},
 };
 
-vm.runInNewContext(source, context, {
+const instrumented = source.replace('    window.MLXSettingsLayout = {', `
+    window.settingsTest = { setController(api) { controller = api; }, modelTab() { return activeModelTab; } };
+    window.MLXSettingsLayout = {`);
+vm.runInNewContext(instrumented, context, {
     filename: 'frontend/assets/chat/settings-layout.js',
 });
 
@@ -67,4 +70,20 @@ assert.equal(api.sectionTarget('knowledge'), 'knowledge');
 assert.equal(api.sectionTarget('models'), 'models');
 assert.equal(api.sectionTarget('automations'), 'automations');
 
-console.log('Organized settings navigation helpers passed.');
+const selections = [];
+window.settingsTest.setController({ select: value => selections.push(value) });
+window.MLXModelConsole = { setTab: value => selections.push(value) };
+for (const tab of ['models', 'runtime', 'storage', 'downloads']) {
+    api.activateModel(tab);
+    assert.equal(window.settingsTest.modelTab(), tab);
+    assert.deepEqual(selections.splice(0), ['models', tab]);
+}
+api.activateModel('invalid');
+assert.deepEqual(selections, []);
+for (const tab of ['runtime', 'storage']) {
+    context.location.pathname = '/settings/advanced/' + tab;
+    api.sync();
+    assert.equal(window.settingsTest.modelTab(), tab);
+    assert.deepEqual(selections.splice(0), ['models', tab]);
+}
+console.log('Organized settings navigation helpers and model tab switching passed.');

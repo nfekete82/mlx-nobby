@@ -158,6 +158,13 @@
         const contentCopy = document.createElement('div');
         contentCopy.className = 'settings-organizer-content-copy';
         contentTitle = document.createElement('h4');
+        contentTitle.id = 'settingsOrganizerTitle';
+        const modelConsole = settings.querySelector('#modelConsole');
+        if (modelConsole) {
+            modelConsole.removeAttribute('aria-label');
+            modelConsole.removeAttribute('data-i18n-aria-label');
+            modelConsole.setAttribute('aria-labelledby', contentTitle.id);
+        }
         contentDescription = document.createElement('p');
         contentCopy.append(contentTitle, contentDescription);
 

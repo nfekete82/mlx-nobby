@@ -202,7 +202,8 @@
       "stopped": "Runtime stopped",
       "restarted": "Runtime restarted",
       "loaded": "{model} loaded",
-      "loading_sentence": "{model} is loading."
+      "loading_sentence": "{model} is loading.",
+      "uptime": "Uptime"
     },
     "models": {
       "installed": "Installed models",
@@ -235,10 +236,12 @@
       "cache_size": "Cache size",
       "free_ram": "Free RAM",
       "source": "Source",
-      "local_filesystem": "Local file system"
+      "local_filesystem": "Local file system",
+      "system": "System",
+      "cache_path": "Cache path"
     },
     "downloads": {
-      "title": "Downloads & Jobs",
+      "title": "Jobs",
       "tab_title": "Downloads",
       "description": "Model Console download jobs.",
       "none": "There are currently no download jobs.",
@@ -306,6 +309,26 @@
       "delete_cache_message": "The locally stored Hugging Face files for “{model}” will be permanently deleted.",
       "delete_local_message": "“{model}” will be permanently deleted. If no second local copy exists, the model will need to be downloaded again later. The configuration alias will remain.",
       "remove_model_message": "“{model}” will be removed from the configuration. Downloaded model files will remain."
+    },
+    "overview": {
+      "search": "Search models …",
+      "filter": "Filter models",
+      "all": "All models",
+      "active_only": "Active only",
+      "vision_filter": "Vision / VLM",
+      "text_only": "Text / LLM only",
+      "local_filter": "Local",
+      "hf_filter": "Hugging Face",
+      "sort": "Sort models",
+      "active_first": "Active first",
+      "by_name": "By name",
+      "by_alias": "By alias",
+      "installed": "{count} installed",
+      "visible": "{count} of {total} visible",
+      "vision": "{count} Vision",
+      "local": "{count} local",
+      "active": "{count} active",
+      "empty": "No models match the current search and filter."
     }
   },
   "rendering": {

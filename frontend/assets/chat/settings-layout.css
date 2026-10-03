@@ -151,13 +151,9 @@
     display: none !important;
 }
 
-.settings-organized[data-organizer-section="models"] .model-console-header > div:first-child {
-    display: none;
-}
-
-.settings-organized[data-organizer-section="models"] .model-console-header {
+.settings-organized .model-console-header {
     justify-content: flex-end;
-    padding-top: 0;
+    padding: 0 0 12px;
 }
 
 .settings-organized .model-console-pane {

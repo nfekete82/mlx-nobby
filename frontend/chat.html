@@ -1040,16 +1040,13 @@
 
     </div>
     <div class="settings-pane model-console-pane" data-settings-pane="models" hidden>
-        <section id="modelConsole" class="model-console" aria-labelledby="modelConsoleTitle">
+        <section id="modelConsole" class="model-console" aria-label="Modelle" data-i18n-aria-label="ui.models">
             <header class="model-console-header">
-                <div>
-                    <h4 id="modelConsoleTitle" data-i18n="ui.models">Modelle</h4>
-                    <p data-i18n="ui.model_console_description">Installierte Modelle, Downloads und Modellrollen zentral verwalten.</p>
-                </div>
                 <button id="modelConsoleAdd" class="model-console-button primary" type="button" data-i18n="ui.add_model">+ Modell hinzufügen</button>
             </header>
 
             <div id="modelConsoleStatus" class="model-console-live" role="status" aria-live="polite"></div>
+            <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
             <div id="modelConsoleAssignments" class="model-console-secondary">
                 <section class="settings-card settings-model-roles">
 <h4 class="settings-group-title"
@@ -1074,7 +1071,6 @@
                 </details>
             </div>
 
-            <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
 
 
         </section>
