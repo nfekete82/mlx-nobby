@@ -45,6 +45,10 @@ class AgentFixture:
         self.speech_gate = threading.Event()
         self.stream_gate = threading.Event()
         self.stream_gate.set()
+        self.model_system_gate = threading.Event()
+        self.model_system_gate.set()
+        self.model_system_entered = threading.Event()
+        self.model_pid = 1234
         self.answer = 'Acceptance streaming complete.'
         self.terminals = 0
 
@@ -138,11 +142,15 @@ class AgentFixture:
             if request.method == 'PUT':
                 self.chats[chat_id] = payload
             return {'chat': self.chats.get(chat_id, payload)}
+        if path == '/api/system':
+            self.model_system_entered.set()
+            if not self.model_system_gate.is_set():
+                await asyncio.to_thread(self.model_system_gate.wait)
         responses = {
             '/api/status': {'online': True, 'model': 'fixture/Qwen-4-bit', 'thinking': False},
             '/api/models': {'current': 'fixture/Qwen-4-bit', 'models': [{'alias': 'fixture', 'repo': 'fixture/Qwen-4-bit', 'name': 'Fixture Qwen', 'installed': True}]},
             '/api/model-roles': {'roles': {}, 'resolved': {}},
-            '/api/system': {'mlx': {'memory_mb': 512, 'pid': 1234, 'port': 8000, 'uptime_seconds': 60}, 'system': {'total_gb': 64, 'free_percent': 80}},
+            '/api/system': {'mlx': {'memory_mb': 512, 'pid': self.model_pid, 'port': 8000, 'uptime_seconds': 60}, 'system': {'total_gb': 64, 'free_percent': 80}},
             '/api/cache': {'count': 0, 'total_size_bytes': 0, 'models': []},
             '/api/jobs': {'jobs': []}, '/api/batch': {'jobs': []},
             '/api/services/health': {'services': []},
