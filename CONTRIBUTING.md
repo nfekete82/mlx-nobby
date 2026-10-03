@@ -57,6 +57,11 @@ Validate Docker Compose:
 
     docker compose config
 
+## Releases
+
+The canonical release procedure is documented in
+[docs/RELEASING.md](docs/RELEASING.md).
+
 ## Code organization
 
 Keep `agent/app.py` focused on application composition and route wiring. New
