@@ -30,6 +30,8 @@
 
     let fetchImpl = (...args) => window.fetch(...args);
     let waitImpl = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    let loadPromise = null;
+    let refreshRequested = false;
 
     function mt(key, fallback = '', variables = {}) {
         let value = window.MLXI18n?.t(
@@ -470,7 +472,7 @@
         return row;
     }
 
-    function renderRuntime() {
+    function renderRuntime(technicalOpen = false) {
         const fragment = document.createDocumentFragment();
         const section = node('section', 'model-console-runtime');
         fragment.appendChild(renderHero());
@@ -520,6 +522,7 @@
         fragment.appendChild(section);
 
         const technical = node('details', 'model-console-technical');
+        technical.open = technicalOpen;
         technical.appendChild(node('summary', '', mt('dialog.technical_details', 'Technical details')));
         const technicalList = node('dl', 'model-console-definitions');
         const repo = model?.repo || state.status?.model;
@@ -834,6 +837,11 @@
         const header = root.querySelector('.model-console-header');
         if (header) header.hidden = state.activeTab !== 'models';
         if (addButton) addButton.hidden = state.activeTab !== 'models';
+        // Read the native state before replacing DOM, including a toggle whose
+        // asynchronous event has not fired yet. A different tab starts closed.
+        const technicalOpen = state.activeTab === 'runtime'
+            && content.dataset.activeModelTab === 'runtime'
+            && Boolean(content.querySelector('.model-console-technical')?.open);
         content.dataset.activeModelTab = state.activeTab;
         content.innerHTML = '';
         const errorBanner = renderErrorBanner();
@@ -842,7 +850,7 @@
             renderSkeleton();
             return;
         }
-        if (state.activeTab === 'runtime') content.appendChild(renderRuntime());
+        if (state.activeTab === 'runtime') content.appendChild(renderRuntime(technicalOpen));
         else if (state.activeTab === 'storage') content.appendChild(renderStorage());
         else if (state.activeTab === 'downloads') content.appendChild(renderDownloads());
         else content.appendChild(renderModels());
@@ -850,9 +858,17 @@
         if (assignments) assignments.hidden = state.activeTab !== 'models';
     }
 
-    async function load(options = {}) {
-        if (state.loading && !options.force) return;
+    function load(options = {}) {
+        if (loadPromise) {
+            // Mutations may request data newer than an already pending request.
+            // Coalesce them into a trailing refresh, never a parallel load.
+            if (options.force) refreshRequested = true;
+            return loadPromise;
+        }
         state.loading = true;
+        clearTimeout(state.refreshTimer);
+        state.refreshTimer = null;
+        content.setAttribute('aria-busy', 'true');
         if (!state.loaded) renderSkeleton();
         const endpoints = [
             ['aliases', '/api/mlx/aliases'],
@@ -861,22 +877,28 @@
             ['cache', '/api/mlx/cache'],
             ['jobs', '/api/mlx/jobs'],
         ];
-        const results = await Promise.allSettled(endpoints.map(item => requestJson(item[1])));
-        const errors = [];
-        results.forEach((result, index) => {
-            const key = endpoints[index][0];
-            if (result.status === 'fulfilled') {
-                if (key === 'jobs') state.jobs = Array.isArray(result.value.jobs) ? result.value.jobs : [];
-                else state[key] = result.value;
-            } else {
-                errors.push(cleanTechnicalError(result.reason));
-            }
-        });
-        state.error = errors.length ? errors[0] : null;
-        state.loading = false;
-        state.loaded = true;
-        render();
-        scheduleRefresh();
+        loadPromise = (async () => {
+            do {
+                refreshRequested = false;
+                const results = await Promise.allSettled(endpoints.map(item => requestJson(item[1])));
+                const errors = [];
+                results.forEach((result, index) => {
+                    const key = endpoints[index][0];
+                    if (result.status === 'fulfilled') {
+                        if (key === 'jobs') state.jobs = Array.isArray(result.value.jobs) ? result.value.jobs : [];
+                        else state[key] = result.value;
+                    } else {
+                        errors.push(cleanTechnicalError(result.reason));
+                    }
+                });
+                state.error = errors.length ? errors[0] : null;
+            } while (refreshRequested);
+            state.loading = false;
+            state.loaded = true;
+            render();
+            scheduleRefresh();
+        })().finally(() => { loadPromise = null; });
+        return loadPromise;
     }
 
     function scheduleRefresh(delay) {
@@ -1380,6 +1402,7 @@
     }
 
     function open() {
+        if (state.visible) return;
         state.visible = true;
         if (!state.loaded) load();
         else {

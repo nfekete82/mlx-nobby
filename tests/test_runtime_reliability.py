@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 import time
 
 import pytest
@@ -383,21 +384,55 @@ def test_vision_after_output_uses_normal_stall_deadline(monkeypatch):
 
 def test_vision_factory_does_not_block_heartbeat_or_watchdog(monkeypatch):
     recoveries = _watchdog_setup(monkeypatch)
+    # This test verifies coordination, not expiry of the artificial 200ms budget.
+    # Dedicated tests above retain the short absolute-prefill/stall deadlines.
+    monkeypatch.setattr(web_routes, "VISION_FIRST_BYTE_TIMEOUT", 1.0)
+    factory_entered = threading.Event()
+    release_factory = threading.Event()
+    event_loop_thread = threading.get_ident()
+    closed = []
 
     async def answer():
-        yield b'data: {"type":"content","text":"Image"}\n\n'
+        try:
+            yield b'data: {"type":"content","text":"Image"}\n\n'
+        finally:
+            closed.append(True)
 
     factory = _StreamFactory([answer])
 
     def slow_factory(request):
-        time.sleep(0.08)  # Simulate synchronous context/routing HTTP calls.
+        assert threading.get_ident() != event_loop_thread
+        factory_entered.set()
+        assert release_factory.wait(timeout=5), "Test did not release the factory"
         return factory(request)
 
-    body = asyncio.run(_collect(web_routes._reliable_stream(
-        _vision_request(), stream_factory=slow_factory, agent_url="http://agent",
-    )))
-    assert body.count(web_routes.VISION_HEARTBEAT) >= 2
+    async def drive():
+        stream = web_routes._reliable_stream(
+            _vision_request(), stream_factory=slow_factory, agent_url="http://agent",
+        )
+        try:
+            assert await anext(stream) == web_routes.VISION_HEARTBEAT
+            # The initial heartbeat precedes worker dispatch. Drive the real stream
+            # until entry, then require another heartbeat while the worker is held.
+            while not factory_entered.is_set():
+                assert await anext(stream) == web_routes.VISION_HEARTBEAT
+            assert await anext(stream) == web_routes.VISION_HEARTBEAT
+            assert not release_factory.is_set()
+            assert factory.calls == 0
+            assert closed == []
+            assert recoveries == []
+
+            release_factory.set()
+            return await _collect(stream)
+        finally:
+            release_factory.set()  # Also unblock executor shutdown on assertion failure.
+            await stream.aclose()
+
+    body = asyncio.run(drive())
     assert b'"text":"Image"' in body
+    assert b'event: error' not in body
+    assert factory.calls == 1
+    assert closed == [True]
     assert recoveries == []
 
 
