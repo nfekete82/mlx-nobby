@@ -1753,6 +1753,12 @@ Hilfe:
   mlx test-e2e
       Deterministische Chromium-Abnahme ohne Modelle (Testumgebung erforderlich)
 
+  mlx test-real [--full]
+      Lokale reale Medien-Abnahme ohne Setup, Downloads oder Modellwechsel
+
+  mlx test-release
+      Standardprüfungen, Browser-Abnahme und reale lokale Abnahme
+
   mlx
   mlx help
   mlx --help
@@ -1767,13 +1773,18 @@ HELP
 # ============================================================
 
 # CPU-only acceptance also works on CI without a local runtime config.
-if [ "${1:-}" = "test-e2e" ]; then
+if [[ "${1:-}" = test-e2e || "${1:-}" = test-real || "${1:-}" = test-release ]]; then
+    test_command="$1"
     shift
     test_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     test_python="${MLX_TEST_PYTHON:-$test_repo/test-venv/bin/python}"
     [ -x "$test_python" ] || test_python=python3
     cd "$test_repo" || exit 1
-    exec "$test_python" -m pytest --e2e tests/e2e -q "$@"
+    case "$test_command" in
+        test-e2e) exec "$test_python" -m pytest --e2e tests/e2e -q "$@" ;;
+        test-real) exec "$test_python" tests/acceptance/runner.py "$@" ;;
+        test-release) exec "$test_python" tests/acceptance/release.py "$@" ;;
+    esac
 fi
 
 load_config

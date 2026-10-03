@@ -147,6 +147,7 @@ htmlcov/
 node_modules/
 test-results/
 playwright-report/
+artifacts/acceptance/
 coverage/
 .config/
 # Deliberate public image assets belong here, after privacy review.
