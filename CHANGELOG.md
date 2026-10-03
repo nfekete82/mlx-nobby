@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.6.2
+
 - Preserve read-aloud loading, playback and pause state when the same chat refreshes.
 
 - Preserve Model Runtime technical-detail state during background refreshes.
@@ -18,6 +20,14 @@
 
 - Simplified the Models settings information hierarchy by removing repeated
   Runtime/storage details and making model summaries context-aware.
+
+- Isolate real browser acceptance history so tests cannot load, migrate or
+  modify user chats.
+
+- Make the Vision watchdog regression test deterministic without changing
+  runtime deadlines.
+
+- Document the canonical release procedure and provide an automated release gate.
 
 ## v1.6.1
 
