@@ -65,8 +65,69 @@ commands, not needed by deterministic acceptance. Production ports are 8090
 8020 (embeddings), 8040 (vision), and 11234 (shared endpoint). Browser acceptance
 allocates separate ports and only terminates its own processes.
 
-## Real runtime and release acceptance
+## Local real runtime acceptance
 
-Real model inference and actual browser playback require a separate local Mac
-acceptance suite. Browser CI alone does not approve a release. The real-runtime
-commands and release gate will be added after the browser acceptance PR merges.
+```sh
+./scripts/mlx test-real
+./scripts/mlx test-real --full   # optional one-scene Short, at least 5 seconds / 540p
+./scripts/mlx test-release
+```
+
+The real suite requires Apple Silicon macOS, an already running production web
+app/Agent and configured local models. It uses the existing web APIs, native
+health endpoints and Chromium from browser acceptance. It never starts/stops
+services, selects/downloads models, installs a runner, changes credentials,
+clears caches or performs a global reset. The Chat role must already use the
+loaded model. The existing production Runtime Coordinator may release idle
+weights for media and restore chat afterwards; acceptance checks that the
+original chat model is online again.
+
+Preflight records service/capability readiness and refuses to run while foreign
+media jobs are active. Unavailable optional services/models are SKIP; a service
+advertised online that fails its probe is FAIL. Features advertised available
+must pass their real requests. Missing browser installation is FAIL; missing
+FFmpeg/ffprobe skips audio/video generation before creating expensive jobs.
+
+Each run uses `acceptance-<UTC timestamp>-<random>` for its chat ID, title, job
+run IDs and Shorts draft title. Only those chats/drafts and jobs are cleaned up.
+The browser uses a disposable profile with the test session selected. Existing
+history that would trigger production's legacy empty-chat deletion blocks the
+browser check, so acceptance does not delete that user data. Native terminal
+queue/job/video records follow existing service retention; no unsupported file
+or queue deletion is performed. Generated media copies and diagnostics remain
+under `artifacts/acceptance/<run-id>/`, excluded from Git.
+
+Default checks cover Chat SSE with a marker and terminal `done`, stateless
+Gateway completion and usage, real TTS generation/decoding, browser read-aloud
+with native Audio/play/pause/resume/end, a seeded small image using the already
+configured image provider, image browser preview, a standard 2-second video
+Preview, native Chromium video playback, cancellation after native dispatch,
+Uncensored capability/rejection without generation, and Shorts draft/read/preflight.
+Only technical media quality is asserted: decoding, nonzero duration/dimensions,
+image nonuniformity, video frame rate/frames, MIME, bytes and actual playback time.
+Real playback never replaces `HTMLMediaElement.play()` or `pause()`.
+
+The optional `--full` Short uses one 5-second scene at the cheapest existing
+Shorts quality (540p); Shorts does not support the 2-second Preview contract.
+The default release gate therefore skips full Shorts. No Uncensored output is
+generated, including when its adapter becomes available.
+
+Timeout options are `--chat-timeout` (90 seconds), `--tts-timeout` (90),
+`--image-timeout` (300) and `--video-timeout` (360). HTTP calls, media probes,
+browser waits, cancellation and runtime restoration also have bounded waits.
+A media timeout names its service/job and last status, phase and progress.
+`--url`, `--speech-url` and `--video-url` support alternate HTTP loopback ports;
+remote hosts and embedded credentials are rejected.
+
+The final table and `summary.json`/`summary.txt` list PASS/FAIL/SKIP, durations
+and reasons. Browser traces/screenshots, console/network logs, media copies and
+job polling snapshots and before/after service-state snapshots support diagnosis.
+An actual failure returns nonzero;
+all PASS or explicitly permitted SKIP returns zero. A failed generation keeps
+the overall run failed even if its dependent browser check skips.
+
+`test-release` runs each layer once: existing Python/subtests, JavaScript,
+syntax/JSON/i18n/shell/plist/help/docs, pip, Compose/Docker build, diff, deterministic
+browser acceptance and real acceptance. `--full` is an explicit opt-in there
+also. The complete CI and both acceptance commands must additionally pass on
+final main before `READY_FOR_V1_6_2=YES`; these commands never tag or release.

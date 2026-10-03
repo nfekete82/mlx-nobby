@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added local real-runtime acceptance checks for chat, speech, image and video generation/playback.
+
 - Added browser end-to-end regression coverage for chat, speech, image and video workflows.
 
 - Fix chat read-aloud loading and playback state, remove competing speech
