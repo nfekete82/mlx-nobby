@@ -11473,8 +11473,24 @@ def runtime_chat_stream(request: RuntimeChatRequest):
 
             self._closed = True
             cancel_event.set()
+            # Wake a cancelled __anext__ worker blocked in queue.get().
+            while True:
+                try:
+                    event_queue.get_nowait()
+                except queue.Empty:
+                    break
+            event_queue.put_nowait(sentinel)
 
-    return StreamingResponse(
+    class RuntimeChatStreamingResponse(StreamingResponse):
+        async def __call__(self, scope, receive, send):
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                # Starlette does not close custom iterators on disconnect.
+                # Signal the producer so backpressure cannot retain its lease.
+                await self.body_iterator.aclose()
+
+    return RuntimeChatStreamingResponse(
         CancelAwareAsyncStream(),
         media_type="text/event-stream",
         headers={

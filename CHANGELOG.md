@@ -4,6 +4,8 @@
 
 ## v1.6.2
 
+- Fix chat stream disconnect cleanup so an abandoned response cannot retain the shared runtime lease and block subsequent chat or gateway requests.
+
 - Preserve read-aloud loading, playback and pause state when the same chat refreshes.
 
 - Preserve Model Runtime technical-detail state during background refreshes.

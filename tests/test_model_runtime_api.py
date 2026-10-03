@@ -812,6 +812,92 @@ class ModelRuntimeApiTests(unittest.TestCase):
 
 
 
+    def test_http_disconnect_releases_backpressured_chat_worker_and_lease(self):
+        self._assert_http_disconnect_releases_runtime("2.3")
+
+    def test_send_disconnect_releases_backpressured_chat_worker_and_lease(self):
+        self._assert_http_disconnect_releases_runtime("2.4")
+
+    def _assert_http_disconnect_releases_runtime(self, spec_version):
+        import threading
+        from starlette.requests import ClientDisconnect
+
+        before = {thread.ident for thread in threading.enumerate()}
+        runtime = {"resolved": {"repo": "owner/chat-model", "alias": "chat", "backend": "mlx_lm"}}
+
+        class FastUpstream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def __iter__(self):
+                for _ in range(10000):
+                    yield b'data: {"choices":[{"delta":{"content":"x"}}]}\n\n'
+                yield b'data: [DONE]\n\n'
+
+        lease_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(lease_directory.cleanup)
+        lease_path = Path(lease_directory.name)
+        def lease(cancel_event=None):
+            return agent_app.runtime_coordinator.runtime_lease(
+                cancel_event, lock_path=lease_path / "lock",
+                state_dir=lease_path / "state", workload="chat",
+            )
+        request = agent_app.RuntimeChatRequest(
+            messages=[{"role": "user", "content": "hello"}],
+            trace_id="trace-http-disconnect-release",
+        )
+        with mock.patch.object(agent_app, "ensure_model_for_role", return_value=runtime), \
+                mock.patch.object(agent_app, "load_config", return_value={"PORT": 8000}), \
+                mock.patch.object(agent_app.urllib.request, "urlopen", return_value=FastUpstream()), \
+                mock.patch.object(agent_app.runtime_coordinator, "chat_runtime", side_effect=lease):
+            response = agent_app.runtime_chat_stream(request)
+            workers = [thread for thread in threading.enumerate()
+                       if thread.name == "mlx-chat-stream" and thread.ident not in before]
+            self.assertEqual(len(workers), 1)
+            worker = workers[0]
+
+            async def disconnect():
+                first_body = asyncio.Event()
+
+                async def send(message):
+                    if message["type"] == "http.response.body":
+                        first_body.set()
+                        if spec_version == "2.4":
+                            raise OSError("client disconnected")
+                        await asyncio.sleep(0)
+
+                async def receive():
+                    await first_body.wait()
+                    return {"type": "http.disconnect"}
+
+                scope = {"type": "http", "asgi": {"spec_version": spec_version}}
+                if spec_version == "2.4":
+                    with self.assertRaises(ClientDisconnect):
+                        await response(scope, receive, send)
+                else:
+                    await response(scope, receive, send)
+
+            try:
+                asyncio.run(disconnect())
+                worker.join(timeout=1)
+                self.assertFalse(worker.is_alive(), "HTTP disconnect left the backpressured worker holding the runtime lease")
+                acquired = threading.Event()
+
+                def next_request():
+                    with agent_app.runtime_coordinator.chat_runtime():
+                        acquired.set()
+
+                next_worker = threading.Thread(target=next_request, daemon=True)
+                next_worker.start()
+                self.assertTrue(acquired.wait(1), "next inference could not acquire the released lease")
+                next_worker.join(timeout=1)
+            finally:
+                asyncio.run(response.body_iterator.aclose())
+                worker.join(timeout=2)
+
     def test_stream_generator_close_terminates_worker_thread(self):
         import threading
         import time
