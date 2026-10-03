@@ -45,6 +45,7 @@ def test_advertised_broken_service_fails_and_absent_service_skips(monkeypatch):
 def test_cancel_cleanup_refuses_foreign_jobs(tmp_path):
     acceptance = object.__new__(runner.Acceptance)
     acceptance.context = acceptance.browser = acceptance.playwright = None
+    acceptance.browser_history_before = None
     acceptance.jobs = [('video', 'a' * 24)]
     acceptance.chat_id = 'acceptance-own'
     calls = []
@@ -78,3 +79,64 @@ def test_preview_budget_accepts_ltx_first_frame_and_rejects_production():
         runner.inspect_preview(dict(artifact, width=1024))
     with pytest.raises(AssertionError, match='not a Preview'):
         runner.inspect_preview(dict(artifact, quality='standard'))
+
+
+def test_browser_history_boundary_only_exposes_owned_chat():
+    from types import SimpleNamespace
+    acceptance = object.__new__(runner.Acceptance)
+    acceptance.chat_id = 'acceptance-own'
+    acceptance.args = SimpleNamespace(url='http://127.0.0.1:8090')
+    acceptance.history_violations = []
+    calls = []
+
+    class Route:
+        def __init__(self, method, path, body=None):
+            self.request = SimpleNamespace(method=method, url=acceptance.args.url + path,
+                                           post_data_json=body)
+        def fetch(self, **kwargs):
+            calls.append(('fetch', kwargs))
+            return SimpleNamespace(ok=True, json=lambda: {'chat': {'id': acceptance.chat_id}})
+        def fulfill(self, **kwargs):
+            calls.append(('fulfill', kwargs))
+        def continue_(self):
+            calls.append(('continue',))
+
+    acceptance.route_browser_history(Route('GET', '/api/mlx/chats'))
+    assert calls == [('fetch', {'url': acceptance.args.url + '/api/mlx/chats/acceptance-own'}),
+                     ('fulfill', {'json': {'chats': [{'id': 'acceptance-own'}], 'deleted_ids': []}})]
+    calls.clear()
+    acceptance.route_browser_history(Route('PUT', '/api/mlx/chats/acceptance-own', {'id': 'acceptance-own'}))
+    assert calls == [('continue',)]
+    for method, path, body in [('GET', '/api/mlx/chats/foreign', None),
+                               ('PUT', '/api/mlx/chats/foreign', {'id': 'foreign'}),
+                               ('DELETE', '/api/mlx/chats', None),
+                               ('DELETE', '/api/mlx/chats/acceptance-own', None),
+                               ('POST', '/api/mlx/chats/acceptance-own/reset', None),
+                               ('PUT', '/api/mlx/chats/acceptance-own', {'id': 'foreign'})]:
+        calls.clear()
+        acceptance.route_browser_history(Route(method, path, body))
+        assert calls == [('fulfill', {'status': 403, 'json': {'detail': 'Acceptance history boundary'}})]
+    assert len(acceptance.history_violations) == 6
+
+
+@pytest.mark.parametrize('change', ['revision', 'updated', 'title', 'messages', 'deleted', 'new'])
+def test_foreign_history_comparison_detects_all_changes(tmp_path, change):
+    import copy
+    acceptance = object.__new__(runner.Acceptance)
+    acceptance.root = tmp_path
+    acceptance.history_checks = []
+    acceptance.history_violations = []
+    before = {'foreign': {'id': 'foreign', 'revision': 1, 'updated': 2, 'title': 'New chat', 'messages': []}}
+    after = copy.deepcopy(before)
+    if change == 'deleted':
+        after.clear()
+    elif change == 'new':
+        after['generic-new'] = {'id': 'generic-new'}
+    else:
+        after['foreign'][change] = 'changed'
+    acceptance.browser_history_before = before
+    acceptance.foreign_history = lambda: after
+    with pytest.raises(AssertionError, match='Foreign chat history changed'):
+        acceptance.verify_browser_history('fixture')
+    assert acceptance.history_checks[0]['identical'] is False
+    assert 'messages' not in (tmp_path / 'history-isolation.json').read_text()

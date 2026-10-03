@@ -139,6 +139,9 @@ class AgentFixture:
             return {'chats': list(self.chats.values()), 'deleted_ids': []}
         if path.startswith('/api/chats/'):
             chat_id = path.split('/')[3]
+            if request.method == 'DELETE':
+                self.chats.pop(chat_id, None)
+                return {'ok': True}
             if request.method == 'PUT':
                 self.chats[chat_id] = payload
             return {'chat': self.chats.get(chat_id, payload)}

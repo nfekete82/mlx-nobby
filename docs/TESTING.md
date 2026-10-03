@@ -90,9 +90,14 @@ FFmpeg/ffprobe skips audio/video generation before creating expensive jobs.
 
 Each run uses `acceptance-<UTC timestamp>-<random>` for its chat ID, title, job
 run IDs and Shorts draft title. Only those chats/drafts and jobs are cleaned up.
-The browser uses a disposable profile with the test session selected. Existing
-history that would trigger production's legacy empty-chat deletion blocks the
-browser check, so acceptance does not delete that user data. Native terminal
+The browser uses a disposable profile with the test session selected. Its
+history listing contains only the current acceptance-owned chat, fetched from
+the real backend. Browser history requests are restricted to that chat's GET/PUT;
+foreign IDs and bulk deletion are blocked. Speech, images, video and their media
+URLs still use the real stack. Complete foreign chat records are compared before
+and after each browser section and again after cleanup, without stripping
+timestamps or revisions. Diagnostic artifacts store counts and SHA-256 digests,
+not foreign message contents. Legacy empty chats are retained unchanged. Native terminal
 queue/job/video records follow existing service retention; no unsupported file
 or queue deletion is performed. Generated media copies and diagnostics remain
 under `artifacts/acceptance/<run-id>/`, excluded from Git.
