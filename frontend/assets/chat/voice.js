@@ -433,11 +433,13 @@
             ...voices.map(item => item.label)
         ]);
         document.querySelectorAll('.mlx-message-speech-status').forEach(node => {
+            if (node.closest?.('.message.assistant')) return;
             const currentText = node.textContent || '';
             if (!currentText) return;
             for (const currentLabel of knownLabels) {
                 if (currentText.startsWith(`${currentLabel} ·`)) {
-                    node.textContent = label + currentText.slice(currentLabel.length);
+                    const updated = label + currentText.slice(currentLabel.length);
+                    if (updated !== currentText) node.textContent = updated;
                     break;
                 }
             }
@@ -467,6 +469,10 @@
             if (!text || text.length < 2 || autoReadSeen.has(text)) return;
             const button = article.querySelector('.mlx-message-speech-button');
             if (!button || button.disabled) return;
+            if (button.dataset.speechState && button.dataset.speechState !== 'idle') {
+                autoReadSeen.add(text);
+                return;
+            }
             autoReadSeen.add(text);
             while (autoReadSeen.size > 20) {
                 autoReadSeen.delete(autoReadSeen.values().next().value);
