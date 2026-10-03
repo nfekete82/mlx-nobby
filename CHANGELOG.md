@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve read-aloud loading, playback and pause state when the same chat refreshes.
+
 - Preserve Model Runtime technical-detail state during background refreshes.
 
 - Added local real-runtime acceptance checks for chat, speech, image and video generation/playback.

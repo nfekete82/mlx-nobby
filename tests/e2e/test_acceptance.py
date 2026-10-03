@@ -107,6 +107,42 @@ def test_read_aloud_paint_play_pause_resume_end(ui):
     assert agent.count('/api/mlx/audio/speech', 'POST') == 1
 
 
+@pytest.mark.parametrize('language', ['de', 'en'])
+def test_read_aloud_survives_same_session_refresh(ui, language):
+    page, agent, _ = ui
+    chat(page, agent)
+    expect(page.locator('#sendButton')).not_to_have_class(re.compile('stop'))
+    with page.expect_response(f'**/i18n/assistant-read-aloud.{language}.json') as dictionary:
+        page.evaluate('(language) => window.MLXI18n.setLanguage(language)', language)
+    dictionary.value.finished()
+    page.evaluate(MEDIA)
+    speech(page).click()
+    expect(speech(page)).to_have_attribute('aria-busy', 'true')
+    page.evaluate('window.__originalSpeechButton = document.querySelector(".mlx-message-speech-button")')
+    page.evaluate('window.MLXChatSessions.syncWithServer()')
+    assert page.evaluate('window.__originalSpeechButton !== document.querySelector(".mlx-message-speech-button")')
+    expect(speech(page)).to_have_attribute('aria-busy', 'true')
+    expect(speech(page)).to_have_attribute('data-speech-state', 'generating')
+    expect(page.locator('.mlx-message-speech-status')).to_contain_text('erzeugt' if language == 'de' else 'generating')
+    assert page.locator('.mlx-message-speech-button svg').evaluate('(svg) => getComputedStyle(svg).animationName') == 'mlx-assistant-speech-spin'
+    agent.speech_gate.set()
+    expect(speech(page)).to_have_attribute('data-speech-state', 'playing')
+    page.evaluate('window.MLXChatRendering.renderMessages()')
+    expect(speech(page)).to_have_attribute('data-speech-state', 'playing')
+    speech(page).click()
+    expect(speech(page)).to_have_attribute('data-speech-state', 'paused')
+    page.evaluate('window.MLXChatSessions.syncWithServer()')
+    expect(speech(page)).to_have_attribute('data-speech-state', 'paused')
+    speech(page).click()
+    expect(speech(page)).to_have_attribute('data-speech-state', 'playing')
+    assert page.evaluate('window.__media.audios.length') == 1
+    assert agent.count('/api/mlx/audio/speech', 'POST') == 1
+    page.evaluate('window.__media.audios[0].dispatchEvent(new Event("ended"))')
+    expect(speech(page)).to_have_attribute('data-speech-state', 'idle')
+    assert page.evaluate('window.__media.revoked.length') == 1
+    assert page.evaluate('window.__media.audios[0].getAttribute("src")') is None
+
+
 @pytest.mark.parametrize('scenario', ['stop', 'second', 'rerender', 'removed', 'http', 'timeout', 'invalid'])
 def test_read_aloud_cleanup_and_failures(ui, scenario):
     page, agent, allowed = ui

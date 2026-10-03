@@ -13,8 +13,9 @@ function classes() {
 }
 function message(text, lang = '') {
     const status = { hidden: true, textContent: '', classList: classes() };
-    const article = { lang, querySelector(selector) {
+    const article = { lang, dataset: {}, querySelector(selector) {
         if (selector === '.mlx-message-speech-status') return status;
+        if (selector === '.mlx-message-speech-button') return button;
         return { children: [{ tagName: 'DIV', className: '', cloneNode: () => ({ innerText: text, querySelectorAll: () => [] }) }] };
     } };
     const attributes = new Map();
@@ -135,6 +136,91 @@ test('rerender/disconnected button cleans requests and playback', async () => {
         if (playing) assert.equal(h.audios[0].released, true);
         else assert.equal(h.requests[0].options.signal.aborted, true);
     }
+});
+
+test('same message refresh preserves request, playback and pause with one audio and URL', async () => {
+    const h = harness();
+    const bound = () => {
+        const m = message('Hello.');
+        m.article.dataset = { speechSessionId: 'chat-1', speechMessageIndex: '1' };
+        return m;
+    };
+    let m = bound(); h.click(m.button);
+    const refresh = () => {
+        m.button.isConnected = false;
+        m = bound(); h.window.MLXAssistantReadAloud.restoreMessage(m.article); h.mutate();
+    };
+    refresh(); await flush();
+    assert.equal(m.button.getAttribute('aria-busy'), 'true');
+    assert.match(m.status.textContent, /generating/);
+    assert.equal(h.requests[0].options.signal.aborted, false);
+    h.respond(); await flush(); refresh(); await flush();
+    assert.equal(m.button.dataset.speechState, 'playing');
+    assert.equal(m.button.getAttribute('aria-busy'), null);
+    h.click(m.button); await flush(); refresh(); await flush();
+    assert.equal(m.button.dataset.speechState, 'paused');
+    assert.match(m.status.textContent, /paused/);
+    h.click(m.button); await flush();
+    assert.equal(m.button.dataset.speechState, 'playing');
+    assert.equal(h.requests.length, 1); assert.equal(h.audios.length, 1);
+    h.audios[0].emit('ended'); await flush();
+    assert.equal(m.button.dataset.speechState, 'idle');
+    assert.equal(m.status.hidden, true); assert.equal(h.revoked.length, 1);
+    assert.equal(h.timers.size, 0);
+});
+
+test('refresh with changed session, position or text still cancels speech', async () => {
+    for (const change of ['session', 'position', 'text']) {
+        for (const playing of [false, true]) {
+            const h = harness(), original = message('Hello.');
+            original.article.dataset = { speechSessionId: 'chat-1', speechMessageIndex: '1' };
+            h.click(original.button);
+            if (playing) { h.respond(); await flush(); }
+            original.button.isConnected = false;
+            const replacement = message(change === 'text' ? 'Changed.' : 'Hello.');
+            replacement.article.dataset = {
+                speechSessionId: change === 'session' ? 'chat-2' : 'chat-1',
+                speechMessageIndex: change === 'position' ? '3' : '1'
+            };
+            h.window.MLXAssistantReadAloud.restoreMessage(replacement.article); h.mutate(); await flush();
+            assert.equal(replacement.button.dataset.speechState, undefined);
+            assert.equal(h.timers.size, 0);
+            if (playing) { assert.equal(h.audios[0].released, true); assert.equal(h.revoked.length, 1); }
+            else assert.equal(h.requests[0].options.signal.aborted, true);
+        }
+    }
+});
+
+test('generation stop and timeout operate on the replacement button', async () => {
+    for (const timeout of [false, true]) {
+        const h = harness(), original = message('Hello.'), replacement = message('Hello.');
+        original.article.dataset = replacement.article.dataset = { speechSessionId: 'chat-1', speechMessageIndex: '1' };
+        h.click(original.button); original.button.isConnected = false;
+        h.window.MLXAssistantReadAloud.restoreMessage(replacement.article); h.mutate();
+        if (timeout) h.fireTimers(60000); else h.click(replacement.button);
+        await flush();
+        assert.equal(h.requests[0].options.signal.aborted, true);
+        assert.equal(replacement.button.dataset.speechState, 'idle');
+        assert.equal(replacement.button.getAttribute('aria-busy'), null);
+        if (timeout) assert.match(replacement.status.textContent, /timed out/);
+        else assert.equal(replacement.status.hidden, true);
+        assert.equal(h.timers.size, 0); assert.equal(h.audios.length, 0);
+    }
+});
+
+test('a failed resume after another refresh cleans the current button and audio', async () => {
+    const h = harness(), original = message('Hello.'), replacement = message('Hello.');
+    original.article.dataset = replacement.article.dataset = { speechSessionId: 'chat-1', speechMessageIndex: '1' };
+    h.click(original.button); h.respond(); await flush(); h.click(original.button); await flush();
+    let rejectResume;
+    h.audios[0].play = () => new Promise((resolve, reject) => { rejectResume = reject; });
+    h.click(original.button); original.button.isConnected = false;
+    h.window.MLXAssistantReadAloud.restoreMessage(replacement.article); h.mutate();
+    rejectResume(Error('resume failed')); await flush();
+    assert.equal(replacement.button.dataset.speechState, 'idle');
+    assert.match(replacement.status.textContent, /failed/);
+    assert.equal(h.audios[0].released, true); assert.equal(h.revoked.length, 1);
+    assert.equal(h.timers.size, 0);
 });
 
 test('duplicate script initialization retains one click handler and one POST', async () => {
