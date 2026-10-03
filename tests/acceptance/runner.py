@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import datetime, timezone
 from fractions import Fraction
 import io
@@ -11,7 +12,7 @@ import platform
 import shutil
 import subprocess
 import time
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 import uuid
 
 import httpx
@@ -101,6 +102,9 @@ class Acceptance:
         self.console, self.errors = [], []
         self.started = time.monotonic()
         self.image_result = self.video_result = None
+        self.browser_history_before = None
+        self.history_checks = []
+        self.history_violations = []
         self.timers = {'chat': args.chat_timeout, 'tts': args.tts_timeout,
                        'image': args.image_timeout, 'video': args.video_timeout}
 
@@ -139,6 +143,10 @@ class Acceptance:
                         except Exception:
                             pass
                     self.context = self.page = None
+                    try:
+                        self.verify_browser_history(name)
+                    except Exception as history_error:
+                        detail['history_error'] = str(history_error)
         self.results.append({'name': name, 'status': status, 'seconds': round(time.monotonic() - started, 2), 'detail': detail})
         print(f'{name:26} {status}', flush=True)
         if status != 'PASS':
@@ -148,6 +156,7 @@ class Acceptance:
         assert platform.system() == 'Darwin' and platform.machine() == 'arm64', 'Real acceptance requires Apple Silicon macOS'
         self.before['web'] = self.json('GET', '/api/health')
         self.before['chat'] = self.json('GET', '/api/mlx/status')
+        self.initial_foreign_history = self.foreign_history()
         roles = self.json('GET', '/api/mlx/model-roles')
         resolved_chat = roles.get('resolved', {}).get('chat')
         if self.before['chat'].get('online'):
@@ -271,16 +280,58 @@ class Acceptance:
         path.write_bytes(result.content)
         return inspect_media(path, 'audio')
 
+    def foreign_history(self):
+        # Compare every field, including messages, revisions and timestamps.
+        # Ordering of the list is not part of a chat's persisted state.
+        return {chat['id']: chat for chat in self.json('GET', '/api/mlx/chats')['chats']
+                if chat['id'] != self.chat_id}
+
+    def verify_browser_history(self, name):
+        before = self.browser_history_before
+        if before is None:
+            return
+        after = self.foreign_history()
+        digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+        self.history_checks.append({'section': name, 'foreign_count': len(before),
+                                    'before_sha256': digest(before), 'after_sha256': digest(after),
+                                    'identical': before == after})
+        (self.root / 'history-isolation.json').write_text(json.dumps(self.history_checks, indent=2))
+        self.browser_history_before = None
+        assert before == after, 'Foreign chat history changed during browser acceptance'
+        assert not self.history_violations, 'Browser attempted access outside its owned chat'
+
+    def route_browser_history(self, route):
+        request = route.request
+        path = unquote(urlsplit(request.url).path)
+        if path == '/api/mlx/chats' and request.method == 'GET':
+            # Fetch only the owned record, never expose the global history or
+            # its tombstones to common.js migration / session synchronization.
+            response = route.fetch(url=self.args.url + '/api/mlx/chats/' + self.chat_id)
+            assert response.ok, 'Acceptance-owned chat is unavailable'
+            chat = response.json()['chat']
+            assert chat['id'] == self.chat_id
+            route.fulfill(json={'chats': [chat], 'deleted_ids': []})
+        elif path == '/api/mlx/chats/' + self.chat_id and request.method in {'GET', 'PUT'}:
+            if request.method == 'PUT' and request.post_data_json.get('id') != self.chat_id:
+                self.history_violations.append('Owned PUT has a different payload ID')
+                route.fulfill(status=403, json={'detail': 'Acceptance history boundary'})
+            else:
+                route.continue_()
+        else:
+            self.history_violations.append('Blocked ' + request.method + ' outside owned GET/PUT')
+            route.fulfill(status=403, json={'detail': 'Acceptance history boundary'})
+
     def open_chat(self, messages):
-        histories = self.json('GET', '/api/mlx/chats')['chats']
-        assert all(any(m.get('role') == 'user' for m in c.get('messages', [])) for c in histories), 'Browser history would clean legacy empty user chats; refusing to open it'
-        self.own_chat(messages)
         if self.context:
-            self.context.close()
+            raise AssertionError('Previous browser section was not finalized')
+        self.browser_history_before = self.foreign_history()
+        self.own_chat(messages)
         self.context = self.browser.new_context(viewport={'width': 1440, 'height': 1000})
+        self.context.route('**/api/mlx/chats**', self.route_browser_history)
         self.errors = []
         self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
-        # Seed only the disposable browser's normal saved session preference. No routes or media are mocked.
+        # Seed the disposable profile with the owned chat. Only history listing
+        # is narrowed; owned persistence, speech and all media use real services.
         self.context.add_init_script('localStorage.setItem("mlx-web-chats-v1", ' + json.dumps(json.dumps([self.chat])) + ');'
                                      'localStorage.setItem("mlx-nobby-sidebar-collapsed", "1");'
                                      'localStorage.setItem("mlx-nobby-language", "en");')
@@ -305,6 +356,7 @@ class Acceptance:
         self.context.tracing.stop(path=str(self.root / ('browser-' + name + '.zip')))
         self.context.close()
         self.context = self.page = None
+        self.verify_browser_history(name)
 
     def tts_playback(self):
         self.speech_ready()
@@ -526,6 +578,7 @@ class Acceptance:
             finally:
                 self.context.close()
                 self.context = self.page = None
+        self.verify_browser_history('cleanup')
         if self.browser:
             self.browser.close()
         if self.playwright:
@@ -567,6 +620,8 @@ class Acceptance:
             online = {s['name'] for s in after_services.get('services', []) if s.get('online')}
             original = {s['name'] for s in self.before['services'].get('services', []) if s.get('online')}
             assert original <= online, 'Previously online services went offline: ' + ', '.join(sorted(original - online))
+        if getattr(self, 'initial_foreign_history', None) is not None:
+            assert self.initial_foreign_history == self.foreign_history(), 'Foreign history changed during real acceptance'
         return {'own_chats_drafts_removed': True, 'jobs': self.jobs,
                 'media_retention': 'Native terminal job/video records use existing service retention; no global cleanup'}
 
