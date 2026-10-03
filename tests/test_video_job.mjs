@@ -262,3 +262,21 @@ assert.match(chatHtml, /chat\/generation\.js\?v=20261002-pending-preview/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=20261002-pending-preview/);
 assert.match(chatHtml, /chat\.js\?v=20260926-shorts-progress/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
+
+// Reload/retry options cannot implicitly override the fresh dialog selection.
+for (const stored of [{ video: { profile: 'uncensored' } }, {}]) {
+    assert.equal(api.__test.videoOptionsForRequest(stored, 'video').profile, 'standard');
+    assert.equal(api.__test.videoOptionsForRequest(stored, 'video', 5, 'standard', 'landscape', 'uncensored').profile, 'uncensored');
+}
+const profileOption = {};
+const profileSelect = { querySelector: () => profileOption };
+for (const available of [false, true]) {
+    context.fetch = async () => ({ ok: true, json: async () => ({ profiles: { uncensored_available: available } }) });
+    const checking = api.__test.updateVideoProfileAvailability(profileSelect);
+    assert.equal(profileOption.disabled, true);
+    await checking;
+    assert.equal(profileOption.disabled, !available);
+}
+context.fetch = async () => { throw Error('offline'); };
+await api.__test.updateVideoProfileAvailability(profileSelect);
+assert.equal(profileOption.disabled, true);

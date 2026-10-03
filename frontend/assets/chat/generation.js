@@ -202,6 +202,25 @@ function videoOptionsForRequest(
     };
 }
 
+async function updateVideoProfileAvailability(select) {
+    const option = select.querySelector('option[value="uncensored"]');
+    if (!option) return;
+    option.disabled = true;
+    const unavailable = gt('video_uncensored_unavailable', 'Uncensored — not configured');
+    option.textContent = unavailable;
+    try {
+        const response = await fetch('/api/mlx/video/models');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.profiles?.uncensored_available === true) {
+            option.disabled = false;
+            option.textContent = 'Uncensored';
+        }
+    } catch (_) {
+        // Keep the optional profile unavailable when capabilities cannot be checked.
+    }
+}
+
 function imageOptionsForRequest(
     options,
     mediaKind,
@@ -2665,6 +2684,9 @@ const imageFiles =
                 if (profileField && profileSelect) {
                     profileField.hidden = mediaQualityKind !== 'video';
                     profileSelect.value = 'standard';
+                    if (mediaQualityKind === 'video') {
+                        updateVideoProfileAvailability(profileSelect);
+                    }
                 }
                 const negativePromptField =
                     document.getElementById('imageNegativePromptField');
@@ -4490,6 +4512,7 @@ resetSessionRuntime: resetSessionRuntime,
             mediaPreviewAvailable: mediaPreviewAvailable,
             normalizeMediaPreviewQuality: normalizeMediaPreviewQuality,
             videoOptionsForRequest: videoOptionsForRequest,
+            updateVideoProfileAvailability: updateVideoProfileAvailability,
             videoDurationsForQuality: videoDurationsForQuality,
             normalizeVideoDuration: normalizeVideoDuration,
             watchImageJob: watchImageJob,

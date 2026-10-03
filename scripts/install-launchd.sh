@@ -58,7 +58,7 @@ render_template() {
         "${source}" > "${temporary}"
 
     if [ "$(basename "${source}")" = "de.nobby.mlx-video.plist.template" ]; then
-        "${RUNTIME_PYTHON}" - "${temporary}" <<'PY'
+        "${RUNTIME_PYTHON}" - "${temporary}" "${target}" <<'PY'
 import os
 import plistlib
 import sys
@@ -66,9 +66,15 @@ import sys
 path = sys.argv[1]
 with open(path, "rb") as handle:
     data = plistlib.load(handle)
+previous = {}
+if len(sys.argv) > 2 and os.path.isfile(sys.argv[2]):
+    with open(sys.argv[2], "rb") as handle:
+        previous = plistlib.load(handle).get("EnvironmentVariables", {})
 for name in ("LTX_MLX_UNCENSORED_LORA", "LTX_MLX_UNCENSORED_LORA_STRENGTH"):
     if name in os.environ:
         data["EnvironmentVariables"][name] = os.environ[name]
+    elif name in previous:
+        data["EnvironmentVariables"][name] = previous[name]
 with open(path, "wb") as handle:
     plistlib.dump(data, handle, sort_keys=False)
 PY

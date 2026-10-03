@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import video_registry as registry
+from video_profiles import preflight_profile, profile_capabilities
 from quality_profiles import resolve_video_profile
 import runtime_coordinator
 from local_security import LocalRequestGuard
@@ -484,11 +485,20 @@ def models():
     for model in data["models"]:
         ready, reason = availability(model)
         described.append(model | {"available": ready, "availability_note": reason, "local_path": str(registry.model_path(model))})
-    return data | {"models": described, "offline": True}
+    default = next((m for m in described if m["id"] == data["default_model"]), {})
+    return data | {"models": described, "offline": True,
+                   "profiles": profile_capabilities(default)}
+
+
+@app.post("/preflight")
+def preflight(request: JobCreate):
+    preflight_profile(request.payload.profile, registry.get_model(request.payload.model))
+    return {"available": True, "profile": request.payload.profile}
 
 
 @app.post("/jobs", status_code=202)
 def create_job(request: JobCreate):
+    preflight(request)
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Ein Video-Job läuft bereits")
     job_id = secrets.token_hex(12)

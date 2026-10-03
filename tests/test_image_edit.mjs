@@ -157,7 +157,7 @@ const context = {
         getElementById(id) {
             return id === 'input'
                 ? input
-                : modalElements.get(id) || {};
+                : modalElements.get(id) || { querySelector() { return null; } };
         },
         querySelectorAll(selector) {
             return selector === '[data-media-quality]'
