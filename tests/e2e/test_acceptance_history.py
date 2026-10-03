@@ -1,5 +1,6 @@
 """Real runner history boundary against the production UI and isolated Agent fixture."""
 import copy
+from pathlib import Path
 from types import SimpleNamespace
 
 from playwright.sync_api import expect
@@ -7,7 +8,7 @@ from playwright.sync_api import expect
 from tests.acceptance.runner import Acceptance
 
 
-def test_real_browser_acceptance_isolates_legacy_history(ui, web, tmp_path):
+def test_real_browser_acceptance_isolates_legacy_history(ui, web, request):
     page, agent, _ = ui
     url, _ = web
     # The ui fixture already opened the app. Establish the regression inventory
@@ -26,14 +27,31 @@ def test_real_browser_acceptance_isolates_legacy_history(ui, web, tmp_path):
     agent.chats = copy.deepcopy(foreign)
     args = SimpleNamespace(url=url, chat_timeout=90, tts_timeout=90, image_timeout=300, video_timeout=360)
     acceptance = Acceptance(args)
-    acceptance.root = tmp_path
+    acceptance.root = Path(__file__).resolve().parents[2] / 'test-results' / request.node.name
     acceptance.browser = page.context.browser
     acceptance.initial_foreign_history = acceptance.foreign_history()
-    agent.speech_gate.set()
-    acceptance.speech_ready = lambda: None  # Fixture speech service, no model setup.
     try:
-        # Uses the real runner's open_chat and native Chromium Audio playback.
-        acceptance.tts_playback()
+        # Hold the fixture response so loading is observable independently of
+        # hosted runner speed. Real test-real retains its unmodified native path.
+        browser_page = acceptance.open_chat([{'role': 'assistant', 'content': 'Fixture speech sample.'}])
+        browser_page.evaluate('''() => {const NativeAudio=window.Audio; window.__historyAudio=[];
+            window.Audio=function(...args){const audio=new NativeAudio(...args);
+                window.__historyAudio.push(audio);
+                audio.addEventListener('playing',()=>audio.dataset.played='yes');return audio;};
+            window.Audio.prototype=NativeAudio.prototype;}''')
+        agent.speech_gate.clear()
+        button = browser_page.locator('.mlx-message-speech-button')
+        try:
+            button.click()
+            expect(button).to_have_attribute('aria-busy', 'true')
+            expect(button).to_have_attribute('data-speech-state', 'generating')
+        finally:
+            agent.speech_gate.set()
+        expect(button).to_have_attribute('data-speech-state', 'playing')
+        browser_page.wait_for_function('window.__historyAudio[0]?.currentTime > .1 && window.__historyAudio[0]?.dataset.played === "yes"')
+        assert agent.count('/api/mlx/audio/speech', 'POST') == 1
+        expect(button).to_have_attribute('data-speech-state', 'idle')
+        acceptance.finish_browser('speech')
         image_job = {'id': 'a' * 24, 'kind': 'image', 'status': 'completed', 'prompt': 'fixture',
                      'chat_id': acceptance.chat_id}
         agent.jobs[image_job['id']] = image_job
@@ -62,6 +80,9 @@ def test_real_browser_acceptance_isolates_legacy_history(ui, web, tmp_path):
         assert not any(method == 'DELETE' and path != '/api/chats/' + acceptance.chat_id
                        for method, path, _ in agent.calls)
     finally:
+        agent.speech_gate.set()
         if acceptance.context:
+            acceptance.page.screenshot(path=str(acceptance.root / 'owned-browser.png'))
+            acceptance.context.tracing.stop(path=str(acceptance.root / 'owned-browser-failure.zip'))
             acceptance.context.close()
         acceptance.client.close()
