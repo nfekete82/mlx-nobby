@@ -3262,6 +3262,11 @@ button {
     padding: 22px 2px 18px;
 }
 
+.model-console-header[hidden],
+.model-console-secondary[hidden] {
+    display: none;
+}
+
 .model-console-header h4 {
     margin: 0;
     font-size: 18px;
@@ -3330,6 +3335,10 @@ button {
     min-width: 0;
 }
 
+.model-console-content[data-active-model-tab]:not([data-active-model-tab="models"]) > .model-scout {
+    display: none;
+}
+
 .model-console-hero,
 .model-console-runtime {
     padding: 22px;
@@ -3357,6 +3366,7 @@ button {
 }
 
 .model-console-hero h5 {
+    overflow-wrap: anywhere;
     margin: 18px 0 3px;
     font-size: clamp(20px, 3vw, 27px);
     letter-spacing: -.025em;
@@ -3429,7 +3439,7 @@ button {
 
 .model-console-metrics {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
     gap: 1px;
     margin-top: 20px;
     overflow: hidden;
@@ -3784,7 +3794,8 @@ button {
     justify-content: flex-end;
     flex-wrap: wrap;
     gap: 8px;
-    min-width: min(100%, 320px);
+    min-width: 0;
+    flex: 1 1 240px;
 }
 
 .model-console-switcher select {
@@ -3793,7 +3804,6 @@ button {
     padding: 8px 10px;
     border: 1px solid #30394a;
     border-radius: 8px;
-    outline: 0;
     background: #090d13;
     color: var(--text);
     font-size: 11px;
@@ -3825,8 +3835,21 @@ button {
 
 .model-console-storage-summary {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+}
+
+.model-console-storage-group {
+    min-width: 0;
+}
+
+.model-console-storage-group h5 {
+    margin: 0 0 8px;
+    font-size: 12px;
+}
+
+.model-console-storage-group .model-console-metrics {
+    margin-top: 0;
 }
 
 .model-console-storage-summary > .model-console-metric,
@@ -4114,7 +4137,24 @@ button {
     }
 
     .model-console-storage-summary {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .model-console-control-row {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .model-console-switcher {
+        flex-basis: auto;
+        justify-content: flex-start;
+    }
+
+    .model-console-switcher select {
+        min-width: 0;
+        max-width: 100%;
+        flex: 1 1 150px;
     }
 
     .model-console-cache-path {

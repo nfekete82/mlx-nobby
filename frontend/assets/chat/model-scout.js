@@ -106,7 +106,7 @@
         panel = document.createElement('section');
         panel.className = 'model-scout';
         panel.innerHTML = `<div class="model-scout-head"><div><h4 class="model-scout-title"></h4><p class="model-scout-subtitle"></p></div><div class="model-scout-meta"></div></div><div class="model-scout-controls"><button type="button" class="model-scout-button primary" data-scout-scan></button><select class="model-scout-select" data-scout-role><option value="all"></option><option value="chat"></option><option value="coding"></option><option value="vision"></option></select></div><div class="model-scout-status" data-scout-status></div><div class="model-scout-grid" data-scout-grid></div><div class="model-scout-note" data-scout-note></div>`;
-        content.prepend(panel);
+        content.appendChild(panel);
         applyPanelCopy(panel);
         panel.querySelector('[data-scout-scan]').addEventListener('click', () => scan(panel));
         panel.querySelector('[data-scout-role]').addEventListener('change', () => scan(panel));

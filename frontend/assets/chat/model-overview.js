@@ -8,13 +8,12 @@
         scheduled: false,
     };
 
-    function isGerman() {
-        const locale = window.MLXI18n?.getLocale?.() || navigator.language || 'en';
-        return String(locale).toLowerCase().startsWith('de');
-    }
-
-    function t(de, en) {
-        return isGerman() ? de : en;
+    function t(key, fallback, variables = {}) {
+        let value = window.MLXI18n?.t(`models.overview.${key}`, fallback) ?? fallback;
+        Object.entries(variables).forEach(([name, replacement]) => {
+            value = value.replaceAll(`{${name}}`, String(replacement));
+        });
+        return value;
     }
 
     function injectStyles() {
@@ -25,35 +24,6 @@
         style.textContent = `
             #modelConsoleContent.model-overview-enhanced {
                 gap: 14px;
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-hero {
-                padding: 16px 18px;
-                border-radius: 12px;
-                box-shadow: none;
-                background: linear-gradient(145deg, rgba(24, 31, 43, .76), rgba(13, 18, 26, .82));
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-hero h5 {
-                margin: 12px 0 2px;
-                font-size: clamp(18px, 2.4vw, 22px);
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-badges {
-                margin-top: 10px;
-                gap: 5px;
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-metrics {
-                margin-top: 13px;
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-metric {
-                padding: 9px 11px;
-            }
-
-            #modelConsoleContent.model-overview-enhanced .model-console-actions {
-                margin-top: 13px;
             }
 
             .model-overview-toolbar {
@@ -166,6 +136,10 @@
                 gap: 6px;
             }
 
+            #modelConsoleContent.model-overview-enhanced .model-console-row[hidden] {
+                display: none;
+            }
+
             .model-overview-empty {
                 padding: 18px 10px;
                 border: 1px dashed #30394a;
@@ -264,7 +238,7 @@
         const search = document.createElement('input');
         search.type = 'search';
         search.className = 'model-overview-search';
-        search.placeholder = t('Modelle durchsuchen …', 'Search models …');
+        search.placeholder = t('search', 'Search models …');
         search.setAttribute('aria-label', search.placeholder);
         search.value = state.query;
         search.addEventListener('input', event => {
@@ -274,14 +248,14 @@
 
         const filter = document.createElement('select');
         filter.className = 'model-overview-select';
-        filter.setAttribute('aria-label', t('Modelle filtern', 'Filter models'));
+        filter.setAttribute('aria-label', t('filter', 'Filter models'));
         [
-            ['all', t('Alle Modelle', 'All models')],
-            ['active', t('Nur aktiv', 'Active only')],
-            ['vision', 'Vision / VLM'],
-            ['text', t('Nur Text / LLM', 'Text / LLM only')],
-            ['local', t('Lokal', 'Local')],
-            ['hf', 'Hugging Face'],
+            ['all', t('all', 'All models')],
+            ['active', t('active_only', 'Active only')],
+            ['vision', t('vision_filter', 'Vision / VLM')],
+            ['text', t('text_only', 'Text / LLM only')],
+            ['local', t('local_filter', 'Local')],
+            ['hf', t('hf_filter', 'Hugging Face')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -296,11 +270,11 @@
 
         const sort = document.createElement('select');
         sort.className = 'model-overview-select';
-        sort.setAttribute('aria-label', t('Modelle sortieren', 'Sort models'));
+        sort.setAttribute('aria-label', t('sort', 'Sort models'));
         [
-            ['active', t('Aktiv zuerst', 'Active first')],
-            ['name', t('Nach Name', 'By name')],
-            ['alias', t('Nach Alias', 'By alias')],
+            ['active', t('active_first', 'Active first')],
+            ['name', t('by_name', 'By name')],
+            ['alias', t('by_alias', 'By alias')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -334,14 +308,20 @@
         const local = infos.filter(item => item.local).length;
         const visible = rows.filter(row => !row.hidden).length;
 
-        summary.innerHTML = '';
-        [
-            [t(`${rows.length} installiert`, `${rows.length} installed`), false],
-            [t(`${visible} sichtbar`, `${visible} visible`), false],
-            [t(`${vision} Vision`, `${vision} Vision`), false],
-            [t(`${local} lokal`, `${local} local`), false],
-            [t(`${active} aktiv`, `${active} active`), active > 0],
-        ].forEach(([label, isActive]) => {
+        const filtered = Boolean(state.query.trim()) || state.filter !== 'all';
+        const chips = [
+            [t('installed', '{count} installed', { count: rows.length }), false],
+            ...(filtered ? [[t('visible', '{count} of {total} visible', { count: visible, total: rows.length }), false]] : []),
+            [t('vision', '{count} Vision', { count: vision }), false],
+            [t('local', '{count} local', { count: local }), false],
+            [t('active', '{count} active', { count: active }), active > 0],
+        ];
+        // Avoid retriggering the DOM observer when the summary has not changed.
+        const signature = JSON.stringify(chips);
+        if (summary.dataset.signature === signature) return;
+        summary.dataset.signature = signature;
+        summary.replaceChildren();
+        chips.forEach(([label, isActive]) => {
             const chip = document.createElement('span');
             chip.className = 'model-overview-summary-chip' + (isActive ? ' active' : '');
             chip.textContent = label;
@@ -360,7 +340,8 @@
             empty.className = 'model-overview-empty';
             list.appendChild(empty);
         }
-        empty.textContent = t('Keine Modelle passen zu Suche und Filter.', 'No models match the current search and filter.');
+        const label = t('empty', 'No models match the current search and filter.');
+        if (empty.textContent !== label) empty.textContent = label;
     }
 
     function applyOverview() {
@@ -414,7 +395,10 @@
         observer.observe(content, { childList: true, subtree: true });
         scheduleOverview();
 
-        document.addEventListener('mlx-language-changed', scheduleOverview);
+        document.addEventListener('mlx-language-changed', () => {
+            content.querySelectorAll('.model-overview-toolbar').forEach(toolbar => toolbar.remove());
+            scheduleOverview();
+        });
     }
 
     if (document.readyState === 'loading') {

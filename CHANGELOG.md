@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simplified the Models settings information hierarchy by removing repeated
+  Runtime/storage details and making model summaries context-aware.
+
 ## v1.6.1
 
 - Fixed the web job-queue and cancellation proxies so Queue status and Shorts

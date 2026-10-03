@@ -327,7 +327,8 @@
         hero.appendChild(heading);
 
         const model = activeModel();
-        const title = node('h5', '', model ? displayName(model) : mt('runtime.no_model', 'No model configured'));
+        const currentRepo = model?.repo || state.status?.model || state.aliases.current;
+        const title = node('h5', '', currentRepo ? displayName(currentRepo) : mt('runtime.no_model', 'No model configured'));
         hero.appendChild(title);
         if (model?.alias) hero.appendChild(node('div', 'model-console-alias', model.alias));
         const badges = node('div', 'model-console-badges');
@@ -338,12 +339,10 @@
         const mlx = state.system?.mlx || {};
         const memoryMb = Number(mlx.memory_mb ?? state.status?.memory_mb);
         if (Number.isFinite(memoryMb) && memoryMb > 0) metrics.appendChild(metric('RAM', formatBytes(memoryMb * 1024 * 1024)));
-        const pid = mlx.pid ?? state.status?.pid;
-        if (pid !== null && pid !== undefined) metrics.appendChild(metric('PID', String(pid)));
         const port = mlx.port ?? state.status?.port;
         if (port !== null && port !== undefined) metrics.appendChild(metric('Port', String(port)));
         const uptime = formatUptime(mlx.uptime_seconds);
-        if (uptime) metrics.appendChild(metric('Uptime', uptime));
+        if (uptime) metrics.appendChild(metric(mt('runtime.uptime', 'Uptime'), uptime));
         if (metrics.childNodes.length) hero.appendChild(metrics);
 
         renderActionProgress(hero);
@@ -354,7 +353,8 @@
             } else if (model || state.status?.model) {
                 actions.append(actionButton(mt('actions.start', '▶ Start'), 'start-runtime', { primary: true }));
             }
-            if (actions.childNodes.length) hero.appendChild(actions);
+            actions.appendChild(actionButton(mt('actions.show_logs', 'Show logs'), 'show-logs'));
+            hero.appendChild(actions);
         }
         return hero;
     }
@@ -422,7 +422,6 @@
 
     function renderModels() {
         const fragment = document.createDocumentFragment();
-        fragment.appendChild(renderHero());
         const section = node(
             'details',
             'model-console-section model-console-collapsible'
@@ -438,11 +437,6 @@
                 'h5',
                 '',
                 mt('models.installed', 'Installed models')
-            ),
-            node(
-                'span',
-                '',
-                String(state.aliases.models.length)
             )
         );
         section.appendChild(head);
@@ -456,7 +450,6 @@
             section.appendChild(list);
         }
         fragment.appendChild(section);
-        fragment.appendChild(renderDownloads());
         return fragment;
     }
 
@@ -480,24 +473,9 @@
     function renderRuntime() {
         const fragment = document.createDocumentFragment();
         const section = node('section', 'model-console-runtime');
-        const head = node('div', 'model-console-section-heading');
-        head.append(node('h5', '', 'Runtime'), statusChip());
-        section.appendChild(head);
+        fragment.appendChild(renderHero());
         const model = activeModel();
         const mlx = state.system?.mlx || {};
-        const details = node('dl', 'model-console-definitions');
-        [
-            definitionRow('Status', statusView().label),
-            definitionRow(mt('models.model', 'Model'), model?.alias || state.status?.model),
-            definitionRow('Backend', model?.backend === 'vlm' ? 'VLM' : model ? 'LLM' : null),
-            definitionRow('PID', mlx.pid ?? state.status?.pid),
-            definitionRow('Port', mlx.port ?? state.status?.port),
-            Number(mlx.memory_mb ?? state.status?.memory_mb) > 0 ? definitionRow('RAM', formatBytes(Number(mlx.memory_mb ?? state.status?.memory_mb) * 1024 * 1024)) : null,
-            definitionRow('Thinking', state.status ? (state.status.thinking ? 'An' : 'Aus') : null),
-            definitionRow('Vision', model ? (model.vision ? 'Ja' : 'Nein') : null),
-            definitionRow('Uptime', formatUptime(mlx.uptime_seconds)),
-        ].filter(Boolean).forEach(item => details.appendChild(item));
-        section.appendChild(details);
 
         const availableModels = state.aliases.models.filter(item =>
             modelAvailability(item).state === 'ready'
@@ -505,7 +483,7 @@
         const switcher = node('div', 'model-console-control-row');
         const switcherInfo = node('div');
         switcherInfo.append(
-            node('strong', '', mt('runtime.active_model', 'Active model')),
+            node('strong', '', mt('actions.switch_model', 'Switch model')),
             node('p', '', mt('runtime.switch_description', 'Switches the model through the existing runtime manager.'))
         );
         const switcherControls = node('div', 'model-console-switcher');
@@ -534,26 +512,19 @@
         const thinking = node('div', 'model-console-control-row');
         const thinkingInfo = node('div');
         thinkingInfo.append(node('strong', '', 'Thinking'), node('p', '', mt('runtime.thinking_description', 'Enables extended reasoning when supported by the model.')));
-        const thinkingButton = actionButton(state.status?.thinking ? 'An' : 'Aus', 'toggle-thinking', { primary: Boolean(state.status?.thinking), disabled: !state.status?.online || Boolean(state.runtimeAction) });
+        const thinkingButton = actionButton(state.status?.thinking ? mt('status.on', 'On') : mt('status.off', 'Off'), 'toggle-thinking', { primary: Boolean(state.status?.thinking), disabled: !state.status?.online || Boolean(state.runtimeAction) });
         thinkingButton.setAttribute('aria-pressed', state.status?.thinking ? 'true' : 'false');
         thinking.append(thinkingInfo, thinkingButton);
         section.appendChild(thinking);
 
-        renderActionProgress(section);
-        if (!state.runtimeAction) {
-            const actions = node('div', 'model-console-actions');
-            if (state.status?.online) actions.append(actionButton(mt('actions.restart', '↻ Restart'), 'restart-runtime'), actionButton(mt('actions.stop', '■ Stop'), 'stop-runtime', { danger: true }));
-            else if (model || state.status?.model) actions.append(actionButton(mt('actions.start', '▶ Start'), 'start-runtime', { primary: true }));
-            actions.appendChild(actionButton(mt('actions.show_logs', 'Show logs'), 'show-logs'));
-            section.appendChild(actions);
-        }
         fragment.appendChild(section);
 
         const technical = node('details', 'model-console-technical');
-        technical.appendChild(node('summary', '', mt('runtime.details', 'Runtime details')));
+        technical.appendChild(node('summary', '', mt('dialog.technical_details', 'Technical details')));
         const technicalList = node('dl', 'model-console-definitions');
         const repo = model?.repo || state.status?.model;
         [
+            definitionRow('PID', mlx.pid ?? state.status?.pid),
             definitionRow(mt('runtime.endpoint', 'Server endpoint'), (mlx.port ?? state.status?.port) ? 'http://127.0.0.1:' + (mlx.port ?? state.status?.port) : null, { mono: true, copy: true }),
             definitionRow(model?.local ? mt('storage.local_path', 'Local model path') : 'Repository', repo, { mono: true, copy: true }),
             definitionRow(mt('runtime.start_parameters', 'Start parameters'), Array.isArray(mlx.server_args) && mlx.server_args.length ? mlx.server_args.join(' ') : null, { mono: true, copy: true }),
@@ -602,15 +573,26 @@
         const fragment = document.createDocumentFragment();
         const summary = node('section', 'model-console-storage-summary');
         const systemMemory = state.system?.system || {};
-        summary.append(
+        const systemGroup = node('section', 'model-console-storage-group');
+        systemGroup.appendChild(node('h5', '', mt('storage.system', 'System')));
+        const systemMetrics = node('div', 'model-console-metrics');
+        systemMetrics.append(
             metric('Unified Memory', systemMemory.total_gb != null ? systemMemory.total_gb + ' GB' : '–'),
-            metric(mt('storage.free_ram', 'Free RAM'), systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–'),
-            metric(mt('hf_storage', 'HF storage'), state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
+            metric(mt('storage.free_ram', 'Free RAM'), systemMemory.free_percent != null ? systemMemory.free_percent + ' %' : '–')
+        );
+        systemGroup.appendChild(systemMetrics);
+        const modelGroup = node('section', 'model-console-storage-group');
+        modelGroup.appendChild(node('h5', '', mt('models.title', 'Models')));
+        const modelMetrics = node('div', 'model-console-metrics');
+        modelMetrics.append(
+            metric(mt('storage.hf_storage', 'Hugging Face storage'), state.cache.total_size || formatBytes(state.cache.total_size_bytes) || '–'),
             metric(mt('storage.hf_models', 'HF models'), String(state.cache.count ?? state.cache.models.length))
         );
+        modelGroup.appendChild(modelMetrics);
+        summary.append(systemGroup, modelGroup);
         if (state.cache.path) {
             const path = node('div', 'model-console-cache-path');
-            path.append(node('span', '', mt('storage.hf_storage', 'Hugging Face storage')), node('code', '', state.cache.path), actionButton(mt('actions.copy', 'Copy'), 'copy-value'));
+            path.append(node('span', '', mt('storage.cache_path', 'Cache path')), node('code', '', state.cache.path), actionButton(mt('actions.copy', 'Copy'), 'copy-value'));
             path.lastChild.dataset.value = state.cache.path;
             summary.appendChild(path);
         }
@@ -645,7 +627,7 @@
                     info.appendChild(node('span', 'model-console-availability error', mt('storage.possible_hf_duplicate', 'Possible duplicate with Hugging Face · please check')));
                 }
                 const right = node('div', 'model-console-storage-actions');
-                right.appendChild(badge(model.active ? mt('runtime.active_model', 'Active model') : mt('storage.local_models_location', 'Local under ~/Models'), model.active ? 'active' : ''));
+                right.appendChild(badge(model.active ? mt('runtime.active_model', 'Active model') : mt('storage.local_models', 'Local under ~/Models'), model.active ? 'active' : ''));
                 row.append(info, right);
                 localList.appendChild(row);
             });
@@ -693,7 +675,7 @@
 
         const head = node('div', 'model-console-section-heading');
         head.append(
-            node('h5', '', mt('downloads.title', 'Downloads & Jobs')),
+            node('h5', '', mt('downloads.title', 'Jobs')),
             node('span', '', String(state.jobs.length))
         );
         const cleanup = node('div', 'history-cleanup');
@@ -848,19 +830,11 @@
 
     function render() {
         if (!root || !content) return;
-        const title = document.getElementById('modelConsoleTitle');
-        const description = root.querySelector('.model-console-header p');
         const addButton = document.getElementById('modelConsoleAdd');
-        const headings = {
-            models: [mt('models.title', 'Models'), mt('models.description', 'Manage installed models, downloads and model roles.')],
-            runtime: ['Runtime', mt('runtime.switch_description', 'Switches the model through the existing runtime manager.')],
-            storage: [mt('storage', 'Storage'), mt('storage_description', 'Overview of locally available models and their storage usage.')],
-            downloads: ['Downloads', 'Download-Jobs der Model Console.'],
-        };
-        const heading = headings[state.activeTab] || headings.models;
-        if (title) title.textContent = heading[0];
-        if (description) description.textContent = heading[1];
+        const header = root.querySelector('.model-console-header');
+        if (header) header.hidden = state.activeTab !== 'models';
         if (addButton) addButton.hidden = state.activeTab !== 'models';
+        content.dataset.activeModelTab = state.activeTab;
         content.innerHTML = '';
         const errorBanner = renderErrorBanner();
         if (errorBanner) content.appendChild(errorBanner);
@@ -1062,13 +1036,13 @@
             definitionRow('Alias', model.alias, { mono: true, copy: true }),
             definitionRow(mt('dialog.display_name', 'Display name'), displayName(model)),
             definitionRow(model.local ? mt('storage.local_path', 'Local model path') : 'Repository', model.repo, { mono: true, copy: true }),
-            definitionRow(!model.local && cache?.path ? 'Cache-Pfad' : null, cache?.path, { mono: true, copy: true }),
+            definitionRow(!model.local && cache?.path ? mt('storage.cache_path', 'Cache path') : null, cache?.path, { mono: true, copy: true }),
             definitionRow('Backend', model.backend === 'vlm' ? 'VLM' : 'LLM'),
             definitionRow(mt('dialog.quantization', 'Quantization'), model.quantization),
-            definitionRow('Vision', model.vision ? 'Ja' : 'Nein'),
+            definitionRow('Vision', model.vision ? mt('status.yes', 'Yes') : mt('status.no', 'No')),
             definitionRow(mt('storage.source', 'Source'), model.local ? mt('storage.local_filesystem', 'Local file system') : 'Hugging Face'),
             definitionRow(mt('storage.cache_size', 'Cache size'), cache?.size || formatBytes(cache?.size_bytes)),
-            model.active ? definitionRow('Thinking', state.status ? (state.status.thinking ? 'An' : 'Aus') : null) : null,
+            model.active ? definitionRow('Thinking', state.status ? (state.status.thinking ? mt('status.on', 'On') : mt('status.off', 'Off')) : null) : null,
         ].filter(Boolean).forEach(item => details.appendChild(item));
         openDialog({ eyebrow: mt('dialog.technical_details', 'Technical details'), title: displayName(model), body: details, actions: [actionButton(mt('actions.close', 'Close'), 'close-dialog')] });
     }
