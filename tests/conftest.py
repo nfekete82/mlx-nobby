@@ -1,6 +1,15 @@
 import pytest
 
 
+def pytest_addoption(parser):
+    parser.addoption('--e2e', action='store_true', help='Run Chromium acceptance tests')
+
+
+def pytest_ignore_collect(collection_path, config):
+    if collection_path.name == 'e2e' and not config.getoption('--e2e'):
+        return True
+
+
 @pytest.fixture
 def mflux_cli_contract(monkeypatch):
     """Provider unit tests use a CLI contract independently of host Metal access.

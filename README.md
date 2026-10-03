@@ -424,6 +424,9 @@ isolation. See [SECURITY.md](SECURITY.md) for reporting and operating guidance.
 
 ## Development and tests
 
+See [Testing](docs/TESTING.md) for deterministic Chromium acceptance via
+`./scripts/mlx test-e2e`, setup and failure artifacts.
+
 See [the performance audit](docs/PERFORMANCE_AUDIT.md) for measured hotspots,
 regressions, and reproducible text/vision benchmarks with
 `scripts/benchmark-chat.py`.

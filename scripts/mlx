@@ -1750,6 +1750,9 @@ Diagnose:
       Server neu starten und RAM/KV-Cache verwerfen
 
 Hilfe:
+  mlx test-e2e
+      Deterministische Chromium-Abnahme ohne Modelle (Testumgebung erforderlich)
+
   mlx
   mlx help
   mlx --help
@@ -1762,6 +1765,16 @@ HELP
 # ============================================================
 # Main
 # ============================================================
+
+# CPU-only acceptance also works on CI without a local runtime config.
+if [ "${1:-}" = "test-e2e" ]; then
+    shift
+    test_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    test_python="${MLX_TEST_PYTHON:-$test_repo/test-venv/bin/python}"
+    [ -x "$test_python" ] || test_python=python3
+    cd "$test_repo" || exit 1
+    exec "$test_python" -m pytest --e2e tests/e2e -q "$@"
+fi
 
 load_config
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added browser end-to-end regression coverage for chat, speech, image and video workflows.
+
 - Fix chat read-aloud loading and playback state, remove competing speech
   handlers, and prevent voice status updates from freezing the UI.
 
