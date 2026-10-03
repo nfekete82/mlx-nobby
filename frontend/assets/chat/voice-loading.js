@@ -32,7 +32,7 @@
 
     if (!document.querySelector('script[data-mlx-assistant-read-aloud]')) {
         const script = document.createElement('script');
-        script.src = '/assets/chat/assistant-read-aloud.js?v=20260929-tts-stability-v1';
+        script.src = '/assets/chat/assistant-read-aloud.js?v=20261003-read-aloud-reliability';
         script.async = false;
         script.dataset.mlxAssistantReadAloud = '1';
         script.addEventListener('error', () => {

@@ -8,5 +8,6 @@
   "resume": "Resume playback",
   "failed": "Speech failed · try again",
   "timeout": "Speech generation timed out · try again",
-  "empty": "No readable text"
+  "empty": "No readable text",
+  "playback_timeout": "Audio playback could not start · try again"
 }

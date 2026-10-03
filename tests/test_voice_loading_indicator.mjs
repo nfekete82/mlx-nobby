@@ -10,8 +10,8 @@ const loading = fs.readFileSync(
     new URL('../frontend/assets/chat/voice-loading.js', import.meta.url),
     'utf8'
 );
-const rendering = fs.readFileSync(
-    new URL('../frontend/assets/chat/rendering.js', import.meta.url),
+const controller = fs.readFileSync(
+    new URL('../frontend/assets/chat/assistant-read-aloud.js', import.meta.url),
     'utf8'
 );
 
@@ -24,17 +24,16 @@ test('chat loads the TTS loading indicator with voice controls', () => {
     );
 });
 
-test('TTS loading indicator animates the existing generating icon', () => {
-    assert.match(rendering, /const loadingIcon/);
-    assert.match(rendering, /speech\.disabled = true/);
-    assert.match(rendering, /speech\.innerHTML = loadingIcon/);
-    assert.match(loading, /mlx-message-speech-button:disabled svg/);
-    assert.match(loading, /mlx-speech-loading-spin/);
-    assert.match(loading, /animation: mlx-speech-loading-spin \.8s linear infinite/);
-    assert.match(loading, /cursor: progress/);
+test('canonical TTS controller animates a spinner while retaining cancellation', () => {
+    assert.match(controller, /generating: '<path d="M12 3a9/);
+    assert.match(controller, /setIcon\(state, 'generating'\)/);
+    assert.match(controller, /button\.disabled = false/);
+    assert.match(controller, /mlx-message-speech-button\.is-generating svg/);
+    assert.match(controller, /animation: mlx-assistant-speech-spin \.8s linear infinite/);
+    assert.match(controller, /cursor: pointer/);
 });
 
 test('TTS loading indicator respects reduced motion', () => {
-    assert.match(loading, /prefers-reduced-motion: reduce/);
-    assert.match(loading, /animation: none/);
+    assert.match(controller, /prefers-reduced-motion: reduce/);
+    assert.match(controller, /animation: none/);
 });

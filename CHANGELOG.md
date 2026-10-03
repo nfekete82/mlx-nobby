@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix chat read-aloud loading and playback state, remove competing speech
+  handlers, and prevent voice status updates from freezing the UI.
+
 - Validate optional Uncensored video profile availability before queueing jobs,
   show unavailable profiles in the dialog, and preserve launchd adapter settings.
 

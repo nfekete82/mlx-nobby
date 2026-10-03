@@ -8,5 +8,6 @@
   "resume": "Wiedergabe fortsetzen",
   "failed": "Sprachausgabe fehlgeschlagen · erneut versuchen",
   "timeout": "Sprachausgabe hat zu lange gebraucht · erneut versuchen",
-  "empty": "Kein vorlesbarer Text"
+  "empty": "Kein vorlesbarer Text",
+  "playback_timeout": "Audiowiedergabe konnte nicht starten · erneut versuchen"
 }
