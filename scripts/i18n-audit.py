@@ -113,13 +113,27 @@ def html_line_is_translated(line: str) -> bool:
 
 
 def js_line_is_translated(line: str) -> bool:
-    """Recognize local bilingual helpers as translated UI."""
+    """Recognize one-line bilingual helpers as translated UI."""
     return bool(
         re.search(
             r"\b(?:t|localText)\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`])",
             line,
         )
     )
+
+
+def js_multiline_translated_lines(source: str) -> set[int]:
+    """Return lines covered by localText(de, en), including multiline calls."""
+    translated = set()
+    pattern = re.compile(
+        r"\blocalText\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`]).*?(?P=q2)\s*\)",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(source):
+        start = source.count("\n", 0, match.start()) + 1
+        end = source.count("\n", 0, match.end()) + 1
+        translated.update(range(start, end + 1))
+    return translated
 
 
 def extract_line_candidates(line: str):
@@ -188,6 +202,7 @@ for path in SCAN_FILES:
     relative = path.relative_to(ROOT)
     source = path.read_text(encoding="utf-8", errors="replace")
     lines = source.splitlines()
+    translated_js_lines = js_multiline_translated_lines(source) if path.suffix == ".js" else set()
 
     for line_number, line in enumerate(lines, start=1):
         stripped = line.strip()
@@ -195,7 +210,7 @@ for path in SCAN_FILES:
             continue
         if path.suffix == ".html" and html_line_is_translated(line):
             continue
-        if path.suffix == ".js" and js_line_is_translated(line):
+        if path.suffix == ".js" and (line_number in translated_js_lines or js_line_is_translated(line)):
             continue
 
         for value in extract_line_candidates(line):
