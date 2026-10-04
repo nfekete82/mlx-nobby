@@ -10,6 +10,7 @@ from agent.shorts_planner import ShortProject, quality_capabilities
 MAX_VOICEOVER_TIME_COMPRESSION = 1.15
 # Preserve the existing allowance for MP3 encoder padding / duration probing.
 VOICEOVER_DURATION_TOLERANCE_SECONDS = 0.05
+DIALOGUE_PAUSE_SECONDS = 0.18
 
 
 class VoiceoverDurationError(ValueError):
@@ -169,7 +170,7 @@ def compose_command(job, output_path):
 
 
 def scene_tts(job_id, project, request_fn):
-    """Place speech inside its scene; silence stays in scenes without narration."""
+    """Place narration or ordered cast dialogue inside each scene timeline."""
     from agent import shorts_jobs, batch_state
     directory = shorts_jobs.SHORTS_DIRECTORY / job_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -178,27 +179,53 @@ def scene_tts(job_id, project, request_fn):
     elapsed = 0
     index = 0
     for scene_number, scene in enumerate(project.scenes, 1):
-        if scene.voice_enabled and scene.narration:
-            payload = {"input": scene.narration, "language": project.language}
-            voice = project.voice_for_scene(scene)
-            if voice:
-                payload["voice"] = voice
-            if project.voice_speed != 1:
-                payload["speed"] = project.voice_speed
-            audio = request_fn(payload)
-            if not isinstance(audio, bytes) or not audio:
-                raise RuntimeError("speech service returned invalid audio")
-            if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
-                raise shorts_jobs._ComposeCancelled("TTS cancelled")
-            path = directory / f"voice-{scene.id}.mp3"
-            batch_state.atomic_write_with(path, lambda temporary: temporary.write_bytes(audio))
-            probe = shutil.which("ffprobe") or "ffprobe"
-            duration = float(subprocess.check_output(
-                [probe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                text=True, timeout=30,
-            ).strip())
-            if not math.isfinite(duration) or duration <= 0:
-                raise RuntimeError("speech service returned invalid audio duration")
+        if scene.voice_enabled and (scene.dialogue or scene.narration):
+            turns = ([(line.text, line.speaker) for line in scene.dialogue]
+                     if scene.dialogue else [(scene.narration, scene.speaker)])
+            segment_labels = []
+            duration = 0.0
+            for turn_number, (text, speaker) in enumerate(turns):
+                if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
+                    raise shorts_jobs._ComposeCancelled("TTS cancelled")
+                payload = {"input": text, "language": project.language}
+                voice = project.voice_for_speaker(speaker)
+                if voice:
+                    payload["voice"] = voice
+                if project.voice_speed != 1:
+                    payload["speed"] = project.voice_speed
+                audio = request_fn(payload)
+                if not isinstance(audio, bytes) or not audio:
+                    raise RuntimeError("speech service returned invalid audio")
+                if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
+                    raise shorts_jobs._ComposeCancelled("TTS cancelled")
+                # Keep speaker identity in the saved project and each segment filename.
+                filename = (f"voice-{scene.id}-dialogue-{turn_number}-{speaker}.mp3"
+                            if scene.dialogue else f"voice-{scene.id}.mp3")
+                path = directory / filename
+                batch_state.atomic_write_with(path, lambda temporary: temporary.write_bytes(audio))
+                probe = shutil.which("ffprobe") or "ffprobe"
+                segment_duration = float(subprocess.check_output(
+                    [probe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    text=True, timeout=30,
+                ).strip())
+                if not math.isfinite(segment_duration) or segment_duration <= 0:
+                    raise RuntimeError("speech service returned invalid audio duration")
+                duration += segment_duration
+                command += ["-i", str(path)]
+                if scene.dialogue:
+                    pause = DIALOGUE_PAUSE_SECONDS if turn_number < len(turns) - 1 else 0
+                    duration += pause
+                    label = f"d{scene_number}_{turn_number}"
+                    filters.append(f"[{index}:a]aresample=48000,"
+                                   "aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS,"
+                                   f"apad=pad_dur={pause}[{label}]")
+                    segment_labels.append(f"[{label}]")
+                else:
+                    source = f"[{index}:a]"
+                index += 1
+            if scene.dialogue:
+                source = f"[dialogue{scene_number}]"
+                filters.append("".join(segment_labels) + f"concat=n={len(turns)}:v=0:a=1{source}")
             tempo = ""
             mix_timestamps = ""
             if duration > scene.duration + VOICEOVER_DURATION_TOLERANCE_SECONDS:
@@ -208,11 +235,9 @@ def scene_tts(job_id, project, request_fn):
                 # Rebuild timestamps after tempo/delay/padding from sample counts.
                 tempo = f"atempo={required_speed:.9f},asetpts=N/SR/TB,"
                 mix_timestamps = "asetpts=N/SR/TB,"
-            command += ["-i", str(path)]
-            filters.append(f"[{index}:a]aresample=48000,{tempo}atrim=duration={scene.duration},asetpts=PTS-STARTPTS,"
-                           f"adelay={elapsed*1000}:all=1,apad,{mix_timestamps}atrim=duration={project.duration}[a{index}]")
-            labels.append(f"[a{index}]")
-            index += 1
+            filters.append(f"{source}aresample=48000,{tempo}atrim=duration={scene.duration},asetpts=PTS-STARTPTS,"
+                           f"adelay={elapsed*1000}:all=1,apad,{mix_timestamps}atrim=duration={project.duration}[a{scene_number}]")
+            labels.append(f"[a{scene_number}]")
         elapsed += scene.duration
     output = directory / "voiceover-mix.mp3"
     filters.append("".join(labels) + f"amix=inputs={len(labels)}:normalize=0[audio]")

@@ -94,6 +94,15 @@ def quality_capabilities():
     return result
 
 
+class DialogueLine(BaseModel):
+    """One spoken turn, resolved through the project cast."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+
+    speaker: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    text: str = Field(min_length=1, max_length=1000)
+
+
 class ShortScene(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 
@@ -111,6 +120,7 @@ class ShortScene(BaseModel):
         max_length=64,
         pattern=r"^[A-Za-z0-9_-]+$",
     )
+    dialogue: list[DialogueLine] = Field(default_factory=list, max_length=64)
     transition: SceneTransition = Field(default_factory=SceneTransition)
     music: SceneMusic | None = None
     sfx: SceneSfx = Field(default_factory=SceneSfx)
@@ -213,9 +223,12 @@ class ShortProject(BaseModel):
         for scene in self.scenes:
             if scene.speaker is not None and scene.speaker not in known_cast:
                 raise ValueError(f"scene speaker {scene.speaker!r} is not present in cast")
+            for line in scene.dialogue:
+                if line.speaker not in known_cast:
+                    raise ValueError(f"dialogue speaker {line.speaker!r} in scene {scene.id!r} is not present in cast")
         if (info.context or {}).get("draft"):
             return self
-        if self.schema_version == 1 and any(not scene.narration for scene in self.scenes):
+        if self.schema_version == 1 and any(not scene.narration and not scene.dialogue for scene in self.scenes):
             raise ValueError("legacy narration must contain at least 1 character")
         allowed = quality_capabilities()[self.quality]["durations"]
         for scene in self.scenes:
@@ -231,13 +244,16 @@ class ShortProject(BaseModel):
             raise ValueError("scene durations must sum exactly to project duration")
         return self
 
-    def voice_for_scene(self, scene: ShortScene) -> str | None:
-        """Resolve a scene voice from its cast member, falling back to project voice."""
-        if scene.speaker:
-            member = next((item for item in self.cast if item.id == scene.speaker), None)
+    def voice_for_speaker(self, speaker_id: str | None) -> str | None:
+        """Resolve a cast voice, falling back to the project/service default."""
+        if speaker_id:
+            member = next((item for item in self.cast if item.id == speaker_id), None)
             if member and member.voice:
                 return member.voice
         return self.voice
+
+    def voice_for_scene(self, scene: ShortScene) -> str | None:
+        return self.voice_for_speaker(scene.speaker)
 
 
 class ShortPlanningError(RuntimeError):
@@ -284,6 +300,11 @@ def _planning_messages(prompt):
                 "unless the user explicitly names a local voice/profile. Set a voiced "
                 "scene's speaker to the matching cast id when the speaker is clear. Never "
                 "invent local voice/profile names. "
+                "When explicitly named people speak in the same scene, prefer ordered dialogue "
+                "lines with speaker and text. Use only ids present in project cast; voice belongs "
+                "to the cast member, never to a dialogue line. Dialogue takes precedence over "
+                "narration for speech. Use dialogue only for actual spoken turns; keep ordinary "
+                "narration and an empty dialogue list otherwise. "
                 "For newly planned multi-scene Shorts set consistency_mode=true unless "
                 "the user explicitly requests independent scenes or direct text-to-video. "
                 "When consistency_mode=true, create a concise visual_bible that captures "

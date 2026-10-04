@@ -147,7 +147,7 @@
             if (key === 'voice' || key === 'speaker' || key === 'music_track' || key === 'track') object[key] = input.value || null;
             if (key === 'quality' || key === 'music_mode' || key === 'music_track' || key === 'track') render();
             validate();
-            if (draft && (object === draft.project || Object.values(draft.project).includes(object) || draft.project.cast?.includes(object) || draft.project.scenes.some(scene => object === scene || Object.values(scene).includes(object)))) dirty();
+            if (draft && (object === draft.project || Object.values(draft.project).includes(object) || draft.project.cast?.includes(object) || draft.project.scenes.some(scene => object === scene || scene.dialogue?.includes(object) || Object.values(scene).includes(object)))) dirty();
         });
         wrap.append(input); parent.append(wrap); return input;
     }
@@ -192,7 +192,10 @@
             const actions = node('div', 'mlx-shorts-studio-actions');
             button(localText('Entfernen', 'Remove'), () => {
                 project.cast = project.cast.filter(item => item.id !== member.id);
-                project.scenes.forEach(scene => { if (scene.speaker === member.id) scene.speaker = null; });
+                project.scenes.forEach(scene => {
+                    if (scene.speaker === member.id) scene.speaker = null;
+                    scene.dialogue = (scene.dialogue || []).filter(line => line.speaker !== member.id);
+                });
             }, actions);
             row.append(actions); details.append(row);
         });
@@ -203,6 +206,34 @@
         }, actions, project.cast.length >= 16);
         button(localText('Stimmen neu laden', 'Refresh voices'), async () => { await loadVoiceProfiles(true); }, actions);
         details.append(actions);
+    }
+    function dialogueFields(parent, project, scene) {
+        const dialogue = scene.dialogue || [];
+        const details = accordion(parent, localText('Dialog', 'Dialogue') + ` (${dialogue.length})`);
+        details.open = dialogue.length > 0;
+        details.append(node('p', 'mlx-shorts-studio-status', localText(
+            'Dialog ersetzt den gesprochenen Erzähltext. Die Stimme kommt automatisch aus der Besetzung. Entfernen einer Person entfernt auch ihre Dialogzeilen.',
+            'Dialogue replaces spoken narration. Voices come automatically from the cast. Removing a person also removes their dialogue lines.'
+        )));
+        if (!project.cast.length) details.append(node('p', '', localText(
+            'Lege zuerst unter „Besetzung & Stimmen“ Personen an.', 'Add people under “Cast & voices” first.'
+        )));
+        dialogue.forEach(line => {
+            const row = node('div', 'mlx-shorts-studio-editor');
+            field(row, localText('Dialogsprecher', 'Dialogue speaker'), line, 'speaker', 'text',
+                project.cast.map(member => [member.id, member.name || member.id]));
+            const text = field(row, localText('Dialogtext', 'Dialogue text'), line, 'text', 'textarea');
+            text.maxLength = 1000;
+            button(localText('Dialogzeile entfernen', 'Remove dialogue line'), () => {
+                scene.dialogue = scene.dialogue.filter(item => item !== line);
+            }, row);
+            details.append(row);
+        });
+        button(localText('+ Dialogzeile hinzufügen', '+ Add dialogue line'), () => {
+            if (!project.cast.length || (scene.dialogue || []).length >= 64) return;
+            if (!Array.isArray(scene.dialogue)) scene.dialogue = [];
+            scene.dialogue.push({speaker: project.cast[0].id, text: ''});
+        }, details, !project.cast.length || dialogue.length >= 64);
     }
     function musicFields(parent, settings, global = false) {
         field(parent, t('editor_enable_music'), settings, global ? 'music_enabled' : 'enabled', 'checkbox');
@@ -239,6 +270,9 @@
         if (project.consistency_mode && !draft?.source_job_id && providerReadiness?.available === false)
             result.push(t('editor_no_compatible_keyframe_generator_available_please_check_the'));
         project.scenes.forEach((scene, i) => {
+            if ((scene.dialogue || []).length > 64 || (scene.dialogue || []).some(line =>
+                !knownCast.has(line.speaker) || !String(line.text || '').trim() || line.text.length > 1000))
+                result.push(localText('Bitte Sprecher und Text der Dialogzeilen prüfen.', 'Please check dialogue speakers and text.'));
             if (scene.speaker && !knownCast.has(scene.speaker)) result.push(localText(
                 `Szene ${i + 1}: Sprecher ist nicht mehr in der Besetzung.`,
                 `Scene ${i + 1}: speaker is no longer in the cast.`
@@ -541,6 +575,7 @@
             card.append(node('strong', '', `${media?.status === 'completed' ? '✓ ' : sourceJob?.error_scene_id === scene.id ? '! ' : ''}${t('editor_scene', {number: i+1})} · ${scene.duration} s`),
                 node('span', '', scene.title || scene.description || t('editor_untitled')),
                 node('span', '', scene.caption || t('editor_no_caption')));
+            if (scene.dialogue?.length) card.append(node('span', '', `${scene.dialogue.length} ${localText('Dialogzeilen', 'dialogue lines')}`));
             const speaker = p.cast.find(member => member.id === scene.speaker);
             if (speaker) card.append(node('span', '', `${localText('Sprecher', 'Speaker')}: ${speaker.name}`));
             if (expertMode) card.append(node('span', '', `${scene.music?.style || p.music_style || 'Auto'} · ${scene.transition.type} · ${renderStatus}`));
@@ -567,6 +602,7 @@
         field(editor, t('editor_caption_visible_text'), scene, 'caption', 'textarea');
         field(editor, t('editor_narration_spoken_text'), scene, 'narration', 'textarea');
         if (p.cast.length) field(editor, localText('Sprecher', 'Speaker'), scene, 'speaker', 'text', castOptions(p, scene.speaker));
+        dialogueFields(editor, p, scene);
         if (expertMode) {
         const sceneDetails = accordion(editor, t('editor_scene_details'));
         field(sceneDetails, t('editor_duration_s'), scene, 'duration', 'number');

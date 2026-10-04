@@ -542,3 +542,49 @@ test('successful History cancellation reloads server status without retrying or 
     const updated = history.__test.renderProject(history.getProjects()[0]);
     assert.ok(!updated.querySelectorAll('button').some(b => b.textContent === 'Abbrechen'));
 });
+
+test('simple dialogue editor uses cast speakers, persists edits and removes lines', async () => {
+    const h = harness({timers: fakeTimers()});
+    await h.window.MLXShortsProjectEditor.newDraft();
+    assert.ok(textContent(h.body).includes('Lege zuerst'));
+    assert.equal(h.buttons().find(b => b.textContent === '+ Dialogzeile hinzufügen').disabled, true);
+    await h.click('+ Person hinzufügen');
+    await h.click('+ Person hinzufügen');
+    assert.ok(textContent(h.body).includes('Besetzung & Stimmen'));
+    await h.click('+ Dialogzeile hinzufügen');
+    const state = () => h.window.MLXShortsProjectEditor.__test.getState();
+    assert.equal(state().draft.project.scenes[0].dialogue[0].speaker, 'person-1');
+    const speaker = inputFor(h, 'Dialogsprecher');
+    assert.deepEqual(speaker.children.map(o => o.value), ['person-1', 'person-2']);
+    speaker.value = 'person-2'; await speaker.fire('input');
+    const text = inputFor(h, 'Dialogtext'); text.value = 'Hello'; await text.fire('input');
+    const callback = [...h.timers.callbacks.values()].at(-1); await callback();
+    assert.deepEqual(h.drafts.get('1').project.scenes[0].dialogue, [{speaker: 'person-2', text: 'Hello'}]);
+    assert.ok(textContent(h.body).includes('1 Dialogzeilen'));
+    await h.click('+ Dialogzeile hinzufügen');
+    assert.equal(state().draft.project.scenes[0].dialogue.length, 2);
+    await h.click('Dialogzeile entfernen');
+    assert.equal(state().draft.project.scenes[0].dialogue.length, 1);
+    await h.click('Entfernen');
+    assert.equal(state().draft.project.scenes[0].dialogue.length, 0);
+    await h.click('Entfernen');
+    assert.equal(h.buttons().find(b => b.textContent === '+ Dialogzeile hinzufügen').disabled, true);
+    h.window.MLXI18n.getLanguage = () => 'en';
+    h.window.MLXShortsProjectEditor.refreshLanguage();
+    assert.ok(textContent(h.body).includes('Add people under'));
+    assert.ok(h.buttons().some(b => b.textContent === '+ Add dialogue line'));
+});
+
+test('dialogue blocks rendering for missing text or speakers and remains available in expert mode', async () => {
+    const h = harness(); await h.window.MLXShortsProjectEditor.newDraft(); await h.click('Mit KI planen');
+    await h.click('+ Person hinzufügen'); await h.click('+ Dialogzeile hinzufügen');
+    assert.equal(h.buttons().find(b => b.textContent === 'Short rendern').disabled, true);
+    const text = inputFor(h, 'Dialogtext'); text.value = 'Hello'; await text.fire('input');
+    assert.equal(h.buttons().find(b => b.textContent === 'Short rendern').disabled, false);
+    const p = structuredClone(h.window.MLXShortsProjectEditor.__test.getState().draft.project);
+    p.scenes[0].dialogue[0].speaker = 'unknown';
+    assert.ok(h.window.MLXShortsProjectEditor.__test.errors(p).some(e => e.includes('Dialogzeilen')));
+    await h.expert();
+    assert.ok(inputFor(h, 'Dialogsprecher'));
+    assert.ok(inputFor(h, 'Sprecher'));
+});

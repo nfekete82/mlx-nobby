@@ -150,7 +150,10 @@ def _request_tts(payload):
 def narration_for_project(project):
     if not isinstance(project, ShortProject):
         project = ShortProject.model_validate(project)
-    return "\n\n".join(scene.narration for scene in project.scenes if scene.voice_enabled and scene.narration)
+    return "\n\n".join(
+        "\n".join(line.text for line in scene.dialogue) if scene.dialogue else scene.narration
+        for scene in project.scenes if scene.voice_enabled and (scene.dialogue or scene.narration)
+    )
 
 
 def tts_payload_for_project(project):
@@ -572,7 +575,7 @@ def _run_tts(job_id, request_fn, tts_request_fn):
         error=None,
     )
     narration = narration_for_project(project)
-    if project.schema_version == 2:
+    if project.schema_version == 2 or any(scene.dialogue for scene in project.scenes):
         from agent.shorts_composer import scene_tts
         audio = scene_tts(job_id, project, tts_request_fn)
     else:
