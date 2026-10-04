@@ -126,7 +126,7 @@ def normalize_short_for_available_runtime(project, *, planning=False, scene_coun
             scene['video_prompt'] = scene.get('video_prompt') or scene['description']
             scene['camera'] = scene.get('camera') or 'steady cinematic framing'
             scene['caption'] = scene.get('caption') or ((scene.get('narration') or scene['description'])[:180] if data.get('subtitles_enabled', True) else '')
-            if not data.get('voice_enabled', True) or not scene.get('narration', '').strip():
+            if not data.get('voice_enabled', True) or (not scene.get('dialogue') and not scene.get('narration', '').strip()):
                 scene['voice_enabled'] = False
         transition = scene.get('transition')
         if not isinstance(transition, dict):
