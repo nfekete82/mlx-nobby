@@ -10,13 +10,33 @@
         for (const [name, replacement] of Object.entries(params)) value = value.replaceAll('{' + name + '}', String(replacement));
         return value;
     }
+    function localText(de, en) {
+        return String(window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || 'en').toLowerCase().startsWith('de') ? de : en;
+    }
     let sourceJob = null;
     let draft = null, selected = null, capabilities = null, ui = null, busy = false;
     let sceneCount = 4;
     let providerReadiness = null, saveTimer = null, saveState = 'saved';
+    let voiceProfiles = [], voiceProfilesLoaded = false;
     async function refreshReadiness() {
         if (!draft) return;
         providerReadiness = draft.project.consistency_mode ? await api('/drafts/' + draft.id + '/preflight') : {available: true, warnings: []};
+    }
+    async function loadVoiceProfiles(force = false) {
+        if (voiceProfilesLoaded && !force) return voiceProfiles;
+        try {
+            const response = await fetch('/api/mlx/audio/voices/manage', {
+                cache: 'no-store', headers: { Accept: 'application/json' }
+            });
+            if (!response.ok) throw new Error('voice manager unavailable');
+            const payload = await response.json();
+            voiceProfiles = Array.isArray(payload?.voices) ? payload.voices : [];
+            voiceProfilesLoaded = true;
+        } catch (_) {
+            voiceProfiles = [];
+            voiceProfilesLoaded = false;
+        }
+        return voiceProfiles;
     }
     function dirty() {
         saveState = 'dirty';
@@ -124,16 +144,65 @@
         input.addEventListener('input', () => {
             if (draft && expertMode && ((object === draft.project && key.startsWith('music_')) || draft.project.scenes.some(scene => scene.music === object))) draft.project.music_selection = 'custom';
             object[key] = type === 'checkbox' ? input.checked : type === 'number' ? Number(input.value) : input.value;
-            if (key === 'voice' || key === 'music_track' || key === 'track') object[key] = input.value || null;
+            if (key === 'voice' || key === 'speaker' || key === 'music_track' || key === 'track') object[key] = input.value || null;
             if (key === 'quality' || key === 'music_mode' || key === 'music_track' || key === 'track') render();
             validate();
-            if (draft && (object === draft.project || Object.values(draft.project).includes(object) || draft.project.scenes.some(scene => object === scene || Object.values(scene).includes(object)))) dirty();
+            if (draft && (object === draft.project || Object.values(draft.project).includes(object) || draft.project.cast?.includes(object) || draft.project.scenes.some(scene => object === scene || Object.values(scene).includes(object)))) dirty();
         });
         wrap.append(input); parent.append(wrap); return input;
     }
     const styles = ['cinematic', 'futuristic', 'dark', 'emotional', 'energetic', 'ambient'];
     function trackOptions(kind) {
         return [['', t('editor_auto')], ...(capabilities?.[kind] || []).map(t => [t.track, t.track])];
+    }
+    function voiceOptions(current) {
+        const options = [['', localText('Projektstandard', 'Project default')]];
+        voiceProfiles.forEach(voice => {
+            const value = String(voice?.id || voice?.label || '').trim();
+            if (value && !options.some(option => option[0] === value)) options.push([value, String(voice?.label || value)]);
+        });
+        if (current && !options.some(option => option[0] === current)) options.push([current, current]);
+        return options;
+    }
+    function castOptions(project, current) {
+        const options = [['', localText('Projektstimme', 'Project voice')]];
+        (project.cast || []).forEach(member => options.push([member.id, member.name || member.id]));
+        if (current && !options.some(option => option[0] === current)) options.push([current, current]);
+        return options;
+    }
+    function castMemberDefaults(project) {
+        const existing = new Set((project.cast || []).map(member => member.id));
+        let index = (project.cast || []).length + 1;
+        let id = 'person-' + index;
+        while (existing.has(id)) { index += 1; id = 'person-' + index; }
+        return { id, name: localText('Person ' + index, 'Person ' + index), voice: null };
+    }
+    function castFields(parent, project) {
+        if (!Array.isArray(project.cast)) project.cast = [];
+        const details = accordion(parent, localText('Besetzung & Stimmen', 'Cast & voices'));
+        details.open = project.cast.length > 0;
+        details.append(node('p', 'mlx-shorts-studio-status', localText(
+            'Ordne wiederkehrenden Personen deine lokal gespeicherten Stimmen zu. Pro Szene kannst du anschließend den Sprecher auswählen.',
+            'Assign your locally stored voices to recurring people. You can then choose the speaker for each scene.'
+        )));
+        project.cast.forEach(member => {
+            const row = node('div', 'mlx-shorts-studio-editor');
+            field(row, localText('Person', 'Person'), member, 'name');
+            field(row, localText('Stimme', 'Voice'), member, 'voice', 'text', voiceOptions(member.voice));
+            const actions = node('div', 'mlx-shorts-studio-actions');
+            button(localText('Entfernen', 'Remove'), () => {
+                project.cast = project.cast.filter(item => item.id !== member.id);
+                project.scenes.forEach(scene => { if (scene.speaker === member.id) scene.speaker = null; });
+            }, actions);
+            row.append(actions); details.append(row);
+        });
+        const actions = node('div', 'mlx-shorts-studio-actions');
+        button(localText('+ Person hinzufügen', '+ Add person'), () => {
+            if (project.cast.length >= 16) return;
+            project.cast.push(castMemberDefaults(project));
+        }, actions, project.cast.length >= 16);
+        button(localText('Stimmen neu laden', 'Refresh voices'), async () => { await loadVoiceProfiles(true); }, actions);
+        details.append(actions);
     }
     function musicFields(parent, settings, global = false) {
         field(parent, t('editor_enable_music'), settings, global ? 'music_enabled' : 'enabled', 'checkbox');
@@ -162,9 +231,18 @@
         if (!Number.isInteger(project.duration) || project.duration < 5 || project.duration > 300) result.push(t('editor_choose_a_total_duration_from_5_to_300'));
         if (!Number.isFinite(project.voice_speed) || project.voice_speed < .5 || project.voice_speed > 2) result.push(t('editor_please_check_voice_speed'));
         if (project.voice && !/^[A-Za-z0-9_-]+$/.test(project.voice)) result.push(t('editor_please_check_the_voice_profile'));
+        const cast = Array.isArray(project.cast) ? project.cast : [];
+        const castIds = cast.map(member => member.id);
+        if (new Set(castIds).size !== castIds.length) result.push(localText('Personen-IDs müssen eindeutig sein.', 'Cast IDs must be unique.'));
+        if (cast.some(member => !String(member.name || '').trim())) result.push(localText('Jede Person braucht einen Namen.', 'Every cast member needs a name.'));
+        const knownCast = new Set(castIds);
         if (project.consistency_mode && !draft?.source_job_id && providerReadiness?.available === false)
             result.push(t('editor_no_compatible_keyframe_generator_available_please_check_the'));
         project.scenes.forEach((scene, i) => {
+            if (scene.speaker && !knownCast.has(scene.speaker)) result.push(localText(
+                `Szene ${i + 1}: Sprecher ist nicht mehr in der Besetzung.`,
+                `Scene ${i + 1}: speaker is no longer in the cast.`
+            ));
             if (allowed && !allowed.includes(scene.duration)) result.push(expertMode
                 ? t('editor_scene_value1_allowed_durations_value2_s', {value1: i+1, value2: allowed.join(', ')})
                 : t('editor_scene_value1_duration_is_not_supported_by_this', {value1: i+1}));
@@ -244,6 +322,7 @@
         draft = value; sourceJob = null; view = 'editor';
         selected = draft.project.scenes[0].id; sceneCount = draft.project.scenes.length;
         if (!capabilities) capabilities = await api('/capabilities');
+        await loadVoiceProfiles();
         await refreshReadiness();
     }
     async function deleteDraft(draftId) {
@@ -285,6 +364,7 @@
     async function newDraft() {
         await saveBeforeNavigation();
         if (!capabilities) capabilities = await api('/capabilities');
+        await loadVoiceProfiles();
         draft = (await api('/drafts', 'POST', {})).draft;
         sourceJob = null; view = 'editor';
         selected = draft.project.scenes[0].id;
@@ -320,6 +400,7 @@
                 sourceJob = null; view = 'editor'; selected = draft.project.scenes[0].id;
                 sceneCount = draft.project.scenes.length;
                 if (!capabilities) capabilities = await api('/capabilities');
+                await loadVoiceProfiles();
                 await refreshReadiness();
             }, actions);
             button(t('editor_delete'), () => deleteDraft(item.id), actions);
@@ -328,7 +409,7 @@
     }
     function sceneDefaults() {
         return { id: 'scene-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), title: '', duration: 5,
-            description: '', narration: '', caption: '', video_prompt: '', camera: '', voice_enabled: true,
+            description: '', narration: '', caption: '', video_prompt: '', camera: '', voice_enabled: true, speaker: null,
             transition: { type: 'cut', duration: 0 }, music: null,
             sfx: { enabled: false, track: null, volume: 0.5, offset: 0 } };
     }
@@ -342,6 +423,8 @@
         if (!ui) return;
         if (!draft) { renderStart(); return; }
         const p = draft.project;
+        if (!Array.isArray(p.cast)) p.cast = [];
+        p.scenes.forEach(scene => { if (scene.speaker === undefined) scene.speaker = null; });
         ui.body.replaceChildren();
         const bar = node('div', 'mlx-shorts-studio-actions');
         if (expertMode) {
@@ -396,6 +479,7 @@
         field(settings, t('editor_render_quality'), p, 'quality', 'text', [['fast', t('editor_draft')], ['standard', 'Standard'], ['quality', t('editor_publication')]]);
         field(settings, t('editor_enable_voice'), p, 'voice_enabled', 'checkbox');
         field(settings, t('editor_enable_captions'), p, 'subtitles_enabled', 'checkbox');
+        castFields(settings, p);
         const musicChoice = { value: p.music_selection === 'off' || p.music_mode === 'off' ? 'off' : 'auto' };
         const musicInput = field(settings, t('editor_music'), musicChoice, 'value', 'text', [['auto', 'Auto'], ['off', t('editor_off')]]);
         musicInput.addEventListener('input', () => {
@@ -457,6 +541,8 @@
             card.append(node('strong', '', `${media?.status === 'completed' ? '✓ ' : sourceJob?.error_scene_id === scene.id ? '! ' : ''}${t('editor_scene', {number: i+1})} · ${scene.duration} s`),
                 node('span', '', scene.title || scene.description || t('editor_untitled')),
                 node('span', '', scene.caption || t('editor_no_caption')));
+            const speaker = p.cast.find(member => member.id === scene.speaker);
+            if (speaker) card.append(node('span', '', `${localText('Sprecher', 'Speaker')}: ${speaker.name}`));
             if (expertMode) card.append(node('span', '', `${scene.music?.style || p.music_style || 'Auto'} · ${scene.transition.type} · ${renderStatus}`));
             card.addEventListener('click', () => { selected = scene.id; render(); });
             card.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', scene.id));
@@ -480,6 +566,7 @@
         field(editor, t('editor_what_happens'), scene, 'description', 'textarea');
         field(editor, t('editor_caption_visible_text'), scene, 'caption', 'textarea');
         field(editor, t('editor_narration_spoken_text'), scene, 'narration', 'textarea');
+        if (p.cast.length) field(editor, localText('Sprecher', 'Speaker'), scene, 'speaker', 'text', castOptions(p, scene.speaker));
         if (expertMode) {
         const sceneDetails = accordion(editor, t('editor_scene_details'));
         field(sceneDetails, t('editor_duration_s'), scene, 'duration', 'number');
@@ -551,12 +638,15 @@
         ensure(); ui.overlay.classList.add('is-open');
         await run(async () => {
             capabilities = await api('/capabilities');
+            await loadVoiceProfiles();
             await saveBeforeNavigation();
             const project = clone(job.project);
             if ((project.schema_version || 1) === 1) {
                 project.scenes.forEach(scene => { if (scene.caption === undefined) scene.caption = scene.narration || ''; });
             }
             project.schema_version = 2;
+            if (!Array.isArray(project.cast)) project.cast = [];
+            project.scenes.forEach(scene => { if (scene.speaker === undefined) scene.speaker = null; });
             draft = (await api('/drafts', 'POST', { project, source_job_id: job.id, chat_id: job.chat_id })).draft;
             sourceJob = job; view = 'editor';
             selected = draft.project.scenes[0].id; sceneCount = draft.project.scenes.length;
@@ -567,9 +657,9 @@
         sourceDeleted(jobIds) { if (draft?.source_job_id && jobIds.includes(draft.source_job_id)) return run(async () => { await saveBeforeNavigation(); reset(); render(); }); },
         newDraft: async () => {
         ensure(); ui.overlay.classList.add('is-open');
-        await run(async () => { capabilities = await api('/capabilities'); await newDraft(); });
+        await run(async () => { capabilities = await api('/capabilities'); await loadVoiceProfiles(); await newDraft(); });
     }, editJob,
-        __test: { errors, move, sceneDefaults, deleteDraft, loadDraft, getState: () => ({ draft, sourceJob, view, selected }) } };
+        __test: { errors, move, sceneDefaults, deleteDraft, loadDraft, getState: () => ({ draft, sourceJob, view, selected, voiceProfiles }) } };
 })();
 
 document.addEventListener('mlx-language-changed', () => { if (window.MLXShortsProjectEditor) window.MLXShortsProjectEditor.refreshLanguage?.(); });

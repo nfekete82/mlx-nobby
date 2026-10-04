@@ -62,6 +62,28 @@ class CaptionSettings(BaseModel):
     style: Literal["bold", "plain"] = "bold"
 
 
+class CastMember(BaseModel):
+    """A recurring person/character and its optional managed local voice."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=80)
+    voice: str | None = Field(default=None, max_length=80)
+
+    @field_validator("voice")
+    @classmethod
+    def valid_voice(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("voice profile contains control characters")
+        return value
+
+
 def quality_capabilities():
     result = {}
     for quality in ("fast", "standard", "quality"):
@@ -83,6 +105,12 @@ class ShortScene(BaseModel):
     caption: str = Field(default="", max_length=4000)
     camera: str = Field(default="", max_length=600)
     voice_enabled: bool = True
+    speaker: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
     transition: SceneTransition = Field(default_factory=SceneTransition)
     music: SceneMusic | None = None
     sfx: SceneSfx = Field(default_factory=SceneSfx)
@@ -142,6 +170,7 @@ class ShortProject(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     voice_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    cast: list[CastMember] = Field(default_factory=list, max_length=16)
     music_enabled: bool = True
     music_style: Literal[
         "cinematic", "futuristic", "dark", "emotional", "energetic", "ambient",
@@ -177,6 +206,13 @@ class ShortProject(BaseModel):
         scene_ids = [scene.id for scene in self.scenes]
         if len(scene_ids) != len(set(scene_ids)):
             raise ValueError("scene ids must be unique")
+        cast_ids = [member.id for member in self.cast]
+        if len(cast_ids) != len(set(cast_ids)):
+            raise ValueError("cast ids must be unique")
+        known_cast = set(cast_ids)
+        for scene in self.scenes:
+            if scene.speaker is not None and scene.speaker not in known_cast:
+                raise ValueError(f"scene speaker {scene.speaker!r} is not present in cast")
         if (info.context or {}).get("draft"):
             return self
         if self.schema_version == 1 and any(not scene.narration for scene in self.scenes):
@@ -194,6 +230,14 @@ class ShortProject(BaseModel):
         if sum(scene.duration for scene in self.scenes) != self.duration:
             raise ValueError("scene durations must sum exactly to project duration")
         return self
+
+    def voice_for_scene(self, scene: ShortScene) -> str | None:
+        """Resolve a scene voice from its cast member, falling back to project voice."""
+        if scene.speaker:
+            member = next((item for item in self.cast if item.id == scene.speaker), None)
+            if member and member.voice:
+                return member.voice
+        return self.voice
 
 
 class ShortPlanningError(RuntimeError):
@@ -235,6 +279,11 @@ def _planning_messages(prompt):
                 "Voice configuration is not a creative choice: leave voice null and "
                 "voice_speed at 1.0 unless the user explicitly names a local voice/profile "
                 "or requests another speaking speed. Never invent a voice name. "
+                "When the prompt explicitly names recurring people or characters, create "
+                "stable cast entries for them with short safe ids. Leave cast voice null "
+                "unless the user explicitly names a local voice/profile. Set a voiced "
+                "scene's speaker to the matching cast id when the speaker is clear. Never "
+                "invent local voice/profile names. "
                 "For newly planned multi-scene Shorts set consistency_mode=true unless "
                 "the user explicitly requests independent scenes or direct text-to-video. "
                 "When consistency_mode=true, create a concise visual_bible that captures "
