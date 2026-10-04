@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wait for LaunchAgent unload completion before reloading changed configuration and restore the previous service if bootstrap fails.
+
 - Add reproducible, pin-bound patching for the managed LTX-MLX runtime.
 - Extend the managed LTX low-memory LoRA loader to apply compatible non-transformer adapter targets.
 
