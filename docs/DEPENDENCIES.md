@@ -273,3 +273,13 @@ The old web variables `MLX_URL`, `SPEECH_URL`, and `IMAGE_URL` are no longer
 read by the web backend. MLX and speech requests cross `AGENT_URL`; the agent
 gets the native MLX port from `~/.config/mlx-server/config`. Speech and image
 targets use the host variables listed above.
+
+### Managed LTX runtime patches
+
+`scripts/setup-ltx-video-mlx` keeps ltx-2-mlx exactly pinned. Commit-bound
+patches under `runtime-patches/ltx-2-mlx/<full-commit>/` are validated and
+applied in lexical order before `uv sync --frozen`. Wrong pins, unexpected
+local changes and patch mismatches stop setup. An upstream upgrade requires
+explicitly rebasing and checking the series against its new pin. The current
+series is empty and leaves the runtime unchanged. See the patch directory's
+README for state validation and repeat-install behavior.
