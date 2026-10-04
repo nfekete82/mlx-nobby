@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add reproducible, pin-bound patching for the managed LTX-MLX runtime.
+- Extend the managed LTX low-memory LoRA loader to apply compatible non-transformer adapter targets.
 
 ## v1.6.2
 

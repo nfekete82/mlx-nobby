@@ -281,5 +281,6 @@ patches under `runtime-patches/ltx-2-mlx/<full-commit>/` are validated and
 applied in lexical order before `uv sync --frozen`. Wrong pins, unexpected
 local changes and patch mismatches stop setup. An upstream upgrade requires
 explicitly rebasing and checking the series against its new pin. The current
-series is empty and leaves the runtime unchanged. See the patch directory's
+series adds compatible non-block LoRA targets to the low-memory loader,
+while retaining streamed block fusion. See the patch directory's
 README for state validation and repeat-install behavior.

@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,6 +52,83 @@ class RuntimePatchTests(unittest.TestCase):
     def snapshot(self):
         return (self.git('status', '--porcelain', '--untracked-files=all').stdout,
                 {p.name: p.read_bytes() for p in self.repo.iterdir() if p.is_file()})
+
+    @staticmethod
+    def patch_preimages(content):
+        """Reconstruct hunk preimages, including unprefixed blank context."""
+        files, current, offset = {}, None, None
+        for line in content.splitlines(keepends=True):
+            if line.startswith('diff --git '):
+                current, offset = None, None
+            elif line.startswith('--- a/'):
+                current = line[6:].strip()
+                files.setdefault(current, [])
+            elif line.startswith('@@ ') and current:
+                offset = int(re.match(r'@@ -(\d+)', line).group(1)) - 1
+            elif current and offset is not None and (line == '\n' or line[:1] in {' ', '-'}):
+                lines = files[current]
+                while len(lines) <= offset:
+                    lines.append('# synthetic unchanged context\n')
+                lines[offset] = '\n' if line == '\n' else line[1:]
+                offset += 1
+        return files
+
+    def test_normalized_empty_context_preserves_hunk_preimage(self):
+        normalized = (
+            'diff --git a/sample.txt b/sample.txt\n'
+            '--- a/sample.txt\n+++ b/sample.txt\n'
+            '@@ -1,3 +1,3 @@\n-old\n+new\n\n tail\n'
+        )
+        expected = {'sample.txt': ['old\n', '\n', 'tail\n']}
+        self.assertEqual(self.patch_preimages(normalized), expected)
+        conventional = normalized.replace('+new\n\n', '+new\n \n')
+        self.assertEqual(self.patch_preimages(conventional), expected)
+
+    def managed_patch_fixture(self):
+        """Build exact hunk preimages to exercise the shipped patch without MLX.
+
+        Unchanged gaps are synthetic comments. Context/deletion lines come
+        from the actual patch, so CI checks its application and new test file.
+        Numerical loader tests live in the patch and run on Apple Silicon.
+        """
+        shipped = ROOT / 'runtime-patches/ltx-2-mlx' / PIN / '0001-extend-lowram-lora-targets.patch'
+        content = shipped.read_text()
+        files = self.patch_preimages(content)
+        for name, lines in files.items():
+            path = self.repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(''.join(lines))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Synthetic patch context')
+        self.pin = self.git('rev-parse', 'HEAD').stdout.strip()
+        self.series = self.patch_root / self.pin
+        self.series.mkdir()
+        (self.series / shipped.name).write_text(content)
+
+    def test_shipped_patch_applies_idempotently_and_preserves_tests(self):
+        self.managed_patch_fixture()
+        result = self.helper()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('1 applied', result.stdout)
+        numerical = self.repo / 'tests/test_non_block_loras.py'
+        compile(numerical.read_text(), str(numerical), 'exec')
+        before = self.snapshot()
+        repeat = self.helper()
+        self.assertEqual(repeat.returncode, 0, repeat.stderr)
+        self.assertIn('1 already applied', repeat.stdout)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.git('diff', '--cached').stdout, '')
+
+    def test_shipped_patch_partial_state_fails_closed(self):
+        self.managed_patch_fixture()
+        result = self.helper()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.git('checkout', '--', 'packages/ltx-pipelines-mlx/src/ltx_pipelines_mlx/_base.py')
+        before = self.snapshot()
+        result = self.helper()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('partial', result.stderr)
+        self.assertEqual(self.snapshot(), before)
 
     def test_zero_patches(self):
         before = self.snapshot()
