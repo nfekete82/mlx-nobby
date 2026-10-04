@@ -108,6 +108,45 @@ if [ ! -d "$DEMO_MEDIA_DIR" ]; then
     mkdir -p "$DEMO_MEDIA_DIR"
 fi
 
+# libx264 with yuv420p requires even frame dimensions. The pinned Mac server
+# forwards the original image dimensions unchanged, so clipboard/screenshots
+# such as 1101x1207 make ffmpeg exit and surface as a BrokenPipeError. Trim at
+# most one pixel from the right/bottom edge before feeding frames to ffmpeg.
+echo "Patching MuseTalk ffmpeg handling for odd image dimensions..."
+"$INSTALL_DIR/.venv/bin/python" - "$INSTALL_DIR/server.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+marker = "encode_h = h - (h % 2)"
+if marker not in text:
+    replacements = [
+        (
+            "        h, w = frame_cycle[0].shape[:2]\n",
+            "        h, w = frame_cycle[0].shape[:2]\n"
+            "        encode_h = h - (h % 2)\n"
+            "        encode_w = w - (w % 2)\n",
+        ),
+        (
+            '                "-s", f"{w}x{h}", "-r", str(fps),\n',
+            '                "-s", f"{encode_w}x{encode_h}", "-r", str(fps),\n',
+        ),
+        (
+            "            ff_proc.stdin.write(np.ascontiguousarray(combined).tobytes())\n",
+            "            combined = combined[:encode_h, :encode_w]\n"
+            "            ff_proc.stdin.write(np.ascontiguousarray(combined).tobytes())\n",
+        ),
+    ]
+    for old, new in replacements:
+        if text.count(old) != 1:
+            raise SystemExit(
+                "Error: unexpected MuseTalk server source; refusing odd-dimension patch"
+            )
+        text = text.replace(old, new, 1)
+    path.write_text(text, encoding="utf-8")
+PY
+
 echo "Validating MuseTalk source imports..."
 (
     cd "$INSTALL_DIR/upstream"
