@@ -36,6 +36,8 @@ from backend.system_health_routes import (
     SystemHealthUiMiddleware,
     install_routes as install_system_health_routes,
 )
+from backend.talking_photo_routes import install_routes as install_talking_photo_routes
+from backend.talking_photo_ui import TalkingPhotoUiMiddleware
 from backend.version_routes import install_routes as install_version_routes
 from backend.voice_manager_routes import install_routes as install_voice_manager_routes
 
@@ -53,6 +55,7 @@ app.add_middleware(RoutingObservationMiddleware)
 app.add_middleware(NegativePromptUiMiddleware)
 app.add_middleware(ImageFollowupUiMiddleware)
 app.add_middleware(ImageRegenerateUiMiddleware)
+app.add_middleware(TalkingPhotoUiMiddleware)
 
 install_openai_gateway(app, agent_url=AGENT_URL)
 install_automation_routes(app, agent_json_request)
@@ -62,6 +65,7 @@ install_model_scout_routes(app, agent_json_request)
 install_shorts_studio_routes(app, agent_json_request)
 install_speech_streaming_routes(app, AGENT_URL)
 install_voice_manager_routes(app, AGENT_URL)
+install_talking_photo_routes(app, AGENT_URL)
 install_version_routes(app)
 install_system_health_routes(app, agent_json_request)
 install_performance_observatory_routes(app, agent_json_request)

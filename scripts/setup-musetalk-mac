@@ -1,0 +1,132 @@
+#!/bin/bash
+set -euo pipefail
+
+REPOSITORY="https://github.com/barnent1/musetalk-mac.git"
+PINNED_REVISION="${MUSETALK_REVISION:-7fd019315127d7f31e2e7f9853547ddceabbeb6e}"
+INSTALL_DIR="${MUSETALK_DIR:-$HOME/musetalk-mac}"
+PORT="${MUSETALK_PORT:-8070}"
+LABEL="de.nobby.musetalk"
+PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
+LOG_DIR="$HOME/.config/mlx-web"
+DOMAIN="gui/$(id -u)"
+
+if [ "$(uname -m)" != "arm64" ]; then
+    echo "Error: MuseTalk-Mac requires Apple Silicon (arm64)." >&2
+    exit 1
+fi
+
+for command in git ffmpeg curl; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "Error: required command not found: $command" >&2
+        exit 1
+    fi
+done
+
+PYTHON_BIN="${MUSETALK_PYTHON:-$(command -v python3.11 || true)}"
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+    cat >&2 <<'EOF'
+Error: Python 3.11 was not found.
+Install it first, for example:
+  brew install python@3.11
+Then run this setup again.
+EOF
+    exit 1
+fi
+
+mkdir -p "$LOG_DIR" "$HOME/Library/LaunchAgents"
+
+if [ ! -d "$INSTALL_DIR/.git" ]; then
+    echo "Cloning MuseTalk-Mac..."
+    git clone "$REPOSITORY" "$INSTALL_DIR"
+else
+    current_remote="$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || true)"
+    if [ "$current_remote" != "$REPOSITORY" ] && [ "$current_remote" != "${REPOSITORY%.git}" ]; then
+        echo "Error: $INSTALL_DIR is a git repository with a different origin: $current_remote" >&2
+        exit 1
+    fi
+fi
+
+echo "Selecting tested MuseTalk-Mac revision $PINNED_REVISION..."
+git -C "$INSTALL_DIR" fetch --quiet origin
+git -C "$INSTALL_DIR" checkout --detach "$PINNED_REVISION"
+
+if [ ! -x "$INSTALL_DIR/.venv/bin/python" ]; then
+    "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+fi
+
+echo "Installing MuseTalk-Mac dependencies..."
+"$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip setuptools wheel
+"$INSTALL_DIR/.venv/bin/python" -m pip install -r "$INSTALL_DIR/requirements-mac.txt"
+
+if [ ! -f "$INSTALL_DIR/upstream/models/musetalkV15/unet.pth" ] || \
+   [ ! -d "$INSTALL_DIR/upstream/models/whisper" ]; then
+    echo "Downloading MuseTalk model weights..."
+    (
+        cd "$INSTALL_DIR"
+        ./download_weights_mac.sh
+    )
+fi
+
+cat > "${PLIST}.tmp" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>cd &quot;${INSTALL_DIR}&quot; &amp;&amp; exec &quot;${INSTALL_DIR}/.venv/bin/uvicorn&quot; server:app --host 127.0.0.1 --port ${PORT}</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTORCH_ENABLE_MPS_FALLBACK</key>
+        <string>1</string>
+        <key>MUSETALK_FP16_VAE</key>
+        <string>1</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>${LOG_DIR}/musetalk.log</string>
+    <key>StandardErrorPath</key>
+    <string>${LOG_DIR}/musetalk-error.log</string>
+</dict>
+</plist>
+EOF
+
+plutil -lint "${PLIST}.tmp" >/dev/null
+mv "${PLIST}.tmp" "$PLIST"
+
+if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+    launchctl bootout "$DOMAIN/$LABEL" || true
+fi
+launchctl bootstrap "$DOMAIN" "$PLIST"
+launchctl kickstart -k "$DOMAIN/$LABEL"
+
+echo "Starting MuseTalk-Mac on http://127.0.0.1:${PORT} ..."
+for _attempt in $(seq 1 300); do
+    if curl -fsS --connect-timeout 1 --max-time 2 \
+        "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+        echo
+        echo "MuseTalk-Mac is ready."
+        echo "Talking Photo can now be used from MLX Nobby."
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "Error: MuseTalk-Mac did not become ready." >&2
+echo "Inspect: $LOG_DIR/musetalk-error.log" >&2
+exit 1

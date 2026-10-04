@@ -33,6 +33,7 @@ from agent.shorts_studio_routes import install_routes as install_shorts_studio_r
 from agent.speech_streaming_routes import install_routes as install_speech_streaming_routes
 from agent.system_health_performance import install as install_system_health_performance
 from agent.system_health_routes import install_routes as install_system_health_routes
+from agent.talking_photo_routes import install_routes as install_talking_photo_routes
 from agent.voice_manager_routes import install_routes as install_voice_manager_routes
 
 
@@ -59,6 +60,7 @@ install_model_scout_routes(
 install_shorts_studio_routes(app)
 install_speech_streaming_routes(app)
 install_voice_manager_routes(app)
+install_talking_photo_routes(app)
 install_runtime_reliability_routes(app, status_provider=runtime_status)
 install_performance_observatory_routes(app, status_provider=runtime_status)
 install_system_health_performance()
