@@ -33,6 +33,20 @@ def test_musetalk_setup_creates_optional_demo_media_directory():
     assert script.index(mkdir) < script.index(launch)
 
 
+def test_musetalk_setup_patches_odd_frame_dimensions_before_server_preflight():
+    script = _script_text()
+
+    patch_marker = 'encode_h = h - (h % 2)'
+    width_marker = 'encode_w = w - (w % 2)'
+    crop_marker = 'combined = combined[:encode_h, :encode_w]'
+    server_import_check = 'import server'
+    assert patch_marker in script
+    assert width_marker in script
+    assert 'f"{encode_w}x{encode_h}"' in script
+    assert crop_marker in script
+    assert script.index(patch_marker) < script.index(server_import_check)
+
+
 def test_musetalk_setup_preflights_imports_before_launching_service():
     script = _script_text()
 
