@@ -1,0 +1,367 @@
+diff --git a/packages/ltx-core-mlx/src/ltx_core_mlx/loader/block_streaming.py b/packages/ltx-core-mlx/src/ltx_core_mlx/loader/block_streaming.py
+index 42a3b8033040934f91563ca345cc729dcc15e37c..4cd06932d3ad187ef7459567a287791364605b35 100644
+--- a/packages/ltx-core-mlx/src/ltx_core_mlx/loader/block_streaming.py
++++ b/packages/ltx-core-mlx/src/ltx_core_mlx/loader/block_streaming.py
+@@ -35,11 +35,12 @@ from __future__ import annotations
+
+ from collections.abc import Iterable
+ from pathlib import Path
++import math
+
+ import mlx.core as mx
+ import mlx.nn as nn
+
+-__all__ = ["BlockLoraSource", "BlockStreamer", "StreamingLTXModel"]
++__all__ = ["BlockLoraSource", "BlockStreamer", "StreamingLTXModel", "fuse_non_block_loras"]
+
+
+ class BlockLoraSource:
+@@ -72,6 +73,8 @@ class BlockLoraSource:
+         strength: float = 1.0,
+         sd_ops=None,
+     ) -> None:
++        if not math.isfinite(strength):
++            raise ValueError("LoRA strength must be finite")
+         self.strength = strength
+         self.block_prefix = block_prefix
+         self._lora_path = str(lora_path)
+@@ -96,6 +99,58 @@ class BlockLoraSource:
+                     self._block_keys.setdefault(block_idx, {}).setdefault(param_name, {})[slot] = raw_key
+                     break
+
++        # Keep the existing block index and fusion path unchanged. Root-level
++        # pairs use the same mapping, including raw parameters without .weight.
++        self._non_block_keys: dict[str, dict[str, str]] = {}
++        for raw_key in self._lora_data:
++            key = sd_ops.apply_to_key(raw_key) if sd_ops is not None else raw_key
++            if key is None or key.startswith(block_prefix):
++                continue
++            for suffix, slot in ((".lora_A.weight", "a"), (".lora_B.weight", "b")):
++                if key.endswith(suffix):
++                    slots = self._non_block_keys.setdefault(key[:-len(suffix)], {})
++                    if slot in slots:
++                        raise ValueError(f"Duplicate LoRA matrix for {key}")
++                    slots[slot] = raw_key
++                    break
++
++    def validate_pairs(self, weights: dict[str, mx.array]) -> dict[str, str]:
++        """Validate every A/B pair against unprefixed checkpoint parameters.
++
++        Only shapes/dtypes are inspected: no model or delta is materialised.
++        Returns adapter target -> actual model key, suitable for preflight.
++        Scaling deliberately matches apply_loras: B @ A * strength; alpha
++        metadata is not separately normalised in either fusion path.
++        """
++        from ltx_core_mlx.utils.weights import derive_quant_params
++
++        pairs = dict(self._non_block_keys)
++        for idx, block in self._block_keys.items():
++            pairs.update({f"{self.block_prefix}{idx}.{name}": slots for name, slots in block.items()})
++        matched = {}
++        for name, slots in pairs.items():
++            if set(slots) != {"a", "b"}:
++                raise ValueError(f"Incomplete LoRA A/B pair: {name}")
++            key = f"{name}.weight" if f"{name}.weight" in weights else name
++            if key not in weights:
++                raise ValueError(f"Missing LoRA target: {name}")
++            a, b, weight = self._lora_data[slots["a"]], self._lora_data[slots["b"]], weights[key]
++            if a.ndim != 2 or b.ndim != 2 or weight.ndim != 2:
++                raise ValueError(f"LoRA matrices and target must be 2D: {name}")
++            if a.shape[0] < 1 or a.shape[0] != b.shape[1] or b.shape[0] != weight.shape[0]:
++                raise ValueError(f"LoRA rank/output shape mismatch: {name}")
++            if not all(mx.issubdtype(x.dtype, mx.floating) for x in (a, b)):
++                raise ValueError(f"LoRA matrices must be floating point: {name}")
++            scales = weights.get(f"{name}.scales") if key.endswith(".weight") else None
++            if scales is not None:
++                if scales.ndim != 2 or scales.shape[0] != weight.shape[0] or weight.dtype != mx.uint32:
++                    raise ValueError(f"Invalid quantized LoRA target: {name}")
++                derive_quant_params(a.shape[1], weight.shape[1], scales.shape[1])
++            elif a.shape[1] != weight.shape[1] or not mx.issubdtype(weight.dtype, mx.floating):
++                raise ValueError(f"LoRA input shape/dtype mismatch: {name}")
++            matched[name] = key
++        return matched
++
+     def has_block(self, block_idx: int) -> bool:
+         """Return True iff the LoRA contains at least one matched A/B pair for block_idx."""
+         block = self._block_keys.get(block_idx)
+@@ -122,6 +177,54 @@ class BlockLoraSource:
+     def close(self) -> None:
+         self._lora_data = {}
+         self._block_keys = {}
++        self._non_block_keys = {}
++
++
++def fuse_non_block_loras(model, sources: list[BlockLoraSource]) -> None:
++    """Fuse resident parameters of a fresh streaming model one target at a time.
++
++    All sources are validated before mutation. The caller publishes the model
++    only on success. Blocks remain lazy and use the original bind-time fuser.
++    """
++    from mlx.utils import tree_flatten
++    from ltx_core_mlx.loader.fuse_loras import apply_loras
++    from ltx_core_mlx.loader.primitives import LoraStateDictWithStrength, StateDict
++
++    inner = model.inner
++    resident = {k: v for k, v in tree_flatten(inner.parameters())
++                if not k.startswith("transformer_blocks.")}
++    streamer = object.__getattribute__(model, "_streamer")
++    # A dictionary of references, never a second materialised checkpoint.
++    checkpoint = {k.removeprefix("transformer."): v for k, v in streamer._weights.items()}
++    checkpoint.update(resident)
++    matches = [src.validate_pairs(checkpoint) for src in sources]
++    del checkpoint
++    targets = sorted({name for src in sources for name in src._non_block_keys})
++    for name in targets:
++        key = next(mapping[name] for mapping in matches if name in mapping)
++        base = {key: resident.pop(key)}
++        for suffix in (".scales", ".biases"):
++            if f"{name}{suffix}" in resident:
++                base[f"{name}{suffix}"] = resident.pop(f"{name}{suffix}")
++        adapters = []
++        for src in sources:
++            slots = src._non_block_keys.get(name)
++            if slots:
++                pair = {f"{name}.lora_A.weight": src._lora_data[slots["a"]],
++                        f"{name}.lora_B.weight": src._lora_data[slots["b"]]}
++                adapters.append(LoraStateDictWithStrength(StateDict(pair, 0, set()), src.strength))
++        fused = apply_loras(StateDict(base, 0, set()), adapters)
++        mx.eval(list(fused.sd.values()))  # release this target's lazy delta graph now
++        inner.load_weights(list(fused.sd.items()), strict=False)
++        for src in sources:
++            slots = src._non_block_keys.pop(name, {})
++            for raw_key in slots.values():
++                src._lora_data.pop(raw_key, None)
++        del base, adapters, fused
++        # Release the final loop-local A/B references as well.
++        if "pair" in locals():
++            del pair
++        mx.clear_cache()
+
+
+ class BlockStreamer:
+diff --git a/packages/ltx-pipelines-mlx/src/ltx_pipelines_mlx/_base.py b/packages/ltx-pipelines-mlx/src/ltx_pipelines_mlx/_base.py
+index dc6953cc06d8e956e8ba00eb02a0f11b9129313a..506f06b81d4afb898106dc1a4fa55b2b7bb1d6f5 100644
+--- a/packages/ltx-pipelines-mlx/src/ltx_pipelines_mlx/_base.py
++++ b/packages/ltx-pipelines-mlx/src/ltx_pipelines_mlx/_base.py
+@@ -482,7 +482,7 @@ class BasePipeline:
+                 return _impl(transformer_path, low_ram_streaming=self.low_ram_streaming)
+
+             if self.low_ram_streaming:
+-                from ltx_core_mlx.loader.block_streaming import BlockLoraSource
++                from ltx_core_mlx.loader.block_streaming import BlockLoraSource, fuse_non_block_loras
+                 from ltx_core_mlx.loader.sd_ops import (
+                     LTXV_LORA_BLOCK_PREFIX,
+                     LTXV_LORA_COMFY_RENAMING_MAP,
+@@ -502,6 +502,7 @@ class BasePipeline:
+                             sd_ops=LTXV_LORA_COMFY_RENAMING_MAP,
+                         )
+                     )
++                fuse_non_block_loras(model, sources)
+                 object.__setattr__(model, "_lora_sources", sources)
+                 return model
+
+diff --git a/tests/test_pending_loras_dispatch.py b/tests/test_pending_loras_dispatch.py
+index c84492ff6edb84aeb283a2792e6cc535e3beced9..8a548a6a5a5969079a6034c94e10de80a46d5459 100644
+--- a/tests/test_pending_loras_dispatch.py
++++ b/tests/test_pending_loras_dispatch.py
+@@ -96,6 +96,7 @@ def test_pending_loras_with_streaming_attaches_lora_sources(pipeline_stub):
+             "ltx_pipelines_mlx.utils._orchestration.load_transformer",
+             return_value=mock_model,
+         ) as orch_load,
++        patch("ltx_core_mlx.loader.block_streaming.fuse_non_block_loras") as fuse_roots,
+         patch(
+             "ltx_core_mlx.loader.block_streaming.BlockLoraSource",
+             return_value=mock_source,
+@@ -114,6 +115,7 @@ def test_pending_loras_with_streaming_attaches_lora_sources(pipeline_stub):
+         strength=1.0,
+         sd_ops=LTXV_LORA_COMFY_RENAMING_MAP,
+     )
++    fuse_roots.assert_called_once_with(mock_model, object.__getattribute__(mock_model, "_lora_sources"))
+     assert result is mock_model
+     attached = object.__getattribute__(mock_model, "_lora_sources")
+     assert mock_source in attached
+@@ -140,6 +142,7 @@ def test_pending_loras_with_streaming_multi_lora(pipeline_stub, loras):
+             "ltx_pipelines_mlx.utils._orchestration.load_transformer",
+             return_value=mock_model,
+         ),
++        patch("ltx_core_mlx.loader.block_streaming.fuse_non_block_loras") as fuse_roots,
+         patch(
+             "ltx_core_mlx.loader.block_streaming.BlockLoraSource",
+             side_effect=mock_sources,
+@@ -161,6 +164,7 @@ def test_pending_loras_with_streaming_multi_lora(pipeline_stub, loras):
+         )
+     attached = object.__getattribute__(mock_model, "_lora_sources")
+     assert set(mock_sources).issubset(set(attached))
++    fuse_roots.assert_called_once_with(mock_model, object.__getattribute__(mock_model, "_lora_sources"))
+     assert result is mock_model
+
+
+diff --git a/tests/test_non_block_loras.py b/tests/test_non_block_loras.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5720dcd88bc2599716c8e974e70a16c4c05bd29
+--- /dev/null
++++ b/tests/test_non_block_loras.py
+@@ -0,0 +1,163 @@
++"""Real MLX numerical and fail-closed tests for additive resident LoRA fusion."""
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import mlx.core as mx
++import pytest
++from mlx.utils import tree_flatten
++
++from ltx_core_mlx.loader.block_streaming import BlockLoraSource, BlockStreamer, fuse_non_block_loras
++from ltx_core_mlx.loader.sd_ops import LTXV_LORA_BLOCK_PREFIX, LTXV_LORA_COMFY_RENAMING_MAP
++from ltx_core_mlx.model.transformer.model import LTXModel, LTXModelConfig
++
++TARGETS = [
++    "adaln_single.emb.timestep_embedder.linear1.weight",
++    "audio_adaln_single.emb.timestep_embedder.linear2.weight",
++    "prompt_adaln_single.linear.weight", "audio_adaln_single.linear.weight",
++    "patchify_proj.weight", "audio_patchify_proj.weight",
++    "scale_shift_table", "audio_scale_shift_table",
++]
++BLOCK = "transformer_blocks.0.attn1.to_q.weight"
++
++
++def _tiny_config(num_layers: int = 1) -> LTXModelConfig:
++    """Local synthetic configuration; no cross-test-module dependency."""
++    return LTXModelConfig(
++        num_layers=num_layers,
++        video_dim=32,
++        audio_dim=16,
++        video_num_heads=4,
++        audio_num_heads=4,
++        video_head_dim=8,
++        audio_head_dim=4,
++        av_cross_num_heads=4,
++        av_cross_head_dim=4,
++        video_patch_channels=8,
++        audio_patch_channels=8,
++        ff_mult=2.0,
++        timestep_embedding_dim=32,
++    )
++
++
++def fixture_model():
++    inner = LTXModel(_tiny_config(1))
++    weights = dict(tree_flatten(inner.parameters()))
++    model = SimpleNamespace(inner=inner, _streamer=SimpleNamespace(_weights={
++        "transformer." + k: v for k, v in weights.items()}))
++    return model, weights
++
++
++def source(tmp_path, weights, keys, strength=0.5, filename="synthetic.safetensors"):
++    data, deltas = {}, {}
++    for key in keys:
++        out_dim, in_dim = weights[key].shape
++        name = key.removesuffix(".weight")
++        raw_name = name.replace(".linear1", ".linear_1").replace(".linear2", ".linear_2")
++        a = mx.ones((2, in_dim), dtype=mx.bfloat16)
++        b = mx.full((out_dim, 2), 0.25, dtype=mx.bfloat16)
++        data[f"diffusion_model.{raw_name}.lora_A.weight"] = a
++        data[f"diffusion_model.{raw_name}.lora_B.weight"] = b
++        # Alpha is metadata: the existing fuser uses strength directly.
++        data[f"diffusion_model.{raw_name}.alpha"] = mx.array(7.0)
++        deltas[key] = b.astype(mx.float32) @ a.astype(mx.float32) * strength
++    path = tmp_path / filename
++    mx.save_safetensors(str(path), data)
++    src = BlockLoraSource(path, LTXV_LORA_BLOCK_PREFIX, strength, LTXV_LORA_COMFY_RENAMING_MAP)
++    return src, deltas
++
++
++@pytest.mark.parametrize("target", TARGETS)
++def test_all_target_classes_math_dtype_and_release(tmp_path, target):
++    model, weights = fixture_model()
++    src, deltas = source(tmp_path, weights, [target])
++    expected = (weights[target].astype(mx.float32) + deltas[target]).astype(weights[target].dtype)
++    assert src.validate_pairs(weights) == {target.removesuffix(".weight"): target}
++    fuse_non_block_loras(model, [src])
++    actual = dict(tree_flatten(model.inner.parameters()))[target]
++    assert actual.dtype == weights[target].dtype
++    assert mx.allclose(actual, expected, atol=1e-5).item()
++    assert src._non_block_keys == {}
++    assert not any(k.endswith((".lora_A.weight", ".lora_B.weight")) for k in src._lora_data)
++
++
++def test_mixed_block_and_root_and_multiple_sources(tmp_path):
++    model, weights = fixture_model()
++    src, delta = source(tmp_path, weights, [BLOCK, TARGETS[0]], 0.5)
++    second, delta2 = source(tmp_path, weights, [TARGETS[0]], 0.25, "second.safetensors")
++    original_block = weights[BLOCK]
++    fuse_non_block_loras(model, [src, second])
++    target = TARGETS[0]
++    expected = (weights[target].astype(mx.float32) + delta[target] + delta2[target]).astype(weights[target].dtype)
++    assert mx.allclose(dict(tree_flatten(model.inner.parameters()))[target], expected).item()
++    assert src.has_block(0)
++    fused_block = dict(BlockStreamer._fuse_lora_into_block(
++        [(BLOCK.removeprefix("transformer_blocks.0."), original_block)], 0, [src]))
++    assert mx.allclose(fused_block["attn1.to_q.weight"], original_block + delta[BLOCK]).item()
++
++
++@pytest.mark.parametrize("failure", ["missing_a", "missing_b", "rank", "input", "output", "target", "dtype"])
++def test_validation_rejects_before_mutation(tmp_path, failure):
++    model, weights = fixture_model()
++    src, _ = source(tmp_path, weights, TARGETS[:2])
++    name, slots = next(iter(src._non_block_keys.items()))
++    if failure.startswith("missing_"):
++        del slots[failure[-1]]
++    elif failure == "rank":
++        src._lora_data[slots["b"]] = mx.ones((weights[TARGETS[0]].shape[0], 3))
++    elif failure == "input":
++        src._lora_data[slots["a"]] = mx.ones((2, 3))
++    elif failure == "output":
++        src._lora_data[slots["b"]] = mx.ones((3, 2))
++    elif failure == "target":
++        src._non_block_keys["unknown_target"] = src._non_block_keys.pop(name)
++    else:
++        src._lora_data[slots["a"]] = src._lora_data[slots["a"]].astype(mx.int32)
++    with patch.object(model.inner, "load_weights") as load:
++        with pytest.raises(ValueError):
++            fuse_non_block_loras(model, [src])
++        load.assert_not_called()
++    assert dict(tree_flatten(model.inner.parameters()))[TARGETS[0]] is weights[TARGETS[0]]
++
++
++def test_no_lora_and_block_only_do_not_mutate_resident_weights(tmp_path):
++    model, weights = fixture_model()
++    src, _ = source(tmp_path, weights, [BLOCK])
++    with patch.object(model.inner, "load_weights") as load, patch("mlx.core.eval") as evaluate:
++        fuse_non_block_loras(model, [])
++        fuse_non_block_loras(model, [src])
++        load.assert_not_called()
++        evaluate.assert_not_called()
++    assert src.validate_pairs(weights) == {BLOCK.removesuffix(".weight"): BLOCK}
++    assert src.has_block(0)
++
++
++def test_targetwise_materialisation_precedes_next_target(tmp_path):
++    model, weights = fixture_model()
++    src, _ = source(tmp_path, weights, TARGETS)
++    events = []
++    original_eval, original_load = mx.eval, model.inner.load_weights
++    def evaluate(arrays):
++        events.append("eval")
++        return original_eval(arrays)
++    def load(items, **kwargs):
++        events.append("load")
++        return original_load(items, **kwargs)
++    with patch("mlx.core.eval", side_effect=evaluate), patch.object(model.inner, "load_weights", side_effect=load):
++        fuse_non_block_loras(model, [src])
++    assert events == ["eval", "load"] * len(TARGETS)
++
++
++def test_fusion_failure_does_not_publish_streaming_model(tmp_path):
++    from pathlib import Path
++    from ltx_pipelines_mlx._base import BasePipeline
++    model, weights = fixture_model()
++    src, _ = source(tmp_path, weights, [TARGETS[0]])
++    model._lora_sources = []
++    stub = SimpleNamespace(verbose=False, low_ram_streaming=True, _pending_loras=[("fake", 1.0)])
++    with patch("ltx_pipelines_mlx.utils._orchestration.load_transformer", return_value=model), \
++         patch("ltx_pipelines_mlx.utils._orchestration.resolve_lora_path", return_value="fake"), \
++         patch("ltx_core_mlx.loader.block_streaming.BlockLoraSource", return_value=src), \
++         patch("mlx.core.eval", side_effect=RuntimeError("synthetic failure")):
++        with pytest.raises(RuntimeError, match="synthetic failure"):
++            BasePipeline._load_transformer_with_optional_streaming(stub, Path("fake"))
++    assert model._lora_sources == []
