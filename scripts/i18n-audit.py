@@ -113,10 +113,10 @@ def html_line_is_translated(line: str) -> bool:
 
 
 def js_line_is_translated(line: str) -> bool:
-    """Recognize the local t(german, english) helper as translated UI."""
+    """Recognize local bilingual helpers as translated UI."""
     return bool(
         re.search(
-            r"\bt\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`])",
+            r"\b(?:t|localText)\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`])",
             line,
         )
     )
