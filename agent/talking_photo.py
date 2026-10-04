@@ -20,6 +20,8 @@ import urllib.request
 
 from fastapi import HTTPException
 
+from agent import talking_photo_motion
+
 
 ROOT = Path.home() / ".config/mlx-web/talking-photo"
 JOBS = ROOT / "jobs"
@@ -36,7 +38,7 @@ DATA_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-ACTIVE_STATUSES = {"queued", "tts", "lipsync"}
+ACTIVE_STATUSES = {"queued", "tts", "motion", "lipsync"}
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 _jobs_lock = threading.RLock()
@@ -295,11 +297,28 @@ def _run_job(job_id: str, image: bytes, request_payload: dict) -> None:
                 raise TalkingPhotoCancelled()
             wav = _audio_to_wav(audio, work)
 
+            media = image
+            motion = str(request_payload.get("motion") or "none")
+            if motion == "natural":
+                if _cancelled(job_id):
+                    raise TalkingPhotoCancelled()
+                _update_job(job_id, status="motion", phase="motion", progress=0.2)
+                try:
+                    media = talking_photo_motion.generate_natural_motion(
+                        job_id,
+                        image,
+                        wav,
+                        cancelled=lambda: _cancelled(job_id),
+                        update=lambda **changes: _update_job(job_id, **changes),
+                    )
+                except talking_photo_motion.MotionCancelled as exc:
+                    raise TalkingPhotoCancelled() from exc
+
             if _cancelled(job_id):
                 raise TalkingPhotoCancelled()
-            _update_job(job_id, status="lipsync", phase="lipsync")
-            avatar_key = hashlib.sha256(image).hexdigest()[:24]
-            video, timing = _musetalk_lipsync(image, wav, avatar_key)
+            _update_job(job_id, status="lipsync", phase="lipsync", progress=0.8)
+            avatar_key = hashlib.sha256(media).hexdigest()[:24]
+            video, timing = _musetalk_lipsync(media, wav, avatar_key)
 
             if _cancelled(job_id):
                 raise TalkingPhotoCancelled()
@@ -317,6 +336,8 @@ def _run_job(job_id: str, image: bytes, request_payload: dict) -> None:
                     "mime_type": "video/mp4",
                     "size_bytes": len(video),
                     "provider": "musetalk-mac",
+                    "motion": motion,
+                    "motion_provider": "ltx-2.5" if motion == "natural" else None,
                     "timing": timing,
                     "video_url": f"/api/talking-photo/videos/{job_id}",
                 },
@@ -357,6 +378,7 @@ def create_job(payload: dict) -> dict:
     image, _extension = decode_image_data_url(payload["image_data_url"])
     job_id = secrets.token_hex(12)
     now = time.time()
+    motion = str(payload.get("motion") or "none")
     job = {
         "id": job_id,
         "kind": "talking_photo",
@@ -366,6 +388,7 @@ def create_job(payload: dict) -> dict:
         "voice": payload.get("voice"),
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
+        "motion": motion,
         "text_characters": len(payload["text"]),
         "provider": "musetalk-mac",
         "result": None,
