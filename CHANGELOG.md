@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add reproducible, pin-bound patching for the managed LTX-MLX runtime.
+
 ## v1.6.2
 
 - Fix chat stream disconnect cleanup so an abandoned response cannot retain the shared runtime lease and block subsequent chat or gateway requests.
