@@ -1,20 +1,21 @@
-"""Inject the Talking Photo browser module without forking the large chat HTML."""
+"""Inject the Talking Photo browser modules without forking the large chat HTML."""
 
 from __future__ import annotations
 
 
-_SCRIPT = (
+_SCRIPTS = (
     b'<script src="/assets/chat/talking-photo.js?v=20261004-talking-photo"></script>\n'
+    b'<script src="/assets/chat/talking-photo-clipboard.js?v=20261004-talking-photo-clipboard"></script>\n'
 )
 
 
 def patch_chat_html(body: bytes) -> bytes:
-    if _SCRIPT.strip() in body:
+    if _SCRIPTS.strip() in body:
         return body
     marker = b"</body>"
     if marker not in body:
         return body
-    return body.replace(marker, _SCRIPT + marker, 1)
+    return body.replace(marker, _SCRIPTS + marker, 1)
 
 
 class TalkingPhotoUiMiddleware:
