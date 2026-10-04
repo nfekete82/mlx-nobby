@@ -180,8 +180,9 @@ def scene_tts(job_id, project, request_fn):
     for scene_number, scene in enumerate(project.scenes, 1):
         if scene.voice_enabled and scene.narration:
             payload = {"input": scene.narration, "language": project.language}
-            if project.voice:
-                payload["voice"] = project.voice
+            voice = project.voice_for_scene(scene)
+            if voice:
+                payload["voice"] = voice
             if project.voice_speed != 1:
                 payload["speed"] = project.voice_speed
             audio = request_fn(payload)
