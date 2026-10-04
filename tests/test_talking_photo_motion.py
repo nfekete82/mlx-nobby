@@ -33,7 +33,6 @@ def test_generate_natural_motion_uses_existing_i2v_queue(monkeypatch, tmp_path):
     monkeypatch.setattr(talking_photo_motion, "VIDEO_OUTPUT_ROOT", videos)
     monkeypatch.setattr(talking_photo_motion, "POLL_INTERVAL", 0)
 
-    final = videos / "d" * 24
     final = videos / ("d" * 24 + ".mp4")
     final.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"video" * 20)
     requests = []
