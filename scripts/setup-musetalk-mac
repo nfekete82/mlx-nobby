@@ -10,6 +10,7 @@ PORT="${MUSETALK_PORT:-8070}"
 LABEL="de.nobby.musetalk"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$HOME/.config/mlx-web"
+PID_FILE="$LOG_DIR/musetalk.pid"
 DOMAIN="gui/$(id -u)"
 
 if [ "$(uname -m)" != "arm64" ]; then
@@ -68,9 +69,6 @@ if [ ! -f "$MODELS_SOURCE_DIR/vae.py" ] || [ ! -f "$MODELS_SOURCE_DIR/unet.py" ]
         mv "$tmp_file" "$MODELS_SOURCE_DIR/$source_file"
     done
 
-    # The Mac port documents this compatibility adjustment for modern PyTorch:
-    # load the legacy UNet state dict on CPU with weights_only disabled, then
-    # let the wrapper move the model onto MPS.
     "$PYTHON_BIN" - "$MODELS_SOURCE_DIR/unet.py" <<'PY'
 from pathlib import Path
 import sys
@@ -100,16 +98,10 @@ if [ ! -f "$INSTALL_DIR/upstream/models/musetalkV15/unet.pth" ] || \
     echo "Downloading MuseTalk model weights..."
     (
         cd "$INSTALL_DIR"
-        # The pinned upstream downloader still invokes huggingface-cli. Resolve
-        # that command from MuseTalk's pinned virtualenv instead of the user's
-        # shell/base environment, where newer huggingface_hub releases remove it.
         PATH="$INSTALL_DIR/.venv/bin:$PATH" ./download_weights_mac.sh
     )
 fi
 
-# The pinned Mac server mounts data/demo_five at import time, but that optional
-# demo directory is omitted from the repository. Talking Photo does not need
-# demo assets; an empty directory is enough for Starlette's StaticFiles mount.
 DEMO_MEDIA_DIR="$INSTALL_DIR/upstream/data/demo_five"
 if [ ! -d "$DEMO_MEDIA_DIR" ]; then
     echo "Creating optional MuseTalk demo media directory..."
@@ -182,12 +174,66 @@ EOF
 
 plutil -lint "${PLIST}.tmp" >/dev/null
 mv "${PLIST}.tmp" "$PLIST"
+chmod 600 "$PLIST"
 
-if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-    launchctl bootout "$DOMAIN/$LABEL" || true
+unload_launch_agent() {
+    launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+    launchctl bootout "$DOMAIN" "$PLIST" >/dev/null 2>&1 || true
+
+    for _wait in $(seq 1 20); do
+        if ! launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 0
+}
+
+start_fallback_process() {
+    if [ -f "$PID_FILE" ]; then
+        old_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+        if [ -n "$old_pid" ] && kill -0 "$old_pid" >/dev/null 2>&1; then
+            kill "$old_pid" >/dev/null 2>&1 || true
+            sleep 1
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    echo "Starting MuseTalk directly because launchctl bootstrap is unavailable..."
+    (
+        cd "$INSTALL_DIR"
+        nohup env \
+            PYTORCH_ENABLE_MPS_FALLBACK=1 \
+            MUSETALK_FP16_VAE=1 \
+            PYTHONUNBUFFERED=1 \
+            "$INSTALL_DIR/.venv/bin/uvicorn" server:app \
+            --host 127.0.0.1 --port "$PORT" \
+            >>"$LOG_DIR/musetalk.log" \
+            2>>"$LOG_DIR/musetalk-error.log" < /dev/null &
+        echo $! > "$PID_FILE"
+    )
+}
+
+unload_launch_agent
+bootstrap_ok=0
+for _bootstrap_attempt in 1 2 3; do
+    if launchctl bootstrap "$DOMAIN" "$PLIST"; then
+        bootstrap_ok=1
+        break
+    fi
+    echo "launchctl bootstrap attempt ${_bootstrap_attempt}/3 failed; retrying..." >&2
+    unload_launch_agent
+    sleep "$_bootstrap_attempt"
+done
+
+if [ "$bootstrap_ok" -eq 1 ]; then
+    rm -f "$PID_FILE"
+    launchctl kickstart -k "$DOMAIN/$LABEL"
+else
+    echo "Warning: launchctl could not register MuseTalk after 3 attempts." >&2
+    echo "Falling back to a detached local process for this session." >&2
+    start_fallback_process
 fi
-launchctl bootstrap "$DOMAIN" "$PLIST"
-launchctl kickstart -k "$DOMAIN/$LABEL"
 
 echo "Starting MuseTalk-Mac on http://127.0.0.1:${PORT} ..."
 for _attempt in $(seq 1 300); do
@@ -195,6 +241,11 @@ for _attempt in $(seq 1 300); do
         "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
         echo
         echo "MuseTalk-Mac is ready."
+        if [ "$bootstrap_ok" -eq 1 ]; then
+            echo "LaunchAgent installed for automatic startup."
+        else
+            echo "MuseTalk is running in fallback background mode; automatic login startup is not active yet."
+        fi
         echo "Talking Photo can now be used from MLX Nobby."
         exit 0
     fi
