@@ -8,8 +8,10 @@ def test_talking_photo_ui_injects_scripts_once():
     patched = patch_chat_html(source)
     assert b"/assets/chat/talking-photo.js" in patched
     assert b"/assets/chat/talking-photo-clipboard.js" in patched
+    assert b"/assets/chat/talking-photo-motion.js" in patched
     assert patched.count(b"/assets/chat/talking-photo.js") == 1
     assert patched.count(b"/assets/chat/talking-photo-clipboard.js") == 1
+    assert patched.count(b"/assets/chat/talking-photo-motion.js") == 1
     assert patch_chat_html(patched) == patched
 
 
@@ -34,3 +36,13 @@ def test_talking_photo_clipboard_module_supports_button_and_paste_shortcut():
     assert "createImageBitmap" in source
     assert "image/png" in source
     assert "image/jpeg" in source
+
+
+def test_talking_photo_motion_module_adds_natural_mode_to_job_payload():
+    source = Path("frontend/assets/chat/talking-photo-motion.js").read_text(encoding="utf-8")
+    assert "talkingPhotoMotion" in source
+    assert "Natürlich · Kopf, Augen & Oberkörper" in source
+    assert "Nur Lippen · schneller" in source
+    assert "payload.motion" in source
+    assert "LTX 2.5" in source
+    assert "Natürliche Bewegung wird" in source

@@ -70,6 +70,7 @@ def test_run_job_uses_selected_voice_and_writes_video(monkeypatch, tmp_path):
         "voice": "Lisa Voice",
         "language": "de",
         "speed": 1.0,
+        "motion": "none",
         "text_characters": 5,
         "provider": "musetalk-mac",
         "result": None,
@@ -101,14 +102,16 @@ def test_run_job_uses_selected_voice_and_writes_video(monkeypatch, tmp_path):
     monkeypatch.setattr(talking_photo, "_audio_to_wav", fake_wav)
     monkeypatch.setattr(talking_photo, "_musetalk_lipsync", fake_lipsync)
 
+    source_image = b"\x89PNG\r\n\x1a\n" + b"photo"
     talking_photo._run_job(
         job_id,
-        b"\x89PNG\r\n\x1a\n" + b"photo",
+        source_image,
         {
             "text": "Hallo",
             "voice": "Lisa Voice",
             "language": "de",
             "speed": 1.0,
+            "motion": "none",
         },
     )
 
@@ -116,6 +119,8 @@ def test_run_job_uses_selected_voice_and_writes_video(monkeypatch, tmp_path):
     assert finished["status"] == "completed"
     assert finished["phase"] == "completed"
     assert finished["result"]["provider"] == "musetalk-mac"
+    assert finished["result"]["motion"] == "none"
+    assert finished["result"]["motion_provider"] is None
     assert finished["result"]["video_url"] == f"/api/talking-photo/videos/{job_id}"
     assert (talking_photo.OUTPUT / f"{job_id}.mp4").is_file()
 
@@ -125,17 +130,93 @@ def test_run_job_uses_selected_voice_and_writes_video(monkeypatch, tmp_path):
         "voice": "Lisa Voice",
     }]
     assert len(lipsync_calls) == 1
+    assert lipsync_calls[0][0] == source_image
     assert lipsync_calls[0][1].startswith(b"RIFF")
     assert len(lipsync_calls[0][2]) == 24
 
 
-def test_recover_jobs_marks_inflight_job_failed(monkeypatch, tmp_path):
+def test_run_job_natural_motion_feeds_ltx_video_into_musetalk(monkeypatch, tmp_path):
+    _prepare_storage(monkeypatch, tmp_path)
+    job_id = "c" * 24
+    talking_photo._write_job({
+        "id": job_id,
+        "kind": "talking_photo",
+        "status": "queued",
+        "phase": "queued",
+        "progress": 0.0,
+        "voice": None,
+        "language": "de",
+        "speed": 1.0,
+        "motion": "natural",
+        "text_characters": 5,
+        "provider": "musetalk-mac",
+        "result": None,
+        "error": None,
+        "cancel_requested": False,
+        "created_at": 1.0,
+        "started_at": None,
+        "finished_at": None,
+    })
+
+    source_image = b"\x89PNG\r\n\x1a\n" + b"portrait"
+    motion_video = b"\x00\x00\x00\x18ftypisom" + b"motion" * 20
+    calls = []
+
+    monkeypatch.setattr(talking_photo, "_request_tts", lambda payload: b"fake-mp3")
+    monkeypatch.setattr(
+        talking_photo,
+        "_audio_to_wav",
+        lambda audio, directory: b"RIFF" + b"\x00" * 64,
+    )
+
+    def fake_motion(job_id_arg, image, wav, *, cancelled, update):
+        assert job_id_arg == job_id
+        assert image == source_image
+        assert wav.startswith(b"RIFF")
+        assert cancelled() is False
+        update(progress=0.55)
+        calls.append("motion")
+        return motion_video
+
+    def fake_lipsync(media, wav, avatar_key):
+        assert media == motion_video
+        assert wav.startswith(b"RIFF")
+        calls.append("lipsync")
+        return b"\x00\x00\x00\x18ftypisom" + b"final" * 20, "total_s=2.0"
+
+    monkeypatch.setattr(
+        talking_photo.talking_photo_motion,
+        "generate_natural_motion",
+        fake_motion,
+    )
+    monkeypatch.setattr(talking_photo, "_musetalk_lipsync", fake_lipsync)
+
+    talking_photo._run_job(
+        job_id,
+        source_image,
+        {
+            "text": "Hallo",
+            "voice": None,
+            "language": "de",
+            "speed": 1.0,
+            "motion": "natural",
+        },
+    )
+
+    finished = talking_photo.get_job(job_id)
+    assert calls == ["motion", "lipsync"]
+    assert finished["status"] == "completed"
+    assert finished["result"]["motion"] == "natural"
+    assert finished["result"]["motion_provider"] == "ltx-2.5"
+
+
+def test_recover_jobs_marks_inflight_motion_job_failed(monkeypatch, tmp_path):
     _prepare_storage(monkeypatch, tmp_path)
     job_id = "b" * 24
     talking_photo._write_job({
         "id": job_id,
-        "status": "lipsync",
-        "phase": "lipsync",
+        "status": "motion",
+        "phase": "motion",
         "error": None,
     })
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +18,7 @@ class TalkingPhotoRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=80)
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    motion: Literal["none", "natural"] = "none"
 
 
 def install_routes(app):
