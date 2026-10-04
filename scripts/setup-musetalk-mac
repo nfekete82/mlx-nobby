@@ -63,7 +63,10 @@ if [ ! -f "$INSTALL_DIR/upstream/models/musetalkV15/unet.pth" ] || \
     echo "Downloading MuseTalk model weights..."
     (
         cd "$INSTALL_DIR"
-        ./download_weights_mac.sh
+        # The pinned upstream downloader still invokes huggingface-cli. Resolve
+        # that command from MuseTalk's pinned virtualenv instead of the user's
+        # shell/base environment, where newer huggingface_hub releases remove it.
+        PATH="$INSTALL_DIR/.venv/bin:$PATH" ./download_weights_mac.sh
     )
 fi
 
