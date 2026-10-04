@@ -107,6 +107,15 @@ if [ ! -f "$INSTALL_DIR/upstream/models/musetalkV15/unet.pth" ] || \
     )
 fi
 
+# The pinned Mac server mounts data/demo_five at import time, but that optional
+# demo directory is omitted from the repository. Talking Photo does not need
+# demo assets; an empty directory is enough for Starlette's StaticFiles mount.
+DEMO_MEDIA_DIR="$INSTALL_DIR/upstream/data/demo_five"
+if [ ! -d "$DEMO_MEDIA_DIR" ]; then
+    echo "Creating optional MuseTalk demo media directory..."
+    mkdir -p "$DEMO_MEDIA_DIR"
+fi
+
 echo "Validating MuseTalk source imports..."
 (
     cd "$INSTALL_DIR/upstream"
@@ -119,6 +128,16 @@ assert PositionalEncoding is not None
 assert UNet is not None
 assert VAE is not None
 assert load_all_model is not None
+PY
+)
+
+echo "Validating MuseTalk server import..."
+(
+    cd "$INSTALL_DIR"
+    PYTHONPATH="$INSTALL_DIR:$INSTALL_DIR/upstream" "$INSTALL_DIR/.venv/bin/python" - <<'PY'
+import server
+
+assert server.app is not None
 PY
 )
 

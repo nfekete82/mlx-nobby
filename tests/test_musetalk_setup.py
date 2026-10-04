@@ -22,11 +22,25 @@ def test_musetalk_setup_restores_missing_model_source_from_pinned_official_revis
     assert 'weights_only=False' in script
 
 
+def test_musetalk_setup_creates_optional_demo_media_directory():
+    script = _script_text()
+
+    mkdir = 'mkdir -p "$DEMO_MEDIA_DIR"'
+    launch = 'launchctl bootstrap "$DOMAIN" "$PLIST"'
+    assert 'DEMO_MEDIA_DIR="$INSTALL_DIR/upstream/data/demo_five"' in script
+    assert mkdir in script
+    assert launch in script
+    assert script.index(mkdir) < script.index(launch)
+
+
 def test_musetalk_setup_preflights_imports_before_launching_service():
     script = _script_text()
 
-    import_check = 'from musetalk.models.vae import VAE'
+    source_import_check = 'from musetalk.models.vae import VAE'
+    server_import_check = 'import server'
     launch = 'launchctl bootstrap "$DOMAIN" "$PLIST"'
-    assert import_check in script
+    assert source_import_check in script
+    assert server_import_check in script
     assert launch in script
-    assert script.index(import_check) < script.index(launch)
+    assert script.index(source_import_check) < script.index(server_import_check)
+    assert script.index(server_import_check) < script.index(launch)
