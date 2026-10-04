@@ -44,3 +44,33 @@ def test_musetalk_setup_preflights_imports_before_launching_service():
     assert launch in script
     assert script.index(source_import_check) < script.index(server_import_check)
     assert script.index(server_import_check) < script.index(launch)
+
+
+def test_musetalk_setup_fully_unloads_stale_launch_agent_before_bootstrap():
+    script = _script_text()
+
+    assert 'launchctl bootout "$DOMAIN/$LABEL"' in script
+    assert 'launchctl bootout "$DOMAIN" "$PLIST"' in script
+    assert 'for _wait in $(seq 1 20); do' in script
+    assert 'launchctl print "$DOMAIN/$LABEL"' in script
+
+
+def test_musetalk_setup_retries_launchctl_bootstrap_and_has_direct_fallback():
+    script = _script_text()
+
+    assert 'for _bootstrap_attempt in 1 2 3; do' in script
+    assert 'launchctl bootstrap "$DOMAIN" "$PLIST"' in script
+    assert 'start_fallback_process' in script
+    assert 'nohup env' in script
+    assert 'echo $! > "$PID_FILE"' in script
+    assert 'MuseTalk is running in fallback background mode' in script
+
+
+def test_musetalk_setup_keeps_health_check_after_launch_recovery():
+    script = _script_text()
+
+    fallback = 'start_fallback_process'
+    health = '"http://127.0.0.1:${PORT}/health"'
+    assert fallback in script
+    assert health in script
+    assert script.index(fallback) < script.rindex(health)
