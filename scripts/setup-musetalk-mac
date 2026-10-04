@@ -3,6 +3,8 @@ set -euo pipefail
 
 REPOSITORY="https://github.com/barnent1/musetalk-mac.git"
 PINNED_REVISION="${MUSETALK_REVISION:-7fd019315127d7f31e2e7f9853547ddceabbeb6e}"
+OFFICIAL_SOURCE_REVISION="${MUSETALK_SOURCE_REVISION:-db204311a54a332843fea9b336e7649ad2322596}"
+OFFICIAL_MODELS_BASE="https://raw.githubusercontent.com/TMElyralab/MuseTalk/${OFFICIAL_SOURCE_REVISION}/musetalk/models"
 INSTALL_DIR="${MUSETALK_DIR:-$HOME/musetalk-mac}"
 PORT="${MUSETALK_PORT:-8070}"
 LABEL="de.nobby.musetalk"
@@ -50,6 +52,41 @@ echo "Selecting tested MuseTalk-Mac revision $PINNED_REVISION..."
 git -C "$INSTALL_DIR" fetch --quiet origin
 git -C "$INSTALL_DIR" checkout --detach "$PINNED_REVISION"
 
+# The pinned musetalk-mac commit references musetalk.models from its vendored
+# upstream tree, but that repository revision accidentally omits the models/
+# Python source directory. Restore only the v1.5 source modules from the
+# official MuseTalk repository at a fixed revision. Model weights remain local.
+MODELS_SOURCE_DIR="$INSTALL_DIR/upstream/musetalk/models"
+if [ ! -f "$MODELS_SOURCE_DIR/vae.py" ] || [ ! -f "$MODELS_SOURCE_DIR/unet.py" ]; then
+    echo "Restoring missing MuseTalk v1.5 model source modules..."
+    mkdir -p "$MODELS_SOURCE_DIR"
+    for source_file in vae.py unet.py; do
+        tmp_file="$MODELS_SOURCE_DIR/${source_file}.tmp"
+        curl -fsSL --retry 3 --retry-delay 1 \
+            "$OFFICIAL_MODELS_BASE/$source_file" \
+            -o "$tmp_file"
+        mv "$tmp_file" "$MODELS_SOURCE_DIR/$source_file"
+    done
+
+    # The Mac port documents this compatibility adjustment for modern PyTorch:
+    # load the legacy UNet state dict on CPU with weights_only disabled, then
+    # let the wrapper move the model onto MPS.
+    "$PYTHON_BIN" - "$MODELS_SOURCE_DIR/unet.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+old = "weights = torch.load(model_path) if torch.cuda.is_available() else torch.load(model_path, map_location=self.device)"
+new = 'weights = torch.load(model_path, map_location="cpu", weights_only=False)'
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("Error: unexpected MuseTalk UNet source; refusing to patch it")
+path.write_text(text, encoding="utf-8")
+PY
+fi
+
 if [ ! -x "$INSTALL_DIR/.venv/bin/python" ]; then
     "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 fi
@@ -69,6 +106,21 @@ if [ ! -f "$INSTALL_DIR/upstream/models/musetalkV15/unet.pth" ] || \
         PATH="$INSTALL_DIR/.venv/bin:$PATH" ./download_weights_mac.sh
     )
 fi
+
+echo "Validating MuseTalk source imports..."
+(
+    cd "$INSTALL_DIR/upstream"
+    PYTHONPATH="$INSTALL_DIR/upstream" "$INSTALL_DIR/.venv/bin/python" - <<'PY'
+from musetalk.models.unet import PositionalEncoding, UNet
+from musetalk.models.vae import VAE
+from musetalk.utils.utils import load_all_model
+
+assert PositionalEncoding is not None
+assert UNet is not None
+assert VAE is not None
+assert load_all_model is not None
+PY
+)
 
 cat > "${PLIST}.tmp" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
