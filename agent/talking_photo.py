@@ -32,7 +32,7 @@ MUSETALK_URL = os.environ.get(
 ).rstrip("/")
 JOB_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
 DATA_URL_PATTERN = re.compile(
-    r"^data:image/(?P<kind>png|jpeg|webp);base64,(?P<data>[A-Za-z0-9+/=]+)$",
+    r"^data:image/(?P<kind>png|jpeg);base64,(?P<data>[A-Za-z0-9+/=]+)$",
     re.IGNORECASE,
 )
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -128,7 +128,7 @@ def decode_image_data_url(value: str) -> tuple[bytes, str]:
         raise HTTPException(422, "Bild fehlt")
     match = DATA_URL_PATTERN.fullmatch(value.strip())
     if not match:
-        raise HTTPException(422, "Unterstützt werden PNG, JPEG und WebP")
+        raise HTTPException(422, "Unterstützt werden PNG und JPEG")
     try:
         image = base64.b64decode(match.group("data"), validate=True)
     except (ValueError, binascii.Error) as exc:
@@ -140,14 +140,10 @@ def decode_image_data_url(value: str) -> tuple[bytes, str]:
     valid = (
         kind == "png" and image.startswith(b"\x89PNG\r\n\x1a\n")
         or kind == "jpeg" and image.startswith(b"\xff\xd8\xff")
-        or kind == "webp"
-        and image.startswith(b"RIFF")
-        and len(image) >= 12
-        and image[8:12] == b"WEBP"
     )
     if not valid:
         raise HTTPException(422, "Bildformat stimmt nicht mit den Bilddaten überein")
-    return image, {"png": ".png", "jpeg": ".jpg", "webp": ".webp"}[kind]
+    return image, {"png": ".png", "jpeg": ".jpg"}[kind]
 
 
 def provider_health(timeout: float = 3.0) -> dict:

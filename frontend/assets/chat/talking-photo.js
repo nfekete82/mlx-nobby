@@ -186,7 +186,7 @@
         const imageInput = document.createElement('input');
         imageInput.id = 'talkingPhotoImage';
         imageInput.type = 'file';
-        imageInput.accept = 'image/png,image/jpeg,image/webp';
+        imageInput.accept = 'image/png,image/jpeg';
         imageLabel.append(imageInput);
         left.append(imageLabel);
 
@@ -216,7 +216,7 @@
         languageLabel.append(node('span', '', localText('Sprache', 'Language')));
         const languageSelect = document.createElement('select');
         languageSelect.id = 'talkingPhotoLanguage';
-        [['de', 'Deutsch'], ['en', 'English']].forEach(([value, label]) => {
+        [['de', localText('Deutsch', 'German')], ['en', localText('Englisch', 'English')]].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
             option.textContent = label;
@@ -383,8 +383,8 @@
             setStatus(localText('Das Bild darf maximal 10 MB groß sein.', 'The image may be at most 10 MB.'));
             return;
         }
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-            setStatus(localText('Bitte PNG, JPEG oder WebP verwenden.', 'Please use PNG, JPEG, or WebP.'));
+        if (!['image/png', 'image/jpeg'].includes(file.type)) {
+            setStatus(localText('Bitte PNG oder JPEG verwenden.', 'Please use PNG or JPEG.'));
             return;
         }
         if (!text) {

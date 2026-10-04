@@ -28,7 +28,11 @@ class TalkingPhotoUiMiddleware:
 
         method = str(scope.get("method") or "")
         path = str(scope.get("path") or "")
-        if method != "GET" or path not in {"/", "/chat.html"}:
+        serves_chat_html = (
+            path in {"/", "/chat", "/chat.html", "/settings"}
+            or path.startswith("/settings/")
+        )
+        if method != "GET" or not serves_chat_html:
             await self.app(scope, receive, send)
             return
 

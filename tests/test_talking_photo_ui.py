@@ -16,5 +16,6 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "/api/mlx/audio/voices/manage" in source
     assert "/api/talking-photo/status" in source
     assert "/api/talking-photo/jobs" in source
-    assert "image/png,image/jpeg,image/webp" in source
+    assert "image/png,image/jpeg" in source
+    assert "image/webp" not in source
     assert "video_url" in source
