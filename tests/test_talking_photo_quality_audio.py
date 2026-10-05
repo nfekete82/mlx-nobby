@@ -49,6 +49,14 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertEqual(profile["tempo"], 0.80)
         self.assertEqual(profile["leading_silence_ms"], 120.0)
 
+    def test_julia_uses_calibrated_voice_profile(self):
+        name, profile = talking_photo_quality._custom_voice_profile("Julia")
+
+        self.assertEqual(name, "julia")
+        self.assertEqual(profile["tts_speed"], 0.71)
+        self.assertEqual(profile["tempo"], 0.71)
+        self.assertEqual(profile["leading_silence_ms"], 120.0)
+
     def test_unknown_custom_voice_uses_neutral_profile(self):
         name, profile = talking_photo_quality._custom_voice_profile("Another Voice")
 
