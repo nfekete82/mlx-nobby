@@ -24,6 +24,10 @@ from agent import talking_photo, talking_photo_ltx, talking_photo_motion
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 _AUDIO_SILENCE_DBFS = -45.0
 _AUDIO_WINDOW_MS = 10.0
+_CUSTOM_VOICE_SPEED = float(os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_SPEED", "0.65"))
+_CUSTOM_VOICE_LEADING_SILENCE_MS = float(
+    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_LEADING_SILENCE_MS", "120")
+)
 
 
 def provider_health() -> dict:
@@ -36,8 +40,7 @@ def _dbfs(value: float) -> float | None:
     return round(20.0 * math.log10(value / 32768.0), 2)
 
 
-def _analyze_wav(wav_bytes: bytes) -> dict:
-    """Measure the exact 16 kHz mono WAV passed to LTX."""
+def _read_pcm16_mono(wav_bytes: bytes) -> tuple[int, array]:
     try:
         with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
             channels = handle.getnchannels()
@@ -57,14 +60,66 @@ def _analyze_wav(wav_bytes: bytes) -> dict:
     samples.frombytes(pcm)
     if sys.byteorder != "little":
         samples.byteswap()
+    return sample_rate, samples
 
+
+def _first_active_sample(samples: array, sample_rate: int) -> int | None:
+    if not samples or sample_rate <= 0:
+        return None
+    window = max(1, int(sample_rate * (_AUDIO_WINDOW_MS / 1000.0)))
+    threshold = 32768.0 * (10.0 ** (_AUDIO_SILENCE_DBFS / 20.0))
+    for start in range(0, len(samples), window):
+        end = min(len(samples), start + window)
+        count = max(1, end - start)
+        rms = math.sqrt(
+            sum(int(samples[index]) * int(samples[index]) for index in range(start, end))
+            / count
+        )
+        if rms > threshold:
+            return start
+    return None
+
+
+def _trim_custom_voice_leading_silence(wav_bytes: bytes) -> bytes:
+    """Reduce excessive custom-voice startup delay while keeping a natural pre-roll."""
+    sample_rate, samples = _read_pcm16_mono(wav_bytes)
+    first_active = _first_active_sample(samples, sample_rate)
+    if first_active is None:
+        return wav_bytes
+
+    keep_samples = max(
+        0,
+        int(sample_rate * (_CUSTOM_VOICE_LEADING_SILENCE_MS / 1000.0)),
+    )
+    cut_samples = max(0, first_active - keep_samples)
+    if cut_samples <= 0:
+        return wav_bytes
+
+    trimmed = samples[cut_samples:]
+    pcm = array("h", trimmed)
+    if sys.byteorder != "little":
+        pcm.byteswap()
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(sample_rate)
+        handle.writeframes(pcm.tobytes())
+    return buffer.getvalue()
+
+
+def _analyze_wav(wav_bytes: bytes) -> dict:
+    """Measure the exact 16 kHz mono WAV passed to LTX."""
+    sample_rate, samples = _read_pcm16_mono(wav_bytes)
+    frame_count = len(samples)
     total_samples = len(samples)
     duration = total_samples / sample_rate if sample_rate else 0.0
     if not total_samples:
         return {
             "sample_rate": sample_rate,
-            "channels": channels,
-            "sample_width_bytes": sample_width,
+            "channels": 1,
+            "sample_width_bytes": 2,
             "frames": frame_count,
             "duration_seconds": 0.0,
             "peak_dbfs": None,
@@ -115,8 +170,8 @@ def _analyze_wav(wav_bytes: bytes) -> dict:
 
     return {
         "sample_rate": sample_rate,
-        "channels": channels,
-        "sample_width_bytes": sample_width,
+        "channels": 1,
+        "sample_width_bytes": 2,
         "frames": frame_count,
         "duration_seconds": round(duration, 4),
         "peak_dbfs": _dbfs(peak),
@@ -132,6 +187,7 @@ def _persist_audio_diagnostics(
     job_id: str,
     voice: str | None,
     language: str,
+    tts_speed: float,
     wav_bytes: bytes,
     stats: dict,
 ) -> dict:
@@ -147,6 +203,7 @@ def _persist_audio_diagnostics(
         "job_id": job_id,
         "voice": voice,
         "language": language,
+        "tts_speed": tts_speed,
         "wav_path": str(wav_path),
         "stats": stats,
     }
@@ -157,6 +214,7 @@ def _persist_audio_diagnostics(
     return {
         "wav_path": str(wav_path),
         "metadata_path": str(json_path),
+        "tts_speed": tts_speed,
         "stats": stats,
     }
 
@@ -181,22 +239,28 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                 "language": request_payload["language"],
             }
             voice = request_payload.get("voice")
+            requested_speed = float(request_payload.get("speed", 1.0))
+            effective_speed = requested_speed
             if voice:
                 tts_payload["voice"] = voice
-            speed = float(request_payload.get("speed", 1.0))
-            if speed != 1.0:
-                tts_payload["speed"] = speed
+                if requested_speed == 1.0:
+                    effective_speed = _CUSTOM_VOICE_SPEED
+            if effective_speed != 1.0:
+                tts_payload["speed"] = effective_speed
             audio = talking_photo._request_tts(tts_payload)
 
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
             wav = talking_photo._audio_to_wav(audio, work)
+            if voice:
+                wav = _trim_custom_voice_leading_silence(wav)
             audio_seconds = talking_photo_motion.wav_duration_seconds(wav)
             audio_stats = _analyze_wav(wav)
             audio_diagnostics = _persist_audio_diagnostics(
                 job_id,
                 voice,
                 request_payload["language"],
+                effective_speed,
                 wav,
                 audio_stats,
             )
