@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from pathlib import Path
 import secrets
 import shutil
-import subprocess
 import threading
 import time
 
@@ -20,52 +18,10 @@ def provider_health() -> dict:
     return talking_photo_ltx.provider_health()
 
 
-def _trim_custom_voice_wav(wav: bytes, work: Path) -> bytes:
-    """Trim only leading/trailing silence while preserving pauses inside speech."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("ffmpeg wurde nicht gefunden")
-
-    source = work / "speech-custom-voice.wav"
-    target = work / "speech-custom-voice-trimmed.wav"
-    source.write_bytes(wav)
-    silence_filter = (
-        "silenceremove=start_periods=1:start_duration=0.03:start_threshold=-45dB,"
-        "areverse,"
-        "silenceremove=start_periods=1:start_duration=0.03:start_threshold=-45dB,"
-        "areverse"
-    )
-    process = subprocess.run(
-        [
-            ffmpeg,
-            "-y",
-            "-v",
-            "error",
-            "-i",
-            str(source),
-            "-af",
-            silence_filter,
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "pcm_s16le",
-            str(target),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if process.returncode != 0 or not target.is_file():
-        raise RuntimeError(
-            "Custom-Voice-Audio konnte nicht für LTX vorbereitet werden: "
-            + (process.stderr or "")[-1000:]
-        )
-    trimmed = target.read_bytes()
-    if len(trimmed) < 44 or not trimmed.startswith(b"RIFF"):
-        raise RuntimeError("Ungültiges WAV nach Custom-Voice-Trim")
-    return trimmed
+def _finalize_custom_voice_lipsync(video: bytes, wav: bytes) -> tuple[bytes, str | None]:
+    """Run MuseTalk over the LTX video using the exact same custom-voice WAV."""
+    avatar_key = hashlib.sha256(video).hexdigest()[:24]
+    return talking_photo._musetalk_lipsync(video, wav, avatar_key)
 
 
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
@@ -98,8 +54,6 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
             wav = talking_photo._audio_to_wav(audio, work)
-            if voice:
-                wav = _trim_custom_voice_wav(wav, work)
             audio_seconds = talking_photo_motion.wav_duration_seconds(wav)
             talking_photo._update_job(
                 job_id,
@@ -121,6 +75,18 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
 
+            final_lipsync = None
+            if voice:
+                if talking_photo._cancelled(job_id):
+                    raise talking_photo.TalkingPhotoCancelled()
+                talking_photo._update_job(
+                    job_id,
+                    status="lipsync",
+                    phase="lipsync",
+                    progress=0.9,
+                )
+                video, final_lipsync = _finalize_custom_voice_lipsync(video, wav)
+
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
             talking_photo.OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -136,11 +102,18 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "id": job_id,
                     "mime_type": "video/mp4",
                     "size_bytes": len(video),
-                    "provider": "ltx-2.5-mlx-a2v",
+                    "provider": (
+                        "ltx-2.5-mlx-a2v+musetalk-mac"
+                        if voice else "ltx-2.5-mlx-a2v"
+                    ),
                     "engine": "quality",
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
-                    "timing": details,
+                    "lipsync_provider": "musetalk-mac" if voice else None,
+                    "timing": {
+                        **details,
+                        "final_lipsync": final_lipsync,
+                    },
                     "video_url": f"/api/talking-photo/videos/{job_id}",
                 },
                 finished_at=time.time(),
