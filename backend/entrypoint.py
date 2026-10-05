@@ -7,6 +7,10 @@ from backend.chat_reliability_routes import install_routes as install_chat_relia
 from backend.image_followup_ui import ImageFollowupUiMiddleware
 from backend.image_pipeline_routes import install_routes as install_image_pipeline_routes
 from backend.image_regenerate_ui import ImageRegenerateUiMiddleware
+from backend.media_lifecycle_routes import (
+    MediaLifecycleUiMiddleware,
+    install_routes as install_media_lifecycle_routes,
+)
 from backend.media_prompt_meta_guard import install_media_prompt_meta_guard
 from backend.media_routing_portrait_intent import (
     install_runtime as install_media_routing_portrait_intent_runtime,
@@ -56,10 +60,12 @@ app.add_middleware(NegativePromptUiMiddleware)
 app.add_middleware(ImageFollowupUiMiddleware)
 app.add_middleware(ImageRegenerateUiMiddleware)
 app.add_middleware(TalkingPhotoUiMiddleware)
+app.add_middleware(MediaLifecycleUiMiddleware)
 
 install_openai_gateway(app, agent_url=AGENT_URL)
 install_automation_routes(app, agent_json_request)
 install_image_pipeline_routes(app, agent_json_request)
+install_media_lifecycle_routes(app, agent_json_request)
 install_memory_manager_routes(app, agent_json_request)
 install_model_scout_routes(app, agent_json_request)
 install_shorts_studio_routes(app, agent_json_request)
