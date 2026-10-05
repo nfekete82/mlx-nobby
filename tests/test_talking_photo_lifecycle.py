@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from agent import media_lifecycle, talking_photo, talking_photo_lifecycle
 
 
@@ -20,6 +18,7 @@ def _storage(monkeypatch, tmp_path):
     monkeypatch.setattr(media_lifecycle, "VIDEO_ROOT", lifecycle_root / "videos")
     monkeypatch.setattr(media_lifecycle, "TALKING_PHOTO_ROOT", talking_photo.OUTPUT)
     monkeypatch.setattr(media_lifecycle, "TALKING_PHOTO_WORK_ROOT", tp_root / "work")
+    monkeypatch.setattr(media_lifecycle, "TALKING_PHOTO_JOBS_ROOT", talking_photo.JOBS)
     monkeypatch.setattr(media_lifecycle, "BATCH_UPLOAD_ROOT", lifecycle_root / "batch" / "uploads")
     return tp_root
 
@@ -63,13 +62,12 @@ def test_keep_job_promotes_video_and_protects_it(monkeypatch, tmp_path):
     assert talking_photo.get_job(job_id)["saved"] is True
 
 
-def test_discard_completed_job_deletes_video_and_metadata(monkeypatch, tmp_path):
+def test_discard_completed_job_deletes_even_before_poll_registration(monkeypatch, tmp_path):
     _storage(monkeypatch, tmp_path)
     job_id = "c" * 24
     talking_photo._write_job(_completed(job_id))
     path = talking_photo.OUTPUT / f"{job_id}.mp4"
     path.write_bytes(b"video")
-    talking_photo_lifecycle.get_job(job_id)
 
     result = talking_photo_lifecycle.discard_job(job_id)
 
@@ -77,9 +75,10 @@ def test_discard_completed_job_deletes_video_and_metadata(monkeypatch, tmp_path)
     assert result["deleted"] is True
     assert not path.exists()
     assert not talking_photo._job_file(job_id).exists()
+    assert media_lifecycle.status()["tracked"] == 0
 
 
-def test_discard_active_job_requests_cancellation(monkeypatch, tmp_path):
+def test_discard_active_job_requests_cancellation_and_starts_watcher(monkeypatch, tmp_path):
     _storage(monkeypatch, tmp_path)
     job_id = "d" * 24
     talking_photo._write_job({
@@ -89,8 +88,25 @@ def test_discard_active_job_requests_cancellation(monkeypatch, tmp_path):
         "phase": "tts",
         "cancel_requested": False,
     })
+    started = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, daemon, name):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+            self.name = name
+
+        def start(self):
+            started.append((self.target, self.args, self.daemon, self.name))
+
+    monkeypatch.setattr(talking_photo_lifecycle.threading, "Thread", FakeThread)
 
     result = talking_photo_lifecycle.discard_job(job_id)
 
     assert result["status"] == "cancelling"
     assert talking_photo.get_job(job_id)["cancel_requested"] is True
+    assert len(started) == 1
+    assert started[0][0] is talking_photo_lifecycle._discard_when_terminal
+    assert started[0][1] == (job_id,)
+    assert started[0][2] is True
