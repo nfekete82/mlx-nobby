@@ -1,4 +1,4 @@
-"""Runtime hook that tracks generated image/video outputs for cleanup."""
+"""Runtime hooks that track generated image/video outputs for cleanup."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import threading
 import time
 
 from agent import batch_state
+from agent import image_api
 from agent import media_lifecycle
 from agent import media_queue
 
@@ -14,6 +15,8 @@ from agent import media_queue
 _installed = False
 _cleaner_started = False
 _original_mirror_native = None
+_original_image_raw_request = None
+_DIRECT_IMAGE_OUTPUT_PATHS = frozenset({"/generate", "/edit", "/upscale"})
 
 
 def _shorts_references_job(job_id: str) -> bool:
@@ -78,6 +81,27 @@ def _wrapped_mirror_native(job_id, native):
     return result
 
 
+def _wrapped_image_raw_request(method, path, payload=None, timeout=10):
+    result = _original_image_raw_request(method, path, payload, timeout)
+    if method == "POST" and path in _DIRECT_IMAGE_OUTPUT_PATHS and isinstance(result, dict):
+        asset_id = str(result.get("id") or "")
+        output_path = result.get("path")
+        if asset_id and output_path:
+            try:
+                media_lifecycle.register(
+                    "image",
+                    asset_id,
+                    output_path,
+                    persistent=False,
+                    owner="direct-image",
+                )
+            except Exception:
+                # The generation result remains authoritative if lifecycle
+                # bookkeeping cannot be written; never convert success to fail.
+                pass
+    return result
+
+
 def _cleaner_loop() -> None:
     while True:
         time.sleep(60 * 60)
@@ -88,12 +112,15 @@ def _cleaner_loop() -> None:
 
 
 def install_runtime() -> None:
-    """Install queue tracking before the production Agent starts its worker."""
-    global _installed, _cleaner_started, _original_mirror_native
+    """Install tracking before the production Agent starts its media worker."""
+    global _installed, _cleaner_started
+    global _original_mirror_native, _original_image_raw_request
     if _installed:
         return
     _original_mirror_native = media_queue._mirror_native
+    _original_image_raw_request = image_api._raw_request
     media_queue._mirror_native = _wrapped_mirror_native
+    image_api._raw_request = _wrapped_image_raw_request
     _installed = True
 
     try:
@@ -112,8 +139,11 @@ def install_runtime() -> None:
 
 
 def uninstall_runtime_for_tests() -> None:
-    global _installed, _original_mirror_native
+    global _installed, _original_mirror_native, _original_image_raw_request
     if _installed and _original_mirror_native is not None:
         media_queue._mirror_native = _original_mirror_native
+    if _installed and _original_image_raw_request is not None:
+        image_api._raw_request = _original_image_raw_request
     _installed = False
     _original_mirror_native = None
+    _original_image_raw_request = None
