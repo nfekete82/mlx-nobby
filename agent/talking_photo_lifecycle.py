@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 from agent import media_lifecycle, talking_photo
+
+
+_DISCARD_WAIT_SECONDS = 30 * 60
+_DISCARD_POLL_SECONDS = 0.25
 
 
 def _register_completed(job_id: str, job: dict | None = None) -> dict:
@@ -44,15 +51,55 @@ def keep_job(job_id: str) -> dict:
     }
 
 
-def discard_job(job_id: str) -> dict:
-    job = talking_photo.get_job(job_id)
-    if job.get("status") in talking_photo.ACTIVE_STATUSES:
-        talking_photo.cancel_job(job_id)
-        return {"id": job_id, "status": "cancelling", "deleted": False}
+def _discard_terminal(job_id: str, job: dict) -> dict:
+    if job.get("status") == "completed":
+        # Register here as well as in GET polling so a completion/close race is
+        # immediately deletable instead of waiting for the TTL sweeper.
+        _register_completed(job_id, job)
 
     result = media_lifecycle.discard("talking_photo", job_id)
     if result.get("persistent"):
         return {"id": job_id, "status": "kept", **result}
 
+    # Failed/cancelled jobs normally have no output. If an encoder left one
+    # behind, remove it because this job was explicitly discarded.
+    path = talking_photo.OUTPUT / f"{job_id}.mp4"
+    path.unlink(missing_ok=True)
+    try:
+        media_lifecycle.forget("talking_photo", job_id)
+    except (ValueError, OSError):
+        pass
     talking_photo._job_file(job_id).unlink(missing_ok=True)
     return {"id": job_id, "status": "discarded", **result}
+
+
+def _discard_when_terminal(job_id: str) -> None:
+    deadline = time.monotonic() + _DISCARD_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            job = talking_photo.get_job(job_id)
+        except Exception:
+            return
+        if job.get("status") in talking_photo.TERMINAL_STATUSES:
+            try:
+                _discard_terminal(job_id, job)
+            except Exception:
+                pass
+            return
+        time.sleep(_DISCARD_POLL_SECONDS)
+
+
+def discard_job(job_id: str) -> dict:
+    job = talking_photo.get_job(job_id)
+    if job.get("status") in talking_photo.ACTIVE_STATUSES:
+        talking_photo.cancel_job(job_id)
+        thread = threading.Thread(
+            target=_discard_when_terminal,
+            args=(job_id,),
+            daemon=True,
+            name=f"talking-photo-discard-{job_id}",
+        )
+        thread.start()
+        return {"id": job_id, "status": "cancelling", "deleted": False}
+
+    return _discard_terminal(job_id, job)
