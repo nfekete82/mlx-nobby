@@ -94,8 +94,8 @@ model_reference_available() {
     local reference="$1"
     local expanded="$reference"
 
-    if [[ "$expanded" == ~/* ]]; then
-        expanded="$HOME/${expanded#~/}"
+    if [[ "$expanded" == "~/"* ]]; then
+        expanded="$HOME/${expanded#\~/}"
     fi
 
     if [ -d "$expanded" ]; then
@@ -127,8 +127,8 @@ SPECULATIVE_ENABLED=false
 SPECULATIVE_STATUS="disabled"
 SPECULATIVE_TARGET_VALUE="${SPECULATIVE_TARGET:-}"
 SPECULATIVE_DRAFT_VALUE="${SPECULATIVE_DRAFT_MODEL:-}"
-SPECULATIVE_KIND_VALUE="${SPECULATIVE_DRAFT_KIND:-mtp}"
-SPECULATIVE_BLOCK_VALUE="${SPECULATIVE_DRAFT_BLOCK_SIZE:-3}"
+SPECULATIVE_KIND_VALUE="${SPECULATIVE_DRAFT_KIND:-dflash}"
+SPECULATIVE_BLOCK_VALUE="${SPECULATIVE_DRAFT_BLOCK_SIZE:-}"
 
 if [ -n "$SPECULATIVE_TARGET_VALUE" ] && \
    [ -n "$SPECULATIVE_DRAFT_VALUE" ] && \
@@ -138,14 +138,19 @@ if [ -n "$SPECULATIVE_TARGET_VALUE" ] && \
     elif [[ ! "$SPECULATIVE_KIND_VALUE" =~ ^(dflash|eagle3|mtp)$ ]]; then
         echo "Ungültiges SPECULATIVE_DRAFT_KIND: $SPECULATIVE_KIND_VALUE" >&2
         exit 1
-    elif [[ ! "$SPECULATIVE_BLOCK_VALUE" =~ ^[0-9]+$ ]] || \
-         [ "$SPECULATIVE_BLOCK_VALUE" -lt 2 ] || \
-         [ "$SPECULATIVE_BLOCK_VALUE" -gt 16 ]; then
-        echo "SPECULATIVE_DRAFT_BLOCK_SIZE muss zwischen 2 und 16 liegen" >&2
+    elif [ -n "$SPECULATIVE_BLOCK_VALUE" ] && \
+         { [[ ! "$SPECULATIVE_BLOCK_VALUE" =~ ^[0-9]+$ ]] || \
+           [ "$SPECULATIVE_BLOCK_VALUE" -lt 2 ] || \
+           [ "$SPECULATIVE_BLOCK_VALUE" -gt 64 ]; }; then
+        echo "SPECULATIVE_DRAFT_BLOCK_SIZE muss leer oder zwischen 2 und 64 liegen" >&2
         exit 1
     elif model_reference_available "$SPECULATIVE_DRAFT_VALUE"; then
         SPECULATIVE_ENABLED=true
-        SPECULATIVE_STATUS="enabled ($SPECULATIVE_KIND_VALUE, block $SPECULATIVE_BLOCK_VALUE)"
+        if [ -n "$SPECULATIVE_BLOCK_VALUE" ]; then
+            SPECULATIVE_STATUS="enabled ($SPECULATIVE_KIND_VALUE, block $SPECULATIVE_BLOCK_VALUE)"
+        else
+            SPECULATIVE_STATUS="enabled ($SPECULATIVE_KIND_VALUE, model default block)"
+        fi
     else
         SPECULATIVE_STATUS="disabled (draft model is not cached locally)"
     fi
@@ -181,8 +186,10 @@ if [ "$BACKEND" = "vlm" ]; then
         ARGS+=(
             --draft-model "$SPECULATIVE_DRAFT_VALUE"
             --draft-kind "$SPECULATIVE_KIND_VALUE"
-            --draft-block-size "$SPECULATIVE_BLOCK_VALUE"
         )
+        if [ -n "$SPECULATIVE_BLOCK_VALUE" ]; then
+            ARGS+=(--draft-block-size "$SPECULATIVE_BLOCK_VALUE")
+        fi
     fi
 
     if [ "$THINKING" = "true" ]; then
