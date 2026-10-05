@@ -2,26 +2,163 @@
 
 from __future__ import annotations
 
-import hashlib
+from array import array
+import io
+import json
+import math
 import os
+from pathlib import Path
+import re
 import secrets
 import shutil
+import sys
 import threading
 import time
+import wave
 
 from fastapi import HTTPException
 
 from agent import talking_photo, talking_photo_ltx, talking_photo_motion
 
 
+AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
+_AUDIO_SILENCE_DBFS = -45.0
+_AUDIO_WINDOW_MS = 10.0
+
+
 def provider_health() -> dict:
     return talking_photo_ltx.provider_health()
 
 
-def _finalize_custom_voice_lipsync(video: bytes, wav: bytes) -> tuple[bytes, str | None]:
-    """Run MuseTalk over the LTX video using the exact same custom-voice WAV."""
-    avatar_key = hashlib.sha256(video).hexdigest()[:24]
-    return talking_photo._musetalk_lipsync(video, wav, avatar_key)
+def _dbfs(value: float) -> float | None:
+    if value <= 0:
+        return None
+    return round(20.0 * math.log10(value / 32768.0), 2)
+
+
+def _analyze_wav(wav_bytes: bytes) -> dict:
+    """Measure the exact 16 kHz mono WAV passed to LTX."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as handle:
+            channels = handle.getnchannels()
+            sample_width = handle.getsampwidth()
+            sample_rate = handle.getframerate()
+            frame_count = handle.getnframes()
+            pcm = handle.readframes(frame_count)
+    except (wave.Error, EOFError) as exc:
+        raise RuntimeError("Talking-Photo-WAV konnte nicht analysiert werden") from exc
+
+    if channels != 1 or sample_width != 2:
+        raise RuntimeError(
+            f"Unerwartetes Talking-Photo-WAV: {channels} Kanal/Kanäle, {sample_width * 8} Bit"
+        )
+
+    samples = array("h")
+    samples.frombytes(pcm)
+    if sys.byteorder != "little":
+        samples.byteswap()
+
+    total_samples = len(samples)
+    duration = total_samples / sample_rate if sample_rate else 0.0
+    if not total_samples:
+        return {
+            "sample_rate": sample_rate,
+            "channels": channels,
+            "sample_width_bytes": sample_width,
+            "frames": frame_count,
+            "duration_seconds": 0.0,
+            "peak_dbfs": None,
+            "rms_dbfs": None,
+            "active_rms_dbfs": None,
+            "leading_silence_ms": 0.0,
+            "trailing_silence_ms": 0.0,
+            "silence_threshold_dbfs": _AUDIO_SILENCE_DBFS,
+        }
+
+    peak = max(abs(int(sample)) for sample in samples)
+    rms = math.sqrt(sum(int(sample) * int(sample) for sample in samples) / total_samples)
+
+    window = max(1, int(sample_rate * (_AUDIO_WINDOW_MS / 1000.0)))
+    threshold = 32768.0 * (10.0 ** (_AUDIO_SILENCE_DBFS / 20.0))
+
+    def window_rms(start: int, end: int) -> float:
+        count = max(1, end - start)
+        return math.sqrt(
+            sum(int(samples[index]) * int(samples[index]) for index in range(start, end)) / count
+        )
+
+    first_active = None
+    last_active_end = None
+    for start in range(0, total_samples, window):
+        end = min(total_samples, start + window)
+        if window_rms(start, end) > threshold:
+            if first_active is None:
+                first_active = start
+            last_active_end = end
+
+    if first_active is None or last_active_end is None:
+        leading_ms = duration * 1000.0
+        trailing_ms = duration * 1000.0
+        active_rms = None
+    else:
+        leading_ms = (first_active / sample_rate) * 1000.0
+        trailing_ms = max(0.0, duration - (last_active_end / sample_rate)) * 1000.0
+        active_count = max(1, last_active_end - first_active)
+        active_rms_value = math.sqrt(
+            sum(
+                int(samples[index]) * int(samples[index])
+                for index in range(first_active, last_active_end)
+            )
+            / active_count
+        )
+        active_rms = _dbfs(active_rms_value)
+
+    return {
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "sample_width_bytes": sample_width,
+        "frames": frame_count,
+        "duration_seconds": round(duration, 4),
+        "peak_dbfs": _dbfs(peak),
+        "rms_dbfs": _dbfs(rms),
+        "active_rms_dbfs": active_rms,
+        "leading_silence_ms": round(leading_ms, 1),
+        "trailing_silence_ms": round(trailing_ms, 1),
+        "silence_threshold_dbfs": _AUDIO_SILENCE_DBFS,
+    }
+
+
+def _persist_audio_diagnostics(
+    job_id: str,
+    voice: str | None,
+    language: str,
+    wav_bytes: bytes,
+    stats: dict,
+) -> dict:
+    """Keep the LTX conditioning WAV and metrics outside the disposable work dir."""
+    AUDIO_DEBUG_ROOT.mkdir(parents=True, exist_ok=True)
+    label = str(voice or "default").strip() or "default"
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", label).strip("-") or "voice"
+    stem = f"{job_id}-{slug[:48]}"
+    wav_path = AUDIO_DEBUG_ROOT / f"{stem}.wav"
+    json_path = AUDIO_DEBUG_ROOT / f"{stem}.json"
+    wav_path.write_bytes(wav_bytes)
+    metadata = {
+        "job_id": job_id,
+        "voice": voice,
+        "language": language,
+        "wav_path": str(wav_path),
+        "stats": stats,
+    }
+    json_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "wav_path": str(wav_path),
+        "metadata_path": str(json_path),
+        "stats": stats,
+    }
 
 
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
@@ -55,11 +192,20 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                 raise talking_photo.TalkingPhotoCancelled()
             wav = talking_photo._audio_to_wav(audio, work)
             audio_seconds = talking_photo_motion.wav_duration_seconds(wav)
+            audio_stats = _analyze_wav(wav)
+            audio_diagnostics = _persist_audio_diagnostics(
+                job_id,
+                voice,
+                request_payload["language"],
+                wav,
+                audio_stats,
+            )
             talking_photo._update_job(
                 job_id,
                 status="motion",
                 phase="quality",
                 progress=0.2,
+                audio_diagnostics=audio_diagnostics,
             )
             try:
                 video, details = talking_photo_ltx.generate(
@@ -74,18 +220,6 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                 )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
-
-            final_lipsync = None
-            if voice:
-                if talking_photo._cancelled(job_id):
-                    raise talking_photo.TalkingPhotoCancelled()
-                talking_photo._update_job(
-                    job_id,
-                    status="lipsync",
-                    phase="lipsync",
-                    progress=0.9,
-                )
-                video, final_lipsync = _finalize_custom_voice_lipsync(video, wav)
 
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
@@ -102,18 +236,12 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "id": job_id,
                     "mime_type": "video/mp4",
                     "size_bytes": len(video),
-                    "provider": (
-                        "ltx-2.5-mlx-a2v+musetalk-mac"
-                        if voice else "ltx-2.5-mlx-a2v"
-                    ),
+                    "provider": "ltx-2.5-mlx-a2v",
                     "engine": "quality",
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
-                    "lipsync_provider": "musetalk-mac" if voice else None,
-                    "timing": {
-                        **details,
-                        "final_lipsync": final_lipsync,
-                    },
+                    "audio_diagnostics": audio_diagnostics,
+                    "timing": details,
                     "video_url": f"/api/talking-photo/videos/{job_id}",
                 },
                 finished_at=time.time(),
