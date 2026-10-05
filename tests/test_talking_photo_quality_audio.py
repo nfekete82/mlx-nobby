@@ -40,7 +40,26 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertIsNotNone(stats["peak_dbfs"])
         self.assertIsNotNone(stats["active_rms_dbfs"])
 
-    def test_persist_audio_diagnostics_keeps_wav_and_metadata(self):
+    def test_custom_voice_leading_silence_is_reduced_to_preroll(self):
+        sample_rate = 16000
+        wav = self._wav_bytes(
+            [0] * int(sample_rate * 0.56)
+            + [5000] * int(sample_rate * 0.50),
+            sample_rate,
+        )
+
+        with mock.patch.object(
+            talking_photo_quality,
+            "_CUSTOM_VOICE_LEADING_SILENCE_MS",
+            120.0,
+        ):
+            trimmed = talking_photo_quality._trim_custom_voice_leading_silence(wav)
+
+        stats = talking_photo_quality._analyze_wav(trimmed)
+        self.assertAlmostEqual(stats["leading_silence_ms"], 120.0, delta=10.0)
+        self.assertAlmostEqual(stats["duration_seconds"], 0.62, delta=0.02)
+
+    def test_persist_audio_diagnostics_keeps_wav_metadata_and_speed(self):
         wav = self._wav_bytes([1000] * 1600)
         stats = talking_photo_quality._analyze_wav(wav)
 
@@ -53,6 +72,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                 "a" * 24,
                 "Pervin",
                 "de",
+                0.65,
                 wav,
                 stats,
             )
@@ -64,6 +84,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
 
         self.assertEqual(metadata["voice"], "Pervin")
         self.assertEqual(metadata["language"], "de")
+        self.assertEqual(metadata["tts_speed"], 0.65)
         self.assertEqual(metadata["stats"]["sample_rate"], 16000)
 
 
