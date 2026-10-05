@@ -1,0 +1,122 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CONFIG="${HOME}/.config/mlx-server/config"
+PYTHON="${MLX_RUNTIME_PYTHON:-${PROJECT_DIR}/runtime-venv/bin/python}"
+DRAFT_MODEL="${MLX_QWEN38_MTP_MODEL:-mlx-community/Qwen3.8-27B-MTP-4bit}"
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/configure-qwen38-mtp [enable|disable|status]
+
+Configures opt-in Qwen3.8 speculative decoding for the model that is active
+when `enable` is run. The draft model must already be present in the local
+Hugging Face cache; this script never downloads model weights.
+EOF
+}
+
+if [ ! -f "$CONFIG" ]; then
+    echo "Runtime configuration is missing: $CONFIG" >&2
+    exit 1
+fi
+
+if [ ! -x "$PYTHON" ]; then
+    echo "Runtime Python is missing: $PYTHON" >&2
+    exit 1
+fi
+
+hf_model_cached() {
+    local repo="$1"
+    local hub_cache
+    local cache_name
+    hub_cache="${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}"
+    cache_name="models--${repo//\//--}"
+    [ -d "$hub_cache/$cache_name/snapshots" ] && \
+        find "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
+            -name config.json -type f -print -quit 2>/dev/null | grep -q .
+}
+
+upsert_config() {
+    local key="$1"
+    local value="$2"
+    "$PYTHON" - "$CONFIG" "$key" "$value" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines()
+replacement = f"{key}={json.dumps(value)}"
+pattern = re.compile(rf"^{re.escape(key)}=")
+for index, line in enumerate(lines):
+    if pattern.match(line):
+        lines[index] = replacement
+        break
+else:
+    lines.append(replacement)
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+}
+
+show_status() {
+    # shellcheck disable=SC1090
+    source "$CONFIG"
+    echo "Current model:        ${MODEL:-<none>}"
+    echo "Speculative target:   ${SPECULATIVE_TARGET:-<disabled>}"
+    echo "Draft model:          ${SPECULATIVE_DRAFT_MODEL:-<none>}"
+    echo "Draft kind:           ${SPECULATIVE_DRAFT_KIND:-mtp}"
+    echo "Draft block size:     ${SPECULATIVE_DRAFT_BLOCK_SIZE:-3}"
+    if hf_model_cached "$DRAFT_MODEL"; then
+        echo "Qwen3.8 MTP cache:    ready"
+    else
+        echo "Qwen3.8 MTP cache:    missing"
+    fi
+}
+
+command="${1:-status}"
+case "$command" in
+    status)
+        show_status
+        ;;
+    enable)
+        # shellcheck disable=SC1090
+        source "$CONFIG"
+        if [ -z "${MODEL:-}" ]; then
+            echo "No active runtime model is configured." >&2
+            exit 1
+        fi
+        if ! hf_model_cached "$DRAFT_MODEL"; then
+            echo "Draft model is not cached locally: $DRAFT_MODEL" >&2
+            echo "Download it explicitly first:" >&2
+            echo "  ./scripts/mlx download $DRAFT_MODEL" >&2
+            exit 2
+        fi
+        upsert_config SPECULATIVE_TARGET "$MODEL"
+        upsert_config SPECULATIVE_DRAFT_MODEL "$DRAFT_MODEL"
+        upsert_config SPECULATIVE_DRAFT_KIND "mtp"
+        upsert_config SPECULATIVE_DRAFT_BLOCK_SIZE "3"
+        echo "Qwen3.8 MTP speculative decoding configured for:"
+        echo "  $MODEL"
+        echo "Restart the MLX runtime to apply it:"
+        echo "  ./scripts/mlx restart"
+        ;;
+    disable)
+        upsert_config SPECULATIVE_TARGET ""
+        upsert_config SPECULATIVE_DRAFT_MODEL ""
+        echo "Speculative decoding disabled."
+        echo "Restart the MLX runtime to apply it:"
+        echo "  ./scripts/mlx restart"
+        ;;
+    -h|--help|help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
