@@ -7,6 +7,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from agent import system_clock
+
 
 ROOT = Path.home() / ".config/mlx-web"
 PROFILE_FILE = ROOT / "profile.json"
@@ -378,10 +380,7 @@ def context() -> str:
         fields
     )
 
-    if not personal_lines and not style_lines:
-        return ""
-
-    sections = []
+    sections = [system_clock.context()]
 
     if personal_lines:
         sections.append(
