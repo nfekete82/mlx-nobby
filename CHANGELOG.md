@@ -2,12 +2,21 @@
 
 ## Unreleased
 
-- Make ad-hoc generated images, videos and Talking Photo outputs temporary by default, keep them only after explicit save/download, delete unsaved browser-session results on close, immediately remove Talking Photo LTX intermediates, and add a 24-hour crash-recovery cleanup while protecting Shorts/project assets and legacy untracked media.
+## v1.7.0
 
-- Wait for LaunchAgent unload completion before reloading changed configuration and restore the previous service if bootstrap fails.
+- Add local Talking Photo generation with managed MuseTalk-Mac, local TTS and lip sync, including clipboard image paste and robust handling of portrait dimensions.
 
-- Add reproducible, pin-bound patching for the managed LTX-MLX runtime.
-- Extend the managed LTX low-memory LoRA loader to apply compatible non-transformer adapter targets.
+- Add natural Talking Photo motion by combining LTX 2.5 image-to-video movement with MuseTalk lip sync for subtle head, eye, shoulder and upper-body animation.
+
+- Add Shorts cast voice assignments and ordered multi-speaker dialogue with per-speaker voice synthesis and scene speaker identity.
+
+- Make ad-hoc generated images, videos and Talking Photo outputs temporary by default. Explicit save/download keeps media; unsaved browser-session results are removed automatically, Talking Photo intermediates are deleted immediately, and a 24-hour recovery cleanup removes abandoned temporary assets while protecting Shorts/project assets and legacy media.
+
+- Improve managed MuseTalk installation and startup recovery, including virtual-environment weight downloads, required model modules, demo media setup and resilient LaunchAgent bootstrap behavior.
+
+- Improve the managed LTX runtime with reproducible pin-bound patching, compatible low-memory LoRA targets and safer LaunchAgent reload/recovery.
+
+- Make Performance Observatory formatting tests deterministic across system locales.
 
 ## v1.6.2
 
