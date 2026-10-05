@@ -170,6 +170,8 @@ class ModelProviderTests(unittest.TestCase):
                 self.assertEqual(metric["purpose"], "agent.plan")
                 self.assertEqual(metric["usage"], response.usage)
                 self.assertEqual(metric["status"], "completed")
+                self.assertTrue(metric["model"]["local"])
+                self.assertEqual(metric["model"]["identifier"], "local/model")
                 self.assertIsNotNone(metric["timings_ms"]["queue_wait"])
                 self.assertIsNotNone(metric["timings_ms"]["upstream_connect"])
 
