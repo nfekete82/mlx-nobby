@@ -1,8 +1,8 @@
 """Lifecycle management for generated, local media assets.
 
-Ad-hoc image/video outputs are temporary by default.  A user download promotes
+Ad-hoc image/video outputs are temporary by default. A user download promotes
 an asset to persistent storage; otherwise browser cleanup or the TTL sweeper may
-remove it.  Project-owned assets can be registered as persistent immediately.
+remove it. Project-owned assets can be registered as persistent immediately.
 Only explicitly managed MLX Nobby output roots are ever deleted.
 """
 
@@ -26,6 +26,7 @@ IMAGE_ROOT = ROOT / "images"
 VIDEO_ROOT = ROOT / "videos"
 TALKING_PHOTO_ROOT = ROOT / "talking-photo" / "videos"
 TALKING_PHOTO_WORK_ROOT = ROOT / "talking-photo" / "work"
+TALKING_PHOTO_JOBS_ROOT = ROOT / "talking-photo" / "jobs"
 BATCH_UPLOAD_ROOT = ROOT / "batch" / "uploads"
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 MIN_TTL_SECONDS = 60
@@ -33,6 +34,7 @@ MAX_TTL_SECONDS = 30 * 24 * 60 * 60
 KINDS = frozenset({"image", "video", "talking_photo"})
 IMAGE_ID_PATTERN = re.compile(r"^\d{10}-[0-9a-f]{12}$")
 HEX_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$")
+TALKING_PHOTO_TERMINAL = frozenset({"completed", "failed", "cancelled"})
 
 _lock = threading.RLock()
 
@@ -161,7 +163,7 @@ def register(
 
 
 def persist(kind: str, asset_id: str) -> dict:
-    """Promote an existing generated asset to persistent storage."""
+    """Promote an existing or legacy generated asset to persistent storage."""
     key = _key(kind, asset_id)
     path = _expected_path(kind, asset_id)
     if not path.is_file():
@@ -171,6 +173,8 @@ def persist(kind: str, asset_id: str) -> dict:
         state = _load_locked()
         existing = state["assets"].get(key)
         if not isinstance(existing, dict):
+            # Explicit save/download is safe to use as the point at which a
+            # pre-lifecycle legacy asset becomes managed.
             existing = register(kind, asset_id, path)
             state = _load_locked()
             existing = state["assets"].get(key) or existing
@@ -198,14 +202,28 @@ def forget(kind: str, asset_id: str) -> bool:
 
 
 def discard(kind: str, asset_id: str, *, force: bool = False) -> dict:
-    """Delete a temporary asset; persistent assets are protected by default."""
+    """Delete a tracked temporary asset; protect legacy and persistent files."""
     key = _key(kind, asset_id)
     path = _expected_path(kind, asset_id)
     with _lock:
         state = _load_locked()
         record = state["assets"].get(key)
+        if not isinstance(record, dict) and not force:
+            return {
+                "deleted": False,
+                "persistent": False,
+                "tracked": False,
+                "kind": kind,
+                "id": asset_id,
+            }
         if isinstance(record, dict) and record.get("persistent") and not force:
-            return {"deleted": False, "persistent": True, "kind": kind, "id": asset_id}
+            return {
+                "deleted": False,
+                "persistent": True,
+                "tracked": True,
+                "kind": kind,
+                "id": asset_id,
+            }
         existed = path.is_file()
         path.unlink(missing_ok=True)
         state["assets"].pop(key, None)
@@ -213,6 +231,7 @@ def discard(kind: str, asset_id: str, *, force: bool = False) -> dict:
         return {
             "deleted": existed,
             "persistent": False,
+            "tracked": isinstance(record, dict),
             "kind": kind,
             "id": asset_id,
         }
@@ -231,6 +250,7 @@ def discard_many(items: Iterable[dict]) -> dict:
         "processed": len(results),
         "deleted": sum(1 for item in results if item.get("deleted")),
         "protected": sum(1 for item in results if item.get("persistent")),
+        "untracked": sum(1 for item in results if item.get("tracked") is False),
         "results": results,
     }
 
@@ -283,6 +303,27 @@ def _remove_stale_work(now: float, ttl: int) -> int:
     return removed
 
 
+def _remove_stale_talking_photo_jobs(now: float, ttl: int) -> int:
+    """Prune terminal Talking Photo job JSON after its recovery window."""
+    removed = 0
+    if not TALKING_PHOTO_JOBS_ROOT.is_dir():
+        return removed
+    for path in TALKING_PHOTO_JOBS_ROOT.glob("*.json"):
+        if not HEX_ID_PATTERN.fullmatch(path.stem):
+            continue
+        try:
+            if now - path.stat().st_mtime < ttl:
+                continue
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict) or value.get("status") not in TALKING_PHOTO_TERMINAL:
+                continue
+            path.unlink(missing_ok=True)
+            removed += 1
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return removed
+
+
 def cleanup_expired(*, now: float | None = None) -> dict:
     """Delete expired temporary assets and stale Talking Photo scratch data."""
     current = time.time() if now is None else float(now)
@@ -295,9 +336,6 @@ def cleanup_expired(*, now: float | None = None) -> dict:
         for key, record in list(state["assets"].items()):
             if not isinstance(record, dict):
                 state["assets"].pop(key, None)
-                continue
-            if record.get("persistent"):
-                protected += 1
                 continue
             path = Path(str(record.get("path") or "")).expanduser().resolve()
             try:
@@ -312,6 +350,9 @@ def cleanup_expired(*, now: float | None = None) -> dict:
                 state["assets"].pop(key, None)
                 missing += 1
                 continue
+            if record.get("persistent"):
+                protected += 1
+                continue
             expires_at = float(record.get("expires_at") or (record.get("created_at") or current) + ttl)
             if expires_at > current:
                 continue
@@ -323,12 +364,14 @@ def cleanup_expired(*, now: float | None = None) -> dict:
                 continue
         legacy = _remove_stale_talking_photo_outputs(state, current, ttl)
         scratch = _remove_stale_work(current, ttl)
+        job_metadata = _remove_stale_talking_photo_jobs(current, ttl)
         _write_locked(state)
     return {
-        "deleted": deleted + legacy + scratch,
+        "deleted": deleted + legacy + scratch + job_metadata,
         "expired_assets": deleted,
         "legacy_talking_photo": legacy,
         "scratch": scratch,
+        "job_metadata": job_metadata,
         "missing": missing,
         "persistent": protected,
         "ttl_seconds": ttl,
