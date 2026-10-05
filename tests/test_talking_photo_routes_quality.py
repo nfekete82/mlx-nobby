@@ -5,12 +5,12 @@ from agent import talking_photo_routes
 
 
 class TalkingPhotoRouteQualityTests(unittest.TestCase):
-    def test_request_defaults_to_fast_for_backward_compatibility(self):
+    def test_request_defaults_to_quality_on_quality_branch(self):
         request = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
         )
-        self.assertEqual(request.engine, "fast")
+        self.assertEqual(request.engine, "quality")
 
     def test_provider_status_keeps_fast_top_level_contract(self):
         fast = {
@@ -33,7 +33,7 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["provider"], "musetalk-mac")
-        self.assertEqual(status["default_engine"], "fast")
+        self.assertEqual(status["default_engine"], "quality")
         self.assertTrue(status["quality_available"])
         self.assertEqual(status["providers"]["quality"]["provider"], "ltx-2.5-mlx-a2v")
 

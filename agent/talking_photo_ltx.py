@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import subprocess
 import time
 
 import runtime_coordinator
+from agent.talking_photo_audio import validate_wav
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +34,11 @@ MLX_MANAGER = PROJECT_ROOT / "scripts/mlx"
 MLX_SERVER_LABEL = "de.nobby.mlx-server"
 MAX_AUDIO_SECONDS = 10.0
 FPS = 24
+NEGATIVE_PROMPT = (
+    "deformed mouth, warped lips, extra teeth, duplicated teeth, unstable teeth, "
+    "distorted face, identity drift, exaggerated mouth opening, rubbery face, "
+    "flicker, jitter, camera movement, zoom, scene change, extra people"
+)
 
 TALKING_PROMPT = (
     "The exact same person from the reference image speaks directly to camera in precise synchronization "
@@ -45,6 +52,28 @@ TALKING_PROMPT = (
 
 class QualityCancelled(RuntimeError):
     pass
+
+
+def resolve_seed(job_id: str) -> int:
+    value = os.environ.get("LTX_TALKING_PHOTO_SEED")
+    if value is None:
+        return int.from_bytes(job_id.encode("utf-8")[:4].ljust(4, b"0"), "big") & 0x7FFFFFFF
+    try:
+        seed = int(value)
+    except ValueError as exc:
+        raise RuntimeError("LTX_TALKING_PHOTO_SEED muss eine Ganzzahl sein") from exc
+    if not 0 <= seed <= 0x7FFFFFFF:
+        raise RuntimeError("LTX_TALKING_PHOTO_SEED muss zwischen 0 und 2147483647 liegen")
+    return seed
+
+
+def debug_directory(job_id: str) -> Path | None:
+    root = os.environ.get("LTX_TALKING_PHOTO_DEBUG_ROOT")
+    if root:
+        return Path(root).expanduser() / job_id
+    if os.environ.get("LTX_TALKING_PHOTO_DEBUG", "").lower() in {"1", "true", "yes"}:
+        return Path.home() / ".config/mlx-web/talking-photo/render-debug" / job_id
+    return None
 
 
 class _CancelProxy:
@@ -77,7 +106,7 @@ def provider_health() -> dict:
 def quality_frames(audio_seconds: float, fps: int = FPS) -> tuple[int, float]:
     """Cover all speech with the next valid LTX frame count, adding tiny silence if needed."""
     seconds = float(audio_seconds)
-    if seconds <= 0:
+    if not math.isfinite(seconds) or seconds <= 0 or fps <= 0:
         raise RuntimeError("Talking-Photo-Audio ist leer")
     if seconds > MAX_AUDIO_SECONDS:
         raise RuntimeError(
@@ -175,13 +204,25 @@ def generate(
     *,
     cancelled,
     update=None,
+    debug_dir: Path | None = None,
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
     health = provider_health()
     if not health["ready"]:
         raise RuntimeError(health["detail"] or "LTX Quality ist nicht bereit")
 
+    seed = resolve_seed(job_id)
+    source_stats = validate_wav(audio_wav)
+    # The WAV header is authoritative, rather than a caller's duration estimate.
+    audio_seconds = source_stats["frames"] / source_stats["sample_rate"]
     frames, clip_seconds = quality_frames(audio_seconds)
+    debug_dir = debug_dir if debug_dir is not None else debug_directory(job_id)
+    work = work.resolve()
+    if debug_dir is not None:
+        debug_dir = debug_dir.resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
     source_image = work / f"ltx-quality-source{image_suffix}"
     source_audio = work / "ltx-quality-source.wav"
     padded_audio = work / "ltx-quality-audio.wav"
@@ -191,7 +232,17 @@ def generate(
     width, height = _image_size(source_image)
     target_width, target_height = target_dimensions(width, height)
     _pad_audio(source_audio, padded_audio, clip_seconds)
-    seed = int.from_bytes(job_id.encode("utf-8")[:4].ljust(4, b"0"), "big") & 0x7FFFFFFF
+    padded_stats = validate_wav(padded_audio.read_bytes())
+    if abs(padded_stats["frames"] / 16000 - clip_seconds) > 1 / 16000:
+        raise RuntimeError("LTX-Audio-Padding passt nicht zur Videodauer")
+    if debug_dir is not None:
+        shutil.copy2(source_image, debug_dir / source_image.name)
+        shutil.copy2(source_audio, debug_dir / source_audio.name)
+        # Use the retained file itself in --audio, so there is no ambiguity.
+        shutil.copy2(padded_audio, debug_dir / padded_audio.name)
+        source_image = (debug_dir / source_image.name).resolve()
+        padded_audio = (debug_dir / padded_audio.name).resolve()
+    runner_diagnostics = (debug_dir or work) / "runner.json"
 
     command = [
         str(RUNTIME_PYTHON), str(RUNNER),
@@ -200,6 +251,7 @@ def generate(
         "--audio", str(padded_audio),
         "--output", str(output),
         "--prompt", TALKING_PROMPT,
+        "--negative-prompt", NEGATIVE_PROMPT,
         "--width", str(target_width),
         "--height", str(target_height),
         "--frames", str(frames),
@@ -207,67 +259,103 @@ def generate(
         "--seed", str(seed),
         "--stage1-steps", "15",
         "--stage2-steps", "3",
+        "--cfg-scale", "3.0",
+        "--stg-scale", "1.0",
+        "--diagnostics", str(runner_diagnostics.resolve()),
     ]
+    details = {
+        "provider": "ltx-2.5-mlx-a2v", "seed": seed,
+        "seed_source": "environment" if "LTX_TALKING_PHOTO_SEED" in os.environ else "job_id",
+        "prompt": TALKING_PROMPT, "negative_prompt": NEGATIVE_PROMPT,
+        "frames": frames, "fps": FPS, "duration": clip_seconds,
+        "audio_seconds": audio_seconds, "source_audio_stats": source_stats,
+        "conditioning_audio_stats": padded_stats,
+        "conditioning_audio_sha256": hashlib.sha256(padded_audio.read_bytes()).hexdigest(),
+        "image_sha256": hashlib.sha256(image).hexdigest(),
+        "width": target_width, "height": target_height,
+        "stage_1_steps": 15, "stage_2_steps": 3, "cfg_scale": 3.0, "stg_scale": 1.0,
+        "low_ram": True, "low_memory": True, "command": command,
+        "audio_path": str(padded_audio),
+        "debug_dir": str(debug_dir.resolve()) if debug_dir is not None else None,
+        "status": "prepared",
+    }
+    def save_details():
+        if debug_dir is not None:
+            (debug_dir / "render.json").write_text(
+                json.dumps(details, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+            )
+    save_details()
     cancel_proxy = _CancelProxy(cancelled)
     started = time.monotonic()
     if update is not None:
         update(phase="quality", progress=0.25)
 
+    details["status"] = "rendering"
+    save_details()
     try:
-        with runtime_coordinator.video_runtime(
-            cancel_proxy,
-            chat_loaded=_chat_loaded,
-            chat_command=_chat_command,
-        ):
-            if cancelled():
-                raise QualityCancelled()
-            process = subprocess.Popen(
-                command,
-                cwd=RUNTIME_ROOT,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            output_text = ""
-            try:
-                while True:
-                    if cancelled():
-                        _terminate(process)
-                        raise QualityCancelled()
-                    try:
-                        stdout, _ = process.communicate(timeout=0.5)
-                        output_text = stdout or ""
-                        break
-                    except subprocess.TimeoutExpired:
-                        if update is not None:
-                            elapsed = time.monotonic() - started
-                            # Coarse truthful progress only; A2V currently has no stable machine progress API.
-                            update(phase="quality", progress=min(0.88, 0.3 + elapsed / 900.0))
-                        continue
-            finally:
-                if cancelled() and process.poll() is None:
-                    _terminate(process)
-            if process.returncode != 0:
-                raise RuntimeError(
-                    "LTX Quality fehlgeschlagen" + (f": {output_text[-3000:].strip()}" if output_text else "")
+        try:
+            with runtime_coordinator.video_runtime(
+                cancel_proxy,
+                chat_loaded=_chat_loaded,
+                chat_command=_chat_command,
+            ):
+                if cancelled():
+                    raise QualityCancelled()
+                process = subprocess.Popen(
+                    command,
+                    cwd=RUNTIME_ROOT,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
                 )
-    except runtime_coordinator.CoordinationCancelled as exc:
-        raise QualityCancelled() from exc
+                output_text = ""
+                try:
+                    while True:
+                        if cancelled():
+                            _terminate(process)
+                            raise QualityCancelled()
+                        try:
+                            stdout, _ = process.communicate(timeout=0.5)
+                            output_text = stdout or ""
+                            if debug_dir is not None:
+                                (debug_dir / "ltx.log").write_text(output_text, encoding="utf-8")
+                            break
+                        except subprocess.TimeoutExpired:
+                            if update is not None:
+                                elapsed = time.monotonic() - started
+                                # Coarse truthful progress only; A2V currently has no stable machine progress API.
+                                update(phase="quality", progress=min(0.88, 0.3 + elapsed / 900.0))
+                            continue
+                finally:
+                    if cancelled() and process.poll() is None:
+                        _terminate(process)
+                if process.returncode != 0:
+                    raise RuntimeError(
+                        "LTX Quality fehlgeschlagen" + (f": {output_text[-3000:].strip()}" if output_text else "")
+                    )
+        except runtime_coordinator.CoordinationCancelled as exc:
+            raise QualityCancelled() from exc
 
-    if not output.is_file():
-        raise RuntimeError("LTX Quality lieferte kein Video")
-    video = output.read_bytes()
-    if len(video) < 32 or b"ftyp" not in video[:32]:
-        raise RuntimeError("LTX Quality lieferte kein gültiges MP4")
-    return video, {
-        "provider": "ltx-2.5-mlx-a2v",
-        "frames": frames,
-        "fps": FPS,
-        "duration": clip_seconds,
-        "width": target_width,
-        "height": target_height,
-        "stage_1_steps": 15,
-        "stage_2_steps": 3,
-        "low_ram": True,
-        "elapsed_seconds": round(time.monotonic() - started, 3),
-    }
+        if not output.is_file():
+            raise RuntimeError("LTX Quality lieferte kein Video")
+        video = output.read_bytes()
+        if len(video) < 32 or b"ftyp" not in video[:32]:
+            raise RuntimeError("LTX Quality lieferte kein gültiges MP4")
+        details["status"] = "completed"
+        details["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        if runner_diagnostics.is_file():
+            details["runner"] = json.loads(runner_diagnostics.read_text(encoding="utf-8"))
+        if debug_dir is not None:
+            shutil.copy2(output, debug_dir / "output.mp4")
+            details["output_path"] = str((debug_dir / "output.mp4").resolve())
+        save_details()
+        return video, details
+    except QualityCancelled:
+        details.update(status="cancelled", elapsed_seconds=round(time.monotonic() - started, 3))
+        save_details()
+        raise
+    except Exception as exc:
+        details.update(status="failed", error=str(exc),
+                       elapsed_seconds=round(time.monotonic() - started, 3))
+        save_details()
+        raise
