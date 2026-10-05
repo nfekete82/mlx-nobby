@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -24,7 +25,9 @@ from agent import talking_photo, talking_photo_ltx, talking_photo_motion
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 _AUDIO_SILENCE_DBFS = -45.0
 _AUDIO_WINDOW_MS = 10.0
-_CUSTOM_VOICE_SPEED = float(os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_SPEED", "0.65"))
+_CUSTOM_VOICE_TEMPO = float(
+    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TEMPO", "0.65")
+)
 _CUSTOM_VOICE_LEADING_SILENCE_MS = float(
     os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_LEADING_SILENCE_MS", "120")
 )
@@ -109,6 +112,50 @@ def _trim_custom_voice_leading_silence(wav_bytes: bytes) -> bytes:
     return buffer.getvalue()
 
 
+def _stretch_custom_voice_wav(wav_bytes: bytes, work: Path, tempo: float) -> bytes:
+    """Change custom-voice tempo after TTS so the cloned voice timbre stays intact."""
+    if not 0.5 <= tempo <= 2.0:
+        raise RuntimeError("Custom-Voice-Tempo muss zwischen 0.5 und 2.0 liegen")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg wurde nicht gefunden")
+
+    source = work / "speech-custom-voice-original.wav"
+    target = work / "speech-custom-voice-tempo.wav"
+    source.write_bytes(wav_bytes)
+    process = subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(source),
+            "-af",
+            f"atempo={tempo:g}",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if process.returncode != 0 or not target.is_file():
+        raise RuntimeError(
+            "Custom-Voice-Audio konnte nicht für LTX verlangsamt werden: "
+            + (process.stderr or "")[-1000:]
+        )
+    stretched = target.read_bytes()
+    if len(stretched) < 44 or not stretched.startswith(b"RIFF"):
+        raise RuntimeError("Ungültiges WAV nach Custom-Voice-Tempo-Anpassung")
+    return stretched
+
+
 def _analyze_wav(wav_bytes: bytes) -> dict:
     """Measure the exact 16 kHz mono WAV passed to LTX."""
     sample_rate, samples = _read_pcm16_mono(wav_bytes)
@@ -188,6 +235,7 @@ def _persist_audio_diagnostics(
     voice: str | None,
     language: str,
     tts_speed: float,
+    postprocess_tempo: float,
     wav_bytes: bytes,
     stats: dict,
 ) -> dict:
@@ -204,6 +252,7 @@ def _persist_audio_diagnostics(
         "voice": voice,
         "language": language,
         "tts_speed": tts_speed,
+        "postprocess_tempo": postprocess_tempo,
         "wav_path": str(wav_path),
         "stats": stats,
     }
@@ -215,6 +264,7 @@ def _persist_audio_diagnostics(
         "wav_path": str(wav_path),
         "metadata_path": str(json_path),
         "tts_speed": tts_speed,
+        "postprocess_tempo": postprocess_tempo,
         "stats": stats,
     }
 
@@ -240,18 +290,24 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             }
             voice = request_payload.get("voice")
             requested_speed = float(request_payload.get("speed", 1.0))
-            effective_speed = requested_speed
+            tts_speed = requested_speed
+            postprocess_tempo = 1.0
             if voice:
                 tts_payload["voice"] = voice
                 if requested_speed == 1.0:
-                    effective_speed = _CUSTOM_VOICE_SPEED
-            if effective_speed != 1.0:
-                tts_payload["speed"] = effective_speed
+                    # Keep the clone itself at native speed so its voice identity and
+                    # prosody stay intact; only stretch the rendered waveform later.
+                    tts_speed = 1.0
+                    postprocess_tempo = _CUSTOM_VOICE_TEMPO
+            if tts_speed != 1.0:
+                tts_payload["speed"] = tts_speed
             audio = talking_photo._request_tts(tts_payload)
 
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
             wav = talking_photo._audio_to_wav(audio, work)
+            if voice and postprocess_tempo != 1.0:
+                wav = _stretch_custom_voice_wav(wav, work, postprocess_tempo)
             if voice:
                 wav = _trim_custom_voice_leading_silence(wav)
             audio_seconds = talking_photo_motion.wav_duration_seconds(wav)
@@ -260,7 +316,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                 job_id,
                 voice,
                 request_payload["language"],
-                effective_speed,
+                tts_speed,
+                postprocess_tempo,
                 wav,
                 audio_stats,
             )
