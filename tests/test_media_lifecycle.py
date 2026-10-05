@@ -25,6 +25,11 @@ def _storage(monkeypatch, tmp_path):
         "TALKING_PHOTO_WORK_ROOT",
         root / "talking-photo" / "work",
     )
+    monkeypatch.setattr(
+        media_lifecycle,
+        "TALKING_PHOTO_JOBS_ROOT",
+        root / "talking-photo" / "jobs",
+    )
     monkeypatch.setattr(media_lifecycle, "BATCH_UPLOAD_ROOT", root / "batch" / "uploads")
     monkeypatch.setenv("MLX_MEDIA_TEMP_TTL_SECONDS", "60")
     for directory in (
@@ -32,6 +37,7 @@ def _storage(monkeypatch, tmp_path):
         media_lifecycle.VIDEO_ROOT,
         media_lifecycle.TALKING_PHOTO_ROOT,
         media_lifecycle.TALKING_PHOTO_WORK_ROOT,
+        media_lifecycle.TALKING_PHOTO_JOBS_ROOT,
         media_lifecycle.BATCH_UPLOAD_ROOT,
     ):
         directory.mkdir(parents=True, exist_ok=True)
@@ -49,8 +55,35 @@ def test_temporary_asset_is_deleted_on_discard(monkeypatch, tmp_path):
     result = media_lifecycle.discard("image", asset_id)
 
     assert result["deleted"] is True
+    assert result["tracked"] is True
     assert not path.exists()
     assert media_lifecycle.status()["tracked"] == 0
+
+
+def test_untracked_legacy_asset_is_never_deleted_by_browser_discard(monkeypatch, tmp_path):
+    _storage(monkeypatch, tmp_path)
+    asset_id = "1234567890-abcdef123456"
+    path = media_lifecycle.IMAGE_ROOT / f"{asset_id}.png"
+    path.write_bytes(b"legacy")
+
+    result = media_lifecycle.discard("image", asset_id)
+
+    assert result["deleted"] is False
+    assert result["tracked"] is False
+    assert path.is_file()
+
+
+def test_explicit_save_can_adopt_legacy_asset(monkeypatch, tmp_path):
+    _storage(monkeypatch, tmp_path)
+    asset_id = "1234567890-abcdef123456"
+    path = media_lifecycle.IMAGE_ROOT / f"{asset_id}.png"
+    path.write_bytes(b"legacy")
+
+    record = media_lifecycle.persist("image", asset_id)
+
+    assert record["persistent"] is True
+    assert record["saved_at"] is not None
+    assert media_lifecycle.status()["persistent"] == 1
 
 
 def test_persisted_asset_survives_discard_and_ttl(monkeypatch, tmp_path):
@@ -85,6 +118,20 @@ def test_expired_tracked_asset_is_removed(monkeypatch, tmp_path):
     assert result["expired_assets"] == 1
     assert not path.exists()
     assert media_lifecycle.status()["temporary"] == 0
+
+
+def test_cleanup_drops_missing_persistent_manifest_entries(monkeypatch, tmp_path):
+    _storage(monkeypatch, tmp_path)
+    asset_id = "1" * 24
+    path = media_lifecycle.VIDEO_ROOT / f"{asset_id}.mp4"
+    path.write_bytes(b"saved")
+    media_lifecycle.register("video", asset_id, path, persistent=True)
+    path.unlink()
+
+    result = media_lifecycle.cleanup_expired(now=10_000_000)
+
+    assert result["missing"] == 1
+    assert media_lifecycle.status()["tracked"] == 0
 
 
 def test_cleanup_does_not_touch_untracked_legacy_chat_media(monkeypatch, tmp_path):
@@ -154,6 +201,22 @@ def test_stale_talking_photo_scratch_is_removed(monkeypatch, tmp_path):
     assert result["scratch"] == 2
     assert not work.exists()
     assert not upload.exists()
+
+
+def test_stale_terminal_talking_photo_job_metadata_is_removed(monkeypatch, tmp_path):
+    _storage(monkeypatch, tmp_path)
+    terminal = media_lifecycle.TALKING_PHOTO_JOBS_ROOT / ("2" * 24 + ".json")
+    active = media_lifecycle.TALKING_PHOTO_JOBS_ROOT / ("3" * 24 + ".json")
+    terminal.write_text(json.dumps({"id": "2" * 24, "status": "completed"}), encoding="utf-8")
+    active.write_text(json.dumps({"id": "3" * 24, "status": "lipsync"}), encoding="utf-8")
+    os.utime(terminal, (1, 1))
+    os.utime(active, (1, 1))
+
+    result = media_lifecycle.cleanup_expired(now=10_000_000)
+
+    assert result["job_metadata"] == 1
+    assert not terminal.exists()
+    assert active.exists()
 
 
 def test_manifest_contains_no_arbitrary_unmanaged_path(monkeypatch, tmp_path):
