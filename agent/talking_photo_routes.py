@@ -24,20 +24,21 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
-    engine: Literal["auto", "fast", "quality"] = "auto"
+    engine: Literal["fast", "quality"] = "fast"
 
 
 def provider_status() -> dict:
+    """Keep legacy top-level MuseTalk status while exposing Quality separately."""
     fast = talking_photo.provider_health()
     quality = talking_photo_quality.provider_health()
-    preferred = quality if quality.get("ready") else fast
     return {
-        "ready": bool(preferred.get("ready")),
-        "provider": preferred.get("provider"),
-        "device": preferred.get("device"),
-        "setup_command": preferred.get("setup_command"),
-        "detail": preferred.get("detail"),
-        "default_engine": "quality" if quality.get("ready") else "fast",
+        "ready": bool(fast.get("ready")),
+        "provider": fast.get("provider"),
+        "device": fast.get("device"),
+        "setup_command": fast.get("setup_command"),
+        "detail": fast.get("detail"),
+        "default_engine": "fast",
+        "quality_available": bool(quality.get("ready")),
         "providers": {
             "fast": fast,
             "quality": quality,
@@ -62,12 +63,8 @@ def install_routes(app):
         @app.post("/api/talking-photo/jobs", status_code=202)
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
-            engine = payload.pop("engine", "auto")
+            engine = payload.pop("engine", "fast")
             if engine == "quality":
-                return talking_photo_quality.create_job(payload)
-            if engine == "fast":
-                return talking_photo.create_job(payload)
-            if talking_photo_quality.provider_health().get("ready"):
                 return talking_photo_quality.create_job(payload)
             return talking_photo.create_job(payload)
 
