@@ -78,6 +78,32 @@ with open(path, "wb") as handle:
 PY
     fi
 
+    if [ "$(basename "${source}")" = "de.nobby.mlx-speech.plist.template" ]; then
+        "${RUNTIME_PYTHON}" - "${temporary}" "${target}" <<'PY'
+import os
+import plistlib
+import sys
+
+path = sys.argv[1]
+with open(path, "rb") as handle:
+    data = plistlib.load(handle)
+previous = {}
+if len(sys.argv) > 2 and os.path.isfile(sys.argv[2]):
+    with open(sys.argv[2], "rb") as handle:
+        previous = plistlib.load(handle).get("EnvironmentVariables", {})
+environment = data.setdefault("EnvironmentVariables", {})
+for name in ("MLX_SPEECH_MODEL",):
+    if name in os.environ:
+        environment[name] = os.environ[name]
+    elif name in previous:
+        environment[name] = previous[name]
+if not environment:
+    data.pop("EnvironmentVariables", None)
+with open(path, "wb") as handle:
+    plistlib.dump(data, handle, sort_keys=False)
+PY
+    fi
+
     plutil -lint "${temporary}" >/dev/null
 
     "${RUNTIME_PYTHON}" "${SCRIPT_DIR}/reload-launchagent.py" \
