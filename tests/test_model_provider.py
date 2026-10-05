@@ -48,6 +48,9 @@ class ModelProviderTests(unittest.TestCase):
         self.opener = mock.patch("agent.model_provider.urllib.request.urlopen")
         self.urlopen = self.opener.start()
         self.addCleanup(self.opener.stop)
+        self.clock_patcher = mock.patch("agent.model_provider.system_clock.context", return_value="")
+        self.clock_context = self.clock_patcher.start()
+        self.addCleanup(self.clock_patcher.stop)
         self.urlopen.return_value = upstream()
 
     def test_request_defaults_match_existing_agent(self):
@@ -73,6 +76,35 @@ class ModelProviderTests(unittest.TestCase):
             "chat_template_kwargs": {"enable_thinking": False},
         })
         self.assertEqual(self.urlopen.call_args.kwargs, {"timeout": 900})
+
+    def test_host_clock_context_is_added_to_user_facing_turn(self):
+        self.clock_context.return_value = "CURRENT HOST SYSTEM TIME\n\n- Local date: 2026-10-05"
+        request = ModelRequest(
+            messages=[
+                {"role": "system", "content": "Answer concisely."},
+                {"role": "user", "content": "How old am I?"},
+            ],
+            role="chat",
+        )
+        self.provider.complete(request)
+        payload = json.loads(self.urlopen.call_args.args[0].data)
+        self.assertEqual(payload["messages"][0]["role"], "system")
+        self.assertIn("Answer concisely.", payload["messages"][0]["content"])
+        self.assertIn("CURRENT HOST SYSTEM TIME", payload["messages"][0]["content"])
+        self.assertIn("2026-10-05", payload["messages"][0]["content"])
+
+    def test_strict_machine_output_does_not_receive_clock_context(self):
+        self.clock_context.return_value = "CURRENT HOST SYSTEM TIME\n\n- Local date: 2026-10-05"
+        request = ModelRequest(
+            messages=[
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": "Route this."},
+            ],
+            role="agent",
+        )
+        self.provider.complete(request)
+        payload = json.loads(self.urlopen.call_args.args[0].data)
+        self.assertEqual(payload["messages"], request.messages)
 
     def test_lock_covers_resolution_config_reload_and_response_read(self):
         events = []
