@@ -86,6 +86,17 @@ class MlxServerSpeculativeTests(unittest.TestCase):
         self.assertEqual(args[args.index("--draft-kind") + 1], "mtp")
         self.assertEqual(args[args.index("--draft-block-size") + 1], "3")
 
+    def test_dflash_can_use_model_default_block_size(self):
+        result = self.run_script(kind="dflash", block="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.final_args(result)
+        self.assertIn(
+            "Speculative: enabled (dflash, model default block)",
+            result.stdout,
+        )
+        self.assertEqual(args[args.index("--draft-kind") + 1], "dflash")
+        self.assertNotIn("--draft-block-size", args)
+
     def test_target_mismatch_never_passes_draft_flags(self):
         result = self.run_script(configured_target=self.root / "other-target")
         self.assertEqual(result.returncode, 0, result.stderr)
