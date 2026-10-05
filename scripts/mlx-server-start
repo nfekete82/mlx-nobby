@@ -90,18 +90,79 @@ adaptive_prefill_step_size() {
     fi
 }
 
+model_reference_available() {
+    local reference="$1"
+    local expanded="$reference"
+
+    if [[ "$expanded" == ~/* ]]; then
+        expanded="$HOME/${expanded#~/}"
+    fi
+
+    if [ -d "$expanded" ]; then
+        return 0
+    fi
+
+    # Hugging Face IDs are accepted only after an explicit download has placed
+    # a snapshot in the local cache. Runtime startup must never surprise the
+    # user with a large speculative-model download.
+    if [[ "$reference" == */* && "$reference" != /* ]]; then
+        local hub_cache
+        local cache_name
+        hub_cache="${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}"
+        cache_name="models--${reference//\//--}"
+        if [ -d "$hub_cache/$cache_name/snapshots" ] && \
+           find "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
+               -name config.json -type f -print -quit 2>/dev/null | grep -q .; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 BACKEND="$(detect_backend "$MODEL")"
 PREFILL_STEP_SIZE="$(adaptive_prefill_step_size)" || exit 1
+
+SPECULATIVE_ENABLED=false
+SPECULATIVE_STATUS="disabled"
+SPECULATIVE_TARGET_VALUE="${SPECULATIVE_TARGET:-}"
+SPECULATIVE_DRAFT_VALUE="${SPECULATIVE_DRAFT_MODEL:-}"
+SPECULATIVE_KIND_VALUE="${SPECULATIVE_DRAFT_KIND:-mtp}"
+SPECULATIVE_BLOCK_VALUE="${SPECULATIVE_DRAFT_BLOCK_SIZE:-3}"
+
+if [ -n "$SPECULATIVE_TARGET_VALUE" ] && \
+   [ -n "$SPECULATIVE_DRAFT_VALUE" ] && \
+   [ "$MODEL" = "$SPECULATIVE_TARGET_VALUE" ]; then
+    if [ "$BACKEND" != "vlm" ]; then
+        SPECULATIVE_STATUS="disabled (configured target is not using mlx-vlm)"
+    elif [[ ! "$SPECULATIVE_KIND_VALUE" =~ ^(dflash|eagle3|mtp)$ ]]; then
+        echo "Ungültiges SPECULATIVE_DRAFT_KIND: $SPECULATIVE_KIND_VALUE" >&2
+        exit 1
+    elif [[ ! "$SPECULATIVE_BLOCK_VALUE" =~ ^[0-9]+$ ]] || \
+         [ "$SPECULATIVE_BLOCK_VALUE" -lt 2 ] || \
+         [ "$SPECULATIVE_BLOCK_VALUE" -gt 16 ]; then
+        echo "SPECULATIVE_DRAFT_BLOCK_SIZE muss zwischen 2 und 16 liegen" >&2
+        exit 1
+    elif model_reference_available "$SPECULATIVE_DRAFT_VALUE"; then
+        SPECULATIVE_ENABLED=true
+        SPECULATIVE_STATUS="enabled ($SPECULATIVE_KIND_VALUE, block $SPECULATIVE_BLOCK_VALUE)"
+    else
+        SPECULATIVE_STATUS="disabled (draft model is not cached locally)"
+    fi
+elif [ -n "$SPECULATIVE_TARGET_VALUE" ] && [ "$MODEL" != "$SPECULATIVE_TARGET_VALUE" ]; then
+    SPECULATIVE_STATUS="disabled (target mismatch)"
+fi
 
 echo
 echo "============================================================"
 echo "MLX Server Start"
 echo "============================================================"
-echo "Modell:   $MODEL"
-echo "Backend:  $BACKEND"
-echo "Port:     $PORT"
-echo "Thinking: $THINKING"
-echo "Prefill:  $PREFILL_STEP_SIZE"
+echo "Modell:      $MODEL"
+echo "Backend:     $BACKEND"
+echo "Port:        $PORT"
+echo "Thinking:    $THINKING"
+echo "Prefill:     $PREFILL_STEP_SIZE"
+echo "Speculative: $SPECULATIVE_STATUS"
 echo "============================================================"
 echo
 
@@ -115,6 +176,14 @@ if [ "$BACKEND" = "vlm" ]; then
         --prefill-step-size "$PREFILL_STEP_SIZE"
         --max-num-seqs 2
     )
+
+    if [ "$SPECULATIVE_ENABLED" = "true" ]; then
+        ARGS+=(
+            --draft-model "$SPECULATIVE_DRAFT_VALUE"
+            --draft-kind "$SPECULATIVE_KIND_VALUE"
+            --draft-block-size "$SPECULATIVE_BLOCK_VALUE"
+        )
+    fi
 
     if [ "$THINKING" = "true" ]; then
         ARGS+=(--enable-thinking)
