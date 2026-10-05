@@ -13,8 +13,8 @@ class TalkingPhotoLtxTests(unittest.TestCase):
         self.assertEqual((frames - 1) % 8, 0)
 
     def test_quality_frames_reject_long_beta_audio(self):
-        with self.assertRaisesRegex(RuntimeError, "maximal 5 Sekunden"):
-            talking_photo_ltx.quality_frames(5.01)
+        with self.assertRaisesRegex(RuntimeError, "maximal 10 Sekunden"):
+            talking_photo_ltx.quality_frames(10.01)
 
     def test_target_dimensions_are_conservative_and_orientation_aware(self):
         self.assertEqual(talking_photo_ltx.target_dimensions(900, 1400), (512, 704))
@@ -40,7 +40,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
 
         self.assertTrue(health["ready"])
         self.assertEqual(health["provider"], "ltx-2.5-mlx-a2v")
-        self.assertEqual(health["max_audio_seconds"], 5.0)
+        self.assertEqual(health["max_audio_seconds"], 10.0)
 
 
 if __name__ == "__main__":
