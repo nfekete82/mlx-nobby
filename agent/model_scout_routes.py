@@ -1,8 +1,10 @@
 """Model Scout discovery, compatibility checks and local A/B benchmarks.
 
-The discovery score is only a discovery signal. Model Scout v2 can also run an
+The discovery score is only a discovery signal. Model Scout v3 can also run an
 explicit local A/B quick benchmark. It temporarily switches the single MLX
 runtime to a candidate and always attempts to restore the original model.
+Persistent evaluation decisions keep already-tested regressions from being
+presented as fresh upgrade candidates again.
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ import uuid
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
+from agent import model_evaluations
+
 
 HF_API = os.environ.get("MODEL_SCOUT_HF_API", "https://huggingface.co/api/models").rstrip("/")
 DEFAULT_SOURCES = tuple(
@@ -34,7 +38,7 @@ DEFAULT_SOURCES = tuple(
     if value.strip()
 )
 CACHE_TTL_SECONDS = max(60, int(os.environ.get("MODEL_SCOUT_CACHE_TTL", "900")))
-SCOUT_VERSION = 2
+SCOUT_VERSION = 3
 BENCHMARK_HISTORY_FILE = Path.home() / ".config/mlx-web/model-scout-benchmarks.json"
 BENCHMARK_MAX_HISTORY = 20
 
@@ -46,6 +50,16 @@ _BENCHMARK_JOBS: dict[str, dict] = {}
 
 class BenchmarkRequest(BaseModel):
     candidate_alias: str
+
+
+class EvaluationRequest(BaseModel):
+    model: str
+    kind: str
+    status: str
+    reason: str
+    compared_to: str | None = None
+    metrics: dict | None = None
+    source: str = "manual"
 
 
 def _system_memory_gb() -> float | None:
@@ -246,6 +260,7 @@ def normalize_candidate(model: dict, profile: dict, installed) -> dict | None:
     name = model_id.split("/", 1)[1]
     alias = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-_")[:64] or "model"
     score = _discovery_score(model, fit)
+    evaluation = model_evaluations.latest(model_id, kind=role)
 
     status = (
         "installed" if installed_match
@@ -253,6 +268,9 @@ def normalize_candidate(model: dict, profile: dict, installed) -> dict | None:
         else "candidate" if score >= 65
         else "interesting"
     )
+    if evaluation and evaluation.get("status") == "rejected":
+        status = "rejected"
+        score = 0
 
     return {
         "id": model_id,
@@ -276,6 +294,7 @@ def normalize_candidate(model: dict, profile: dict, installed) -> dict | None:
         "status": status,
         "discovery_score": score,
         "suggested_alias": alias,
+        "evaluation": evaluation,
         "tags": tags[:24],
     }
 
@@ -290,7 +309,7 @@ def _fetch_source(author: str, limit: int) -> list[dict]:
     })
     request = urllib.request.Request(
         HF_API + "?" + params,
-        headers={"User-Agent": "mlx-nobby-model-scout/2"},
+        headers={"User-Agent": "mlx-nobby-model-scout/3"},
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
@@ -336,7 +355,12 @@ def discover_models(model_provider, *, limit: int = 30, role: str = "all") -> di
             candidates.append(candidate)
 
     candidates.sort(
-        key=lambda item: (item["installed"], item["discovery_score"], item.get("last_modified") or ""),
+        key=lambda item: (
+            item["status"] != "rejected",
+            item["installed"],
+            item["discovery_score"],
+            item.get("last_modified") or "",
+        ),
         reverse=True,
     )
     return {
@@ -350,6 +374,7 @@ def discover_models(model_provider, *, limit: int = 30, role: str = "all") -> di
             "score": "Discovery score measures freshness, popularity and local fit; it is not a quality benchmark.",
             "memory": "Memory is estimated from naming metadata and includes a conservative runtime reserve.",
             "benchmark": "The A/B quick benchmark runs the same timing probe and deterministic micro-suite on both models.",
+            "evaluation": "Persistent local evaluations override discovery ranking; rejected models are retained for history but are not fresh upgrade candidates.",
         },
     }
 
@@ -647,6 +672,25 @@ def _find_model(models: list[dict], *, alias: str | None = None, repo: str | Non
     return None
 
 
+def _record_scout_evaluation(candidate_repo: str, baseline_repo: str, comparison: dict) -> dict:
+    signal = str(comparison.get("signal") or "mixed")
+    if signal in {"strong_candidate", "promising"}:
+        status = "candidate"
+    elif signal == "quality_regression":
+        status = "rejected"
+    else:
+        status = "tested"
+    return model_evaluations.record(
+        candidate_repo,
+        kind=infer_role(candidate_repo),
+        status=status,
+        reason=f"Model Scout quick A/B result: {signal}.",
+        compared_to=baseline_repo,
+        metrics=comparison,
+        source="model-scout-quick-ab-v1",
+    )
+
+
 def _run_benchmark_job(
     job_id: str,
     candidate_alias: str,
@@ -722,6 +766,14 @@ def _run_benchmark_job(
             },
         }
         _save_history(result)
+        try:
+            result["evaluation"] = _record_scout_evaluation(
+                str(candidate.get("repo") or ""),
+                baseline_repo,
+                comparison,
+            )
+        except Exception as exc:
+            result["evaluation_error"] = str(exc)
         _set_job(job_id, status="completed", phase="completed", progress=100, finished_at=finished_at, result=result)
     except Exception as exc:
         restore_error = None
@@ -808,6 +860,29 @@ def install_routes(
             role: str = Query(default="all", pattern="^(all|chat|coding|vision)$"),
         ):
             return discover_models(model_provider, limit=limit, role=role)
+
+    if "/api/model-scout/evaluations" not in paths:
+        @app.get("/api/model-scout/evaluations")
+        def model_scout_evaluations(
+            kind: str | None = Query(default=None),
+            status: str | None = Query(default=None),
+        ):
+            return {"evaluations": model_evaluations.list_latest(kind=kind, status=status)}
+
+        @app.post("/api/model-scout/evaluations")
+        def model_scout_record_evaluation(request: EvaluationRequest):
+            try:
+                return model_evaluations.record(
+                    request.model,
+                    kind=request.kind,
+                    status=request.status,
+                    reason=request.reason,
+                    compared_to=request.compared_to,
+                    metrics=request.metrics,
+                    source=request.source,
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
     benchmark_enabled = all(value is not None for value in (config_provider, switch_model, runtime_lock, find_server_pid))
     if benchmark_enabled and "/api/model-scout/benchmarks" not in paths:
