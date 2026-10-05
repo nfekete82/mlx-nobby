@@ -35,7 +35,7 @@ hf_model_cached() {
     hub_cache="${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}"
     cache_name="models--${repo//\//--}"
     [ -d "$hub_cache/$cache_name/snapshots" ] && \
-        find "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
+        find -L "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
             -name config.json -type f -print -quit 2>/dev/null | grep -q .
 }
 

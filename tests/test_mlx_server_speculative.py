@@ -76,6 +76,17 @@ class MlxServerSpeculativeTests(unittest.TestCase):
         )
         return json.loads(line.split("=", 1)[1])
 
+    def make_hf_symlink_cache(self, repo):
+        cache_name = "models--" + repo.replace("/", "--")
+        model_cache = self.home / ".cache" / "huggingface" / "hub" / cache_name
+        blobs = model_cache / "blobs"
+        snapshot = model_cache / "snapshots" / "revision"
+        blobs.mkdir(parents=True)
+        snapshot.mkdir(parents=True)
+        blob = blobs / "config-blob"
+        blob.write_text("{}\n", encoding="utf-8")
+        (snapshot / "config.json").symlink_to(blob)
+
     def test_matching_vlm_target_enables_mtp_draft(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -96,6 +107,18 @@ class MlxServerSpeculativeTests(unittest.TestCase):
         )
         self.assertEqual(args[args.index("--draft-kind") + 1], "dflash")
         self.assertNotIn("--draft-block-size", args)
+
+    def test_hugging_face_symlink_snapshot_is_available(self):
+        repo = "z-lab/Qwen3.8-27B-DFlash2"
+        self.make_hf_symlink_cache(repo)
+        result = self.run_script(draft=repo, kind="dflash", block="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.final_args(result)
+        self.assertIn(
+            "Speculative: enabled (dflash, model default block)",
+            result.stdout,
+        )
+        self.assertEqual(args[args.index("--draft-model") + 1], repo)
 
     def test_target_mismatch_never_passes_draft_flags(self):
         result = self.run_script(configured_target=self.root / "other-target")

@@ -102,16 +102,15 @@ model_reference_available() {
         return 0
     fi
 
-    # Hugging Face IDs are accepted only after an explicit download has placed
-    # a snapshot in the local cache. Runtime startup must never surprise the
-    # user with a large speculative-model download.
+    # Hugging Face snapshot entries are commonly symlinks into the blob store,
+    # so follow links when checking for a fully materialized cached config.
     if [[ "$reference" == */* && "$reference" != /* ]]; then
         local hub_cache
         local cache_name
         hub_cache="${HF_HUB_CACHE:-${HF_HOME:-$HOME/.cache/huggingface}/hub}"
         cache_name="models--${reference//\//--}"
         if [ -d "$hub_cache/$cache_name/snapshots" ] && \
-           find "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
+           find -L "$hub_cache/$cache_name/snapshots" -mindepth 2 -maxdepth 2 \
                -name config.json -type f -print -quit 2>/dev/null | grep -q .; then
             return 0
         fi
