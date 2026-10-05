@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from agent import talking_photo_quality
@@ -59,7 +60,31 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertAlmostEqual(stats["leading_silence_ms"], 120.0, delta=10.0)
         self.assertAlmostEqual(stats["duration_seconds"], 0.62, delta=0.02)
 
-    def test_persist_audio_diagnostics_keeps_wav_metadata_and_speed(self):
+    def test_custom_voice_tempo_is_applied_after_tts_with_ffmpeg_atempo(self):
+        original = self._wav_bytes([1000] * 1600)
+        stretched = self._wav_bytes([1000] * 2400)
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            Path(command[-1]).write_bytes(stretched)
+            return SimpleNamespace(returncode=0, stderr="")
+
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch("agent.talking_photo_quality.shutil.which", return_value="/usr/bin/ffmpeg"), \
+             mock.patch("agent.talking_photo_quality.subprocess.run", side_effect=fake_run):
+            result = talking_photo_quality._stretch_custom_voice_wav(
+                original,
+                Path(directory),
+                0.65,
+            )
+
+        self.assertEqual(result, stretched)
+        command = captured["command"]
+        self.assertEqual(command[command.index("-af") + 1], "atempo=0.65")
+        self.assertIn("16000", command)
+
+    def test_persist_audio_diagnostics_keeps_wav_metadata_and_tempo(self):
         wav = self._wav_bytes([1000] * 1600)
         stats = talking_photo_quality._analyze_wav(wav)
 
@@ -72,6 +97,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                 "a" * 24,
                 "Pervin",
                 "de",
+                1.0,
                 0.65,
                 wav,
                 stats,
@@ -84,7 +110,8 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
 
         self.assertEqual(metadata["voice"], "Pervin")
         self.assertEqual(metadata["language"], "de")
-        self.assertEqual(metadata["tts_speed"], 0.65)
+        self.assertEqual(metadata["tts_speed"], 1.0)
+        self.assertEqual(metadata["postprocess_tempo"], 0.65)
         self.assertEqual(metadata["stats"]["sample_rate"], 16000)
 
 
