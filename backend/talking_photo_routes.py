@@ -40,8 +40,10 @@ async def _proxy(
     content_type = request.headers.get("content-type")
     if content_type:
         headers["Content-Type"] = content_type
+    query = str(request.url.query or "")
+    upstream_path = path + (("?" + query) if query and "?" not in path else "")
     upstream_request = urllib.request.Request(
-        f"{agent_url.rstrip('/')}{path}",
+        f"{agent_url.rstrip('/')}{upstream_path}",
         data=body if body else None,
         headers=headers,
         method=request.method,
@@ -102,6 +104,28 @@ def install_routes(app, agent_url: str):
                 request,
                 agent_url,
                 f"/api/talking-photo/jobs/{job_id}/cancel",
+                timeout=15,
+            )
+
+    if ("/api/talking-photo/jobs/{job_id}/keep", "POST") not in methods_by_path:
+        @app.post("/api/talking-photo/jobs/{job_id}/keep")
+        async def talking_photo_keep(job_id: str, request: Request):
+            job_id = _validated_id(job_id)
+            return await _proxy(
+                request,
+                agent_url,
+                f"/api/talking-photo/jobs/{job_id}/keep",
+                timeout=15,
+            )
+
+    if ("/api/talking-photo/jobs/{job_id}/discard", "POST") not in methods_by_path:
+        @app.post("/api/talking-photo/jobs/{job_id}/discard")
+        async def talking_photo_discard(job_id: str, request: Request):
+            job_id = _validated_id(job_id)
+            return await _proxy(
+                request,
+                agent_url,
+                f"/api/talking-photo/jobs/{job_id}/discard",
                 timeout=15,
             )
 

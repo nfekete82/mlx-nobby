@@ -33,9 +33,11 @@ def test_generate_natural_motion_uses_existing_i2v_queue(monkeypatch, tmp_path):
     monkeypatch.setattr(talking_photo_motion, "VIDEO_OUTPUT_ROOT", videos)
     monkeypatch.setattr(talking_photo_motion, "POLL_INTERVAL", 0)
 
-    final = videos / ("d" * 24 + ".mp4")
+    final_id = "d" * 24
+    final = videos / (final_id + ".mp4")
     final.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"video" * 20)
     requests = []
+    forgotten = []
 
     def fake_request(method, path, payload=None, timeout=15):
         requests.append((method, path, payload))
@@ -53,11 +55,16 @@ def test_generate_natural_motion_uses_existing_i2v_queue(monkeypatch, tmp_path):
                 "id": "e" * 24,
                 "status": "completed",
                 "progress": 1.0,
-                "result": {"path": str(final)},
+                "result": {"id": final_id, "path": str(final)},
             }
         raise AssertionError((method, path, payload))
 
     monkeypatch.setattr(video_api, "request", fake_request)
+    monkeypatch.setattr(
+        talking_photo_motion.media_lifecycle,
+        "forget",
+        lambda kind, asset_id: forgotten.append((kind, asset_id)) or True,
+    )
     updates = []
     video = talking_photo_motion.generate_natural_motion(
         "f" * 24,
@@ -71,3 +78,5 @@ def test_generate_natural_motion_uses_existing_i2v_queue(monkeypatch, tmp_path):
     assert requests[0][0:2] == ("POST", "/jobs")
     assert updates[-1]["progress"] == 0.75
     assert not list(uploads.iterdir())
+    assert not final.exists()
+    assert forgotten == [("video", final_id)]

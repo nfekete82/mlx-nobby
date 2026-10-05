@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make ad-hoc generated images, videos and Talking Photo outputs temporary by default, keep them only after explicit save/download, delete unsaved browser-session results on close, immediately remove Talking Photo LTX intermediates, and add a 24-hour crash-recovery cleanup while protecting Shorts/project assets and legacy untracked media.
+
 - Wait for LaunchAgent unload completion before reloading changed configuration and restore the previous service if bootstrap fails.
 
 - Add reproducible, pin-bound patching for the managed LTX-MLX runtime.

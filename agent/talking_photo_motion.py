@@ -10,6 +10,8 @@ import wave
 
 from fastapi import HTTPException
 
+from agent import media_lifecycle
+
 
 UPLOAD_ROOT = Path.home() / ".config/mlx-web/batch/uploads"
 VIDEO_OUTPUT_ROOT = Path.home() / ".config/mlx-web/videos"
@@ -68,6 +70,17 @@ def _validated_video_path(value: object) -> Path:
     if path.parent != root or path.suffix.lower() != ".mp4" or not path.is_file():
         raise RuntimeError("LTX lieferte kein gültiges lokales Video")
     return path
+
+
+def _discard_intermediate(path: Path, asset_id: object) -> None:
+    """Remove the LTX motion clip once MuseTalk has its bytes in memory."""
+    path.unlink(missing_ok=True)
+    value = str(asset_id or "")
+    if value:
+        try:
+            media_lifecycle.forget("video", value)
+        except (ValueError, OSError):
+            pass
 
 
 def generate_natural_motion(
@@ -131,10 +144,13 @@ def generate_natural_motion(
             if status == "completed":
                 result = child.get("result") or {}
                 path = _validated_video_path(result.get("path"))
-                video = path.read_bytes()
-                if len(video) < 32 or b"ftyp" not in video[:32]:
-                    raise RuntimeError("LTX-Bewegung lieferte kein gültiges MP4")
-                return video
+                try:
+                    video = path.read_bytes()
+                    if len(video) < 32 or b"ftyp" not in video[:32]:
+                        raise RuntimeError("LTX-Bewegung lieferte kein gültiges MP4")
+                    return video
+                finally:
+                    _discard_intermediate(path, result.get("id"))
             if status == "failed":
                 detail = str(child.get("error") or "Unbekannter LTX-Fehler")
                 raise RuntimeError(f"LTX-Bewegung fehlgeschlagen: {detail[-3000:]}")
