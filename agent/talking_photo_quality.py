@@ -36,6 +36,11 @@ _CUSTOM_VOICE_PROFILES = {
         "tempo": 0.80,
         "leading_silence_ms": 120.0,
     },
+    "julia": {
+        "tts_speed": 0.71,
+        "tempo": 0.71,
+        "leading_silence_ms": 120.0,
+    },
 }
 
 
