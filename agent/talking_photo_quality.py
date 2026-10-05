@@ -25,19 +25,33 @@ from agent import talking_photo, talking_photo_ltx, talking_photo_motion
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 _AUDIO_SILENCE_DBFS = -45.0
 _AUDIO_WINDOW_MS = 10.0
-_CUSTOM_VOICE_TTS_SPEED = float(
-    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TTS_SPEED", "0.80")
-)
-_CUSTOM_VOICE_TEMPO = float(
-    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TEMPO", "0.80")
-)
-_CUSTOM_VOICE_LEADING_SILENCE_MS = float(
-    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_LEADING_SILENCE_MS", "120")
-)
+_DEFAULT_CUSTOM_VOICE_PROFILE = {
+    "tts_speed": 1.0,
+    "tempo": 1.0,
+    "leading_silence_ms": 120.0,
+}
+_CUSTOM_VOICE_PROFILES = {
+    "pervin": {
+        "tts_speed": 0.80,
+        "tempo": 0.80,
+        "leading_silence_ms": 120.0,
+    },
+}
 
 
 def provider_health() -> dict:
     return talking_photo_ltx.provider_health()
+
+
+def _custom_voice_profile(voice: str) -> tuple[str, dict]:
+    """Return a per-voice timing profile without ever touching the standard voice."""
+    key = str(voice or "").strip().casefold()
+    profile = dict(_DEFAULT_CUSTOM_VOICE_PROFILE)
+    calibrated = _CUSTOM_VOICE_PROFILES.get(key)
+    if calibrated:
+        profile.update(calibrated)
+        return key, profile
+    return "neutral", profile
 
 
 def _dbfs(value: float) -> float | None:
@@ -86,7 +100,10 @@ def _first_active_sample(samples: array, sample_rate: int) -> int | None:
     return None
 
 
-def _trim_custom_voice_leading_silence(wav_bytes: bytes) -> bytes:
+def _trim_custom_voice_leading_silence(
+    wav_bytes: bytes,
+    leading_silence_ms: float,
+) -> bytes:
     """Reduce excessive custom-voice startup delay while keeping a natural pre-roll."""
     sample_rate, samples = _read_pcm16_mono(wav_bytes)
     first_active = _first_active_sample(samples, sample_rate)
@@ -95,7 +112,7 @@ def _trim_custom_voice_leading_silence(wav_bytes: bytes) -> bytes:
 
     keep_samples = max(
         0,
-        int(sample_rate * (_CUSTOM_VOICE_LEADING_SILENCE_MS / 1000.0)),
+        int(sample_rate * (float(leading_silence_ms) / 1000.0)),
     )
     cut_samples = max(0, first_active - keep_samples)
     if cut_samples <= 0:
@@ -237,8 +254,10 @@ def _persist_audio_diagnostics(
     job_id: str,
     voice: str | None,
     language: str,
+    profile_name: str,
     tts_speed: float,
     postprocess_tempo: float,
+    target_leading_silence_ms: float | None,
     wav_bytes: bytes,
     stats: dict,
 ) -> dict:
@@ -254,8 +273,10 @@ def _persist_audio_diagnostics(
         "job_id": job_id,
         "voice": voice,
         "language": language,
+        "profile": profile_name,
         "tts_speed": tts_speed,
         "postprocess_tempo": postprocess_tempo,
+        "target_leading_silence_ms": target_leading_silence_ms,
         "wav_path": str(wav_path),
         "stats": stats,
     }
@@ -266,8 +287,10 @@ def _persist_audio_diagnostics(
     return {
         "wav_path": str(wav_path),
         "metadata_path": str(json_path),
+        "profile": profile_name,
         "tts_speed": tts_speed,
         "postprocess_tempo": postprocess_tempo,
+        "target_leading_silence_ms": target_leading_silence_ms,
         "stats": stats,
     }
 
@@ -293,15 +316,17 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             }
             voice = request_payload.get("voice")
             requested_speed = float(request_payload.get("speed", 1.0))
+            profile_name = "standard"
+            target_leading_silence_ms = None
             tts_speed = requested_speed
             postprocess_tempo = 1.0
             if voice:
                 tts_payload["voice"] = voice
+                profile_name, profile = _custom_voice_profile(voice)
+                target_leading_silence_ms = float(profile["leading_silence_ms"])
                 if requested_speed == 1.0:
-                    # Split the slowdown between the voice model and waveform so
-                    # neither stage has to make the full 35% timing correction.
-                    tts_speed = _CUSTOM_VOICE_TTS_SPEED
-                    postprocess_tempo = _CUSTOM_VOICE_TEMPO
+                    tts_speed = float(profile["tts_speed"])
+                    postprocess_tempo = float(profile["tempo"])
             if tts_speed != 1.0:
                 tts_payload["speed"] = tts_speed
             audio = talking_photo._request_tts(tts_payload)
@@ -311,16 +336,21 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             wav = talking_photo._audio_to_wav(audio, work)
             if voice and postprocess_tempo != 1.0:
                 wav = _stretch_custom_voice_wav(wav, work, postprocess_tempo)
-            if voice:
-                wav = _trim_custom_voice_leading_silence(wav)
+            if voice and target_leading_silence_ms is not None:
+                wav = _trim_custom_voice_leading_silence(
+                    wav,
+                    target_leading_silence_ms,
+                )
             audio_seconds = talking_photo_motion.wav_duration_seconds(wav)
             audio_stats = _analyze_wav(wav)
             audio_diagnostics = _persist_audio_diagnostics(
                 job_id,
                 voice,
                 request_payload["language"],
+                profile_name,
                 tts_speed,
                 postprocess_tempo,
+                target_leading_silence_ms,
                 wav,
                 audio_stats,
             )
