@@ -970,7 +970,7 @@ class AgentRuntime:
                 })
                 publish()
 
-                if mode == "coding":
+                if mode == "coding" and action == "normal_chat":
                     rejected_same_action = sum(
                         1
                         for item in observations
