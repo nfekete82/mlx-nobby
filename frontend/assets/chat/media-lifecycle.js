@@ -119,7 +119,9 @@
         const cancel = document.getElementById('talkingPhotoCancel');
         const activeJobId = String(cancel?.dataset?.jobId || '');
         if (/^[0-9a-f]{24}$/.test(activeJobId) && !cancel.hidden) {
-            post(`/api/talking-photo/jobs/${encodeURIComponent(activeJobId)}/cancel`, {}, {beacon});
+            // The server decides whether this means cancel-now or delete-now,
+            // closing the tiny completion-vs-close race without leaving an MP4.
+            post(`/api/talking-photo/jobs/${encodeURIComponent(activeJobId)}/discard`, {}, {beacon});
             return;
         }
 
