@@ -62,7 +62,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
 
     def test_custom_voice_tempo_is_applied_after_tts_with_ffmpeg_atempo(self):
         original = self._wav_bytes([1000] * 1600)
-        stretched = self._wav_bytes([1000] * 2400)
+        stretched = self._wav_bytes([1000] * 2000)
         captured = {}
 
         def fake_run(command, **kwargs):
@@ -76,15 +76,15 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
             result = talking_photo_quality._stretch_custom_voice_wav(
                 original,
                 Path(directory),
-                0.65,
+                0.80,
             )
 
         self.assertEqual(result, stretched)
         command = captured["command"]
-        self.assertEqual(command[command.index("-af") + 1], "atempo=0.65")
+        self.assertEqual(command[command.index("-af") + 1], "atempo=0.8")
         self.assertIn("16000", command)
 
-    def test_persist_audio_diagnostics_keeps_wav_metadata_and_tempo(self):
+    def test_persist_audio_diagnostics_keeps_wav_metadata_and_hybrid_timing(self):
         wav = self._wav_bytes([1000] * 1600)
         stats = talking_photo_quality._analyze_wav(wav)
 
@@ -97,8 +97,8 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                 "a" * 24,
                 "Pervin",
                 "de",
-                1.0,
-                0.65,
+                0.80,
+                0.80,
                 wav,
                 stats,
             )
@@ -110,8 +110,8 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
 
         self.assertEqual(metadata["voice"], "Pervin")
         self.assertEqual(metadata["language"], "de")
-        self.assertEqual(metadata["tts_speed"], 1.0)
-        self.assertEqual(metadata["postprocess_tempo"], 0.65)
+        self.assertEqual(metadata["tts_speed"], 0.80)
+        self.assertEqual(metadata["postprocess_tempo"], 0.80)
         self.assertEqual(metadata["stats"]["sample_rate"], 16000)
 
 
