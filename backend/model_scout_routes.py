@@ -128,6 +128,33 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
                 timeout=25,
             )
 
+    if "/api/mlx/model-scout/evaluations" not in paths:
+        @app.get("/api/mlx/model-scout/evaluations")
+        def model_scout_evaluations(
+            kind: str | None = Query(default=None),
+            status: str | None = Query(default=None),
+        ):
+            query = {}
+            if kind:
+                query["kind"] = kind
+            if status:
+                query["status"] = status
+            suffix = "?" + urllib.parse.urlencode(query) if query else ""
+            return agent_json_request(
+                "GET",
+                "/api/model-scout/evaluations" + suffix,
+                timeout=15,
+            )
+
+        @app.post("/api/mlx/model-scout/evaluations")
+        def model_scout_record_evaluation(request: dict):
+            return agent_json_request(
+                "POST",
+                "/api/model-scout/evaluations",
+                payload=request,
+                timeout=15,
+            )
+
     if "/api/mlx/model-scout/benchmarks" not in paths:
         @app.post("/api/mlx/model-scout/benchmarks", status_code=202)
         def model_scout_start_benchmark(request: dict):

@@ -1,3 +1,8 @@
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+from agent import model_evaluations
 from agent.model_scout_routes import (
     compare_benchmarks,
     estimate_memory_gb,
@@ -63,6 +68,38 @@ def test_model_scout_marks_oversized_candidate_risky():
     assert candidate is not None
     assert candidate["memory_fit"] == "risky"
     assert candidate["status"] == "not_recommended"
+
+
+def test_model_scout_rejected_evaluation_overrides_fresh_candidate_signal():
+    model_id = "mlx-community/Tested-27B-4bit"
+    raw = {
+        "id": model_id,
+        "lastModified": "2026-10-05T07:00:00.000Z",
+        "downloads": 50000,
+        "likes": 500,
+        "tags": ["text-generation"],
+        "pipeline_tag": "text-generation",
+    }
+    with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+        model_evaluations,
+        "EVALUATIONS_FILE",
+        Path(directory) / "model-evaluations.json",
+    ):
+        model_evaluations.record(
+            model_id,
+            kind="chat",
+            status="rejected",
+            reason="Measured slower than the current model",
+            compared_to="mlx-community/current",
+            metrics={"generation_tps_delta_pct": -4.2},
+            source="local-benchmark",
+        )
+        candidate = normalize_candidate(raw, {"memory_gb": 48.0}, set())
+
+    assert candidate is not None
+    assert candidate["status"] == "rejected"
+    assert candidate["discovery_score"] == 0
+    assert candidate["evaluation"]["reason"] == "Measured slower than the current model"
 
 
 def test_model_scout_quality_scoring_and_summary():
