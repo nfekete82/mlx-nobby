@@ -116,6 +116,27 @@ class ObservabilityTests(unittest.TestCase):
             "private-model",
         )
 
+    def test_explicit_local_flag_keeps_repo_identifier_and_marks_local(self):
+        metadata = observability.safe_model_metadata(
+            model="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+            role="coding",
+            local=True,
+        )
+
+        self.assertTrue(metadata["local"])
+        self.assertEqual(
+            metadata["identifier"],
+            "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+        )
+
+    def test_repo_identifier_is_not_local_without_explicit_transport_hint(self):
+        metadata = observability.safe_model_metadata(
+            model="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+            role="coding",
+        )
+
+        self.assertFalse(metadata["local"])
+
     def test_call_counter_remains_exact_when_details_are_bounded(self):
         with mock.patch.object(
             observability,

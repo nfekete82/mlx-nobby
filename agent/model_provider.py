@@ -189,6 +189,7 @@ class MLXProvider:
         metrics.set_model(
             model=model, role=request.role,
             alias=role.get("alias"), backend=role.get("backend"),
+            local=True,
         )
 
         # Reload after a possible switch, while still holding the runtime lock.

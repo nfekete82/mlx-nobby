@@ -180,7 +180,7 @@ def context_accounting(source_counts=None):
     return entries
 
 
-def safe_model_metadata(model=None, role=None, alias=None, backend=None):
+def safe_model_metadata(model=None, role=None, alias=None, backend=None, local=None):
     value = str(model or "").strip()
     metadata = {
         "role": str(role or "").strip() or None,
@@ -192,9 +192,9 @@ def safe_model_metadata(model=None, role=None, alias=None, backend=None):
     }
 
     if value:
-        is_local = value.startswith(("/", "~"))
-        metadata["local"] = is_local
-        metadata["identifier"] = Path(value).name if is_local else value
+        path_local = value.startswith(("/", "~"))
+        metadata["local"] = path_local if local is None else bool(local)
+        metadata["identifier"] = Path(value).name if path_local else value
         metadata["identifier_hash"] = hashlib.sha256(
             value.encode("utf-8")
         ).hexdigest()[:16]
@@ -275,6 +275,7 @@ class ModelCallMetrics:
         role=None,
         alias=None,
         backend=None,
+        local=None,
         messages=None,
         context_sources=None,
         started_at=None,
@@ -304,6 +305,7 @@ class ModelCallMetrics:
                 role=role,
                 alias=alias,
                 backend=backend,
+                local=local,
             ),
             "timings_ms": {
                 "total": None,
@@ -341,13 +343,14 @@ class ModelCallMetrics:
                 round(float(milliseconds), 3),
             )
 
-    def set_model(self, model=None, role=None, alias=None, backend=None):
+    def set_model(self, model=None, role=None, alias=None, backend=None, local=None):
         with _TRACE_LOCK:
             self.metric["model"] = safe_model_metadata(
                 model=model,
                 role=role,
                 alias=alias,
                 backend=backend,
+                local=local,
             )
 
     def set_upstream_connect(self, milliseconds):
