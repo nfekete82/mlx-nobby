@@ -4,6 +4,19 @@
     const assets = new Map();
     let scanQueued = false;
 
+    function language() {
+        return (
+            document.documentElement.lang ||
+            window.I18n?.currentLanguage ||
+            navigator.language ||
+            'de'
+        ).toLowerCase();
+    }
+
+    function localText(de, en) {
+        return language().startsWith('de') ? de : en;
+    }
+
     function key(ref) {
         return `${ref.kind}:${ref.id}`;
     }
@@ -45,9 +58,10 @@
 
         document.querySelectorAll('a[href*="/api/mlx/images/"], a[href*="/api/mlx/videos/"]').forEach(link => {
             if (!link.title) {
-                link.title = document.documentElement.lang?.toLowerCase().startsWith('de')
-                    ? 'Speichern – danach bleibt die Datei erhalten'
-                    : 'Save – the file will be kept afterward';
+                link.title = localText(
+                    'Speichern – danach bleibt die Datei erhalten',
+                    'Save – the file will be kept afterward',
+                );
             }
         });
 
@@ -58,9 +72,10 @@
                 const hint = document.createElement('div');
                 hint.dataset.mediaLifecycleHint = '1';
                 hint.className = 'mlx-talking-photo-hint';
-                hint.textContent = document.documentElement.lang?.toLowerCase().startsWith('de')
-                    ? 'Nicht gespeicherte Ergebnisse werden beim Schließen automatisch gelöscht.'
-                    : 'Unsaved results are deleted automatically when you close this dialog.';
+                hint.textContent = localText(
+                    'Nicht gespeicherte Ergebnisse werden beim Schließen automatisch gelöscht.',
+                    'Unsaved results are deleted automatically when you close this dialog.',
+                );
                 actions.insertAdjacentElement('afterend', hint);
             }
         }
