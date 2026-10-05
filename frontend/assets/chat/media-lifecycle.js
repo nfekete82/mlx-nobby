@@ -122,7 +122,13 @@
             post(`/api/talking-photo/jobs/${encodeURIComponent(activeJobId)}/cancel`, {}, {beacon});
             return;
         }
-        discard(currentTalkingPhotoRef(), {beacon});
+
+        const ref = currentTalkingPhotoRef();
+        if (!ref) return;
+        const stored = assets.get(key(ref));
+        if (stored?.saved) return;
+        post(`/api/talking-photo/jobs/${encodeURIComponent(ref.id)}/discard`, {}, {beacon});
+        assets.delete(key(ref));
     }
 
     document.addEventListener('click', event => {
@@ -135,6 +141,7 @@
             )) {
                 persist(ref);
                 if (ref.kind === 'talking_photo') {
+                    post(`/api/talking-photo/jobs/${encodeURIComponent(ref.id)}/keep`, {});
                     const url = new URL(link.href, window.location.href);
                     url.searchParams.set('download', '1');
                     link.href = url.pathname + url.search;
@@ -149,14 +156,14 @@
 
         const create = event.target?.closest?.('#talkingPhotoCreate');
         if (create) {
-            discard(currentTalkingPhotoRef());
+            discardTalkingPhoto();
         }
     }, true);
 
     window.addEventListener('pagehide', () => {
         scan();
         const temporary = [...assets.values()]
-            .filter(item => !item.saved)
+            .filter(item => !item.saved && item.kind !== 'talking_photo')
             .map(({kind, id}) => ({kind, id}));
         if (temporary.length) {
             post('/api/mlx/media-lifecycle/discard', {assets: temporary}, {beacon: true});
