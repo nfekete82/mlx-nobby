@@ -123,3 +123,49 @@ def test_incomplete_job_is_not_registered(monkeypatch):
     )
 
     assert calls == []
+
+
+def test_direct_image_generate_is_tracked_as_temporary(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        media_lifecycle_runtime,
+        "_original_image_raw_request",
+        lambda method, path, payload, timeout: {
+            "id": "1234567890-abcdef123456",
+            "path": "/tmp/generated.png",
+        },
+    )
+    monkeypatch.setattr(
+        media_lifecycle_runtime.media_lifecycle,
+        "register",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    result = media_lifecycle_runtime._wrapped_image_raw_request(
+        "POST", "/generate", {"prompt": "portrait"}, 900,
+    )
+
+    assert result["id"] == "1234567890-abcdef123456"
+    assert calls == [(
+        ("image", "1234567890-abcdef123456", "/tmp/generated.png"),
+        {"persistent": False, "owner": "direct-image"},
+    )]
+
+
+def test_direct_image_health_is_not_registered(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        media_lifecycle_runtime,
+        "_original_image_raw_request",
+        lambda method, path, payload, timeout: {"ok": True},
+    )
+    monkeypatch.setattr(
+        media_lifecycle_runtime.media_lifecycle,
+        "register",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    assert media_lifecycle_runtime._wrapped_image_raw_request(
+        "GET", "/health", None, 10,
+    ) == {"ok": True}
+    assert calls == []
