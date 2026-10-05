@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "benchmark-asr.py"
@@ -67,6 +68,48 @@ class BenchmarkAsrTests(unittest.TestCase):
         result = benchmark_asr.recommendation(summaries)
         self.assertEqual(result["winner"], "fast")
         self.assertIn("sidecars", result["reason"])
+
+    def test_asr_decision_records_winner_and_rejected_alternative(self):
+        summaries = [
+            {
+                "model": "whisper",
+                "load_seconds": 18.4,
+                "transcriptions": 3,
+                "median_seconds": 0.67,
+                "mean_seconds": 2.53,
+                "median_wer": 0.0,
+                "mean_wer": 0.0,
+            },
+            {
+                "model": "qwen-asr",
+                "load_seconds": 1.8,
+                "transcriptions": 3,
+                "median_seconds": 0.99,
+                "mean_seconds": 1.44,
+                "median_wer": 0.0,
+                "mean_wer": 0.0,
+            },
+        ]
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            benchmark_asr.model_evaluations,
+            "EVALUATIONS_FILE",
+            Path(directory) / "evaluations.json",
+        ):
+            evaluations = benchmark_asr.record_asr_evaluations(
+                summaries,
+                {
+                    "winner": "whisper",
+                    "reason": "lowest median WER, then lowest median inference time",
+                },
+            )
+            latest = benchmark_asr.model_evaluations.list_latest()
+
+        self.assertEqual(len(evaluations), 2)
+        by_model = {item["model"]: item for item in latest}
+        self.assertEqual(by_model["whisper"]["status"], "keep")
+        self.assertEqual(by_model["qwen-asr"]["status"], "rejected")
+        self.assertEqual(by_model["qwen-asr"]["compared_to"], "whisper")
+        self.assertEqual(by_model["qwen-asr"]["metrics"]["median_seconds"], 0.99)
 
 
 if __name__ == "__main__":
