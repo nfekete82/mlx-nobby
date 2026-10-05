@@ -18,6 +18,13 @@ import tempfile
 import time
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agent import model_evaluations
+
+
 DEFAULT_MODELS = (
     "mlx-community/whisper-large-v3-turbo-asr-fp16",
     "mlx-community/Qwen3-ASR-1.7B-6bit",
@@ -152,6 +159,66 @@ def recommendation(summaries: list[dict]) -> dict:
     }
 
 
+def evaluation_metrics(summary: dict) -> dict:
+    return {
+        key: summary.get(key)
+        for key in (
+            "load_seconds",
+            "transcriptions",
+            "median_seconds",
+            "mean_seconds",
+            "median_wer",
+            "mean_wer",
+        )
+    }
+
+
+def record_asr_evaluations(summaries: list[dict], decision: dict) -> list[dict]:
+    winner_name = str(decision.get("winner") or "").strip()
+    if not winner_name:
+        return []
+    winner = next(
+        (item for item in summaries if str(item.get("model") or "") == winner_name),
+        None,
+    )
+    if winner is None:
+        return []
+
+    evaluations = []
+    alternatives = [
+        str(item.get("model") or "")
+        for item in summaries
+        if str(item.get("model") or "") and str(item.get("model") or "") != winner_name
+    ]
+    for summary in summaries:
+        model = str(summary.get("model") or "").strip()
+        if not model:
+            continue
+        is_winner = model == winner_name
+        compared_to = (alternatives[0] if is_winner and len(alternatives) == 1 else winner_name if not is_winner else None)
+        if is_winner:
+            status = "keep"
+            reason = f"ASR benchmark winner: {decision.get('reason') or 'best local result'}."
+        else:
+            status = "rejected"
+            reason = (
+                f"Did not beat {winner_name} in the local ASR benchmark: "
+                f"{decision.get('reason') or 'winner selected by benchmark policy'}."
+            )
+        evaluations.append(
+            model_evaluations.record(
+                model,
+                kind="asr",
+                status=status,
+                reason=reason,
+                compared_to=compared_to,
+                metrics=evaluation_metrics(summary),
+                source="benchmark-asr-v1",
+            )
+        )
+    return evaluations
+
+
 def parent(args) -> int:
     audio_files = [Path(value).expanduser().resolve() for value in args.audio]
     missing = [str(path) for path in audio_files if not path.is_file()]
@@ -204,20 +271,39 @@ def parent(args) -> int:
         for item in model_results
         if not item.get("error")
     ]
+    decision = recommendation(summaries)
     report = {
         "audio": [str(path) for path in audio_files],
         "runs_per_audio": args.runs,
         "references": sorted(references),
         "models": model_results,
         "summary": summaries,
-        "recommendation": recommendation(summaries),
+        "recommendation": decision,
     }
+    if not args.no_record_evaluations:
+        try:
+            report["evaluations"] = record_asr_evaluations(summaries, decision)
+        except Exception as exc:
+            # Benchmark output remains useful even when local decision storage is unavailable.
+            report["evaluation_error"] = str(exc)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(json.dumps({"summary": summaries, "recommendation": report["recommendation"]}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "summary": summaries,
+                "recommendation": report["recommendation"],
+                "evaluations": report.get("evaluations", []),
+                "evaluation_error": report.get("evaluation_error"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0 if len(summaries) == len(args.models) else 1
 
 
@@ -231,6 +317,11 @@ def parse_args(argv=None):
         default=str(Path(__file__).resolve().parents[1] / "speech-venv/bin/python"),
     )
     parser.add_argument("--output", type=Path, default=Path("artifacts/asr-benchmark.json"))
+    parser.add_argument(
+        "--no-record-evaluations",
+        action="store_true",
+        help="Do not persist winner/loser decisions in ~/.config/mlx-web/model-evaluations.json",
+    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--model", help=argparse.SUPPRESS)
     parser.add_argument("--worker-output", type=Path, help=argparse.SUPPRESS)
