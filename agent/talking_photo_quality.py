@@ -25,8 +25,11 @@ from agent import talking_photo, talking_photo_ltx, talking_photo_motion
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 _AUDIO_SILENCE_DBFS = -45.0
 _AUDIO_WINDOW_MS = 10.0
+_CUSTOM_VOICE_TTS_SPEED = float(
+    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TTS_SPEED", "0.80")
+)
 _CUSTOM_VOICE_TEMPO = float(
-    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TEMPO", "0.65")
+    os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_TEMPO", "0.80")
 )
 _CUSTOM_VOICE_LEADING_SILENCE_MS = float(
     os.environ.get("LTX_TALKING_PHOTO_CUSTOM_VOICE_LEADING_SILENCE_MS", "120")
@@ -295,9 +298,9 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
             if voice:
                 tts_payload["voice"] = voice
                 if requested_speed == 1.0:
-                    # Keep the clone itself at native speed so its voice identity and
-                    # prosody stay intact; only stretch the rendered waveform later.
-                    tts_speed = 1.0
+                    # Split the slowdown between the voice model and waveform so
+                    # neither stage has to make the full 35% timing correction.
+                    tts_speed = _CUSTOM_VOICE_TTS_SPEED
                     postprocess_tempo = _CUSTOM_VOICE_TEMPO
             if tts_speed != 1.0:
                 tts_payload["speed"] = tts_speed
