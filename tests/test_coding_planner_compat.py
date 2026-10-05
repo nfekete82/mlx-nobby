@@ -69,7 +69,47 @@ class CodingPlannerCompatibilityTests(unittest.TestCase):
         self.assertIn("`normal_chat` ist KEINE gültige action", captured["system"])
         self.assertIn("antworte direkt mit action=`final`", captured["system"])
 
-    def test_repeated_unsupported_coding_action_hits_circuit_breaker(self):
+    def test_normal_chat_intent_becomes_final_for_read_only_coding_question(self):
+        provider = FakeProvider([
+            {"action": "normal_chat", "reason": "answer normally"},
+        ])
+        runtime = AgentRuntime(
+            RunContext("compat-run", "chat-one", None, None, ()),
+            provider,
+            ToolRegistry(permission_engine=PermissionEngine()),
+            hooks(),
+        )
+
+        result = runtime.run("Explain PHP ===", mode="coding")
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["answer"], "final")
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(result["steps"][-1]["action"], "normal_chat_compat")
+
+    def test_normal_chat_stays_read_only_when_prompt_forbids_modification(self):
+        provider = FakeProvider([
+            {"action": "normal_chat", "reason": "answer normally"},
+        ])
+        runtime = AgentRuntime(
+            RunContext("compat-run", "chat-one", None, None, ()),
+            provider,
+            ToolRegistry(permission_engine=PermissionEngine()),
+            hooks(),
+        )
+
+        result = runtime.run(
+            "Explain briefly what the PHP === operator does. "
+            "Do not modify any files and do not run destructive commands.",
+            mode="coding",
+        )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["answer"], "final")
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(result["steps"][-1]["action"], "normal_chat_compat")
+
+    def test_repeated_unsupported_coding_action_hits_circuit_breaker_for_write_goal(self):
         provider = FakeProvider([
             {"action": "normal_chat", "reason": "answer normally"},
             {"action": "normal_chat", "reason": "answer normally"},
@@ -81,7 +121,7 @@ class CodingPlannerCompatibilityTests(unittest.TestCase):
             hooks(),
         )
 
-        result = runtime.run("Explain PHP ===", mode="coding")
+        result = runtime.run("Fix PHP strict equality handling", mode="coding")
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error"]["code"], "unsupported_action_loop")

@@ -268,6 +268,42 @@ class AgentRuntime:
                        progress_callback, allow_approval):
         goal = str(goal or "").strip()
         mode = str(mode or "diagnostic").strip().lower()
+        coding_write_probe = goal
+        if mode == "coding":
+            # Remove explicit no-write constraints before detecting mutation
+            # intent. This keeps prompts like "Do not modify any files"
+            # read-only while still recognizing English write imperatives.
+            coding_write_probe = re.sub(
+                r"\b(?:do\s+not|don't|dont|without)\s+"
+                r"(?:modify|change|edit|update|write|delete|remove|create|add|"
+                r"apply|fix|implement|refactor|optimi[sz]e|improve|replace|"
+                r"rewrite)\b",
+                "",
+                coding_write_probe,
+                flags=re.IGNORECASE,
+            )
+            coding_write_probe = re.sub(
+                r"\b(?:nicht|ohne)\s+"
+                r"(?:ändern|aendern|bearbeiten|modifizieren|löschen|loeschen|"
+                r"entfernen|erstellen|hinzufügen|hinzufuegen|anwenden|fixen|"
+                r"implementieren|refaktorieren|optimieren|verbessern|ersetzen)\b",
+                "",
+                coding_write_probe,
+                flags=re.IGNORECASE,
+            )
+
+        coding_write_requested = bool(
+            mode == "coding"
+            and re.search(
+                r"\b(?:ändere|aendere|implementiere|repariere|behebe|fixe|"
+                r"ersetze|entferne|füge|fuege|erstelle|erzeuge|refaktoriere|"
+                r"überarbeite|ueberarbeite|lösche|loesche|verbessere|optimiere|"
+                r"fix|change|modify|edit|update|write|delete|remove|create|add|"
+                r"apply|implement|refactor|optimi[sz]e|improve|replace|rewrite)\b",
+                coding_write_probe,
+                re.IGNORECASE,
+            )
+        )
 
         # Explicit read-only analysis of a named workspace file is a coding
         # task even if the caller omitted mode="coding". This keeps simple
@@ -474,6 +510,30 @@ class AgentRuntime:
             action = str(
                 decision.get("action", "")
             ).strip()
+
+            # Qwen3-Coder can emit ``normal_chat`` as an intent for a direct
+            # knowledge answer even though it is not a registered runtime tool.
+            # Normalize only read-only coding questions. Mutation requests keep
+            # the unsupported-action guard so they cannot bypass patch workflow.
+            if (
+                mode == "coding"
+                and action == "normal_chat"
+                and not coding_write_requested
+            ):
+                observations.append({
+                    "step": step,
+                    "action": "normal_chat_compat",
+                    "status": "completed",
+                    "reason": (
+                        "Coding-Modell hat normal_chat als Direktantwort-Intent "
+                        "verwendet; als final normalisiert."
+                    ),
+                })
+                publish("running", observations[-1])
+                decision = dict(decision)
+                decision["action"] = "final"
+                action = "final"
+
             plan = decision.get("plan")
             if isinstance(plan, list):
                 plan = [
@@ -489,11 +549,7 @@ class AgentRuntime:
                     not any(item.get("action") == "code_apply" and
                             item.get("status") == "rejected_by_user"
                             for item in observations) and
-                    re.search(r"\b(?:ändere|aendere|implementiere|repariere|"
-                              r"behebe|fixe|ersetze|entferne|füge|fuege|"
-                              r"erstelle|erzeuge|refaktoriere|überarbeite|"
-                              r"ueberarbeite|lösche|loesche|verbessere|"
-                              r"optimiere)\b", goal, re.IGNORECASE)):
+                    coding_write_requested):
                     observations.append({
                         "step": step, "action": "patch_required",
                         "status": "rejected",
