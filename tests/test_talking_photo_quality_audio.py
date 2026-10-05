@@ -41,6 +41,22 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertIsNotNone(stats["peak_dbfs"])
         self.assertIsNotNone(stats["active_rms_dbfs"])
 
+    def test_pervin_uses_calibrated_voice_profile(self):
+        name, profile = talking_photo_quality._custom_voice_profile("Pervin")
+
+        self.assertEqual(name, "pervin")
+        self.assertEqual(profile["tts_speed"], 0.80)
+        self.assertEqual(profile["tempo"], 0.80)
+        self.assertEqual(profile["leading_silence_ms"], 120.0)
+
+    def test_unknown_custom_voice_uses_neutral_profile(self):
+        name, profile = talking_photo_quality._custom_voice_profile("Another Voice")
+
+        self.assertEqual(name, "neutral")
+        self.assertEqual(profile["tts_speed"], 1.0)
+        self.assertEqual(profile["tempo"], 1.0)
+        self.assertEqual(profile["leading_silence_ms"], 120.0)
+
     def test_custom_voice_leading_silence_is_reduced_to_preroll(self):
         sample_rate = 16000
         wav = self._wav_bytes(
@@ -49,12 +65,10 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
             sample_rate,
         )
 
-        with mock.patch.object(
-            talking_photo_quality,
-            "_CUSTOM_VOICE_LEADING_SILENCE_MS",
+        trimmed = talking_photo_quality._trim_custom_voice_leading_silence(
+            wav,
             120.0,
-        ):
-            trimmed = talking_photo_quality._trim_custom_voice_leading_silence(wav)
+        )
 
         stats = talking_photo_quality._analyze_wav(trimmed)
         self.assertAlmostEqual(stats["leading_silence_ms"], 120.0, delta=10.0)
@@ -84,7 +98,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertEqual(command[command.index("-af") + 1], "atempo=0.8")
         self.assertIn("16000", command)
 
-    def test_persist_audio_diagnostics_keeps_wav_metadata_and_hybrid_timing(self):
+    def test_persist_audio_diagnostics_keeps_profile_and_timing(self):
         wav = self._wav_bytes([1000] * 1600)
         stats = talking_photo_quality._analyze_wav(wav)
 
@@ -97,8 +111,10 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                 "a" * 24,
                 "Pervin",
                 "de",
+                "pervin",
                 0.80,
                 0.80,
+                120.0,
                 wav,
                 stats,
             )
@@ -110,8 +126,10 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
 
         self.assertEqual(metadata["voice"], "Pervin")
         self.assertEqual(metadata["language"], "de")
+        self.assertEqual(metadata["profile"], "pervin")
         self.assertEqual(metadata["tts_speed"], 0.80)
         self.assertEqual(metadata["postprocess_tempo"], 0.80)
+        self.assertEqual(metadata["target_leading_silence_ms"], 120.0)
         self.assertEqual(metadata["stats"]["sample_rate"], 16000)
 
 
