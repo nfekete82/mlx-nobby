@@ -63,11 +63,21 @@ vm.runInNewContext(source, context, {
 });
 
 const test = window.MLXPerformanceObservatory.__test;
+const localNumber = (value, options) => value.toLocaleString(undefined, options);
 
 assert.equal(test.formatDuration(250), '250 ms');
-assert.equal(test.formatDuration(1500), '1.5 s');
-assert.equal(test.formatRate(18.75), '18.8 tok/s');
-assert.equal(test.formatGb(18.25), '18.3 GB');
+assert.equal(
+    test.formatDuration(1500),
+    localNumber(1.5, { maximumFractionDigits: 2 }) + ' s',
+);
+assert.equal(
+    test.formatRate(18.75),
+    localNumber(18.75, { maximumFractionDigits: 1 }) + ' tok/s',
+);
+assert.equal(
+    test.formatGb(18.25),
+    localNumber(18.25, { maximumFractionDigits: 1 }) + ' GB',
+);
 assert.equal(test.stateText('warm'), 'Warm');
 assert.equal(test.stateText('cold'), 'Cold');
 assert.equal(test.pressureText('critical'), 'Critical');
