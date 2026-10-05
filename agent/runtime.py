@@ -969,6 +969,42 @@ class AgentRuntime:
                     ),
                 })
                 publish()
+
+                if mode == "coding" and action == "normal_chat":
+                    rejected_same_action = sum(
+                        1
+                        for item in observations
+                        if isinstance(item, dict)
+                        and item.get("status") == "rejected"
+                        and item.get("reason") == "Tool ist nicht freigegeben"
+                        and str(item.get("action") or "").strip() == action
+                    )
+
+                    if rejected_same_action >= 2:
+                        detail = (
+                            "Coding-Planner hat wiederholt eine nicht "
+                            f"freigegebene Aktion gewählt: {action or '<leer>'}."
+                        )
+                        observations.append({
+                            "step": step,
+                            "action": "invalid_action_circuit_breaker",
+                            "status": "failed",
+                            "blocked_action": action or None,
+                            "reason": detail,
+                        })
+                        result = {
+                            "status": "failed",
+                            "goal": goal,
+                            "steps": observations,
+                            "answer": detail,
+                            "error": {
+                                "code": "unsupported_action_loop",
+                                "detail": detail,
+                            },
+                        }
+                        publish("failed")
+                        return result
+
                 continue
 
             reason = str(
