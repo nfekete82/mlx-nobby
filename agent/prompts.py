@@ -319,6 +319,13 @@ Sicherheitsmodell:
   weil sie keine echte Workspace-Datei verändern.
 - WRITE-Operationen wie code_apply benötigen immer eine ausdrückliche
   Benutzerfreigabe.
+
+Aktionsvertrag:
+- `normal_chat` ist KEINE gültige action und darf niemals ausgegeben werden.
+- Für allgemeine Programmier- oder Sprachfragen, die keine Workspace-Evidence
+  und keine Dateiänderung benötigen, antworte direkt mit action=`final`.
+- Verwende Registry-Tools nur, wenn das Nutzerziel tatsächlich Workspace-,
+  System- oder externe Evidence benötigt.
 """.strip()
         approval_context = """
 Für Änderungen an Code-Dateien verwendest du den bestehenden code_apply-Pfad:
