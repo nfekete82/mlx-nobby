@@ -24,7 +24,7 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
-    engine: Literal["fast", "quality"] = "fast"
+    engine: Literal["fast", "quality"] = "quality"
 
 
 def provider_status() -> dict:
@@ -37,7 +37,7 @@ def provider_status() -> dict:
         "device": fast.get("device"),
         "setup_command": fast.get("setup_command"),
         "detail": fast.get("detail"),
-        "default_engine": "fast",
+        "default_engine": "quality",
         "quality_available": bool(quality.get("ready")),
         "providers": {
             "fast": fast,
@@ -63,7 +63,7 @@ def install_routes(app):
         @app.post("/api/talking-photo/jobs", status_code=202)
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
-            engine = payload.pop("engine", "fast")
+            engine = payload.pop("engine", "quality")
             if engine == "quality":
                 return talking_photo_quality.create_job(payload)
             return talking_photo.create_job(payload)
