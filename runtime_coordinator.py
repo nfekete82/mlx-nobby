@@ -58,6 +58,20 @@ HARD_MEMORY_USED_PERCENT = min(
     max(50.0, _float_env("MLX_RUNTIME_HARD_USED_PERCENT", 90.0)),
 )
 
+MODEL_LOAD_RESERVE_GB = {
+    "chat": _float_env("MLX_RUNTIME_CHAT_LOAD_RESERVE_GB", 18.0),
+    "router": _float_env("MLX_RUNTIME_ROUTER_LOAD_RESERVE_GB", 4.0),
+    "embedding": _float_env("MLX_RUNTIME_EMBEDDING_LOAD_RESERVE_GB", 4.0),
+    "speech-stt": _float_env("MLX_RUNTIME_SPEECH_STT_LOAD_RESERVE_GB", 4.0),
+    "speech-tts": _float_env("MLX_RUNTIME_SPEECH_TTS_LOAD_RESERVE_GB", 3.0),
+    "speech-tts-clone": _float_env(
+        "MLX_RUNTIME_SPEECH_TTS_CLONE_LOAD_RESERVE_GB", 3.0
+    ),
+    "vision-classifier": _float_env(
+        "MLX_RUNTIME_VISION_CLASSIFIER_LOAD_RESERVE_GB", 0.5
+    ),
+}
+
 
 class CoordinationCancelled(RuntimeError):
     """Raised when a queued handoff is cancelled by its owning job."""
@@ -241,6 +255,94 @@ def _raise_hard_memory_limit(workload, snapshot):
         f"{HARD_MEMORY_USED_PERCENT:.0f}% erreicht{detail}. "
         "Erst Speicher freigeben oder einen anderen AI-Runtime entladen."
     )
+
+
+def model_load_reserve_gb(workload):
+    """Return the configured conservative reserve for a model load."""
+    return float(MODEL_LOAD_RESERVE_GB.get(str(workload), 0.0))
+
+
+def projected_memory_hard_limit_reached(snapshot, reserve_gb=0.0):
+    """Return whether current RAM plus a conservative load reserve hits the cap."""
+    if memory_hard_limit_reached(snapshot):
+        return True
+
+    reserve_gb = max(0.0, float(reserve_gb or 0.0))
+    if reserve_gb <= 0:
+        return False
+
+    used_gb = snapshot.get("used_estimate_gb") if isinstance(snapshot, dict) else None
+    total_gb = snapshot.get("total_gb") if isinstance(snapshot, dict) else None
+    if (
+        isinstance(used_gb, (int, float))
+        and not isinstance(used_gb, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        projected_percent = (
+            (float(used_gb) + reserve_gb) / float(total_gb) * 100.0
+        )
+        return projected_percent >= HARD_MEMORY_USED_PERCENT
+
+    free_percent = snapshot.get("free_percent") if isinstance(snapshot, dict) else None
+    if (
+        isinstance(free_percent, (int, float))
+        and not isinstance(free_percent, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        reserve_percent = reserve_gb / float(total_gb) * 100.0
+        return (100.0 - float(free_percent) + reserve_percent) >= HARD_MEMORY_USED_PERCENT
+
+    return False
+
+
+def ensure_model_load_allowed(
+    workload,
+    *,
+    snapshot=None,
+    reserve_gb=None,
+):
+    """Reject a new local ML-model load before it can exhaust unified memory."""
+    snapshot = snapshot or memory_budget_snapshot()
+    if reserve_gb is None:
+        reserve_gb = model_load_reserve_gb(workload)
+    reserve_gb = max(0.0, float(reserve_gb or 0.0))
+
+    if projected_memory_hard_limit_reached(snapshot, reserve_gb):
+        used_gb = snapshot.get("used_estimate_gb")
+        total_gb = snapshot.get("total_gb")
+        projected = None
+        if (
+            isinstance(used_gb, (int, float))
+            and isinstance(total_gb, (int, float))
+            and not isinstance(used_gb, bool)
+            and not isinstance(total_gb, bool)
+            and float(total_gb) > 0
+        ):
+            projected = (
+                (float(used_gb) + reserve_gb) / float(total_gb) * 100.0
+            )
+
+        suffix = (
+            f" Prognose mit {reserve_gb:.1f} GB Lade-Reserve: "
+            f"{projected:.1f}%."
+            if projected is not None
+            else (
+                f" Konservative Lade-Reserve: {reserve_gb:.1f} GB."
+                if reserve_gb
+                else ""
+            )
+        )
+        raise RuntimeError(
+            f"{workload} wurde nicht geladen: RAM-Sicherheitsgrenze von "
+            f"{HARD_MEMORY_USED_PERCENT:.0f}% würde erreicht oder überschritten."
+            + suffix
+        )
+
+    return snapshot
 
 
 def _default_chat_loaded():
