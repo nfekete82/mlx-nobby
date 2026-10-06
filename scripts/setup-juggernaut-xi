@@ -70,21 +70,31 @@ echo "────────────────────────�
 echo "Ziel: $TARGET_DIR"
 echo
 
-echo "[1/4] Lade Juggernaut XI Checkpoint..."
-mkdir -p "$temporary/model"
-hf download "$MODEL_REPO" "$CHECKPOINT" \
-    --local-dir "$temporary/model"
+installed_checkpoint="$TARGET_DIR/$CHECKPOINT"
+installed_size="$(
+    stat -f%z "$installed_checkpoint" 2>/dev/null || echo 0
+)"
 
-downloaded="$temporary/model/$CHECKPOINT"
-if [ ! -f "$downloaded" ]; then
-    echo "Checkpoint wurde nicht heruntergeladen: $downloaded" >&2
-    exit 1
-fi
+if [ -f "$installed_checkpoint" ] && [ "$installed_size" -ge 6000000000 ]; then
+    echo "[1/4] Juggernaut XI Checkpoint ist bereits vollständig installiert."
+    downloaded=""
+else
+    echo "[1/4] Lade Juggernaut XI Checkpoint..."
+    mkdir -p "$temporary/model"
+    hf download "$MODEL_REPO" "$CHECKPOINT" \
+        --local-dir "$temporary/model"
 
-checkpoint_size="$(stat -f%z "$downloaded" 2>/dev/null || echo 0)"
-if [ "$checkpoint_size" -lt 6000000000 ]; then
-    echo "Checkpoint ist unerwartet klein ($checkpoint_size Bytes)." >&2
-    exit 1
+    downloaded="$temporary/model/$CHECKPOINT"
+    if [ ! -f "$downloaded" ]; then
+        echo "Checkpoint wurde nicht heruntergeladen: $downloaded" >&2
+        exit 1
+    fi
+
+    checkpoint_size="$(stat -f%z "$downloaded" 2>/dev/null || echo 0)"
+    if [ "$checkpoint_size" -lt 6000000000 ]; then
+        echo "Checkpoint ist unerwartet klein ($checkpoint_size Bytes)." >&2
+        exit 1
+    fi
 fi
 
 echo "[2/4] Prüfe lokale SDXL-Konfiguration..."
@@ -110,23 +120,27 @@ else
     echo "Vorhandene SDXL-Konfiguration wird weiterverwendet."
 fi
 
-echo "[3/4] Ersetze alten Juggernaut-Checkpoint..."
-staged="$TARGET_DIR/.$CHECKPOINT.new"
-rm -f "$staged"
-mv "$downloaded" "$staged"
+echo "[3/4] Prüfe/ersetze Juggernaut-Checkpoint..."
+if [ -n "$downloaded" ]; then
+    staged="$TARGET_DIR/.$CHECKPOINT.new"
+    rm -f "$staged"
+    mv "$downloaded" "$staged"
 
-if curl -fsS "$IMAGE_URL/health" >/dev/null 2>&1; then
-    curl -fsS -X POST "$IMAGE_URL/unload" >/dev/null
+    if curl -fsS "$IMAGE_URL/health" >/dev/null 2>&1; then
+        curl -fsS -X POST "$IMAGE_URL/unload" >/dev/null
+    fi
+
+    staged_size="$(stat -f%z "$staged" 2>/dev/null || echo 0)"
+    if [ "$staged_size" -lt 6000000000 ]; then
+        echo "Zwischengespeicherter Checkpoint ist unerwartet klein." >&2
+        exit 1
+    fi
+
+    find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' -delete
+    mv "$staged" "$TARGET_DIR/$CHECKPOINT"
+else
+    echo "Vorhandener Juggernaut-XI-Checkpoint wird weiterverwendet."
 fi
-
-staged_size="$(stat -f%z "$staged" 2>/dev/null || echo 0)"
-if [ "$staged_size" -lt 6000000000 ]; then
-    echo "Zwischengespeicherter Checkpoint ist unerwartet klein." >&2
-    exit 1
-fi
-
-find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' -delete
-mv "$staged" "$TARGET_DIR/$CHECKPOINT"
 
 checkpoint_count="$(
     find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' | wc -l | tr -d ' '
