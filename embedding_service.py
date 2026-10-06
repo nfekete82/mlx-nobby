@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from local_security import LocalRequestGuard
+import runtime_coordinator
 
 
 MODEL_ID = os.environ.get(
@@ -505,6 +506,11 @@ def _make_embeddings_sync(
             "mlx-serve nicht verfügbar "
             "oder unterstützt keine "
             "Embeddings"
+        )
+
+    if model.get("loaded") is not True:
+        runtime_coordinator.ensure_model_load_allowed(
+            "embedding",
         )
 
     response = _mlxserve_json(
