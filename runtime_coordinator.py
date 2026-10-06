@@ -721,14 +721,16 @@ def image_runtime(
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
-    """Release idle image weights and enforce the hard RAM limit before chat starts."""
+    """Release idle image weights before resolving the shared chat runtime.
+
+    This path may run for an already-resident model, so it must not reject
+    inference solely because RAM crossed the load-admission threshold. Actual
+    chat/VLM process startup is guarded by scripts/runtime-model-guard.py.
+    """
     with chat_runtime(requester=requester, lock_path=lock_path):
-        snapshot = memory_budget_snapshot()
-        if memory_hard_limit_reached(snapshot):
-            _raise_hard_memory_limit("Chat-Runtime", snapshot)
         return {
             "ok": True,
-            "memory": snapshot,
+            "memory": memory_budget_snapshot(),
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
         }
 
