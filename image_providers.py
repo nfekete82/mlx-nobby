@@ -649,7 +649,7 @@ def mflux_command(model, params, output):
     if memory_policy["low_ram"] and '--low-ram' in flags:
         command.append("--low-ram")
 
-    if family != "z-image-turbo":
+    if family not in {"z-image-turbo", "boogu"}:
         command += [
             "--guidance",
             str(params["guidance"]),
