@@ -2750,6 +2750,44 @@ def save_model_roles(roles):
     return normalized
 
 
+def validated_image_role(data=None):
+    """Return a usable persisted image role, repairing stale selections.
+
+    Removed or unavailable image models must not poison later generation
+    requests. A successful image catalog read is authoritative; when the
+    configured role is no longer usable, persist auto so the image service
+    can route to its current default/capability-aware model.
+    """
+    roles = load_model_roles()
+    configured = roles["image"]
+
+    if configured == "auto":
+        return "auto", data
+
+    if data is None:
+        data = image_api.request("GET", "/models")
+
+    selected = next(
+        (
+            model
+            for model in data.get("models", [])
+            if model.get("id") == configured
+        ),
+        None,
+    )
+
+    if (
+        selected is not None
+        and selected.get("enabled") is True
+        and selected.get("available") is True
+    ):
+        return configured, data
+
+    roles["image"] = "auto"
+    save_model_roles(roles)
+    return "auto", data
+
+
 def resolve_model_role(role):
     """
     Resolve a configured role.
@@ -2769,17 +2807,54 @@ def resolve_model_role(role):
     if role == "image":
         try:
             data = image_api.request("GET", "/models")
-            selected_id = data["default_model"] if configured == "auto" else configured
-            selected = next((m for m in data["models"] if m["id"] == selected_id), None)
-            available = bool(selected and selected["enabled"] and selected["available"])
-            return {"role": "image", "configured": configured, "image_model_id": selected_id,
-                    "alias": selected_id, "repo": selected.get("repository") if selected else None,
-                    "provider": selected.get("provider") if selected else None,
-                    "available": available, "active": available, "requires_switch": False}
+            configured, _ = validated_image_role(data)
+            selected_id = (
+                data["default_model"]
+                if configured == "auto"
+                else configured
+            )
+            selected = next(
+                (
+                    model
+                    for model in data["models"]
+                    if model["id"] == selected_id
+                ),
+                None,
+            )
+            available = bool(
+                selected
+                and selected["enabled"]
+                and selected["available"]
+            )
+            return {
+                "role": "image",
+                "configured": configured,
+                "image_model_id": selected_id,
+                "alias": selected_id,
+                "repo": (
+                    selected.get("repository")
+                    if selected
+                    else None
+                ),
+                "provider": (
+                    selected.get("provider")
+                    if selected
+                    else None
+                ),
+                "available": available,
+                "active": available,
+                "requires_switch": False,
+            }
         except HTTPException:
-            return {"role": "image", "configured": configured, "image_model_id": None,
-                    "available": False, "active": False, "requires_switch": False,
-                    "error": "Image-Service nicht erreichbar"}
+            return {
+                "role": "image",
+                "configured": configured,
+                "image_model_id": None,
+                "available": False,
+                "active": False,
+                "requires_switch": False,
+                "error": "Image-Service nicht erreichbar",
+            }
 
     if role == "embedding":
         health = knowledge.embedding_health()
@@ -8505,8 +8580,11 @@ def _start_chat_image_job(action, request):
     with CHATS_LOCK:
         chat_id, chat_revision = _validated_image_job_chat_identity(request)
 
-        if action == "image_generate" and payload.get("model", "auto") == "auto":
-            payload["model"] = load_model_roles()["image"]
+        if (
+            action == "image_generate"
+            and payload.get("model", "auto") == "auto"
+        ):
+            payload["model"], _ = validated_image_role()
 
         return image_api.request(
             "POST",
@@ -8631,8 +8709,15 @@ def image_health_api():
 @app.get("/api/image/models")
 def image_models_api():
     data = image_api.request("GET", "/models")
-    configured = load_model_roles()["image"]
-    return data | {"role": configured, "effective_model": data["default_model"] if configured == "auto" else configured}
+    configured, _ = validated_image_role(data)
+    return data | {
+        "role": configured,
+        "effective_model": (
+            data["default_model"]
+            if configured == "auto"
+            else configured
+        ),
+    }
 
 
 @app.get("/api/image/models/{model_id}")
@@ -8747,8 +8832,13 @@ def image_job_cancel_api(job_id: str):
 def image_generate_api(request: dict):
     payload = dict(request)
     if payload.get("model", "auto") == "auto":
-        payload["model"] = load_model_roles()["image"]
-    return image_api.request("POST", "/generate", payload, timeout=900)
+        payload["model"], _ = validated_image_role()
+    return image_api.request(
+        "POST",
+        "/generate",
+        payload,
+        timeout=900,
+    )
 
 
 @app.get("/api/images/{image_id}")
