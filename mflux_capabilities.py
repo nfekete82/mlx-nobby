@@ -47,7 +47,7 @@ def required_mflux_flags(model):
         flags |= {'--image-paths', '--guidance'}
     else:
         flags |= {'--base-model', '--mlx-cache-limit-gb', '--low-ram'}
-        if family != 'z-image-turbo':
+        if family not in {'z-image-turbo', 'boogu'}:
             flags.add('--guidance')
     if model.get('quantization', 'none') != 'none' and (family != 'qwen-image-edit' or model.get('quantize_on_load')):
         flags.add('--quantize')
@@ -93,7 +93,7 @@ def _quantized_text_encoder(signature):
 
 
 def mflux_weight_contract(model, root):
-    if model['model_family'] not in {'qwen-image', 'qwen-image-edit'}:
+    if model['model_family'] not in {'qwen-image', 'qwen-image-edit', 'qwen-image21', 'krea2'}:
         return True, None
     component = Path(root) / 'text_encoder'
     files = sorted(component.glob('*.safetensors'))
