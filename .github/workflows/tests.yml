@@ -61,6 +61,7 @@ jobs:
           bash -n scripts/mlx
           bash -n scripts/mlx-server-start
           bash -n scripts/mlx-router-start
+          bash -n scripts/setup-juggernaut-xi
           bash -n scripts/setup-ltx-video
           bash -n scripts/setup-ltx-video-mlx
           for template in launchd/templates/*.plist.template; do
