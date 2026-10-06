@@ -514,12 +514,24 @@ def image_runtime(
             yield preflight
         finally:
             if restore_chat:
-                try:
-                    chat_command("start")
-                except Exception as exc:
-                    if restore_error is None:
-                        raise
-                    restore_error(exc)
+                after = memory_snapshot()
+                preflight["memory_after"] = after
+                restore_unsafe = memory_relief_needed(after)
+                preflight["chat_restore_skipped"] = restore_unsafe
+
+                if restore_unsafe:
+                    print(
+                        "[runtime-memory] chat restart skipped after image job "
+                        "because memory pressure/headroom is still unsafe",
+                        flush=True,
+                    )
+                else:
+                    try:
+                        chat_command("start")
+                    except Exception as exc:
+                        if restore_error is None:
+                            raise
+                        restore_error(exc)
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
