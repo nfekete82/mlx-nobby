@@ -7,18 +7,10 @@
 
     <key>ProgramArguments</key>
     <array>
+        <string>/bin/bash</string>
+        <string>__PROJECT_DIR__/scripts/mlx-router-start</string>
         <string>__RUNTIME_PYTHON__</string>
-        <string>-m</string>
-        <string>mlx_vlm</string>
-        <string>server</string>
-        <string>--model</string>
         <string>__ROUTER_MODEL__</string>
-        <string>--host</string>
-        <string>127.0.0.1</string>
-        <string>--port</string>
-        <string>8040</string>
-        <string>--max-num-seqs</string>
-        <string>2</string>
     </array>
 
     <key>WorkingDirectory</key>
