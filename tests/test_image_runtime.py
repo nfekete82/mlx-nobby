@@ -266,6 +266,54 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(model["default_guidance"], 5.0)
         self.assertIn("photorealistic", model["capabilities"])
 
+    def test_existing_registry_repairs_stale_qwen_builtin_before_validation(self):
+        data = registry.initial_registry()
+        qwen = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        qwen.update({
+            "provider": "mflux",
+            "repository": "AbstractFramework/qwen-image-edit-2511-4bit",
+            "model_family": "qwen-image-edit-legacy",
+            "base_model": "qwen-image-edit-legacy",
+            "enabled": True,
+            "default_steps": 11,
+            "default_guidance": 1.0,
+        })
+        data["builtin_defaults_revision"] = registry.BUILTIN_DEFAULTS_REVISION
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+        repaired = next(
+            model
+            for model in migrated["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+
+        self.assertEqual(repaired["model_family"], "qwen-image-edit")
+        self.assertEqual(repaired["base_model"], "qwen-image-edit-2511")
+        self.assertTrue(repaired["enabled"])
+        self.assertEqual(repaired["default_steps"], 11)
+        self.assertEqual(repaired["default_guidance"], 1.0)
+
+        persisted = json.loads(
+            registry.REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        persisted_repaired = next(
+            model
+            for model in persisted["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        self.assertEqual(
+            persisted_repaired["model_family"],
+            "qwen-image-edit",
+        )
+
     def test_existing_registry_removes_legacy_krea_and_prefers_enabled_juggernaut(self):
         data = registry.initial_registry()
         data["builtin_defaults_revision"] = 6
