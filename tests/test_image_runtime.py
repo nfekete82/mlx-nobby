@@ -253,17 +253,66 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
-        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 6)
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 7)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
         )
+        self.assertEqual(model["name"], registry.JUGGERNAUT_XI_NAME)
         self.assertEqual(model["provider"], "sdxl")
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
         self.assertFalse(model["enabled"])
         self.assertEqual(model["default_guidance"], 5.0)
         self.assertIn("photorealistic", model["capabilities"])
+
+    def test_existing_registry_removes_legacy_krea_and_prefers_enabled_juggernaut(self):
+        data = registry.initial_registry()
+        data["builtin_defaults_revision"] = 6
+        juggernaut = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        juggernaut["enabled"] = True
+        data["models"].append({
+            "id": "mflux-krea2-turbo",
+            "name": "Krea 2 Turbo · MFLUX · Q8",
+            "provider": "mflux",
+            "repository": "krea/Krea-2-Turbo",
+            "local_path": None,
+            "model_family": "krea2",
+            "base_model": "krea-2",
+            "quantization": "q8",
+            "quantize_on_load": False,
+            "enabled": True,
+            "capabilities": ["text_to_image", "variation"],
+            "default_steps": 8,
+            "default_guidance": 1.0,
+            "loras": [{
+                "repository": "gokaygokay/Krea-2-Realism-LoRA",
+                "path": None,
+                "scale": 1.0,
+                "enabled": True,
+                "trigger_word": "",
+            }],
+        })
+        data["default_model"] = "mflux-krea2-turbo"
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+
+        self.assertNotIn(
+            "mflux-krea2-turbo",
+            {model["id"] for model in migrated["models"]},
+        )
+        self.assertEqual(
+            migrated["default_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
 
     def test_existing_registry_migrates_only_old_juggernaut_guidance(self):
         data = registry.initial_registry()
