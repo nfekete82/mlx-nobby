@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -euo pipefail
+
+MFLUX_VERSION="${MFLUX_VERSION:-0.20.0}"
+BACKUP_ROOT="${MLX_NOBBY_BACKUP_ROOT:-$HOME/.config/mlx-web/backups}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_FILE="$BACKUP_ROOT/mflux-before-$STAMP.txt"
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
+    fail "MFLUX wird von diesem Setup nur auf Apple Silicon/macOS installiert."
+fi
+
+command -v uv >/dev/null 2>&1 || fail "uv fehlt. Installiere zuerst uv."
+
+mkdir -p "$BACKUP_ROOT"
+
+{
+    echo "date=$(date -Iseconds)"
+    echo "requested_mflux=$MFLUX_VERSION"
+    echo
+    echo "uv tool list:"
+    uv tool list 2>&1 || true
+    echo
+    echo "existing commands:"
+    for name in mflux-info mflux-generate mflux-generate-qwen mflux-generate-qwen-2.1 mflux-generate-krea2 mflux-generate-boogu mflux-upscale-seedvr2; do
+        command -v "$name" 2>/dev/null || true
+    done
+} > "$BACKUP_FILE"
+
+echo "============================================================"
+echo "MLX NOBBY — MFLUX $MFLUX_VERSION SETUP"
+echo "============================================================"
+echo "Vorheriger Runtime-Stand: $BACKUP_FILE"
+echo
+
+uv tool install --force "mflux==$MFLUX_VERSION"
+
+for name in     mflux-info     mflux-generate     mflux-generate-qwen     mflux-generate-qwen-2.1     mflux-generate-krea2     mflux-generate-boogu     mflux-upscale-seedvr2
+do
+    command -v "$name" >/dev/null 2>&1 || fail "Nach Installation fehlt $name"
+    "$name" --help >/dev/null
+done
+
+echo
+echo "MFLUX $MFLUX_VERSION ist installiert und die benötigten CLIs antworten."
+echo "Backup des vorherigen Tool-Standes: $BACKUP_FILE"
