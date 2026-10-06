@@ -61,6 +61,9 @@ HARD_MEMORY_USED_PERCENT = min(
 MODEL_LOAD_RESERVE_GB = {
     "chat": _float_env("MLX_RUNTIME_CHAT_LOAD_RESERVE_GB", 18.0),
     "router": _float_env("MLX_RUNTIME_ROUTER_LOAD_RESERVE_GB", 4.0),
+    "image": _float_env("MLX_RUNTIME_IMAGE_LOAD_RESERVE_GB", 18.0),
+    "image-upscale": _float_env("MLX_RUNTIME_IMAGE_UPSCALE_LOAD_RESERVE_GB", 2.0),
+    "video": _float_env("MLX_RUNTIME_VIDEO_LOAD_RESERVE_GB", 20.0),
     "embedding": _float_env("MLX_RUNTIME_EMBEDDING_LOAD_RESERVE_GB", 4.0),
     "speech-stt": _float_env("MLX_RUNTIME_SPEECH_STT_LOAD_RESERVE_GB", 4.0),
     "speech-tts": _float_env("MLX_RUNTIME_SPEECH_TTS_LOAD_RESERVE_GB", 3.0),
@@ -611,21 +614,29 @@ def video_runtime(
             chat_command("stop")
 
         admission = memory_budget_snapshot() if restore_chat else before
+        video_reserve_gb = model_load_reserve_gb("video")
         preflight = {
             "workload": "video",
             "memory_before": before,
             "memory_admission": admission,
             "memory_relief_needed": relief_needed,
-            "hard_limit_reached": memory_hard_limit_reached(admission),
+            "hard_limit_reached": projected_memory_hard_limit_reached(
+                admission,
+                video_reserve_gb,
+            ),
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+            "load_reserve_gb": video_reserve_gb,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": not bool(image_health.get("loaded")),
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
-            if preflight["hard_limit_reached"]:
-                _raise_hard_memory_limit("Video-Runtime", admission)
+            ensure_model_load_allowed(
+                "video",
+                snapshot=admission,
+                reserve_gb=video_reserve_gb,
+            )
             yield preflight
         finally:
             if restore_chat:
