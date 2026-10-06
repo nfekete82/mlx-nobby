@@ -15,6 +15,21 @@ IMAGE_PROFILES = {
         "standard": {"steps": 30, "guidance": 0.0, "long_edge": 768},
         "quality": {"steps": 40, "guidance": 0.0, "long_edge": 1024},
     },
+    "qwen-image21-mflux": {
+        "fast": {"steps": 20, "guidance": 1.0, "long_edge": 768},
+        "standard": {"steps": 30, "guidance": 1.0, "long_edge": 1024},
+        "quality": {"steps": 40, "guidance": 1.0, "long_edge": 1024},
+    },
+    "krea2": {
+        "fast": {"steps": 8, "guidance": 1.0, "long_edge": 768},
+        "standard": {"steps": 8, "guidance": 1.0, "long_edge": 1024},
+        "quality": {"steps": 8, "guidance": 1.0, "long_edge": 1024},
+    },
+    "boogu": {
+        "fast": {"steps": 4, "guidance": 0.0, "long_edge": 768},
+        "standard": {"steps": 8, "guidance": 0.0, "long_edge": 1024},
+        "quality": {"steps": 8, "guidance": 0.0, "long_edge": 1024},
+    },
     "sdxl": {
         "fast": {"steps": 20, "guidance": 4.5, "long_edge": 768},
         "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
@@ -80,8 +95,11 @@ VIDEO_PROFILES = {
 
 
 def image_profile_key(model):
-    if str(model.get("id") or "") == "juggernaut-xl":
+    model_id = str(model.get("id") or "")
+    if model_id == "juggernaut-xl":
         return "juggernaut-xl"
+    if model_id == "mflux-qwen-image-2.1":
+        return "qwen-image21-mflux"
     family = str(model.get("model_family") or "")
     base = str(model.get("base_model") or "")
     if family == "flux1":
