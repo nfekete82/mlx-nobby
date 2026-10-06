@@ -337,6 +337,35 @@ def initial_registry():
     }
 
 
+def _canonicalize_known_builtin(model, builtin_by_id):
+    """Upgrade persisted built-ins before strict schema validation.
+
+    Older releases persisted provider/family/base-model combinations that may
+    no longer satisfy the current ImageModel contract. Keep explicit user
+    tuning while refreshing the structural fields from the current built-in.
+    """
+    if not isinstance(model, dict):
+        return model
+
+    model_id = model.get("id")
+    canonical = builtin_by_id.get(model_id)
+    if canonical is None:
+        return model
+
+    migrated = copy.deepcopy(canonical)
+
+    for key in (
+        "enabled",
+        "default_steps",
+        "default_guidance",
+        "loras",
+    ):
+        if key in model:
+            migrated[key] = copy.deepcopy(model[key])
+
+    return migrated
+
+
 def _save(data):
     REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".image-models-", dir=REGISTRY_FILE.parent)
@@ -405,6 +434,15 @@ def load_registry():
                     if juggernaut is not None
                     else LEGACY_ID
                 )
+
+        builtin_by_id = {
+            model["id"]: model
+            for model in builtin_models()
+        }
+        raw_models = [
+            _canonicalize_known_builtin(model, builtin_by_id)
+            for model in raw_models
+        ]
 
         data["models"] = [
             ImageModel(**model).model_dump()
