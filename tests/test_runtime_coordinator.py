@@ -260,7 +260,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 ):
                     self.fail("hard RAM limit must block image runtime")
 
-    def test_prepare_chat_runtime_blocks_start_at_ram_hard_limit(self):
+    def test_prepare_chat_runtime_allows_already_loaded_model_at_high_ram(self):
         def requester(method, url, payload=None, timeout=10):
             return {
                 "status": "ready",
@@ -268,20 +268,23 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 "loaded": False,
             }
 
+        memory = {
+            "pressure": "elevated",
+            "free_percent": 9.0,
+            "headroom_gb": 0.0,
+        }
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             runtime_coordinator,
             "memory_budget_snapshot",
-            return_value={
-                "pressure": "elevated",
-                "free_percent": 9.0,
-                "headroom_gb": 0.0,
-            },
+            return_value=memory,
         ):
-            with self.assertRaisesRegex(RuntimeError, "90%"):
-                runtime_coordinator.prepare_chat_runtime(
-                    requester=requester,
-                    lock_path=Path(directory) / "runtime.lock",
-                )
+            result = runtime_coordinator.prepare_chat_runtime(
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["memory"], memory)
 
     def test_image_releases_chat_when_memory_pressure_is_elevated(self):
         commands = []
