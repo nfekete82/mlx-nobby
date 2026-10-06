@@ -286,6 +286,50 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["memory"], memory)
 
+    def test_image_releases_chat_when_projected_load_would_cross_limit(self):
+        commands = []
+        memory = iter([
+            {
+                "pressure": "normal",
+                "used_estimate_gb": 35.0,
+                "total_gb": 48.0,
+                "free_percent": 27.08,
+                "headroom_gb": 7.0,
+            },
+            {
+                "pressure": "normal",
+                "used_estimate_gb": 15.0,
+                "total_gb": 48.0,
+                "free_percent": 68.75,
+                "headroom_gb": 27.0,
+            },
+            {
+                "pressure": "normal",
+                "used_estimate_gb": 15.0,
+                "total_gb": 48.0,
+                "free_percent": 68.75,
+                "headroom_gb": 27.0,
+            },
+        ])
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with runtime_coordinator.image_runtime(
+                threading.Event(),
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: True,
+                chat_command=commands.append,
+                memory_snapshot=lambda: next(memory),
+            ) as preflight:
+                self.assertTrue(preflight["memory_relief_needed"])
+                self.assertTrue(preflight["chat_released"])
+                self.assertFalse(preflight["hard_limit_reached"])
+
+        self.assertEqual(commands, ["stop", "start"])
+
     def test_image_releases_chat_when_memory_pressure_is_elevated(self):
         commands = []
         memory = iter([
