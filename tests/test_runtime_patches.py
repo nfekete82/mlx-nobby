@@ -11,7 +11,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / 'scripts/apply-runtime-patches.py'
 SETUP = ROOT / 'scripts/setup-ltx-video-mlx'
-PIN = '1724ca673d59f023a8a95efee06e5d36d61c2765'
+PATCH_PIN = '1724ca673d59f023a8a95efee06e5d36d61c2765'
+SETUP_PIN = '90f76c20864ea612071afbb4e714ceea99e38e34'
+PIN = PATCH_PIN
 
 
 class RuntimePatchTests(unittest.TestCase):
@@ -72,6 +74,14 @@ class RuntimePatchTests(unittest.TestCase):
                 lines[offset] = '\n' if line == '\n' else line[1:]
                 offset += 1
         return files
+
+    def test_setup_pins_ltx_0160_without_local_patch(self):
+        source = SETUP.read_text()
+        self.assertIn('UPSTREAM_VERSION="0.16.0"', source)
+        self.assertIn(f'UPSTREAM_COMMIT="{SETUP_PIN}"', source)
+        series = ROOT / 'runtime-patches/ltx-2-mlx' / SETUP_PIN
+        self.assertTrue(series.is_dir())
+        self.assertEqual(list(series.glob('*.patch')), [])
 
     def test_normalized_empty_context_preserves_hunk_preimage(self):
         normalized = (
@@ -239,7 +249,7 @@ class RuntimePatchTests(unittest.TestCase):
         (project / 'scripts').mkdir(parents=True)
         shutil.copyfile(HELPER, project / 'scripts/apply-runtime-patches.py')
         setup = project / 'scripts/setup-ltx-video-mlx'
-        setup.write_text(SETUP.read_text().replace(PIN, self.pin))
+        setup.write_text(SETUP.read_text().replace(SETUP_PIN, self.pin))
         series = project / 'runtime-patches/ltx-2-mlx' / self.pin
         series.mkdir(parents=True)
         binaries = self.root / 'bin'
