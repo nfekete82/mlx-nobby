@@ -629,8 +629,15 @@ def mflux_command(model, params, output):
         str(MFLUX_BIN / FAMILIES[family][0]),
         "--model",
         str(model_directory(model)),
-        "--base-model",
-        model["base_model"],
+    ]
+
+    if family not in {"qwen-image21", "krea2", "boogu"}:
+        command += [
+            "--base-model",
+            model["base_model"],
+        ]
+
+    command += [
         "--prompt=" + params["prompt"],
         "--width",
         str(params["width"]),
