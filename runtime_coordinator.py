@@ -605,16 +605,22 @@ def video_runtime(
         # cold-start when reclaiming the image runtime already created enough
         # unified-memory headroom for LTX.
         before = memory_budget_snapshot()
-        relief_needed = memory_relief_needed(
-            before,
-            min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+        video_reserve_gb = model_load_reserve_gb("video")
+        relief_needed = (
+            memory_relief_needed(
+                before,
+                min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+            )
+            or projected_memory_hard_limit_reached(
+                before,
+                video_reserve_gb,
+            )
         )
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
         admission = memory_budget_snapshot() if restore_chat else before
-        video_reserve_gb = model_load_reserve_gb("video")
         preflight = {
             "workload": "video",
             "memory_before": before,
@@ -686,7 +692,14 @@ def image_runtime(
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
         before = memory_snapshot()
-        relief_needed = memory_relief_needed(before)
+        image_reserve_gb = model_load_reserve_gb("image")
+        relief_needed = (
+            memory_relief_needed(before)
+            or projected_memory_hard_limit_reached(
+                before,
+                image_reserve_gb,
+            )
+        )
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
@@ -697,14 +710,21 @@ def image_runtime(
             "memory_before": before,
             "memory_admission": admission,
             "memory_relief_needed": relief_needed,
-            "hard_limit_reached": memory_hard_limit_reached(admission),
+            "hard_limit_reached": projected_memory_hard_limit_reached(
+                admission,
+                image_reserve_gb,
+            ),
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+            "load_reserve_gb": image_reserve_gb,
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
-            if preflight["hard_limit_reached"]:
-                _raise_hard_memory_limit("Image-Runtime", admission)
+            ensure_model_load_allowed(
+                "image",
+                snapshot=admission,
+                reserve_gb=image_reserve_gb,
+            )
             yield preflight
         finally:
             if restore_chat:
