@@ -4663,6 +4663,12 @@ def test_image_upscale_endpoint_returns_png_metadata(
         lambda process: None,
     )
 
+    monkeypatch.setattr(
+        service.runtime_coordinator,
+        "ensure_model_load_allowed",
+        lambda workload: None,
+    )
+
     result = service._upscale_result(
         service.Upscale(
             source_path=str(source),
