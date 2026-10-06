@@ -439,10 +439,12 @@ def load_registry():
             model["id"]: model
             for model in builtin_models()
         }
-        raw_models = [
+        canonicalized_models = [
             _canonicalize_known_builtin(model, builtin_by_id)
             for model in raw_models
         ]
+        builtin_migrated = canonicalized_models != raw_models
+        raw_models = canonicalized_models
 
         data["models"] = [
             ImageModel(**model).model_dump()
@@ -481,7 +483,7 @@ def load_registry():
         added = [model for model in builtin_models() if model["id"] not in known_ids]
         if added:
             data["models"].extend(added)
-        if added or defaults_changed or removed_krea:
+        if added or defaults_changed or removed_krea or builtin_migrated:
             _save(data)
         ids = [model["id"] for model in data["models"]]
         if len(ids) != len(set(ids)) or data["default_model"] not in ids:
