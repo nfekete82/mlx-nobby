@@ -65,6 +65,20 @@ def test_boogu_contract_does_not_require_guidance():
     assert "--quantize" in flags
 
 
+def test_dedicated_mflux_020_clis_do_not_require_base_model():
+    models = _builtins()
+
+    for model_id in (
+        registry.MFLUX_QWEN_IMAGE21_ID,
+        registry.MFLUX_KREA2_ID,
+        registry.MFLUX_BOOGU_ID,
+    ):
+        flags = mflux_capabilities.required_mflux_flags(models[model_id])
+        assert "--base-model" not in flags
+        assert "--model" in flags
+        assert "--quantize" in flags
+
+
 def test_mflux_020_cli_families_are_exact():
     assert registry.FAMILIES["qwen-image21"][0] == "mflux-generate-qwen-2.1"
     assert registry.FAMILIES["krea2"][0] == "mflux-generate-krea2"
