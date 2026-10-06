@@ -2051,10 +2051,49 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(agent.load_model_roles()["image"], "mflux-z-image-turbo")
 
     def test_api_generation_resolves_image_role(self):
-        agent.save_model_roles({"image": "mflux-qwen-image"})
-        with patch.object(agent.image_api, "request", return_value={}) as request:
+        agent.save_model_roles({
+            "image": "mflux-qwen-image",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": "mflux-qwen-image",
+                    "enabled": True,
+                    "available": True,
+                },
+            ],
+        }
+        calls = []
+
+        def image_request(method, path, payload=None, timeout=10):
+            calls.append((method, path, payload))
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/generate":
+                return {}
+            raise AssertionError((method, path, payload))
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            side_effect=image_request,
+        ):
             agent.image_generate_api({"prompt": "hello"})
-        self.assertEqual(request.call_args.args[2]["model"], "mflux-qwen-image")
+
+        post = next(
+            call
+            for call in calls
+            if call[0] == "POST" and call[1] == "/generate"
+        )
+        self.assertEqual(
+            post[2]["model"],
+            "mflux-qwen-image",
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "mflux-qwen-image",
+        )
 
     @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_bad_ids_paths_families_and_parameters(self):
