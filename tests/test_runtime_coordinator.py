@@ -255,7 +255,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         chat_probe.assert_not_called()
         self.assertEqual(commands, [])
 
-    def test_consecutive_image_jobs_keep_mlxserve_model_warm(self):
+    def test_consecutive_mlxserve_image_jobs_unload_after_each_run(self):
         model = {
             "id": "image-model",
             "repository": "org/image-model",
@@ -278,16 +278,16 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 ), mock.patch.object(
                     image_service, "run_provider"
                 ), mock.patch.object(
-                    image_service, "_unload_mlxserve_model"
+                    image_service, "_unload_mlxserve_model_and_wait"
                 ) as unload:
-                    for prompt in ("First warm image", "Second warm image"):
+                    for prompt in ("First image", "Second image"):
                         image_service._generate_result(
                             image_service.Generate(prompt=prompt)
                         )
             finally:
                 image_service.OUTPUT = old_output
 
-        unload.assert_not_called()
+        self.assertEqual(unload.call_count, 2)
 
 
 if __name__ == "__main__":
