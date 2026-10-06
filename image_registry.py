@@ -326,8 +326,15 @@ def builtin_models():
             enabled=False,
         )
 
-        if ident == "mflux-qwen-image-edit-2511-quality":
+        if ident in {
+            MFLUX_QWEN_IMAGE21_ID,
+            MFLUX_KREA2_ID,
+            MFLUX_BOOGU_ID,
+            "mflux-qwen-image-edit-2511-quality",
+        }:
             model_kwargs["quantization"] = "q8"
+
+        if ident == "mflux-qwen-image-edit-2511-quality":
             model_kwargs["quantize_on_load"] = True
 
         models.append(
