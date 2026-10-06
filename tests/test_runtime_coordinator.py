@@ -69,9 +69,13 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
     def test_video_stops_and_restores_previously_loaded_chat_when_headroom_is_low(self):
         commands = []
-        memory = {
+        memory_before = {
             "pressure": "normal",
             "headroom_gb": 12.0,
+        }
+        memory_safe = {
+            "pressure": "normal",
+            "headroom_gb": 20.0,
         }
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
             runtime_coordinator,
@@ -80,7 +84,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         ), mock.patch.object(
             runtime_coordinator,
             "memory_budget_snapshot",
-            return_value=memory,
+            side_effect=[memory_before, memory_safe, memory_safe],
         ):
             with runtime_coordinator.video_runtime(
                 threading.Event(),
@@ -89,7 +93,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 lock_path=Path(directory) / "runtime.lock",
             ) as preflight:
                 self.assertEqual(commands, ["stop"])
-                self.assertEqual(preflight["memory_before"], memory)
+                self.assertEqual(preflight["memory_before"], memory_before)
                 self.assertTrue(preflight["chat_released"])
                 self.assertTrue(preflight["memory_relief_needed"])
                 self.assertEqual(
@@ -176,10 +180,69 @@ class RuntimeCoordinatorTests(unittest.TestCase):
             "headroom_gb": None,
         }))
 
+
+    def test_memory_hard_limit_reached_at_90_percent_used(self):
+        self.assertTrue(runtime_coordinator.memory_hard_limit_reached({
+            "pressure": "elevated",
+            "free_percent": 10.0,
+        }))
+        self.assertTrue(runtime_coordinator.memory_hard_limit_reached({
+            "pressure": "normal",
+            "used_estimate_gb": 43.2,
+            "total_gb": 48.0,
+        }))
+        self.assertFalse(runtime_coordinator.memory_hard_limit_reached({
+            "pressure": "normal",
+            "free_percent": 10.1,
+        }))
+
+    def test_image_blocks_new_runtime_when_ram_hard_limit_is_reached(self):
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                with runtime_coordinator.image_runtime(
+                    threading.Event(),
+                    requester=requester,
+                    lock_path=Path(directory) / "runtime.lock",
+                    chat_loaded=lambda: False,
+                    memory_snapshot=lambda: {
+                        "pressure": "elevated",
+                        "free_percent": 9.0,
+                        "headroom_gb": 0.0,
+                    },
+                ):
+                    self.fail("hard RAM limit must block image runtime")
+
+    def test_prepare_chat_runtime_blocks_start_at_ram_hard_limit(self):
+        def requester(method, url, payload=None, timeout=10):
+            return {
+                "status": "ready",
+                "active_generation": False,
+                "loaded": False,
+            }
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            return_value={
+                "pressure": "elevated",
+                "free_percent": 9.0,
+                "headroom_gb": 0.0,
+            },
+        ):
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                runtime_coordinator.prepare_chat_runtime(
+                    requester=requester,
+                    lock_path=Path(directory) / "runtime.lock",
+                )
+
     def test_image_releases_chat_when_memory_pressure_is_elevated(self):
         commands = []
         memory = iter([
             {"pressure": "elevated", "headroom_gb": 1.5},
+            {"pressure": "normal", "headroom_gb": 9.0},
             {"pressure": "normal", "headroom_gb": 9.0},
         ])
 
@@ -209,6 +272,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         commands = []
         memory = iter([
             {"pressure": "elevated", "headroom_gb": 1.5},
+            {"pressure": "normal", "headroom_gb": 9.0},
             {"pressure": "critical", "headroom_gb": 0.5},
         ])
 
