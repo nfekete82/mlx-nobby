@@ -74,6 +74,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.patches = [patch.object(registry, "REGISTRY_FILE", self.root / "image-models.json"),
+                        patch.object(registry, "INVALID_REGISTRY_FILE", self.root / "image-models.invalid.json"),
                         patch.object(service, "OUTPUT", self.root / "images"),
                         patch.object(agent, "IMAGE_DIRECTORY", self.root / "images"),
                         patch.object(agent, "CHAT_DIRECTORY", self.root / "chats"),
@@ -360,6 +361,18 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertNotIn(
             "mflux-qwen-image-old-custom",
             {model["id"] for model in persisted["models"]},
+        )
+
+        quarantine = json.loads(
+            registry.INVALID_REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            quarantine["models"][0]["id"],
+            "mflux-qwen-image-old-custom",
+        )
+        self.assertEqual(
+            quarantine["models"][0]["model"]["model_family"],
+            "qwen-image-old",
         )
 
     def test_existing_registry_removes_legacy_krea_and_prefers_enabled_juggernaut(self):
