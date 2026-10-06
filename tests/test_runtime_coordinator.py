@@ -196,6 +196,51 @@ class RuntimeCoordinatorTests(unittest.TestCase):
             "free_percent": 10.1,
         }))
 
+
+    def test_projected_model_load_reserve_blocks_before_90_percent(self):
+        snapshot = {
+            "pressure": "normal",
+            "used_estimate_gb": 40.0,
+            "total_gb": 48.0,
+            "free_percent": 16.67,
+        }
+        self.assertTrue(
+            runtime_coordinator.projected_memory_hard_limit_reached(
+                snapshot,
+                reserve_gb=4.0,
+            )
+        )
+        self.assertFalse(
+            runtime_coordinator.projected_memory_hard_limit_reached(
+                snapshot,
+                reserve_gb=2.0,
+            )
+        )
+
+    def test_global_model_load_guard_uses_workload_reserve(self):
+        snapshot = {
+            "pressure": "normal",
+            "used_estimate_gb": 40.0,
+            "total_gb": 48.0,
+            "free_percent": 16.67,
+        }
+        with self.assertRaisesRegex(RuntimeError, "Embedding|embedding|90%"):
+            runtime_coordinator.ensure_model_load_allowed(
+                "embedding",
+                snapshot=snapshot,
+            )
+
+        admitted = runtime_coordinator.ensure_model_load_allowed(
+            "vision-classifier",
+            snapshot={
+                "pressure": "normal",
+                "used_estimate_gb": 20.0,
+                "total_gb": 48.0,
+                "free_percent": 58.33,
+            },
+        )
+        self.assertEqual(admitted["used_estimate_gb"], 20.0)
+
     def test_image_blocks_new_runtime_when_ram_hard_limit_is_reached(self):
         def requester(method, url, payload=None, timeout=10):
             return {"status": "ready", "active_generation": False}
