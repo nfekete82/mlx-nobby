@@ -1823,6 +1823,100 @@ class ImageRuntimeTests(unittest.TestCase):
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
+    def test_stale_image_role_falls_back_to_auto_and_persists(self):
+        agent.save_model_roles({
+            "image": "mflux-krea2-turbo",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": registry.JUGGERNAUT_XL_ID,
+                    "enabled": True,
+                    "available": True,
+                    "provider": "sdxl",
+                    "repository": None,
+                },
+            ],
+        }
+
+        calls = []
+
+        def image_request(method, path, payload=None, timeout=10):
+            calls.append((method, path, payload))
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/jobs":
+                return {
+                    "id": "a" * 24,
+                    "status": "queued",
+                }
+            raise AssertionError((method, path, payload))
+
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A photorealistic portrait",
+        ), patch.object(
+            agent.image_api,
+            "request",
+            side_effect=image_request,
+        ):
+            agent._start_chat_image_job(
+                "image_generate",
+                self.make_chat_action_request(
+                    prompt="Erstelle ein Bild von einer Person",
+                ),
+            )
+
+        post = next(
+            call
+            for call in calls
+            if call[0] == "POST" and call[1] == "/jobs"
+        )
+        self.assertEqual(
+            post[2]["payload"]["model"],
+            "auto",
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "auto",
+        )
+
+    def test_image_models_api_repairs_stale_role_to_current_default(self):
+        agent.save_model_roles({
+            "image": "mflux-krea2-turbo",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": registry.JUGGERNAUT_XL_ID,
+                    "enabled": True,
+                    "available": True,
+                    "provider": "sdxl",
+                    "repository": None,
+                },
+            ],
+        }
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            return_value=catalog,
+        ):
+            result = agent.image_models_api()
+
+        self.assertEqual(result["role"], "auto")
+        self.assertEqual(
+            result["effective_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "auto",
+        )
+
     def test_agent_preserves_auto_image_role_for_service_routing(self):
         with patch.object(
             agent,
