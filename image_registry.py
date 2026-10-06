@@ -29,7 +29,12 @@ Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
 Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 6
+JUGGERNAUT_XI_NAME = "Juggernaut XI v11"
+JUGGERNAUT_XI_REPOSITORY = "RunDiffusion/Juggernaut-XI-v11"
+JUGGERNAUT_XI_CHECKPOINT = "Juggernaut-XI-byRunDiffusion.safetensors"
+LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
+LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
+BUILTIN_DEFAULTS_REVISION = 7
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -310,7 +315,7 @@ def builtin_models():
 
     models.append(ImageModel(
         id=JUGGERNAUT_XL_ID,
-        name="Juggernaut XL",
+        name=JUGGERNAUT_XI_NAME,
         provider="sdxl",
         local_path=str(JUGGERNAUT_XL_DIRECTORY),
         model_family="sdxl",
@@ -354,7 +359,57 @@ def load_registry():
         data = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
         if data.get("version") != 1:
             raise ValueError("Nicht unterstützte Image-Registry-Version")
-        data["models"] = [ImageModel(**model).model_dump() for model in data["models"]]
+
+        raw_models = data.get("models")
+        if not isinstance(raw_models, list):
+            raise ValueError("Ungültige Image-Registry: Modelle fehlen")
+
+        removed_krea = [
+            model
+            for model in raw_models
+            if (
+                isinstance(model, dict)
+                and (
+                    model.get("id") in LEGACY_KREA_MODEL_IDS
+                    or model.get("repository") in LEGACY_KREA_REPOSITORIES
+                )
+            )
+        ]
+        if removed_krea:
+            removed_ids = {
+                model.get("id")
+                for model in removed_krea
+                if isinstance(model.get("id"), str)
+            }
+            raw_models = [
+                model
+                for model in raw_models
+                if model not in removed_krea
+            ]
+            data["models"] = raw_models
+            if data.get("default_model") in removed_ids:
+                juggernaut = next(
+                    (
+                        model
+                        for model in raw_models
+                        if (
+                            isinstance(model, dict)
+                            and model.get("id") == JUGGERNAUT_XL_ID
+                            and model.get("enabled") is True
+                        )
+                    ),
+                    None,
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID
+                    if juggernaut is not None
+                    else LEGACY_ID
+                )
+
+        data["models"] = [
+            ImageModel(**model).model_dump()
+            for model in raw_models
+        ]
         defaults_changed = (
             data.get("builtin_defaults_revision", 0)
             < BUILTIN_DEFAULTS_REVISION
@@ -388,7 +443,7 @@ def load_registry():
         added = [model for model in builtin_models() if model["id"] not in known_ids]
         if added:
             data["models"].extend(added)
-        if added or defaults_changed:
+        if added or defaults_changed or removed_krea:
             _save(data)
         ids = [model["id"] for model in data["models"]]
         if len(ids) != len(set(ids)) or data["default_model"] not in ids:
