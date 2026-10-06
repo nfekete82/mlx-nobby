@@ -5296,6 +5296,7 @@ def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path)
     try:
         with patch.object(service, "_generation_model", return_value=model), \
              patch.object(service, "_chat_server_loaded", return_value=False), \
+             patch.object(service, "_unload_mlxserve_model_and_wait"), \
              patch.object(service, "run_provider", side_effect=fake_provider):
             standard = service._generate_result(service.Generate(
                 prompt="A red apple", width=768, height=432, quality="standard",
@@ -5318,3 +5319,79 @@ def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path)
     assert standard["guidance"] == quality["guidance"] == 0
     assert (explicit["width"], explicit["height"]) == (768, 432)
     assert explicit["steps"] == 37
+
+
+def test_mlxserve_generation_unloads_before_restarting_chat(tmp_path):
+    model = {
+        "id": "qwen", "provider": "mlxserve",
+        "repository": "org/qwen-image", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    events = []
+
+    def fake_provider(_model, params, path, **_options):
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    def fake_chat_command(action):
+        events.append(f"chat:{action}")
+
+    def fake_unload(_model):
+        events.append("unload")
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=True), \
+             patch.object(service, "_chat_server_command", side_effect=fake_chat_command), \
+             patch.object(service, "_unload_mlxserve_model_and_wait", side_effect=fake_unload), \
+             patch.object(service.time, "sleep"), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            service._generate_result(service.Generate(
+                prompt="A red apple", width=512, height=512, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert events == ["chat:stop", "unload", "chat:start"]
+
+
+def test_mlxserve_generation_skips_chat_restart_when_unload_fails(tmp_path):
+    import pytest
+
+    model = {
+        "id": "qwen", "provider": "mlxserve",
+        "repository": "org/qwen-image", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    commands = []
+
+    def fake_provider(_model, params, path, **_options):
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=True), \
+             patch.object(service, "_chat_server_command", side_effect=commands.append), \
+             patch.object(
+                 service,
+                 "_unload_mlxserve_model_and_wait",
+                 side_effect=RuntimeError("still resident"),
+             ), \
+             patch.object(service.time, "sleep"), \
+             patch.object(service, "run_provider", side_effect=fake_provider), \
+             pytest.raises(RuntimeError, match="Speicherschutz"):
+            service._generate_result(service.Generate(
+                prompt="A red apple", width=512, height=512, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert commands == ["stop"]
+
