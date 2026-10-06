@@ -74,18 +74,17 @@ def _bounded_int(name, default, minimum, maximum):
     return min(maximum, max(minimum, value))
 
 
-# Qwen3-TTS defaults to temperature=0.9/top_p=1.0. That is useful for
-# expressive generation, but unnecessarily stochastic for reference cloning:
-# repeated renders can drift noticeably from the reference identity. Keep the
-# clone path more conservative while leaving preset/custom voices untouched.
+# Keep voice cloning aligned with the Qwen3-TTS generation defaults.
+# More conservative sampling reduced articulation quality for LTX Talking Photo
+# and caused weak or missing mouth movement with cloned voices.
 TTS_CLONE_TEMPERATURE = _bounded_float(
-    "MLX_TTS_CLONE_TEMPERATURE", 0.65, 0.05, 1.5
+    "MLX_TTS_CLONE_TEMPERATURE", 0.90, 0.05, 1.5
 )
 TTS_CLONE_TOP_K = _bounded_int(
-    "MLX_TTS_CLONE_TOP_K", 30, 1, 200
+    "MLX_TTS_CLONE_TOP_K", 50, 1, 200
 )
 TTS_CLONE_TOP_P = _bounded_float(
-    "MLX_TTS_CLONE_TOP_P", 0.90, 0.10, 1.0
+    "MLX_TTS_CLONE_TOP_P", 1.00, 0.10, 1.0
 )
 
 VOICE_QUALITY_PRESETS = {
@@ -484,6 +483,7 @@ def synthesize_speech(request: SpeechRequest):
                     text=text,
                     ref_audio=str(profile["reference"]),
                     ref_text=profile["ref_text"],
+                    lang_code=request.language,
                     **clone_generation_options(request.voice),
                 )
             )
