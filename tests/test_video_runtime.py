@@ -472,7 +472,7 @@ class VideoServiceTests(unittest.TestCase):
         video_service._load_jobs()
         self.assertEqual(video_service._jobs["b" * 24]["status"], "failed")
 
-    def test_ram_handoff_stops_and_restores_chat_on_failure(self):
+    def test_ram_handoff_keeps_chat_stopped_when_memory_stays_critical(self):
         request = self.request()
         job_id = "e" * 24
         video_service._jobs[job_id] = self._job(job_id)
@@ -489,7 +489,7 @@ class VideoServiceTests(unittest.TestCase):
              mock.patch.object(video_service, "generate", side_effect=RuntimeError("runtime failed")):
             video_service._run(job_id, request)
         self.assertEqual(video_service._jobs[job_id]["status"], "failed")
-        self.assertEqual(commands, ["stop", "start"])
+        self.assertEqual(commands, ["stop"])
 
     def test_memory_preflight_failure_is_clean(self):
         request = self.request()
