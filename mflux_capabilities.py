@@ -46,7 +46,9 @@ def required_mflux_flags(model):
     if family == 'qwen-image-edit':
         flags |= {'--image-paths', '--guidance'}
     else:
-        flags |= {'--base-model', '--mlx-cache-limit-gb', '--low-ram'}
+        flags |= {'--mlx-cache-limit-gb', '--low-ram'}
+        if family not in {'qwen-image21', 'krea2', 'boogu'}:
+            flags.add('--base-model')
         if family not in {'z-image-turbo', 'boogu'}:
             flags.add('--guidance')
     if model.get('quantization', 'none') != 'none' and (family != 'qwen-image-edit' or model.get('quantize_on_load')):
