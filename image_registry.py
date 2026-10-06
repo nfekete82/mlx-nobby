@@ -488,6 +488,7 @@ def load_registry():
                         else None
                     ),
                     "error": str(exc),
+                    "model": copy.deepcopy(model),
                 })
 
         if invalid_models:
