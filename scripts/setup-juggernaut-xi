@@ -1,0 +1,167 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_DIR="${JUGGERNAUT_XI_DIR:-$HOME/Models/JuggernautXL}"
+CHECKPOINT="Juggernaut-XI-byRunDiffusion.safetensors"
+MODEL_REPO="RunDiffusion/Juggernaut-XI-v11"
+CONFIG_REPO="stabilityai/stable-diffusion-xl-base-1.0"
+IMAGE_URL="${IMAGE_SERVICE_URL:-http://127.0.0.1:8030}"
+REMOVE_KREA=0
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./scripts/setup-juggernaut-xi
+  ./scripts/setup-juggernaut-xi --remove-krea
+
+Installs Juggernaut XI v11 into ~/Models/JuggernautXL using the local
+single-checkpoint SDXL layout expected by MLX Nobby.
+
+--remove-krea  Also remove the known Krea 2 Turbo and Realism-LoRA HF caches.
+EOF
+}
+
+for argument in "$@"; do
+    case "$argument" in
+        --remove-krea)
+            REMOVE_KREA=1
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $argument" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+if ! command -v hf >/dev/null 2>&1; then
+    echo "Hugging Face CLI fehlt. Installiere huggingface_hub bzw. den 'hf'-Befehl." >&2
+    exit 1
+fi
+
+if ! hf auth whoami >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+Juggernaut XI ist ein gated Hugging-Face-Modell.
+Akzeptiere zuerst die Modellbedingungen und melde dich lokal an:
+
+  hf auth login
+
+Danach dieses Setup erneut starten.
+EOF
+    exit 1
+fi
+
+mkdir -p "$TARGET_DIR"
+
+temporary="$(mktemp -d "${TMPDIR:-/tmp}/mlx-nobby-juggernaut-xi.XXXXXX")"
+cleanup() {
+    rm -rf "$temporary"
+}
+trap cleanup EXIT
+
+echo
+echo "Juggernaut XI v11"
+echo "────────────────────────────────────────────────────────────"
+echo "Ziel: $TARGET_DIR"
+echo
+
+echo "[1/4] Lade Juggernaut XI Checkpoint..."
+mkdir -p "$temporary/model"
+hf download "$MODEL_REPO" "$CHECKPOINT" \
+    --local-dir "$temporary/model"
+
+downloaded="$temporary/model/$CHECKPOINT"
+if [ ! -f "$downloaded" ]; then
+    echo "Checkpoint wurde nicht heruntergeladen: $downloaded" >&2
+    exit 1
+fi
+
+checkpoint_size="$(stat -f%z "$downloaded" 2>/dev/null || echo 0)"
+if [ "$checkpoint_size" -lt 6000000000 ]; then
+    echo "Checkpoint ist unerwartet klein ($checkpoint_size Bytes)." >&2
+    exit 1
+fi
+
+echo "[2/4] Prüfe lokale SDXL-Konfiguration..."
+if [ ! -f "$TARGET_DIR/config/model_index.json" ]; then
+    mkdir -p "$temporary/config"
+    hf download "$CONFIG_REPO" \
+        --include "*.json" \
+        --include "*.txt" \
+        --include "*.model" \
+        --exclude "*.safetensors" \
+        --exclude "*.bin" \
+        --local-dir "$temporary/config"
+    rm -rf "$temporary/config/.cache"
+
+    if [ ! -f "$temporary/config/model_index.json" ]; then
+        echo "SDXL model_index.json fehlt nach dem Download." >&2
+        exit 1
+    fi
+
+    rm -rf "$TARGET_DIR/config"
+    mv "$temporary/config" "$TARGET_DIR/config"
+else
+    echo "Vorhandene SDXL-Konfiguration wird weiterverwendet."
+fi
+
+echo "[3/4] Ersetze alten Juggernaut-Checkpoint..."
+find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' -delete
+mv "$downloaded" "$TARGET_DIR/$CHECKPOINT"
+
+checkpoint_count="$(
+    find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' | wc -l | tr -d ' '
+)"
+if [ "$checkpoint_count" != "1" ]; then
+    echo "Juggernaut-Verzeichnis enthält nicht genau einen Checkpoint." >&2
+    exit 1
+fi
+
+if [ "$REMOVE_KREA" -eq 1 ]; then
+    echo "Entferne bekannte Krea-2-Caches..."
+    rm -rf \
+        "$HOME/.cache/huggingface/hub/models--krea--Krea-2-Turbo" \
+        "$HOME/.cache/huggingface/hub/models--gokaygokay--Krea-2-Realism-LoRA"
+fi
+
+echo "[4/4] Aktualisiere MLX-Nobby Image-Registry..."
+if curl -fsS "$IMAGE_URL/health" >/dev/null 2>&1; then
+    payload="$(
+        "$PROJECT_DIR/image-venv/bin/python" - "$TARGET_DIR" <<'PY'
+import json
+import sys
+print(json.dumps({
+    "name": "Juggernaut XI v11",
+    "local_path": sys.argv[1],
+    "enabled": True,
+    "default_steps": 30,
+    "default_guidance": 5.0,
+}))
+PY
+    )"
+
+    curl -fsS -X PUT \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$IMAGE_URL/models/juggernaut-xl" >/dev/null
+
+    curl -fsS -X POST \
+        "$IMAGE_URL/models/juggernaut-xl/activate" >/dev/null
+
+    echo "Juggernaut XI ist aktiviert und als Standard gesetzt."
+else
+    echo "Image-Service läuft nicht; Modell wurde installiert, aber nicht aktiviert."
+    echo "Nach dem Service-Start Juggernaut XI in den Image-Einstellungen aktivieren."
+fi
+
+echo
+echo "✓ Juggernaut XI v11 installiert"
+echo "  $TARGET_DIR/$CHECKPOINT"
+if [ "$REMOVE_KREA" -eq 1 ]; then
+    echo "✓ Krea 2 Turbo / Realism-LoRA Cache entfernt"
+fi
