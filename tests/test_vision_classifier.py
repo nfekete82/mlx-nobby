@@ -1,5 +1,9 @@
+import sys
+import types
 import unittest
+from unittest import mock
 
+from agent import vision_classifier
 from agent.vision_classifier import (
     VisionClassifierError,
     _classification_from_probabilities,
@@ -48,6 +52,37 @@ class VisionClassifierTests(unittest.TestCase):
             _classification_from_probabilities(
                 [0.5, 0.5],
             )
+
+
+    def test_session_checks_ram_before_loading_onnx_model(self):
+        calls = []
+        fake_session = object()
+        fake_ort = types.SimpleNamespace(
+            InferenceSession=lambda *args, **kwargs: fake_session,
+        )
+
+        previous = vision_classifier._SESSION
+        vision_classifier._SESSION = None
+        try:
+            with (
+                mock.patch.dict(sys.modules, {"onnxruntime": fake_ort}),
+                mock.patch.object(
+                    vision_classifier,
+                    "ensure_model",
+                    return_value=vision_classifier.DEFAULT_MODEL_PATH,
+                ),
+                mock.patch.object(
+                    vision_classifier.runtime_coordinator,
+                    "ensure_model_load_allowed",
+                    side_effect=lambda workload: calls.append(workload),
+                ),
+            ):
+                result = vision_classifier._session()
+        finally:
+            vision_classifier._SESSION = previous
+
+        self.assertIs(result, fake_session)
+        self.assertEqual(calls, ["vision-classifier"])
 
 
 if __name__ == "__main__":
