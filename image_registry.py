@@ -446,10 +446,48 @@ def load_registry():
         builtin_migrated = canonicalized_models != raw_models
         raw_models = canonicalized_models
 
-        data["models"] = [
-            ImageModel(**model).model_dump()
-            for model in raw_models
-        ]
+        validated_models = []
+        invalid_models = []
+        for model in raw_models:
+            try:
+                validated_models.append(
+                    ImageModel(**model).model_dump()
+                )
+            except (TypeError, ValueError) as exc:
+                invalid_models.append({
+                    "id": (
+                        model.get("id")
+                        if isinstance(model, dict)
+                        else None
+                    ),
+                    "error": str(exc),
+                })
+
+        if invalid_models:
+            invalid_ids = {
+                item["id"]
+                for item in invalid_models
+                if isinstance(item.get("id"), str)
+            }
+            if data.get("default_model") in invalid_ids:
+                enabled_juggernaut = next(
+                    (
+                        model
+                        for model in validated_models
+                        if (
+                            model.get("id") == JUGGERNAUT_XL_ID
+                            and model.get("enabled") is True
+                        )
+                    ),
+                    None,
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID
+                    if enabled_juggernaut is not None
+                    else LEGACY_ID
+                )
+
+        data["models"] = validated_models
         defaults_changed = (
             data.get("builtin_defaults_revision", 0)
             < BUILTIN_DEFAULTS_REVISION
@@ -483,7 +521,13 @@ def load_registry():
         added = [model for model in builtin_models() if model["id"] not in known_ids]
         if added:
             data["models"].extend(added)
-        if added or defaults_changed or removed_krea or builtin_migrated:
+        if (
+            added
+            or defaults_changed
+            or removed_krea
+            or builtin_migrated
+            or invalid_models
+        ):
             _save(data)
         ids = [model["id"] for model in data["models"]]
         if len(ids) != len(set(ids)) or data["default_model"] not in ids:
