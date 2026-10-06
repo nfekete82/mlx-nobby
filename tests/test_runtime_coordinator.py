@@ -434,6 +434,10 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 ), mock.patch.object(
                     image_service, "run_provider"
                 ), mock.patch.object(
+                    image_service.runtime_coordinator,
+                    "ensure_model_load_allowed",
+                    return_value={},
+                ), mock.patch.object(
                     image_service, "_unload_mlxserve_model_and_wait"
                 ) as unload:
                     for prompt in ("First image", "Second image"):
