@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A/B benchmark Juggernaut XL Ragnarok SDXL schedulers on Apple Silicon."""
+"""A/B benchmark Juggernaut XI v11 SDXL schedulers on Apple Silicon."""
 from __future__ import annotations
 
 import argparse
@@ -439,7 +439,7 @@ def main():
                 index += 1
                 safe_scheduler = re.sub(r"[^a-z0-9-]+", "-", scheduler.lower()).strip("-")
                 output = output_dir / (
-                    f"juggernaut-ragnarok-{safe_scheduler}-"
+                    f"juggernaut-xi-{safe_scheduler}-"
                     f"seed{args.seed}-r{repeat}.png"
                 )
                 print()

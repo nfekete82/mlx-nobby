@@ -74,6 +74,7 @@ class ImageRuntimeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.patches = [patch.object(registry, "REGISTRY_FILE", self.root / "image-models.json"),
+                        patch.object(registry, "INVALID_REGISTRY_FILE", self.root / "image-models.invalid.json"),
                         patch.object(service, "OUTPUT", self.root / "images"),
                         patch.object(agent, "IMAGE_DIRECTORY", self.root / "images"),
                         patch.object(agent, "CHAT_DIRECTORY", self.root / "chats"),
@@ -253,17 +254,174 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
-        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 6)
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 7)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
         )
+        self.assertEqual(model["name"], registry.JUGGERNAUT_XI_NAME)
         self.assertEqual(model["provider"], "sdxl")
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
         self.assertFalse(model["enabled"])
         self.assertEqual(model["default_guidance"], 5.0)
         self.assertIn("photorealistic", model["capabilities"])
+
+    def test_existing_registry_repairs_stale_qwen_builtin_before_validation(self):
+        data = registry.initial_registry()
+        qwen = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        qwen.update({
+            "provider": "mflux",
+            "repository": "AbstractFramework/qwen-image-edit-2511-4bit",
+            "model_family": "qwen-image-edit-legacy",
+            "base_model": "qwen-image-edit-legacy",
+            "enabled": True,
+            "default_steps": 11,
+            "default_guidance": 1.0,
+        })
+        data["builtin_defaults_revision"] = registry.BUILTIN_DEFAULTS_REVISION
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+        repaired = next(
+            model
+            for model in migrated["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+
+        self.assertEqual(repaired["model_family"], "qwen-image-edit")
+        self.assertEqual(repaired["base_model"], "qwen-image-edit-2511")
+        self.assertTrue(repaired["enabled"])
+        self.assertEqual(repaired["default_steps"], 11)
+        self.assertEqual(repaired["default_guidance"], 1.0)
+
+        persisted = json.loads(
+            registry.REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        persisted_repaired = next(
+            model
+            for model in persisted["models"]
+            if model["id"] == registry.QWEN_IMAGE_EDIT_ID
+        )
+        self.assertEqual(
+            persisted_repaired["model_family"],
+            "qwen-image-edit",
+        )
+
+    def test_existing_registry_quarantines_unknown_invalid_model(self):
+        data = registry.initial_registry()
+        juggernaut = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        juggernaut["enabled"] = True
+
+        data["models"].append({
+            "id": "mflux-qwen-image-old-custom",
+            "name": "Old Qwen Image",
+            "provider": "mflux",
+            "repository": "Qwen/Qwen-Image-2512",
+            "local_path": None,
+            "model_family": "qwen-image-old",
+            "base_model": "qwen-image-old",
+            "quantization": "q4",
+            "quantize_on_load": False,
+            "enabled": True,
+            "capabilities": ["text_to_image"],
+            "default_steps": 20,
+            "default_guidance": 1.0,
+            "loras": [],
+        })
+        data["default_model"] = "mflux-qwen-image-old-custom"
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+        ids = {model["id"] for model in migrated["models"]}
+
+        self.assertNotIn("mflux-qwen-image-old-custom", ids)
+        self.assertEqual(
+            migrated["default_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
+
+        persisted = json.loads(
+            registry.REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        self.assertNotIn(
+            "mflux-qwen-image-old-custom",
+            {model["id"] for model in persisted["models"]},
+        )
+
+        quarantine = json.loads(
+            registry.INVALID_REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            quarantine["models"][0]["id"],
+            "mflux-qwen-image-old-custom",
+        )
+        self.assertEqual(
+            quarantine["models"][0]["model"]["model_family"],
+            "qwen-image-old",
+        )
+
+    def test_existing_registry_removes_legacy_krea_and_prefers_enabled_juggernaut(self):
+        data = registry.initial_registry()
+        data["builtin_defaults_revision"] = 6
+        juggernaut = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        juggernaut["enabled"] = True
+        data["models"].append({
+            "id": "mflux-krea2-turbo",
+            "name": "Krea 2 Turbo · MFLUX · Q8",
+            "provider": "mflux",
+            "repository": "krea/Krea-2-Turbo",
+            "local_path": None,
+            "model_family": "krea2",
+            "base_model": "krea-2",
+            "quantization": "q8",
+            "quantize_on_load": False,
+            "enabled": True,
+            "capabilities": ["text_to_image", "variation"],
+            "default_steps": 8,
+            "default_guidance": 1.0,
+            "loras": [{
+                "repository": "gokaygokay/Krea-2-Realism-LoRA",
+                "path": None,
+                "scale": 1.0,
+                "enabled": True,
+                "trigger_word": "",
+            }],
+        })
+        data["default_model"] = "mflux-krea2-turbo"
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+
+        self.assertNotIn(
+            "mflux-krea2-turbo",
+            {model["id"] for model in migrated["models"]},
+        )
+        self.assertEqual(
+            migrated["default_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
 
     def test_existing_registry_migrates_only_old_juggernaut_guidance(self):
         data = registry.initial_registry()
@@ -4663,6 +4821,12 @@ def test_image_upscale_endpoint_returns_png_metadata(
         lambda process: None,
     )
 
+    monkeypatch.setattr(
+        service.runtime_coordinator,
+        "ensure_model_load_allowed",
+        lambda workload: None,
+    )
+
     result = service._upscale_result(
         service.Upscale(
             source_path=str(source),
@@ -5296,6 +5460,7 @@ def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path)
     try:
         with patch.object(service, "_generation_model", return_value=model), \
              patch.object(service, "_chat_server_loaded", return_value=False), \
+             patch.object(service, "_unload_mlxserve_model_and_wait"), \
              patch.object(service, "run_provider", side_effect=fake_provider):
             standard = service._generate_result(service.Generate(
                 prompt="A red apple", width=768, height=432, quality="standard",
@@ -5318,3 +5483,79 @@ def test_qwen_quality_resolves_native_size_and_explicit_parameters_win(tmp_path)
     assert standard["guidance"] == quality["guidance"] == 0
     assert (explicit["width"], explicit["height"]) == (768, 432)
     assert explicit["steps"] == 37
+
+
+def test_mlxserve_generation_unloads_before_restarting_chat(tmp_path):
+    model = {
+        "id": "qwen", "provider": "mlxserve",
+        "repository": "org/qwen-image", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    events = []
+
+    def fake_provider(_model, params, path, **_options):
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    def fake_chat_command(action):
+        events.append(f"chat:{action}")
+
+    def fake_unload(_model):
+        events.append("unload")
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=True), \
+             patch.object(service, "_chat_server_command", side_effect=fake_chat_command), \
+             patch.object(service, "_unload_mlxserve_model_and_wait", side_effect=fake_unload), \
+             patch.object(service.time, "sleep"), \
+             patch.object(service, "run_provider", side_effect=fake_provider):
+            service._generate_result(service.Generate(
+                prompt="A red apple", width=512, height=512, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert events == ["chat:stop", "unload", "chat:start"]
+
+
+def test_mlxserve_generation_skips_chat_restart_when_unload_fails(tmp_path):
+    import pytest
+
+    model = {
+        "id": "qwen", "provider": "mlxserve",
+        "repository": "org/qwen-image", "model_family": "qwen-image21",
+        "base_model": "qwen-image-2.1", "default_steps": 20,
+        "default_guidance": 0, "quantization": "q4", "loras": [],
+        "capabilities": ["text_to_image"],
+    }
+    commands = []
+
+    def fake_provider(_model, params, path, **_options):
+        Image.new("RGB", (params["width"], params["height"]), "red").save(path)
+
+    old_output = service.OUTPUT
+    service.OUTPUT = tmp_path
+    try:
+        with patch.object(service, "_generation_model", return_value=model), \
+             patch.object(service, "_chat_server_loaded", return_value=True), \
+             patch.object(service, "_chat_server_command", side_effect=commands.append), \
+             patch.object(
+                 service,
+                 "_unload_mlxserve_model_and_wait",
+                 side_effect=RuntimeError("still resident"),
+             ), \
+             patch.object(service.time, "sleep"), \
+             patch.object(service, "run_provider", side_effect=fake_provider), \
+             pytest.raises(RuntimeError, match="Speicherschutz"):
+            service._generate_result(service.Generate(
+                prompt="A red apple", width=512, height=512, seed=123,
+            ))
+    finally:
+        service.OUTPUT = old_output
+
+    assert commands == ["stop"]
+

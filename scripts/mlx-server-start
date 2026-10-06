@@ -157,6 +157,10 @@ elif [ -n "$SPECULATIVE_TARGET_VALUE" ] && [ "$MODEL" != "$SPECULATIVE_TARGET_VA
     SPECULATIVE_STATUS="disabled (target mismatch)"
 fi
 
+"$PYTHON" "$PROJECT_DIR/scripts/runtime-model-guard.py" \
+    --workload chat \
+    --wait
+
 echo
 echo "============================================================"
 echo "MLX Server Start"

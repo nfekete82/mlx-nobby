@@ -1399,16 +1399,31 @@ mlx_service_pid() {
 }
 
 
+mlx_service_launchd_pid() {
+    local service="$1"
+    local label
+    local domain
+
+    label="$(mlx_service_label "$service")" || return 1
+    domain="$(mlx_service_domain)"
+
+    launchctl print "$domain/$label" 2>/dev/null |
+        awk '/^[[:space:]]*pid = [0-9]+/ { print $3; exit }'
+}
+
+
 mlx_service_status_one() {
     local service="$1"
     local label
     local port
     local pid
+    local launchd_pid
     local loaded
 
     label="$(mlx_service_label "$service")" || return 1
     port="$(mlx_service_port "$service")" || return 1
     pid="$(mlx_service_pid "$service")"
+    launchd_pid="$(mlx_service_launchd_pid "$service")"
 
     if mlx_service_loaded "$service"; then
         loaded="loaded"
@@ -1419,6 +1434,9 @@ mlx_service_status_one() {
     if [ -n "$pid" ]; then
         printf "  %-11s ✓ läuft      Port %-5s PID %-7s (%s)\n" \
             "$service" "$port" "$pid" "$loaded"
+    elif [ -n "$launchd_pid" ]; then
+        printf "  %-11s … wartet     Port %-5s PID %-7s (%s)\n" \
+            "$service" "$port" "$launchd_pid" "$loaded"
     else
         printf "  %-11s ✗ gestoppt   Port %-5s %-11s (%s)\n" \
             "$service" "$port" "" "$loaded"

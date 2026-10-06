@@ -16,6 +16,9 @@ REGISTRY_FILE = Path(
         str(Path.home() / ".config/mlx-web/image-models.json"),
     )
 ).expanduser()
+INVALID_REGISTRY_FILE = REGISTRY_FILE.with_name(
+    REGISTRY_FILE.stem + ".invalid.json"
+)
 MODEL_ROOTS = (Path.home() / "Models", Path.home() / ".cache/huggingface/hub")
 LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
@@ -29,7 +32,12 @@ Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
 Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-BUILTIN_DEFAULTS_REVISION = 6
+JUGGERNAUT_XI_NAME = "Juggernaut XI v11"
+JUGGERNAUT_XI_REPOSITORY = "RunDiffusion/Juggernaut-XI-v11"
+JUGGERNAUT_XI_CHECKPOINT = "Juggernaut-XI-byRunDiffusion.safetensors"
+LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
+LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
+BUILTIN_DEFAULTS_REVISION = 7
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -310,7 +318,7 @@ def builtin_models():
 
     models.append(ImageModel(
         id=JUGGERNAUT_XL_ID,
-        name="Juggernaut XL",
+        name=JUGGERNAUT_XI_NAME,
         provider="sdxl",
         local_path=str(JUGGERNAUT_XL_DIRECTORY),
         model_family="sdxl",
@@ -332,6 +340,35 @@ def initial_registry():
     }
 
 
+def _canonicalize_known_builtin(model, builtin_by_id):
+    """Upgrade persisted built-ins before strict schema validation.
+
+    Older releases persisted provider/family/base-model combinations that may
+    no longer satisfy the current ImageModel contract. Keep explicit user
+    tuning while refreshing the structural fields from the current built-in.
+    """
+    if not isinstance(model, dict):
+        return model
+
+    model_id = model.get("id")
+    canonical = builtin_by_id.get(model_id)
+    if canonical is None:
+        return model
+
+    migrated = copy.deepcopy(canonical)
+
+    for key in (
+        "enabled",
+        "default_steps",
+        "default_guidance",
+        "loras",
+    ):
+        if key in model:
+            migrated[key] = copy.deepcopy(model[key])
+
+    return migrated
+
+
 def _save(data):
     REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".image-models-", dir=REGISTRY_FILE.parent)
@@ -347,6 +384,30 @@ def _save(data):
             os.unlink(temporary)
 
 
+def _save_invalid_models(entries):
+    if not entries:
+        return
+    payload = {
+        "version": 1,
+        "models": entries,
+    }
+    INVALID_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".image-models-invalid-",
+        dir=INVALID_REGISTRY_FILE.parent,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, INVALID_REGISTRY_FILE)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def load_registry():
     with _mutex:
         if not REGISTRY_FILE.exists():
@@ -354,7 +415,108 @@ def load_registry():
         data = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
         if data.get("version") != 1:
             raise ValueError("Nicht unterstützte Image-Registry-Version")
-        data["models"] = [ImageModel(**model).model_dump() for model in data["models"]]
+
+        raw_models = data.get("models")
+        if not isinstance(raw_models, list):
+            raise ValueError("Ungültige Image-Registry: Modelle fehlen")
+
+        removed_krea = [
+            model
+            for model in raw_models
+            if (
+                isinstance(model, dict)
+                and (
+                    model.get("id") in LEGACY_KREA_MODEL_IDS
+                    or model.get("repository") in LEGACY_KREA_REPOSITORIES
+                )
+            )
+        ]
+        if removed_krea:
+            removed_ids = {
+                model.get("id")
+                for model in removed_krea
+                if isinstance(model.get("id"), str)
+            }
+            raw_models = [
+                model
+                for model in raw_models
+                if model not in removed_krea
+            ]
+            data["models"] = raw_models
+            if data.get("default_model") in removed_ids:
+                juggernaut = next(
+                    (
+                        model
+                        for model in raw_models
+                        if (
+                            isinstance(model, dict)
+                            and model.get("id") == JUGGERNAUT_XL_ID
+                            and model.get("enabled") is True
+                        )
+                    ),
+                    None,
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID
+                    if juggernaut is not None
+                    else LEGACY_ID
+                )
+
+        builtin_by_id = {
+            model["id"]: model
+            for model in builtin_models()
+        }
+        canonicalized_models = [
+            _canonicalize_known_builtin(model, builtin_by_id)
+            for model in raw_models
+        ]
+        builtin_migrated = canonicalized_models != raw_models
+        raw_models = canonicalized_models
+
+        validated_models = []
+        invalid_models = []
+        for model in raw_models:
+            try:
+                validated_models.append(
+                    ImageModel(**model).model_dump()
+                )
+            except (TypeError, ValueError) as exc:
+                invalid_models.append({
+                    "id": (
+                        model.get("id")
+                        if isinstance(model, dict)
+                        else None
+                    ),
+                    "error": str(exc),
+                    "model": copy.deepcopy(model),
+                })
+
+        if invalid_models:
+            _save_invalid_models(invalid_models)
+            invalid_ids = {
+                item["id"]
+                for item in invalid_models
+                if isinstance(item.get("id"), str)
+            }
+            if data.get("default_model") in invalid_ids:
+                enabled_juggernaut = next(
+                    (
+                        model
+                        for model in validated_models
+                        if (
+                            model.get("id") == JUGGERNAUT_XL_ID
+                            and model.get("enabled") is True
+                        )
+                    ),
+                    None,
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID
+                    if enabled_juggernaut is not None
+                    else LEGACY_ID
+                )
+
+        data["models"] = validated_models
         defaults_changed = (
             data.get("builtin_defaults_revision", 0)
             < BUILTIN_DEFAULTS_REVISION
@@ -388,7 +550,13 @@ def load_registry():
         added = [model for model in builtin_models() if model["id"] not in known_ids]
         if added:
             data["models"].extend(added)
-        if added or defaults_changed:
+        if (
+            added
+            or defaults_changed
+            or removed_krea
+            or builtin_migrated
+            or invalid_models
+        ):
             _save(data)
         ids = [model["id"] for model in data["models"]]
         if len(ids) != len(set(ids)) or data["default_model"] not in ids:

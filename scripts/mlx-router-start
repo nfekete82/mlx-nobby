@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="${1:-}"
+MODEL="${2:-}"
+
+if [ -z "$PYTHON" ] || [ ! -x "$PYTHON" ]; then
+    echo "Router Runtime Python fehlt oder ist nicht ausführbar: $PYTHON" >&2
+    exit 1
+fi
+
+if [ -z "$MODEL" ]; then
+    echo "Router-Modell fehlt." >&2
+    exit 1
+fi
+
+"$PYTHON" "$PROJECT_DIR/scripts/runtime-model-guard.py" \
+    --workload router \
+    --wait
+
+exec "$PYTHON" -m mlx_vlm server \
+    --model "$MODEL" \
+    --host 127.0.0.1 \
+    --port 8040 \
+    --max-num-seqs 2

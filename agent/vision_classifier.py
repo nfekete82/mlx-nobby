@@ -25,6 +25,7 @@ import threading
 import urllib.request
 
 from agent.vision_routing import VisionClassification
+import runtime_coordinator
 
 
 MODEL_URL = (
@@ -143,6 +144,9 @@ def _session():
             ) from exc
 
         path = ensure_model()
+        runtime_coordinator.ensure_model_load_allowed(
+            "vision-classifier",
+        )
 
         try:
             _SESSION = ort.InferenceSession(

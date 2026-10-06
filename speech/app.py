@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from mlx_audio.stt import load
 from mlx_audio.tts.utils import load_model as load_tts_model
 from local_security import LocalRequestGuard, read_upload
+import runtime_coordinator
 
 
 MODEL_NAME = os.environ.get(
@@ -141,6 +142,9 @@ def get_model():
     if _model is None:
         with _model_lock:
             if _model is None:
+                runtime_coordinator.ensure_model_load_allowed(
+                    "speech-stt",
+                )
                 print(f"[speech] Lade Modell: {MODEL_NAME}", flush=True)
                 _model = load(MODEL_NAME)
                 print("[speech] Modell bereit", flush=True)
@@ -190,6 +194,9 @@ def get_tts_model():
     if _tts_model is None:
         with _tts_model_lock:
             if _tts_model is None:
+                runtime_coordinator.ensure_model_load_allowed(
+                    "speech-tts",
+                )
                 print(
                     f"[speech] Lade TTS-Modell: {TTS_MODEL_NAME}",
                     flush=True,
@@ -208,6 +215,9 @@ def get_tts_clone_model():
     if _tts_clone_model is None:
         with _tts_clone_model_lock:
             if _tts_clone_model is None:
+                runtime_coordinator.ensure_model_load_allowed(
+                    "speech-tts-clone",
+                )
                 print(
                     f"[speech] Lade TTS-Clone-Modell: {TTS_CLONE_MODEL_NAME}",
                     flush=True,

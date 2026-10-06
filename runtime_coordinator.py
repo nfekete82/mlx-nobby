@@ -53,6 +53,27 @@ PRESSURE_ELEVATED_FREE_PERCENT = _float_env(
 PRESSURE_CRITICAL_FREE_PERCENT = _float_env(
     "MLX_RUNTIME_PRESSURE_CRITICAL_PERCENT", 8.0
 )
+HARD_MEMORY_USED_PERCENT = min(
+    99.0,
+    max(50.0, _float_env("MLX_RUNTIME_HARD_USED_PERCENT", 90.0)),
+)
+
+MODEL_LOAD_RESERVE_GB = {
+    "chat": _float_env("MLX_RUNTIME_CHAT_LOAD_RESERVE_GB", 18.0),
+    "router": _float_env("MLX_RUNTIME_ROUTER_LOAD_RESERVE_GB", 4.0),
+    "image": _float_env("MLX_RUNTIME_IMAGE_LOAD_RESERVE_GB", 18.0),
+    "image-upscale": _float_env("MLX_RUNTIME_IMAGE_UPSCALE_LOAD_RESERVE_GB", 2.0),
+    "video": _float_env("MLX_RUNTIME_VIDEO_LOAD_RESERVE_GB", 20.0),
+    "embedding": _float_env("MLX_RUNTIME_EMBEDDING_LOAD_RESERVE_GB", 4.0),
+    "speech-stt": _float_env("MLX_RUNTIME_SPEECH_STT_LOAD_RESERVE_GB", 4.0),
+    "speech-tts": _float_env("MLX_RUNTIME_SPEECH_TTS_LOAD_RESERVE_GB", 3.0),
+    "speech-tts-clone": _float_env(
+        "MLX_RUNTIME_SPEECH_TTS_CLONE_LOAD_RESERVE_GB", 3.0
+    ),
+    "vision-classifier": _float_env(
+        "MLX_RUNTIME_VISION_CLASSIFIER_LOAD_RESERVE_GB", 0.5
+    ),
+}
 
 
 class CoordinationCancelled(RuntimeError):
@@ -188,6 +209,143 @@ def memory_relief_needed(snapshot, min_headroom_gb=MEDIA_MIN_HEADROOM_GB):
     if isinstance(headroom, (int, float)) and not isinstance(headroom, bool):
         return float(headroom) < float(min_headroom_gb)
     return False
+
+
+def memory_hard_limit_reached(snapshot):
+    """Return whether starting another heavy runtime would be unsafe."""
+    if not isinstance(snapshot, dict):
+        return False
+
+    free_percent = snapshot.get("free_percent")
+    if isinstance(free_percent, (int, float)) and not isinstance(
+        free_percent, bool
+    ):
+        used_percent = 100.0 - float(free_percent)
+        return used_percent >= HARD_MEMORY_USED_PERCENT
+
+    used_gb = snapshot.get("used_estimate_gb")
+    total_gb = snapshot.get("total_gb")
+    if (
+        isinstance(used_gb, (int, float))
+        and not isinstance(used_gb, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        return (
+            float(used_gb) / float(total_gb) * 100.0
+            >= HARD_MEMORY_USED_PERCENT
+        )
+
+    return snapshot.get("pressure") == "critical"
+
+
+def _raise_hard_memory_limit(workload, snapshot):
+    used_percent = None
+    free_percent = snapshot.get("free_percent") if isinstance(snapshot, dict) else None
+    if isinstance(free_percent, (int, float)) and not isinstance(
+        free_percent, bool
+    ):
+        used_percent = max(0.0, min(100.0, 100.0 - float(free_percent)))
+
+    detail = (
+        f" ({used_percent:.1f}% geschätzt belegt)"
+        if used_percent is not None
+        else ""
+    )
+    raise RuntimeError(
+        f"{workload} wurde nicht gestartet: RAM-Hard-Limit von "
+        f"{HARD_MEMORY_USED_PERCENT:.0f}% erreicht{detail}. "
+        "Erst Speicher freigeben oder einen anderen AI-Runtime entladen."
+    )
+
+
+def model_load_reserve_gb(workload):
+    """Return the configured conservative reserve for a model load."""
+    return float(MODEL_LOAD_RESERVE_GB.get(str(workload), 0.0))
+
+
+def projected_memory_hard_limit_reached(snapshot, reserve_gb=0.0):
+    """Return whether current RAM plus a conservative load reserve hits the cap."""
+    if memory_hard_limit_reached(snapshot):
+        return True
+
+    reserve_gb = max(0.0, float(reserve_gb or 0.0))
+    if reserve_gb <= 0:
+        return False
+
+    used_gb = snapshot.get("used_estimate_gb") if isinstance(snapshot, dict) else None
+    total_gb = snapshot.get("total_gb") if isinstance(snapshot, dict) else None
+    if (
+        isinstance(used_gb, (int, float))
+        and not isinstance(used_gb, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        projected_percent = (
+            (float(used_gb) + reserve_gb) / float(total_gb) * 100.0
+        )
+        return projected_percent >= HARD_MEMORY_USED_PERCENT
+
+    free_percent = snapshot.get("free_percent") if isinstance(snapshot, dict) else None
+    if (
+        isinstance(free_percent, (int, float))
+        and not isinstance(free_percent, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        reserve_percent = reserve_gb / float(total_gb) * 100.0
+        return (100.0 - float(free_percent) + reserve_percent) >= HARD_MEMORY_USED_PERCENT
+
+    return False
+
+
+def ensure_model_load_allowed(
+    workload,
+    *,
+    snapshot=None,
+    reserve_gb=None,
+):
+    """Reject a new local ML-model load before it can exhaust unified memory."""
+    snapshot = snapshot or memory_budget_snapshot()
+    if reserve_gb is None:
+        reserve_gb = model_load_reserve_gb(workload)
+    reserve_gb = max(0.0, float(reserve_gb or 0.0))
+
+    if projected_memory_hard_limit_reached(snapshot, reserve_gb):
+        used_gb = snapshot.get("used_estimate_gb")
+        total_gb = snapshot.get("total_gb")
+        projected = None
+        if (
+            isinstance(used_gb, (int, float))
+            and isinstance(total_gb, (int, float))
+            and not isinstance(used_gb, bool)
+            and not isinstance(total_gb, bool)
+            and float(total_gb) > 0
+        ):
+            projected = (
+                (float(used_gb) + reserve_gb) / float(total_gb) * 100.0
+            )
+
+        suffix = (
+            f" Prognose mit {reserve_gb:.1f} GB Lade-Reserve: "
+            f"{projected:.1f}%."
+            if projected is not None
+            else (
+                f" Konservative Lade-Reserve: {reserve_gb:.1f} GB."
+                if reserve_gb
+                else ""
+            )
+        )
+        raise RuntimeError(
+            f"{workload} wurde nicht geladen: RAM-Sicherheitsgrenze von "
+            f"{HARD_MEMORY_USED_PERCENT:.0f}% würde erreicht oder überschritten."
+            + suffix
+        )
+
+    return snapshot
 
 
 def _default_chat_loaded():
@@ -447,32 +605,67 @@ def video_runtime(
         # cold-start when reclaiming the image runtime already created enough
         # unified-memory headroom for LTX.
         before = memory_budget_snapshot()
-        relief_needed = memory_relief_needed(
-            before,
-            min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+        video_reserve_gb = model_load_reserve_gb("video")
+        relief_needed = (
+            memory_relief_needed(
+                before,
+                min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+            )
+            or projected_memory_hard_limit_reached(
+                before,
+                video_reserve_gb,
+            )
         )
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
+
+        admission = memory_budget_snapshot() if restore_chat else before
         preflight = {
             "workload": "video",
             "memory_before": before,
+            "memory_admission": admission,
             "memory_relief_needed": relief_needed,
+            "hard_limit_reached": projected_memory_hard_limit_reached(
+                admission,
+                video_reserve_gb,
+            ),
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+            "load_reserve_gb": video_reserve_gb,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": not bool(image_health.get("loaded")),
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
+            ensure_model_load_allowed(
+                "video",
+                snapshot=admission,
+                reserve_gb=video_reserve_gb,
+            )
             yield preflight
         finally:
             if restore_chat:
-                try:
-                    chat_command("start")
-                except Exception as exc:
-                    if restore_error is None:
-                        raise
-                    restore_error(exc)
+                after = memory_budget_snapshot()
+                preflight["memory_after"] = after
+                restore_unsafe = (
+                    memory_relief_needed(after)
+                    or memory_hard_limit_reached(after)
+                )
+                preflight["chat_restore_skipped"] = restore_unsafe
+                if restore_unsafe:
+                    print(
+                        "[runtime-memory] chat restart skipped after video job "
+                        "because memory pressure/headroom is still unsafe",
+                        flush=True,
+                    )
+                else:
+                    try:
+                        chat_command("start")
+                    except Exception as exc:
+                        if restore_error is None:
+                            raise
+                        restore_error(exc)
 
 
 @contextmanager
@@ -499,33 +692,78 @@ def image_runtime(
         wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
         _check_cancelled(cancel_event)
         before = memory_snapshot()
-        relief_needed = memory_relief_needed(before)
+        image_reserve_gb = model_load_reserve_gb("image")
+        relief_needed = (
+            memory_relief_needed(before)
+            or projected_memory_hard_limit_reached(
+                before,
+                image_reserve_gb,
+            )
+        )
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
+
+        admission = memory_snapshot() if restore_chat else before
         preflight = {
             "workload": "image",
             "memory_before": before,
+            "memory_admission": admission,
             "memory_relief_needed": relief_needed,
+            "hard_limit_reached": projected_memory_hard_limit_reached(
+                admission,
+                image_reserve_gb,
+            ),
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+            "load_reserve_gb": image_reserve_gb,
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
+            ensure_model_load_allowed(
+                "image",
+                snapshot=admission,
+                reserve_gb=image_reserve_gb,
+            )
             yield preflight
         finally:
             if restore_chat:
-                try:
-                    chat_command("start")
-                except Exception as exc:
-                    if restore_error is None:
-                        raise
-                    restore_error(exc)
+                after = memory_snapshot()
+                preflight["memory_after"] = after
+                restore_unsafe = (
+                    memory_relief_needed(after)
+                    or memory_hard_limit_reached(after)
+                )
+                preflight["chat_restore_skipped"] = restore_unsafe
+
+                if restore_unsafe:
+                    print(
+                        "[runtime-memory] chat restart skipped after image job "
+                        "because memory pressure/headroom is still unsafe",
+                        flush=True,
+                    )
+                else:
+                    try:
+                        chat_command("start")
+                    except Exception as exc:
+                        if restore_error is None:
+                            raise
+                        restore_error(exc)
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
-    """Release an idle image runtime before the shared chat runtime starts."""
+    """Release idle image weights before resolving the shared chat runtime.
+
+    This path may run for an already-resident model, so it must not reject
+    inference solely because RAM crossed the load-admission threshold. Actual
+    chat/VLM process startup is guarded by scripts/runtime-model-guard.py.
+    """
     with chat_runtime(requester=requester, lock_path=lock_path):
-        return {"ok": True}
+        return {
+            "ok": True,
+            "memory": memory_budget_snapshot(),
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+        }
 
 
 @contextmanager

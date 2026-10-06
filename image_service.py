@@ -218,15 +218,36 @@ def _unload_mlxserve_model(model):
             )
 
 
-def _loaded_mlxserve_models():
-    """Return image models that MLX-Serve reports as actually resident."""
+def _loaded_mlxserve_repository_ids(*, strict=False):
+    """Return repository IDs that MLX-Serve reports as resident."""
     try:
         with urllib.request.urlopen(
             MLXSERVE_URL + "/v1/models",
             timeout=3,
         ) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise RuntimeError(
+                "MLX-Serve-Modellstatus konnte nicht gelesen werden"
+            ) from exc
+        return []
+
+    return [
+        item.get("id")
+        for item in payload.get("data", [])
+        if (
+            isinstance(item, dict)
+            and item.get("loaded") is True
+            and isinstance(item.get("id"), str)
+        )
+    ]
+
+
+def _loaded_mlxserve_models():
+    """Return configured image models that MLX-Serve reports as resident."""
+    loaded_repositories = set(_loaded_mlxserve_repository_ids())
+    if not loaded_repositories:
         return []
 
     repositories = {
@@ -235,14 +256,41 @@ def _loaded_mlxserve_models():
         if model.get("provider") == "mlxserve"
     }
     return [
-        repositories[item.get("id")]
-        for item in payload.get("data", [])
-        if (
-            isinstance(item, dict)
-            and item.get("loaded") is True
-            and item.get("id") in repositories
-        )
+        repositories[repository]
+        for repository in loaded_repositories
+        if repository in repositories
     ]
+
+
+def _unload_mlxserve_model_and_wait(model):
+    """Unload one resident MLX-Serve image model before chat is restored."""
+    try:
+        timeout = float(
+            os.environ.get("MLX_IMAGE_MLXSERVE_UNLOAD_TIMEOUT", "15")
+        )
+    except (TypeError, ValueError):
+        timeout = 15.0
+    timeout = max(1.0, min(timeout, 60.0))
+
+    repository = model.get("repository")
+    if not isinstance(repository, str) or not repository:
+        raise RuntimeError("MLX-Serve-Modell hat keine Repository-ID")
+
+    def still_loaded():
+        return repository in _loaded_mlxserve_repository_ids(strict=True)
+
+    if not still_loaded():
+        return
+
+    _unload_mlxserve_model(model)
+    deadline = time.monotonic() + timeout
+
+    while still_loaded():
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "MLX-Serve hat das Image-Modell nicht rechtzeitig entladen"
+            )
+        time.sleep(0.25)
 
 
 @app.get("/health")
@@ -529,24 +577,56 @@ def _generate_result(
                 _chat_server_command("stop")
                 time.sleep(1)
 
+        runtime_coordinator.ensure_model_load_allowed(
+            "image",
+        )
         run_provider(model, params, path, **(provider_options or {}))
 
     finally:
+        active_error = sys.exc_info()[1]
+        cleanup_error = None
+
         if model["provider"] == "mlxserve":
+            try:
+                print(
+                    "[image-memory] unloading MLX-Serve image model",
+                    flush=True,
+                )
+                _unload_mlxserve_model_and_wait(model)
+            except Exception as exc:
+                cleanup_error = exc
+                print(
+                    f"[image-memory] ERROR: image model unload failed: {exc}",
+                    flush=True,
+                )
+
             if chat_was_loaded:
-                try:
+                if cleanup_error is None:
+                    try:
+                        print(
+                            "[image-memory] restarting chat server",
+                            flush=True,
+                        )
+                        _chat_server_command("start")
+                    except Exception as exc:
+                        print(
+                            f"[image-memory] ERROR: chat server restart failed: {exc}",
+                            flush=True,
+                        )
+                else:
                     print(
-                        "[image-memory] restarting chat server",
-                        flush=True,
-                    )
-                    _chat_server_command("start")
-                except Exception as exc:
-                    print(
-                        f"[image-memory] ERROR: chat server restart failed: {exc}",
+                        "[image-memory] chat restart skipped because the "
+                        "image model is still resident",
                         flush=True,
                     )
 
         _running = None
+
+        if cleanup_error is not None and active_error is None:
+            raise RuntimeError(
+                "MLX-Serve-Image-Modell konnte nicht vollständig entladen "
+                "werden; Chat-Neustart wurde zum Speicherschutz übersprungen"
+            ) from cleanup_error
     if saving_callback:
         saving_callback()
     return {
@@ -731,6 +811,9 @@ def _edit_result(
         prepared_callback(model, params, path)
     _running = model["id"]
     try:
+        runtime_coordinator.ensure_model_load_allowed(
+            "image",
+        )
         run_provider(model, params, path, **(provider_options or {}))
     finally:
         _running = None
@@ -821,6 +904,9 @@ def _upscale_result(
     process = None
 
     try:
+        runtime_coordinator.ensure_model_load_allowed(
+            "image-upscale",
+        )
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
