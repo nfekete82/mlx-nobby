@@ -218,8 +218,8 @@ def _unload_mlxserve_model(model):
             )
 
 
-def _loaded_mlxserve_models(*, strict=False):
-    """Return image models that MLX-Serve reports as actually resident."""
+def _loaded_mlxserve_repository_ids(*, strict=False):
+    """Return repository IDs that MLX-Serve reports as resident."""
     try:
         with urllib.request.urlopen(
             MLXSERVE_URL + "/v1/models",
@@ -233,19 +233,32 @@ def _loaded_mlxserve_models(*, strict=False):
             ) from exc
         return []
 
+    return [
+        item.get("id")
+        for item in payload.get("data", [])
+        if (
+            isinstance(item, dict)
+            and item.get("loaded") is True
+            and isinstance(item.get("id"), str)
+        )
+    ]
+
+
+def _loaded_mlxserve_models():
+    """Return configured image models that MLX-Serve reports as resident."""
+    loaded_repositories = set(_loaded_mlxserve_repository_ids())
+    if not loaded_repositories:
+        return []
+
     repositories = {
         model.get("repository"): model
         for model in registry_call(registry.load_registry)["models"]
         if model.get("provider") == "mlxserve"
     }
     return [
-        repositories[item.get("id")]
-        for item in payload.get("data", [])
-        if (
-            isinstance(item, dict)
-            and item.get("loaded") is True
-            and item.get("id") in repositories
-        )
+        repositories[repository]
+        for repository in loaded_repositories
+        if repository in repositories
     ]
 
 
@@ -259,12 +272,12 @@ def _unload_mlxserve_model_and_wait(model):
         timeout = 15.0
     timeout = max(1.0, min(timeout, 60.0))
 
+    repository = model.get("repository")
+    if not isinstance(repository, str) or not repository:
+        raise RuntimeError("MLX-Serve-Modell hat keine Repository-ID")
+
     def still_loaded():
-        repository = model.get("repository")
-        return any(
-            item.get("repository") == repository
-            for item in _loaded_mlxserve_models(strict=True)
-        )
+        return repository in _loaded_mlxserve_repository_ids(strict=True)
 
     if not still_loaded():
         return
