@@ -16,6 +16,9 @@ REGISTRY_FILE = Path(
         str(Path.home() / ".config/mlx-web/image-models.json"),
     )
 ).expanduser()
+INVALID_REGISTRY_FILE = REGISTRY_FILE.with_name(
+    REGISTRY_FILE.stem + ".invalid.json"
+)
 MODEL_ROOTS = (Path.home() / "Models", Path.home() / ".cache/huggingface/hub")
 LEGACY_ID = "FLUX.1-schnell"
 LEGACY_REPO = "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized"
@@ -381,6 +384,30 @@ def _save(data):
             os.unlink(temporary)
 
 
+def _save_invalid_models(entries):
+    if not entries:
+        return
+    payload = {
+        "version": 1,
+        "models": entries,
+    }
+    INVALID_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".image-models-invalid-",
+        dir=INVALID_REGISTRY_FILE.parent,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, INVALID_REGISTRY_FILE)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def load_registry():
     with _mutex:
         if not REGISTRY_FILE.exists():
@@ -464,6 +491,7 @@ def load_registry():
                 })
 
         if invalid_models:
+            _save_invalid_models(invalid_models)
             invalid_ids = {
                 item["id"]
                 for item in invalid_models
