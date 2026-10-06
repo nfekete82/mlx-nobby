@@ -111,8 +111,18 @@ else
 fi
 
 echo "[3/4] Ersetze alten Juggernaut-Checkpoint..."
+staged="$TARGET_DIR/.$CHECKPOINT.new"
+rm -f "$staged"
+mv "$downloaded" "$staged"
+
+staged_size="$(stat -f%z "$staged" 2>/dev/null || echo 0)"
+if [ "$staged_size" -lt 6000000000 ]; then
+    echo "Zwischengespeicherter Checkpoint ist unerwartet klein." >&2
+    exit 1
+fi
+
 find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' -delete
-mv "$downloaded" "$TARGET_DIR/$CHECKPOINT"
+mv "$staged" "$TARGET_DIR/$CHECKPOINT"
 
 checkpoint_count="$(
     find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' | wc -l | tr -d ' '
