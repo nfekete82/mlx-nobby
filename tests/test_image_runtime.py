@@ -314,6 +314,54 @@ class ImageRuntimeTests(unittest.TestCase):
             "qwen-image-edit",
         )
 
+    def test_existing_registry_quarantines_unknown_invalid_model(self):
+        data = registry.initial_registry()
+        juggernaut = next(
+            model
+            for model in data["models"]
+            if model["id"] == registry.JUGGERNAUT_XL_ID
+        )
+        juggernaut["enabled"] = True
+
+        data["models"].append({
+            "id": "mflux-qwen-image-old-custom",
+            "name": "Old Qwen Image",
+            "provider": "mflux",
+            "repository": "Qwen/Qwen-Image-2512",
+            "local_path": None,
+            "model_family": "qwen-image-old",
+            "base_model": "qwen-image-old",
+            "quantization": "q4",
+            "quantize_on_load": False,
+            "enabled": True,
+            "capabilities": ["text_to_image"],
+            "default_steps": 20,
+            "default_guidance": 1.0,
+            "loras": [],
+        })
+        data["default_model"] = "mflux-qwen-image-old-custom"
+        registry.REGISTRY_FILE.write_text(
+            json.dumps(data),
+            encoding="utf-8",
+        )
+
+        migrated = registry.load_registry()
+        ids = {model["id"] for model in migrated["models"]}
+
+        self.assertNotIn("mflux-qwen-image-old-custom", ids)
+        self.assertEqual(
+            migrated["default_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
+
+        persisted = json.loads(
+            registry.REGISTRY_FILE.read_text(encoding="utf-8")
+        )
+        self.assertNotIn(
+            "mflux-qwen-image-old-custom",
+            {model["id"] for model in persisted["models"]},
+        )
+
     def test_existing_registry_removes_legacy_krea_and_prefers_enabled_juggernaut(self):
         data = registry.initial_registry()
         data["builtin_defaults_revision"] = 6
