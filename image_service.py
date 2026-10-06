@@ -577,6 +577,9 @@ def _generate_result(
                 _chat_server_command("stop")
                 time.sleep(1)
 
+        runtime_coordinator.ensure_model_load_allowed(
+            "image",
+        )
         run_provider(model, params, path, **(provider_options or {}))
 
     finally:
@@ -808,6 +811,9 @@ def _edit_result(
         prepared_callback(model, params, path)
     _running = model["id"]
     try:
+        runtime_coordinator.ensure_model_load_allowed(
+            "image",
+        )
         run_provider(model, params, path, **(provider_options or {}))
     finally:
         _running = None
@@ -898,6 +904,9 @@ def _upscale_result(
     process = None
 
     try:
+        runtime_coordinator.ensure_model_load_allowed(
+            "image-upscale",
+        )
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
