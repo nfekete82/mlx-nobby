@@ -53,6 +53,10 @@ PRESSURE_ELEVATED_FREE_PERCENT = _float_env(
 PRESSURE_CRITICAL_FREE_PERCENT = _float_env(
     "MLX_RUNTIME_PRESSURE_CRITICAL_PERCENT", 8.0
 )
+HARD_MEMORY_USED_PERCENT = min(
+    99.0,
+    max(50.0, _float_env("MLX_RUNTIME_HARD_USED_PERCENT", 90.0)),
+)
 
 
 class CoordinationCancelled(RuntimeError):
@@ -188,6 +192,55 @@ def memory_relief_needed(snapshot, min_headroom_gb=MEDIA_MIN_HEADROOM_GB):
     if isinstance(headroom, (int, float)) and not isinstance(headroom, bool):
         return float(headroom) < float(min_headroom_gb)
     return False
+
+
+def memory_hard_limit_reached(snapshot):
+    """Return whether starting another heavy runtime would be unsafe."""
+    if not isinstance(snapshot, dict):
+        return False
+
+    free_percent = snapshot.get("free_percent")
+    if isinstance(free_percent, (int, float)) and not isinstance(
+        free_percent, bool
+    ):
+        used_percent = 100.0 - float(free_percent)
+        return used_percent >= HARD_MEMORY_USED_PERCENT
+
+    used_gb = snapshot.get("used_estimate_gb")
+    total_gb = snapshot.get("total_gb")
+    if (
+        isinstance(used_gb, (int, float))
+        and not isinstance(used_gb, bool)
+        and isinstance(total_gb, (int, float))
+        and not isinstance(total_gb, bool)
+        and float(total_gb) > 0
+    ):
+        return (
+            float(used_gb) / float(total_gb) * 100.0
+            >= HARD_MEMORY_USED_PERCENT
+        )
+
+    return snapshot.get("pressure") == "critical"
+
+
+def _raise_hard_memory_limit(workload, snapshot):
+    used_percent = None
+    free_percent = snapshot.get("free_percent") if isinstance(snapshot, dict) else None
+    if isinstance(free_percent, (int, float)) and not isinstance(
+        free_percent, bool
+    ):
+        used_percent = max(0.0, min(100.0, 100.0 - float(free_percent)))
+
+    detail = (
+        f" ({used_percent:.1f}% geschätzt belegt)"
+        if used_percent is not None
+        else ""
+    )
+    raise RuntimeError(
+        f"{workload} wurde nicht gestartet: RAM-Hard-Limit von "
+        f"{HARD_MEMORY_USED_PERCENT:.0f}% erreicht{detail}. "
+        "Erst Speicher freigeben oder einen anderen AI-Runtime entladen."
+    )
 
 
 def _default_chat_loaded():
@@ -454,25 +507,46 @@ def video_runtime(
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
+
+        admission = memory_budget_snapshot() if restore_chat else before
         preflight = {
             "workload": "video",
             "memory_before": before,
+            "memory_admission": admission,
             "memory_relief_needed": relief_needed,
+            "hard_limit_reached": memory_hard_limit_reached(admission),
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": not bool(image_health.get("loaded")),
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
+            if preflight["hard_limit_reached"]:
+                _raise_hard_memory_limit("Video-Runtime", admission)
             yield preflight
         finally:
             if restore_chat:
-                try:
-                    chat_command("start")
-                except Exception as exc:
-                    if restore_error is None:
-                        raise
-                    restore_error(exc)
+                after = memory_budget_snapshot()
+                preflight["memory_after"] = after
+                restore_unsafe = (
+                    memory_relief_needed(after)
+                    or memory_hard_limit_reached(after)
+                )
+                preflight["chat_restore_skipped"] = restore_unsafe
+                if restore_unsafe:
+                    print(
+                        "[runtime-memory] chat restart skipped after video job "
+                        "because memory pressure/headroom is still unsafe",
+                        flush=True,
+                    )
+                else:
+                    try:
+                        chat_command("start")
+                    except Exception as exc:
+                        if restore_error is None:
+                            raise
+                        restore_error(exc)
 
 
 @contextmanager
@@ -503,20 +577,30 @@ def image_runtime(
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
+
+        admission = memory_snapshot() if restore_chat else before
         preflight = {
             "workload": "image",
             "memory_before": before,
+            "memory_admission": admission,
             "memory_relief_needed": relief_needed,
+            "hard_limit_reached": memory_hard_limit_reached(admission),
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
             "chat_released": restore_chat,
         }
         try:
             _check_cancelled(cancel_event)
+            if preflight["hard_limit_reached"]:
+                _raise_hard_memory_limit("Image-Runtime", admission)
             yield preflight
         finally:
             if restore_chat:
                 after = memory_snapshot()
                 preflight["memory_after"] = after
-                restore_unsafe = memory_relief_needed(after)
+                restore_unsafe = (
+                    memory_relief_needed(after)
+                    or memory_hard_limit_reached(after)
+                )
                 preflight["chat_restore_skipped"] = restore_unsafe
 
                 if restore_unsafe:
@@ -535,9 +619,16 @@ def image_runtime(
 
 
 def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
-    """Release an idle image runtime before the shared chat runtime starts."""
+    """Release idle image weights and enforce the hard RAM limit before chat starts."""
     with chat_runtime(requester=requester, lock_path=lock_path):
-        return {"ok": True}
+        snapshot = memory_budget_snapshot()
+        if memory_hard_limit_reached(snapshot):
+            _raise_hard_memory_limit("Chat-Runtime", snapshot)
+        return {
+            "ok": True,
+            "memory": snapshot,
+            "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
+        }
 
 
 @contextmanager
