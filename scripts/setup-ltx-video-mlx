@@ -11,14 +11,20 @@ UPSTREAM_COMMIT="90f76c20864ea612071afbb4e714ceea99e38e34"
 UPSTREAM_VERSION="0.16.0"
 RUNTIME_ROOT="${LTX_MLX_RUNTIME_ROOT:-$HOME/.local/share/mlx-nobby/ltx-2-mlx}"
 MODEL_ROOT="${LTX_MLX_MODEL_ROOT:-$HOME/.local/share/mlx-nobby/models}"
-MODEL_DIR="$MODEL_ROOT/ltx-2.5-mlx-q4"
-MODEL_REPO="dgrauet/ltx-2.5-mlx-q4"
+MODEL_VARIANT="${LTX_MLX_MODEL_VARIANT:-q4}"
+MODEL_DIR="$MODEL_ROOT/ltx-2.5-mlx-$MODEL_VARIANT"
+MODEL_REPO="dgrauet/ltx-2.5-mlx-$MODEL_VARIANT"
 READY_MARKER="$MODEL_DIR/.mlx-nobby-ready"
 
 fail() {
     echo "ERROR: $*" >&2
     exit 1
 }
+
+case "$MODEL_VARIANT" in
+    q4|q8) ;;
+    *) fail "LTX_MLX_MODEL_VARIANT muss q4 oder q8 sein." ;;
+esac
 
 if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
     fail "LTX-MLX wird von diesem Setup nur auf Apple Silicon/macOS installiert."
@@ -31,7 +37,7 @@ command -v python3 >/dev/null 2>&1 || fail "python3 fehlt."
 mkdir -p "$(dirname "$RUNTIME_ROOT")" "$MODEL_ROOT"
 
 echo "============================================================"
-echo "MLX NOBBY — LTX 2.5 MLX Q4 SETUP"
+echo "MLX NOBBY — LTX 2.5 MLX ${MODEL_VARIANT^^} SETUP"
 echo "============================================================"
 echo "Runtime: $RUNTIME_ROOT"
 echo "Upstream: ltx-2-mlx $UPSTREAM_VERSION"
@@ -64,7 +70,7 @@ CLI="$RUNTIME_ROOT/.venv/bin/ltx-2-mlx"
 [ -x "$CLI" ] || fail "CLI wurde nicht erzeugt: $CLI"
 "$CLI" --help >/dev/null
 
-echo "[2/3] LTX 2.5 MLX Q4 herunterladen"
+echo "[2/3] LTX 2.5 MLX ${MODEL_VARIANT^^} herunterladen"
 echo "Hinweis: Nobby akzeptiert keine Modell-Lizenz automatisch."
 echo "Falls Hugging Face den Download sperrt, akzeptiere dort zuerst die"
 echo "Bedingungen für $MODEL_REPO und melde dich lokal mit 'hf auth login' an."
@@ -80,12 +86,12 @@ repo_id, destination = sys.argv[1:]
 snapshot_download(repo_id=repo_id, local_dir=destination)
 PY
 ); then
-    fail "Q4-Download fehlgeschlagen. Prüfe Hugging-Face-Zugriff/Lizenz und führe das Setup erneut aus."
+    fail "${MODEL_VARIANT^^}-Download fehlgeschlagen. Prüfe Hugging-Face-Zugriff/Lizenz und führe das Setup erneut aus."
 fi
 
-[ -f "$MODEL_DIR/embedded_config.json" ] || fail "Q4-Modell ist unvollständig: embedded_config.json fehlt."
-[ -f "$MODEL_DIR/text_encoder.safetensors" ] || fail "Q4-Modell ist unvollständig: pack-lokaler Gemma-4-Encoder fehlt."
-[ -f "$MODEL_DIR/text_encoder_config.json" ] || fail "Q4-Modell ist unvollständig: text_encoder_config.json fehlt."
+[ -f "$MODEL_DIR/embedded_config.json" ] || fail "${MODEL_VARIANT^^}-Modell ist unvollständig: embedded_config.json fehlt."
+[ -f "$MODEL_DIR/text_encoder.safetensors" ] || fail "${MODEL_VARIANT^^}-Modell ist unvollständig: pack-lokaler Gemma-4-Encoder fehlt."
+[ -f "$MODEL_DIR/text_encoder_config.json" ] || fail "${MODEL_VARIANT^^}-Modell ist unvollständig: text_encoder_config.json fehlt."
 
 echo "[3/3] Installation validieren"
 touch "$READY_MARKER"
@@ -93,10 +99,10 @@ touch "$READY_MARKER"
 MODEL_SIZE="$(du -sh "$MODEL_DIR" 2>/dev/null | awk '{print $1}')"
 
 echo
-echo "LTX 2.5 MLX Q4 ist bereit."
+echo "LTX 2.5 MLX ${MODEL_VARIANT^^} ist bereit."
 echo "  Runtime: $CLI"
-echo "  Q4-Pack: $MODEL_DIR (${MODEL_SIZE:-?})"
+echo "  ${MODEL_VARIANT^^}-Pack: $MODEL_DIR (${MODEL_SIZE:-?})"
 echo "  Encoder: Gemma 4 aus dem LTX-2.5-Pack (kein separater Download)"
 echo
-echo "MLX Q4 ist Nobbys Standard-Video-Backend; der PyTorch/MPS-Pfad bleibt als Fallback verfügbar."
+echo "Q4 bleibt Nobbys Standard-Video-Backend; Q8 kann parallel als Quality-Pack installiert werden."
 echo "Nach einem Nobby-Neustart kann der Worker direkt über die normale Video-Generierung verwendet werden."
