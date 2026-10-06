@@ -178,6 +178,10 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
     def test_image_releases_chat_when_memory_pressure_is_elevated(self):
         commands = []
+        memory = iter([
+            {"pressure": "elevated", "headroom_gb": 1.5},
+            {"pressure": "normal", "headroom_gb": 9.0},
+        ])
 
         def requester(method, url, payload=None, timeout=10):
             self.assertEqual(method, "GET")
@@ -191,16 +195,40 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 lock_path=Path(directory) / "runtime.lock",
                 chat_loaded=lambda: True,
                 chat_command=commands.append,
-                memory_snapshot=lambda: {
-                    "pressure": "elevated",
-                    "headroom_gb": 1.5,
-                },
+                memory_snapshot=lambda: next(memory),
             ) as preflight:
                 self.assertEqual(commands, ["stop"])
                 self.assertTrue(preflight["memory_relief_needed"])
                 self.assertTrue(preflight["chat_released"])
 
         self.assertEqual(commands, ["stop", "start"])
+        self.assertFalse(preflight["chat_restore_skipped"])
+        self.assertEqual(preflight["memory_after"]["pressure"], "normal")
+
+    def test_image_skips_chat_restore_when_memory_stays_unsafe(self):
+        commands = []
+        memory = iter([
+            {"pressure": "elevated", "headroom_gb": 1.5},
+            {"pressure": "critical", "headroom_gb": 0.5},
+        ])
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with runtime_coordinator.image_runtime(
+                threading.Event(),
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: True,
+                chat_command=commands.append,
+                memory_snapshot=lambda: next(memory),
+            ) as preflight:
+                self.assertEqual(commands, ["stop"])
+
+        self.assertEqual(commands, ["stop"])
+        self.assertTrue(preflight["chat_restore_skipped"])
+        self.assertEqual(preflight["memory_after"]["pressure"], "critical")
 
     def test_image_keeps_chat_loaded_with_healthy_memory(self):
         commands = []
