@@ -88,6 +88,8 @@ const modalElements = new Map([
     ['mediaQualityModalConfirm', new ModalTestElement({ id: 'mediaQualityModalConfirm' })],
     ['mediaFormatField', new ModalTestElement({ id: 'mediaFormatField' })],
     ['mediaFormat', new ModalTestElement({ id: 'mediaFormat' })],
+    ['imageModelField', new ModalTestElement({ id: 'imageModelField' })],
+    ['imageModel', new ModalTestElement({ id: 'imageModel' })],
     ['videoDurationField', new ModalTestElement({ id: 'videoDurationField' })],
     ['videoDuration', new ModalTestElement({ id: 'videoDuration' })],
     ['mediaQuality', new ModalTestElement({ id: 'mediaQuality' })],
