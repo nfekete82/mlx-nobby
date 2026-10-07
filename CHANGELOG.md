@@ -5,6 +5,9 @@
 - Keep the image-model picker visible for image generation and editing, show
   configured unavailable models as disabled options, and pass the selected
   compatible model with each image request.
+- Before a memory-constrained image load, unload idle Speech STT/TTS weights,
+  remeasure unified memory, then stop chat only if additional headroom is still
+  required; the 90% RAM hard limit remains enforced.
 
 - Make direct LTX A2V the default Talking Photo engine for more natural mouth
   integration; keep LTX + MuseTalk as an optional Hybrid lip-fix mode.
