@@ -8,7 +8,11 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent import talking_photo, talking_photo_lifecycle
+from agent import (
+    talking_photo,
+    talking_photo_lifecycle,
+    talking_photo_quality,
+)
 
 
 class TalkingPhotoRequest(BaseModel):
@@ -20,6 +24,26 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
+    engine: Literal["fast", "quality"] = "quality"
+
+
+def provider_status() -> dict:
+    """Keep legacy top-level MuseTalk status while exposing Quality separately."""
+    fast = talking_photo.provider_health()
+    quality = talking_photo_quality.provider_health()
+    return {
+        "ready": bool(fast.get("ready")),
+        "provider": fast.get("provider"),
+        "device": fast.get("device"),
+        "setup_command": fast.get("setup_command"),
+        "detail": fast.get("detail"),
+        "default_engine": "quality",
+        "quality_available": bool(quality.get("ready")),
+        "providers": {
+            "fast": fast,
+            "quality": quality,
+        },
+    }
 
 
 def install_routes(app):
@@ -33,12 +57,16 @@ def install_routes(app):
     if ("/api/talking-photo/status", "GET") not in methods_by_path:
         @app.get("/api/talking-photo/status")
         def talking_photo_status():
-            return talking_photo.provider_health()
+            return provider_status()
 
     if ("/api/talking-photo/jobs", "POST") not in methods_by_path:
         @app.post("/api/talking-photo/jobs", status_code=202)
         def talking_photo_create(request: TalkingPhotoRequest):
-            return talking_photo.create_job(request.model_dump())
+            payload = request.model_dump()
+            engine = payload.pop("engine", "quality")
+            if engine == "quality":
+                return talking_photo_quality.create_job(payload)
+            return talking_photo.create_job(payload)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:
         @app.get("/api/talking-photo/jobs/{job_id}")

@@ -104,6 +104,30 @@ with open(path, "wb") as handle:
 PY
     fi
 
+    if [ "$(basename "${source}")" = "de.nobby.mlx-agent.plist.template" ]; then
+        "${RUNTIME_PYTHON}" - "${temporary}" "${target}" <<'PY'
+import os
+import plistlib
+import sys
+
+path = sys.argv[1]
+with open(path, "rb") as handle:
+    data = plistlib.load(handle)
+previous = {}
+if os.path.isfile(sys.argv[2]):
+    with open(sys.argv[2], "rb") as handle:
+        previous = plistlib.load(handle).get("EnvironmentVariables", {})
+environment = data.setdefault("EnvironmentVariables", {})
+for name in ("LTX_TALKING_PHOTO_SEED", "LTX_TALKING_PHOTO_DEBUG", "LTX_TALKING_PHOTO_DEBUG_ROOT"):
+    if name in os.environ:
+        environment[name] = os.environ[name]
+    elif name in previous:
+        environment[name] = previous[name]
+with open(path, "wb") as handle:
+    plistlib.dump(data, handle, sort_keys=False)
+PY
+    fi
+
     plutil -lint "${temporary}" >/dev/null
 
     "${RUNTIME_PYTHON}" "${SCRIPT_DIR}/reload-launchagent.py" \
