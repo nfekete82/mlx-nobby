@@ -448,7 +448,7 @@
         if (!document.getElementById('mediaQualityModal')) return;
         try {
             await loadScript(
-                '/assets/chat/image-count-picker.js?v=20261002-gallery-final',
+                '/assets/chat/image-count-picker.js?v=20261007-image-model-picker',
                 'mlx-image-count-picker'
             );
         } catch (error) {

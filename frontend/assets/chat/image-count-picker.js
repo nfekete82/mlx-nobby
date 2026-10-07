@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20261002-gallery-final';
+    const SCRIPT_VERSION = '20261007-image-model-picker';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
     const PREWARM_TTL_MS = 60 * 1000;
@@ -191,20 +191,25 @@
         const prompt = latestImagePrompt();
         if (!prompt || typeof fetch !== 'function') return false;
 
+        const model = String(
+            document.getElementById?.('imageModel')?.value ||
+            'auto'
+        ).trim() || 'auto';
+        const prewarmKey = model + '\n' + prompt;
         const now = Date.now();
         if (
-            prompt === lastPrewarmKey &&
+            prewarmKey === lastPrewarmKey &&
             now - lastPrewarmAt < PREWARM_TTL_MS
         ) {
             return false;
         }
-        lastPrewarmKey = prompt;
+        lastPrewarmKey = prewarmKey;
         lastPrewarmAt = now;
 
         fetch('/api/image/prewarm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'auto', prompt })
+            body: JSON.stringify({ model, prompt })
         }).catch(() => {});
         return true;
     }

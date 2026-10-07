@@ -627,6 +627,8 @@
     "quality_preview": "Vorschau",
     "quality_preview_hint": "Sehr schnell · 2 s · grob",
     "media_format": "Format",
+    "image_model": "Bildmodell",
+    "image_model_auto": "Automatisch",
     "negative_prompt_optional": "Negative Prompt (optional)",
     "negative_prompt_placeholder": "Was soll nicht im Bild erscheinen?",
     "negative_prompt_clean_faces_hands": "Sauberes Gesicht / Hände",
