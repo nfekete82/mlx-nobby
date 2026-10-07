@@ -572,6 +572,28 @@ button {
     padding: 8px 11px;
 }
 
+.top-action-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 38px;
+}
+
+.top-action-icon {
+    width: 19px;
+    height: 19px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
 .icon-btn:hover {
     background: var(--panel2);
     color: white;
@@ -9787,6 +9809,182 @@ body.notes-resizing * {
         align-items: flex-start;
         flex-direction: column;
         gap: 3px;
+    }
+}
+
+
+/* MLX-NOBBY-SETTINGS-CONTROLS
+   Shared form and action styling across all settings panes. */
+
+.settings-organized {
+    --settings-control-height: 44px;
+    --settings-control-radius: 12px;
+    --settings-control-bg: #090f18;
+    --settings-control-bg-hover: #0d1521;
+    --settings-control-border: #283548;
+    --settings-control-border-hover: #41516a;
+    --settings-control-focus: #4f8cff;
+    --settings-control-text: #f3f6fa;
+}
+
+.settings-organized select,
+.settings-organized input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+.settings-organized textarea {
+    box-sizing: border-box;
+    width: 100%;
+    border: 1px solid var(--settings-control-border);
+    border-radius: var(--settings-control-radius);
+    background-color: var(--settings-control-bg);
+    color: var(--settings-control-text);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    transition:
+        border-color .16s ease,
+        background-color .16s ease,
+        box-shadow .16s ease;
+}
+
+.settings-organized select,
+.settings-organized input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) {
+    min-height: var(--settings-control-height);
+}
+
+.settings-organized input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) {
+    padding: 0 14px;
+}
+
+.settings-organized textarea {
+    min-height: 96px;
+    padding: 12px 14px;
+    resize: vertical;
+    line-height: 1.45;
+}
+
+.settings-organized select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0 46px 0 14px;
+    cursor: pointer;
+    background-image:
+        linear-gradient(45deg, transparent 50%, #aab6c7 50%),
+        linear-gradient(135deg, #aab6c7 50%, transparent 50%);
+    background-position:
+        calc(100% - 19px) 50%,
+        calc(100% - 14px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+
+.settings-organized select:hover:not(:disabled),
+.settings-organized input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):hover:not(:disabled),
+.settings-organized textarea:hover:not(:disabled) {
+    border-color: var(--settings-control-border-hover);
+    background-color: var(--settings-control-bg-hover);
+}
+
+.settings-organized select:focus-visible,
+.settings-organized input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+.settings-organized textarea:focus-visible {
+    border-color: var(--settings-control-focus);
+    box-shadow: 0 0 0 3px rgba(79, 140, 255, .16);
+}
+
+.settings-organized select:disabled,
+.settings-organized input:disabled,
+.settings-organized textarea:disabled {
+    cursor: not-allowed;
+    opacity: .52;
+}
+
+.settings-organized select option {
+    background: #0c121c;
+    color: #f3f6fa;
+}
+
+.settings-organized .settings-button,
+.settings-organized .message-action-btn {
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1px solid var(--settings-control-border);
+    border-radius: 11px;
+    background: #111925;
+    color: #dce5f0;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        border-color .16s ease,
+        background .16s ease,
+        color .16s ease,
+        transform .12s ease,
+        box-shadow .16s ease;
+}
+
+.settings-organized .settings-button:hover:not(:disabled),
+.settings-organized .message-action-btn:hover:not(:disabled) {
+    border-color: var(--settings-control-border-hover);
+    background: #1a2534;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.settings-organized .settings-button:active:not(:disabled),
+.settings-organized .message-action-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.settings-organized .settings-button:focus-visible,
+.settings-organized .message-action-btn:focus-visible {
+    outline: none;
+    border-color: var(--settings-control-focus);
+    box-shadow: 0 0 0 3px rgba(79, 140, 255, .16);
+}
+
+.settings-organized .settings-button:disabled,
+.settings-organized .message-action-btn:disabled {
+    cursor: not-allowed;
+    opacity: .48;
+    transform: none;
+}
+
+.settings-organized .settings-button.primary,
+.settings-organized .message-action-btn.primary {
+    border-color: #4b7fe0;
+    background: linear-gradient(180deg, #3d78e4, #2f65cc);
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(47, 101, 204, .18);
+}
+
+.settings-organized .settings-button.primary:hover:not(:disabled),
+.settings-organized .message-action-btn.primary:hover:not(:disabled) {
+    border-color: #6596ef;
+    background: linear-gradient(180deg, #4c86ed, #376fd6);
+}
+
+.settings-organized .model-role-item select {
+    width: 100%;
+    max-width: 320px;
+    justify-self: end;
+}
+
+.settings-organized .image-model-field input:not([type="checkbox"]) {
+    min-height: var(--settings-control-height);
+    padding: 0 14px;
+    border-radius: var(--settings-control-radius);
+}
+
+.settings-organized .image-model-card {
+    border-radius: 14px;
+    background: rgba(9, 15, 24, .42);
+}
+
+@media (max-width: 700px) {
+    .settings-organized .model-role-item select {
+        max-width: none;
+        justify-self: stretch;
     }
 }
 

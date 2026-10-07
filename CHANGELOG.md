@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Unify the chat top-bar actions with consistent SVG icons and replace the
+  text-only "Clear chat" action with an accessible icon button.
+
+- Unify settings form controls and action buttons with one polished visual
+  system for dropdowns, inputs, focus states, hover states and disabled states.
+
 - Add per-request image-model selection in the image creation dialog, showing
   only enabled/available text-to-image models while keeping automatic routing
   as the default.
