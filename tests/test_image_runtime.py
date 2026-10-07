@@ -3105,6 +3105,24 @@ class ImageRuntimeTests(unittest.TestCase):
             "status": "queued",
         }
 
+        catalog = {
+            "default_model": "configured-image-model",
+            "models": [
+                {
+                    "id": "configured-image-model",
+                    "enabled": True,
+                    "available": True,
+                },
+            ],
+        }
+
+        def image_request(method, path, payload=None, timeout=10):
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/jobs":
+                return queued_job
+            raise AssertionError((method, path, payload))
+
         with patch.object(
             agent,
             "translate_image_prompt_to_english",
@@ -3120,8 +3138,8 @@ class ImageRuntimeTests(unittest.TestCase):
         ), patch.object(
             agent.image_api,
             "request",
-            return_value=queued_job,
-        ) as image_request:
+            side_effect=image_request,
+        ) as image_request_mock:
             agent._start_chat_image_job(
                 "image_generate",
                 self.make_chat_action_request(
@@ -3139,7 +3157,13 @@ class ImageRuntimeTests(unittest.TestCase):
                 ),
             )
 
-        generate_call, edit_call = image_request.call_args_list
+        job_calls = [
+            call
+            for call in image_request_mock.call_args_list
+            if call.args[0] == "POST" and call.args[1] == "/jobs"
+        ]
+        self.assertEqual(len(job_calls), 2)
+        generate_call, edit_call = job_calls
         self.assertEqual(generate_call.args[2]["operation"], "generate")
         self.assertEqual(
             generate_call.args[2]["payload"]["model"],
