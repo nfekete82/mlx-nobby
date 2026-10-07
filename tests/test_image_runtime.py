@@ -254,7 +254,7 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
-        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 7)
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 8)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,

@@ -46,8 +46,8 @@ and active Shorts jobs can be cancelled from History or the queue.
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
 - Local text-to-speech with Serena and private local voice-clone profiles, managed through the Voice Manager, with pause/resume playback in chat
-- Qwen Image 2.1 generation through MLX-Serve, Qwen image editing, optional
-  DiffusionKit/MFLUX/SDXL providers, and Real-ESRGAN upscaling
+- Qwen Image 2.1 through MLX-Serve or optional MFLUX 0.20 Q8, Boogu Q8,
+  Qwen image editing, DiffusionKit/SDXL providers, and Real-ESRGAN upscaling
 - Per-request image-model selection for enabled and locally available
   text-to-image models, with automatic routing remaining the default
 - Local LTX 2.5 text-to-video and image-to-video generation with preview,

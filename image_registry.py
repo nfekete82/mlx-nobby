@@ -30,6 +30,8 @@ MLXSERVE_QWEN_IMAGE21_DEFAULT_STEPS = 20
 Z_IMAGE_TURBO_ID = "mflux-z-image-turbo"
 Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
 Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
+MFLUX_QWEN_IMAGE21_ID = "mflux-qwen-image-2.1"
+MFLUX_BOOGU_ID = "mflux-boogu-image-turbo"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
 JUGGERNAUT_XI_NAME = "Juggernaut XI v11"
@@ -37,7 +39,7 @@ JUGGERNAUT_XI_REPOSITORY = "RunDiffusion/Juggernaut-XI-v11"
 JUGGERNAUT_XI_CHECKPOINT = "Juggernaut-XI-byRunDiffusion.safetensors"
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
-BUILTIN_DEFAULTS_REVISION = 7
+BUILTIN_DEFAULTS_REVISION = 8
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -65,6 +67,14 @@ FAMILIES = {
     "qwen-image": (
         "mflux-generate-qwen",
         ("qwen-image",),
+    ),
+    "qwen-image21": (
+        "mflux-generate-qwen-2.1",
+        ("qwen-image-2.1",),
+    ),
+    "boogu": (
+        "mflux-generate-boogu",
+        ("boogu-image-turbo",),
     ),
     "qwen-image-edit": (
         "mflux-generate-qwen-edit",
@@ -196,6 +206,14 @@ class ImageModel(BaseModel):
                 raise ValueError("SDXL benötigt einen lokalen Checkpoint ohne LoRAs oder Quantisierung")
         elif self.model_family not in FAMILIES or self.base_model not in FAMILIES[self.model_family][1]:
             raise ValueError("Nicht unterstützte MFLUX-Modellfamilie/Basismodell-Kombination")
+        if (
+            self.provider == "mflux"
+            and self.model_family in {"qwen-image21", "boogu"}
+            and any(lora.enabled for lora in self.loras)
+        ):
+            raise ValueError(
+                f"{self.model_family} unterstützt in MFLUX 0.20.0 keine LoRAs"
+            )
         if self.model_family == "flux2-klein" and "base" not in self.base_model and self.default_guidance != 1:
             raise ValueError("FLUX.2 Klein distilled benötigt Guidance 1")
         # Capabilities describe adapter support, never arbitrary HTTP claims.
@@ -219,6 +237,14 @@ class ImageModel(BaseModel):
                     "lora",
                     "multi_lora",
                 ]
+        elif (
+            self.provider == "mflux"
+            and self.model_family in {"qwen-image21", "boogu"}
+        ):
+            self.capabilities = [
+                "text_to_image",
+                "variation",
+            ]
         elif self.provider == "sdxl":
             self.capabilities = [
                 "text_to_image",
@@ -266,6 +292,24 @@ def builtin_models():
         (Z_IMAGE_TURBO_ID, "Z-Image Turbo", Z_IMAGE_TURBO_REPO, "z-image-turbo", "z-image-turbo", 9, 0),
         ("mflux-qwen-image", "Qwen Image 2512", "Qwen/Qwen-Image-2512", "qwen-image", "qwen-image", 30, 3.5),
         (
+            MFLUX_QWEN_IMAGE21_ID,
+            "Qwen Image 2.1 · MFLUX · Q8",
+            "Qwen/Qwen-Image-2.1",
+            "qwen-image21",
+            "qwen-image-2.1",
+            40,
+            1.0,
+        ),
+        (
+            MFLUX_BOOGU_ID,
+            "Boogu Image Turbo · MFLUX · Q8",
+            "Boogu/Boogu-Image-0.1-Turbo",
+            "boogu",
+            "boogu-image-turbo",
+            8,
+            0.0,
+        ),
+        (
             QWEN_IMAGE_EDIT_ID,
             "Qwen Image Edit 2511 · 4-bit",
             "AbstractFramework/qwen-image-edit-2511-4bit",
@@ -296,8 +340,14 @@ def builtin_models():
             enabled=False,
         )
 
-        if ident == "mflux-qwen-image-edit-2511-quality":
+        if ident in {
+            MFLUX_QWEN_IMAGE21_ID,
+            MFLUX_BOOGU_ID,
+            "mflux-qwen-image-edit-2511-quality",
+        }:
             model_kwargs["quantization"] = "q8"
+
+        if ident == "mflux-qwen-image-edit-2511-quality":
             model_kwargs["quantize_on_load"] = True
 
         models.append(

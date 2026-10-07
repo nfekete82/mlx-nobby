@@ -28,10 +28,10 @@ its local model/runtime is available. The selected `image` role/default registry
 entry determines the provider; no particular installed model is assumed.
 MFLUX entries are opt-in and are only reported as available when their local
 Hugging Face snapshot (or an allowed `~/Models` path) is present. The service
-does not download weights. MFLUX 0.19.1 is called through the installed native CLI
-(`~/.local/bin/mflux-*`) in a short-lived subprocess with `shell=False`; this
-keeps the image runtime isolated from the normal chat/agent Python process and
-allows MLX/Metal memory to be released after each request.
+does not download weights. MFLUX 0.20.0 is called through the installed native
+CLI (`~/.local/bin/mflux-*`) in a short-lived subprocess with `shell=False`;
+this keeps the image runtime isolated from the normal chat/agent Python process
+and allows MLX/Metal memory to be released after each request.
 
 The optional `juggernaut-xl` entry uses a local SDXL checkpoint under
 `~/Models/JuggernautXL` and an offline Diffusers configuration. Its worker is
@@ -61,10 +61,15 @@ Supported MFLUX command families are selected explicitly by `model_family`:
 | Z-Image | `mflux-generate-z-image` |
 | Z-Image Turbo | `mflux-generate-z-image-turbo` |
 | Qwen Image | `mflux-generate-qwen` |
+| Qwen Image 2.1 | `mflux-generate-qwen-2.1` |
+| Boogu Image Turbo | `mflux-generate-boogu` |
 | Qwen Image Edit | `mflux-generate-qwen-edit` |
 
-Model-specific guidance/step limits and up to eight LoRAs are validated by
-the registry before a provider process is started. No prompt keyword filter is
+Model-specific guidance/step limits and adapter capabilities are validated by
+the registry before a provider process is started. Qwen Image 2.1 and Boogu are
+registered as Q8 opt-in models; neither accepts LoRAs in the pinned MFLUX 0.20
+contract. Boogu runs guidance-distilled without a `--guidance` argument. Krea 2
+remains intentionally removed from the registry. No prompt keyword filter is
 added by the runtime.
 
 ## Image jobs and iterative editing

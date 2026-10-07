@@ -110,18 +110,25 @@ the image service looks for them under `~/.local/bin` and
 `~/.local/share/realesrgan/models` unless `MLX_IMAGE_REALESRGAN_BIN` and
 `MLX_IMAGE_REALESRGAN_MODELS` override those paths.
 
-The optional standalone CLI is `mflux==0.19.1`. It is installed separately
-because the image adapter invokes its console commands. `mflux_capabilities.py`
-probes each executable's `--help` offline and caches its actual argument contract.
-The reviewed 0.19.1 CLI sources and the installed 0.20.0 runtime support the
-required generation/edit flags, but neither supports `--json-events` or Qwen
-Edit's former `--canvas-policy`. Source aspect is passed through resolved
-width/height; optional JSON progress is used only when the CLI advertises it.
-Qwen's supported loader expects an unquantized text/vision encoder. Packed
-quantized encoder weights are rejected during availability checks by reading
-local safetensors headers, without loading tensors. The dependency pin remains
-0.19.1; no runtime upgrades or model downloads were performed for this fix.
-See [MFLUX compatibility diagnosis](MFLUX_COMPATIBILITY.md).
+The optional standalone CLI is pinned to `mflux==0.20.0`. It is installed
+separately because the image adapter invokes its console commands.
+`scripts/setup-mflux-mlx` records the previous local tool state before replacing
+the uv-managed MFLUX tool and validates the CLI entry points MLX Nobby actually
+uses. `mflux_capabilities.py` probes each executable's `--help` offline and
+caches its actual argument contract.
+
+MFLUX 0.20 adds the dedicated `mflux-generate-qwen-2.1` path. MLX Nobby exposes
+Qwen Image 2.1 as an opt-in Q8 model with 40-step, guidance-free sampling
+(`guidance=1.0`) and Boogu Image Turbo as an opt-in Q8 model with distilled
+4-step/8-step profiles. Krea 2 remains intentionally removed from the Nobby
+registry. Qwen's supported loader keeps its text/vision encoder unquantized;
+availability checks reject packed quantized encoder weights by reading local
+safetensors headers without loading tensors.
+
+Qwen Edit still does not use the former `--canvas-policy`. Source aspect is
+passed through resolved width/height, and optional JSON progress is used only
+when the CLI advertises it. See
+[MFLUX compatibility diagnosis](MFLUX_COMPATIBILITY.md).
 
 ### Video dispatcher
 
@@ -210,7 +217,13 @@ Build and start the web application only through Compose:
 docker compose up -d --build
 ```
 
-For optional MFLUX support:
+For optional MFLUX support, the reproducible host setup is:
+
+```sh
+bash scripts/setup-mflux-mlx
+```
+
+The manifest remains available for an isolated venv installation:
 
 ```sh
 python3.13 -m venv mflux-venv
@@ -218,8 +231,9 @@ mflux-venv/bin/python -m pip install -r requirements/mflux.txt
 ```
 
 Set `MLX_IMAGE_MFLUX_BIN` in the image service's host environment to the
-absolute `mflux-venv/bin` path. The image service otherwise looks under
-`~/.local/bin`. MFLUX is not part of the default installer.
+absolute `mflux-venv/bin` path when using that venv. The image service otherwise
+looks under `~/.local/bin`, which is also where the uv tool installer exposes
+its commands. MFLUX is not part of the default installer.
 
 ## Import and consistency checks
 
@@ -280,7 +294,14 @@ targets use the host variables listed above.
 patches under `runtime-patches/ltx-2-mlx/<full-commit>/` are validated and
 applied in lexical order before `uv sync --frozen`. Wrong pins, unexpected
 local changes and patch mismatches stop setup. An upstream upgrade requires
-explicitly rebasing and checking the series against its new pin. The current
-series adds compatible non-block LoRA targets to the low-memory loader,
-while retaining streamed block fusion. See the patch directory's
-README for state validation and repeat-install behavior.
+explicitly rebasing and checking the series against its new pin. The production installer is pinned to ltx-2-mlx 0.16.0 at commit
+`90f76c20864ea612071afbb4e714ceea99e38e34`. That pin currently needs no
+local runtime patch; its commit-bound patch directory is intentionally empty and
+still participates in fail-closed state validation. The historical 0.15.12 patch
+series remains stored under its own commit directory and is never reused against
+0.16.0.
+
+Set `LTX_MLX_MODEL_VARIANT=q8` when running `scripts/setup-ltx-video-mlx` to
+install the larger Q8 LTX-2.5 pack alongside the default Q4 pack. The two model
+directories coexist; Q4 remains the normal default runtime pack. See the patch
+directory README for state validation and repeat-install behavior.

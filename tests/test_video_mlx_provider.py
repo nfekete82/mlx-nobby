@@ -170,7 +170,8 @@ class VideoProviderDispatchTests(unittest.TestCase):
 
     def test_setup_uses_pack_local_gemma4_and_pinned_upstream(self):
         setup = Path("scripts/setup-ltx-video-mlx").read_text()
-        self.assertIn("1724ca673d59f023a8a95efee06e5d36d61c2765", setup)
+        self.assertIn("90f76c20864ea612071afbb4e714ceea99e38e34", setup)
+        self.assertIn('UPSTREAM_VERSION="0.16.0"', setup)
         self.assertIn("text_encoder.safetensors", setup)
         self.assertIn("text_encoder_config.json", setup)
         self.assertNotIn("gemma-3-12b-it-4bit", setup)
