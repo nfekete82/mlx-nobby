@@ -21,6 +21,9 @@ test('voice popover exposes Pervin and Serena', () => {
     assert.match(voice, /id:\s*'Pervin'/);
     assert.match(voice, /id:\s*'Serena'/);
     assert.match(voice, /mlxVoicePopover/);
+    assert.match(voice, /mlx-voice-select/);
+    assert.match(voice, /document\.createElement\('select'\)/);
+    assert.doesNotMatch(voice, /className = 'mlx-voice-option'/);
     assert.match(voice, /voice\.auto_read/);
     assert.match(voice, /Auto-read responses/);
 });
