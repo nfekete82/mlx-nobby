@@ -45,7 +45,7 @@ and active Shorts jobs can be cancelled from History or the queue.
   regression feedback, and local diagnostics
 - MLX-VLM routing for multimodal requests
 - Speech-to-text through the native MLX Audio service
-- Local text-to-speech with Serena voice and pause/resume playback in chat
+- Local text-to-speech with Serena and private local voice-clone profiles, managed through the Voice Manager, with pause/resume playback in chat
 - Qwen Image 2.1 generation through MLX-Serve, Qwen image editing, optional
   DiffusionKit/MFLUX/SDXL providers, and Real-ESRGAN upscaling
 - Local LTX 2.5 text-to-video and image-to-video generation with preview,
@@ -368,8 +368,11 @@ Both text-to-video and image-to-video use the existing LTX-MLX model and runtime
 
 The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
-Chat messages can also be read aloud with the local Qwen3 TTS model and Serena
-voice; playback can be paused and resumed.
+Chat messages can also be read aloud with the local Qwen3 TTS models. Serena is
+the built-in preset voice; additional private clone profiles can be imported and
+managed through the Voice Manager. Clone references, transcripts and metadata are
+stored locally under `speech/voices/` (or `MLX_TTS_VOICES_DIR`) and are ignored
+by Git. Playback can be paused and resumed.
 
 See `IMAGE_RUNTIME.md` and `docs/DEPENDENCIES.md` for provider and runtime
 details.
