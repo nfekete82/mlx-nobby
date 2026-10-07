@@ -429,7 +429,7 @@
                 data-settings-tab="general"
                 class="active"
                 aria-selected="true"
-                data-i18n="ui.general">Allgemein</button>
+                data-i18n="ui.chat">Chat</button>
 
         <button type="button"
                 data-settings-tab="models"
@@ -495,8 +495,8 @@
     </nav>
     <div class="settings-pane" data-settings-pane="general">
         <div class="settings-page-intro">
-            <h4 data-i18n="ui.general">Allgemein</h4>
-            <p data-i18n="ui.global_settings_description">Globale Einstellungen für Chat-Verhalten und lokale Datensicherung.</p>
+            <h4 data-i18n="ui.chat">Chat</h4>
+            <p data-i18n="ui.global_settings_description">Globale Einstellungen für Chat-Verhalten, Darstellung und lokale Datensicherung.</p>
         </div>
 
         <section class="settings-card">
@@ -513,6 +513,67 @@
             <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
         </section>
 
+
+
+        <section class="settings-card">
+            <h4 class="settings-group-title" data-i18n="ui.chat_appearance">Chat-Darstellung</h4>
+
+            <div class="field">
+                <label for="chatFontSize">
+                    <span data-i18n="ui.font_size">Schriftgröße</span>
+                    <span id="chatFontSizeValue" class="appearance-value">15 px</span>
+                </label>
+
+                <input
+                    id="chatFontSize"
+                    type="range"
+                    min="13"
+                    max="20"
+                    step="1"
+                    value="15"
+                >
+            </div>
+
+            <div class="settings-hint" data-i18n="ui.font_size_description">Ändert die Schriftgröße der Chat-Nachrichten.</div>
+        </section>
+
+        <section class="settings-card">
+            <h4 class="settings-group-title" data-i18n="ui.own_messages">Eigene Nachrichten</h4>
+
+            <div class="field">
+                <label data-i18n="ui.chat_bubble_color">Farbe der Chat-Blase</label>
+
+                <div class="appearance-color-row">
+                    <input
+                        id="userBubbleColor"
+                        type="color"
+                        value="#2f6fea"
+                        aria-label="Farbe auswählen" data-i18n-aria-label="ui.choose_color"
+                    >
+
+                    <input
+                        id="userBubbleHex"
+                        type="text"
+                        value="#2F6FEA"
+                        maxlength="7"
+                        spellcheck="false"
+                        aria-label="Hex-Farbwert"
+                    >
+
+                    <button
+                        id="resetAppearance"
+                        type="button"
+                        class="message-action-btn"
+                    >
+                        Standard
+                    </button>
+                </div>
+            </div>
+
+            <div class="appearance-bubble-preview">
+                <span data-i18n="appearance.preview_message">So sieht deine Nachricht aus.</span>
+            </div>
+        </section>
 
 
         <section class="settings-card">
@@ -909,7 +970,7 @@
 
         <div class="settings-page-intro">
             <h4 data-i18n="appearance.title">Darstellung</h4>
-            <p data-i18n="appearance.description">Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.</p>
+            <p data-i18n="appearance.description">Sprache und Darstellung der Benutzeroberfläche.</p>
         </div>
 
         <section class="settings-card">
@@ -938,65 +999,6 @@
                 data-i18n="language.hint">Ändert die Sprache der Benutzeroberfläche.</p>
         </section>
 
-        <section class="settings-card">
-        <h4 class="settings-group-title" data-i18n="ui.chat">Chat</h4>
-
-        <div class="field">
-            <label for="chatFontSize">
-                <span data-i18n="ui.font_size">Schriftgröße</span>
-                <span id="chatFontSizeValue" class="appearance-value">15 px</span>
-            </label>
-
-            <input
-                id="chatFontSize"
-                type="range"
-                min="13"
-                max="20"
-                step="1"
-                value="15"
-            >
-        </div>
-
-        <div class="settings-hint" data-i18n="ui.font_size_description">Ändert die Schriftgröße der Chat-Nachrichten.</div>
-        </section>
-
-        <section class="settings-card">
-        <h4 class="settings-group-title">Eigene Nachrichten</h4>
-
-        <div class="field">
-            <label data-i18n="ui.chat_bubble_color">Farbe der Chat-Blase</label>
-
-            <div class="appearance-color-row">
-                <input
-                    id="userBubbleColor"
-                    type="color"
-                    value="#2f6fea"
-                    aria-label="Farbe auswählen" data-i18n-aria-label="ui.choose_color"
-                >
-
-                <input
-                    id="userBubbleHex"
-                    type="text"
-                    value="#2F6FEA"
-                    maxlength="7"
-                    spellcheck="false"
-                    aria-label="Hex-Farbwert"
-                >
-
-                <button
-                    id="resetAppearance"
-                    type="button"
-                    class="message-action-btn"
-                >
-                    Standard
-                </button>
-            </div>
-        </div>
-
-        <div class="appearance-bubble-preview">
-            <span data-i18n="appearance.preview_message">So sieht deine Nachricht aus.</span>
-        </div>
-        </section>
     </div>
     <div class="settings-pane" data-settings-pane="generation" hidden>
 

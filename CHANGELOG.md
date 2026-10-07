@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Group chat font size and user-message bubble styling under the Chat settings
+  section and rename the former General tab to Chat.
+
 - Add an explicit Talking Photo engine selector for Fast (MuseTalk), Quality
   (LTX + MuseTalk) and experimental direct LTX A2V comparison output.
 
