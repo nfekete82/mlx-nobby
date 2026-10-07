@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make direct LTX A2V the default Talking Photo engine for more natural mouth
+  integration; keep LTX + MuseTalk as an optional Hybrid lip-fix mode.
+
 - Group chat font size and user-message bubble styling under the Chat settings
   section and rename the former General tab to Chat.
 
