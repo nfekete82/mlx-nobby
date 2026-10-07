@@ -552,13 +552,6 @@ def test_image_releases_idle_musetalk_before_stopping_chat():
         },
         {
             "pressure": "normal",
-            "used_estimate_gb": 35.0,
-            "total_gb": 48.0,
-            "free_percent": 27.08,
-            "headroom_gb": 7.0,
-        },
-        {
-            "pressure": "normal",
             "used_estimate_gb": 19.0,
             "total_gb": 48.0,
             "free_percent": 60.42,
