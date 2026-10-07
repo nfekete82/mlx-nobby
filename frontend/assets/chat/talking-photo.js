@@ -205,6 +205,33 @@
             ),
         ));
 
+
+        const engineLabel = node('label', 'mlx-talking-photo-field');
+        engineLabel.append(node('span', '', localText('Engine', 'Engine')));
+        const engineSelect = document.createElement('select');
+        engineSelect.id = 'talkingPhotoEngine';
+        [
+            ['quality', localText('Quality · LTX + MuseTalk', 'Quality · LTX + MuseTalk')],
+            ['ltx', localText('LTX direkt · experimentell', 'Direct LTX · experimental')],
+            ['fast', localText('Fast · MuseTalk', 'Fast · MuseTalk')],
+        ].forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            engineSelect.append(option);
+        });
+        engineSelect.value = 'quality';
+        engineLabel.append(engineSelect);
+        engineLabel.append(node(
+            'div',
+            'mlx-talking-photo-hint',
+            localText(
+                'Quality kombiniert natürliche LTX-Bewegung mit MuseTalk-Lippen. LTX direkt lässt den finalen Lippen-Pass weg.',
+                'Quality combines natural LTX motion with MuseTalk lips. Direct LTX skips the final lip pass.',
+            ),
+        ));
+        right.append(engineLabel);
+
         const voiceLabel = node('label', 'mlx-talking-photo-field');
         voiceLabel.append(node('span', '', localText('Stimme', 'Voice')));
         const voiceSelect = document.createElement('select');
@@ -285,6 +312,7 @@
             preview.hidden = false;
         });
 
+        engineSelect.addEventListener('change', refreshProviderStatus);
         create.addEventListener('click', startJob);
         cancel.addEventListener('click', cancelCurrentJob);
         document.body.append(modal);
@@ -324,25 +352,36 @@
 
     async function refreshProviderStatus() {
         const create = document.getElementById('talkingPhotoCreate');
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'quality';
         if (create) create.disabled = true;
         try {
             const status = await requestJson('/api/talking-photo/status');
-            if (status.ready) {
+            const provider = status.providers?.[engine] || (
+                engine === 'fast' ? status : null
+            );
+            const labels = {
+                quality: 'LTX + MuseTalk',
+                ltx: 'LTX direkt',
+                fast: 'MuseTalk',
+            };
+            const label = labels[engine] || engine;
+
+            if (provider?.ready) {
                 setStatus(localText(
-                    `MuseTalk bereit${status.device ? ` · ${status.device}` : ''}.`,
-                    `MuseTalk ready${status.device ? ` · ${status.device}` : ''}.`,
+                    `${label} bereit${provider.device ? ` · ${provider.device}` : ''}.`,
+                    `${label} ready${provider.device ? ` · ${provider.device}` : ''}.`,
                 ));
                 if (create) create.disabled = false;
             } else {
                 setStatus(localText(
-                    `MuseTalk ist noch nicht bereit.\nEinmalig im Terminal ausführen: ${status.setup_command || './scripts/setup-musetalk-mac'}`,
-                    `MuseTalk is not ready yet.\nRun once in Terminal: ${status.setup_command || './scripts/setup-musetalk-mac'}`,
+                    `${label} ist noch nicht bereit.${provider?.setup_command ? `\nEinmalig im Terminal ausführen: ${provider.setup_command}` : ''}`,
+                    `${label} is not ready yet.${provider?.setup_command ? `\nRun once in Terminal: ${provider.setup_command}` : ''}`,
                 ));
             }
         } catch (error) {
             setStatus(localText(
-                `MuseTalk-Status konnte nicht geladen werden: ${error.message}`,
-                `Could not load MuseTalk status: ${error.message}`,
+                `Renderer-Status konnte nicht geladen werden: ${error.message}`,
+                `Could not load renderer status: ${error.message}`,
             ));
         }
     }
@@ -369,6 +408,7 @@
         const text = document.getElementById('talkingPhotoText')?.value?.trim() || '';
         const voice = document.getElementById('talkingPhotoVoice')?.value || null;
         const selectedLanguage = document.getElementById('talkingPhotoLanguage')?.value || 'de';
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'quality';
         const create = document.getElementById('talkingPhotoCreate');
         const cancel = document.getElementById('talkingPhotoCancel');
         const result = document.getElementById('talkingPhotoResult');
@@ -408,6 +448,7 @@
                     text,
                     voice,
                     language: selectedLanguage,
+                    engine,
                     speed: 1.0,
                 }),
             });
