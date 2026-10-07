@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Unify the chat top-bar actions with consistent SVG icons and replace the
+  text-only "Clear chat" action with an accessible icon button.
+
+
 ## v1.7.0
 
 - Add local Talking Photo generation with managed MuseTalk-Mac, local TTS and lip sync, including clipboard image paste and robust handling of portrait dimensions.
