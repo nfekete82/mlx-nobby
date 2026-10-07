@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep the image-model picker visible for image generation and editing, show
+  configured unavailable models as disabled options, and pass the selected
+  compatible model with each image request.
+
 - Make direct LTX A2V the default Talking Photo engine for more natural mouth
   integration; keep LTX + MuseTalk as an optional Hybrid lip-fix mode.
 
