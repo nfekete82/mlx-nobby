@@ -6495,6 +6495,28 @@ def image_prompt_from_request(prompt):
 
 
 
+_MEDIA_PROMPT_TRANSLATION_REFUSAL_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"i\s+can(?:not|['’]t)\s+(?:generate|create|help|assist|provide|comply)"
+    r"|i(?:['’]m| am)\s+(?:sorry\b.{0,160})?(?:unable|not able)\s+to\s+"
+    r"(?:generate|create|help|assist|provide|comply)"
+    r"|i(?:['’]m| am)\s+sorry\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
+    r"|sorry\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
+    r"|as an ai\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _is_media_prompt_translation_refusal(content):
+    """Reject assistant-style refusals accidentally returned by the translator."""
+    return bool(
+        _MEDIA_PROMPT_TRANSLATION_REFUSAL_PATTERN.search(
+            str(content or "").strip()
+        )
+    )
+
+
 def translate_media_prompt_to_english(prompt):
     """Translate a media prompt to English without changing its meaning."""
 
@@ -6520,6 +6542,9 @@ def translate_media_prompt_to_english(prompt):
                 "and do not translate quoted text. "
                 "Only change wording where required to express the same meaning "
                 "in grammatical English. "
+                "This is a translation task, not a request to generate media. "
+                "Never answer, judge, or refuse the user's prompt. "
+                "If you cannot translate it literally, return the original text unchanged. "
                 "If the prompt is already English, return it unchanged. "
                 "Return only the English translation as plain text. "
                 "Do not output JSON, markdown, labels, commentary, explanations, "
@@ -6540,6 +6565,9 @@ def translate_media_prompt_to_english(prompt):
         ).strip()
 
         if not translated:
+            return value
+
+        if _is_media_prompt_translation_refusal(translated):
             return value
 
         if translated.startswith(("```", "{", "[")):
