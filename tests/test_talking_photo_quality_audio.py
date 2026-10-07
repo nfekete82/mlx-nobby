@@ -11,6 +11,27 @@ from agent.talking_photo_audio import validate_wav
 
 
 class TalkingPhotoQualityAudioTests(unittest.TestCase):
+    def test_direct_ltx_mode_skips_musetalk_and_returns_native_video(self):
+        details = {"elapsed_seconds": 1.25}
+        with mock.patch.object(
+            talking_photo_quality.talking_photo_ltx,
+            'generate',
+            return_value=(b'native-ltx-video', details),
+        ), mock.patch.object(
+            talking_photo_quality.talking_photo,
+            '_musetalk_lipsync',
+        ) as lipsync:
+            video, result = talking_photo_quality.generate(
+                'job',
+                cancelled=lambda: False,
+                apply_lipsync=False,
+            )
+
+        self.assertEqual(video, b'native-ltx-video')
+        self.assertEqual(result["engine"], "ltx")
+        self.assertIsNone(result["lipsync"])
+        lipsync.assert_not_called()
+
     def test_changed_conditioning_audio_is_rejected_before_the_lip_renderer(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'conditioning.wav'
