@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Upgrade the optional image runtime to pinned MFLUX 0.20.0, adding opt-in
+  Qwen Image 2.1 Q8 and Boogu Image Turbo Q8 while keeping Krea 2 removed.
+- Pin the managed ltx-2-mlx runtime to 0.16.0 and allow parallel Q4/Q8
+  LTX-2.5 model packs with fail-closed commit-bound runtime validation.
+- Add reproducible macOS setup helpers, compatibility checks, regression tests
+  and dependency/runtime documentation for the MLX system update.
+
 - Unify the chat top-bar actions with consistent SVG icons and replace the
   text-only "Clear chat" action with an accessible icon button.
 
