@@ -1,0 +1,202 @@
+#!/bin/bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_DIR="${JUGGERNAUT_RAGNAROK_DIR:-$HOME/Models/JuggernautXL}"
+CHECKPOINT="juggernautXL_ragnarok.safetensors"
+MODEL_VERSION="1759168"
+MODEL_URL="https://civitai.com/api/download/models/$MODEL_VERSION"
+MODEL_SHA256="dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
+CONFIG_REPO="stabilityai/stable-diffusion-xl-base-1.0"
+IMAGE_URL="${IMAGE_SERVICE_URL:-http://127.0.0.1:8030}"
+REMOVE_KREA=0
+REMOVE_JUGGERNAUT_Z=0
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./scripts/setup-juggernaut-ragnarok
+  ./scripts/setup-juggernaut-ragnarok --remove-juggernaut-z
+  ./scripts/setup-juggernaut-ragnarok --remove-krea --remove-juggernaut-z
+
+Installs Juggernaut XL Ragnarok into ~/Models/JuggernautXL using the
+single-checkpoint SDXL layout expected by MLX Nobby.
+
+--remove-juggernaut-z  Remove the temporary Juggernaut Z registry entry and HF cache.
+--remove-krea           Remove the known Krea 2 Turbo and Realism-LoRA HF caches.
+EOF
+}
+
+for argument in "$@"; do
+    case "$argument" in
+        --remove-juggernaut-z) REMOVE_JUGGERNAUT_Z=1 ;;
+        --remove-krea) REMOVE_KREA=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $argument" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+for command in curl shasum stat; do
+    command -v "$command" >/dev/null 2>&1 || {
+        echo "Benötigter Befehl fehlt: $command" >&2
+        exit 1
+    }
+done
+
+mkdir -p "$TARGET_DIR"
+temporary="$(mktemp -d "${TMPDIR:-/tmp}/mlx-nobby-juggernaut-ragnarok.XXXXXX")"
+cleanup() { rm -rf "$temporary"; }
+trap cleanup EXIT
+
+echo
+echo "Juggernaut XL Ragnarok"
+echo "────────────────────────────────────────────────────────────"
+echo "Ziel: $TARGET_DIR"
+echo
+
+installed_checkpoint="$TARGET_DIR/$CHECKPOINT"
+installed_hash=""
+if [ -f "$installed_checkpoint" ]; then
+    installed_hash="$(shasum -a 256 "$installed_checkpoint" | awk '{print $1}')"
+fi
+
+if [ "$installed_hash" = "$MODEL_SHA256" ]; then
+    echo "[1/4] Ragnarok-Checkpoint ist bereits vollständig installiert."
+    downloaded=""
+else
+    echo "[1/4] Lade Juggernaut XL Ragnarok von CivitAI..."
+    downloaded="$temporary/$CHECKPOINT"
+    curl -fL --retry 3 --retry-delay 2 --retry-all-errors \
+        "$MODEL_URL" \
+        -o "$downloaded"
+
+    checkpoint_size="$(stat -f%z "$downloaded" 2>/dev/null || echo 0)"
+    if [ "$checkpoint_size" -lt 6000000000 ]; then
+        echo "Checkpoint ist unerwartet klein ($checkpoint_size Bytes)." >&2
+        exit 1
+    fi
+
+    downloaded_hash="$(shasum -a 256 "$downloaded" | awk '{print $1}')"
+    if [ "$downloaded_hash" != "$MODEL_SHA256" ]; then
+        echo "SHA256-Prüfung fehlgeschlagen." >&2
+        echo "Erwartet: $MODEL_SHA256" >&2
+        echo "Gefunden: $downloaded_hash" >&2
+        exit 1
+    fi
+fi
+
+echo "[2/4] Prüfe lokale SDXL-Konfiguration..."
+if [ ! -f "$TARGET_DIR/config/model_index.json" ]; then
+    if ! command -v hf >/dev/null 2>&1; then
+        echo "Hugging Face CLI fehlt; wird nur für die SDXL-Konfiguration benötigt." >&2
+        exit 1
+    fi
+    mkdir -p "$temporary/config"
+    hf download "$CONFIG_REPO" \
+        --include "*.json" \
+        --include "*.txt" \
+        --include "*.model" \
+        --exclude "*.safetensors" \
+        --exclude "*.bin" \
+        --local-dir "$temporary/config"
+    rm -rf "$temporary/config/.cache"
+
+    if [ ! -f "$temporary/config/model_index.json" ]; then
+        echo "SDXL model_index.json fehlt nach dem Download." >&2
+        exit 1
+    fi
+
+    rm -rf "$TARGET_DIR/config"
+    mv "$temporary/config" "$TARGET_DIR/config"
+else
+    echo "Vorhandene SDXL-Konfiguration wird weiterverwendet."
+fi
+
+echo "[3/4] Ersetze bisherigen Juggernaut-Checkpoint..."
+if [ -n "$downloaded" ]; then
+    staged="$TARGET_DIR/.$CHECKPOINT.new"
+    rm -f "$staged"
+    mv "$downloaded" "$staged"
+
+    if curl -fsS "$IMAGE_URL/health" >/dev/null 2>&1; then
+        curl -fsS -X POST "$IMAGE_URL/unload" >/dev/null
+    fi
+
+    staged_hash="$(shasum -a 256 "$staged" | awk '{print $1}')"
+    [ "$staged_hash" = "$MODEL_SHA256" ] || {
+        echo "Zwischengespeicherter Checkpoint hat eine falsche SHA256." >&2
+        exit 1
+    }
+
+    find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' -delete
+    mv "$staged" "$installed_checkpoint"
+else
+    echo "Vorhandener Ragnarok-Checkpoint wird weiterverwendet."
+fi
+
+checkpoint_count="$(find "$TARGET_DIR" -maxdepth 1 -type f -name '*.safetensors' | wc -l | tr -d ' ')"
+if [ "$checkpoint_count" != "1" ]; then
+    echo "Juggernaut-Verzeichnis enthält nicht genau einen Checkpoint." >&2
+    exit 1
+fi
+
+echo "[4/4] Aktualisiere MLX-Nobby Image-Registry..."
+if curl -fsS "$IMAGE_URL/health" >/dev/null 2>&1; then
+    payload="$(
+        "$PROJECT_DIR/image-venv/bin/python" - "$TARGET_DIR" <<'PY'
+import json
+import sys
+print(json.dumps({
+    "name": "Juggernaut XL Ragnarok",
+    "local_path": sys.argv[1],
+    "enabled": True,
+    "default_steps": 30,
+    "default_guidance": 5.0,
+}))
+PY
+    )"
+    curl -fsS -X PUT -H "Content-Type: application/json" -d "$payload" \
+        "$IMAGE_URL/models/juggernaut-xl" >/dev/null
+    curl -fsS -X POST "$IMAGE_URL/models/juggernaut-xl/activate" >/dev/null
+    echo "Juggernaut XL Ragnarok ist aktiviert und als Standard gesetzt."
+else
+    echo "Image-Service läuft nicht; Modell wurde installiert, aber nicht aktiviert."
+fi
+
+if [ "$REMOVE_JUGGERNAUT_Z" -eq 1 ]; then
+    echo "Entferne Juggernaut-Z-Testmodell und Hugging-Face-Cache..."
+    "$PROJECT_DIR/image-venv/bin/python" - <<'PY'
+from pathlib import Path
+import json
+
+path = Path.home() / ".config/mlx-web/image-models.json"
+if path.is_file():
+    data = json.loads(path.read_text(encoding="utf-8"))
+    models = data.get("models", [])
+    data["models"] = [
+        model for model in models
+        if not (
+            isinstance(model, dict)
+            and model.get("id") == "juggernaut-z"
+            and model.get("repository") == "RunDiffusion/Juggernaut-Z-Image"
+        )
+    ]
+    if data.get("default_model") == "juggernaut-z":
+        data["default_model"] = "juggernaut-xl"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+    rm -rf "$HOME/.cache/huggingface/hub/models--RunDiffusion--Juggernaut-Z-Image"
+fi
+
+if [ "$REMOVE_KREA" -eq 1 ]; then
+    echo "Entferne bekannte Krea-2-Caches..."
+    rm -rf \
+        "$HOME/.cache/huggingface/hub/models--krea--Krea-2-Turbo" \
+        "$HOME/.cache/huggingface/hub/models--gokaygokay--Krea-2-Realism-LoRA"
+fi
+
+echo
+echo "✓ Juggernaut XL Ragnarok installiert"
+echo "  $installed_checkpoint"
+echo "  SHA256: $MODEL_SHA256"
+[ "$REMOVE_JUGGERNAUT_Z" -eq 1 ] && echo "✓ Juggernaut Z Testmodell/Cache entfernt"
