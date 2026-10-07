@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20261002-pending-preview">
+<link rel="stylesheet" href="/assets/chat.css?v=20261007-settings-controls">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -82,8 +82,8 @@
                 id="railSettings"
                 class="rail-button"
                 type="button"
-                aria-label="Einstellungen" data-i18n-aria-label="ui.settings"
-                title="Einstellungen" data-i18n-title="ui.settings"
+                aria-label="Settings" data-i18n-aria-label="ui.settings"
+                title="Settings" data-i18n-title="ui.settings"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -292,42 +292,80 @@
 
             <div class="top-actions">
 
-                <button id="sidebarToggle" class="icon-btn sidebar-toggle" aria-label="Chat-Navigation öffnen" data-i18n-aria-label="ui.open_chat_navigation">☰</button>
+                <button
+                    id="sidebarToggle"
+                    class="icon-btn sidebar-toggle top-action-button"
+                    type="button"
+                    aria-label="Open chat navigation"
+                    data-i18n-aria-label="ui.open_chat_navigation"
+                    title="Open chat navigation"
+                    data-i18n-title="ui.open_chat_navigation"
+                >
+                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7h16M4 12h16M4 17h16"></path>
+                    </svg>
+                </button>
 
                 <button
                     id="runtimeInfoButton"
-                    class="icon-btn"
+                    class="icon-btn top-action-button"
+                    type="button"
                     aria-label="Runtime-Informationen"
+                    title="Runtime-Informationen"
                     aria-haspopup="true"
                     aria-expanded="false"
                 >
-                    ⓘ
+                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 10.75v5.25M12 7.5h.01"></path>
+                    </svg>
                 </button>
 
                 <button
                     id="clearButton"
-                    class="icon-btn"
-                 data-i18n="ui.clear_chat">Chat leeren</button>
-
+                    class="icon-btn top-action-button"
+                    type="button"
+                    aria-label="Chat leeren"
+                    data-i18n-aria-label="ui.clear_chat"
+                    title="Chat leeren"
+                    data-i18n-title="ui.clear_chat"
+                >
+                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m7.5 15.5 7.9-7.9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-7.9 7.9"></path>
+                        <path d="m4.6 12.6 6.8 6.8a2 2 0 0 1-2.8 0l-4-4a2 2 0 0 1 0-2.8Z"></path>
+                        <path d="M13 20h7"></path>
+                    </svg>
+                </button>
 
                 <button
                     id="settingsButton"
-                    class="icon-btn"
+                    class="icon-btn top-action-button"
+                    type="button"
+                    aria-label="Settings"
+                    data-i18n-aria-label="ui.settings"
+                    title="Settings"
+                    data-i18n-title="ui.settings"
                 >
-                    ⚙
+                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.33.7.6 1 .3.28.7.43 1.1.4H21v4h-.09a1.7 1.7 0 0 0-1.51.6Z"></path>
+                    </svg>
                 </button>
 
                 <div class="power-menu-wrap">
                     <button
                         id="powerButton"
-                        class="icon-btn"
+                        class="icon-btn top-action-button"
                         type="button"
                         aria-label="Systemaktionen" data-i18n-aria-label="ui.system_actions"
                         aria-haspopup="true"
                         aria-expanded="false"
                         title="Systemaktionen" data-i18n-title="ui.system_actions"
                     >
-                        ⏻
+                        <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 3v9"></path>
+                            <path d="M6.35 6.35a8 8 0 1 0 11.3 0"></path>
+                        </svg>
                     </button>
 
                     <div
