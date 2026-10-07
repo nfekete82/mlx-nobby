@@ -18,12 +18,12 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
                 if not ready:
                     self.assertEqual(health["setup_command"], "./scripts/setup-musetalk-mac")
 
-    def test_request_defaults_to_quality_on_quality_branch(self):
+    def test_request_defaults_to_direct_ltx(self):
         request = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
         )
-        self.assertEqual(request.engine, "quality")
+        self.assertEqual(request.engine, "ltx")
         direct = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
@@ -75,7 +75,7 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["provider"], "musetalk-mac")
-        self.assertEqual(status["default_engine"], "quality")
+        self.assertEqual(status["default_engine"], "ltx")
         self.assertTrue(status["quality_available"])
         self.assertTrue(status["ltx_available"])
         self.assertEqual(status["providers"]["quality"]["provider"], "ltx-2.5-mlx-a2v")

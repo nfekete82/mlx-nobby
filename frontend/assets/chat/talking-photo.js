@@ -211,8 +211,8 @@
         const engineSelect = document.createElement('select');
         engineSelect.id = 'talkingPhotoEngine';
         [
-            ['quality', localText('Quality · LTX + MuseTalk', 'Quality · LTX + MuseTalk')],
-            ['ltx', localText('LTX direkt · experimentell', 'Direct LTX · experimental')],
+            ['ltx', localText('Standard · LTX direkt', 'Default · Direct LTX')],
+            ['quality', localText('Hybrid · LTX + MuseTalk', 'Hybrid · LTX + MuseTalk')],
             ['fast', localText('Fast · MuseTalk', 'Fast · MuseTalk')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
@@ -220,14 +220,14 @@
             option.textContent = label;
             engineSelect.append(option);
         });
-        engineSelect.value = 'quality';
+        engineSelect.value = 'ltx';
         engineLabel.append(engineSelect);
         engineLabel.append(node(
             'div',
             'mlx-talking-photo-hint',
             localText(
-                'Quality kombiniert natürliche LTX-Bewegung mit MuseTalk-Lippen. LTX direkt lässt den finalen Lippen-Pass weg.',
-                'Quality combines natural LTX motion with MuseTalk lips. Direct LTX skips the final lip pass.',
+                'LTX direkt ist der Standard und erhält den natürlich generierten Mund. Hybrid ergänzt bei Bedarf einen MuseTalk-Lippenpass.',
+                'Direct LTX is the default and keeps the naturally generated mouth. Hybrid adds a MuseTalk lip pass when needed.',
             ),
         ));
         right.append(engineLabel);
@@ -352,7 +352,7 @@
 
     async function refreshProviderStatus() {
         const create = document.getElementById('talkingPhotoCreate');
-        const engine = document.getElementById('talkingPhotoEngine')?.value || 'quality';
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx';
         if (create) create.disabled = true;
         try {
             const status = await requestJson('/api/talking-photo/status');
@@ -360,8 +360,8 @@
                 engine === 'fast' ? status : null
             );
             const labels = {
-                quality: 'LTX + MuseTalk',
-                ltx: 'LTX direkt',
+                quality: 'Hybrid · LTX + MuseTalk',
+                ltx: 'Standard · LTX direkt',
                 fast: 'MuseTalk',
             };
             const label = labels[engine] || engine;
@@ -408,7 +408,7 @@
         const text = document.getElementById('talkingPhotoText')?.value?.trim() || '';
         const voice = document.getElementById('talkingPhotoVoice')?.value || null;
         const selectedLanguage = document.getElementById('talkingPhotoLanguage')?.value || 'de';
-        const engine = document.getElementById('talkingPhotoEngine')?.value || 'quality';
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx';
         const create = document.getElementById('talkingPhotoCreate');
         const cancel = document.getElementById('talkingPhotoCancel');
         const result = document.getElementById('talkingPhotoResult');
