@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an explicit Talking Photo engine selector for Fast (MuseTalk), Quality
+  (LTX + MuseTalk) and experimental direct LTX A2V comparison output.
+
 - Replace the long voice button list in the chat voice popover with a compact,
   styled dropdown while preserving speed, auto-read, preview and Voice Manager.
 
