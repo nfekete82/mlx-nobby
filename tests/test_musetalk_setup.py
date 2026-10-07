@@ -88,3 +88,16 @@ def test_musetalk_setup_keeps_health_check_after_launch_recovery():
     assert fallback in script
     assert health in script
     assert script.index(fallback) < script.rindex(health)
+
+
+def test_musetalk_setup_adds_idle_unload_with_lazy_reload():
+    script = _script_text()
+
+    assert "MLX-NOBBY-RUNTIME-UNLOAD-V1" in script
+    assert '@app.post("/unload")' in script
+    assert '"loaded": state.get("loaded") is True' in script
+    assert '"active_generation": _model_active > 0' in script
+    assert "torch.mps.empty_cache()" in script
+    assert '_load_models_locked()' in script
+    assert 'app.middleware("http")(_lazy_model_runtime)' in script
+    assert script.index('app.middleware("http")(_lazy_model_runtime)') > script.index('app = FastAPI(lifespan=lifespan)')

@@ -247,7 +247,8 @@ function storeImageModel(model) {
 
 async function updateImageModelOptions(
     select,
-    preferred = 'auto'
+    preferred = 'auto',
+    capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
 
@@ -278,23 +279,37 @@ async function updateImageModelOptions(
                 : []
         ).filter(model =>
             model?.enabled === true &&
-            model?.available === true &&
             Array.isArray(model?.capabilities) &&
-            model.capabilities.includes('text_to_image')
+            model.capabilities.includes(capability)
         );
 
         const defaultModel = models.find(
-            model => model.id === data?.default_model
+            model =>
+                model.id === data?.default_model &&
+                model.available === true
         );
         if (defaultModel?.name) {
             automatic.textContent +=
                 ' (' + defaultModel.name + ')';
         }
 
+        const unavailableLabel =
+            window.MLXI18n?.t(
+                'ui.status_unavailable',
+                'Unavailable'
+            ) || 'Unavailable';
+
         for (const model of models) {
             const option = document.createElement('option');
             option.value = model.id;
-            option.textContent = model.name || model.id;
+            option.disabled = model.available !== true;
+            option.textContent =
+                (model.name || model.id) +
+                (
+                    option.disabled
+                        ? ' · ' + unavailableLabel
+                        : ''
+                );
             select.appendChild(option);
         }
 
@@ -302,7 +317,9 @@ async function updateImageModelOptions(
             preferred || storedImageModel() || 'auto'
         ).trim() || 'auto';
         const available = models.some(
-            model => model.id === requested
+            model =>
+                model.id === requested &&
+                model.available === true
         );
 
         select.value = available ? requested : 'auto';
@@ -325,7 +342,7 @@ function imageOptionsForRequest(
 ) {
     const existing = options?.image || null;
 
-    if (mediaKind !== 'image' || !allowFormat) {
+    if (mediaKind !== 'image') {
         return existing;
     }
 
@@ -345,6 +362,10 @@ function imageOptionsForRequest(
             imageModel || 'auto'
         ).trim() || 'auto';
         merged.model = normalizedModel;
+    }
+
+    if (!allowFormat) {
+        return merged;
     }
 
     const size =
@@ -2821,8 +2842,11 @@ const imageFiles =
                         : [];
 
                 const imageModelSelectable =
-                    mediaQualityKind === 'image' &&
-                    resolvedTarget === 'image';
+                    mediaQualityKind === 'image';
+                const imageModelCapability =
+                    resolvedTarget === 'image_edit'
+                        ? 'image_edit'
+                        : 'text_to_image';
 
                 if (imageModelField) {
                     imageModelField.hidden =
@@ -2835,7 +2859,8 @@ const imageFiles =
                     selectedImageModel =
                         await updateImageModelOptions(
                             imageModelSelect,
-                            selectedImageModel
+                            selectedImageModel,
+                            imageModelCapability
                         );
                 }
 
@@ -3307,7 +3332,7 @@ const imageFiles =
                     selectedMediaFormat,
                     resolvedTarget === 'image' || Boolean(referenceMode),
                     selectedNegativePrompt,
-                    resolvedTarget === 'image'
+                    mediaQualityKind === 'image'
                         ? selectedImageModel
                         : null
                 ),

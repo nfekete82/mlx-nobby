@@ -3,6 +3,7 @@ import json
 import struct
 import sys
 import types
+from contextlib import nullcontext
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -30,6 +31,7 @@ speech_app_stub.get_tts_clone_model = lambda: None
 speech_app_stub.get_tts_model = lambda: None
 speech_app_stub.get_voice_profile = lambda voice: None
 speech_app_stub.list_voice_profiles = lambda: []
+speech_app_stub.speech_activity = nullcontext
 sys.modules.setdefault("speech.app", speech_app_stub)
 
 from speech import streaming_routes

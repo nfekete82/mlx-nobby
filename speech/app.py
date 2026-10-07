@@ -1,4 +1,6 @@
 from pathlib import Path
+from contextlib import contextmanager
+import gc
 import json
 import os
 import re
@@ -125,6 +127,33 @@ _tts_model = None
 _tts_model_lock = threading.Lock()
 _tts_clone_model = None
 _tts_clone_model_lock = threading.Lock()
+_activity_lock = threading.Lock()
+_active_requests = 0
+_unloading = False
+
+
+@contextmanager
+def speech_activity():
+    """Prevent model unload while an STT/TTS generation is active."""
+    global _active_requests
+    with _activity_lock:
+        if _unloading:
+            raise RuntimeError("Speech-Runtime wird gerade entladen")
+        _active_requests += 1
+    try:
+        yield
+    finally:
+        with _activity_lock:
+            _active_requests = max(0, _active_requests - 1)
+
+
+def _clear_mlx_cache():
+    gc.collect()
+    try:
+        import mlx.core as mx
+        mx.clear_cache()
+    except Exception:
+        pass
 
 
 class SpeechRequest(BaseModel):
@@ -334,8 +363,40 @@ def health():
         "tts_voice": current_default_voice(),
         "tts_clone_model": TTS_CLONE_MODEL_NAME,
         "tts_clone_loaded": _tts_clone_model is not None,
+        "active_generation": _active_requests > 0,
         "tts_voice_profiles": list_voice_profiles(),
         "tts_clone_sampling": clone_generation_options(),
+    }
+
+
+@app.post("/unload")
+def unload_models():
+    """Release idle STT/TTS weights for another heavy local runtime."""
+    global _model, _tts_model, _tts_clone_model, _unloading
+
+    with _activity_lock:
+        if _active_requests:
+            raise HTTPException(
+                status_code=409,
+                detail="Speech-Runtime ist noch aktiv",
+            )
+        _unloading = True
+
+    try:
+        with _model_lock, _tts_model_lock, _tts_clone_model_lock:
+            _model = None
+            _tts_model = None
+            _tts_clone_model = None
+            _clear_mlx_cache()
+    finally:
+        with _activity_lock:
+            _unloading = False
+
+    return {
+        "ok": True,
+        "loaded": False,
+        "tts_loaded": False,
+        "tts_clone_loaded": False,
     }
 
 
@@ -423,8 +484,9 @@ async def transcribe(file: UploadFile = File(...)):
                 f"Audio-Konvertierung fehlgeschlagen: {process.stderr.strip()}"
             )
 
-        model = get_model()
-        result = model.generate(wav_path)
+        with speech_activity():
+            model = get_model()
+            result = model.generate(wav_path)
 
         if isinstance(result, str):
             text = result
@@ -484,29 +546,30 @@ def synthesize_speech(request: SpeechRequest):
     wav_path = None
 
     try:
-        profile = get_voice_profile(request.voice)
+        with speech_activity():
+            profile = get_voice_profile(request.voice)
 
-        if profile is not None:
-            model = get_tts_clone_model()
-            results = list(
-                model.generate(
-                    text=text,
-                    ref_audio=str(profile["reference"]),
-                    ref_text=profile["ref_text"],
-                    lang_code=request.language,
-                    **clone_generation_options(request.voice),
+            if profile is not None:
+                model = get_tts_clone_model()
+                results = list(
+                    model.generate(
+                        text=text,
+                        ref_audio=str(profile["reference"]),
+                        ref_text=profile["ref_text"],
+                        lang_code=request.language,
+                        **clone_generation_options(request.voice),
+                    )
                 )
-            )
-        else:
-            model = get_tts_model()
-            results = list(
-                model.generate_custom_voice(
-                    text=text,
-                    speaker=request.voice,
-                    language=request.language,
-                    instruct=request.instruct,
+            else:
+                model = get_tts_model()
+                results = list(
+                    model.generate_custom_voice(
+                        text=text,
+                        speaker=request.voice,
+                        language=request.language,
+                        instruct=request.instruct,
+                    )
                 )
-            )
 
         if not results:
             raise RuntimeError(

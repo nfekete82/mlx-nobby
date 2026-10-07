@@ -308,6 +308,70 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["memory"], memory)
 
+    def test_image_releases_idle_speech_before_stopping_chat(self):
+        calls = []
+        snapshots = iter([
+            {
+                "pressure": "normal",
+                "used_estimate_gb": 35.0,
+                "total_gb": 48.0,
+                "free_percent": 27.08,
+                "headroom_gb": 7.0,
+            },
+            {
+                "pressure": "normal",
+                "used_estimate_gb": 20.0,
+                "total_gb": 48.0,
+                "free_percent": 58.33,
+                "headroom_gb": 22.0,
+            },
+        ])
+
+        speech_health_calls = 0
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal speech_health_calls
+            calls.append((method, url))
+            if url.startswith(runtime_coordinator.VIDEO_URL):
+                return {"status": "ready", "active_generation": False}
+            if method == "POST" and url == runtime_coordinator.SPEECH_URL + "/unload":
+                return {"ok": True}
+            if url == runtime_coordinator.SPEECH_URL + "/health":
+                speech_health_calls += 1
+                return {
+                    "status": "ok",
+                    "active_generation": False,
+                    "loaded": False,
+                    "tts_loaded": speech_health_calls == 1,
+                    "tts_clone_loaded": False,
+                }
+            raise AssertionError(url)
+
+        chat_probe = mock.Mock(return_value=True)
+        commands = []
+        with tempfile.TemporaryDirectory() as directory:
+            with runtime_coordinator.image_runtime(
+                threading.Event(),
+                requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=chat_probe,
+                chat_command=commands.append,
+                memory_snapshot=lambda: next(snapshots),
+            ) as preflight:
+                self.assertTrue(preflight["speech_released"])
+                self.assertFalse(preflight["chat_released"])
+                self.assertEqual(
+                    preflight["memory_admission"]["used_estimate_gb"],
+                    20.0,
+                )
+
+        self.assertIn(
+            ("POST", runtime_coordinator.SPEECH_URL + "/unload"),
+            calls,
+        )
+        chat_probe.assert_not_called()
+        self.assertEqual(commands, [])
+
     def test_image_releases_chat_when_projected_load_would_cross_limit(self):
         commands = []
         memory = iter([
@@ -474,3 +538,65 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_image_releases_idle_musetalk_before_stopping_chat():
+    calls = []
+    snapshots = iter([
+        {
+            "pressure": "normal",
+            "used_estimate_gb": 35.0,
+            "total_gb": 48.0,
+            "free_percent": 27.08,
+            "headroom_gb": 7.0,
+        },
+        {
+            "pressure": "normal",
+            "used_estimate_gb": 19.0,
+            "total_gb": 48.0,
+            "free_percent": 60.42,
+            "headroom_gb": 23.0,
+        },
+    ])
+    musetalk_health_calls = 0
+
+    def requester(method, url, payload=None, timeout=10):
+        nonlocal musetalk_health_calls
+        calls.append((method, url))
+        if url.startswith(runtime_coordinator.VIDEO_URL):
+            return {"status": "ready", "active_generation": False}
+        if url == runtime_coordinator.SPEECH_URL + "/health":
+            return {
+                "status": "ok",
+                "active_generation": False,
+                "loaded": False,
+                "tts_loaded": False,
+                "tts_clone_loaded": False,
+            }
+        if url == runtime_coordinator.MUSETALK_URL + "/health":
+            musetalk_health_calls += 1
+            return {
+                "ok": True,
+                "active_generation": False,
+                "loaded": musetalk_health_calls == 1,
+            }
+        if method == "POST" and url == runtime_coordinator.MUSETALK_URL + "/unload":
+            return {"ok": True, "loaded": False}
+        raise AssertionError(url)
+
+    commands = []
+    with tempfile.TemporaryDirectory() as directory:
+        with runtime_coordinator.image_runtime(
+            threading.Event(),
+            requester=requester,
+            lock_path=Path(directory) / "runtime.lock",
+            chat_loaded=mock.Mock(return_value=True),
+            chat_command=commands.append,
+            memory_snapshot=lambda: next(snapshots),
+        ) as preflight:
+            assert preflight["musetalk_released"] is True
+            assert preflight["chat_released"] is False
+            assert preflight["memory_admission"]["used_estimate_gb"] == 19.0
+
+    assert ("POST", runtime_coordinator.MUSETALK_URL + "/unload") in calls
+    assert commands == []

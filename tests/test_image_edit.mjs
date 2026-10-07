@@ -58,6 +58,13 @@ class ModalTestElement {
     replaceChildren(...children) {
         this.children = children;
     }
+    appendChild(child) {
+        if (!Array.isArray(this.children)) {
+            this.children = [];
+        }
+        this.children.push(child);
+        return child;
+    }
     focus() {}
     querySelector(selector) {
         if (selector === '[data-media-quality="standard"]') {
@@ -563,19 +570,23 @@ await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(visionChecks, 0);
 assert.deepEqual(
-    requests.slice(0, 4).map(request => request.url),
+    requests.slice(0, 5).map(request => request.url),
     [
         '/api/mlx/batch/upload',
         '/api/mlx/chat/actions/route',
+        '/api/image/models',
         '/api/mlx/chat/actions',
         '/api/mlx/image-jobs/' + 'a'.repeat(24),
     ],
 );
-const actionPayload = JSON.parse(requests[2].options.body);
+const actionRequest = requests.find(
+    request => request.url === '/api/mlx/chat/actions'
+);
+const actionPayload = JSON.parse(actionRequest.options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
-assert.equal(actionPayload.image_options, null);
+assert.deepEqual(actionPayload.image_options, { model: 'auto' });
 assert.equal(
     actionPayload.chat_id,
     'frontend-image-chat',
@@ -778,9 +789,11 @@ const followupRequestStart = requests.length;
 input.value = 'Mach es noch dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
-const secondActionPayload = JSON.parse(
-    requests[followupRequestStart + 1].options.body
-);
+const secondActionRequest = requests
+    .slice(followupRequestStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(secondActionRequest);
+const secondActionPayload = JSON.parse(secondActionRequest.options.body);
 assert.equal(secondActionPayload.file_context, null);
 assert.equal(
     secondActionPayload.active_artifact_id,
@@ -816,9 +829,11 @@ const thirdRequestStart = requests.length;
 input.value = 'Mach das Bild etwas wärmer.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
-const thirdActionPayload = JSON.parse(
-    requests[thirdRequestStart + 1].options.body
-);
+const thirdActionRequest = requests
+    .slice(thirdRequestStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(thirdActionRequest);
+const thirdActionPayload = JSON.parse(thirdActionRequest.options.body);
 assert.equal(thirdActionPayload.file_context, null);
 assert.equal(
     thirdActionPayload.active_artifact_id,
@@ -1082,8 +1097,12 @@ const uploadedPriorityStart = requests.length;
 input.value = 'Mach das Bild dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
+const uploadedPriorityActionRequest = requests
+    .slice(uploadedPriorityStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(uploadedPriorityActionRequest);
 const uploadedPriorityPayload = JSON.parse(
-    requests[uploadedPriorityStart + 1].options.body
+    uploadedPriorityActionRequest.options.body
 );
 assert.equal(
     uploadedPriorityPayload.file_context.stored_path,
@@ -1827,6 +1846,18 @@ context.fetch = async (url, options = {}) => {
                         enabled: true,
                         available: true,
                         capabilities: ['text_to_image'],
+                    }, {
+                        id: 'qwen-image-2.1',
+                        name: 'Qwen Image 2.1',
+                        enabled: true,
+                        available: false,
+                        capabilities: ['text_to_image'],
+                    }, {
+                        id: 'qwen-image-edit',
+                        name: 'Qwen Image Edit',
+                        enabled: true,
+                        available: true,
+                        capabilities: ['image_edit'],
                     }],
                 };
             },
@@ -1913,6 +1944,16 @@ for (const [prompt, expectedTarget, expectedModal] of [
     );
     if (expectedModal) {
         assert.equal(modalOpenEvents.at(-1), expectedModal, prompt);
+    }
+    if (expectedTarget === 'image') {
+        const field = modalElements.get('imageModelField');
+        const select = modalElements.get('imageModel');
+        assert.equal(field.hidden, false, prompt);
+        assert.equal(select.disabled, false, prompt);
+        assert.equal(select.children.length, 3, prompt);
+        assert.equal(select.children[1].value, 'juggernaut-xl', prompt);
+        assert.equal(select.children[2].value, 'qwen-image-2.1', prompt);
+        assert.equal(select.children[2].disabled, true, prompt);
     }
 }
 
@@ -2107,3 +2148,8 @@ for (const message of [realMessage, JSON.parse(JSON.stringify(realMessage))]) {
 }
 assert.equal(actionWarnings.length, 2);
 renderingWindow.MLXChatGeneration.createImageUpscaleMenu = originalActions;
+
+
+assert.match(generationSource, /const imageModelSelectable =\s*mediaQualityKind === 'image';/);
+assert.match(generationSource, /resolvedTarget === 'image_edit'\s*\? 'image_edit'\s*:\s*'text_to_image'/);
+assert.match(generationSource, /mediaQualityKind === 'image'\s*\? selectedImageModel\s*:\s*null/);

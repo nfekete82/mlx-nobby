@@ -38,3 +38,14 @@ def test_router_and_main_model_launchers_use_runtime_memory_guard():
     assert "runtime-model-guard.py" in router
     assert "--workload router" in router
     assert "scripts/mlx-router-start" in template
+
+
+def test_speech_service_can_release_idle_models_for_media_handoff():
+    source = Path("speech/app.py").read_text(encoding="utf-8")
+    streaming = Path("speech/streaming_routes.py").read_text(encoding="utf-8")
+
+    assert '@app.post("/unload")' in source
+    assert '"active_generation": _active_requests > 0' in source
+    assert "def speech_activity" in source
+    assert "_clear_mlx_cache()" in source
+    assert "with speech_activity():" in streaming

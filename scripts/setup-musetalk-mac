@@ -147,6 +147,212 @@ if marker not in text:
     path.write_text(text, encoding="utf-8")
 PY
 
+echo "Patching MuseTalk idle model unload / lazy reload support..."
+"$INSTALL_DIR/.venv/bin/python" - "$INSTALL_DIR/server.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+marker = "# MLX-NOBBY-RUNTIME-UNLOAD-V1"
+
+if marker not in text:
+    text = text.replace(
+        "import tempfile\nimport time\nfrom contextlib import asynccontextmanager\n",
+        "import tempfile\nimport time\nimport gc\nimport threading\n"
+        "from contextlib import asynccontextmanager\n",
+        1,
+    )
+
+    old_lifespan = '''@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    device = _pick_device()
+    print(f"[musetalk] loading models on {device}", flush=True)
+    vae, unet, pe = load_all_model(
+        unet_model_path="./models/musetalkV15/unet.pth",
+        vae_type="sd-vae",
+        unet_config="./models/musetalkV15/musetalk.json",
+        device=device,
+    )
+    pe = pe.to(device)
+    vae.vae = vae.vae.to(device)
+    unet.model = unet.model.to(device)
+
+    # Phase C: fp16 VAE. Decoder/encoder are the same class (AutoencoderKL);
+    # it auto-casts input latents to self.vae.dtype in decode_latents/encode_latents.
+    use_fp16_vae = os.environ.get("MUSETALK_FP16_VAE", "1") == "1"
+    if use_fp16_vae and device.type in ("mps", "cuda"):
+        vae.vae = vae.vae.half()
+        print("[musetalk] VAE → fp16", flush=True)
+
+    # UNet fp16 gave no measurable gain on MPS (see Phase C profile); leave off by default.
+    use_fp16_unet = os.environ.get("MUSETALK_FP16_UNET", "0") == "1"
+    if use_fp16_unet and device.type in ("mps", "cuda"):
+        unet.model = unet.model.half()
+        pe = pe.half()
+        print("[musetalk] UNet + PE → fp16", flush=True)
+
+    audio_processor = AudioProcessor(feature_extractor_path="./models/whisper")
+    weight_dtype = unet.model.dtype
+    whisper = WhisperModel.from_pretrained("./models/whisper")
+    whisper = whisper.to(device=device, dtype=weight_dtype).eval()
+    whisper.requires_grad_(False)
+
+    fp = FaceParsing(left_cheek_width=90, right_cheek_width=90)
+    timesteps = torch.tensor([0], device=device)
+
+    state.update(
+        device=device,
+        vae=vae,
+        unet=unet,
+        pe=pe,
+        audio_processor=audio_processor,
+        whisper=whisper,
+        weight_dtype=weight_dtype,
+        fp=fp,
+        timesteps=timesteps,
+    )
+    print("[musetalk] ready", flush=True)
+    yield
+'''
+
+    new_lifespan = '''# MLX-NOBBY-RUNTIME-UNLOAD-V1
+_model_lock = threading.RLock()
+_model_active = 0
+
+
+def _load_models_locked():
+    if state.get("loaded") is True:
+        return
+    device = _pick_device()
+    print(f"[musetalk] loading models on {device}", flush=True)
+    vae, unet, pe = load_all_model(
+        unet_model_path="./models/musetalkV15/unet.pth",
+        vae_type="sd-vae",
+        unet_config="./models/musetalkV15/musetalk.json",
+        device=device,
+    )
+    pe = pe.to(device)
+    vae.vae = vae.vae.to(device)
+    unet.model = unet.model.to(device)
+
+    use_fp16_vae = os.environ.get("MUSETALK_FP16_VAE", "1") == "1"
+    if use_fp16_vae and device.type in ("mps", "cuda"):
+        vae.vae = vae.vae.half()
+        print("[musetalk] VAE → fp16", flush=True)
+
+    use_fp16_unet = os.environ.get("MUSETALK_FP16_UNET", "0") == "1"
+    if use_fp16_unet and device.type in ("mps", "cuda"):
+        unet.model = unet.model.half()
+        pe = pe.half()
+        print("[musetalk] UNet + PE → fp16", flush=True)
+
+    audio_processor = AudioProcessor(feature_extractor_path="./models/whisper")
+    weight_dtype = unet.model.dtype
+    whisper = WhisperModel.from_pretrained("./models/whisper")
+    whisper = whisper.to(device=device, dtype=weight_dtype).eval()
+    whisper.requires_grad_(False)
+
+    state.update(
+        device=device,
+        vae=vae,
+        unet=unet,
+        pe=pe,
+        audio_processor=audio_processor,
+        whisper=whisper,
+        weight_dtype=weight_dtype,
+        fp=FaceParsing(left_cheek_width=90, right_cheek_width=90),
+        timesteps=torch.tensor([0], device=device),
+        loaded=True,
+    )
+    print("[musetalk] ready", flush=True)
+
+
+def _unload_models_locked():
+    avatar_cache.clear()
+    state.clear()
+    gc.collect()
+    if torch.backends.mps.is_available():
+        try:
+            torch.mps.empty_cache()
+        except Exception:
+            pass
+    print("[musetalk] models unloaded", flush=True)
+
+
+async def _lazy_model_runtime(request, call_next):
+    global _model_active
+    if request.url.path in {"/health", "/unload"}:
+        return await call_next(request)
+    with _model_lock:
+        _load_models_locked()
+        _model_active += 1
+    try:
+        return await call_next(request)
+    finally:
+        with _model_lock:
+            _model_active = max(0, _model_active - 1)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    with _model_lock:
+        _load_models_locked()
+    try:
+        yield
+    finally:
+        with _model_lock:
+            _unload_models_locked()
+'''
+
+    if old_lifespan not in text:
+        raise SystemExit(
+            "Error: unexpected MuseTalk lifespan source; refusing runtime-unload patch"
+        )
+    text = text.replace(old_lifespan, new_lifespan, 1)
+
+    app_anchor = 'app = FastAPI(lifespan=lifespan)\n'
+    middleware_registration = (
+        'app = FastAPI(lifespan=lifespan)\n'
+        'app.middleware("http")(_lazy_model_runtime)\n'
+    )
+    if app_anchor not in text:
+        raise SystemExit(
+            "Error: unexpected MuseTalk app creation; refusing runtime-unload patch"
+        )
+    text = text.replace(app_anchor, middleware_registration, 1)
+
+    old_health = '''@app.get("/health")
+def health():
+    return {"ok": True, "device": str(state.get("device")), "avatars": list(avatar_cache)}
+'''
+    new_health = '''@app.get("/health")
+def health():
+    return {
+        "ok": True,
+        "device": str(state.get("device")),
+        "avatars": list(avatar_cache),
+        "loaded": state.get("loaded") is True,
+        "active_generation": _model_active > 0,
+    }
+
+
+@app.post("/unload")
+def unload():
+    with _model_lock:
+        if _model_active:
+            raise HTTPException(status_code=409, detail="MuseTalk is still active")
+        _unload_models_locked()
+    return {"ok": True, "loaded": False, "active_generation": False}
+'''
+    if old_health not in text:
+        raise SystemExit(
+            "Error: unexpected MuseTalk health source; refusing runtime-unload patch"
+        )
+    text = text.replace(old_health, new_health, 1)
+    path.write_text(text, encoding="utf-8")
+PY
+
 echo "Validating MuseTalk source imports..."
 (
     cd "$INSTALL_DIR/upstream"
