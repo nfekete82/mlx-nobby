@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -9,6 +12,25 @@ import runtime_coordinator
 
 
 class RuntimeCoordinatorTests(unittest.TestCase):
+    def test_configured_hard_limit_cannot_exceed_90_percent(self):
+        for configured, expected in [("99", 90.0), ("90", 90.0), ("85", 85.0),
+                                     ("invalid", 90.0), ("inf", 90.0),
+                                     ("nan", 50.0)]:
+            with self.subTest(configured=configured):
+                result = subprocess.run(
+                    [sys.executable, "-c", (
+                        "import runtime_coordinator as r; "
+                        "assert r.memory_hard_limit_reached({'free_percent': 10}); "
+                        "assert r.projected_memory_hard_limit_reached("
+                        "{'total_gb': 48, 'used_estimate_gb': 40}, 4); "
+                        "print(r.HARD_MEMORY_USED_PERCENT)"
+                    )],
+                    cwd=Path(runtime_coordinator.__file__).parent,
+                    env=dict(os.environ, MLX_RUNTIME_HARD_USED_PERCENT=configured),
+                    capture_output=True, text=True, check=True, timeout=10,
+                )
+                self.assertEqual(float(result.stdout), expected)
+
     def test_idle_loaded_image_is_unloaded_before_video(self):
         calls = []
         health = [
