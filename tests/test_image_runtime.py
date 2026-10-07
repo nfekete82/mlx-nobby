@@ -1823,6 +1823,100 @@ class ImageRuntimeTests(unittest.TestCase):
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
+    def test_stale_image_role_falls_back_to_auto_and_persists(self):
+        agent.save_model_roles({
+            "image": "mflux-krea2-turbo",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": registry.JUGGERNAUT_XL_ID,
+                    "enabled": True,
+                    "available": True,
+                    "provider": "sdxl",
+                    "repository": None,
+                },
+            ],
+        }
+
+        calls = []
+
+        def image_request(method, path, payload=None, timeout=10):
+            calls.append((method, path, payload))
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/jobs":
+                return {
+                    "id": "a" * 24,
+                    "status": "queued",
+                }
+            raise AssertionError((method, path, payload))
+
+        with patch.object(
+            agent,
+            "translate_image_prompt_to_english",
+            return_value="A photorealistic portrait",
+        ), patch.object(
+            agent.image_api,
+            "request",
+            side_effect=image_request,
+        ):
+            agent._start_chat_image_job(
+                "image_generate",
+                self.make_chat_action_request(
+                    prompt="Erstelle ein Bild von einer Person",
+                ),
+            )
+
+        post = next(
+            call
+            for call in calls
+            if call[0] == "POST" and call[1] == "/jobs"
+        )
+        self.assertEqual(
+            post[2]["payload"]["model"],
+            "auto",
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "auto",
+        )
+
+    def test_image_models_api_repairs_stale_role_to_current_default(self):
+        agent.save_model_roles({
+            "image": "mflux-krea2-turbo",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": registry.JUGGERNAUT_XL_ID,
+                    "enabled": True,
+                    "available": True,
+                    "provider": "sdxl",
+                    "repository": None,
+                },
+            ],
+        }
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            return_value=catalog,
+        ):
+            result = agent.image_models_api()
+
+        self.assertEqual(result["role"], "auto")
+        self.assertEqual(
+            result["effective_model"],
+            registry.JUGGERNAUT_XL_ID,
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "auto",
+        )
+
     def test_agent_preserves_auto_image_role_for_service_routing(self):
         with patch.object(
             agent,
@@ -1957,10 +2051,49 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(agent.load_model_roles()["image"], "mflux-z-image-turbo")
 
     def test_api_generation_resolves_image_role(self):
-        agent.save_model_roles({"image": "mflux-qwen-image"})
-        with patch.object(agent.image_api, "request", return_value={}) as request:
+        agent.save_model_roles({
+            "image": "mflux-qwen-image",
+        })
+        catalog = {
+            "default_model": registry.JUGGERNAUT_XL_ID,
+            "models": [
+                {
+                    "id": "mflux-qwen-image",
+                    "enabled": True,
+                    "available": True,
+                },
+            ],
+        }
+        calls = []
+
+        def image_request(method, path, payload=None, timeout=10):
+            calls.append((method, path, payload))
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/generate":
+                return {}
+            raise AssertionError((method, path, payload))
+
+        with patch.object(
+            agent.image_api,
+            "request",
+            side_effect=image_request,
+        ):
             agent.image_generate_api({"prompt": "hello"})
-        self.assertEqual(request.call_args.args[2]["model"], "mflux-qwen-image")
+
+        post = next(
+            call
+            for call in calls
+            if call[0] == "POST" and call[1] == "/generate"
+        )
+        self.assertEqual(
+            post[2]["model"],
+            "mflux-qwen-image",
+        )
+        self.assertEqual(
+            agent.load_model_roles()["image"],
+            "mflux-qwen-image",
+        )
 
     @patch.object(service, "availability", new=lambda _model: (True, "ready"))
     def test_bad_ids_paths_families_and_parameters(self):
@@ -2972,6 +3105,24 @@ class ImageRuntimeTests(unittest.TestCase):
             "status": "queued",
         }
 
+        catalog = {
+            "default_model": "configured-image-model",
+            "models": [
+                {
+                    "id": "configured-image-model",
+                    "enabled": True,
+                    "available": True,
+                },
+            ],
+        }
+
+        def image_request(method, path, payload=None, timeout=10):
+            if method == "GET" and path == "/models":
+                return catalog
+            if method == "POST" and path == "/jobs":
+                return queued_job
+            raise AssertionError((method, path, payload))
+
         with patch.object(
             agent,
             "translate_image_prompt_to_english",
@@ -2987,8 +3138,8 @@ class ImageRuntimeTests(unittest.TestCase):
         ), patch.object(
             agent.image_api,
             "request",
-            return_value=queued_job,
-        ) as image_request:
+            side_effect=image_request,
+        ) as image_request_mock:
             agent._start_chat_image_job(
                 "image_generate",
                 self.make_chat_action_request(
@@ -3006,7 +3157,13 @@ class ImageRuntimeTests(unittest.TestCase):
                 ),
             )
 
-        generate_call, edit_call = image_request.call_args_list
+        job_calls = [
+            call
+            for call in image_request_mock.call_args_list
+            if call.args[0] == "POST" and call.args[1] == "/jobs"
+        ]
+        self.assertEqual(len(job_calls), 2)
+        generate_call, edit_call = job_calls
         self.assertEqual(generate_call.args[2]["operation"], "generate")
         self.assertEqual(
             generate_call.args[2]["payload"]["model"],
