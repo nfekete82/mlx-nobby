@@ -58,6 +58,13 @@ class ModalTestElement {
     replaceChildren(...children) {
         this.children = children;
     }
+    appendChild(child) {
+        if (!Array.isArray(this.children)) {
+            this.children = [];
+        }
+        this.children.push(child);
+        return child;
+    }
     focus() {}
     querySelector(selector) {
         if (selector === '[data-media-quality="standard"]') {
