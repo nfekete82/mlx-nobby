@@ -54,7 +54,8 @@ PRESSURE_CRITICAL_FREE_PERCENT = _float_env(
     "MLX_RUNTIME_PRESSURE_CRITICAL_PERCENT", 8.0
 )
 HARD_MEMORY_USED_PERCENT = min(
-    99.0,
+    # Configuration may tighten admission, but never raise the safety ceiling.
+    90.0,
     max(50.0, _float_env("MLX_RUNTIME_HARD_USED_PERCENT", 90.0)),
 )
 

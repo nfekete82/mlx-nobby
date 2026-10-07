@@ -366,7 +366,9 @@ class Acceptance:
         # Normal voice selection UI, using a built-in voice without switching TTS models.
         voice_button = page.locator('#mlxVoiceButton')
         voice_button.click()
-        page.locator('.mlx-voice-option').filter(has_text='Serena').click()
+        voice_select = page.locator('.mlx-voice-select')
+        voice_select.select_option(self.voice)
+        expect(voice_select).to_have_value(self.voice)
         page.keyboard.press('Escape')
         # Capture genuine Audio instances for observing events; keep the native constructor and play/pause implementations.
         page.evaluate('''() => {const AudioNative=window.Audio; window.__acceptanceAudio=[];

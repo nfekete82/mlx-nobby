@@ -81,6 +81,11 @@ MEDIA = """() => {
 def test_read_aloud_paint_play_pause_resume_end(ui):
     page, agent, _ = ui
     chat(page, agent)
+    page.locator('#mlxVoiceButton').click()
+    voice_select = page.locator('.mlx-voice-select')
+    voice_select.select_option('Serena')
+    expect(voice_select).to_have_value('Serena')
+    page.keyboard.press('Escape')
     page.evaluate(MEDIA)
     speech(page).click()
     # Hold the downstream response: verify state on the very next animation frame.
