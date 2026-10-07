@@ -99,3 +99,5 @@ def test_musetalk_setup_adds_idle_unload_with_lazy_reload():
     assert '"active_generation": _model_active > 0' in script
     assert "torch.mps.empty_cache()" in script
     assert '_load_models_locked()' in script
+    assert 'app.middleware("http")(_lazy_model_runtime)' in script
+    assert script.index('app.middleware("http")(_lazy_model_runtime)') > script.index('app = FastAPI(lifespan=lifespan)')
