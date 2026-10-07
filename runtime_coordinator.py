@@ -20,6 +20,9 @@ IMAGE_URL = os.environ.get(
 VIDEO_URL = os.environ.get(
     "VIDEO_SERVICE_URL", "http://127.0.0.1:8060"
 ).rstrip("/")
+SPEECH_URL = os.environ.get(
+    "SPEECH_SERVICE_URL", "http://127.0.0.1:8050"
+).rstrip("/")
 LOCK_PATH = Path(os.environ.get(
     "MLX_RUNTIME_COORDINATOR_LOCK",
     f"/tmp/mlx-web-runtime-{os.getuid()}.lock",
@@ -580,6 +583,40 @@ def release_idle_image_runtime(cancel_event=None, *, requester=request_json):
     return health
 
 
+def release_idle_speech_runtime(cancel_event=None, *, requester=request_json):
+    """Unload idle STT/TTS weights; an unavailable speech service is harmless."""
+    try:
+        health = wait_for_idle(
+            SPEECH_URL, "Speech", cancel_event, requester=requester
+        )
+    except ServiceUnavailable:
+        return {
+            "available": False,
+            "released": False,
+            "loaded": False,
+        }
+
+    loaded = any(
+        health.get(key) is True
+        for key in ("loaded", "tts_loaded", "tts_clone_loaded")
+    )
+    if not loaded:
+        return health | {"available": True, "released": False}
+
+    _check_cancelled(cancel_event)
+    requester("POST", SPEECH_URL + "/unload", {}, timeout=120)
+    health = wait_for_idle(
+        SPEECH_URL, "Speech", cancel_event, requester=requester
+    )
+    still_loaded = any(
+        health.get(key) is True
+        for key in ("loaded", "tts_loaded", "tts_clone_loaded")
+    )
+    if still_loaded:
+        raise RuntimeError("Speech-Runtime konnte nicht entladen werden")
+    return health | {"available": True, "released": True}
+
+
 @contextmanager
 def video_runtime(
     cancel_event,
@@ -701,14 +738,33 @@ def image_runtime(
                 image_reserve_gb,
             )
         )
+
+        speech_health = {"available": None, "released": False}
+        after_speech = before
+        if relief_needed:
+            speech_health = release_idle_speech_runtime(
+                cancel_event,
+                requester=requester,
+            )
+            if speech_health.get("released"):
+                after_speech = memory_snapshot()
+                relief_needed = (
+                    memory_relief_needed(after_speech)
+                    or projected_memory_hard_limit_reached(
+                        after_speech,
+                        image_reserve_gb,
+                    )
+                )
+
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
-        admission = memory_snapshot() if restore_chat else before
+        admission = memory_snapshot() if restore_chat else after_speech
         preflight = {
             "workload": "image",
             "memory_before": before,
+            "memory_after_speech_release": after_speech,
             "memory_admission": admission,
             "memory_relief_needed": relief_needed,
             "hard_limit_reached": projected_memory_hard_limit_reached(
@@ -717,6 +773,7 @@ def image_runtime(
             ),
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
             "load_reserve_gb": image_reserve_gb,
+            "speech_released": bool(speech_health.get("released")),
             "chat_released": restore_chat,
         }
         try:
