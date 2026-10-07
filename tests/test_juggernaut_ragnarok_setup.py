@@ -62,7 +62,7 @@ def test_legacy_xi_setup_redirects_to_ragnarok():
     source = LEGACY_SETUP.read_text(encoding="utf-8")
 
     assert "setup-juggernaut-ragnarok" in source
-    assert 'exec "' in source
+    assert 'exec bash "' in source
 
 
 def test_ragnarok_doc_replaces_xi_doc():
