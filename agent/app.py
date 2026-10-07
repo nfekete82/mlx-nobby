@@ -6500,6 +6500,7 @@ _MEDIA_PROMPT_TRANSLATION_REFUSAL_PATTERN = re.compile(
     r"i\s+can(?:not|['’]t)\s+(?:generate|create|help|assist|provide|comply)"
     r"|i(?:['’]m| am)\s+(?:sorry\b.{0,160})?(?:unable|not able)\s+to\s+"
     r"(?:generate|create|help|assist|provide|comply)"
+    r"|i(?:['’]m| am)\s+sorry\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
     r"|sorry\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
     r"|as an ai\b.{0,200}\b(?:can(?:not|['’]t)|unable to|not able to)\b"
     r")",
