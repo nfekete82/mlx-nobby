@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replace the long voice button list in the chat voice popover with a compact,
+  styled dropdown while preserving speed, auto-read, preview and Voice Manager.
+
 - Upgrade the optional image runtime to pinned MFLUX 0.20.0, adding opt-in
   Qwen Image 2.1 Q8 and Boogu Image Turbo Q8 while keeping Krea 2 removed.
 - Pin the managed ltx-2-mlx runtime to 0.16.0 and allow parallel Q4/Q8
