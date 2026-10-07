@@ -280,7 +280,6 @@ def _unload_models_locked():
     print("[musetalk] models unloaded", flush=True)
 
 
-@app.middleware("http")
 async def _lazy_model_runtime(request, call_next):
     global _model_active
     if request.url.path in {"/health", "/unload"}:
@@ -311,6 +310,17 @@ async def lifespan(_app: FastAPI):
             "Error: unexpected MuseTalk lifespan source; refusing runtime-unload patch"
         )
     text = text.replace(old_lifespan, new_lifespan, 1)
+
+    app_anchor = 'app = FastAPI(lifespan=lifespan)\n'
+    middleware_registration = (
+        'app = FastAPI(lifespan=lifespan)\n'
+        'app.middleware("http")(_lazy_model_runtime)\n'
+    )
+    if app_anchor not in text:
+        raise SystemExit(
+            "Error: unexpected MuseTalk app creation; refusing runtime-unload patch"
+        )
+    text = text.replace(app_anchor, middleware_registration, 1)
 
     old_health = '''@app.get("/health")
 def health():
