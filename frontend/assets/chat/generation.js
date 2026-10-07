@@ -3046,7 +3046,7 @@ const imageFiles =
                                 );
                             }
 
-                            imageModelSelect?.removeEventListener(
+                            imageModelSelect?.removeEventListener?.(
                                 'change',
                                 onImageModelChange
                             );
