@@ -21,8 +21,13 @@ from agent.talking_photo_audio import _analyze_wav
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 
 
+def direct_provider_health() -> dict:
+    """Report native LTX A2V availability without requiring MuseTalk."""
+    return talking_photo_ltx.provider_health()
+
+
 def provider_health() -> dict:
-    health = talking_photo_ltx.provider_health()
+    health = direct_provider_health()
     if health["ready"]:
         lipsync = talking_photo.provider_health()
         health["lipsync_provider"] = lipsync["provider"]
@@ -32,9 +37,19 @@ def provider_health() -> dict:
     return health
 
 
-def generate(job_id: str, *args, **kwargs) -> tuple[bytes, dict]:
-    """Retain LTX A2V motion, then enforce articulation with the existing lip renderer."""
+def generate(
+    job_id: str,
+    *args,
+    apply_lipsync: bool = True,
+    **kwargs,
+) -> tuple[bytes, dict]:
+    """Render native LTX A2V and optionally apply the final MuseTalk lip pass."""
     video, details = talking_photo_ltx.generate(job_id, *args, **kwargs)
+    if not apply_lipsync:
+        details["lipsync"] = None
+        details["engine"] = "ltx"
+        return video, details
+
     bundle = Path(details["debug_dir"]) if details.get("debug_dir") else None
     if bundle is not None:
         # A failed/cancelled lip pass must not leave a native output.mp4 that
@@ -134,6 +149,8 @@ def _persist_audio_diagnostics(
 
 
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
+    ltx_only = bool(request_payload.pop("_ltx_only", False))
+    engine = "ltx" if ltx_only else "quality"
     work = talking_photo.ROOT / "work" / job_id
     output = talking_photo.OUTPUT / f"{job_id}.mp4"
     work.mkdir(parents=True, exist_ok=True)
@@ -210,6 +227,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     debug_dir=debug_dir,
                     cancelled=lambda: talking_photo._cancelled(job_id),
                     update=lambda **changes: talking_photo._update_job(job_id, **changes),
+                    apply_lipsync=not ltx_only,
                 )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
@@ -230,8 +248,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "mime_type": "video/mp4",
                     "size_bytes": len(video),
                     "provider": "ltx-2.5-mlx-a2v",
-                    "lipsync_provider": "musetalk-mac",
-                    "engine": "quality",
+                    "lipsync_provider": None if ltx_only else "musetalk-mac",
+                    "engine": engine,
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
@@ -265,8 +283,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
         shutil.rmtree(work, ignore_errors=True)
 
 
-def create_job(payload: dict) -> dict:
-    health = provider_health()
+def create_job(payload: dict, *, ltx_only: bool = False) -> dict:
+    health = direct_provider_health() if ltx_only else provider_health()
     if not health["ready"]:
         raise HTTPException(
             503,
@@ -285,7 +303,7 @@ def create_job(payload: dict) -> dict:
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
-        "engine": "quality",
+        "engine": "ltx" if ltx_only else "quality",
         "text_characters": len(payload["text"]),
         "provider": "ltx-2.5-mlx-a2v",
         "result": None,
@@ -297,11 +315,13 @@ def create_job(payload: dict) -> dict:
     }
     with talking_photo._jobs_lock:
         talking_photo._write_job(job)
+    request_payload = dict(payload)
+    request_payload["_ltx_only"] = ltx_only
     thread = threading.Thread(
         target=_run_quality_job,
-        args=(job_id, image, extension, dict(payload)),
+        args=(job_id, image, extension, request_payload),
         daemon=True,
-        name=f"talking-photo-quality-{job_id}",
+        name=f"talking-photo-{'ltx' if ltx_only else 'quality'}-{job_id}",
     )
     thread.start()
     return job

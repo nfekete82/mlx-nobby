@@ -24,13 +24,14 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
-    engine: Literal["fast", "quality"] = "quality"
+    engine: Literal["fast", "quality", "ltx"] = "quality"
 
 
 def provider_status() -> dict:
     """Keep legacy top-level MuseTalk status while exposing Quality separately."""
     fast = talking_photo.provider_health()
     quality = talking_photo_quality.provider_health()
+    ltx = talking_photo_quality.direct_provider_health()
     return {
         "ready": bool(fast.get("ready")),
         "provider": fast.get("provider"),
@@ -39,9 +40,11 @@ def provider_status() -> dict:
         "detail": fast.get("detail"),
         "default_engine": "quality",
         "quality_available": bool(quality.get("ready")),
+        "ltx_available": bool(ltx.get("ready")),
         "providers": {
             "fast": fast,
             "quality": quality,
+            "ltx": ltx,
         },
     }
 
@@ -66,6 +69,8 @@ def install_routes(app):
             engine = payload.pop("engine", "quality")
             if engine == "quality":
                 return talking_photo_quality.create_job(payload)
+            if engine == "ltx":
+                return talking_photo_quality.create_job(payload, ltx_only=True)
             return talking_photo.create_job(payload)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:

@@ -23,6 +23,11 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "image/png,image/jpeg" in source
     assert "image/webp" not in source
     assert "video_url" in source
+    assert "talkingPhotoEngine" in source
+    assert "Quality · LTX + MuseTalk" in source
+    assert "LTX direkt · experimentell" in source
+    assert "Fast · MuseTalk" in source
+    assert "engine," in source
 
 
 def test_talking_photo_clipboard_module_supports_button_and_paste_shortcut():
