@@ -822,9 +822,11 @@ const thirdRequestStart = requests.length;
 input.value = 'Mach das Bild etwas wärmer.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
-const thirdActionPayload = JSON.parse(
-    requests[thirdRequestStart + 1].options.body
-);
+const thirdActionRequest = requests
+    .slice(thirdRequestStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(thirdActionRequest);
+const thirdActionPayload = JSON.parse(thirdActionRequest.options.body);
 assert.equal(thirdActionPayload.file_context, null);
 assert.equal(
     thirdActionPayload.active_artifact_id,
