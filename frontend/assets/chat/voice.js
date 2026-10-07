@@ -163,18 +163,53 @@
             }
             .mlx-voice-popover[hidden] { display: none; }
             .mlx-voice-title { padding: 3px 6px 8px; font-size: 12px; font-weight: 650; opacity: .7; }
-            .mlx-voice-option {
-                width: 100%; display: flex; align-items: center; gap: 10px;
-                padding: 9px 8px; border: 0; border-radius: 9px;
-                background: transparent; color: inherit; cursor: pointer; text-align: left;
+            .mlx-voice-select-wrap { padding: 0 2px 3px; }
+            .mlx-voice-select,
+            .mlx-voice-speed {
+                border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+                border-radius: 10px;
+                background-color: color-mix(in srgb, var(--panel-bg, #151515) 92%, white 8%);
+                color: inherit;
+                appearance: none;
+                -webkit-appearance: none;
+                outline: none;
+                cursor: pointer;
+                transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+                background-image:
+                    linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+                background-position:
+                    calc(100% - 15px) 50%,
+                    calc(100% - 10px) 50%;
+                background-size: 5px 5px, 5px 5px;
+                background-repeat: no-repeat;
             }
-            .mlx-voice-option:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-            .mlx-voice-dot { width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: 50%; opacity: .55; position: relative; flex: 0 0 auto; }
-            .mlx-voice-option.is-active .mlx-voice-dot { opacity: 1; }
-            .mlx-voice-option.is-active .mlx-voice-dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: currentColor; }
+            .mlx-voice-select {
+                width: 100%;
+                min-height: 42px;
+                padding: 0 34px 0 12px;
+                font: inherit;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            .mlx-voice-select:hover,
+            .mlx-voice-speed:hover {
+                border-color: color-mix(in srgb, currentColor 28%, transparent);
+                background-color: color-mix(in srgb, var(--panel-bg, #151515) 86%, white 14%);
+            }
+            .mlx-voice-select:focus-visible,
+            .mlx-voice-speed:focus-visible {
+                border-color: #4f8cff;
+                box-shadow: 0 0 0 3px rgba(79, 140, 255, .16);
+            }
+            .mlx-voice-select option,
+            .mlx-voice-speed option {
+                background: var(--panel-bg, var(--background, #151515));
+                color: inherit;
+            }
             .mlx-voice-divider { height: 1px; margin: 8px 4px; background: color-mix(in srgb, currentColor 12%, transparent); }
             .mlx-voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 6px; font-size: 13px; }
-            .mlx-voice-speed { border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 8px; background: transparent; color: inherit; padding: 5px 7px; }
+            .mlx-voice-speed { min-width: 82px; padding: 6px 28px 6px 8px; }
             .mlx-voice-toggle { position: relative; width: 34px; height: 20px; flex: 0 0 auto; }
             .mlx-voice-toggle input { position: absolute; opacity: 0; pointer-events: none; }
             .mlx-voice-toggle-track { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, currentColor 18%, transparent); cursor: pointer; }
@@ -324,20 +359,28 @@
         title.textContent = 'Stimme';
         popover.appendChild(title);
 
+        const voiceSelectWrap = document.createElement('div');
+        voiceSelectWrap.className = 'mlx-voice-select-wrap';
+
+        const voiceSelect = document.createElement('select');
+        voiceSelect.className = 'mlx-voice-select';
+        voiceSelect.setAttribute('aria-label', 'Voice');
+
         voices.forEach(item => {
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.className = 'mlx-voice-option' + (settings.voice === item.id ? ' is-active' : '');
-            option.innerHTML = `
-                <span class="mlx-voice-dot"></span>
-                <strong>${item.label}</strong>`;
-            option.addEventListener('click', () => {
-                settings.voice = item.id;
-                saveSettings();
-                renderPopover(popover);
-            });
-            popover.appendChild(option);
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.label || item.id;
+            option.selected = settings.voice === item.id;
+            voiceSelect.appendChild(option);
         });
+
+        voiceSelect.addEventListener('change', () => {
+            settings.voice = voiceSelect.value;
+            saveSettings();
+        });
+
+        voiceSelectWrap.appendChild(voiceSelect);
+        popover.appendChild(voiceSelectWrap);
 
         const divider = document.createElement('div');
         divider.className = 'mlx-voice-divider';
