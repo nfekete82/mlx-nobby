@@ -629,8 +629,15 @@ def mflux_command(model, params, output):
         str(MFLUX_BIN / FAMILIES[family][0]),
         "--model",
         str(model_directory(model)),
-        "--base-model",
-        model["base_model"],
+    ]
+
+    if family not in {"qwen-image21", "boogu"}:
+        command += [
+            "--base-model",
+            model["base_model"],
+        ]
+
+    command += [
         "--prompt=" + params["prompt"],
         "--width",
         str(params["width"]),
@@ -649,7 +656,7 @@ def mflux_command(model, params, output):
     if memory_policy["low_ram"] and '--low-ram' in flags:
         command.append("--low-ram")
 
-    if family != "z-image-turbo":
+    if family not in {"z-image-turbo", "boogu"}:
         command += [
             "--guidance",
             str(params["guidance"]),
