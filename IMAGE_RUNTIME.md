@@ -45,6 +45,13 @@ entries are migrated into an existing registry without overwriting user
 choices. The `image` model role in `model-roles.json` stores an image-registry
 id (or `auto`) and never resolves through `load_models()` or LLM aliases.
 
+For new text-to-image requests, the browser image dialog can override that
+default per request. It lists only enabled, currently available registry models
+with the `text_to_image` capability. `Auto` remains the default, while an
+explicit selection is forwarded as `image_options.model` and used for model
+prewarm as well as generation. The selection changes only the individual
+request; it does not rewrite the global image-role/default registry setting.
+
 Supported MFLUX command families are selected explicitly by `model_family`:
 
 | Family | Native command |

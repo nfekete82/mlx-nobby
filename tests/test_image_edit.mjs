@@ -88,6 +88,8 @@ const modalElements = new Map([
     ['mediaQualityModalConfirm', new ModalTestElement({ id: 'mediaQualityModalConfirm' })],
     ['mediaFormatField', new ModalTestElement({ id: 'mediaFormatField' })],
     ['mediaFormat', new ModalTestElement({ id: 'mediaFormat' })],
+    ['imageModelField', new ModalTestElement({ id: 'imageModelField' })],
+    ['imageModel', new ModalTestElement({ id: 'imageModel' })],
     ['videoDurationField', new ModalTestElement({ id: 'videoDurationField' })],
     ['videoDuration', new ModalTestElement({ id: 'videoDuration' })],
     ['mediaQuality', new ModalTestElement({ id: 'mediaQuality' })],
@@ -1810,8 +1812,27 @@ const routeTargets = new Map([
     ['Erstelle ein Video von einer Meeresküste', 'video'],
 ]);
 
-context.fetch = async (url, options) => {
+context.fetch = async (url, options = {}) => {
     requests.push({ url, options });
+
+    if (url === '/api/image/models') {
+        return {
+            ok: true,
+            async json() {
+                return {
+                    default_model: 'juggernaut-xl',
+                    models: [{
+                        id: 'juggernaut-xl',
+                        name: 'Juggernaut XI v11',
+                        enabled: true,
+                        available: true,
+                        capabilities: ['text_to_image'],
+                    }],
+                };
+            },
+        };
+    }
+
     const payload = JSON.parse(options.body);
 
     if (url === '/api/mlx/chat/actions/route') {
@@ -1867,7 +1888,13 @@ for (const [prompt, expectedTarget, expectedModal] of [
     await window.MLXChatGeneration.sendMessage();
 
     assert.deepEqual(
-        requests.slice(requestCount, requestCount + 2).map(item => item.url),
+        requests
+            .slice(requestCount)
+            .map(item => item.url)
+            .filter(url => [
+                '/api/mlx/chat/actions/route',
+                '/api/mlx/chat/actions',
+            ].includes(url)),
         [
             '/api/mlx/chat/actions/route',
             '/api/mlx/chat/actions',

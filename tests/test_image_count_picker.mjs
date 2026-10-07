@@ -260,7 +260,7 @@ const versionMatch = source.match(
     /const SCRIPT_VERSION = '([^']+)'/,
 );
 assert.ok(versionMatch, 'image count picker must expose a script version');
-assert.equal(versionMatch[1], '20261002-gallery-final');
+assert.equal(versionMatch[1], '20261007-image-model-picker');
 assert.ok(
     commonSource.includes(
         'image-count-picker.js?v=' + versionMatch[1],
@@ -272,6 +272,8 @@ assert.doesNotMatch(source, /settings: selectedImageBatchSettings\(\)/);
 assert.doesNotMatch(source, /applyImageBatchSettings\(artifact, batchSettings\)/);
 assert.doesNotMatch(source.slice(source.indexOf("async function generateAdditionalImages"), source.indexOf("async function maybeExpandActiveBatch")), /regenerateImageArtifact/);
 assert.match(source, /fetch\('\/api\/image\/prewarm'/);
+assert.match(source, /getElementById\?\.\('imageModel'\)/);
+assert.match(source, /JSON\.stringify\(\{ model, prompt \}\)/);
 assert.match(source, /if \(imageMode\) requestImagePrewarm\(\);/);
 assert.match(source, /mlx-i18n-ready/);
 assert.match(source, /mlx-language-changed/);

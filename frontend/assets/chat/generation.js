@@ -86,6 +86,8 @@ const IMAGE_FORMATS = Object.freeze([
     'portrait_3_4'
 ]);
 
+const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
+
 const IMAGE_SIZES_BY_FORMAT = Object.freeze({
     landscape: Object.freeze({
         width: 768,
@@ -221,12 +223,105 @@ async function updateVideoProfileAvailability(select) {
     }
 }
 
+function storedImageModel() {
+    try {
+        return String(
+            window.localStorage?.getItem?.(IMAGE_MODEL_STORAGE_KEY) ||
+            'auto'
+        ).trim() || 'auto';
+    } catch (_) {
+        return 'auto';
+    }
+}
+
+function storeImageModel(model) {
+    const value = String(model || 'auto').trim() || 'auto';
+    try {
+        window.localStorage?.setItem?.(
+            IMAGE_MODEL_STORAGE_KEY,
+            value
+        );
+    } catch (_) {}
+    return value;
+}
+
+async function updateImageModelOptions(
+    select,
+    preferred = 'auto'
+) {
+    if (!select) return 'auto';
+
+    const automatic = document.createElement('option');
+    automatic.value = 'auto';
+    automatic.textContent =
+        window.MLXI18n?.t(
+            'ui.image_model_auto',
+            'Automatic'
+        ) || 'Automatic';
+
+    select.disabled = true;
+    select.replaceChildren(automatic);
+
+    try {
+        const response = await fetch(
+            '/api/image/models',
+            { cache: 'no-store' }
+        );
+        if (!response.ok) {
+            throw new Error('Image model list unavailable');
+        }
+
+        const data = await response.json();
+        const models = (
+            Array.isArray(data?.models)
+                ? data.models
+                : []
+        ).filter(model =>
+            model?.enabled === true &&
+            model?.available === true &&
+            Array.isArray(model?.capabilities) &&
+            model.capabilities.includes('text_to_image')
+        );
+
+        const defaultModel = models.find(
+            model => model.id === data?.default_model
+        );
+        if (defaultModel?.name) {
+            automatic.textContent +=
+                ' (' + defaultModel.name + ')';
+        }
+
+        for (const model of models) {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name || model.id;
+            select.appendChild(option);
+        }
+
+        const requested = String(
+            preferred || storedImageModel() || 'auto'
+        ).trim() || 'auto';
+        const available = models.some(
+            model => model.id === requested
+        );
+
+        select.value = available ? requested : 'auto';
+        return select.value;
+    } catch (_) {
+        select.value = 'auto';
+        return 'auto';
+    } finally {
+        select.disabled = false;
+    }
+}
+
 function imageOptionsForRequest(
     options,
     mediaKind,
     format = 'square',
     allowFormat = false,
-    negativePrompt = ''
+    negativePrompt = '',
+    imageModel = null
 ) {
     const existing = options?.image || null;
 
@@ -243,6 +338,13 @@ function imageOptionsForRequest(
         merged.negative_prompt = normalizedNegativePrompt;
     } else {
         delete merged.negative_prompt;
+    }
+
+    if (imageModel !== null) {
+        const normalizedModel = String(
+            imageModel || 'auto'
+        ).trim() || 'auto';
+        merged.model = normalizedModel;
     }
 
     const size =
@@ -2650,6 +2752,11 @@ const imageFiles =
                 MLXChatRuntime.getSessionNegativePrompt?.() ??
                 ''
             ).trim();
+            let selectedImageModel = String(
+                options?.image?.model ||
+                storedImageModel() ||
+                'auto'
+            ).trim() || 'auto';
 
             let selectedMediaFormat =
                 mediaQualityKind === 'video'
@@ -2675,6 +2782,10 @@ const imageFiles =
                     document.getElementById('mediaFormatField');
                 const formatSelect =
                     document.getElementById('mediaFormat');
+                const imageModelField =
+                    document.getElementById('imageModelField');
+                const imageModelSelect =
+                    document.getElementById('imageModel');
                 const durationField =
                     document.getElementById('videoDurationField');
                 const durationSelect =
@@ -2708,6 +2819,25 @@ const imageFiles =
                             )
                         ]
                         : [];
+
+                const imageModelSelectable =
+                    mediaQualityKind === 'image' &&
+                    resolvedTarget === 'image';
+
+                if (imageModelField) {
+                    imageModelField.hidden =
+                        !imageModelSelectable;
+                }
+                if (
+                    imageModelSelectable &&
+                    imageModelSelect
+                ) {
+                    selectedImageModel =
+                        await updateImageModelOptions(
+                            imageModelSelect,
+                            selectedImageModel
+                        );
+                }
 
                 if (!(
                     modal &&
@@ -2916,6 +3046,11 @@ const imageFiles =
                                 );
                             }
 
+                            imageModelSelect?.removeEventListener?.(
+                                'change',
+                                onImageModelChange
+                            );
+
                             cancel.removeEventListener(
                                 'click',
                                 onCancel
@@ -2957,6 +3092,15 @@ const imageFiles =
                             finish(null);
                         };
 
+                        const onImageModelChange = () => {
+                            if (!imageModelSelectable) return;
+                            selectedImageModel = String(
+                                imageModelSelect?.value || 'auto'
+                            ).trim() || 'auto';
+                            window.MLXImageCountPicker
+                                ?.prewarm?.();
+                        };
+
                         const onNegativePromptPreset = event => {
                             if (!negativePromptInput) return;
 
@@ -2987,6 +3131,16 @@ const imageFiles =
                             }
                             if (mediaQualityKind === 'video' && profileSelect) {
                                 selectedVideoProfile = profileSelect.value;
+                            }
+
+                            if (
+                                imageModelSelectable &&
+                                imageModelSelect
+                            ) {
+                                selectedImageModel =
+                                    storeImageModel(
+                                        imageModelSelect.value
+                                    );
                             }
 
                             if (
@@ -3030,6 +3184,16 @@ const imageFiles =
                             preset.addEventListener(
                                 'click',
                                 onNegativePromptPreset
+                            );
+                        }
+
+                        if (
+                            imageModelSelectable &&
+                            imageModelSelect
+                        ) {
+                            imageModelSelect.addEventListener(
+                                'change',
+                                onImageModelChange
                             );
                         }
 
@@ -3142,7 +3306,10 @@ const imageFiles =
                     mediaQualityKind,
                     selectedMediaFormat,
                     resolvedTarget === 'image' || Boolean(referenceMode),
-                    selectedNegativePrompt
+                    selectedNegativePrompt,
+                    resolvedTarget === 'image'
+                        ? selectedImageModel
+                        : null
                 ),
                 video_options: videoOptionsForRequest(
                     options,
