@@ -27,6 +27,7 @@ from speech.app import (
     get_tts_model,
     get_voice_profile,
     list_voice_profiles,
+    speech_activity,
 )
 
 
@@ -87,7 +88,7 @@ def _stream_backpressure_delay(produced_audio_seconds: float, elapsed_seconds: f
     return max(0.0, lead - _MAX_STREAM_AHEAD_SECONDS)
 
 
-def _stream_results(request: SpeechRequest):
+def _stream_results_inner(request: SpeechRequest):
     text = request.input.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Leerer Text")
@@ -175,6 +176,11 @@ def _stream_results(request: SpeechRequest):
     )
 
 
+def _stream_results(request: SpeechRequest):
+    with speech_activity():
+        yield from _stream_results_inner(request)
+
+
 def _preload_worker():
     mode = _PRELOAD_MODE
     if mode in {"", "0", "false", "off", "none"}:
@@ -194,12 +200,13 @@ def _preload_worker():
         }
     )
     try:
-        if mode == "clone":
-            get_tts_clone_model()
-        elif mode in {"preset", "custom"}:
-            get_tts_model()
-        else:
-            raise ValueError(f"Unbekannter MLX_TTS_PRELOAD-Modus: {mode}")
+        with speech_activity():
+            if mode == "clone":
+                get_tts_clone_model()
+            elif mode in {"preset", "custom"}:
+                get_tts_model()
+            else:
+                raise ValueError(f"Unbekannter MLX_TTS_PRELOAD-Modus: {mode}")
         _PRELOAD_STATE["status"] = "ready"
         _PRELOAD_STATE["ready_at"] = time.time()
         print(f"[speech] TTS-Warmup bereit ({mode})", flush=True)
