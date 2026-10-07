@@ -336,7 +336,7 @@
         if (!document.getElementById('input')) return;
         try {
             await loadScript(
-                '/assets/chat/voice.js?v=20260928-voice-defaults-v2',
+                '/assets/chat/voice.js?v=20261007-voice-dropdown',
                 'mlx-voice-controls'
             );
             await loadScript(
