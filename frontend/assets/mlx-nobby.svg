@@ -1,7 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MLX Nobby">
-  <rect width="512" height="512" rx="112" fill="#000000"/>
-  <rect x="132" y="150" width="280" height="58" rx="29" fill="#FFFFFF"/>
-  <rect x="132" y="240" width="205" height="58" rx="29" fill="#FFFFFF"/>
-  <rect x="174" y="330" width="148" height="58" rx="29" fill="#FFFFFF"/>
-  <circle cx="374" cy="359" r="29" fill="#FFFFFF"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Ebene_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 64 64">
+  <!-- Generator: Adobe Illustrator 30.8.2, SVG Export Plug-In . SVG Version: 2.1.4 Build 7)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #4f7cff;
+      }
+
+      .st1 {
+        fill: #f3f4f6;
+      }
+
+      .st2 {
+        fill: #22d3ee;
+      }
+
+      .st3 {
+        fill: #8b5cf6;
+      }
+
+      .st4 {
+        fill: #8e8f95;
+      }
+    </style>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" ry="14"/>
+  <rect class="st0" x="11.4" y="11.3" width="40.8" height="8.5" rx="1.9" ry="1.9"/>
+  <rect class="st2" x="11.4" y="22.5" width="35.1" height="8.5" rx="1.9" ry="1.9"/>
+  <rect class="st3" x="11.4" y="33.3" width="29.4" height="8.5" rx="1.9" ry="1.9"/>
+  <rect class="st1" x="43.1" y="44.2" width="9.1" height="8.5" rx="1.9" ry="1.9"/>
+  <rect class="st4" x="11.4" y="44.2" width="23.8" height="8.5" rx="1.9" ry="1.9"/>
 </svg>
