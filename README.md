@@ -48,6 +48,8 @@ and active Shorts jobs can be cancelled from History or the queue.
 - Local text-to-speech with Serena voice and pause/resume playback in chat
 - Qwen Image 2.1 generation through MLX-Serve, Qwen image editing, optional
   DiffusionKit/MFLUX/SDXL providers, and Real-ESRGAN upscaling
+- Per-request image-model selection for enabled and locally available
+  text-to-image models, with automatic routing remaining the default
 - Local LTX 2.5 text-to-video and image-to-video generation with preview,
   format selection, and model-aware media quality profiles
 - Coordinated chat, image, and video runtimes with automatic resource handoff
