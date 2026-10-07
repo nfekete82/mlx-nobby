@@ -1827,6 +1827,18 @@ context.fetch = async (url, options = {}) => {
                         enabled: true,
                         available: true,
                         capabilities: ['text_to_image'],
+                    }, {
+                        id: 'qwen-image-2.1',
+                        name: 'Qwen Image 2.1',
+                        enabled: true,
+                        available: false,
+                        capabilities: ['text_to_image'],
+                    }, {
+                        id: 'qwen-image-edit',
+                        name: 'Qwen Image Edit',
+                        enabled: true,
+                        available: true,
+                        capabilities: ['image_edit'],
                     }],
                 };
             },
@@ -1913,6 +1925,16 @@ for (const [prompt, expectedTarget, expectedModal] of [
     );
     if (expectedModal) {
         assert.equal(modalOpenEvents.at(-1), expectedModal, prompt);
+    }
+    if (expectedTarget === 'image') {
+        const field = modalElements.get('imageModelField');
+        const select = modalElements.get('imageModel');
+        assert.equal(field.hidden, false, prompt);
+        assert.equal(select.disabled, false, prompt);
+        assert.equal(select.children.length, 3, prompt);
+        assert.equal(select.children[1].value, 'juggernaut-xl', prompt);
+        assert.equal(select.children[2].value, 'qwen-image-2.1', prompt);
+        assert.equal(select.children[2].disabled, true, prompt);
     }
 }
 
@@ -2107,3 +2129,8 @@ for (const message of [realMessage, JSON.parse(JSON.stringify(realMessage))]) {
 }
 assert.equal(actionWarnings.length, 2);
 renderingWindow.MLXChatGeneration.createImageUpscaleMenu = originalActions;
+
+
+assert.match(generationSource, /const imageModelSelectable =\s*mediaQualityKind === 'image';/);
+assert.match(generationSource, /resolvedTarget === 'image_edit'\s*\? 'image_edit'\s*:\s*'text_to_image'/);
+assert.match(generationSource, /mediaQualityKind === 'image'\s*\? selectedImageModel\s*:\s*null/);
