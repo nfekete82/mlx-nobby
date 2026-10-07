@@ -675,6 +675,8 @@
     "current_chat_markdown": "Current chat Markdown",
     "backup_all_chats": "Back up all chats",
     "chat": "Chat",
+    "chat_appearance": "Chat appearance",
+    "own_messages": "Your messages",
     "chat_bubble_color": "Chat bubble color",
     "current_chat": "Current chat",
     "new_chats": "New chats",
