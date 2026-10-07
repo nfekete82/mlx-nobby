@@ -11,10 +11,32 @@ import tempfile
 import wave
 from unittest import mock
 
-from agent import talking_photo_ltx
+from agent import talking_photo_ltx, talking_photo_quality
 
 
 class TalkingPhotoLtxTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
+    def test_padding_never_rounds_below_the_requested_video_frame_span(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, target = Path(directory) / "source.wav", Path(directory) / "padded.wav"
+            pcm = b"\0\0" * 160 + b"\x88\x13" * 1440
+            with wave.open(str(source), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(pcm)
+            for frames in (9, 17, 25, 33, 73, 81, 241):
+                with self.subTest(frames=frames):
+                    talking_photo_ltx._pad_audio(source, target, frames / 24)
+                    with wave.open(str(target)) as wav:
+                        count = wav.getnframes()
+                        padded = wav.readframes(count)
+                    self.assertEqual(int(count / 16000 * 24), frames)
+                    self.assertGreaterEqual(count / 16000, frames / 24)
+                    self.assertLess(count / 16000 - frames / 24, 1 / 16000)
+                    self.assertEqual(padded[:len(pcm)], pcm)
+                    self.assertFalse(any(padded[len(pcm):]))
+
     def test_seed_override_is_independent_of_job_id_including_zero(self):
         for seed in [0, 42, 1234, 1337, 2026, 858797624]:
             with self.subTest(seed=seed), mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_SEED": str(seed)}):
@@ -41,12 +63,14 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             wav.setframerate(16000)
             wav.writeframes(pcm)
         commands = []
+        native_video = b"\0\0\0\x18ftyp" + b"0" * 40
+        final_video = b"\0\0\0\x18ftyp" + b"1" * 40
         real_popen = subprocess.Popen
         def popen(command, **kwargs):
             if "--output" not in command:
                 return real_popen(command, **kwargs)
             commands.append(command)
-            Path(command[command.index("--output") + 1]).write_bytes(b"\0\0\0\x18ftyp" + b"0" * 40)
+            Path(command[command.index("--output") + 1]).write_bytes(native_video)
             process = mock.Mock(returncode=0)
             process.communicate.return_value = ("rendered", None)
             return process
@@ -57,14 +81,21 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                  mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}), \
                  mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)), \
                  mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()), \
+                 mock.patch.object(talking_photo_quality.talking_photo, "_musetalk_lipsync", return_value=(final_video, "test")) as lipsync, \
                  mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=popen):
                 # A bogus duration must never cause the actual speech to be cut.
-                _, details = talking_photo_ltx.generate(
+                video, details = talking_photo_quality.generate(
                     "a" * 24, b"portrait", ".png", buffer.getvalue(), 0.01, work,
                     cancelled=lambda: False, debug_dir=bundle)
             shutil.rmtree(work)
             command = commands[0]
             conditioning = Path(command[command.index("--audio") + 1])
+            lipsync.assert_called_once_with(native_video, conditioning.read_bytes(), "quality-" + hashlib.sha256(native_video).hexdigest()[:24])
+            self.assertEqual(video, final_video)
+            self.assertEqual(command[0], str(talking_photo_ltx.RUNTIME_PYTHON))
+            self.assertEqual(command[command.index("--model") + 1], str(talking_photo_ltx.MODEL_DIR))
+            self.assertEqual(int(command[command.index("--frames") + 1]), 9)
+            self.assertEqual(int(command[command.index("--fps") + 1]), 24)
             self.assertEqual(conditioning, (bundle / "ltx-quality-audio.wav").resolve())
             with wave.open(str(conditioning)) as wav:
                 padded = wav.readframes(wav.getnframes())
@@ -77,6 +108,10 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             self.assertEqual(metadata["seed"], 42)
             self.assertEqual(metadata["conditioning_audio_sha256"], hashlib.sha256(conditioning.read_bytes()).hexdigest())
             self.assertTrue((bundle / "output.mp4").is_file())
+            self.assertEqual((bundle / "output.mp4").read_bytes(), final_video)
+            self.assertEqual((bundle / "ltx-output.mp4").read_bytes(), native_video)
+            self.assertEqual(metadata["lipsync"]["provider"], "musetalk-mac")
+            self.assertEqual(metadata["lipsync"]["conditioning_audio_sha256"], metadata["conditioning_audio_sha256"])
             self.assertEqual((bundle / "ltx.log").read_text(), "rendered")
 
     def test_quality_frames_cover_audio_on_ltx_grid(self):

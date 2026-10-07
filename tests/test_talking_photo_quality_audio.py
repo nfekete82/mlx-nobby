@@ -11,6 +11,24 @@ from agent.talking_photo_audio import validate_wav
 
 
 class TalkingPhotoQualityAudioTests(unittest.TestCase):
+    def test_changed_conditioning_audio_is_rejected_before_the_lip_renderer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'conditioning.wav'
+            path.write_bytes(b'changed audio')
+            details = {'audio_path': str(path), 'conditioning_audio_sha256': 'original hash'}
+            with mock.patch.object(talking_photo_quality.talking_photo_ltx, 'generate', return_value=(b'video', details)), \
+                 mock.patch.object(talking_photo_quality.talking_photo, '_musetalk_lipsync') as lipsync:
+                with self.assertRaisesRegex(RuntimeError, 'Conditioning-WAV wurde verändert'):
+                    talking_photo_quality.generate('job', cancelled=lambda: False)
+                lipsync.assert_not_called()
+
+    def test_cancelled_a2v_output_is_not_sent_to_the_lip_renderer(self):
+        with mock.patch.object(talking_photo_quality.talking_photo_ltx, 'generate', return_value=(b'video', {})), \
+             mock.patch.object(talking_photo_quality.talking_photo, '_musetalk_lipsync') as lipsync:
+            with self.assertRaises(talking_photo_quality.talking_photo_ltx.QualityCancelled):
+                talking_photo_quality.generate('job', cancelled=lambda: True)
+            lipsync.assert_not_called()
+
     def test_tts_uses_qwen_language_names_without_changing_shared_speech_defaults(self):
         for supplied, expected in [('de', 'german'), ('de-DE', 'german'), ('en', 'english'),
                                    ('fr', 'french'), ('German', 'German'), ('auto', 'auto')]:
@@ -63,7 +81,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                      mock.patch.object(talking_photo_quality.talking_photo, '_request_tts', side_effect=tts), \
                      mock.patch.object(talking_photo_quality.talking_photo, '_audio_to_wav', return_value=wav), \
                      mock.patch.object(talking_photo_quality.talking_photo_ltx, 'debug_directory', return_value=None), \
-                     mock.patch.object(talking_photo_quality.talking_photo_ltx, 'generate', side_effect=generate):
+                     mock.patch.object(talking_photo_quality, 'generate', side_effect=generate):
                     talking_photo_quality._run_quality_job('a' * 24, b'image', '.png',
                         {'text': 'Hallo!', 'language': 'de', 'voice': voice, 'speed': 1.0})
                 expected = {'input': 'Hallo!', 'language': 'german'}

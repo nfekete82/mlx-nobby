@@ -155,7 +155,9 @@ def _pad_audio(source: Path, target: Path, duration: float) -> None:
     result = subprocess.run(
         [
             ffmpeg, "-y", "-v", "error", "-i", str(source),
-            "-af", "apad", "-t", f"{duration:.6f}",
+            # Round upward in samples: rounding a 17-frame span down by one
+            # sample makes MuseTalk's floor(duration * fps) drop a whole frame.
+            "-af", f"apad=whole_len={math.ceil(duration * 16000)}",
             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(target),
         ],
         capture_output=True, text=True, timeout=120,

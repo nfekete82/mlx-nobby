@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,7 +22,55 @@ AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
 
 
 def provider_health() -> dict:
-    return talking_photo_ltx.provider_health()
+    health = talking_photo_ltx.provider_health()
+    if health["ready"]:
+        lipsync = talking_photo.provider_health()
+        health["lipsync_provider"] = lipsync["provider"]
+        if not lipsync["ready"]:
+            health.update(ready=False, detail=lipsync["detail"],
+                          setup_command=lipsync["setup_command"])
+    return health
+
+
+def generate(job_id: str, *args, **kwargs) -> tuple[bytes, dict]:
+    """Retain LTX A2V motion, then enforce articulation with the existing lip renderer."""
+    video, details = talking_photo_ltx.generate(job_id, *args, **kwargs)
+    bundle = Path(details["debug_dir"]) if details.get("debug_dir") else None
+    if bundle is not None:
+        # A failed/cancelled lip pass must not leave a native output.mp4 that
+        # the debug CLI would mistake for a completed final result on resume.
+        (bundle / "output.mp4").rename(bundle / "ltx-output.mp4")
+    cancelled = kwargs["cancelled"]
+    if cancelled():
+        raise talking_photo_ltx.QualityCancelled()
+    # Reuse the exact padded WAV LTX loaded, preserving its onset and frame span.
+    conditioning = Path(details["audio_path"]).read_bytes()
+    digest = hashlib.sha256(conditioning).hexdigest()
+    if digest != details["conditioning_audio_sha256"]:
+        raise RuntimeError("Talking-Photo-Conditioning-WAV wurde verändert")
+    update = kwargs.get("update")
+    if update is not None:
+        update(phase="lipsync", progress=0.9)
+    started = time.monotonic()
+    native_digest = hashlib.sha256(video).hexdigest()
+    video, timing = talking_photo._musetalk_lipsync(
+        video, conditioning, "quality-" + native_digest[:24],
+    )
+    if cancelled():
+        raise talking_photo_ltx.QualityCancelled()
+    details["lipsync"] = {
+        "provider": "musetalk-mac", "conditioning_audio_sha256": digest,
+        "input_video_sha256": native_digest,
+        "timing": timing, "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
+    details["a2v_elapsed_seconds"] = details["elapsed_seconds"]
+    details["elapsed_seconds"] = round(details["elapsed_seconds"] + details["lipsync"]["elapsed_seconds"], 3)
+    if bundle is not None:
+        (bundle / "output.mp4").write_bytes(video)
+        (bundle / "render.json").write_text(
+            json.dumps(details, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        )
+    return video, details
 
 
 def tts_language(language: str) -> str:
@@ -151,7 +200,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                                ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
                 )
             try:
-                video, details = talking_photo_ltx.generate(
+                video, details = generate(
                     job_id,
                     image,
                     image_suffix,
@@ -181,6 +230,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "mime_type": "video/mp4",
                     "size_bytes": len(video),
                     "provider": "ltx-2.5-mlx-a2v",
+                    "lipsync_provider": "musetalk-mac",
                     "engine": "quality",
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",

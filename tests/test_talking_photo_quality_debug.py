@@ -3,6 +3,8 @@ import importlib.util
 import io
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 from unittest import mock
@@ -13,6 +15,25 @@ import pytest
 spec = importlib.util.spec_from_file_location('talking_photo_debug', 'scripts/debug-talking-photo-quality.py')
 debug = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(debug)
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='requires ffmpeg')
+def test_final_mp4_has_the_requested_frames_fps_audio_duration_and_onset(tmp_path):
+    audio = tmp_path / 'conditioning.wav'
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b'\0\0' * 1600 + b'\x88\x13' * 8000 + b'\0\0' * 1734)
+    video = tmp_path / 'final.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=size=64x64:rate=24',
+                    '-i', str(audio), '-frames:v', '17', '-c:v', 'libx264', '-c:a', 'aac',
+                    '-shortest', str(video)], check=True)
+    streams = debug.verify_output(video, 17, 24)
+    assert streams['audio']['sample_rate'] == '16000'
+    assert streams['audio']['channels'] == 1
+    with pytest.raises(RuntimeError, match='frame count/FPS'):
+        debug.verify_output(video, 25, 24)
 
 
 def test_debug_freezes_tts_once_and_resume_checks_input_hashes():

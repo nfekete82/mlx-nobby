@@ -2,9 +2,22 @@ import unittest
 from unittest import mock
 
 from agent import talking_photo_routes
+from agent import talking_photo_quality
 
 
 class TalkingPhotoRouteQualityTests(unittest.TestCase):
+    def test_quality_requires_both_renderers_and_reports_missing_lipsync_runtime(self):
+        for ready in (True, False):
+            with self.subTest(ready=ready), \
+                 mock.patch.object(talking_photo_quality.talking_photo_ltx, "provider_health", return_value={"ready": True, "provider": "ltx-2.5-mlx-a2v"}), \
+                 mock.patch.object(talking_photo_quality.talking_photo, "provider_health", return_value={"ready": ready, "provider": "musetalk-mac", "detail": "missing", "setup_command": "./scripts/setup-musetalk-mac"}):
+                health = talking_photo_quality.provider_health()
+                self.assertEqual(health["ready"], ready)
+                self.assertEqual(health["provider"], "ltx-2.5-mlx-a2v")
+                self.assertEqual(health["lipsync_provider"], "musetalk-mac")
+                if not ready:
+                    self.assertEqual(health["setup_command"], "./scripts/setup-musetalk-mac")
+
     def test_request_defaults_to_quality_on_quality_branch(self):
         request = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,

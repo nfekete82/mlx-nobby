@@ -1,8 +1,10 @@
-# Talking Photo Quality: nativer, reproduzierbarer LTX-A2V-Pfad
+# Talking Photo Quality: reproduzierbarer LTX-A2V-Pfad mit Lippenkorrektur
 
 ## Datenfluss
 
-`Text → Speech-Service → TTS-MP3 → ffmpeg PCM-WAV (16 kHz, Mono, 16 Bit) → End-Padding → LTX-2.5 MLX A2V → MP4`
+`Text → Speech-Service → TTS-MP3 → ffmpeg PCM-WAV (16 kHz, Mono, 16 Bit) → End-Padding → LTX-2.5 MLX A2V → MuseTalk Lippenkorrektur → MP4`
+
+Quality benötigt beide vorhandenen lokalen Renderer. LTX bleibt Q4 mit Runtime 0.16.0 und erzeugt weiterhin die audio-conditionierte Bewegung. Der abschließende MuseTalk-Pass erhält dieses Video und bytegleich dasselbe gepaddete Conditioning-WAV. Er korrigiert die Lippen, ohne Sprache zu verschieben, neu zu synthetisieren oder ihr Tempo zu verändern. Die Provider-Metadaten weisen LTX und `lipsync_provider=musetalk-mac` getrennt aus. Fehlt MuseTalk, meldet der Status dessen Setup-Befehl; es gibt keinen stillen Rückfall auf eine unzuverlässige native Artikulation.
 
 Standardstimme: Der Request enthält `input` und `language`. ISO-Codes werden ausschließlich im Quality-Pfad auf die von Qwen erwarteten Sprachnamen übersetzt (`de` → `german`, `en` → `english` usw.). Das setzt den richtigen Sprach-Token, ohne Tempo oder Audiosamples zu manipulieren. Wie im ursprünglichen Pfad wird kein `voice`-Override gesetzt. Custom-Voices ergänzen ausschließlich `voice`. Bei `speed=1.0` wird kein Speed-Parameter gesendet. Es gibt keine automatische Anpassung an die Dauer einer anderen Stimme, kein zweites `atempo` und kein Entfernen der Anfangsstille. Eine ausdrücklich über die API angeforderte Geschwindigkeit wird weiterhin einmal an den Speech-Service weitergegeben. Das Talking-Photo-UI sendet `speed=1.0`.
 
@@ -11,6 +13,8 @@ Der Speech-Service erzeugt derzeit MP3. Die vorhandene WAV-Konvertierung veränd
 ## Audio und LTX
 
 Die tatsächliche Samplezahl im WAV bestimmt die Videolänge. Die Anzahl der Frames wird auf das nächste gültige `8n+1`-Raster bei 24 FPS aufgerundet. Nur am Ende wird mit Stille aufgefüllt; keine Sprache wird abgeschnitten oder verlangsamt. Leere, abgeschnittene, falsch formatierte WAVs und Audio ohne aktives Signal oberhalb -45 dBFS scheitern vor dem teuren Rendern. Die Messwerte enthalten den Anteil aktiver 10-ms-Fenster; diese Signalprüfung ersetzt keine Spracherkennung.
+
+Das End-Padding rundet die benötigte Samplezahl ausdrücklich nach oben. Beispielsweise benötigen 17 Frames bei 24 FPS mindestens 11334 Samples bei 16 kHz. Die frühere ffmpeg-Dauerrundung auf 11333 Samples ließ MuseTalk mit `floor(audio_seconds * fps)` nur 16 Frames berechnen. Regressionstests prüfen die Rastergrenzen und erhaltene PCM-Samples einschließlich Anfangsstille.
 
 Der installierte A2V-Loader liest 16 kHz und expandiert intern auf Stereo. Die encodierten Audio-Latents sind in beiden Stufen eingefroren und conditionieren die Videoerzeugung. Das finale MP4 bekommt wieder das Eingabeaudio, keine aus dem Audio-VAE rekonstruierte Stimme.
 
@@ -42,6 +46,8 @@ Bei einem über launchd gestarteten Agent müssen diese Werte in dessen `Environ
 
 Jeder Debug-Run speichert TTS-Request und TTS-Output, Referenzbild, Quell-WAV, exakt das WAV aus dem finalen `--audio`-Argument, `render.json`, `runner.json`, Log und Output-MP4. `render.json` enthält Seed, Prompt/Negative Prompt, Frames, FPS, Quell- und gepaddete Audiodauer, Pegel, Hashes und den vollständigen Command. `runner.json` speichert die effektiven Pipelineargumente einschließlich Defaults und Messungen direkt am tatsächlich aufgerufenen Audio-Loader. Neue Runs enthalten zudem Paketversionen, Pythonversion sowie Hashes von Pipelinequelle und Modellkonfiguration.
 
+`ltx-output.mp4` bewahrt das native A2V-Ergebnis, `output.mp4` das finale Video nach der Lippenkorrektur. Damit lässt sich die Wirkung bei identischem Bild, WAV, Seed, Auflösung, Frames und FPS vergleichen. Das Debug-CLI nutzt denselben Abschluss wie der Quality-Job; der direkte Lippen-Benchmark rendert weiterhin native LTX-Varianten.
+
 `audio-debug/*.wav` ist weiterhin das Quell-WAV vor End-Padding; `stage=source-before-padding` kennzeichnet diesen Unterschied. Für das echte Conditioning-WAV den Render-Bundle verwenden.
 
 ## Regression und Seedvergleich
@@ -70,6 +76,14 @@ test-venv/bin/python scripts/debug-talking-photo-quality.py \
 `--prepare-only` friert die Eingaben ohne Rendern ein. `--resume` verwendet ausschließlich die bereits eingefrorenen Dateien, prüft ihre SHA-256-Hashes und überspringt abgeschlossene Videos. Gleicher Text und gleiche Stimme allein reichen nicht: Qwen-TTS kann neu samplen. Für einen kontrollierten LTX-Vergleich ist dasselbe WAV zwingend.
 
 `comparison.json` enthält Conditioning-Audiohashes, MP4-Hashes und Hashes der dekodierten Videoframes (`frames.md5`). Auf identischer Hardware/Runtime lassen sich damit identische Bilder prüfen. Ein deterministischer Seed garantiert keine gute Artikulation; die Vergleichsvideos müssen zusätzlich auf Mundbewegung, Audio-Synchronität und Identität geprüft werden.
+
+## Lokale Untersuchung vom 7. Oktober 2026
+
+Fast (MuseTalk) und Quality (LTX Q4, 0.16.0) wurden separat lokal reproduziert. Bei Quality kamen das erwartete 16-kHz-Mono-PCM-WAV, unveränderte Anfangsstille und korrekte Audio-/Videodauern an. Die 0.16-Korrekturen für eingefrorenes Audio in beiden Stufen, zeitliche Positionen und Frame-Raster sind im installierten Code vorhanden. Ein Rückbau der Runtime wäre daher kein belegter Fix.
+
+Der native A2V-Pfad ist für diese Referenz als alleiniger Lippenrenderer unzureichend: Ein frischer kurzer Satz mit bilabialen Lauten erzeugte bei Seed 42 einen durchgehend geöffneten Mund. Bei identischen Eingaben und denselben 33 Frames / 24 FPS brachte der vorhandene MuseTalk-Abschluss drei Mundschlüsse. Die minimale normierte Mundöffnung sank von 0.495 auf 0.035; beide Streams starten bei 0 und dauern 1.375 Sekunden. Die Korrelation der dekodierten finalen AAC-Spur mit dem Conditioning-WAV beträgt 0.99995 bei null Samples Versatz. AAC ist verlustbehaftet. Landmark-Mundschlüsse belegen die behobene starre Artikulation, aber keine perfekte Übereinstimmung jedes Phonems. Ein separater Bildanker-A/B-Test verbesserte den nativen Lippensync nicht zuverlässig. Private Videos, Messwerte und Testlogs liegen unter `artifacts/talking-photo-regression/lipsync-fix/`.
+
+Ein Alignment-Layer allein steuert keine der derzeitigen Pipelines: `speech/alignment_routes.py` liefert Wort-Zeitstempel für andere Funktionen. [WhisperX](https://github.com/m-bain/whisperX) kombiniert ASR mit sprachabhängigem wav2vec2-Forced-Alignment; CPU-Betrieb ist eine lokale Alternative für Diagnosen, die dokumentierte GPU-Beschleunigung setzt CUDA voraus. [Rhubarb](https://github.com/DanielSWolf/rhubarb-lip-sync) liefert lokal auf macOS diskrete Mundformen für 2D-Animation, auch mit sprachunabhängigem phonetischem Recognizer. Phonem-/Visem-Zeitstempel könnten einen eigens darauf ausgelegten Lippenrenderer oder eine Bewertungsmetrik unterstützen, verbessern aber das vorhandene LTX-Audio-Conditioning ohne zusätzliche Modellsteuerung nicht automatisch. Daher wurde keine weitere Dependency eingebaut. MuseTalk nutzt seinen bereits vorhandenen Whisper-Encoder für Audiofeatures; das ist unabhängig vom ASR-/Wort-Alignment-Service.
 
 ## Lokale Untersuchung vom 5. Oktober 2026
 

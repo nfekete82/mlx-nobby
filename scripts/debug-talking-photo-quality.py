@@ -7,6 +7,7 @@ All artifacts stay under --output; no Agent restart or settings changes needed.
 from __future__ import annotations
 
 import argparse
+from fractions import Fraction
 import hashlib
 import json
 import os
@@ -38,6 +39,28 @@ def parser():
 
 def write_json(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def verify_output(path, frames, fps):
+    """Check both final streams; matching container duration alone hides truncation."""
+    result = subprocess.run(
+        ['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(path)],
+        capture_output=True, text=True, check=True,
+    )
+    streams = json.loads(result.stdout)['streams']
+    video = next(s for s in streams if s['codec_type'] == 'video')
+    audio = next(s for s in streams if s['codec_type'] == 'audio')
+    if int(video['nb_frames']) != frames or float(Fraction(video['r_frame_rate'])) != fps:
+        raise RuntimeError('Final MP4 frame count/FPS differs from the render request')
+    expected = frames / fps
+    for stream in (video, audio):
+        if abs(float(stream['duration']) - expected) > 1 / fps:
+            raise RuntimeError('Final MP4 stream duration differs from the render request')
+        if abs(float(stream['start_time'])) > 1 / fps:
+            raise RuntimeError('Final MP4 stream onset is shifted')
+    return {s['codec_type']: {k: s[k] for k in
+            ('start_time', 'duration', 'nb_frames', 'r_frame_rate', 'sample_rate', 'channels') if k in s}
+            for s in (video, audio)}
 
 
 def main():
@@ -100,9 +123,10 @@ def main():
             os.environ['LTX_TALKING_PHOTO_SEED'] = str(seed)
             work = root / (label + '-work')
             try:
-                video, details = talking_photo_ltx.generate(
+                video, details = talking_photo_quality.generate(
                     label, image, image_path.suffix, wav, stats['frames'] / 16000,
                     work, cancelled=lambda: False, debug_dir=bundle)
+                streams = verify_output(bundle / 'output.mp4', details['frames'], details['fps'])
                 # Decode pixels for reproducibility: MP4 container hashes alone
                 # can differ without any visible difference.
                 md5 = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(bundle / 'output.mp4'),
@@ -113,6 +137,7 @@ def main():
                                 'conditioning_audio_sha256': details['conditioning_audio_sha256'],
                                 'decoded_frames_sha256': hashlib.sha256(md5.encode()).hexdigest(),
                                 'output_mp4_sha256': hashlib.sha256(video).hexdigest(),
+                                'streams': streams,
                                 'elapsed_seconds': details['elapsed_seconds']})
                 write_json(summary_path, results)
                 print(f'Completed {label}: {details["elapsed_seconds"]:.1f}s', flush=True)
