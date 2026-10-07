@@ -34,9 +34,10 @@ MFLUX_QWEN_IMAGE21_ID = "mflux-qwen-image-2.1"
 MFLUX_BOOGU_ID = "mflux-boogu-image-turbo"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
-JUGGERNAUT_XI_NAME = "Juggernaut XI v11"
-JUGGERNAUT_XI_REPOSITORY = "RunDiffusion/Juggernaut-XI-v11"
-JUGGERNAUT_XI_CHECKPOINT = "Juggernaut-XI-byRunDiffusion.safetensors"
+JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
+JUGGERNAUT_RAGNAROK_MODEL_VERSION = "1759168"
+JUGGERNAUT_RAGNAROK_CHECKPOINT = "juggernautXL_ragnarok.safetensors"
+JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
 BUILTIN_DEFAULTS_REVISION = 8
@@ -368,7 +369,7 @@ def builtin_models():
 
     models.append(ImageModel(
         id=JUGGERNAUT_XL_ID,
-        name=JUGGERNAUT_XI_NAME,
+        name=JUGGERNAUT_RAGNAROK_NAME,
         provider="sdxl",
         local_path=str(JUGGERNAUT_XL_DIRECTORY),
         model_family="sdxl",

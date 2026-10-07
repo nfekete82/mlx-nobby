@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A/B benchmark Juggernaut XI v11 SDXL schedulers on Apple Silicon."""
+"""A/B benchmark Juggernaut XL Ragnarok SDXL schedulers on Apple Silicon."""
 from __future__ import annotations
 
 import argparse

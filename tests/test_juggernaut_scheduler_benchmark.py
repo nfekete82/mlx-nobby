@@ -33,7 +33,7 @@ def test_sdxl_scheduler_default_is_existing_dpmpp_2m_karras():
     }
 
 
-def test_juggernaut_xi_production_defaults_match_validated_baseline():
+def test_juggernaut_ragnarok_production_defaults_match_validated_baseline():
     model = next(
         item
         for item in image_registry.builtin_models()
@@ -90,7 +90,7 @@ def test_juggernaut_benchmark_resolves_single_checkpoint_and_config(tmp_path):
     model_dir = tmp_path / "JuggernautXL"
     config = model_dir / "config"
     config.mkdir(parents=True)
-    checkpoint = model_dir / "Juggernaut-XI-byRunDiffusion.safetensors"
+    checkpoint = model_dir / "juggernautXL_ragnarok.safetensors"
     checkpoint.write_bytes(b"test")
     (config / "model_index.json").write_text("{}", encoding="utf-8")
 
