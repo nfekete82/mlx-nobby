@@ -563,15 +563,19 @@ await new Promise(resolve => setImmediate(resolve));
 
 assert.equal(visionChecks, 0);
 assert.deepEqual(
-    requests.slice(0, 4).map(request => request.url),
+    requests.slice(0, 5).map(request => request.url),
     [
         '/api/mlx/batch/upload',
         '/api/mlx/chat/actions/route',
+        '/api/image/models',
         '/api/mlx/chat/actions',
         '/api/mlx/image-jobs/' + 'a'.repeat(24),
     ],
 );
-const actionPayload = JSON.parse(requests[2].options.body);
+const actionRequest = requests.find(
+    request => request.url === '/api/mlx/chat/actions'
+);
+const actionPayload = JSON.parse(actionRequest.options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
