@@ -361,6 +361,18 @@ installs preserve these values from `~/Library/LaunchAgents/de.nobby.mlx-video.p
 unless explicitly overridden in the installer's environment. Export an empty
 `LTX_MLX_UNCENSORED_LORA` to disable the adapter. Docker `.env` does not configure
 native launchd services. The worker inherits the service environment.
+
+The pinned `ltx-2-mlx 0.16.0` also accepts the optional
+`LTX2_COMPUTE_DTYPE=float16` in the native video service environment. Direct
+Talking Photo LTX/A2V inherits the native Agent environment instead. Set the
+variable before starting these processes; an existing warm worker must be
+restarted while idle to pick it up. Leave it unset to retain upstream's default
+float32 compute. This reuses the existing pipeline and low-memory lifecycle.
+Float16 changes numerical results, so compare your own outputs before adopting
+it. Upstream checks for nonfinite DiT outputs and recomputes without the override.
+The Runtime Coordinator's RAM ceiling remains 90%; configuration can lower it
+but cannot raise it.
+
 The video model API reports optional profile availability using a lightweight
 local file/readability check; it never loads or downloads adapters for this check.
 Missing or invalid configuration rejects explicit Uncensored requests before
