@@ -23,6 +23,9 @@ VIDEO_URL = os.environ.get(
 SPEECH_URL = os.environ.get(
     "SPEECH_SERVICE_URL", "http://127.0.0.1:8050"
 ).rstrip("/")
+MUSETALK_URL = os.environ.get(
+    "MUSETALK_URL", "http://127.0.0.1:8070"
+).rstrip("/")
 LOCK_PATH = Path(os.environ.get(
     "MLX_RUNTIME_COORDINATOR_LOCK",
     f"/tmp/mlx-web-runtime-{os.getuid()}.lock",
@@ -583,6 +586,52 @@ def release_idle_image_runtime(cancel_event=None, *, requester=request_json):
     return health
 
 
+def release_idle_musetalk_runtime(cancel_event=None, *, requester=request_json):
+    """Unload idle MuseTalk weights when the installed server supports it."""
+    try:
+        health = wait_for_idle(
+            MUSETALK_URL, "MuseTalk", cancel_event, requester=requester
+        )
+    except ServiceUnavailable:
+        return {
+            "available": False,
+            "released": False,
+            "loaded": False,
+        }
+
+    # Older pinned installs did not expose model residency/unload. Treat them
+    # as unsupported rather than breaking image generation.
+    if health.get("loaded") is not True:
+        return health | {
+            "available": True,
+            "released": False,
+            "unload_supported": "loaded" in health,
+        }
+
+    _check_cancelled(cancel_event)
+    try:
+        requester("POST", MUSETALK_URL + "/unload", {}, timeout=120)
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            return health | {
+                "available": True,
+                "released": False,
+                "unload_supported": False,
+            }
+        raise
+
+    health = wait_for_idle(
+        MUSETALK_URL, "MuseTalk", cancel_event, requester=requester
+    )
+    if health.get("loaded") is True:
+        raise RuntimeError("MuseTalk-Runtime konnte nicht entladen werden")
+    return health | {
+        "available": True,
+        "released": True,
+        "unload_supported": True,
+    }
+
+
 def release_idle_speech_runtime(cancel_event=None, *, requester=request_json):
     """Unload idle STT/TTS weights; an unavailable speech service is harmless."""
     try:
@@ -756,15 +805,33 @@ def image_runtime(
                     )
                 )
 
+        musetalk_health = {"available": None, "released": False}
+        after_musetalk = after_speech
+        if relief_needed:
+            musetalk_health = release_idle_musetalk_runtime(
+                cancel_event,
+                requester=requester,
+            )
+            if musetalk_health.get("released"):
+                after_musetalk = memory_snapshot()
+                relief_needed = (
+                    memory_relief_needed(after_musetalk)
+                    or projected_memory_hard_limit_reached(
+                        after_musetalk,
+                        image_reserve_gb,
+                    )
+                )
+
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
-        admission = memory_snapshot() if restore_chat else after_speech
+        admission = memory_snapshot() if restore_chat else after_musetalk
         preflight = {
             "workload": "image",
             "memory_before": before,
             "memory_after_speech_release": after_speech,
+            "memory_after_musetalk_release": after_musetalk,
             "memory_admission": admission,
             "memory_relief_needed": relief_needed,
             "hard_limit_reached": projected_memory_hard_limit_reached(
@@ -774,6 +841,7 @@ def image_runtime(
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
             "load_reserve_gb": image_reserve_gb,
             "speech_released": bool(speech_health.get("released")),
+            "musetalk_released": bool(musetalk_health.get("released")),
             "chat_released": restore_chat,
         }
         try:

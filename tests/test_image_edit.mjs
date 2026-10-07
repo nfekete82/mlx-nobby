@@ -782,9 +782,11 @@ const followupRequestStart = requests.length;
 input.value = 'Mach es noch dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
-const secondActionPayload = JSON.parse(
-    requests[followupRequestStart + 1].options.body
-);
+const secondActionRequest = requests
+    .slice(followupRequestStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(secondActionRequest);
+const secondActionPayload = JSON.parse(secondActionRequest.options.body);
 assert.equal(secondActionPayload.file_context, null);
 assert.equal(
     secondActionPayload.active_artifact_id,
