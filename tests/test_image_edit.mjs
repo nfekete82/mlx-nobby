@@ -579,7 +579,7 @@ const actionPayload = JSON.parse(actionRequest.options.body);
 assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
-assert.equal(actionPayload.image_options, null);
+assert.deepEqual(actionPayload.image_options, { model: 'auto' });
 assert.equal(
     actionPayload.chat_id,
     'frontend-image-chat',
