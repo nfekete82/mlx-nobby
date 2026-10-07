@@ -1090,8 +1090,12 @@ const uploadedPriorityStart = requests.length;
 input.value = 'Mach das Bild dunkler.';
 await window.MLXChatGeneration.sendMessage();
 await new Promise(resolve => setImmediate(resolve));
+const uploadedPriorityActionRequest = requests
+    .slice(uploadedPriorityStart)
+    .find(request => request.url === '/api/mlx/chat/actions');
+assert.ok(uploadedPriorityActionRequest);
 const uploadedPriorityPayload = JSON.parse(
-    requests[uploadedPriorityStart + 1].options.body
+    uploadedPriorityActionRequest.options.body
 );
 assert.equal(
     uploadedPriorityPayload.file_context.stored_path,
