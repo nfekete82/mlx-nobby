@@ -639,6 +639,41 @@ class VideoAgentTests(unittest.TestCase):
         )
 
 
+    def test_video_prompt_translation_refusal_falls_back_to_source(self):
+        source = (
+            "Erstelle ein Video von einer erwachsenen Frau, "
+            "statische Kamera"
+        )
+        refusals = (
+            "I cannot generate content containing nudity or sexually explicit "
+            "material. I can, however, help you create a video prompt with a "
+            "different theme or setting if you would like.",
+            "I'm sorry, but I can't assist with that request.",
+            "As an AI, I am unable to comply with that request.",
+        )
+
+        for refusal in refusals:
+            with self.subTest(refusal=refusal), mock.patch.object(
+                agent,
+                "router_llm",
+                return_value=refusal,
+            ):
+                self.assertEqual(
+                    agent.compile_video_prompt(source),
+                    source,
+                )
+
+    def test_media_translation_refusal_guard_does_not_change_valid_output(self):
+        translated = (
+            "An adult woman says, \"I cannot generate rain\", "
+            "while the camera remains static."
+        )
+
+        self.assertFalse(
+            agent._is_media_prompt_translation_refusal(translated)
+        )
+
+
     def test_video_payload_translates_full_prompt_without_stripping(self):
         source = (
             "Erstelle ein Video von einem roten Ball, "
