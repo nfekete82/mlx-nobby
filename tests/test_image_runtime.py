@@ -259,7 +259,7 @@ class ImageRuntimeTests(unittest.TestCase):
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
         )
-        self.assertEqual(model["name"], registry.JUGGERNAUT_XI_NAME)
+        self.assertEqual(model["name"], registry.JUGGERNAUT_RAGNAROK_NAME)
         self.assertEqual(model["provider"], "sdxl")
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
