@@ -19,6 +19,10 @@ import runtime_coordinator
 
 DEFAULT_LIMIT = 40
 MAX_LIMIT = 100
+HANDOFF_STAGE_KEYS = (
+    "lease_wait", "image_release", "speech_release",
+    "musetalk_release", "chat_stop",
+)
 LTX_URL = os.environ.get("LTX_URL", "http://127.0.0.1:18060").rstrip("/")
 
 
@@ -225,6 +229,26 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             if handoff_value is not None and handoff_value >= 0
             else None
         )
+        stages = handoff.get("timings_ms")
+        stages = stages if isinstance(stages, dict) else {}
+        stage_timings = {}
+        for key in HANDOFF_STAGE_KEYS:
+            value = _number(stages.get(key))
+            stage_timings[key] = (
+                _rounded(value)
+                if value is not None and value >= 0
+                else None
+            )
+        # Previous persisted jobs used the wrong image release predicate:
+        # an image runtime that was already cold counted as "released".
+        # Only the corrected V2 producer can supply a reliable answer.
+        handoff_version = handoff.get("version")
+        verified_image_release = (
+            handoff.get("image_released")
+            if type(handoff_version) is int and handoff_version >= 2
+            and type(handoff.get("image_released")) is bool
+            else None
+        )
         jobs.append({
             "id": str(raw.get("id") or "")[:64],
             "kind": str(raw.get("kind") or "media")[:24],
@@ -233,6 +257,8 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "model": _safe_model_identifier(raw.get("model")),
             "runtime_start": _runtime_reuse(raw),
             "handoff_ms": handoff_ms,
+            "handoff_stages_ms": stage_timings,
+            "image_released": verified_image_release,
             "chat_released": (
                 handoff.get("chat_released")
                 if type(handoff.get("chat_released")) is bool
@@ -266,6 +292,15 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "warm_starts": sum(job.get("runtime_start") == "warm" for job in selected),
             "cold_starts": sum(job.get("runtime_start") == "cold" for job in selected),
             "handoff_ms": metric_series(job.get("handoff_ms") for job in selected),
+            "handoff_stages_ms": {
+                key: metric_series(
+                    job.get("handoff_stages_ms", {}).get(key)
+                    for job in selected
+                )
+                for key in HANDOFF_STAGE_KEYS
+            },
+            "image_releases": sum(job.get("image_released") is True for job in selected),
+            "image_release_samples": sum(job.get("image_released") is not None for job in selected),
             "chat_releases": sum(job.get("chat_released") is True for job in selected),
         }
 
