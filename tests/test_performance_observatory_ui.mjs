@@ -19,6 +19,8 @@ assert.match(source, /warm_starts/);
 assert.match(source, /cold_starts/);
 assert.match(source, /handoff_ms/);
 assert.match(source, /chat_releases/);
+assert.match(source, /image_preserves/);
+assert.match(source, /image_preserve_samples/);
 assert.match(source, /handoff_stages_ms/);
 assert.match(source, /performanceHandoffBlock/);
 assert.match(source, /handoff_release_summary/);
