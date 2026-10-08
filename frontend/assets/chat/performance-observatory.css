@@ -8,6 +8,11 @@
     background: var(--surface-color, rgba(127, 127, 127, 0.04));
 }
 
+/* Author-level grid display must not override the native hidden attribute. */
+.performance-observatory-v2 [hidden] {
+    display: none !important;
+}
+
 .performance-observatory-heading,
 .performance-observatory-footer,
 .performance-observatory-runtime-header,
