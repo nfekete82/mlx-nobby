@@ -144,6 +144,7 @@ Provider, Job-Speicher und Services bleiben zuständig.
 | Workspace/Coding | `workspace_status`; vorhandene `code_files`, `code_search`, `code_read`, `code_patch`, `code_diff`, `code_test` | `code_workspaces`; `code_apply` bleibt expliziter Legacy-Approval-Pfad. |
 | Shell | `shell_workspace`; vorhandenes `shell_read` | Vetted argv ohne Shell, gebundener Workspace, 30 s und begrenzte Ausgabe; nur `pwd`, `ls`, `rg`, ausgewählte Python-Pytest- und Node-Syntaxbefehle. Jede Ausführung verlangt CONFIRM. |
 | Git | `git_status`, `git_diff`, `git_log`, `git_stage`, `git_commit` | Git-CLI nur bei Repo-Wurzel gleich gebundenem Workspace. Stage/Commit verlangen CONFIRM; Stage bindet die ausgewählten Datei-Inhalte, Commit die staged Blob-IDs an die Freigabe. Commit verlangt genau ausgewählte staged Pfade. Kein Push/Reset/Force-Tool. |
+| Finance | `finance_quote`, `finance_analyze`, `finance_compare`, `finance_portfolio_analysis`, `finance_history`, `finance_recommendation_performance` | Nativer deterministischer Layer, gleiche Registry/Permissions; [Finance](FINANCE.md). |
 | Web | vorhandene `web_search`, `search_web`, `fetch_url` | Bestehende SearXNG-/Fetch-Handler unverändert. |
 | Vision | `vision_analyze` | Gleicher ModelProvider mit Vision-Rolle; nur Workspace-Bild oder verwaltetes Bild des gebundenen Chats. |
 | Bilder | `image_generate`, `image_edit`, `image_job_status` | Bestehender Image-Service und Chat-Job-Vertrag. Erzeugung/Bearbeitung starten nach CONFIRM nur einen Job; Status liefert den vorhandenen Artefaktvertrag. Chat-ID erforderlich. |

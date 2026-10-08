@@ -92,6 +92,18 @@ class AgentFixture:
         if path.startswith('/api/videos/'):
             # CI controls the media layer; no codec/FFmpeg dependency or committed MP4.
             return Response(b'fixture-video', media_type='video/mp4')
+        if path in {'/api/chat/actions/route', '/api/chat/actions'}:
+            from backend.finance_intent import finance_intent
+            finance_action = finance_intent(payload.get('prompt', ''))
+            if finance_action and finance_action.startswith('finance_'):
+                if path.endswith('/route'):
+                    return {'target': 'chat', 'intent': finance_action, 'requires_tools': True, 'confidence': 1}
+                return {'tool': finance_action, 'status': 'completed', 'data': {
+                    'kind': 'quote', 'instrument': {'symbol': 'AMD', 'name': 'Advanced Micro Devices',
+                    'exchange': 'NASDAQ', 'currency': 'USD'}, 'quote': {'symbol': 'AMD',
+                    'exchange': 'NASDAQ', 'currency': 'USD', 'price': 123.45,
+                    'timestamp': 1780500000, 'age_seconds': 2000, 'stale': True,
+                    'session': 'regular', 'delay_status': 'unknown', 'source': 'Finance fixture'}}}
         if path == '/api/chat/actions/route':
             target = 'video' if 'ball' in payload.get('prompt', '').lower() else 'image' if 'mug' in payload.get('prompt', '').lower() else 'chat'
             return {'target': target, 'intent': target + '_generate' if target != 'chat' else 'chat'}

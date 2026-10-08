@@ -95,6 +95,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from agent.batch_state import atomic_write_text, atomic_write_with
+from agent import finance
+from agent.finance.api import install_routes as install_finance_routes
 from local_security import LocalRequestGuard
 from agent.service_proxy import install_routes as install_service_routes
 
@@ -4527,6 +4529,7 @@ def route_chat_file(request: ChatFileRouteRequest):
 
 
 MLX_CAPABILITY_MODEL = {
+    **{name: {"description": "Deterministic market data and finance decision support", "access": "READ/market data"} for name in finance.TOOLS},
     "normal_chat": {
         "description": "Wissen erklären und allgemeine Fragen beantworten",
         "access": "keine lokale Untersuchung",
@@ -5495,6 +5498,10 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
     if media.handles_turn:
         return media.chat_routing()["intent"]
+
+    finance_action = finance.finance_intent(prompt, conversation_context) if not file_context else None
+    if finance_action:
+        return finance_action
 
     candidate = _deterministic_chat_action(
         prompt,
@@ -9427,6 +9434,18 @@ def run_chat_action(request: ChatActionRequest):
         result["data"] = dict(result.get("data") or {}) | {"routing": routing}
         return result
 
+    if action in finance.TOOLS:
+        context = run_state.RunContext.start(chat_id=request.chat_id, user_goal=request.prompt,
+                                           conversation=tuple((str(item.get("role", "")), str(item.get("content", "")))
+                                                              for item in request.conversation_context or () if isinstance(item, dict)))
+        try:
+            data = AGENT_TOOL_REGISTRY.execute(action, run_context=context, goal=request.prompt)
+            return chat_tool_result(action, "completed", data | {"routing": routing})
+        except (ValueError, OSError) as exc:
+            from agent.finance.contracts import FinanceError
+            code = str(exc) if isinstance(exc, FinanceError) else "finance_unavailable"
+            return chat_tool_result(action, "failed", {"routing": routing, "code": code}, error=code)
+
     if action.startswith("file_"):
         return chat_tool_result(action, "requires_file_route", {"message": "Bestehende Datei-Pipeline verwenden"})
     if action == "normal_chat":
@@ -12540,6 +12559,8 @@ def _build_agent_tool_registry():
         ("file_analyze", "Queue analysis of a text file in the bound workspace.", "CREATE", ("workspace",), 10, 12000),
         ("file_analysis_status", "Inspect a workspace file analysis job.", "READ", (), None, 12000),
     )
+    specs += tuple((name, "Read validated market data; deterministic finance rules, no orders.",
+                    "READ", ("network",), 360, None) for name in finance.TOOLS)
     parameters = {
         "type": "object",
         "properties": {
@@ -12558,7 +12579,7 @@ def _build_agent_tool_registry():
                     "required": ["path"],
                 },
             },
-            "options": {"type": ["object", "null"], "description": "Disk usage scan options."},
+            "options": {"type": ["object", "null"], "description": "Tool-specific options."},
         },
         "required": ["goal"],
         "additionalProperties": False,
@@ -12609,7 +12630,7 @@ def _build_agent_tool_registry():
             name=name,
             description=description,
             parameters=schema,
-            execute=partial(runtime_tools.execute if name in {
+            execute=partial(finance.execute_tool if name in finance.TOOLS else runtime_tools.execute if name in {
                 "workspace_status", "shell_workspace", "git_status", "git_diff",
                 "git_log", "git_stage", "git_commit", "vision_analyze",
                 "image_generate", "image_edit", "image_job_status",
@@ -12628,6 +12649,7 @@ def _build_agent_tool_registry():
 
 
 AGENT_TOOL_REGISTRY = _build_agent_tool_registry()
+install_finance_routes(app, AGENT_TOOL_REGISTRY)
 _RUNTIME_ONLY_READ_TOOLS = {
     "workspace_status", "git_status", "git_diff", "git_log", "vision_analyze",
     "image_job_status", "video_job_status", "shorts_job_status", "document_search", "document_page", "file_inspect",

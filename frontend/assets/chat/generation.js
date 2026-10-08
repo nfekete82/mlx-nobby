@@ -3800,6 +3800,7 @@ const imageFiles =
 }
 
 function toolSummary(result) {
+    if (result.tool?.startsWith("finance_")) return window.MLXFinance.summary(result);
     const data = result.data || {};
     if (result.tool === 'model_list') {
         const items = data.models || [];
@@ -3912,6 +3913,7 @@ function toolSummary(result) {
 }
 
 function toolFailureSummary(result) {
+    if (result.tool?.startsWith("finance_")) return window.MLXFinance.failure(result);
     if (
         ['image_edit', 'image_upscale', 'video_generate', 'video_animate', 'shorts_generate'].includes(result?.tool) &&
         result.error

@@ -15,7 +15,7 @@ function topics(locale) {
 }
 
 const required = ['getting-started', 'images', 'video', 'shorts', 'voice', 'agent',
-    'knowledge', 'models', 'memory', 'automations', 'diagnostics', 'api-integrations',
+    'knowledge', 'finance', 'models', 'memory', 'automations', 'diagnostics', 'api-integrations',
     'troubleshooting'];
 
 test('help topics have unique stable IDs and complete DE/EN sections', () => {
@@ -80,4 +80,18 @@ test('help reflects draft/render, local API and supported commands', () => {
         }
         assert.match(text('images'), /1–6/);
     }
+});
+
+test('finance help explains verified sources, confidence, markets and tracking in both languages', () => {
+    for (const locale of ['de', 'en']) {
+        const topic = topics(locale).find(t => t.id === 'finance');
+        const copy = JSON.stringify(topic);
+        for (const pattern of [/Yahoo Finance/, /NASDAQ\/USD/, /Stuttgart\/Xetra\/EUR/, /insufficient data/,
+            /Confidence/, /70%/, /85–100/, /Strong Buy/, /90/, /docs\/FINANCE\.md/]) assert.match(copy, pattern);
+        assert.equal(topic.examples.length, 5);
+        assert.match(copy, locale === 'de' ? /keine erfundenen Werte/ : /never create invented values/);
+    }
+    const de = topics('de').find(t => t.id === 'finance');
+    for (const prompt of ['Wie steht AMD gerade?', 'Analysiere AMD fundamental und technisch.',
+        'Vergleiche AMD und NVIDIA.', 'Welche Risiken siehst du bei AMD?']) assert.ok(de.examples.includes(prompt));
 });

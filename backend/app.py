@@ -1969,6 +1969,14 @@ def mlx_route_chat_file(request: dict):
     )
 
 
+@app.post("/api/mlx/finance/{tool}")
+def mlx_finance_request(tool: str, request: dict):
+    from backend.finance_intent import TOOLS
+    if "finance_" + tool not in TOOLS:
+        raise HTTPException(404, detail={"code": "unknown_finance_tool"})
+    return agent_json_request("POST", "/api/finance/" + tool, payload=request, timeout=360)
+
+
 @app.post("/api/mlx/chat/actions")
 def mlx_chat_actions(request: dict):
     return agent_json_request(

@@ -129,3 +129,12 @@ restart the native agent so both load the new route layer. If generation waits,
 check ongoing chat/media work and the Runtime Coordinator rather than launching
 a competing runtime. Never download or switch models just to satisfy a guessed
 Cline capability. Verify native tool calling for the selected model first.
+
+## Finance Intelligence API boundary
+
+Finance decision support is exposed through the existing Chat action path and
+`POST /api/mlx/finance/{tool}` (Agent: `/api/finance/{tool}`). It shares the
+AgentRuntime ToolRegistry and permissions. These are native application APIs,
+not changes to the stateless `/v1/chat/completions` protocol. External clients
+can call the native Finance API explicitly; no finance provider calls are
+automatically injected into `/v1` requests. See [Finance](FINANCE.md).

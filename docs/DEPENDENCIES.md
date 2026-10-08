@@ -305,3 +305,11 @@ Set `LTX_MLX_MODEL_VARIANT=q8` when running `scripts/setup-ltx-video-mlx` to
 install the larger Q8 LTX-2.5 pack alongside the default Q4 pack. The two model
 directories coexist; Q4 remains the normal default runtime pack. See the patch
 directory README for state validation and repeat-install behavior.
+
+## Finance Intelligence
+
+The native Finance layer uses Python standard-library transport, statistics,
+threading and the existing FastAPI/Pydantic/atomic persistence helpers. No new
+dependency or mandatory API key is needed. TradingAgents, LangGraph, LangChain
+and yfinance are not installed. Keyless Yahoo endpoints are external data
+sources with explicit missing-data handling; see [Finance](FINANCE.md).

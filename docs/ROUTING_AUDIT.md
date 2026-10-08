@@ -120,3 +120,12 @@ fixture did not simulate pressure at `runtime_coordinator.memory_budget_snapshot
 The fixture now provides critical pressure explicitly; production video runtime
 behavior was not changed. Docker validation builds an image; it does not restart
 or deploy running services.
+
+## Finance routing
+
+`backend/finance_intent.py` recognizes explicit DE/EN stock quote, analysis,
+comparison, portfolio, history and previous-recommendation requests before
+generic web or semantic routing. Market data uses Finance tools through the
+central registry; company news retains the existing web-context path. Workspace,
+creative, hardware and attached-document intents keep their existing routing.
+See [Finance](FINANCE.md) for identities, data-quality gates and tests.

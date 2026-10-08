@@ -39,6 +39,41 @@
                 ]
             },
             {
+                id: 'finance',
+                icon: '📈',
+                title: t('Finanzanalyse', 'Finance Intelligence'),
+                summary: t('Aktienkurse, Analysen, Vergleiche, Portfolio und frühere Empfehlungen.', 'Stock quotes, analysis, comparisons, portfolios and previous recommendations.'),
+                sections: [
+                    {
+                        title: t('Kurse und Analysen', 'Quotes and analysis'),
+                        body: t('Frage nach einem Aktienkurs, einer vollständigen fundamentalen und technischen Analyse oder einem Vergleich mehrerer Ticker. AMD oder NVIDIA wird als Vergleich erkannt. Allgemeine Finanzbegriffe bleiben normale Wissensfragen; Unternehmensnews verwenden Websuche für Kontext. Kursdaten stammen aus dem Marktdatenprovider Yahoo Finance, niemals aus Web-News oder geschätzten Modellwerten.', 'Ask for a stock quote, complete fundamental and technical analysis, or comparison of tickers. AMD or NVIDIA is recognized as a comparison. General finance concepts remain knowledge questions; company news uses web search for context. Quotes come from the Yahoo Finance market data provider, never from web news or estimated model values.')
+                    },
+                    {
+                        title: t('Börsenplatz, Währung und Datenalter', 'Exchange, currency and freshness'),
+                        body: t('Jeder Kurs zeigt Ticker, Börsenplatz/Handelsplatz, Währung, Session (Regular, Pre-Market oder After-Hours), Zeitstempel und Datenalter. AMD bedeutet seine US-Notierung NASDAQ/USD. Eine gewünschte EUR-Notierung braucht einen eindeutigen Börsenticker; Stuttgart/Xetra/EUR wird nicht mit NASDAQ/USD vermischt. Über 15 Minuten alte Kurse sind stale/veraltet, auch nach Börsenschluss. Die Verzögerung des kostenlosen Providers kann unbekannt sein; Echtzeit ist nicht garantiert. Fehlende und widersprüchliche Daten werden angezeigt.', 'Every quote shows ticker, exchange/trading venue, currency, session (Regular, Pre-Market or After-Hours), timestamp and data age. AMD means its US listing NASDAQ/USD. An EUR listing needs an explicit exchange ticker; Stuttgart/Xetra/EUR is never mixed with NASDAQ/USD. Quotes older than 15 minutes are stale, including after the market closes. The free provider delay may be unknown; live data is not guaranteed. Missing and conflicting data is shown explicitly.')
+                    },
+                    {
+                        title: t('Score, Recommendation und Confidence', 'Score, recommendation and confidence'),
+                        body: t('Ein deterministischer Score von 0–100 gewichtet Fundamental 20%, Growth 20%, Valuation 20%, Technical 15%, Momentum 10%, Sentiment 5% und Risk 10%. 85–100 Strong Buy, 70–84 Buy, 55–69 Hold, 40–54 Reduce, 0–39 Sell. Mindestens 70% Datenabdeckung einschließlich Fundamental, Growth und Valuation sowie frische, datierte Daten sind erforderlich. Sonst erscheint insufficient data statt einer erfundenen Empfehlung. Confidence beschreibt Datenvollständigkeit und Aktualität, nicht Gewinnwahrscheinlichkeit. Regeln sind heuristisch und nicht als profitable Strategie validiert. Fehlendes belastbares Sentiment bleibt leer.', 'A deterministic 0–100 score weights Fundamental 20%, Growth 20%, Valuation 20%, Technical 15%, Momentum 10%, Sentiment 5% and Risk 10%. 85–100 Strong Buy, 70–84 Buy, 55–69 Hold, 40–54 Reduce, 0–39 Sell. At least 70% coverage including Fundamental, Growth and Valuation, plus fresh dated data, is required. Otherwise insufficient data replaces a fabricated recommendation. Confidence describes completeness and freshness, not profit probability. Rules are heuristic and not validated as a profitable strategy. Missing reliable sentiment stays unavailable.')
+                    },
+                    {
+                        title: t('Portfolio und Recommendation Tracking', 'Portfolio and recommendation tracking'),
+                        body: t('Gib Positionen mit Stückzahlen an: Analysiere mein Portfolio: AMD: 10, NVDA: 5. Gewichtung, Konzentration, verfügbare Sektoren und tägliche Korrelationen werden lokal berechnet. Stückzahlen werden nicht extern gesendet. Verschiedene Währungen werden ohne FX-Daten nicht summiert. Analysen im gebundenen Chat werden lokal unveränderlich gespeichert; frage später, wie sich frühere Empfehlungen entwickelt haben. Die letzten 20 Analysen zeigen datengestützte Renditen, verfügbares Benchmark-Alpha, Drawdown und Statistik. Treffer werden frühestens nach 90 Tagen gewertet; Hold hat keine Trefferwertung. Tracking benötigt denselben Chat. Keine Orderausführung, keine Trading-Konten.', 'Provide positions and quantities: Analyze my portfolio: AMD: 10, NVDA: 5. Weights, concentration, available sectors and daily correlations are calculated locally. Quantities are never sent externally. Mixed currencies are not summed without FX data. Analyses in a bound chat are stored locally as immutable snapshots; later ask how previous recommendations performed. The latest 20 analyses show data-based returns, available benchmark alpha, drawdown and statistics. Hits are evaluated after at least 90 days; Hold has no hit classification. Tracking requires the same chat. No order execution or trading accounts.')
+                    },
+                    {
+                        title: t('Quellen und Grenzen', 'Sources and limitations'),
+                        body: t('Yahoo Finance ist ein kostenloser, nicht garantierter Marktdatenzugang ohne API-Key. Fundamentaldaten können gesperrt oder unvollständig sein. Jede verfügbare Datenart nennt Quelle und Abrufzeit; das Fundamental-Datum ist das letzte berichtete Quartalsende, falls geliefert. News müssen Tickerbezug, Datum und Quelle haben und höchstens 7 Tage alt sein. Makroeinflüsse, Katalysatoren und Sentiment werden ohne belastbare Quelle nicht angenommen. Technische Kennzahlen verwenden abgeschlossene Tageskurse. Providerfehler erzeugen keine erfundenen Werte. TradingAgents wird nicht benötigt. Details: docs/FINANCE.md.', 'Yahoo Finance is a free, non-guaranteed market data access without an API key. Fundamentals may be restricted or incomplete. Every available data type identifies its source and fetch time; the fundamentals date is the last reported quarter end when supplied. News must identify ticker relevance, date and source and be at most 7 days old. Macro influences, catalysts and sentiment are not assumed without reliable sources. Technical indicators use completed daily closes. Provider errors never create invented values. TradingAgents is not required. Details: docs/FINANCE.md.')
+                    }
+                ],
+                examples: [
+                    t('Wie steht AMD gerade?', 'How is AMD trading right now?'),
+                    t('Analysiere AMD fundamental und technisch.', 'Analyze AMD fundamentally and technically.'),
+                    t('Vergleiche AMD und NVIDIA.', 'Compare AMD and NVIDIA.'),
+                    t('Welche Risiken siehst du bei AMD?', 'What risks do you see in AMD?'),
+                    t('Analysiere mein Portfolio: AMD: 10, NVDA: 5.', 'Analyze my portfolio: AMD: 10, NVDA: 5.')
+                ]
+            },
+            {
                 id: 'images',
                 icon: '🖼️',
                 title: t('Bilder erstellen', 'Create images'),
@@ -377,7 +412,10 @@
         const normalized = String(query || '').trim().toLocaleLowerCase(language() === 'de' ? 'de-DE' : 'en-US');
         const topics = topicData().filter(topic => {
             if (!normalized) return true;
-            return `${topic.title} ${topic.summary}`.toLocaleLowerCase(language() === 'de' ? 'de-DE' : 'en-US').includes(normalized);
+            const searchable = [topic.id, topic.title, topic.summary,
+                ...topic.sections.flatMap(section => [section.title, section.body, ...(section.steps || []), section.code || '']),
+                ...(topic.examples || [])].join(' ');
+            return searchable.toLocaleLowerCase(language() === 'de' ? 'de-DE' : 'en-US').includes(normalized);
         });
         list.replaceChildren();
 
