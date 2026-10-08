@@ -5,8 +5,41 @@
     const MODAL_ID = 'talkingPhotoModal';
     const STYLE_ID = 'talkingPhotoStyles';
     const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    const JOB_STORAGE_KEY = 'mlxTalkingPhotoCurrentJob';
+    const TERMINAL_STATES = new Set(['completed', 'cancelled', 'failed']);
     let pollTimer = null;
+    let pollInFlight = false;
+    let elapsedTicker = null;
     let previewUrl = null;
+    let currentJobId = null;
+    let lastJob = null;
+    let preparing = false;
+
+    function jobIsBusy() {
+        return preparing || Boolean(currentJobId && (!lastJob || !TERMINAL_STATES.has(lastJob.status)));
+    }
+
+    function rememberJob(id) {
+        currentJobId = id;
+        lastJob = null;
+        try {
+            sessionStorage.setItem(JOB_STORAGE_KEY, id);
+        } catch (_error) {
+            // Session storage may be disabled; the in-memory job still works.
+        }
+        updateButtonIndicator();
+    }
+
+    function forgetJob() {
+        currentJobId = null;
+        lastJob = null;
+        try {
+            sessionStorage.removeItem(JOB_STORAGE_KEY);
+        } catch (_error) {
+            // Storage is optional.
+        }
+        updateButtonIndicator();
+    }
 
     function language() {
         return (
@@ -40,7 +73,9 @@
         }).then(async response => {
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(payload.detail || `HTTP ${response.status}`);
+                const error = new Error(payload.detail || `HTTP ${response.status}`);
+                error.httpStatus = response.status;
+                throw error;
             }
             return payload;
         });
@@ -96,6 +131,54 @@
                 margin: 10px 0 14px; padding: 10px 12px; border-radius: 10px;
                 background: rgba(148,163,184,.08); font-size: .86rem; white-space: pre-wrap;
             }
+            .mlx-talking-photo-activity {
+                display: grid; gap: 10px; margin: 0 0 14px; padding: 14px;
+                background: rgba(37, 99, 235, .09); border: 1px solid rgba(96, 165, 250, .24);
+                border-radius: 12px;
+            }
+            .mlx-talking-photo-activity[hidden] { display: none; }
+            .mlx-talking-photo-activity-title { display: flex; align-items: center; gap: 10px; }
+            .mlx-talking-photo-activity-title strong { font-size: .91rem; font-weight: 600; }
+            .mlx-talking-photo-spinner {
+                flex: 0 0 auto; width: 17px; height: 17px; border-radius: 50%;
+                border: 2px solid rgba(147, 197, 253, .25); border-top-color: #93c5fd;
+                animation: mlx-talking-photo-spin .85s linear infinite;
+            }
+            .mlx-talking-photo-spinner[hidden] { display: none; }
+            @keyframes mlx-talking-photo-spin { to { transform: rotate(360deg); } }
+            .mlx-talking-photo-track {
+                height: 7px; overflow: hidden; border-radius: 999px;
+                background: rgba(148, 163, 184, .18);
+            }
+            .mlx-talking-photo-fill {
+                height: 100%; width: 0; border-radius: inherit; background: #60a5fa;
+                transition: width .3s ease;
+            }
+            .mlx-talking-photo-track.is-indeterminate .mlx-talking-photo-fill {
+                width: 35%; animation: mlx-talking-photo-travel 1.6s ease-in-out infinite alternate;
+            }
+            @keyframes mlx-talking-photo-travel {
+                from { transform: translateX(-100%); }
+                to { transform: translateX(285%); }
+            }
+            .mlx-talking-photo-activity-meta {
+                display: flex; flex-wrap: wrap; justify-content: space-between;
+                gap: 8px; font-size: .77rem; color: #bacbe0;
+            }
+            #talkingPhotoButton.is-generating { position: relative; }
+            #talkingPhotoButton.is-generating::after,
+            #talkingPhotoButton.is-finished::after {
+                content: ''; position: absolute; top: 3px; right: 3px;
+                width: 8px; height: 8px; border-radius: 50%; background: #60a5fa;
+                box-shadow: 0 0 0 2px #0e1623;
+            }
+            #talkingPhotoButton.is-generating::after { animation: mlx-talking-photo-pulse 1.4s ease-in-out infinite; }
+            #talkingPhotoButton.is-finished::after { background: #34d399; }
+            @keyframes mlx-talking-photo-pulse { 50% { opacity: .35; } }
+            @media (prefers-reduced-motion: reduce) {
+                .mlx-talking-photo-spinner, .mlx-talking-photo-track.is-indeterminate .mlx-talking-photo-fill,
+                #talkingPhotoButton.is-generating::after { animation: none; }
+            }
             .mlx-talking-photo-actions {
                 display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
             }
@@ -127,7 +210,13 @@
     }
 
     function closeModal() {
-        clearPolling();
+        // The media-lifecycle listener discards a finished, unsaved result
+        // on closing. Keep only genuinely active jobs in the background.
+        if (lastJob && TERMINAL_STATES.has(lastJob.status)) {
+            clearPolling();
+            stopElapsedTicker();
+            forgetJob();
+        }
         const modal = document.getElementById(MODAL_ID);
         if (modal) {
             modal.hidden = true;
@@ -270,7 +359,37 @@
             'Checking MuseTalk status …',
         ));
         status.id = 'talkingPhotoStatus';
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
         dialog.append(status);
+
+        const activity = node('section', 'mlx-talking-photo-activity');
+        activity.id = 'talkingPhotoActivity';
+        activity.hidden = true;
+        activity.setAttribute('aria-label', localText('Bearbeitungsstatus', 'Processing status'));
+        const activityTitle = node('div', 'mlx-talking-photo-activity-title');
+        const spinner = node('span', 'mlx-talking-photo-spinner');
+        spinner.id = 'talkingPhotoSpinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        const activityPhase = node('strong', '', '');
+        activityPhase.id = 'talkingPhotoActivityPhase';
+        activityTitle.append(spinner, activityPhase);
+        const track = node('div', 'mlx-talking-photo-track');
+        track.id = 'talkingPhotoProgressTrack';
+        track.setAttribute('role', 'progressbar');
+        track.setAttribute('aria-valuemin', '0');
+        track.setAttribute('aria-valuemax', '100');
+        const fill = node('div', 'mlx-talking-photo-fill');
+        fill.id = 'talkingPhotoProgressFill';
+        track.append(fill);
+        const meta = node('div', 'mlx-talking-photo-activity-meta');
+        const progressLabel = node('span', '', '');
+        progressLabel.id = 'talkingPhotoProgressLabel';
+        const elapsed = node('span', '', '');
+        elapsed.id = 'talkingPhotoElapsed';
+        meta.append(progressLabel, elapsed);
+        activity.append(activityTitle, track, meta);
+        dialog.append(activity);
 
         const actions = node('div', 'mlx-talking-photo-actions');
         const create = node('button', 'primary', localText('Video erstellen', 'Create video'));
@@ -321,7 +440,96 @@
 
     function setStatus(message) {
         const status = document.getElementById('talkingPhotoStatus');
-        if (status) status.textContent = message;
+        if (status && status.textContent !== message) status.textContent = message;
+    }
+
+    function updateButtonIndicator() {
+        const button = document.getElementById(BUTTON_ID);
+        if (!button) return;
+        const busy = jobIsBusy();
+        const finished = lastJob?.status === 'completed';
+        button.classList.toggle('is-generating', busy);
+        button.classList.toggle('is-finished', finished);
+        button.setAttribute('aria-busy', busy ? 'true' : 'false');
+        button.setAttribute('aria-label', busy
+            ? localText('Talking Photo wird erstellt – Fortschritt anzeigen', 'Talking Photo generating – show progress')
+            : finished
+                ? localText('Talking Photo fertig – Video ansehen', 'Talking Photo ready – view video')
+                : localText('Talking Photo öffnen', 'Open Talking Photo'));
+        button.title = busy
+            ? localText('Talking Photo wird erstellt', 'Talking Photo generating')
+            : finished
+                ? localText('Talking Photo fertig', 'Talking Photo ready')
+                : 'Talking Photo';
+    }
+
+    function renderElapsed() {
+        const elapsed = document.getElementById('talkingPhotoElapsed');
+        if (!elapsed || !lastJob) return;
+        const start = Number(lastJob.started_at || lastJob.created_at) || Date.now() / 1000;
+        const end = TERMINAL_STATES.has(lastJob.status)
+            ? (Number(lastJob.finished_at) || Date.now() / 1000)
+            : Date.now() / 1000;
+        const seconds = Math.max(0, Math.floor(end - start));
+        const minutes = Math.floor(seconds / 60);
+        const clock = String(seconds % 60).padStart(2, '0');
+        elapsed.textContent = localText(
+            `Laufzeit: ${minutes}:${clock}`,
+            `Elapsed: ${minutes}:${clock}`,
+        );
+    }
+
+    function stopElapsedTicker() {
+        if (elapsedTicker) clearInterval(elapsedTicker);
+        elapsedTicker = null;
+    }
+
+    function renderActivity(job) {
+        const activity = document.getElementById('talkingPhotoActivity');
+        if (!activity) return;
+        activity.hidden = false;
+        const terminal = TERMINAL_STATES.has(job.status);
+        const spinner = document.getElementById('talkingPhotoSpinner');
+        if (spinner) spinner.hidden = terminal;
+        const phase = document.getElementById('talkingPhotoActivityPhase');
+        if (phase) phase.textContent = phaseText(job);
+        const progress = terminal && job.status === 'completed'
+            ? 1
+            : Number(job.progress);
+        const measurable = (terminal && job.status === 'completed')
+            || (!terminal && Number.isFinite(progress) && progress > 0);
+        const percent = measurable ? Math.min(100, Math.max(0, Math.round(progress * 100))) : 0;
+        const track = document.getElementById('talkingPhotoProgressTrack');
+        const fill = document.getElementById('talkingPhotoProgressFill');
+        if (track) {
+            track.classList.toggle('is-indeterminate', !terminal && !measurable);
+            if (measurable) {
+                track.setAttribute('aria-valuenow', String(percent));
+                track.setAttribute('aria-valuetext', terminal
+                    ? localText('Abgeschlossen', 'Completed')
+                    : localText(`Geschätzt ${percent} Prozent`, `Estimated ${percent} percent`));
+            } else {
+                track.removeAttribute('aria-valuenow');
+                track.setAttribute('aria-valuetext', terminal
+                    ? phaseText(job)
+                    : localText('Wird bearbeitet, Fortschritt noch nicht messbar', 'Processing, progress not yet measurable'));
+            }
+        }
+        if (fill) fill.style.width = measurable ? `${percent}%` : '';
+        const progressLabel = document.getElementById('talkingPhotoProgressLabel');
+        if (progressLabel) progressLabel.textContent = terminal
+            ? phaseText(job)
+            : measurable
+                ? localText(`Etwa ${percent} % · geschätzt`, `About ${percent}% · estimated`)
+                : localText('Wird bearbeitet …', 'Processing …');
+        const elapsed = document.getElementById('talkingPhotoElapsed');
+        if (!lastJob && elapsed) elapsed.textContent = localText('Laufzeit: 0:00', 'Elapsed: 0:00');
+        renderElapsed();
+        if (terminal) {
+            stopElapsedTicker();
+        } else if (!elapsedTicker) {
+            elapsedTicker = setInterval(renderElapsed, 1000);
+        }
     }
 
     async function loadVoices() {
@@ -351,11 +559,13 @@
     }
 
     async function refreshProviderStatus() {
+        if (jobIsBusy()) return;
         const create = document.getElementById('talkingPhotoCreate');
         const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx';
         if (create) create.disabled = true;
         try {
             const status = await requestJson('/api/talking-photo/status');
+            if (jobIsBusy()) return;
             const provider = status.providers?.[engine] || (
                 engine === 'fast' ? status : null
             );
@@ -379,6 +589,7 @@
                 ));
             }
         } catch (error) {
+            if (jobIsBusy()) return;
             setStatus(localText(
                 `Renderer-Status konnte nicht geladen werden: ${error.message}`,
                 `Could not load renderer status: ${error.message}`,
@@ -393,14 +604,25 @@
 
         const result = document.getElementById('talkingPhotoResult');
         const download = document.getElementById('talkingPhotoDownload');
-        if (result) {
-            result.pause();
-            result.removeAttribute('src');
-            result.hidden = true;
+        if (!currentJobId) {
+            if (result) {
+                result.pause();
+                result.removeAttribute('src');
+                result.hidden = true;
+            }
+            if (download) download.hidden = true;
         }
-        if (download) download.hidden = true;
 
-        await Promise.all([loadVoices(), refreshProviderStatus()]);
+        if (lastJob) renderJob(lastJob);
+        else if (currentJobId) renderActivity({status: 'queued', phase: 'queued'});
+        else if (preparing) renderActivity({status: 'queued', phase: 'queued'});
+        const voices = loadVoices();
+        if (currentJobId) {
+            if (!pollInFlight && !pollTimer) pollJob(currentJobId);
+        } else if (!preparing) {
+            await refreshProviderStatus();
+        }
+        await voices;
     }
 
     async function startJob() {
@@ -414,6 +636,7 @@
         const result = document.getElementById('talkingPhotoResult');
         const download = document.getElementById('talkingPhotoDownload');
         const file = imageInput?.files?.[0];
+        if (jobIsBusy()) return;
 
         if (!file) {
             setStatus(localText('Bitte zuerst ein Bild auswählen.', 'Please select an image first.'));
@@ -433,10 +656,23 @@
         }
 
         clearPolling();
+        stopElapsedTicker();
+        forgetJob(); // A finished/failed job may be replaced by a new request.
+        preparing = true;
+        updateButtonIndicator();
         if (create) create.disabled = true;
-        if (cancel) cancel.hidden = false;
-        if (result) result.hidden = true;
+        if (cancel) {
+            cancel.hidden = false;
+            cancel.disabled = true; // Job ID not assigned yet.
+            delete cancel.dataset.jobId;
+        }
+        if (result) {
+            result.pause();
+            result.removeAttribute('src');
+            result.hidden = true;
+        }
         if (download) download.hidden = true;
+        renderActivity({status: 'queued', phase: 'preparing'});
 
         try {
             setStatus(localText('Bild wird vorbereitet …', 'Preparing image …'));
@@ -452,12 +688,29 @@
                     speed: 1.0,
                 }),
             });
-            if (cancel) cancel.dataset.jobId = job.id;
+            if (!/^[a-f0-9]{24}$/.test(String(job.id || ''))) {
+                throw new Error(localText('Ungültige Job-ID vom Server', 'Invalid server job ID'));
+            }
+            preparing = false;
+            rememberJob(job.id);
+            lastJob = job;
+            if (cancel) {
+                cancel.dataset.jobId = job.id;
+                cancel.disabled = false;
+            }
+            renderJob(job);
             pollJob(job.id);
         } catch (error) {
+            preparing = false;
             setStatus(error.message);
+            const activity = document.getElementById('talkingPhotoActivity');
+            if (activity) activity.hidden = true;
             if (create) create.disabled = false;
             if (cancel) cancel.hidden = true;
+            updateButtonIndicator();
+            if (document.getElementById(MODAL_ID) && !document.getElementById(MODAL_ID).hidden) {
+                refreshProviderStatus();
+            }
         }
     }
 
@@ -471,73 +724,103 @@
                 method: 'POST',
                 body: JSON.stringify({}),
             });
-            setStatus(localText(
-                'Abbruch angefordert …',
-                'Cancellation requested …',
-            ));
+            setStatus(localText('Abbruch angefordert …', 'Cancellation requested …'));
+            if (lastJob) lastJob.cancel_requested = true;
         } catch (error) {
             setStatus(error.message);
-        } finally {
             cancel.disabled = false;
         }
     }
 
     function phaseText(job) {
+        if (job.cancel_requested && !TERMINAL_STATES.has(job.status)) {
+            return localText('Abbruch wird ausgeführt …', 'Cancelling …');
+        }
         const phase = String(job.phase || job.status || '');
         const labels = {
+            preparing: localText('Bild wird vorbereitet …', 'Preparing image …'),
             queued: localText('Wartet auf freien KI-Slot …', 'Waiting for an AI slot …'),
             tts: localText('Stimme wird erzeugt …', 'Generating voice …'),
+            motion: localText('Natürliche Bewegung wird gerendert …', 'Rendering natural motion …'),
+            quality: localText('LTX 2.5 rendert das Video …', 'LTX 2.5 rendering video …'),
             lipsync: localText('Lippen werden synchronisiert …', 'Synchronizing lips …'),
-            completed: localText('Fertig.', 'Done.'),
+            completed: localText('Video ist fertig.', 'Video is ready.'),
             cancelled: localText('Abgebrochen.', 'Cancelled.'),
             failed: localText('Fehlgeschlagen.', 'Failed.'),
         };
-        return labels[phase] || phase;
+        return labels[phase] || localText('Video wird bearbeitet …', 'Processing video …');
     }
 
-    async function pollJob(jobId) {
-        clearPolling();
+    function renderJob(job) {
         const create = document.getElementById('talkingPhotoCreate');
         const cancel = document.getElementById('talkingPhotoCancel');
         const result = document.getElementById('talkingPhotoResult');
         const download = document.getElementById('talkingPhotoDownload');
-
-        try {
-            const job = await requestJson(`/api/talking-photo/jobs/${jobId}`);
-            setStatus(job.error ? `${phaseText(job)}\n${job.error}` : phaseText(job));
-
+        const terminal = TERMINAL_STATES.has(job.status);
+        lastJob = job;
+        setStatus(job.error ? `${phaseText(job)}\n${job.error}` : phaseText(job));
+        renderActivity(job);
+        updateButtonIndicator();
+        if (create) create.disabled = !terminal;
+        if (cancel) {
+            cancel.hidden = terminal;
+            cancel.disabled = Boolean(job.cancel_requested);
+            if (!terminal) cancel.dataset.jobId = job.id;
+            else delete cancel.dataset.jobId;
+        }
+        if (terminal) {
+            clearPolling();
             if (job.status === 'completed' && job.result?.video_url) {
                 if (result) {
-                    result.src = job.result.video_url;
+                    if (result.getAttribute('src') !== job.result.video_url) {
+                        result.src = job.result.video_url;
+                        result.load();
+                    }
                     result.hidden = false;
-                    result.load();
                 }
                 if (download) {
                     download.href = job.result.video_url;
                     download.hidden = false;
                 }
-                if (cancel) {
-                    cancel.hidden = true;
-                    delete cancel.dataset.jobId;
-                }
-                if (create) create.disabled = false;
-                return;
             }
+        }
+    }
 
-            if (job.status === 'failed' || job.status === 'cancelled') {
-                if (cancel) {
-                    cancel.hidden = true;
-                    delete cancel.dataset.jobId;
-                }
-                if (create) create.disabled = false;
-                return;
-            }
-
+    async function pollJob(jobId) {
+        if (!jobId || jobId !== currentJobId || pollInFlight) return;
+        clearPolling();
+        pollInFlight = true;
+        try {
+            const job = await requestJson(`/api/talking-photo/jobs/${jobId}`);
+            if (currentJobId !== jobId) return;
+            renderJob(job);
+            if (TERMINAL_STATES.has(job.status)) return;
             pollTimer = setTimeout(() => pollJob(jobId), 1000);
         } catch (error) {
-            setStatus(error.message);
-            if (cancel) cancel.hidden = true;
-            if (create) create.disabled = false;
+            if (currentJobId !== jobId) return;
+            if (error.httpStatus === 404) {
+                clearPolling();
+                stopElapsedTicker();
+                forgetJob();
+                setStatus(localText(
+                    'Der vorherige Job wurde nicht gefunden. Bitte neu starten.',
+                    'Previous job not found. Please start again.',
+                ));
+                const activity = document.getElementById('talkingPhotoActivity');
+                if (activity) activity.hidden = true;
+                const cancel = document.getElementById('talkingPhotoCancel');
+                if (cancel) cancel.hidden = true;
+                const create = document.getElementById('talkingPhotoCreate');
+                if (create) create.disabled = false;
+                return;
+            }
+            setStatus(localText(
+                'Verbindung unterbrochen – Status wird erneut abgefragt. ' + error.message,
+                'Connection interrupted – retrying status. ' + error.message,
+            ));
+            pollTimer = setTimeout(() => pollJob(jobId), 2500);
+        } finally {
+            pollInFlight = false;
         }
     }
 
@@ -558,6 +841,16 @@
 
         const settings = document.getElementById('settingsButton');
         host.insertBefore(button, settings || host.firstChild);
+        try {
+            const remembered = sessionStorage.getItem(JOB_STORAGE_KEY);
+            if (remembered && /^[a-f0-9]{24}$/.test(remembered)) {
+                currentJobId = remembered;
+                pollJob(remembered);
+            }
+        } catch (_error) {
+            // The feature remains usable without session storage.
+        }
+        updateButtonIndicator();
     }
 
     if (document.readyState === 'loading') {

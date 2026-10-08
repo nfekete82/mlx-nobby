@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 
 
 MEDIA_LIFECYCLE_SCRIPT = (
-    b'<script src="/assets/chat/media-lifecycle.js?v=20261005-media-lifecycle-v1"></script>'
+    b'<script src="/assets/chat/media-lifecycle.js?v=20261008-talking-photo-progress"></script>'
 )
 
 

@@ -29,6 +29,13 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "Fast · MuseTalk" in source
     assert "engine," in source
     assert "engineSelect.value = 'ltx'" in source
+    assert "talkingPhotoActivity" in source
+    assert "talkingPhotoProgressTrack" in source
+    assert "talkingPhotoElapsed" in source
+    assert "LTX 2.5 rendert das Video" in source
+    assert "sessionStorage.setItem(JOB_STORAGE_KEY" in source
+    assert "geschätzt" in source
+    assert "estimated" in source
 
 
 def test_talking_photo_clipboard_module_supports_button_and_paste_shortcut():
