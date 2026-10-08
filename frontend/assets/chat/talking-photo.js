@@ -73,7 +73,9 @@
         }).then(async response => {
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(payload.detail || `HTTP ${response.status}`);
+                const error = new Error(payload.detail || `HTTP ${response.status}`);
+                error.httpStatus = response.status;
+                throw error;
             }
             return payload;
         });
@@ -515,6 +517,8 @@
             : measurable
                 ? localText(`Etwa ${percent} % · geschätzt`, `About ${percent}% · estimated`)
                 : localText('Wird bearbeitet …', 'Processing …');
+        const elapsed = document.getElementById('talkingPhotoElapsed');
+        if (!lastJob && elapsed) elapsed.textContent = localText('Laufzeit: 0:00', 'Elapsed: 0:00');
         renderElapsed();
         if (terminal) {
             stopElapsedTicker();
@@ -556,6 +560,7 @@
         if (create) create.disabled = true;
         try {
             const status = await requestJson('/api/talking-photo/status');
+            if (jobIsBusy()) return;
             const provider = status.providers?.[engine] || (
                 engine === 'fast' ? status : null
             );
@@ -579,6 +584,7 @@
                 ));
             }
         } catch (error) {
+            if (jobIsBusy()) return;
             setStatus(localText(
                 `Renderer-Status konnte nicht geladen werden: ${error.message}`,
                 `Could not load renderer status: ${error.message}`,
@@ -646,6 +652,7 @@
 
         clearPolling();
         stopElapsedTicker();
+        forgetJob(); // A finished/failed job may be replaced by a new request.
         preparing = true;
         updateButtonIndicator();
         if (create) create.disabled = true;
@@ -786,7 +793,7 @@
             pollTimer = setTimeout(() => pollJob(jobId), 1000);
         } catch (error) {
             if (currentJobId !== jobId) return;
-            if (/HTTP 404\b/.test(String(error.message))) {
+            if (error.httpStatus === 404) {
                 clearPolling();
                 stopElapsedTicker();
                 forgetJob();
