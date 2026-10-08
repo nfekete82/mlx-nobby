@@ -213,6 +213,29 @@ class PerformanceSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["system"]["runtimes"]["image"]["state"], "cold")
         self.assertIn("in-memory", snapshot["notes"]["model_history"])
 
+    def test_observatory_reuses_queue_memory_without_second_probe(self):
+        memory = {"total_gb": 48.0, "headroom_gb": 13.5,
+                  "pressure": "normal"}
+        queue_snapshot = {
+            "jobs": [], "active_count": 0, "waiting_count": 0,
+            "runtime": {
+                "active": None, "waiting": [], "waiting_count": 0,
+                "memory": memory,
+            },
+        }
+        with mock.patch.object(
+            performance.media_queue, "snapshot", return_value=queue_snapshot
+        ), mock.patch.object(
+            performance.runtime_coordinator, "memory_budget_snapshot"
+        ) as os_probe, mock.patch.object(
+            performance, "runtime_snapshot", return_value={}
+        ):
+            result = performance.build_performance_snapshot(limit=10)
+
+        self.assertEqual(result["system"]["memory"], memory)
+        self.assertEqual(result["system"]["runtime_lease"]["memory"], memory)
+        os_probe.assert_not_called()
+
     def test_agent_route_is_installed_once(self):
         app = FastAPI()
         performance.install_routes(app, status_provider=lambda: {"online": True})
