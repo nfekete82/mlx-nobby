@@ -8,7 +8,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.finance_intent import finance_intent, symbols_from_prompt, market_constraints, TOOLS
+from backend.finance_intent import (
+    finance_intent, symbols_from_prompt, explicit_company_query, market_constraints, TOOLS,
+)
 from agent.finance.contracts import FinanceError, Instrument, freshness, symbol
 from agent.finance.providers import YahooProvider, ProviderChain
 from agent.finance.analytics import technicals, performance, scoring, recommendation, WEIGHTS, ema_series
@@ -59,7 +61,8 @@ def service(tmp_path):
     ('How is AMD trading at the moment?', 'finance_quote'), ('AMD stock price', 'finance_quote'),
     ('Analysiere AMD', 'finance_analyze'), ('Analysiere AMD fundamental und technisch.', 'finance_analyze'),
     ('Ist AMD aktuell attraktiv?', 'finance_analyze'), ('Welche Risiken siehst du bei AMD?', 'finance_analyze'),
-    ('Analyze AMD risks', 'finance_analyze'), ('AMD oder NVIDIA?', 'finance_compare'),
+    ('Analyze AMD risks', 'finance_analyze'), ('analysiere western digital vollständig', 'finance_analyze'),
+    ('AMD oder NVIDIA?', 'finance_compare'),
     ('Vergleiche AMD, NVIDIA und Broadcom', 'finance_compare'), ('Compare AMD and NVIDIA', 'finance_compare'),
     ('Analysiere mein Portfolio', 'finance_portfolio_analysis'), ('Analyze my portfolio', 'finance_portfolio_analysis'),
     ('Wie hat sich deine frühere Empfehlung entwickelt?', 'finance_recommendation_performance'),
@@ -75,6 +78,10 @@ def test_symbols_constraints():
     assert symbols_from_prompt('Vergleiche AMD, NVIDIA und Broadcom') == ['AMD', 'NVDA', 'AVGO']
     assert symbols_from_prompt('AMD.DE Kurs in EUR') == ['AMD.DE']
     assert symbols_from_prompt('Analysiere IBM') == ['IBM']
+    assert symbols_from_prompt('analysiere western digital vollständig') == ['WDC']
+    assert explicit_company_query('Analysiere Example Storage Systems vollständig') == 'Example Storage Systems'
+    assert explicit_company_query('Analysiere dieses Dokument vollständig') is None
+    assert explicit_company_query('Analysiere meinen PC vollständig') is None
     assert market_constraints('AMD auf Stuttgart in EUR') == ('STUTTGART', 'EUR')
 
 
@@ -478,6 +485,12 @@ def test_followup_uses_only_unambiguous_recent_instrument(service, monkeypatch):
     assert result['status'] == 'failed' and result['data']['code'] == 'symbol_required'
     assert finance_intent('Wie steht sie gerade?', context) == 'finance_quote'
     assert finance_intent('Wie steht sie gerade?') is None
+
+    # A newly named company must never inherit AMD from the earlier context.
+    named = 'Analysiere Western Digital vollständig'
+    assert finance_intent(named, context) == 'finance_analyze'
+    result = application.run_chat_action(application.ChatActionRequest(prompt=named, conversation_context=context))
+    assert result['data']['instrument']['symbol'] == 'WDC'
 
 
 def test_runtime_tool_execution_shares_registry(service, monkeypatch):
