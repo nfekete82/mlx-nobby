@@ -73,8 +73,8 @@
                 hint.dataset.mediaLifecycleHint = '1';
                 hint.className = 'mlx-talking-photo-hint';
                 hint.textContent = localText(
-                    'Nicht gespeicherte Ergebnisse werden beim Schließen automatisch gelöscht.',
-                    'Unsaved results are deleted automatically when you close this dialog.',
+                    'Laufende Jobs werden beim Schließen im Hintergrund fortgesetzt. Nicht gespeicherte Ergebnisse werden beim Schließen automatisch gelöscht.',
+                    'Active jobs continue in the background when closing this dialog. Unsaved results are deleted when you close it.',
                 );
                 actions.insertAdjacentElement('afterend', hint);
             }
@@ -130,10 +130,13 @@
         return parseAssetUrl(result?.getAttribute('src') || result?.src || '');
     }
 
-    function discardTalkingPhoto({beacon = false} = {}) {
+    function discardTalkingPhoto({beacon = false, preserveActive = false} = {}) {
         const cancel = document.getElementById('talkingPhotoCancel');
         const activeJobId = String(cancel?.dataset?.jobId || '');
         if (/^[0-9a-f]{24}$/.test(activeJobId) && !cancel.hidden) {
+            // Closing the dialog only hides ongoing work; cancellation belongs
+            // to the explicit Cancel button. Pagehide still cancels the job.
+            if (preserveActive) return;
             // The server decides whether this means cancel-now or delete-now,
             // closing the tiny completion-vs-close race without leaving an MP4.
             post(`/api/talking-photo/jobs/${encodeURIComponent(activeJobId)}/discard`, {}, {beacon});
@@ -168,7 +171,7 @@
 
         const close = event.target?.closest?.('.mlx-talking-photo-close, .mlx-talking-photo-backdrop');
         if (close) {
-            discardTalkingPhoto();
+            discardTalkingPhoto({preserveActive: true});
         }
 
         const create = event.target?.closest?.('#talkingPhotoCreate');
