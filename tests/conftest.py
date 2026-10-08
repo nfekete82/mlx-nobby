@@ -1,4 +1,35 @@
+import os
+from pathlib import Path
+import tempfile
+from unittest import mock
+
 import pytest
+
+
+def pytest_sessionstart(session):
+    """Keep CPU discovery/imports and runtime leases off the running local app."""
+    if session.config.getoption('--e2e'):
+        return
+    directory = tempfile.TemporaryDirectory(prefix='mlx-pytest-home-')
+    root = Path(directory.name)
+    home_patch = mock.patch.object(Path, 'home', return_value=root)
+    environment_patch = mock.patch.dict(os.environ, {
+        'MLX_RUNTIME_COORDINATOR_LOCK': str(root / 'runtime.lock'),
+        'MLX_RUNTIME_COORDINATOR_STATE_DIR': str(root / 'runtime-state'),
+    })
+    home_patch.start()
+    environment_patch.start()
+    session.config._mlx_isolation = (directory, home_patch, environment_patch)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    isolation = getattr(session.config, '_mlx_isolation', None)
+    if isolation:
+        directory, home_patch, environment_patch = isolation
+        environment_patch.stop()
+        home_patch.stop()
+        directory.cleanup()
+
 
 
 def pytest_addoption(parser):

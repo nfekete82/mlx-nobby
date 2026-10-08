@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add native Finance Intelligence with dedicated bilingual stock routing, validated
+  Yahoo market-data identities, session/freshness/source metadata, bounded caching
+  and transport, daily indicators and deterministic confidence-gated scores.
+- Add stock comparisons, local long-only portfolio decision support and immutable
+  chat-scoped recommendation tracking with dated performance and benchmark alpha.
+- Integrate Finance tools with AgentRuntime, ToolRegistry, Permissions and the
+  existing chat renderer/API; add DE/EN Finance help, documentation and offline tests.
+- Document the decision to retain native Finance analysis without TradingAgents
+  dependencies or order execution.
+- Isolate CPU test discovery and runtime leases from live local configuration and
+  services so the canonical release gate can run beside installed runtimes.
+
 - Keep the image-model picker visible for image generation and editing, show
   configured unavailable models as disabled options, and pass the selected
   compatible model with each image request.

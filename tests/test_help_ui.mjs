@@ -6,7 +6,7 @@ const help = fs.readFileSync('frontend/assets/chat/help.js', 'utf8');
 const chatHtml = fs.readFileSync('frontend/chat.html', 'utf8');
 const dockerfile = fs.readFileSync('Dockerfile', 'utf8');
 
-assert.match(common, /\/assets\/chat\/help\.js\?v=20260927-help-v1/);
+assert.match(common, /\/assets\/chat\/help\.js\?v=20261008-finance-help-v2/);
 assert.match(common, /mlx-help-center/);
 assert.match(common, /frontendBuildRevision/);
 assert.match(common, /versionedAssetUrl/);
@@ -23,6 +23,7 @@ assert.match(dockerfile, /common\.js\?v=\$\{MLX_NOBBY_BUILD_SHA\}/);
 for (const topic of [
     'getting-started',
     'images',
+    'finance',
     'video',
     'shorts',
     'voice',

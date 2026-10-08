@@ -132,6 +132,8 @@ class AgentToolRegistryTests(unittest.TestCase):
             "logs_query", "batch_status", "knowledge_search", "code_search",
             "code_files", "code_read", "code_test", "code_diff", "web_search",
             "search_web", "fetch_url",
+            "finance_quote", "finance_analyze", "finance_compare", "finance_portfolio_analysis",
+            "finance_history", "finance_recommendation_performance",
         }
         registry = self.agent.AGENT_TOOL_REGISTRY
         expected_new = {

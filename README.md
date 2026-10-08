@@ -30,6 +30,9 @@ and active Shorts jobs can be cancelled from History or the queue.
   external clients, with virtual model roles, streaming and native tool-call
   transport, validated with real Cline 4.1.22 agent turns.
 
+- [Finance Intelligence](docs/FINANCE.md): identified stock quotes, native fundamental/technical
+  analysis, deterministic scores, comparisons, local portfolio analysis and immutable
+  recommendation tracking; no order execution
 - Local LLM chat with streaming, model switching, thinking controls, and saved
   conversations
 - Model aliases, Hugging Face downloads, cache inspection, and background jobs
@@ -60,6 +63,32 @@ and active Shorts jobs can be cancelled from History or the queue.
   newly created chats
 - System metrics, service health, logs, and runtime controls
 - English and German chat UI with a persisted language setting
+
+## Finance Intelligence
+
+Ask “Wie steht AMD gerade?”, “Analysiere AMD fundamental und technisch.”,
+“Vergleiche AMD und NVIDIA.” or “Welche Risiken siehst du bei AMD?”. English
+prompts are supported too. For a portfolio, provide explicit quantities:
+“Analyze my portfolio: AMD: 10, NVDA: 5”. Ask in the same chat how earlier
+recommendations performed to inspect locally saved immutable analyses.
+
+Finance uses the existing AgentRuntime, ToolRegistry, permissions and chat UI.
+Yahoo Finance supplies keyless market data through a replaceable provider;
+web search only adds news context. Every quote identifies ticker, exchange,
+currency, session, observation time, age and source. NASDAQ/USD is never silently
+replaced by Stuttgart/Xetra/EUR. No new dependencies, API keys or setup steps
+are required. Local models are not needed for deterministic quotes or scores;
+TradingAgents was reviewed and deliberately omitted to avoid duplicate runtime,
+data and LLM-rating infrastructure.
+
+Market data requires external HTTPS requests for tickers; holdings quantities
+and analysis snapshots stay local. Free Yahoo endpoints are unofficial, may
+restrict fundamentals, and do not guarantee real-time data. Old quotes are
+marked stale; absent data stays unavailable. Scores require adequate dated
+fundamentals, history and a recent quote; otherwise the result is **insufficient
+data**. Confidence describes data quality, not profit probability. Rules are
+heuristic, not a validated investment strategy. Details, APIs, provider limits,
+scoring and privacy: [Finance documentation](docs/FINANCE.md).
 
 ## Screenshots
 

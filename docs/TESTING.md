@@ -3,7 +3,10 @@
 ## Unit and integration
 
 `test-venv/bin/python -m pytest -q` runs CPU-only Python tests, including
-production TestClient/proxy contracts. `node --test tests/*.mjs` runs the existing
+production TestClient/proxy contracts. Test discovery automatically isolates
+`Path.home()` and the Runtime Coordinator lock/state in a temporary directory,
+so local CPU tests do not recover real jobs or wait on native production leases.
+Browser and real acceptance keep their existing dedicated isolation contracts. `node --test tests/*.mjs` runs the existing
 JavaScript regressions. See the Tests workflow for syntax, JSON, translation,
 shell, plist, dependency and Docker checks.
 
@@ -135,4 +138,14 @@ the overall run failed even if its dependent browser check skips.
 syntax/JSON/i18n/shell/plist/help/docs, pip, Compose/Docker build, diff, deterministic
 browser acceptance and real acceptance. `--full` is an explicit opt-in there
 also. The complete CI and both acceptance commands must additionally pass on
-final main before `READY_FOR_V1_6_2=YES`; these commands never tag or release.
+final main before release readiness; these commands never tag or release.
+
+## Finance regressions
+
+`test-venv/bin/python -m pytest -q tests/test_finance.py` uses injected provider
+transports and clocks for routing, sessions, freshness, identities, indicators,
+scoring, portfolio, tracking and registry/API contracts. No market-provider
+network calls run in deterministic tests.
+`node --test tests/test_finance_ui.mjs tests/test_help_content.mjs tests/test_help_ui.mjs`
+checks DE/EN finance rendering and help. Chromium acceptance includes the
+production Finance asset on desktop/mobile; see [Finance](FINANCE.md).
