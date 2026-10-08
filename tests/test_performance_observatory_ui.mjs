@@ -19,6 +19,9 @@ assert.match(source, /warm_starts/);
 assert.match(source, /cold_starts/);
 assert.match(source, /handoff_ms/);
 assert.match(source, /chat_releases/);
+assert.match(source, /handoff_stages_ms/);
+assert.match(source, /performanceHandoffBlock/);
+assert.match(source, /handoff_release_summary/);
 assert.match(source, /t\('handoff'\)/);
 assert.match(source, /recent_calls/);
 assert.match(source, /recent_jobs/);
@@ -85,5 +88,21 @@ assert.equal(test.stateText('warm'), 'Warm');
 assert.equal(test.stateText('cold'), 'Cold');
 assert.equal(test.pressureText('critical'), 'Critical');
 assert.equal(test.statusText('completed'), 'Completed');
+
+const breakdown = test.handoffMetrics({
+    handoff_ms: { count: 2, p50: 200 },
+    handoff_stages_ms: {
+        lease_wait: { count: 2, p50: 30 },
+        chat_stop: { count: 1, p50: 90 }
+    }
+});
+assert.equal(breakdown.length, 6);
+assert.equal(breakdown[0].key, 'handoff');
+assert.equal(breakdown[0].metric.p50, 200);
+assert.equal(breakdown[1].key, 'lease_wait');
+assert.equal(breakdown[1].metric.p50, 30);
+assert.equal(breakdown[5].key, 'chat_stop');
+assert.equal(breakdown[5].metric.count, 1);
+assert.equal(breakdown[2].metric, undefined);
 
 console.log('performance observatory ui tests passed');

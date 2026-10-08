@@ -510,6 +510,8 @@ class VideoServiceTests(unittest.TestCase):
         self.assertGreaterEqual(handoff["duration_ms"], 0)
         self.assertGreaterEqual(handoff["timings_ms"]["lease_wait"], 0)
         self.assertFalse(handoff["chat_released"])
+        self.assertFalse(handoff["image_released"])
+        self.assertEqual(handoff["version"], 2)
         self.assertEqual(
             json.loads((video_service.JOBS / f"{job_id}.json").read_text())["runtime_handoff"],
             handoff,

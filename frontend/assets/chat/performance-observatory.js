@@ -58,6 +58,13 @@
         generation: 'Generation',
         handoff: 'Handoff',
         chat_releases: 'Chat unloaded',
+        handoff_title: 'Video handoff breakdown',
+        lease_wait: 'Lock wait',
+        image_release: 'Release image model',
+        speech_release: 'Release speech model',
+        musetalk_release: 'Release MuseTalk',
+        chat_stop: 'Stop chat model',
+        handoff_release_summary: 'Image unloads: {image}/{samples} verified · Chat unloads: {chat}',
         kind: 'Kind',
         completed: 'Completed',
         failed: 'Failed',
@@ -291,6 +298,41 @@
         );
     }
 
+    function handoffMetrics(summary) {
+        const stages = summary?.handoff_stages_ms || {};
+        return [
+            { key: 'handoff', metric: summary?.handoff_ms },
+            { key: 'lease_wait', metric: stages.lease_wait },
+            { key: 'image_release', metric: stages.image_release },
+            { key: 'speech_release', metric: stages.speech_release },
+            { key: 'musetalk_release', metric: stages.musetalk_release },
+            { key: 'chat_stop', metric: stages.chat_stop }
+        ];
+    }
+
+    function renderHandoff(snapshot) {
+        const summary = snapshot?.media?.summary?.video || {};
+        const block = root.querySelector('[data-performance-handoff-block]');
+        const metrics = handoffMetrics(summary);
+        // Do not show six empty cards until a native video has provided data.
+        block.hidden = !metrics.some(({ metric }) => Number(metric?.count || 0) > 0);
+        if (block.hidden) return;
+
+        const target = root.querySelector('[data-performance-handoff]');
+        target.replaceChildren(...metrics.map(({ key, metric }) => kpiCard(
+            t(key),
+            metricValue(metric, formatDuration),
+            metricDetail(metric, formatDuration),
+            'metric-video'
+        )));
+        root.querySelector('[data-performance-handoff-note]').textContent =
+            t('handoff_release_summary', {
+                image: Number(summary.image_releases || 0),
+                samples: Number(summary.image_release_samples || 0),
+                chat: Number(summary.chat_releases || 0)
+            });
+    }
+
     function pressureText(pressure) {
         const value = String(pressure || 'unknown').toLowerCase();
         return t('pressure_' + value) || value;
@@ -439,6 +481,7 @@
     function render(snapshot) {
         renderKpis(snapshot);
         renderRuntimeAndMemory(snapshot);
+        renderHandoff(snapshot);
         renderModelCalls(snapshot);
         renderMediaJobs(snapshot);
         const checked = root.querySelector('[data-performance-checked]');
@@ -511,6 +554,15 @@
         memoryBlock.appendChild(memory);
         live.append(runtimeBlock, memoryBlock);
 
+        const handoffBlock = sectionBlock(t('handoff_title'));
+        handoffBlock.dataset.performanceHandoffBlock = '1';
+        const handoffGrid = el('div', 'performance-observatory-kpis');
+        handoffGrid.dataset.performanceHandoff = '1';
+        const handoffNote = el('p', 'performance-observatory-muted');
+        handoffNote.dataset.performanceHandoffNote = '1';
+        handoffBlock.append(handoffGrid, handoffNote);
+        handoffBlock.hidden = true;
+
         const modelBlock = sectionBlock(t('model_calls_title'), 'performance-observatory-table-block');
         const modelWrap = el('div', 'performance-observatory-table-wrap');
         const modelTable = el('table', 'performance-observatory-table');
@@ -532,7 +584,7 @@
         );
         footer.lastChild.dataset.performanceChecked = '1';
 
-        section.append(header, notice, kpis, live, modelBlock, mediaBlock, footer);
+        section.append(header, notice, kpis, live, handoffBlock, modelBlock, mediaBlock, footer);
         return section;
     }
 
@@ -565,6 +617,7 @@
             formatRate,
             formatGb,
             metricValue,
+            handoffMetrics,
             pressureText,
             stateText,
             statusText
