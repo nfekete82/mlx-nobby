@@ -56,7 +56,11 @@ def explicit_company_query(prompt):
     tickers = symbols_from_prompt(prompt)
     if not tickers:
         company_query = explicit_company_query(prompt)
-        if company_query:
+        strong_company_name = company_query and (
+            company_query.lower() in ALIASES or
+            re.search(r'\b[A-ZÄÖÜ][\w&.-]*', company_query)
+        )
+        if strong_company_name:
             if re.search(r'analy[sz]|bewert|valuation|risik|risk|attraktiv|attractive|kaufen|\bbuy\b|invest', value):
                 return 'finance_analyze'
             if re.search(r'histor|verlauf|history|performance|rendite', value):
@@ -288,9 +292,15 @@ def context_symbols(conversation):
         'markt', 'market', 'portfolio', 'depot', 'dokument', 'document', 'text', 'log',
         'code', 'projekt', 'project', 'system', 'pc', 'computer', 'mac', 'macbook',
         'laptop', 'website', 'webseite', 'repo', 'repository', 'aktie', 'stock',
+        'vertrag', 'contract', 'lage', 'situation', 'bild', 'image', 'foto', 'photo',
+        'audio', 'video', 'datei', 'file',
     }
     words = set(re.findall(r'[a-z0-9]+', lowered))
-    if not words or words <= generic or words & {'dokument', 'document', 'code', 'projekt', 'project', 'website', 'webseite', 'repo', 'repository'}:
+    if not words or words <= generic or words & {
+        'dokument', 'document', 'code', 'projekt', 'project', 'website', 'webseite',
+        'repo', 'repository', 'vertrag', 'contract', 'lage', 'situation', 'bild',
+        'image', 'foto', 'photo', 'audio', 'video', 'datei', 'file',
+    }:
         return None
     if any(char in candidate for char in '\\n\\r<>/\\\\'):
         return None
