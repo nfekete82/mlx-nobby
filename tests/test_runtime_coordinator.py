@@ -49,10 +49,23 @@ class RuntimeCoordinatorTests(unittest.TestCase):
         )
 
         self.assertFalse(result["loaded"])
+        self.assertTrue(result["released"])
         self.assertEqual(
             [method for method, _url in calls],
             ["GET", "POST", "GET"],
         )
+
+    def test_already_cold_image_does_not_count_as_released(self):
+        calls = []
+
+        def requester(method, url, payload=None, timeout=10):
+            calls.append(method)
+            return {"status": "ready", "active_generation": False, "loaded": False}
+
+        result = runtime_coordinator.release_idle_image_runtime(requester=requester)
+        self.assertFalse(result["loaded"])
+        self.assertFalse(result["released"])
+        self.assertEqual(calls, ["GET"])
 
     def test_video_waits_for_active_image_without_unloading_it(self):
         calls = []
@@ -157,6 +170,7 @@ class RuntimeCoordinatorTests(unittest.TestCase):
             ) as preflight:
                 self.assertFalse(preflight["memory_relief_needed"])
                 self.assertFalse(preflight["chat_released"])
+                self.assertFalse(preflight["image_released"])
                 timings = preflight["handoff_timings_ms"]
                 self.assertGreaterEqual(timings["total"], 0)
                 self.assertGreaterEqual(timings["lease_wait"], 0)
