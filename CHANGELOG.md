@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.9.0
+
 - Extend LTX Talking Photo's beta audio limit from 10 to 20 seconds without
   trimming or retiming the source audio. Cover 15/20-second frame-grid and
   padding boundaries in regression tests; real Apple Silicon quality and
