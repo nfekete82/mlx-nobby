@@ -682,10 +682,13 @@ function renderToolCard(message) {
     if (!result) {
         return null;
     }
-    if ([
-        'image_generate', 'image_edit', 'image_upscale',
-        'video_generate', 'video_animate', 'shorts_generate'
-    ].includes(result.tool)) {
+    if (
+        result.tool?.startsWith('finance_') ||
+        [
+            'image_generate', 'image_edit', 'image_upscale',
+            'video_generate', 'video_animate', 'shorts_generate'
+        ].includes(result.tool)
+    ) {
         return null;
     }
 
@@ -2345,13 +2348,22 @@ function renderMessages(options = {}) {
                 content.appendChild(waitingDot);
             }
 
-            const answer =
-                document.createElement('div');
+            const financeCard =
+                message.tool_result?.tool?.startsWith('finance_')
+                    ? window.MLXFinance?.render?.(message.tool_result)
+                    : null;
 
-            answer.innerHTML =
-                markdownHtml(message.content);
+            if (financeCard) {
+                content.appendChild(financeCard);
+            } else {
+                const answer =
+                    document.createElement('div');
 
-            content.appendChild(answer);
+                answer.innerHTML =
+                    markdownHtml(message.content);
+
+                content.appendChild(answer);
+            }
 
             if (
                 Array.isArray(message.sources) &&

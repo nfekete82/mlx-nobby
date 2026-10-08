@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Replace dense Finance Markdown output with responsive stock cards for quotes,
+  analyses, comparisons, portfolios, history and recommendation tracking; keep
+  technical details and sources collapsible while preserving copy/read-aloud text.
+- Resolve Western Digital/WDC and explicitly named single-company requests without
+  leaking a previously discussed ticker into the new Finance request.
+
 ## v1.8.0
 
 - Anchor recommendation price performance to the saved quote; show daily-history

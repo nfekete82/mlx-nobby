@@ -8,7 +8,9 @@ import time
 from .analytics import technicals, performance, scoring, cases
 from .contracts import FinanceError, symbol, number
 from .providers import ProviderChain, YahooProvider
-from backend.finance_intent import TOOLS, symbols_from_prompt, market_constraints, context_symbols
+from backend.finance_intent import (
+    TOOLS, symbols_from_prompt, explicit_company_query, market_constraints, context_symbols,
+)
 from .tracking import RecommendationStore, evaluate_snapshot
 from .portfolio import analyze_portfolio, parse_positions
 
@@ -74,6 +76,10 @@ class FinanceService:
             tickers = [options['symbol']] if options.get('symbol') else symbols_from_prompt(prompt)
         if not isinstance(tickers, list) or len(tickers) > 10 or any(not isinstance(t, str) for t in tickers):
             raise FinanceError('invalid_symbol')
+        if not tickers:
+            company_query = explicit_company_query(prompt)
+            if company_query:
+                tickers = [company_query]
         if action == 'finance_recommendation_performance':
             snapshots = self.store.list(owner, symbol(tickers[0]) if tickers else None)
             # A bounded page; historic snapshots remain untouched in the ledger.
@@ -170,7 +176,14 @@ def execute_tool(action, goal, query=None, instruction=None, files=None, options
     if options is not None and not isinstance(options, dict):
         raise FinanceError("invalid_finance_options")
     options = dict(options) if options is not None else None
-    if action in {'finance_quote', 'finance_analyze', 'finance_history'} and not symbols_from_prompt(query or goal) and not (options or {}).get('symbol') and not (options or {}).get('symbols'):
+    request_text = query or goal
+    if (
+        action in {'finance_quote', 'finance_analyze', 'finance_history'}
+        and not symbols_from_prompt(request_text)
+        and not explicit_company_query(request_text)
+        and not (options or {}).get('symbol')
+        and not (options or {}).get('symbols')
+    ):
         previous = context_symbols(context.conversation if context else None)
         if previous:
             options = (options or {}) | {'symbols': previous}

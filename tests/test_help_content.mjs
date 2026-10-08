@@ -86,8 +86,9 @@ test('finance help explains verified sources, confidence, markets and tracking i
     for (const locale of ['de', 'en']) {
         const topic = topics(locale).find(t => t.id === 'finance');
         const copy = JSON.stringify(topic);
-        for (const pattern of [/Yahoo Finance/, /NASDAQ\/USD/, /Stuttgart\/Xetra\/EUR/, /insufficient data/,
+        for (const pattern of [/Yahoo Finance/, /Western Digital/, /NASDAQ\/USD/, /Stuttgart\/Xetra\/EUR/, /insufficient data/,
             /Confidence/, /70%/, /85–100/, /Strong Buy/, /90/, /docs\/FINANCE\.md/]) assert.match(copy, pattern);
+        assert.match(copy, locale === 'de' ? /Finance-Karten/ : /Finance cards/);
         assert.equal(topic.examples.length, 5);
         assert.match(copy, locale === 'de' ? /keine erfundenen Werte/ : /never create invented values/);
     }
