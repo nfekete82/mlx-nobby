@@ -80,13 +80,15 @@ available in collapsible detail sections instead of flooding the chat with raw
 fields.
 Yahoo Finance supplies keyless market data through a replaceable provider;
 web search only adds news context. Every quote identifies ticker, exchange,
-currency, session, observation time, age and source. NASDAQ/USD is never silently
-replaced by Stuttgart/Xetra/EUR. No new dependencies, API keys or setup steps
-are required. Local models are not needed for deterministic quotes or scores;
+original currency, session, observation time, age and source. Monetary values are
+shown EUR-first when an ECB reference rate is available, while the untouched
+original amount stays visible in parentheses. This presentation conversion never
+changes NASDAQ/USD into a different listing or currency. No new dependencies,
+API keys or setup steps are required. Local models are not needed for deterministic quotes or scores;
 TradingAgents was reviewed and deliberately omitted to avoid duplicate runtime,
 data and LLM-rating infrastructure.
 
-Market data requires external HTTPS requests for tickers; holdings quantities
+Market data and optional ECB daily reference rates require external HTTPS requests; holdings quantities
 and analysis snapshots stay local. Free Yahoo endpoints are unofficial, may
 restrict fundamentals, and do not guarantee real-time data. Old quotes are
 marked stale; absent data stays unavailable. Scores require adequate dated
