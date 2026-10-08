@@ -32,7 +32,7 @@ MODEL_DIR = MODEL_ROOT / "ltx-2.5-mlx-q4"
 RUNNER = PROJECT_ROOT / "scripts/ltx-talking-photo-a2v.py"
 MLX_MANAGER = PROJECT_ROOT / "scripts/mlx"
 MLX_SERVER_LABEL = "de.nobby.mlx-server"
-MAX_AUDIO_SECONDS = 10.0
+MAX_AUDIO_SECONDS = 20.0
 FPS = 24
 NEGATIVE_PROMPT = (
     "deformed mouth, warped lips, extra teeth, duplicated teeth, unstable teeth, "
