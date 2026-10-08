@@ -20,6 +20,14 @@ model/media measurements and unified-memory estimates.
   into durable queue history; the Observatory displays per-job handoff
   duration, p50/p95 and the number of completed videos that released chat.
   Old records lacking timing data remain unknown, not zero.
+  The breakdown below the live runtime cards now shows per-stage p50/p95 for
+  lock wait, image/speech/MuseTalk release and chat stop, with sample counts.
+  A skipped stage is unknown (not 0ms), and these stages do not sum to total
+  elapsed time because RAM snapshots, health checks and other overhead also
+  contribute. The image-release flag previously counted already-unloaded image
+  models as "released"; this is corrected for new `runtime_handoff.version=2`
+  jobs. Older records contribute to timing summaries, but their image-release
+  count is deliberately excluded rather than misrepresented.
 - System: memory budget, available/headroom estimates, pressure, swap, loaded
   runtime state and the current coordinator lease. Repeated read-only
   diagnostic requests coalesce into one macOS memory_pressure/sysctl probe,
