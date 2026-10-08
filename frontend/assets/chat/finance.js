@@ -310,6 +310,7 @@
     const HISTORY_CACHE = new Map();
     const HISTORY_PENDING = new Map();
     const HISTORY_CACHE_LIMIT = 20;
+    const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 
     function chartCacheKey(instrument) {
         return [instrument?.symbol, instrument?.exchange, instrument?.currency].join('|');
@@ -317,11 +318,15 @@
 
     async function loadHistory(instrument) {
         const key = chartCacheKey(instrument);
-        if (HISTORY_CACHE.has(key)) return HISTORY_CACHE.get(key);
+        const cached = HISTORY_CACHE.get(key);
+        if (cached && Date.now() - cached.at < HISTORY_CACHE_TTL_MS) return cached.data;
+        HISTORY_CACHE.delete(key);
         if (HISTORY_PENDING.has(key)) return HISTORY_PENDING.get(key);
         const job = (async () => {
             const response = await fetch('/api/mlx/finance/history', {
                 method: 'POST',
+                signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+                    ? AbortSignal.timeout(15000) : undefined,
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     options: {
@@ -340,7 +345,7 @@
                 result?.instrument?.currency !== instrument.currency ||
                 !Array.isArray(result?.history?.bars)
             ) throw new Error('finance_history_identity_mismatch');
-            HISTORY_CACHE.set(key, result);
+            HISTORY_CACHE.set(key, {at: Date.now(), data: result});
             if (HISTORY_CACHE.size > HISTORY_CACHE_LIMIT) {
                 HISTORY_CACHE.delete(HISTORY_CACHE.keys().next().value);
             }
