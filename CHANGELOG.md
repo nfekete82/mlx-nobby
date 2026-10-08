@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Improve Finance reliability: validate ECB reference-rate dates, analyze mixed-currency
+  portfolio exposure from available EUR values, and asynchronously load the price
+  chart without blocking current quotes.
+- Test browser/server image-option allowlists for contract drift.
+
 - Fix image jobs failing with “Unbekannte Bildparameter” after mode switches by filtering stale UI settings, validating generation/edit/reference options separately, and reporting rejected option names without values.
 
 - Route colloquial German stock questions such as “Wo steht Microsoft gerade?” to Finance instead of generic AI/web answers.
