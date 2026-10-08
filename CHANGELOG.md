@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.8.0
+
 - Anchor recommendation price performance to the saved quote; show daily-history
   return/alpha/drawdown in a separate dated window and exclude corporate-action
   ambiguity from price-based hit statistics. Exclude unrated portfolio positions
@@ -55,6 +57,15 @@
 - Add per-request image-model selection in the image creation dialog, showing
   only enabled/available text-to-image models while keeping automatic routing
   as the default.
+
+- Persist model/ASR evaluation history and expose the local evaluation registry;
+  make Model Scout honor previous evaluations and document opt-in Qwen3.8
+  DFlash2 drafting and model-upgrade workflows.
+- Improve coding planner guards and normal-chat compatibility, local-model
+  telemetry attribution, Hugging Face cache symlink detection and fresh host
+  clock context on model turns.
+- Refresh MLX Nobby branding and move the SDXL default from Juggernaut XI to
+  Ragnarok; improve video prompt-refusal fallback and browser CI reliability.
 
 ## v1.7.0
 
