@@ -103,7 +103,11 @@ class AgentFixture:
                     'exchange': 'NASDAQ', 'currency': 'USD'}, 'quote': {'symbol': 'AMD',
                     'exchange': 'NASDAQ', 'currency': 'USD', 'price': 123.45,
                     'timestamp': 1780500000, 'age_seconds': 2000, 'stale': True,
-                    'session': 'regular', 'delay_status': 'unknown', 'source': 'Finance fixture'}}}
+                    'session': 'regular', 'delay_status': 'unknown', 'source': 'Finance fixture'},
+                    'display_fx': {'target_currency': 'EUR', 'rates': {'USD': {
+                        'rate': 0.9, 'source': 'European Central Bank', 'date': '2026-10-07',
+                        'source_url': 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+                    }}}}}
         if path == '/api/chat/actions/route':
             target = 'video' if 'ball' in payload.get('prompt', '').lower() else 'image' if 'mug' in payload.get('prompt', '').lower() else 'chat'
             return {'target': target, 'intent': target + '_generate' if target != 'chat' else 'chat'}

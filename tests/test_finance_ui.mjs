@@ -9,17 +9,32 @@ function ui(locale) {
 }
 const quote = { instrument: {symbol: 'AMD', name: 'Advanced Micro Devices', exchange: 'NASDAQ', currency: 'USD'},
     quote: {price: 123.45, symbol: 'AMD', exchange: 'NASDAQ', currency: 'USD', session: 'regular',
-        timestamp: 1780500000, age_seconds: 2000, stale: true, delay_status: 'unknown', source: 'fixture'} };
+        timestamp: 1780500000, age_seconds: 2000, stale: true, delay_status: 'unknown', source: 'fixture'},
+    display_fx: {target_currency: 'EUR', rates: {USD: {rate: .9, source: 'European Central Bank', date: '2026-10-07', source_url: 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'}}} };
 test('quotes show exchange, currency, session, timestamp and stale data bilingually', () => {
     for (const locale of ['de', 'en']) {
         const copy = ui(locale).summary({status: 'completed', data: {kind: 'quote', ...quote}});
         assert.match(copy, /AMD/); assert.match(copy, /NASDAQ/); assert.match(copy, /USD/);
         assert.match(copy, /2026/); assert.match(copy, /33 min 20 s/);
-        assert.match(copy, /123[,.]45 USD/);
+        assert.match(copy, /111[,.]11/); assert.match(copy, /123[,.]45/);
         assert.match(copy, locale === 'de' ? /VERALTET/ : /STALE/);
         assert.match(copy, locale === 'de' ? /kein garantierter Echtzeitkurs/ : /no guaranteed live quote/);
     }
 });
+
+test('EUR display is primary and original USD stays visible', () => {
+    for (const locale of ['de', 'en']) {
+        const api = ui(locale);
+        const shown = api.__test.money(quote, 123.45, 'USD');
+        assert.match(shown, /111[,.]11/);
+        assert.match(shown, /123[,.]45/);
+        assert.match(shown, /€/);
+        assert.match(shown, /\$/);
+        assert.match(api.__test.fxLabel(quote, 'USD'), /European Central Bank/);
+        assert.equal(api.__test.money(quote, 99, 'EUR').includes('('), false);
+    }
+});
+
 test('analysis preserves insufficient data rather than rendering a rating', () => {
     for (const locale of ['de', 'en']) {
         const copy = ui(locale).summary({status: 'completed', data: {kind: 'analysis', ...quote,
@@ -44,7 +59,7 @@ test('portfolio never renders missing weights as zero and errors are localized',
 });
 test('finance assets and native cards are wired to production chat', () => {
     const html = fs.readFileSync('frontend/chat.html', 'utf8');
-    assert.match(html, /\/assets\/chat\/finance\.css\?v=20261008-finance-cards/);
+    assert.match(html, /\/assets\/chat\/finance\.css\?v=20261008-finance-eur/);
     assert.ok(html.indexOf('/assets/chat/finance.js?') < html.indexOf('/assets/chat/generation.js?'));
     const generation = fs.readFileSync('frontend/assets/chat/generation.js', 'utf8');
     assert.match(generation, /MLXFinance\.summary/); assert.match(generation, /MLXFinance\.failure/);

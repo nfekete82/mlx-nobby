@@ -12,7 +12,7 @@ from backend.finance_intent import (
     finance_intent, symbols_from_prompt, explicit_company_query, market_constraints, TOOLS,
 )
 from agent.finance.contracts import FinanceError, Instrument, freshness, symbol
-from agent.finance.providers import YahooProvider, ProviderChain
+from agent.finance.providers import EcbFxProvider, YahooProvider, ProviderChain
 from agent.finance.analytics import technicals, performance, scoring, recommendation, WEIGHTS, ema_series
 from agent.finance.portfolio import analyze_portfolio, parse_positions, correlation
 from agent.finance.tracking import RecommendationStore, evaluate_snapshot
@@ -50,11 +50,79 @@ class Provider:
         return {'items': [], 'source': self.name}
 
 
+
+class FxProvider:
+    name = 'ECB fixture'
+    def rate_to_eur(self, currency):
+        rates = {'USD': 0.90, 'GBP': 1.15, 'EUR': 1.0}
+        if currency not in rates:
+            raise FinanceError('fx_currency_unavailable')
+        return {'base_currency': currency, 'quote_currency': 'EUR', 'rate': rates[currency],
+                'reference_rate_per_eur': 1 / rates[currency], 'date': '2026-10-07',
+                'as_of': NOW - 86400, 'source': 'European Central Bank',
+                'source_url': 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml',
+                'rate_basis': 'ECB euro foreign exchange reference rate; presentation only'}
+
 @pytest.fixture
 def service(tmp_path):
     provider = Provider()
     return FinanceService(ProviderChain(provider, clock=lambda: NOW), RecommendationStore(tmp_path / 'finance.json'), clock=lambda: NOW)
 
+
+
+def test_ecb_fx_provider_parses_daily_reference_rate_and_caches():
+    calls = []
+    payload = b'''<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+  <Cube><Cube time="2026-10-07"><Cube currency="USD" rate="1.1177"/><Cube currency="GBP" rate="0.84645"/></Cube></Cube>
+</gesmes:Envelope>'''
+    def transport(url, timeout):
+        calls.append((url, timeout))
+        return payload
+    fx = EcbFxProvider(transport=transport, clock=lambda: NOW, monotonic=lambda: NOW)
+    usd = fx.rate_to_eur('USD')
+    assert usd['rate'] == pytest.approx(1 / 1.1177)
+    assert usd['quote_currency'] == 'EUR' and usd['date'] == '2026-10-07'
+    assert usd['source'] == 'European Central Bank'
+    assert fx.rate_to_eur('GBP')['rate'] == pytest.approx(1 / .84645)
+    assert len(calls) == 1 and calls[0][1] == 4
+
+
+def test_finance_service_attaches_eur_display_without_rewriting_source_values(tmp_path):
+    provider = Provider()
+    svc = FinanceService(
+        ProviderChain(provider, clock=lambda: NOW),
+        RecommendationStore(tmp_path / 'finance-fx.json'),
+        clock=lambda: NOW,
+        fx_provider=FxProvider(),
+    )
+    report = svc.execute('finance_analyze', prompt='Analysiere AMD')
+    assert report['quote']['price'] == 359
+    assert report['quote']['currency'] == 'USD'
+    assert report['display_fx']['target_currency'] == 'EUR'
+    assert report['display_fx']['rates']['USD']['rate'] == .90
+    assert report['display_fx']['presentation_only'] is True
+    quote_report = svc.execute('finance_quote', prompt='AMD Kurs')
+    assert quote_report['display_fx']['rates']['USD']['source'] == 'European Central Bank'
+
+
+def test_portfolio_keeps_native_values_and_adds_eur_display_values():
+    reports = []
+    histories = {}
+    for symbol_name, price_value, currency, rate in [('AMD', 100, 'USD', .9), ('SAP', 200, 'EUR', 1.0)]:
+        instrument = {'symbol': symbol_name, 'exchange': 'NASDAQ' if symbol_name == 'AMD' else 'XETRA', 'currency': currency, 'name': symbol_name}
+        reports.append({'instrument': instrument, 'quote': {'price': price_value, 'currency': currency, 'stale': False, 'timestamp': NOW, 'source': 'fixture'},
+                        'fundamentals': {'sector': 'Technology'}, 'assessment': {'score': 70}, 'cases': {'risks': []},
+                        'display_fx': {'rates': {currency: {'rate': rate}}}})
+        histories[symbol_name] = history(symbol_name, currency)
+    data = analyze_portfolio([{'symbol': 'AMD', 'quantity': 2}, {'symbol': 'SAP', 'quantity': 1}], reports, histories)
+    assert data['status'] == 'currency_conversion_required'
+    assert data['total_value'] is None
+    assert data['display_total_value'] == pytest.approx(380)
+    assert data['display_currency'] == 'EUR'
+    assert data['positions'][0]['display_value'] == pytest.approx(180)
+    assert data['positions'][1]['display_value'] == pytest.approx(200)
+    assert sum(row['display_weight'] for row in data['positions']) == pytest.approx(1)
 
 @pytest.mark.parametrize('prompt,expected', [
     ('AMD Kurs', 'finance_quote'), ('Wie steht AMD gerade?', 'finance_quote'),

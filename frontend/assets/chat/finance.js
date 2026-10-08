@@ -20,6 +20,41 @@
     const compact = value => numeric(value)
         ? new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value)
         : localText('—', '—');
+    const currencyValue = (value, currency, compactMode = false) => {
+        if (!numeric(value) || !currency) return localText('—', '—');
+        try {
+            return new Intl.NumberFormat(locale(), {
+                style: 'currency',
+                currency: String(currency).toUpperCase(),
+                currencyDisplay: 'narrowSymbol',
+                notation: compactMode ? 'compact' : 'standard',
+                minimumFractionDigits: compactMode ? 0 : (Math.abs(value) >= 1 ? 2 : 4),
+                maximumFractionDigits: compactMode ? 1 : (Math.abs(value) >= 1 ? 2 : 4)
+            }).format(value);
+        } catch (_) {
+            return (compactMode ? compact(value) : price(value)) + ' ' + safe(currency);
+        }
+    };
+    function fxInfo(report, currency) {
+        const code = String(currency || '').toUpperCase();
+        return report?.display_fx?.rates?.[code] || null;
+    }
+    function money(report, value, currency, compactMode = false) {
+        const code = String(currency || '').toUpperCase();
+        if (!numeric(value) || !code) return localText('—', '—');
+        const original = currencyValue(value, code, compactMode);
+        if (code === 'EUR') return original;
+        const fx = fxInfo(report, code);
+        if (!numeric(fx?.rate) || fx.rate <= 0) return original;
+        const eur = currencyValue(value * fx.rate, 'EUR', compactMode);
+        return '≈ ' + eur + ' (' + original + ')';
+    }
+    function fxLabel(report, currency) {
+        const fx = fxInfo(report, currency);
+        if (!fx || String(currency || '').toUpperCase() === 'EUR') return '';
+        const dateText = fx.date || (numeric(fx.as_of) ? shortDate(fx.as_of) : '');
+        return [safe(fx.source || 'ECB'), dateText].filter(Boolean).join(' · ');
+    }
     const pct = value => numeric(value)
         ? format(value * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
         : localText('—', '—');
@@ -126,10 +161,10 @@
         const status = q.stale ? localText('VERALTET', 'STALE') : localText('zuletzt gemeldet', 'last reported');
         return [
             `**${safe(i.name || i.symbol)} (${safe(i.symbol)})**`,
-            `${localText('Kurs', 'Price')}: **${price(q.price)} ${safe(q.currency)}** · ${safe(q.exchange)} · ${session(q.session)}`,
+            `${localText('Kurs', 'Price')}: **${money(report, q.price, q.currency)}** · ${safe(q.exchange)} · ${safe(q.currency)} · ${session(q.session)}`,
             `${localText('Stand', 'As of')}: ${date(q.timestamp)} · ${localText('Datenalter', 'Age')}: ${age(q.age_seconds)} · **${status}**`,
             `${localText('Verzögerung', 'Delay')}: ${q.delay_status === 'unknown' ? localText('unbekannt; kein garantierter Echtzeitkurs', 'unknown; no guaranteed live quote') : safe(q.delay_status)}`,
-            `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${price(q.fifty_two_week_low)} – ${price(q.fifty_two_week_high)}`
+            `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${money(report, q.fifty_two_week_low, q.currency)} – ${money(report, q.fifty_two_week_high, q.currency)}`
         ].join('\n\n');
     }
 
@@ -139,6 +174,9 @@
             .map(([kind, entry]) => `${safe(kind)}: ${safe(entry.provider)} (${date(entry.retrieved_at)})`);
         if (report.quote?.source) {
             rows.unshift(`${localText('Kurs', 'Quote')}: ${safe(report.quote.source)} · ${safe(report.quote.source_url)}`);
+        }
+        for (const [currency, fx] of Object.entries(report.display_fx?.rates || {})) {
+            if (currency !== 'EUR' && fx?.source) rows.push(`FX ${safe(currency)}→EUR: ${safe(fx.source)} (${safe(fx.date || '')})`);
         }
         return '\n\n**' + localText('Quellen', 'Sources') + '**\n\n' +
             (rows.join('\n\n') || localText('nicht verfügbar', 'unavailable'));
@@ -206,14 +244,22 @@
                     'Provide positions with quantities, e.g. “Analyze my portfolio: AMD: 10, NVDA: 5”.'
                 );
             }
-            const currencyWarning = data.status === 'currency_conversion_required'
-                ? localText('Verschiedene Währungen: keine Gesamtbewertung ohne FX-Daten.', 'Mixed currencies: no aggregate valuation without FX data.')
-                : `${localText('Gesamtwert', 'Total value')}: ${num(data.total_value)} ${safe(data.currency)}`;
+            const displayTotal = numeric(data.display_total_value)
+                ? currencyValue(data.display_total_value, 'EUR')
+                : null;
+            const nativeTotal = numeric(data.total_value) && data.currency
+                ? currencyValue(data.total_value, data.currency)
+                : null;
+            const currencyWarning = displayTotal
+                ? `${localText('Gesamtwert', 'Total value')}: ≈ ${displayTotal}${nativeTotal && data.currency !== 'EUR' ? ' (' + nativeTotal + ')' : ''}`
+                : data.status === 'currency_conversion_required'
+                    ? localText('Verschiedene Währungen: EUR-Anzeige derzeit nicht verfügbar.', 'Mixed currencies: EUR display currently unavailable.')
+                    : `${localText('Gesamtwert', 'Total value')}: ${nativeTotal || '—'}`;
             return [
                 `**${localText('Portfolio-Analyse', 'Portfolio analysis')}**`,
-                (data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(p.weight)}`).join(' · '),
+                (data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(numeric(p.display_weight) ? p.display_weight : p.weight)} · ${numeric(p.display_value) ? '≈ ' + currencyValue(p.display_value, 'EUR', true) + (p.currency !== 'EUR' ? ' (' + currencyValue(p.value, p.currency, true) + ')' : '') : currencyValue(p.value, p.currency, true)}`).join(' · '),
                 currencyWarning,
-                localText('Nur Long-Positionen; keine Orderausführung, FX-, Steuer-, Cash- oder Derivatemodellierung.', 'Long-only support; no order execution, FX, tax, cash or derivatives modeling.')
+                localText('EUR-Werte sind reine Anzeigeumrechnungen mit EZB-Referenzkurs. Keine Orderausführung, Steuer-, Cash- oder Derivatemodellierung.', 'EUR values are presentation-only conversions using ECB reference rates. No order execution, tax, cash or derivatives modeling.')
             ].filter(Boolean).join('\n\n');
         }
         if (data.kind === 'tracking') {
@@ -290,7 +336,7 @@
                     .filter(Boolean).join(' · '))
         );
         const value = el('div', 'finance-card-price');
-        value.append(el('strong', '', `${price(q.price)} ${q.currency || i.currency || ''}`.trim()));
+        value.append(el('strong', '', money(report, q.price, q.currency || i.currency)));
         value.append(el('span', 'finance-change ' + toneFor(q.day_change_percent), signedPctPoints(q.day_change_percent)));
         header.append(title, value);
         card.appendChild(header);
@@ -326,15 +372,17 @@
         const add = (key, formatter = num) => {
             if (numeric(values[key])) rows.push([metricLabels[key](), formatter(values[key])]);
         };
-        add('market_cap', compact);
-        add('revenue', compact);
+        const listingCurrency = report.quote?.currency || report.instrument?.currency;
+        const reportingCurrency = report.fundamentals?.reporting_currency || listingCurrency;
+        add('market_cap', value => money(report, value, listingCurrency, true));
+        add('revenue', value => money(report, value, reportingCurrency, true));
         add('revenue_growth', pct);
-        add('eps');
+        add('eps', value => money(report, value, reportingCurrency));
         add('eps_growth', pct);
-        add('free_cash_flow', compact);
+        add('free_cash_flow', value => money(report, value, reportingCurrency, true));
         add('profit_margin', pct);
         add('operating_margin', pct);
-        add('debt', compact);
+        add('debt', value => money(report, value, reportingCurrency, true));
         add('debt_to_equity', value => num(value) + '%');
         add('pe');
         add('forward_pe');
@@ -348,11 +396,12 @@
         const rows = [];
         if (t.trend) rows.push([localText('Trend', 'Trend'), trend(t.trend)]);
         if (numeric(t.rsi14)) rows.push(['RSI 14', num(t.rsi14)]);
-        if (numeric(t.sma?.[200])) rows.push(['SMA 200', num(t.sma[200])]);
-        if (numeric(t.ema?.[200])) rows.push(['EMA 200', num(t.ema[200])]);
+        const listingCurrency = report.quote?.currency || report.instrument?.currency;
+        if (numeric(t.sma?.[200])) rows.push(['SMA 200', money(report, t.sma[200], listingCurrency)]);
+        if (numeric(t.ema?.[200])) rows.push(['EMA 200', money(report, t.ema[200], listingCurrency)]);
         if (numeric(t.momentum_20)) rows.push([localText('Momentum 20', 'Momentum 20'), pct(t.momentum_20)]);
         if (numeric(t.volatility_annual)) rows.push([localText('Volatilität', 'Volatility'), pct(t.volatility_annual)]);
-        if (numeric(t.macd?.value)) rows.push(['MACD', `${num(t.macd.value)} / ${num(t.macd.signal)}`]);
+        if (numeric(t.macd?.value)) rows.push(['MACD', `${money(report, t.macd.value, listingCurrency)} / ${money(report, t.macd.signal, listingCurrency)}`]);
         return rows;
     }
 
@@ -476,7 +525,8 @@
         market.append(
             kv(localText('Kursbasis', 'Price basis'), safe(q.price_basis || '—')),
             kv(localText('Verzögerung', 'Delay'), safe(q.delay_status || localText('unbekannt', 'unknown'))),
-            kv('52W', `${price(q.fifty_two_week_low)} – ${price(q.fifty_two_week_high)}`),
+            kv('52W', `${money(report, q.fifty_two_week_low, q.currency)} – ${money(report, q.fifty_two_week_high, q.currency)}`),
+            ...(fxLabel(report, q.currency) ? [kv(localText('EUR-Umrechnung', 'EUR conversion'), fxLabel(report, q.currency))] : []),
             kv(localText('Fundamental-Periode', 'Fundamental period'), safe(f.period || '—')),
             kv(localText('Berichtswährung', 'Reporting currency'), safe(f.reporting_currency || '—')),
             kv(localText('Technik-Stand', 'Technical as of'), date(t.as_of))
@@ -499,6 +549,11 @@
         if (q.source) allSources.push([localText('Kurs', 'Quote'), q.source, q.source_url]);
         for (const [kind, source] of Object.entries(report.sources || {})) {
             if (source?.provider) allSources.push([kind, source.provider, source.url]);
+        }
+        for (const [currency, fx] of Object.entries(report.display_fx?.rates || {})) {
+            if (currency !== 'EUR' && fx?.source) {
+                allSources.push([localText('FX ' + currency + '→EUR', 'FX ' + currency + '→EUR'), fx.source, fx.source_url]);
+            }
         }
         for (const [kind, provider, url] of allSources) {
             const row = el('div');
@@ -527,8 +582,8 @@
         const section = el('div', 'finance-card-section');
         const grid = el('div', 'finance-metrics');
         grid.append(
-            metric(localText('52W Tief', '52W low'), price(q.fifty_two_week_low)),
-            metric(localText('52W Hoch', '52W high'), price(q.fifty_two_week_high)),
+            metric(localText('52W Tief', '52W low'), money(report, q.fifty_two_week_low, q.currency)),
+            metric(localText('52W Hoch', '52W high'), money(report, q.fifty_two_week_high, q.currency)),
             metric(localText('Datenalter', 'Data age'), age(q.age_seconds)),
             metric(localText('Quelle', 'Source'), safe(q.source || '—'))
         );
@@ -549,8 +604,8 @@
         appendDetails(card, report);
         const footer = el('div', 'finance-card-footer',
             localText(
-                'Konfidenz misst Datenqualität, nicht Gewinnwahrscheinlichkeit. Das Scoring ist heuristisch und keine validierte Handelsstrategie.',
-                'Confidence measures data quality, not profit probability. Scoring is heuristic and not a validated trading strategy.'
+                'EUR-Werte sind ungefähre Anzeigeumrechnungen mit dem täglichen EZB-Referenzkurs; die Originalwährung steht in Klammern. Konfidenz misst Datenqualität, nicht Gewinnwahrscheinlichkeit.',
+                'EUR values are approximate display conversions using the daily ECB reference rate; original currency is shown in parentheses. Confidence measures data quality, not profit probability.'
             ));
         card.appendChild(footer);
         return card;
@@ -583,7 +638,7 @@
             stock.append(el('strong', '', i.symbol || '—'), document.createTextNode(i.name ? ' · ' + i.name : ''));
             row.append(
                 stock,
-                el('td', '', `${price(q.price)} ${q.currency || ''}`.trim()),
+                el('td', '', money(report, q.price, q.currency)),
                 el('td', toneFor(q.day_change_percent), signedPctPoints(q.day_change_percent)),
                 el('td', toneFor(report.performance?.['1Y']?.percent), signedPctPoints(report.performance?.['1Y']?.percent)),
                 el('td', '', a.score == null ? '—' : Math.round(a.score)),
@@ -600,13 +655,13 @@
             ((data.ranking || []).join(' › ') || localText('unzureichende Daten', 'insufficient data'))));
         card.appendChild(section);
         card.appendChild(el('div', 'finance-card-footer',
-            localText('Kurse bleiben in ihrer Originalwährung und am Originalbörsenplatz; keine FX-Umrechnung.', 'Prices retain original listing currency and exchange; no FX conversion.')));
+            localText('EUR zuerst, Originalwährung in Klammern. Umrechnung ungefähr mit täglichem EZB-Referenzkurs; Börsenplatz und Originalkurs bleiben unverändert.', 'EUR first, original currency in parentheses. Conversion is approximate using the daily ECB reference rate; exchange and original quote remain unchanged.')));
         return card;
     }
 
     function renderHistory(data, tool) {
         const card = el('section', 'finance-card');
-        const headerReport = {kind: 'history', instrument: data.instrument || {}, quote: {
+        const headerReport = {kind: 'history', instrument: data.instrument || {}, display_fx: data.display_fx, quote: {
             price: data.history?.bars?.at?.(-1)?.close,
             currency: data.instrument?.currency,
             exchange: data.instrument?.exchange,
@@ -635,9 +690,26 @@
             const grid = el('div', 'finance-metrics');
             for (const position of data.positions || []) {
                 const symbol = position.instrument?.symbol || '—';
-                grid.appendChild(metric(symbol, pct(position.weight)));
+                const weight = numeric(position.display_weight) ? position.display_weight : position.weight;
+                const original = numeric(position.value) && position.currency
+                    ? currencyValue(position.value, position.currency, true)
+                    : '—';
+                const shown = numeric(position.display_value)
+                    ? '≈ ' + currencyValue(position.display_value, 'EUR', true) +
+                        (position.currency !== 'EUR' && original !== '—' ? ' (' + original + ')' : '')
+                    : original;
+                grid.appendChild(metric(symbol + (numeric(weight) ? ' · ' + pct(weight) : ''), shown));
             }
             section.appendChild(grid);
+            if (numeric(data.display_total_value)) {
+                const nativeTotal = numeric(data.total_value) && data.currency
+                    ? currencyValue(data.total_value, data.currency, true)
+                    : '';
+                section.appendChild(el('div', 'finance-ranking',
+                    localText('Gesamtwert: ', 'Total value: ') + '≈ ' +
+                    currencyValue(data.display_total_value, 'EUR', true) +
+                    (nativeTotal && data.currency !== 'EUR' ? ' (' + nativeTotal + ')' : '')));
+            }
             if (data.ranking?.length) section.appendChild(el('div', 'finance-ranking', localText('Ranking: ', 'Ranking: ') + data.ranking.join(' › ')));
         }
         card.appendChild(section);
@@ -694,6 +766,6 @@
         summary,
         failure,
         render,
-        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date }
+        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel }
     };
 })();

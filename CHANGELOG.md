@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show Finance monetary values EUR-first using cached daily ECB reference rates while preserving the original listing/reporting currency in parentheses and source data unchanged.
+
 - Replace dense Finance Markdown output with responsive stock cards for quotes,
   analyses, comparisons, portfolios, history and recommendation tracking; keep
   technical details and sources collapsible while preserving copy/read-aloud text.

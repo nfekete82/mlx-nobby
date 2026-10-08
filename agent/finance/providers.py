@@ -6,9 +6,12 @@ No user URLs, cookies, credentials, portfolio sizes or prompts are sent upstream
 from collections import OrderedDict
 from copy import deepcopy
 from functools import wraps
+from datetime import datetime, timezone
 import json
+import math
 import threading
 import time
+import xml.etree.ElementTree as ET
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, quote, urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -21,6 +24,9 @@ EXCHANGES = {'NMS': 'NASDAQ', 'NGM': 'NASDAQ', 'NCM': 'NASDAQ', 'NYQ': 'NYSE',
              'PCX': 'NYSE ARCA', 'GER': 'XETRA', 'STU': 'STUTTGART', 'LSE': 'LSE'}
 TTL = {'quote': 30, 'history': 300, 'fundamentals': 3600, 'news': 600, 'resolve': 86400}
 MAX_BYTES = 2_000_000
+FX_MAX_BYTES = 256_000
+FX_TTL = 6 * 3600
+ECB_FX_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -35,6 +41,15 @@ def fetch_json(url, timeout):
     if len(raw) > MAX_BYTES:
         raise FinanceError('provider_response_too_large')
     return json.loads(raw)
+
+
+def fetch_bytes(url, timeout):
+    request = Request(url, headers={'User-Agent': 'MLX-Nobby/Finance', 'Accept': 'application/xml,text/xml'})
+    with build_opener(_NoRedirect).open(request, timeout=timeout) as response:
+        raw = response.read(FX_MAX_BYTES + 1)
+    if len(raw) > FX_MAX_BYTES:
+        raise FinanceError('provider_response_too_large')
+    return raw
 
 
 def provider_contract(function):
@@ -273,6 +288,78 @@ class YahooProvider:
             items.append(dict(title=str(row.get('title') or '')[:240], timestamp=timestamp, url=url,
                               source=str(row.get('publisher') or self.name)[:80], untrusted=True))
         return {'items': items[:8], 'source': self.name, 'window_days': 7, 'retrieved_at': self.clock()}
+
+
+
+class EcbFxProvider:
+    """Daily ECB euro reference rates for presentation-only currency conversion."""
+
+    name = 'European Central Bank'
+
+    def __init__(self, transport=fetch_bytes, clock=time.time, monotonic=time.monotonic):
+        self.transport, self.clock, self.monotonic = transport, clock, monotonic
+        self._cached = None
+        self._cached_at = 0.0
+        self._lock = threading.RLock()
+
+    def _load(self):
+        with self._lock:
+            if self._cached is not None and self.monotonic() - self._cached_at < FX_TTL:
+                return deepcopy(self._cached)
+        payload = None
+        for attempt in range(2):
+            try:
+                payload = self.transport(ECB_FX_URL, 4)
+                break
+            except (HTTPError, URLError, TimeoutError, OSError):
+                if attempt:
+                    raise FinanceError('fx_unavailable') from None
+        try:
+            root = ET.fromstring(payload)
+            date_text = None
+            rates = {}
+            for node in root.iter():
+                if node.attrib.get('time'):
+                    date_text = node.attrib['time']
+                currency = node.attrib.get('currency')
+                raw_rate = node.attrib.get('rate')
+                if currency and raw_rate:
+                    value = float(raw_rate)
+                    if not math.isfinite(value) or value <= 0:
+                        raise ValueError()
+                    rates[currency.upper()] = value
+            if not date_text or not rates:
+                raise ValueError()
+            as_of = datetime.strptime(date_text, '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp()
+        except (ET.ParseError, ValueError, TypeError):
+            raise FinanceError('fx_invalid_provider_response') from None
+        result = {'date': date_text, 'as_of': as_of, 'rates_per_eur': rates}
+        with self._lock:
+            self._cached, self._cached_at = deepcopy(result), self.monotonic()
+        return result
+
+    def rate_to_eur(self, currency):
+        currency = str(currency or '').strip().upper()
+        if currency == 'EUR':
+            return {
+                'base_currency': 'EUR', 'quote_currency': 'EUR', 'rate': 1.0,
+                'reference_rate_per_eur': 1.0, 'as_of': None, 'date': None,
+                'source': self.name, 'source_url': ECB_FX_URL,
+                'retrieved_at': self.clock(), 'rate_basis': 'identity'
+            }
+        if not currency or not currency.isalpha() or len(currency) != 3:
+            raise FinanceError('fx_currency_invalid')
+        data = self._load()
+        reference = data['rates_per_eur'].get(currency)
+        if reference is None:
+            raise FinanceError('fx_currency_unavailable')
+        return {
+            'base_currency': currency, 'quote_currency': 'EUR', 'rate': 1.0 / reference,
+            'reference_rate_per_eur': reference, 'as_of': data['as_of'], 'date': data['date'],
+            'source': self.name, 'source_url': ECB_FX_URL,
+            'retrieved_at': self.clock(),
+            'rate_basis': 'ECB euro foreign exchange reference rate; presentation only'
+        }
 
 
 class ProviderChain:

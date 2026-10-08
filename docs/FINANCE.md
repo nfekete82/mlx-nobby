@@ -58,7 +58,7 @@ rather than taking the first exchange returned.
 
 AMD is the US listing, normally NASDAQ/USD. Asking for Stuttgart/EUR with AMD
 fails `market_selection_required`; provide the explicit ticker for that listing.
-No implicit mapping to another venue or currency is performed. Provider results
+No implicit mapping to another venue or provider currency is performed. EUR-first display is a separate presentation layer and never changes the instrument identity. Provider results
 must match all three identity fields. Fallbacks may supply missing data only for
 the exact same instrument. Identity conflicts stop analysis and cannot trigger
 fallback to a conveniently available different market.
@@ -97,6 +97,26 @@ tracking use the same visual system. All provider-controlled text is inserted vi
 DOM text nodes; only validated HTTPS source/news URLs become links. The stored
 plain-text summary remains available for copy/read-aloud and preserves stale,
 delay, confidence and limitation warnings.
+
+
+## EUR-first presentation
+
+Finance keeps every provider observation in its original listing/reporting currency.
+For display only, monetary values are shown in EUR first when a reference rate is
+available; the untouched original amount remains visible in parentheses. USD examples
+therefore render like `≈ 571,20 € (638,45 $)`.
+
+The conversion source is the European Central Bank daily euro foreign exchange
+reference-rate feed. The ECB rate is cached for six hours, fetched from a fixed HTTPS
+endpoint with redirects blocked, a 4-second timeout and a 256 KB response limit.
+Conversion metadata includes source, reference date and the original-to-EUR rate.
+If the ECB feed or a currency is unavailable, Finance falls back to the original
+currency rather than estimating a rate.
+
+These are approximate presentation conversions, not executable FX, settlement or
+tax values. The original exchange, quote, timestamps, scoring inputs and stored
+recommendation snapshots are never rewritten. EUR-listed instruments are not
+converted or duplicated.
 
 ## Performance, caching and errors
 

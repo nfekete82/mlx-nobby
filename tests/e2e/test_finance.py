@@ -12,7 +12,10 @@ def test_finance_quote_and_searchable_help(ui, language):
     output = page.locator('.message.assistant .message-content').last
     card = output.locator('.finance-card')
     expect(card).to_be_visible()
+    expect(card.locator('.finance-card-price')).to_contain_text('111')
     expect(card.locator('.finance-card-price')).to_contain_text('123')
+    expect(card.locator('.finance-card-price')).to_contain_text('€')
+    expect(card.locator('.finance-card-price')).to_contain_text('$')
     expect(card.locator('.finance-status')).to_be_visible()
     expect(output).to_contain_text('NASDAQ')
     expect(output).to_contain_text('USD')
@@ -31,4 +34,5 @@ def test_finance_quote_and_searchable_help(ui, language):
     expect(page.locator('#mlxHelpPanel')).to_contain_text('Finanzanalyse' if language == 'de' else 'Finance Intelligence')
     page.locator('[data-help-topic="finance"]').click()
     expect(page.locator('#mlxHelpPanel')).to_contain_text('Yahoo Finance')
+    expect(page.locator('#mlxHelpPanel')).to_contain_text('Zentralbank' if language == 'de' else 'European Central Bank')
     expect(page.locator('#mlxHelpPanel')).to_contain_text('insufficient data')
