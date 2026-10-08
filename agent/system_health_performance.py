@@ -15,16 +15,21 @@ CACHE_TTL_SECONDS = max(
 )
 
 _cache_lock = threading.Lock()
+_cache_condition = threading.Condition(_cache_lock)
 _cached_snapshot: dict | None = None
 _cached_at = 0.0
+_cache_generation = 0
+_build_in_progress = False
 _installed = False
 
 
 def invalidate() -> None:
-    global _cached_snapshot, _cached_at
-    with _cache_lock:
+    global _cached_snapshot, _cached_at, _cache_generation
+    with _cache_condition:
+        _cache_generation += 1
         _cached_snapshot = None
         _cached_at = 0.0
+        _cache_condition.notify_all()
 
 
 def _build_snapshot(health_module) -> dict:
@@ -71,20 +76,44 @@ def _build_snapshot(health_module) -> dict:
 
 def _cached_builder(health_module):
     def build_health_snapshot() -> dict:
-        global _cached_snapshot, _cached_at
+        global _cached_snapshot, _cached_at, _build_in_progress
 
-        now = time.monotonic()
-        with _cache_lock:
-            if (
-                _cached_snapshot is not None
-                and now - _cached_at < CACHE_TTL_SECONDS
-            ):
-                return deepcopy(_cached_snapshot)
+        while True:
+            with _cache_condition:
+                if (
+                    _cached_snapshot is not None
+                    and time.monotonic() - _cached_at < CACHE_TTL_SECONDS
+                ):
+                    return deepcopy(_cached_snapshot)
 
-            snapshot = _build_snapshot(health_module)
-            _cached_snapshot = deepcopy(snapshot)
-            _cached_at = time.monotonic()
-            return snapshot
+                if _build_in_progress:
+                    # Reuse one expensive service probe for concurrent callers.
+                    _cache_condition.wait()
+                    continue
+
+                _build_in_progress = True
+                generation = _cache_generation
+
+            try:
+                # Never hold the cache lock across subprocess/HTTP health probes.
+                snapshot = _build_snapshot(health_module)
+                cache_copy = deepcopy(snapshot)
+            except BaseException:
+                with _cache_condition:
+                    _build_in_progress = False
+                    _cache_condition.notify_all()
+                raise
+
+            with _cache_condition:
+                _build_in_progress = False
+                if generation == _cache_generation:
+                    _cached_snapshot = cache_copy
+                    _cached_at = time.monotonic()
+                    _cache_condition.notify_all()
+                    return snapshot
+                # An explicit invalidation raced with the probe. Discard the
+                # obsolete result so it cannot repopulate the cache.
+                _cache_condition.notify_all()
 
     return build_health_snapshot
 
