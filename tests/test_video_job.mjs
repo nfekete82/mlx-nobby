@@ -259,7 +259,7 @@ assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
 assert.match(chatHtml, /chat\/generation\.js\?v=20261008-finance-v1/);
-assert.match(chatHtml, /chat\/rendering\.js\?v=20261008-finance-chart/);
+assert.match(chatHtml, /chat\/rendering\.js\?v=20261008-finance-speed/);
 assert.match(chatHtml, /chat\.js\?v=20260926-shorts-progress/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
 
