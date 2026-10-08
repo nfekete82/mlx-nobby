@@ -140,6 +140,41 @@ browser acceptance and real acceptance. `--full` is an explicit opt-in there
 also. The complete CI and both acceptance commands must additionally pass on
 final main before release readiness; these commands never tag or release.
 
+## Talking Photo, media-queue and release candidate checks
+
+To rerun the CPU-only regressions for recent LTX and media changes:
+
+```sh
+test-venv/bin/python -m pytest -q \
+  tests/test_talking_photo_ltx.py \
+  tests/test_media_queue.py \
+  tests/test_media_queue_performance.py \
+  tests/test_runtime_coordinator.py \
+  tests/test_performance_observatory.py \
+  tests/test_version_routes.py
+```
+
+These tests validate LTX audio limits and frame/padding calculations, queued
+native-job recovery, kind-specific FIFO, backoff, safe RAM handoff and matching
+VERSION/README/CHANGELOG metadata. GitHub **Tests** and **Browser acceptance**
+must also pass on the final combined `main` commit, not only on individual
+pull requests.
+
+The 20-second LTX Talking Photo beta passes parameter and WAV tests but has
+**not been certified by simulated CI as a real 20-second render**. On an idle
+Apple Silicon development machine, run a direct 15-second and a 20-second
+sample through the actual Talking Photo renderer, inspect video/audio duration,
+speaker lip synchronization, face identity, memory/swap peak and elapsed time.
+Do not tag a release when real rendering is broken or memory is unsafe. The
+existing `./scripts/mlx test-real` and `test-release` gates still apply;
+long Talking Photo remains an additional manual beta acceptance check.
+
+Version bump and GitHub release publication are governed by
+[Releasing](RELEASING.md): `VERSION`, README badge, and Changelog must agree;
+tagging waits until local release gate and final-main real acceptance pass.
+Do not change only the badge or call the unreleased development branch a
+published product version.
+
 ## Finance regressions
 
 `test-venv/bin/python -m pytest -q tests/test_finance.py` uses injected provider

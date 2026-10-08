@@ -13,6 +13,37 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
+## Recent updates (unreleased)
+
+The latest changes on `main` after **v1.8.0** are not a published GitHub
+release yet; the release badge above identifies the last formally released
+version. Highlights include:
+
+- **Talking Photo:** direct LTX audio-to-video is the default, with an optional
+  LTX + MuseTalk hybrid. The LTX paths now accept up to **20 seconds of
+  source audio (beta)** instead of 10 seconds. Longer generated TTS audio
+  is rejected before rendering rather than silently shortened. A 15–20-second
+  clip has not yet been validated for identity drift, lip-sync quality,
+  peak unified-memory use or render time on all Apple Silicon machines.
+  See [Talking Photo quality and real-device testing](docs/TALKING_PHOTO_QUALITY.md).
+- **Media queue:** image and video jobs survive reloads and recover after
+  service failures. Native dispatch now backs off on HTTP 409/503 without
+  blocking runnable work of another kind; order is preserved within each
+  kind, and only one active native media job is dispatched at a time.
+- **Runtime performance:** LTX can preserve idle image weights when fresh,
+  complete memory measurements satisfy the existing hard limit and video
+  reserve. The Performance Observatory shows per-stage video handoff
+  latencies and actual model-release/preservation counts. Read-only memory
+  probes and video progress disk writes are coalesced; admission checks are
+  still fresh. See [Performance Observatory](docs/PERFORMANCE_OBSERVATORY.md).
+- **Finance:** EUR-first price display with unchanged source currencies,
+  interactive price-history charts and more resilient quote/FX diagnostics.
+
+See [the changelog](CHANGELOG.md) for all unreleased work, including fixes.
+For new releases follow [the release procedure](docs/RELEASING.md) and
+[the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
+replace the required local real-runtime acceptance on Apple Silicon.
+
 ## Shorts backend
 
 Shorts Studio offers a pre-production editor, saved drafts and History with

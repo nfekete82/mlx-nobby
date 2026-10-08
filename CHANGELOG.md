@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Extend LTX Talking Photo's beta audio limit from 10 to 20 seconds without
+  trimming or retiming the source audio. Cover 15/20-second frame-grid and
+  padding boundaries in regression tests; real Apple Silicon quality and
+  memory validation remains required before the next release.
+- Make the durable image/video queue yield on native job creation HTTP 409/503,
+  retry with bounded exponential backoff (1.5–30 seconds), preserve FIFO within
+  each media kind, and keep single-flight native work and cancellation safe.
+- Retain idle image weights before LTX only when fresh, complete macOS memory
+  estimates meet video reserve and the existing hard ceiling; unload if
+  memory readings worsen or cannot be trusted.
+- Expand the Performance Observatory with video handoff phase timings,
+  historical warm/cold starts, verified image preservation/eviction counts and
+  chat-release metrics; correct previously misleading image-release telemetry
+  without mislabeling old records.
+- Reduce video progress-related disk synchronizations and RAM/swap subprocess
+  checks while keeping live progress, lifecycle persistence and admission safety.
+- Coalesce duplicate read-only memory probes across the Agent, media queue and
+  Performance Observatory while keeping every model admission check fresh.
+- Reclaim idle speech/MuseTalk weights before evicting chat for video work
+  when memory is constrained, and remove blocking System Health cache refreshes.
+- Fix a Chromium acceptance cleanup selector to target the intended speech
+  button when more than one control is present.
+
 - Improve Finance reliability: validate ECB reference-rate dates, analyze mixed-currency
   portfolio exposure from available EUR values, and asynchronously load the price
   chart without blocking current quotes.
