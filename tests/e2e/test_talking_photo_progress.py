@@ -17,7 +17,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         "phase": "queued", "progress": 0.0, "created_at": now,
         "started_at": None, "cancel_requested": False, "error": None,
     }
-    requests = {"create": 0, "poll": 0, "cancel": 0}
+    requests = {"create": 0, "poll": 0, "cancel": 0, "discard": 0}
 
     def respond(route, payload, status=200):
         route.fulfill(status=status, content_type="application/json",
@@ -38,6 +38,10 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         job.update(cancel_requested=True)
         respond(route, dict(job))
 
+    def discard(route):
+        requests["discard"] += 1
+        respond(route, dict(job))
+
     page.route("**/api/talking-photo/status",
                lambda route: respond(route, {"providers": {"ltx": {"ready": True, "device": "mlx/metal"}}}))
     page.route("**/api/mlx/audio/voices/manage",
@@ -45,6 +49,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     page.route("**/api/talking-photo/jobs", create)
     page.route(f"**/api/talking-photo/jobs/{job_id}", poll)
     page.route(f"**/api/talking-photo/jobs/{job_id}/cancel", cancel)
+    page.route(f"**/api/talking-photo/jobs/{job_id}/discard", discard)
 
     page.locator("#talkingPhotoButton").click()
     expect(page.locator("#talkingPhotoModal")).to_be_visible()
@@ -75,9 +80,11 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     page.locator(".mlx-talking-photo-close").click()
     expect(page.locator("#talkingPhotoModal")).to_be_hidden()
     expect(page.locator("#talkingPhotoButton")).to_have_class(re.compile("is-generating"))
+    assert requests["discard"] == 0, "Closing the dialog must not cancel active work"
     count_before = requests["poll"]
     page.wait_for_timeout(1150)
     assert requests["poll"] > count_before
+    assert requests["discard"] == 0
 
     page.locator("#talkingPhotoButton").click()
     expect(page.locator("#talkingPhotoProgressTrack")).to_have_attribute("aria-valuenow", "42")
