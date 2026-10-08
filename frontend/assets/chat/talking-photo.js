@@ -210,8 +210,13 @@
     }
 
     function closeModal() {
-        // Keep monitoring a submitted job when the dialog is closed.
-        // The top-bar indicator lets users reopen it to inspect the result.
+        // The media-lifecycle listener discards a finished, unsaved result
+        // on closing. Keep only genuinely active jobs in the background.
+        if (lastJob && TERMINAL_STATES.has(lastJob.status)) {
+            clearPolling();
+            stopElapsedTicker();
+            forgetJob();
+        }
         const modal = document.getElementById(MODAL_ID);
         if (modal) {
             modal.hidden = true;
