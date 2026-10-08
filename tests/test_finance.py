@@ -83,6 +83,8 @@ def test_symbols_constraints():
     assert symbols_from_prompt('Analysiere IBM') == ['IBM']
     assert symbols_from_prompt('analysiere western digital vollständig') == ['WDC']
     assert explicit_company_query('Analysiere Example Storage Systems vollständig') == 'Example Storage Systems'
+    assert explicit_company_query('Analysiere das Spiel') is None
+    assert explicit_company_query('Analysiere die Deutsche Bank vollständig') == 'Deutsche Bank'
     assert explicit_company_query('Analysiere dieses Dokument vollständig') is None
     assert explicit_company_query('Analysiere meinen PC vollständig') is None
     assert market_constraints('AMD auf Stuttgart in EUR') == ('STUTTGART', 'EUR')
