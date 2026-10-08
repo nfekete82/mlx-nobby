@@ -398,6 +398,7 @@ def _run(job_id, request):
             # Persist only content-free timings and decisions. This includes
             # time waiting for the coordinator lease, not LTX model load time.
             runtime_handoff = {
+                "version": 2,  # V2 distinguishes verified release counts from older records.
                 "duration_ms": round((time.monotonic() - handoff_started) * 1000, 2),
                 "timings_ms": dict(preflight.get("handoff_timings_ms") or {}),
                 "image_released": bool(preflight.get("image_released")),
