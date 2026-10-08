@@ -217,6 +217,14 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
         created = raw.get("created_at")
         started = raw.get("started_at")
         finished = raw.get("finished_at")
+        handoff = raw.get("runtime_handoff")
+        handoff = handoff if isinstance(handoff, dict) else {}
+        handoff_value = _number(handoff.get("duration_ms"))
+        handoff_ms = (
+            _rounded(handoff_value)
+            if handoff_value is not None and handoff_value >= 0
+            else None
+        )
         jobs.append({
             "id": str(raw.get("id") or "")[:64],
             "kind": str(raw.get("kind") or "media")[:24],
@@ -224,6 +232,12 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "phase": str(raw.get("phase") or "")[:80] or None,
             "model": _safe_model_identifier(raw.get("model")),
             "runtime_start": _runtime_reuse(raw),
+            "handoff_ms": handoff_ms,
+            "chat_released": (
+                handoff.get("chat_released")
+                if type(handoff.get("chat_released")) is bool
+                else None
+            ),
             "queue_wait_ms": _duration_ms(created, started),
             "generation_ms": _duration_ms(started, finished),
             "total_ms": _duration_ms(created, finished),
@@ -251,6 +265,8 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "total_ms": metric_series(job.get("total_ms") for job in selected),
             "warm_starts": sum(job.get("runtime_start") == "warm" for job in selected),
             "cold_starts": sum(job.get("runtime_start") == "cold" for job in selected),
+            "handoff_ms": metric_series(job.get("handoff_ms") for job in selected),
+            "chat_releases": sum(job.get("chat_released") is True for job in selected),
         }
 
     return {
