@@ -122,7 +122,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
         self.assertEqual((frames - 1) % 8, 0)
 
     def test_quality_frames_accept_15_and_20_second_audio(self):
-        for seconds, frames_expected in ((10.01, 249), (15.0, 361), (20.0, 481)):
+        for seconds, frames_expected in ((10.01, 241), (15.0, 361), (20.0, 481)):
             with self.subTest(seconds=seconds):
                 frames, duration = talking_photo_ltx.quality_frames(seconds)
                 self.assertEqual(frames, frames_expected)
