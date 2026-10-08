@@ -161,10 +161,10 @@
         const status = q.stale ? localText('VERALTET', 'STALE') : localText('zuletzt gemeldet', 'last reported');
         return [
             `**${safe(i.name || i.symbol)} (${safe(i.symbol)})**`,
-            `${localText('Kurs', 'Price')}: **${price(q.price)} ${safe(q.currency)}** · ${safe(q.exchange)} · ${session(q.session)}`,
+            `${localText('Kurs', 'Price')}: **${money(report, q.price, q.currency)}** · ${safe(q.exchange)} · ${session(q.session)}`,
             `${localText('Stand', 'As of')}: ${date(q.timestamp)} · ${localText('Datenalter', 'Age')}: ${age(q.age_seconds)} · **${status}**`,
             `${localText('Verzögerung', 'Delay')}: ${q.delay_status === 'unknown' ? localText('unbekannt; kein garantierter Echtzeitkurs', 'unknown; no guaranteed live quote') : safe(q.delay_status)}`,
-            `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${price(q.fifty_two_week_low)} – ${price(q.fifty_two_week_high)}`
+            `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${money(report, q.fifty_two_week_low, q.currency)} – ${money(report, q.fifty_two_week_high, q.currency)}`
         ].join('\n\n');
     }
 
@@ -325,7 +325,7 @@
                     .filter(Boolean).join(' · '))
         );
         const value = el('div', 'finance-card-price');
-        value.append(el('strong', '', `${price(q.price)} ${q.currency || i.currency || ''}`.trim()));
+        value.append(el('strong', '', money(report, q.price, q.currency || i.currency)));
         value.append(el('span', 'finance-change ' + toneFor(q.day_change_percent), signedPctPoints(q.day_change_percent)));
         header.append(title, value);
         card.appendChild(header);
@@ -562,8 +562,8 @@
         const section = el('div', 'finance-card-section');
         const grid = el('div', 'finance-metrics');
         grid.append(
-            metric(localText('52W Tief', '52W low'), price(q.fifty_two_week_low)),
-            metric(localText('52W Hoch', '52W high'), price(q.fifty_two_week_high)),
+            metric(localText('52W Tief', '52W low'), money(report, q.fifty_two_week_low, q.currency)),
+            metric(localText('52W Hoch', '52W high'), money(report, q.fifty_two_week_high, q.currency)),
             metric(localText('Datenalter', 'Data age'), age(q.age_seconds)),
             metric(localText('Quelle', 'Source'), safe(q.source || '—'))
         );
@@ -618,7 +618,7 @@
             stock.append(el('strong', '', i.symbol || '—'), document.createTextNode(i.name ? ' · ' + i.name : ''));
             row.append(
                 stock,
-                el('td', '', `${price(q.price)} ${q.currency || ''}`.trim()),
+                el('td', '', money(report, q.price, q.currency)),
                 el('td', toneFor(q.day_change_percent), signedPctPoints(q.day_change_percent)),
                 el('td', toneFor(report.performance?.['1Y']?.percent), signedPctPoints(report.performance?.['1Y']?.percent)),
                 el('td', '', a.score == null ? '—' : Math.round(a.score)),
@@ -641,7 +641,7 @@
 
     function renderHistory(data, tool) {
         const card = el('section', 'finance-card');
-        const headerReport = {kind: 'history', instrument: data.instrument || {}, quote: {
+        const headerReport = {kind: 'history', instrument: data.instrument || {}, display_fx: data.display_fx, quote: {
             price: data.history?.bars?.at?.(-1)?.close,
             currency: data.instrument?.currency,
             exchange: data.instrument?.exchange,
@@ -729,6 +729,6 @@
         summary,
         failure,
         render,
-        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date }
+        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel }
     };
 })();
