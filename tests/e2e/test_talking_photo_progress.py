@@ -1,6 +1,7 @@
 """Talking Photo progress/recovery through the actual browser module and mocked local API."""
 import io
 import json
+import re
 import time
 
 from PIL import Image
@@ -63,17 +64,17 @@ def test_talking_photo_progress_reopen_reload_and_cancel(ui):
     assert requests["create"] == 1
 
     job.update(status="tts", phase="tts", started_at=time.time() - 8)
-    expect(page.locator("#talkingPhotoActivityPhase")).to_contain_text("voice", ignore_case=True)
+    expect(page.locator("#talkingPhotoActivityPhase")).to_contain_text(re.compile("Stimme|voice", re.I))
     job.update(status="motion", phase="quality", progress=0.42)
     expect(page.locator("#talkingPhotoProgressTrack")).to_have_attribute("aria-valuenow", "42")
-    expect(page.locator("#talkingPhotoProgressLabel")).to_contain_text("estimated")
+    expect(page.locator("#talkingPhotoProgressLabel")).to_contain_text(re.compile("geschätzt|estimated", re.I))
     expect(page.locator("#talkingPhotoActivityPhase")).to_contain_text("LTX")
     # Time is shown and updates independently of the coarse server progress.
-    expect(page.locator("#talkingPhotoElapsed")).to_contain_text("Elapsed:")
+    expect(page.locator("#talkingPhotoElapsed")).to_contain_text(re.compile("Laufzeit:|Elapsed:", re.I))
 
     page.locator(".mlx-talking-photo-close").click()
     expect(page.locator("#talkingPhotoModal")).to_be_hidden()
-    expect(page.locator("#talkingPhotoButton")).to_have_class("is-generating")
+    expect(page.locator("#talkingPhotoButton")).to_have_class(re.compile("is-generating"))
     count_before = requests["poll"]
     page.wait_for_timeout(1150)
     assert requests["poll"] > count_before
