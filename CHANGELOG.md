@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Route colloquial German stock questions such as “Wo steht Microsoft gerade?” to Finance instead of generic AI/web answers.
+
 - Add interactive 1M–5Y Finance price charts with hover, touch and keyboard inspection on quote/history cards.
 
 - Show Finance monetary values EUR-first using cached daily ECB reference rates while preserving the original listing/reporting currency in parentheses and source data unchanged.

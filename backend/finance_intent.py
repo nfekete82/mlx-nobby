@@ -78,7 +78,7 @@ def explicit_company_query(prompt):
 
     patterns = (
         r'^\s*(?:bitte\s+)?(?:analysiere|analysier|analyse|analyze|bewerte|evaluate|review)\s+(.+?)\s*$',
-        r'^\s*(?:wie\s+steht|how\s+is)\s+(.+?)\s*$',
+        r'^\s*(?:(?:wie|wo)\s+steht|how\s+is)\s+(.+?)\s*$',
         r'^\s*(?:kurs|preis|quote|price)\s+(?:(?:von|of)\s+)?(.+?)\s*$',
     )
     candidate = None
@@ -200,7 +200,7 @@ def finance_intent(prompt, conversation_context=None):
                 return 'finance_analyze'
             if re.search(r'histor|verlauf|history|performance|rendite', value):
                 return 'finance_history'
-            if re.search(r'kurs|price|quote|wie steht|how is', value):
+            if re.search(r'kurs|price|quote|(?:wie|wo)\s+steht|how is', value):
                 return 'finance_quote'
 
         if re.search(
@@ -212,7 +212,7 @@ def finance_intent(prompt, conversation_context=None):
         ):
             if re.search(r'analy[sz]|risik|risk|attraktiv|attractive', value):
                 return 'finance_analyze'
-            if re.search(r'kurs|price|quote|wie steht|how is', value):
+            if re.search(r'kurs|price|quote|(?:wie|wo)\s+steht|how is', value):
                 return 'finance_quote'
         return None
 
@@ -234,7 +234,7 @@ def finance_intent(prompt, conversation_context=None):
         value,
     ):
         return 'finance_analyze'
-    if re.search(r'kurs|quote|price|wie steht|how is|trading at|stock', value):
+    if re.search(r'kurs|quote|price|(?:wie|wo)\s+steht|how is|trading at|stock', value):
         return 'finance_quote'
     return None
 
