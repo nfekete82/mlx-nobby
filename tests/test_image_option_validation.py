@@ -14,12 +14,12 @@ def test_frontend_and_backend_image_option_contracts_match():
     source = (Path(__file__).resolve().parents[1] /
               'frontend/assets/chat/generation.js').read_text(encoding='utf-8')
     declaration = re.search(
-        r'const IMAGE_OPTION_KEYS = Object\\.freeze\\(\\{(.*?)\\}\\);',
+        r'const IMAGE_OPTION_KEYS = Object\.freeze\(\{(.*?)\}\);',
         source, flags=re.S
     )
     assert declaration is not None
     matches = re.findall(
-        r'(generate|edit|reference):\\s*new Set\\(\\[(.*?)\\]\\)',
+        r'(generate|edit|reference):\s*new Set\(\[(.*?)\]\)',
         declaration.group(1), flags=re.S
     )
     parsed = {operation: set(re.findall(r"'([^']+)'", fields))
