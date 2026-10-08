@@ -104,6 +104,11 @@ class MediaQueueTests(unittest.TestCase):
                 "status": "completed",
                 "phase": "completed",
                 "progress": 1.0,
+                "runtime_handoff": {
+                    "duration_ms": 125.5,
+                    "chat_released": False,
+                    "speech_released": True,
+                },
                 "result": {"path": "/tmp/video.mp4"},
             },
         ]
@@ -122,6 +127,10 @@ class MediaQueueTests(unittest.TestCase):
         self.assertEqual(completed["progress"], 1.0)
         self.assertEqual(completed["native_job_id"], native_id)
         self.assertEqual(completed["result"]["path"], "/tmp/video.mp4")
+        self.assertEqual(completed["runtime_handoff"]["duration_ms"], 125.5)
+        self.assertTrue(completed["runtime_handoff"]["speech_released"])
+        stored = json.loads(self.queue_file.read_text(encoding="utf-8"))
+        self.assertEqual(stored[job["id"]]["runtime_handoff"], completed["runtime_handoff"])
         self.assertEqual(calls[0][:2], ("video", "POST"))
         self.assertEqual(calls[-1], ("video", "GET", f"/jobs/{native_id}"))
 
