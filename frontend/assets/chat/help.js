@@ -94,7 +94,7 @@
                     },
                     {
                         title: t('Bild bearbeiten', 'Edit an image'),
-                        body: t('Hänge ein Bild an oder wähle ein aktives Bild und beschreibe die Änderung. Für ein neues Motiv mit derselben oder einer ähnlichen Person fordere ausdrücklich ein Referenzbild an. Beide Wege benötigen ein verfügbares lokales Edit-Modell; die Identität ist nicht garantiert.', 'Attach an image or select an active image and describe the change. For a new scene with the same or a similar person, explicitly request reference image generation. Both paths need an available local edit model; identity is not guaranteed.')
+                        body: t('Hänge ein Bild an oder wähle ein aktives Bild und beschreibe die Änderung. Für ein neues Motiv mit derselben oder einer ähnlichen Person fordere ausdrücklich ein Referenzbild an. Beide Wege benötigen ein verfügbares lokales Edit-Modell; die Identität ist nicht garantiert. Einstellungen wie Negativprompt und Bildformat werden bei einem Wechsel zwischen Erzeugung, Bearbeitung und Referenzbild nur übernommen, wenn die jeweilige Funktion sie unterstützt.', 'Attach an image or select an active image and describe the change. For a new scene with the same or a similar person, explicitly request reference image generation. Both paths need an available local edit model; identity is not guaranteed. Settings such as negative prompts and image dimensions only carry over between generation, editing and reference images when the chosen operation supports them.')
                     },
                     {
                         title: t('Gallery und Bildaktionen', 'Gallery and image actions'),
