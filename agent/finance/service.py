@@ -176,19 +176,11 @@ class FinanceService:
             raise FinanceError('comparison_symbols_required')
         if action == 'finance_quote':
             instrument = instruments[0]
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix='finance-quote') as pool:
-                quote_future = pool.submit(self.provider.get, 'quote', instrument)
-                history_future = pool.submit(self.provider.get, 'history', instrument)
-                quote = quote_future.result()
-                try:
-                    history = history_future.result()
-                    history_status = 'available'
-                except FinanceError:
-                    history = {}
-                    history_status = 'unavailable'
-            report = {'kind': 'quote', 'instrument': instrument.as_dict(), 'quote': quote,
-                      'history': history, 'history_status': history_status,
-                      'performance': performance(history) if history else {}}
+            # A quote must not wait for five years of daily candles. The
+            # frontend requests finance_history independently for its chart.
+            report = {'kind': 'quote', 'instrument': instrument.as_dict(),
+                      'quote': self.provider.get('quote', instrument),
+                      'history_status': 'deferred'}
             return self._attach_display_fx(report, instrument.currency)
         if action == 'finance_history':
             history = self.provider.get('history', instruments[0])

@@ -53,7 +53,9 @@
         const fx = fxInfo(report, currency);
         if (!fx || String(currency || '').toUpperCase() === 'EUR') return '';
         const dateText = fx.date || (numeric(fx.as_of) ? shortDate(fx.as_of) : '');
-        return [safe(fx.source || 'ECB'), dateText].filter(Boolean).join(' · ');
+        return [safe(fx.source || 'ECB'), dateText,
+            fx.reference_old ? localText('älterer Referenzkurs', 'older reference rate') : '']
+            .filter(Boolean).join(' · ');
     }
     const pct = value => numeric(value)
         ? format(value * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
@@ -305,6 +307,58 @@
             : 'finance-neutral';
     }
 
+    const HISTORY_CACHE = new Map();
+    const HISTORY_PENDING = new Map();
+    const HISTORY_CACHE_LIMIT = 20;
+    const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+    function chartCacheKey(instrument) {
+        return [instrument?.symbol, instrument?.exchange, instrument?.currency].join('|');
+    }
+
+    async function loadHistory(instrument) {
+        const key = chartCacheKey(instrument);
+        const cached = HISTORY_CACHE.get(key);
+        if (cached && Date.now() - cached.at < HISTORY_CACHE_TTL_MS) return cached.data;
+        HISTORY_CACHE.delete(key);
+        if (HISTORY_PENDING.has(key)) return HISTORY_PENDING.get(key);
+        const job = (async () => {
+            const response = await fetch('/api/mlx/finance/history', {
+                method: 'POST',
+                signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+                    ? AbortSignal.timeout(15000) : undefined,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    options: {
+                        symbol: instrument.symbol,
+                        exchange: instrument.exchange,
+                        currency: instrument.currency
+                    }
+                })
+            });
+            if (!response.ok) throw new Error('finance_history_unavailable');
+            const result = await response.json();
+            if (
+                result?.kind !== 'history' ||
+                result?.instrument?.symbol !== instrument.symbol ||
+                result?.instrument?.exchange !== instrument.exchange ||
+                result?.instrument?.currency !== instrument.currency ||
+                !Array.isArray(result?.history?.bars)
+            ) throw new Error('finance_history_identity_mismatch');
+            HISTORY_CACHE.set(key, {at: Date.now(), data: result});
+            if (HISTORY_CACHE.size > HISTORY_CACHE_LIMIT) {
+                HISTORY_CACHE.delete(HISTORY_CACHE.keys().next().value);
+            }
+            return result;
+        })();
+        HISTORY_PENDING.set(key, job);
+        try {
+            return await job;
+        } finally {
+            HISTORY_PENDING.delete(key);
+        }
+    }
+
     const HISTORY_RANGES = [
         {key: '1M', days: 30, de: '1M', en: '1M'},
         {key: '3M', days: 91, de: '3M', en: '3M'},
@@ -367,7 +421,7 @@
         return node;
     }
 
-    function appendPriceChart(card, data) {
+    function appendPriceChart(card, data, before = null) {
         if (typeof document === 'undefined' || historySeries(data).length < 2) return;
         const currency = data.instrument?.currency || data.quote?.currency || data.history?.currency;
         const section = el('div', 'finance-card-section finance-chart-section');
@@ -523,7 +577,37 @@
         });
 
         renderRange(activeKey);
-        card.appendChild(section);
+        card.insertBefore(section, before);
+    }
+
+    function appendDeferredPriceChart(card, report) {
+        if (historySeries(report).length >= 2) {
+            appendPriceChart(card, report);
+            return;
+        }
+        if (report.history_status !== 'deferred' || typeof fetch !== 'function') return;
+        const placeholder = el('div', 'finance-card-section finance-chart-loading',
+            localText('Kursverlauf wird geladen …', 'Loading price history …'));
+        card.appendChild(placeholder);
+        loadHistory(report.instrument).then(result => {
+            if (!placeholder.isConnected) return;
+            const data = {...report, history: result.history, performance: result.performance};
+            if (historySeries(data).length >= 2) {
+                appendPriceChart(card, data, placeholder);
+                placeholder.remove();
+            } else {
+                placeholder.textContent = localText(
+                    'Für diese Aktie sind nicht genügend historische Kurse vorhanden.',
+                    'Insufficient historical prices for this stock.'
+                );
+            }
+        }).catch(() => {
+            if (!placeholder.isConnected) return;
+            placeholder.textContent = localText(
+                'Kursverlauf derzeit nicht verfügbar; der aktuelle Kurs bleibt gültig.',
+                'Price history unavailable; the current quote remains available.'
+            );
+        });
     }
     function toolLabel(tool, kind) {
         const labels = {
@@ -809,7 +893,7 @@
         );
         section.appendChild(grid);
         card.appendChild(section);
-        appendPriceChart(card, report);
+        appendDeferredPriceChart(card, report);
         appendDetails(card, report);
         return card;
     }
@@ -988,6 +1072,6 @@
         summary,
         failure,
         render,
-        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel, historySeries, historyRange, chartGeometry }
+        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel, historySeries, historyRange, chartGeometry, chartCacheKey }
     };
 })();

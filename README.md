@@ -78,12 +78,14 @@ Finance uses the existing AgentRuntime, ToolRegistry, permissions and chat UI.
 Quotes, analyses, comparisons and portfolio results render as responsive Finance
 cards with compact headline metrics; quote/history cards add an interactive
 daily-close chart with 1M, 3M, 6M, 1Y, 2Y and 5Y ranges plus hover/touch/keyboard
-inspection. Technical details and source URLs stay available in collapsible
+inspection. Live quotes render first; the five-year history loads separately
+without delaying the headline price. Technical details and source URLs stay available in collapsible
 detail sections instead of flooding the chat with raw fields.
 Yahoo Finance supplies keyless market data through a replaceable provider;
 web search only adds news context. Every quote identifies ticker, exchange,
 original currency, session, observation time, age and source. Monetary values are
-shown EUR-first when an ECB reference rate is available, while the untouched
+shown EUR-first when a validated ECB reference rate is available (holiday rates
+are marked when older and rates over six days old are rejected), while the untouched
 original amount stays visible in parentheses. This presentation conversion never
 changes NASDAQ/USD into a different listing or currency. No new dependencies,
 API keys or setup steps are required. Local models are not needed for deterministic quotes or scores;

@@ -45,6 +45,7 @@ def test_finance_quote_and_searchable_help(ui, language, prompt):
 
     assert agent.count('/api/runtime/chat/stream', 'POST') == 0
     assert agent.count('/api/chat/actions', 'POST') == 1
+    assert agent.count('/api/finance/history', 'POST') == 1
 
     open_sidebar(page)
     page.locator('#mlxSidebarHelpButton').click()

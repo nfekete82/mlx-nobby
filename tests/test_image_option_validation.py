@@ -1,10 +1,30 @@
 """Mode-specific image option validation must never launch invalid image jobs."""
 from pathlib import Path
+import re
 
 import pytest
 from fastapi import HTTPException
 
 from agent import app as agent
+
+
+def test_frontend_and_backend_image_option_contracts_match():
+    # The backend is authoritative. Check the production JS literals so
+    # additions cannot silently drift between browser and server.
+    source = (Path(__file__).resolve().parents[1] /
+              'frontend/assets/chat/generation.js').read_text(encoding='utf-8')
+    declaration = re.search(
+        r'const IMAGE_OPTION_KEYS = Object\.freeze\(\{(.*?)\}\);',
+        source, flags=re.S
+    )
+    assert declaration is not None
+    matches = re.findall(
+        r'(generate|edit|reference):\s*new Set\(\[(.*?)\]\)',
+        declaration.group(1), flags=re.S
+    )
+    parsed = {operation: set(re.findall(r"'([^']+)'", fields))
+              for operation, fields in matches}
+    assert parsed == {operation: set(keys) for operation, keys in agent.IMAGE_OPTION_KEYS.items()}
 
 
 @pytest.mark.parametrize(

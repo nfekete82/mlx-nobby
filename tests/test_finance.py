@@ -1,5 +1,6 @@
 """Deterministic, offline finance contracts. All clocks and transports are injected."""
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -79,13 +80,47 @@ def test_ecb_fx_provider_parses_daily_reference_rate_and_caches():
     def transport(url, timeout):
         calls.append((url, timeout))
         return payload
-    fx = EcbFxProvider(transport=transport, clock=lambda: NOW, monotonic=lambda: NOW)
+    reference_now = datetime(2026, 10, 8, 12, tzinfo=timezone.utc).timestamp()
+    fx = EcbFxProvider(transport=transport, clock=lambda: reference_now, monotonic=lambda: reference_now)
     usd = fx.rate_to_eur('USD')
     assert usd['rate'] == pytest.approx(1 / 1.1177)
     assert usd['quote_currency'] == 'EUR' and usd['date'] == '2026-10-07'
     assert usd['source'] == 'European Central Bank'
+    assert usd['reference_old'] is False
+    assert usd['reference_age_seconds'] > 0
     assert fx.rate_to_eur('GBP')['rate'] == pytest.approx(1 / .84645)
     assert len(calls) == 1 and calls[0][1] == 4
+
+
+
+@pytest.mark.parametrize('date_text,age_days,expected', [
+    ('2026-10-01', 7, 'fx_stale_reference_rate'),
+    ('2026-10-09', -2, 'fx_invalid_reference_date'),
+])
+def test_ecb_fx_rejects_too_old_or_future_reference(date_text, age_days, expected):
+    # Clock is deliberately chosen from the date offset, independent of local TZ.
+    sample_day = datetime.fromisoformat(date_text).replace(tzinfo=timezone.utc).timestamp()
+    now = sample_day + age_days * 86400
+    payload = (
+        '<Cube><Cube time="' + date_text +
+        '"><Cube currency="USD" rate="1.20"/></Cube></Cube>'
+    ).encode()
+    fx = EcbFxProvider(transport=lambda _url, _timeout: payload,
+                       clock=lambda: now, monotonic=lambda: now)
+    with pytest.raises(FinanceError, match=expected):
+        fx.rate_to_eur('USD')
+
+
+def test_ecb_fx_long_weekend_rate_is_marked_but_allowed():
+    day = datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp()
+    now = day + 4 * 86400
+    fx = EcbFxProvider(
+        transport=lambda *_: b'<Cube><Cube time="2026-10-01"><Cube currency="USD" rate="1.20"/></Cube></Cube>',
+        clock=lambda: now, monotonic=lambda: now
+    )
+    rate = fx.rate_to_eur('USD')
+    assert rate['reference_old'] is True
+    assert rate['reference_age_seconds'] == 4 * 86400
 
 
 def test_finance_service_attaches_eur_display_without_rewriting_source_values(tmp_path):
@@ -116,8 +151,12 @@ def test_portfolio_keeps_native_values_and_adds_eur_display_values():
                         'display_fx': {'rates': {currency: {'rate': rate}}}})
         histories[symbol_name] = history(symbol_name, currency)
     data = analyze_portfolio([{'symbol': 'AMD', 'quantity': 2}, {'symbol': 'SAP', 'quantity': 1}], reports, histories)
-    assert data['status'] == 'currency_conversion_required'
+    assert data['status'] == 'analyzed'
+    assert data['valuation_basis'] == 'indicative_ecb_eur'
     assert data['total_value'] is None
+    assert data['sectors']['Technology'] == pytest.approx(1)
+    assert data['positions'][0]['weight'] == pytest.approx(180 / 380)
+    assert data['concentration_hhi'] == pytest.approx((180 / 380) ** 2 + (200 / 380) ** 2)
     assert data['display_total_value'] == pytest.approx(380)
     assert data['display_currency'] == 'EUR'
     assert data['positions'][0]['display_value'] == pytest.approx(180)
@@ -362,23 +401,23 @@ def test_deterministic_scoring_confidence():
     assert scoring(f, technicals(history()), q, NOW)['subscores']['valuation'] is None
 
 
-def test_quote_includes_two_year_daily_history_for_interactive_chart(service):
-    report = service.execute('finance_quote', prompt='AMD Kurs')
-    assert report['quote']['price'] == 359
-    assert report['history_status'] == 'available'
-    assert len(report['history']['bars']) == 260
-    assert report['history']['price_basis'] == 'adjusted_close'
-    assert report['performance']['6M']['percent'] is not None
-
-
-def test_quote_survives_history_provider_failure(service):
+def test_quote_returns_immediately_without_history_request(service):
     primary = service.provider.providers[0]
-    primary.history = lambda i: (_ for _ in ()).throw(FinanceError('history_unavailable'))
+    history_called = []
+    original = primary.history
+    def tracked_history(instrument):
+        history_called.append(instrument.symbol)
+        return original(instrument)
+    primary.history = tracked_history
     report = service.execute('finance_quote', prompt='AMD Kurs')
     assert report['quote']['price'] == 359
-    assert report['history_status'] == 'unavailable'
-    assert report['history'] == {}
-    assert report['performance'] == {}
+    assert report['history_status'] == 'deferred'
+    assert 'history' not in report
+    assert history_called == []
+    history_report = service.execute('finance_history', prompt='AMD Kurs')
+    assert history_called == ['AMD']
+    assert history_report['history']['price_basis'] == 'adjusted_close'
+    assert history_report['performance']['6M']['percent'] is not None
 
 def test_service_tracking_compare_and_portfolio(service):
     report = service.execute('finance_analyze', prompt='Analysiere AMD', owner='chat1')
@@ -409,6 +448,20 @@ def test_service_provider_conflict_not_hidden(service):
     primary.fundamentals = lambda i: i.as_dict() | {'currency': 'EUR'}
     with pytest.raises(FinanceError, match='provider_identity_conflict'):
         service.execute('finance_analyze', prompt='AMD analysis')
+
+
+def test_mixed_currency_portfolio_with_missing_fx_keeps_unknown_exposures():
+    report_usd = {'instrument': INSTRUMENT.as_dict(), 'quote': {'price': 100, 'currency': 'USD',
+                  'stale': False, 'timestamp': NOW}, 'fundamentals': {'sector': 'Technology'},
+                  'assessment': {'score': 70}, 'cases': {'risks': []}, 'display_fx': {'rates': {}}}
+    report_eur = deepcopy(report_usd)
+    report_eur['instrument'] = {'symbol': 'SAP', 'currency': 'EUR', 'exchange': 'XETRA'}
+    report_eur['quote'] = {'price': 100, 'currency': 'EUR', 'stale': False, 'timestamp': NOW}
+    report_eur['display_fx'] = {'rates': {'EUR': {'rate': 1.0}}}
+    out = analyze_portfolio([{'symbol': 'AMD', 'quantity': 1}, {'symbol': 'SAP', 'quantity': 1}],
+                            [report_usd, report_eur], {'AMD': history(), 'SAP': history('SAP', 'EUR')})
+    assert out['status'] == 'currency_conversion_required'
+    assert out['max_weight'] is None and out['sectors'] is None
 
 
 def test_portfolio_mixed_currency_and_duplicates(service):

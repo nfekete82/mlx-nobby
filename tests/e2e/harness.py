@@ -92,6 +92,17 @@ class AgentFixture:
         if path.startswith('/api/videos/'):
             # CI controls the media layer; no codec/FFmpeg dependency or committed MP4.
             return Response(b'fixture-video', media_type='video/mp4')
+        if path == '/api/finance/history':
+            return {
+                'kind': 'history',
+                'instrument': {'symbol': 'AMD', 'name': 'Advanced Micro Devices',
+                               'exchange': 'NASDAQ', 'currency': 'USD'},
+                'history': {'price_basis': 'close', 'currency': 'USD', 'bars': [
+                    {'timestamp': 1780500000 - (499 - i) * 86400, 'close': 80 + i * 0.09}
+                    for i in range(500)
+                ]},
+                'performance': {'1Y': {'percent': 18.4}}
+            }
         if path in {'/api/chat/actions/route', '/api/chat/actions'}:
             from backend.finance_intent import finance_intent
             finance_action = finance_intent(payload.get('prompt', ''))
@@ -104,12 +115,7 @@ class AgentFixture:
                     'exchange': 'NASDAQ', 'currency': 'USD', 'price': 123.45,
                     'timestamp': 1780500000, 'age_seconds': 2000, 'stale': True,
                     'session': 'regular', 'delay_status': 'unknown', 'source': 'Finance fixture'},
-                    'history': {'price_basis': 'close', 'currency': 'USD', 'bars': [
-                        {'timestamp': 1780500000 - (499 - i) * 86400, 'close': 80 + i * 0.09}
-                        for i in range(500)
-                    ]},
-                    'history_status': 'available',
-                    'performance': {'1Y': {'percent': 18.4}},
+                    'history_status': 'deferred',
                     'display_fx': {'target_currency': 'EUR', 'rates': {'USD': {
                         'rate': 0.9, 'source': 'European Central Bank', 'date': '2026-10-07',
                         'source_url': 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'

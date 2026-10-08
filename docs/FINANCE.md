@@ -93,7 +93,9 @@ remain available in a collapsed “Technical details & sources” section.
 
 Comparisons use one horizontal table with one row per instrument and retain each
 listing's original exchange/currency. Quote and history cards also render an
-interactive daily-close chart with 1M, 3M, 6M, 1Y, 2Y and 5Y ranges. Mouse,
+interactive daily-close chart with 1M, 3M, 6M, 1Y, 2Y and 5Y ranges. The
+current quote renders immediately; historical candles load independently via
+the Finance history API. Missing history never blocks a current quote. Mouse,
 touch and keyboard navigation reveal the nearest date and price without adding a
 charting dependency. Historical points remain provider prices in the original
 listing currency; the displayed EUR companion value uses the current ECB daily
@@ -115,8 +117,11 @@ The conversion source is the European Central Bank daily euro foreign exchange
 reference-rate feed. The ECB rate is cached for six hours, fetched from a fixed HTTPS
 endpoint with redirects blocked, a 4-second timeout and a 256 KB response limit.
 Conversion metadata includes source, reference date and the original-to-EUR rate.
-If the ECB feed or a currency is unavailable, Finance falls back to the original
-currency rather than estimating a rate.
+The ECB reference date is validated. Long holiday weekends are supported:
+rates up to six calendar days old may be used, dates over three days old are
+marked older, and rates over six days old or dated implausibly in the future
+are rejected. If the ECB feed or a currency is unavailable, Finance falls
+back to the original currency rather than estimating a rate.
 
 These are approximate presentation conversions, not executable FX, settlement or
 tax values. The original exchange, quote, timestamps, scoring inputs and stored
@@ -235,8 +240,10 @@ including repeated analyses, not independent trades or a backtest.
 
 Portfolio quantities remain local. Only tickers are sent to the data provider,
 never sizes, portfolio names, chat contents or aggregate holdings. Long-only
-positive quantities are required. Mixed currencies are not aggregated without
-FX data. Available sectors include an explicit unknown bucket. Correlation uses
+positive quantities are required. Mixed-currency native totals remain absent;
+when every position has a valid ECB reference rate, sector concentration and
+portfolio weights use indicative EUR values. Without full FX coverage, exposure
+statistics remain unavailable. Available sectors include an explicit unknown bucket. Correlation uses
 Pearson correlation of aligned daily returns, minimum 30 overlapping observations,
 maximum 252. Concentration uses HHI and maximum weight (>40% high, >20% moderate).
 Ranking includes only positions with an adequate score; unrated positions are

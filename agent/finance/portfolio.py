@@ -63,20 +63,24 @@ def analyze_portfolio(positions, reports, histories):
     if display_total is not None and display_total > 0:
         for row in rows:
             row['display_weight'] = row['display_value'] / display_total
-    # API-native totals keep original-currency semantics. EUR conversion is an
-    # additional presentation estimate and never rewrites source observations.
-    if len(currencies) != 1:
+    # Keep native totals only for one original currency. When every position has
+    # an ECB display rate, derive cross-currency exposure from those EUR values.
+    mixed = len(currencies) != 1
+    native_total = None if mixed else sum(row['value'] for row in rows)
+    has_eur_valuation = display_total is not None and display_total > 0
+    if mixed and not has_eur_valuation:
         return {'positions': rows, 'status': 'currency_conversion_required', 'weights': None,
-                'total_value': None, 'display_total_value': display_total, 'display_currency': 'EUR',
+                'total_value': None, 'currency': None, 'display_total_value': None,
+                'display_currency': 'EUR', 'sectors': None, 'max_weight': None,
+                'concentration_hhi': None, 'concentration_risk': 'insufficient data',
                 'correlations': correlation(histories), 'risk': 'insufficient data'}
-    total = sum(row['value'] for row in rows)
+    total = display_total if mixed else native_total
     if number(total) is None or total <= 0:
         raise FinanceError('invalid_portfolio_value')
     sectors = {}
     for row in rows:
-        row['weight'] = row['value'] / total
-        if display_total is not None and display_total > 0:
-            row['display_weight'] = row['display_value'] / display_total
+        # Original quote and native position value remain unchanged.
+        row['weight'] = row['display_value'] / total if mixed else row['value'] / total
         sectors[row['sector']] = sectors.get(row['sector'], 0) + row['weight']
     maximum = max(row['weight'] for row in rows)
     ranked = sorted((row for row in rows if row['assessment']['score'] is not None),
@@ -84,9 +88,13 @@ def analyze_portfolio(positions, reports, histories):
     return {'positions': rows, 'ranking': [row['instrument']['symbol'] for row in ranked],
             'ranking_status': 'complete' if len(ranked) == len(rows) else 'partial' if ranked else 'insufficient data',
             'status': 'partial' if any(row['stale'] for row in rows) else 'analyzed',
-            'total_value': total, 'currency': next(iter(currencies)),
-            'display_total_value': display_total, 'display_currency': 'EUR', 'sectors': sectors,
-            'max_weight': maximum, 'concentration_hhi': sum(row['weight'] ** 2 for row in rows),
+            'total_value': native_total, 'currency': None if mixed else next(iter(currencies)),
+            'display_total_value': display_total, 'display_currency': 'EUR',
+            'valuation_basis': 'indicative_ecb_eur' if mixed else 'original_listing_currency',
+            'sectors': sectors, 'max_weight': maximum,
+            'concentration_hhi': sum(row['weight'] ** 2 for row in rows),
             'concentration_risk': 'high' if maximum > .40 else 'moderate' if maximum > .20 else 'lower',
-            'correlations': correlation(histories), 'risk': 'insufficient data' if any(row['assessment']['score'] is None for row in rows) else 'heuristic',
-            'limitations': ['long-only; ECB FX is presentation-only, no cash, tax or derivatives model', 'risk is not a calibrated portfolio VaR']}
+            'correlations': correlation(histories),
+            'risk': 'insufficient data' if any(row['assessment']['score'] is None for row in rows) else 'heuristic',
+            'limitations': ['long-only; ECB FX is presentation-only, no cash, tax or derivatives model',
+                            'risk is not a calibrated portfolio VaR']}
