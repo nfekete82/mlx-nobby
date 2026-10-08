@@ -53,7 +53,9 @@
         const fx = fxInfo(report, currency);
         if (!fx || String(currency || '').toUpperCase() === 'EUR') return '';
         const dateText = fx.date || (numeric(fx.as_of) ? shortDate(fx.as_of) : '');
-        return [safe(fx.source || 'ECB'), dateText].filter(Boolean).join(' · ');
+        return [safe(fx.source || 'ECB'), dateText,
+            fx.reference_old ? localText('älterer Referenzkurs', 'older reference rate') : '']
+            .filter(Boolean).join(' · ');
     }
     const pct = value => numeric(value)
         ? format(value * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
