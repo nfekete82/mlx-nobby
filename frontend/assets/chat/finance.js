@@ -128,6 +128,7 @@
             `**${safe(i.name || i.symbol)} (${safe(i.symbol)})**`,
             `${localText('Kurs', 'Price')}: **${price(q.price)} ${safe(q.currency)}** · ${safe(q.exchange)} · ${session(q.session)}`,
             `${localText('Stand', 'As of')}: ${date(q.timestamp)} · ${localText('Datenalter', 'Age')}: ${age(q.age_seconds)} · **${status}**`,
+            `${localText('Verzögerung', 'Delay')}: ${q.delay_status === 'unknown' ? localText('unbekannt; kein garantierter Echtzeitkurs', 'unknown; no guaranteed live quote') : safe(q.delay_status)}`,
             `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${price(q.fifty_two_week_low)} – ${price(q.fifty_two_week_high)}`
         ].join('\n\n');
     }
@@ -205,10 +206,28 @@
                     'Provide positions with quantities, e.g. “Analyze my portfolio: AMD: 10, NVDA: 5”.'
                 );
             }
-            return `**${localText('Portfolio-Analyse', 'Portfolio analysis')}**\n\n${(data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(p.weight)}`).join(' · ')}`;
+            const currencyWarning = data.status === 'currency_conversion_required'
+                ? localText('Verschiedene Währungen: keine Gesamtbewertung ohne FX-Daten.', 'Mixed currencies: no aggregate valuation without FX data.')
+                : `${localText('Gesamtwert', 'Total value')}: ${num(data.total_value)} ${safe(data.currency)}`;
+            return [
+                `**${localText('Portfolio-Analyse', 'Portfolio analysis')}**`,
+                (data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(p.weight)}`).join(' · '),
+                currencyWarning,
+                localText('Nur Long-Positionen; keine Orderausführung, FX-, Steuer-, Cash- oder Derivatemodellierung.', 'Long-only support; no order execution, FX, tax, cash or derivatives modeling.')
+            ].filter(Boolean).join('\n\n');
         }
         if (data.kind === 'tracking') {
-            return `**${localText('Frühere Empfehlungen', 'Previous recommendations')}**\n\n${(data.items || []).map(p => `${safe(p.symbol || p.id)} · ${safe(p.recommendation || '')} · ${pct(p.return)}`).join('\n\n') || localText('Keine gespeicherten Analysen.', 'No saved analyses.')}`;
+            const rows = (data.items || []).map(p => [
+                `${safe(p.symbol || p.id)} · ${safe(p.recommendation || '')}`,
+                `${localText('Kursänderung seit Empfehlung (unbereinigt)', 'Price change since recommendation (unadjusted)')}: ${pct(p.return)}`,
+                `${localText('Separates Tageskursfenster', 'Separate daily-close window')}: ${date(p.history_from)} – ${date(p.history_to)}`,
+                `${localText('Tageskursrendite', 'Daily-close return')}: ${pct(p.history_return)} · ${localText('Benchmark / Tageskurs-Alpha', 'Benchmark / daily-close alpha')}: ${pct(p.benchmark_return)} / ${pct(p.history_alpha)}`
+            ].join(' · '));
+            return [
+                `**${localText('Frühere Empfehlungen', 'Previous recommendations')}**`,
+                rows.join('\n\n') || localText('Keine gespeicherten Analysen.', 'No saved analyses.'),
+                localText('Kursänderungen verwenden den gespeicherten Empfehlungskurs und sind keine Gesamtrendite.', 'Price changes use the saved recommendation price and are not total returns.')
+            ].join('\n\n');
         }
         return failure(result);
     }
