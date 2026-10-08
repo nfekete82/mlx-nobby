@@ -14,7 +14,8 @@ test('quotes show exchange, currency, session, timestamp and stale data bilingua
     for (const locale of ['de', 'en']) {
         const copy = ui(locale).summary({status: 'completed', data: {kind: 'quote', ...quote}});
         assert.match(copy, /AMD/); assert.match(copy, /NASDAQ/); assert.match(copy, /USD/);
-        assert.match(copy, /2026-/); assert.match(copy, /2[.,]000 s/);
+        assert.match(copy, /2026/); assert.match(copy, /33 min 20 s/);
+        assert.match(copy, /123[,.]45 USD/);
         assert.match(copy, locale === 'de' ? /VERALTET/ : /STALE/);
         assert.match(copy, locale === 'de' ? /kein garantierter Echtzeitkurs/ : /no guaranteed live quote/);
     }
@@ -41,11 +42,19 @@ test('portfolio never renders missing weights as zero and errors are localized',
         assert.match(ui(locale).failure({data: {code: 'provider_identity_conflict'}}), locale === 'de' ? /Widersprüchliche/ : /Conflicting/);
     }
 });
-test('finance assets and direct tool output are wired to production chat', () => {
+test('finance assets and native cards are wired to production chat', () => {
     const html = fs.readFileSync('frontend/chat.html', 'utf8');
+    assert.match(html, /\/assets\/chat\/finance\.css\?v=20261008-finance-cards/);
     assert.ok(html.indexOf('/assets/chat/finance.js?') < html.indexOf('/assets/chat/generation.js?'));
     const generation = fs.readFileSync('frontend/assets/chat/generation.js', 'utf8');
     assert.match(generation, /MLXFinance\.summary/); assert.match(generation, /MLXFinance\.failure/);
+    const rendering = fs.readFileSync('frontend/assets/chat/rendering.js', 'utf8');
+    assert.match(rendering, /MLXFinance\?\.render/);
+    assert.match(rendering, /startsWith\('finance_'\)/);
+    const finance = fs.readFileSync('frontend/assets/chat/finance.js', 'utf8');
+    for (const marker of ['finance-card', 'finance-metrics', 'finance-assessment', 'finance-comparison']) {
+        assert.match(finance, new RegExp(marker));
+    }
 });
 
 test('tracking distinguishes saved-price change from the dated daily benchmark window', () => {
