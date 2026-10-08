@@ -107,6 +107,14 @@ class RuntimeCoordinatorTests(unittest.TestCase):
             runtime_coordinator,
             "memory_budget_snapshot",
             side_effect=[memory_before, memory_safe, memory_safe],
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_speech_runtime",
+            return_value={"released": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_musetalk_runtime",
+            return_value={"released": False},
         ):
             with runtime_coordinator.video_runtime(
                 threading.Event(),
@@ -152,6 +160,147 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
         chat_probe.assert_not_called()
         self.assertEqual(commands, [])
+
+
+    def test_video_reclaims_idle_speech_without_stopping_chat(self):
+        before = {
+            "pressure": "normal",
+            "headroom_gb": 7.0,
+            "used_estimate_gb": 35.0,
+            "total_gb": 48.0,
+        }
+        after_speech = {
+            "pressure": "normal",
+            "headroom_gb": 23.0,
+            "used_estimate_gb": 19.0,
+            "total_gb": 48.0,
+        }
+        chat_probe = mock.Mock(return_value=True)
+        commands = []
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator,
+            "release_idle_image_runtime",
+            return_value={"loaded": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_speech_runtime",
+            return_value={"released": True},
+        ) as speech_release, mock.patch.object(
+            runtime_coordinator,
+            "release_idle_musetalk_runtime",
+        ) as musetalk_release, mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            side_effect=[before, after_speech],
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(),
+                chat_loaded=chat_probe,
+                chat_command=commands.append,
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["speech_released"])
+                self.assertFalse(preflight["musetalk_released"])
+                self.assertFalse(preflight["chat_released"])
+                self.assertEqual(preflight["memory_admission"], after_speech)
+                self.assertFalse(preflight["hard_limit_reached"])
+
+        speech_release.assert_called_once()
+        musetalk_release.assert_not_called()
+        chat_probe.assert_not_called()
+        self.assertEqual(commands, [])
+
+    def test_video_reclaims_idle_musetalk_before_stopping_chat(self):
+        before = {
+            "pressure": "normal",
+            "headroom_gb": 7.0,
+            "used_estimate_gb": 35.0,
+            "total_gb": 48.0,
+        }
+        after_musetalk = {
+            "pressure": "normal",
+            "headroom_gb": 24.0,
+            "used_estimate_gb": 18.0,
+            "total_gb": 48.0,
+        }
+        chat_probe = mock.Mock(return_value=True)
+        commands = []
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator,
+            "release_idle_image_runtime",
+            return_value={"loaded": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_speech_runtime",
+            return_value={"released": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_musetalk_runtime",
+            return_value={"released": True},
+        ) as musetalk_release, mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            side_effect=[before, after_musetalk],
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(),
+                chat_loaded=chat_probe,
+                chat_command=commands.append,
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertFalse(preflight["speech_released"])
+                self.assertTrue(preflight["musetalk_released"])
+                self.assertFalse(preflight["chat_released"])
+                self.assertEqual(preflight["memory_admission"], after_musetalk)
+
+        musetalk_release.assert_called_once()
+        chat_probe.assert_not_called()
+        self.assertEqual(commands, [])
+
+    def test_video_stops_chat_if_idle_model_reclaim_is_insufficient(self):
+        snapshots = [
+            {"pressure": "normal", "headroom_gb": 7.0,
+             "used_estimate_gb": 35.0, "total_gb": 48.0},
+            {"pressure": "normal", "headroom_gb": 9.0,
+             "used_estimate_gb": 32.0, "total_gb": 48.0},
+            {"pressure": "normal", "headroom_gb": 10.0,
+             "used_estimate_gb": 31.0, "total_gb": 48.0},
+            {"pressure": "normal", "headroom_gb": 23.0,
+             "used_estimate_gb": 18.0, "total_gb": 48.0},
+            {"pressure": "normal", "headroom_gb": 24.0,
+             "used_estimate_gb": 17.0, "total_gb": 48.0},
+        ]
+        commands = []
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator,
+            "release_idle_image_runtime",
+            return_value={"loaded": False},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_speech_runtime",
+            return_value={"released": True},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "release_idle_musetalk_runtime",
+            return_value={"released": True},
+        ), mock.patch.object(
+            runtime_coordinator,
+            "memory_budget_snapshot",
+            side_effect=snapshots,
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(),
+                chat_loaded=lambda: True,
+                chat_command=commands.append,
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["speech_released"])
+                self.assertTrue(preflight["musetalk_released"])
+                self.assertTrue(preflight["chat_released"])
+                self.assertEqual(preflight["memory_admission"], snapshots[3])
+                self.assertFalse(preflight["hard_limit_reached"])
+
+        self.assertEqual(commands, ["stop", "start"])
 
     def test_image_waits_for_active_video(self):
         health = [

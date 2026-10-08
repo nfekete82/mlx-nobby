@@ -693,24 +693,58 @@ def video_runtime(
         # unified-memory headroom for LTX.
         before = memory_budget_snapshot()
         video_reserve_gb = model_load_reserve_gb("video")
-        relief_needed = (
-            memory_relief_needed(
-                before,
-                min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+
+        def needs_relief(snapshot):
+            return (
+                memory_relief_needed(
+                    snapshot,
+                    min_headroom_gb=VIDEO_MIN_HEADROOM_GB,
+                )
+                or projected_memory_hard_limit_reached(
+                    snapshot,
+                    video_reserve_gb,
+                )
             )
-            or projected_memory_hard_limit_reached(
-                before,
-                video_reserve_gb,
+
+        relief_needed = needs_relief(before)
+
+        # Reclaim idle optional models before paying the much larger chat
+        # cold-start cost. Active speech/MuseTalk generations are respected
+        # by their health checks and the coordinator lease.
+        speech_health = {"available": None, "released": False}
+        after_speech = before
+        if relief_needed:
+            speech_health = release_idle_speech_runtime(
+                cancel_event,
+                requester=requester,
             )
-        )
+            _check_cancelled(cancel_event)
+            if speech_health.get("released"):
+                after_speech = memory_budget_snapshot()
+                relief_needed = needs_relief(after_speech)
+
+        musetalk_health = {"available": None, "released": False}
+        after_musetalk = after_speech
+        if relief_needed:
+            musetalk_health = release_idle_musetalk_runtime(
+                cancel_event,
+                requester=requester,
+            )
+            _check_cancelled(cancel_event)
+            if musetalk_health.get("released"):
+                after_musetalk = memory_budget_snapshot()
+                relief_needed = needs_relief(after_musetalk)
+
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
-        admission = memory_budget_snapshot() if restore_chat else before
+        admission = memory_budget_snapshot() if restore_chat else after_musetalk
         preflight = {
             "workload": "video",
             "memory_before": before,
+            "memory_after_speech_release": after_speech,
+            "memory_after_musetalk_release": after_musetalk,
             "memory_admission": admission,
             "memory_relief_needed": relief_needed,
             "hard_limit_reached": projected_memory_hard_limit_reached(
@@ -721,6 +755,8 @@ def video_runtime(
             "load_reserve_gb": video_reserve_gb,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": not bool(image_health.get("loaded")),
+            "speech_released": bool(speech_health.get("released")),
+            "musetalk_released": bool(musetalk_health.get("released")),
             "chat_released": restore_chat,
         }
         try:
