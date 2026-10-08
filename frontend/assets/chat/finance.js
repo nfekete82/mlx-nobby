@@ -687,9 +687,26 @@
             const grid = el('div', 'finance-metrics');
             for (const position of data.positions || []) {
                 const symbol = position.instrument?.symbol || '—';
-                grid.appendChild(metric(symbol, pct(position.weight)));
+                const weight = numeric(position.display_weight) ? position.display_weight : position.weight;
+                const original = numeric(position.value) && position.currency
+                    ? currencyValue(position.value, position.currency, true)
+                    : '—';
+                const shown = numeric(position.display_value)
+                    ? '≈ ' + currencyValue(position.display_value, 'EUR', true) +
+                        (position.currency !== 'EUR' && original !== '—' ? ' (' + original + ')' : '')
+                    : original;
+                grid.appendChild(metric(symbol + (numeric(weight) ? ' · ' + pct(weight) : ''), shown));
             }
             section.appendChild(grid);
+            if (numeric(data.display_total_value)) {
+                const nativeTotal = numeric(data.total_value) && data.currency
+                    ? currencyValue(data.total_value, data.currency, true)
+                    : '';
+                section.appendChild(el('div', 'finance-ranking',
+                    localText('Gesamtwert: ', 'Total value: ') + '≈ ' +
+                    currencyValue(data.display_total_value, 'EUR', true) +
+                    (nativeTotal && data.currency !== 'EUR' ? ' (' + nativeTotal + ')' : '')));
+            }
             if (data.ranking?.length) section.appendChild(el('div', 'finance-ranking', localText('Ranking: ', 'Ranking: ') + data.ranking.join(' › ')));
         }
         card.appendChild(section);
