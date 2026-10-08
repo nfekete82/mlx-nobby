@@ -34,7 +34,8 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "talkingPhotoElapsed" in source
     assert "LTX 2.5 rendert das Video" in source
     assert "sessionStorage.setItem(JOB_STORAGE_KEY" in source
-    assert "Estimated" not in source or "estimated" in source
+    assert "geschätzt" in source
+    assert "estimated" in source
 
 
 def test_talking_photo_clipboard_module_supports_button_and_paste_shortcut():
