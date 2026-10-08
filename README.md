@@ -66,7 +66,7 @@ and active Shorts jobs can be cancelled from History or the queue.
 
 ## Finance Intelligence
 
-Ask “Wie steht AMD gerade?”, “Analysiere Western Digital vollständig”,
+Ask “Wie steht AMD gerade?”, “Wo steht Microsoft gerade?”, “Analysiere Western Digital vollständig”,
 “Vergleiche AMD und NVIDIA.” or “Welche Risiken siehst du bei AMD?”. English
 prompts are supported too. Explicitly naming a new company overrides prior stock
 context, and supported company names are resolved to a verified market ticker. For a portfolio, provide explicit quantities:
