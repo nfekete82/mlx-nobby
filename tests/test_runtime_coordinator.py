@@ -102,6 +102,171 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                     requester=requester,
                 )
 
+    def test_video_image_retention_requires_complete_safe_budget(self):
+        safe = {
+            "pressure": "normal",
+            "total_gb": 48.0,
+            "used_estimate_gb": 18.0,
+            "free_percent": 62.5,
+            "headroom_gb": 24.0,
+        }
+        keep = runtime_coordinator.video_image_runtime_may_stay_loaded
+        self.assertTrue(keep(safe))
+        for unsafe in (
+            {**safe, "pressure": "elevated"},
+            {**safe, "headroom_gb": 13.9},
+            {**safe, "used_estimate_gb": 26.0, "free_percent": 45.8},
+            {**safe, "total_gb": None},
+            {**safe, "headroom_gb": float("nan")},
+            {**safe, "free_percent": float("inf")},
+            {**safe, "total_gb": True},
+            {**safe, "used_estimate_gb": -1},
+            {"pressure": "normal", "headroom_gb": 30.0},
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.assertFalse(keep(unsafe))
+
+    def test_keep_healthy_idle_image_avoids_unload_and_keeps_chat_warm(self):
+        safe = {
+            "pressure": "normal", "total_gb": 48.0,
+            "used_estimate_gb": 18.0, "free_percent": 62.5,
+            "headroom_gb": 24.0,
+        }
+        requests = []
+
+        def requester(method, url, payload=None, timeout=10):
+            requests.append((method, url))
+            self.assertEqual(url, runtime_coordinator.IMAGE_URL + "/health")
+            return {"status": "ready", "loaded": True, "active_generation": False}
+
+        chat_probe = mock.Mock(return_value=True)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=[safe, safe],
+        ) as memory:
+            with runtime_coordinator.video_runtime(
+                threading.Event(), requester=requester,
+                chat_loaded=chat_probe,
+                chat_command=mock.Mock(),
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["image_preserved"])
+                self.assertFalse(preflight["image_released"])
+                self.assertFalse(preflight["chat_released"])
+                self.assertEqual(preflight["memory_admission"], safe)
+                self.assertGreaterEqual(
+                    preflight["handoff_timings_ms"]["image_release"], 0
+                )
+        self.assertEqual(memory.call_count, 2)
+        self.assertEqual(requests, [("GET", runtime_coordinator.IMAGE_URL + "/health")])
+        chat_probe.assert_not_called()
+
+    def test_video_unloads_image_when_memory_is_tight(self):
+        low = {
+            "pressure": "normal", "total_gb": 48.0,
+            "used_estimate_gb": 33.0, "free_percent": 31.25,
+            "headroom_gb": 9.0,
+        }
+        healthy = {
+            "pressure": "normal", "total_gb": 48.0,
+            "used_estimate_gb": 18.0, "free_percent": 62.5,
+            "headroom_gb": 24.0,
+        }
+        image_loaded = True
+        requests = []
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal image_loaded
+            requests.append(method)
+            if method == "POST":
+                self.assertEqual(url, runtime_coordinator.IMAGE_URL + "/unload")
+                image_loaded = False
+                return {"ok": True}
+            self.assertEqual(url, runtime_coordinator.IMAGE_URL + "/health")
+            return {"status": "ready", "loaded": image_loaded}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=[low, healthy],
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(), requester=requester,
+                chat_loaded=mock.Mock(return_value=True),
+                chat_command=mock.Mock(),
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["image_released"])
+                self.assertFalse(preflight["image_preserved"])
+                self.assertFalse(preflight["chat_released"])
+                self.assertEqual(preflight["memory_before"], healthy)
+
+        self.assertEqual(requests, ["GET", "POST", "GET"])
+
+    def test_video_rechecks_retention_and_unloads_if_memory_worsens(self):
+        healthy = {
+            "pressure": "normal", "total_gb": 48.0,
+            "used_estimate_gb": 18.0, "free_percent": 62.5,
+            "headroom_gb": 24.0,
+        }
+        low = {**healthy, "used_estimate_gb": 35.0,
+               "free_percent": 27.0, "headroom_gb": 7.0}
+        loaded = True
+        requests = []
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal loaded
+            requests.append(method)
+            if method == "POST":
+                loaded = False
+                return {"ok": True}
+            return {"status": "ready", "loaded": loaded}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=[healthy, low, healthy],
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(), requester=requester,
+                chat_loaded=mock.Mock(return_value=True),
+                chat_command=mock.Mock(),
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["image_released"])
+                self.assertFalse(preflight["image_preserved"])
+                self.assertEqual(preflight["memory_admission"], healthy)
+
+        self.assertEqual(requests, ["GET", "GET", "POST", "GET"])
+
+    def test_video_missing_budget_defaults_to_unload(self):
+        image_loaded = True
+        commands = []
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal image_loaded
+            commands.append(method)
+            if method == "POST":
+                image_loaded = False
+                return {"ok": True}
+            return {"status": "ready", "loaded": image_loaded}
+
+        safe = {
+            "pressure": "normal", "total_gb": 48,
+            "used_estimate_gb": 18, "free_percent": 62.5,
+            "headroom_gb": 24,
+        }
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=[{"pressure": "unknown"}, safe],
+        ):
+            with runtime_coordinator.video_runtime(
+                threading.Event(), requester=requester,
+                chat_loaded=lambda: False, chat_command=mock.Mock(),
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["image_released"])
+                self.assertFalse(preflight["image_preserved"])
+        self.assertEqual(commands, ["GET", "POST", "GET"])
+
     def test_video_stops_and_restores_previously_loaded_chat_when_headroom_is_low(self):
         commands = []
         memory_before = {
