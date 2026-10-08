@@ -563,6 +563,9 @@ Object.defineProperty(
     }
 );
 
+// A negative prompt from an earlier generation must not leak into an edit job.
+context.MLXChatRuntime.getSessionNegativePrompt = () => 'stale image-generation negative';
+
 input.value = 'ändere das klein in die farbe rot';
 
 await window.MLXChatGeneration.sendMessage();
@@ -587,6 +590,7 @@ assert.equal(actionPayload.file_context.kind, 'image');
 assert.equal(actionPayload.file_context.stored_path, '/uploads/stored.png');
 assert.equal(actionPayload.active_artifact_id, null);
 assert.deepEqual(actionPayload.image_options, { model: 'auto' });
+delete context.MLXChatRuntime.getSessionNegativePrompt;
 assert.equal(
     actionPayload.chat_id,
     'frontend-image-chat',

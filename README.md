@@ -58,7 +58,8 @@ and active Shorts jobs can be cancelled from History or the queue.
 - Coordinated chat, image, and video runtimes with automatic resource handoff
 - Asynchronous image jobs with real progress, cancellation, reload recovery,
   and persistent chat artifacts
-- Iterative image editing that continues from the active image artifact
+- Iterative image editing that continues from the active image artifact,
+  with mode-specific image settings so stale generation controls do not break edits
 - Per-chat generation settings whose changes automatically become defaults for
   newly created chats
 - System metrics, service health, logs, and runtime controls

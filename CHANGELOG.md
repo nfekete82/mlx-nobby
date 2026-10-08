@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix image jobs failing with “Unbekannte Bildparameter” after mode switches by filtering stale UI settings, validating generation/edit/reference options separately, and reporting rejected option names without values.
+
 - Route colloquial German stock questions such as “Wo steht Microsoft gerade?” to Finance instead of generic AI/web answers.
 
 - Add interactive 1M–5Y Finance price charts with hover, touch and keyboard inspection on quote/history cards.
