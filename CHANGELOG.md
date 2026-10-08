@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Show live Talking Photo processing status with a spinner, stage-specific
+  German/English labels, estimated progress (not a precise LTX model percentage),
+  elapsed time, a top-bar running/finished indicator, and job recovery after
+  closing the dialog or reloading the tab. Preserve cancellation and retry
+  after temporary status-request failures.
+
 - Extend LTX Talking Photo's beta audio limit from 10 to 20 seconds without
   trimming or retiming the source audio. Cover 15/20-second frame-grid and
   padding boundaries in regression tests; real Apple Silicon quality and
