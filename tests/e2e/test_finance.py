@@ -10,12 +10,17 @@ def test_finance_quote_and_searchable_help(ui, language):
     page.evaluate('(language) => window.MLXI18n.setLanguage(language)', language)
     send(page, 'Wie steht AMD gerade?')
     output = page.locator('.message.assistant .message-content').last
+    card = output.locator('.finance-card')
+    expect(card).to_be_visible()
+    expect(card.locator('.finance-card-price')).to_contain_text('123')
+    expect(card.locator('.finance-status')).to_be_visible()
     expect(output).to_contain_text('NASDAQ')
     expect(output).to_contain_text('USD')
     expect(output).to_contain_text('Aktienkurs' if language == 'de' else 'Stock quote')
     expect(output).not_to_contain_text('finance_quote')
-    expect(output).to_contain_text('VERALTET' if language == 'de' else 'STALE')
+    expect(output).to_contain_text('Veraltet' if language == 'de' else 'Stale')
     expect(output).to_contain_text('Regular' if page.evaluate('window.MLXI18n?.getLanguage?.()') == 'en' else 'Regulär')
+    expect(output.locator('.tool-card')).to_have_count(0)
     assert agent.count('/api/runtime/chat/stream', 'POST') == 0
     assert agent.count('/api/chat/actions', 'POST') == 1
     open_sidebar(page)
