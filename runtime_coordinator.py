@@ -3,6 +3,7 @@
 import fcntl
 import http.client
 import json
+import math
 import os
 import re
 import subprocess
@@ -624,13 +625,52 @@ def wait_for_idle(service_url, service_name, cancel_event=None, *, requester=req
         time.sleep(POLL_INTERVAL)
 
 
-def release_idle_image_runtime(cancel_event=None, *, requester=request_json):
-    """Wait for image work, then unload only a resident idle image runtime."""
+def video_image_runtime_may_stay_loaded(snapshot):
+    """Require complete, healthy *fresh* headroom before keeping image weights.
+
+    Ambiguous/unavailable/non-finite samples fail closed: the old unload path
+    remains the default. The model-load admission guard remains unchanged.
+    """
+    if not isinstance(snapshot, dict) or snapshot.get("pressure") != "normal":
+        return False
+    keys = ("total_gb", "used_estimate_gb", "free_percent", "headroom_gb")
+    values = [snapshot.get(key) for key in keys]
+    if any(
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+        for value in values
+    ):
+        return False
+    total, used, free, headroom = (float(value) for value in values)
+    if not (total > 0 and 0 <= used <= total and 0 <= free <= 100):
+        return False
+    return (
+        headroom >= VIDEO_MIN_HEADROOM_GB
+        and not projected_memory_hard_limit_reached(
+            snapshot, model_load_reserve_gb("video")
+        )
+    )
+
+
+def release_idle_image_runtime(
+    cancel_event=None, *, requester=request_json, should_unload=None
+):
+    """Wait for an idle image service, then unload only if requested.
+
+    By default (all existing callers), a loaded image runtime is unloaded.
+    A video handoff may provide a safety predicate evaluated only *after* the
+    image service is idle; uncertain readings must request an unload.
+    """
     health = wait_for_idle(
         IMAGE_URL, "Image", cancel_event, requester=requester
     )
     _check_cancelled(cancel_event)
     if health.get("loaded"):
+        if should_unload is not None and not should_unload():
+            _check_cancelled(cancel_event)
+            return health | {"released": False}
+        _check_cancelled(cancel_event)
         requester("POST", IMAGE_URL + "/unload", {}, timeout=120)
         health = wait_for_idle(
             IMAGE_URL, "Image", cancel_event, requester=requester
@@ -743,18 +783,27 @@ def video_runtime(
             "lease_wait": round((time.monotonic() - lease_started) * 1000, 2),
         }
         image_release_started = time.monotonic()
+        # The decision is made after any active image work finishes, while
+        # holding the coordinator lease. A missing/unsafe memory estimate
+        # retains the established unload behavior.
+        def should_unload_image():
+            return not video_image_runtime_may_stay_loaded(
+                memory_budget_snapshot()
+            )
+
         image_health = release_idle_image_runtime(
             cancel_event,
             requester=requester,
+            should_unload=should_unload_image,
         )
         timings_ms["image_release"] = round(
             (time.monotonic() - image_release_started) * 1000, 2
         )
         _check_cancelled(cancel_event)
 
-        # Measure after releasing idle image weights. This avoids paying a chat
-        # cold-start when reclaiming the image runtime already created enough
-        # unified-memory headroom for LTX.
+        # Always measure again after the image-service handoff. This fresh
+        # snapshot is used for chat/speech/MuseTalk decisions and admission,
+        # whether image weights were released or safely retained.
         before = memory_budget_snapshot()
         video_reserve_gb = model_load_reserve_gb("video")
 
@@ -833,6 +882,10 @@ def video_runtime(
             "load_reserve_gb": video_reserve_gb,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
             "image_released": bool(image_health.get("released")),
+            "image_preserved": (
+                image_health.get("loaded") is True
+                and not image_health.get("released")
+            ),
             "speech_released": bool(speech_health.get("released")),
             "musetalk_released": bool(musetalk_health.get("released")),
             "chat_released": restore_chat,
