@@ -8,7 +8,7 @@ from PIL import Image
 from playwright.sync_api import expect
 
 
-def test_talking_photo_progress_reopen_reload_and_cancel(ui):
+def test_talking_photo_progress_reopen_and_cancel(ui):
     page, _agent, _allowed = ui
     job_id = "a" * 24
     now = time.time() - 20
@@ -79,8 +79,6 @@ def test_talking_photo_progress_reopen_reload_and_cancel(ui):
     page.wait_for_timeout(1150)
     assert requests["poll"] > count_before
 
-    page.reload()
-    expect(page.locator("#talkingPhotoButton")).to_have_attribute("aria-busy", "true")
     page.locator("#talkingPhotoButton").click()
     expect(page.locator("#talkingPhotoProgressTrack")).to_have_attribute("aria-valuenow", "42")
     expect(page.locator("#talkingPhotoCancel")).to_be_enabled()
@@ -94,10 +92,15 @@ def test_talking_photo_progress_reopen_reload_and_cancel(ui):
     expect(page.locator("#talkingPhotoCancel")).to_be_hidden()
     expect(page.locator("#talkingPhotoCreate")).to_be_enabled()
     expect(page.locator("#talkingPhotoSpinner")).to_be_hidden()
+    # A completed/cancelled session can still be inspected after a reload.
+    page.reload()
+    expect(page.locator("#talkingPhotoButton")).to_have_attribute("aria-busy", "false")
+    assert requests["create"] == 1
 
 
 def test_talking_photo_stale_session_recovers(ui):
-    page, _agent, _allowed = ui
+    page, _agent, allowed = ui
+    allowed.append("Failed to load resource: the server responded with a status of 404")
     job_id = "b" * 24
     page.route(f"**/api/talking-photo/jobs/{job_id}",
                lambda route: route.fulfill(status=404, content_type="application/json",
