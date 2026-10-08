@@ -157,6 +157,13 @@ class RuntimeCoordinatorTests(unittest.TestCase):
             ) as preflight:
                 self.assertFalse(preflight["memory_relief_needed"])
                 self.assertFalse(preflight["chat_released"])
+                timings = preflight["handoff_timings_ms"]
+                self.assertGreaterEqual(timings["total"], 0)
+                self.assertGreaterEqual(timings["lease_wait"], 0)
+                self.assertGreaterEqual(timings["image_release"], 0)
+                self.assertNotIn("chat_stop", timings)
+                self.assertNotIn("speech_release", timings)
+                self.assertNotIn("musetalk_release", timings)
 
         chat_probe.assert_not_called()
         self.assertEqual(commands, [])
@@ -297,6 +304,10 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 self.assertTrue(preflight["speech_released"])
                 self.assertTrue(preflight["musetalk_released"])
                 self.assertTrue(preflight["chat_released"])
+                timings = preflight["handoff_timings_ms"]
+                self.assertGreaterEqual(timings["speech_release"], 0)
+                self.assertGreaterEqual(timings["musetalk_release"], 0)
+                self.assertGreaterEqual(timings["chat_stop"], 0)
                 self.assertEqual(preflight["memory_admission"], snapshots[3])
                 self.assertFalse(preflight["hard_limit_reached"])
 
