@@ -175,6 +175,9 @@
         if (report.quote?.source) {
             rows.unshift(`${localText('Kurs', 'Quote')}: ${safe(report.quote.source)} · ${safe(report.quote.source_url)}`);
         }
+        for (const [currency, fx] of Object.entries(report.display_fx?.rates || {})) {
+            if (currency !== 'EUR' && fx?.source) rows.push(`FX ${safe(currency)}→EUR: ${safe(fx.source)} (${safe(fx.date || '')})`);
+        }
         return '\n\n**' + localText('Quellen', 'Sources') + '**\n\n' +
             (rows.join('\n\n') || localText('nicht verfügbar', 'unavailable'));
     }
