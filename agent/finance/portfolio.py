@@ -44,21 +44,39 @@ def analyze_portfolio(positions, reports, histories):
             raise FinanceError('invalid_quantity')
         quote = report['quote']
         value = quantity * quote['price']
+        rate_info = (report.get('display_fx', {}).get('rates', {}) or {}).get(quote['currency'], {})
+        eur_rate = number(rate_info.get('rate'))
+        display_price = quote['price'] * eur_rate if eur_rate is not None else None
+        display_value = value * eur_rate if eur_rate is not None else None
         rows.append({'instrument': report['instrument'], 'quantity': quantity, 'value': value,
+                     'currency': quote['currency'], 'display_currency': 'EUR',
+                     'display_rate': eur_rate, 'display_price': display_price, 'display_value': display_value,
                      'sector': report['fundamentals'].get('sector') or 'unknown', 'assessment': report['assessment'],
                      'stale': quote['stale'], 'timestamp': quote['timestamp'], 'price': quote['price'],
                      'risks': report['cases']['risks'], 'source': quote.get('source'), 'source_url': quote.get('source_url')})
         currencies.add(quote['currency'])
-    # No implicit currency conversion or aggregation of incomparable amounts.
+    display_total = (
+        sum(row['display_value'] for row in rows)
+        if rows and all(number(row.get('display_value')) is not None for row in rows)
+        else None
+    )
+    if display_total is not None and display_total > 0:
+        for row in rows:
+            row['display_weight'] = row['display_value'] / display_total
+    # API-native totals keep original-currency semantics. EUR conversion is an
+    # additional presentation estimate and never rewrites source observations.
     if len(currencies) != 1:
         return {'positions': rows, 'status': 'currency_conversion_required', 'weights': None,
-                'total_value': None, 'correlations': correlation(histories), 'risk': 'insufficient data'}
+                'total_value': None, 'display_total_value': display_total, 'display_currency': 'EUR',
+                'correlations': correlation(histories), 'risk': 'insufficient data'}
     total = sum(row['value'] for row in rows)
     if number(total) is None or total <= 0:
         raise FinanceError('invalid_portfolio_value')
     sectors = {}
     for row in rows:
         row['weight'] = row['value'] / total
+        if display_total is not None and display_total > 0:
+            row['display_weight'] = row['display_value'] / display_total
         sectors[row['sector']] = sectors.get(row['sector'], 0) + row['weight']
     maximum = max(row['weight'] for row in rows)
     ranked = sorted((row for row in rows if row['assessment']['score'] is not None),
@@ -66,7 +84,8 @@ def analyze_portfolio(positions, reports, histories):
     return {'positions': rows, 'ranking': [row['instrument']['symbol'] for row in ranked],
             'ranking_status': 'complete' if len(ranked) == len(rows) else 'partial' if ranked else 'insufficient data',
             'status': 'partial' if any(row['stale'] for row in rows) else 'analyzed',
-            'total_value': total, 'currency': next(iter(currencies)), 'sectors': sectors,
+            'total_value': total, 'currency': next(iter(currencies)),
+            'display_total_value': display_total, 'display_currency': 'EUR', 'sectors': sectors,
             'max_weight': maximum, 'concentration_hhi': sum(row['weight'] ** 2 for row in rows),
             'concentration_risk': 'high' if maximum > .40 else 'moderate' if maximum > .20 else 'lower',
             'correlations': correlation(histories), 'risk': 'insufficient data' if any(row['assessment']['score'] is None for row in rows) else 'heuristic',
