@@ -56,6 +56,8 @@
         total: 'Total',
         queue: 'Queue',
         generation: 'Generation',
+        handoff: 'Handoff',
+        chat_releases: 'Chat unloaded',
         kind: 'Kind',
         completed: 'Completed',
         failed: 'Failed',
@@ -222,6 +224,11 @@
         const cold = Number(summary?.cold_starts || 0);
         if (warm || cold) {
             parts.push(t('warm') + ' ' + warm + ' · ' + t('cold') + ' ' + cold);
+        }
+        const handoff = summary?.handoff_ms || {};
+        if (handoff.count) {
+            parts.push(t('handoff') + ' p50 ' + formatDuration(handoff.p50));
+            parts.push(t('chat_releases') + ': ' + Number(summary?.chat_releases || 0));
         }
         return parts.join(' · ');
     }
@@ -400,7 +407,7 @@
             : [];
         const head = el('thead');
         head.appendChild(tableHeader([
-            t('kind'), t('model'), t('runtime_start'), t('queue'), t('generation'), t('total'), t('status')
+            t('kind'), t('model'), t('runtime_start'), t('queue'), t('handoff'), t('generation'), t('total'), t('status')
         ]));
         const body = el('tbody');
 
@@ -411,6 +418,7 @@
                 tableCell(job?.model || '—'),
                 tableCell(job?.runtime_start ? stateText(job.runtime_start) : '—'),
                 tableCell(formatDuration(job?.queue_wait_ms)),
+                tableCell(formatDuration(job?.handoff_ms)),
                 tableCell(formatDuration(job?.generation_ms)),
                 tableCell(formatDuration(job?.total_ms)),
                 tableCell(statusText(job?.status), 'status-' + String(job?.status || 'unknown'))
@@ -421,7 +429,7 @@
         if (!jobs.length) {
             const row = el('tr');
             const cell = tableCell(t('no_data'), 'performance-observatory-empty');
-            cell.colSpan = 7;
+            cell.colSpan = 8;
             row.appendChild(cell);
             body.appendChild(row);
         }
