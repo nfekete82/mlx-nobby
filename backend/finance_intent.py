@@ -200,7 +200,7 @@ def finance_intent(prompt, conversation_context=None):
                 return 'finance_analyze'
             if re.search(r'histor|verlauf|history|performance|rendite', value):
                 return 'finance_history'
-            if re.search(r'kurs|price|quote|wie steht|how is', value):
+            if re.search(r'kurs|price|quote|(?:wie|wo) steht|how is', value):
                 return 'finance_quote'
 
         if re.search(
@@ -212,7 +212,7 @@ def finance_intent(prompt, conversation_context=None):
         ):
             if re.search(r'analy[sz]|risik|risk|attraktiv|attractive', value):
                 return 'finance_analyze'
-            if re.search(r'kurs|price|quote|wie steht|how is', value):
+            if re.search(r'kurs|price|quote|(?:wie|wo) steht|how is', value):
                 return 'finance_quote'
         return None
 
@@ -234,7 +234,7 @@ def finance_intent(prompt, conversation_context=None):
         value,
     ):
         return 'finance_analyze'
-    if re.search(r'kurs|quote|price|wie steht|how is|trading at|stock', value):
+    if re.search(r'kurs|quote|price|(?:wie|wo) steht|how is|trading at|stock', value):
         return 'finance_quote'
     return None
 
