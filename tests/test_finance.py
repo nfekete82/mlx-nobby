@@ -62,6 +62,8 @@ def service(tmp_path):
     ('Analysiere AMD', 'finance_analyze'), ('Analysiere AMD fundamental und technisch.', 'finance_analyze'),
     ('Ist AMD aktuell attraktiv?', 'finance_analyze'), ('Welche Risiken siehst du bei AMD?', 'finance_analyze'),
     ('Analyze AMD risks', 'finance_analyze'), ('analysiere western digital vollständig', 'finance_analyze'),
+    ('Analysiere Example Storage Systems vollständig', 'finance_analyze'),
+    ('Analysiere den Vertrag vollständig', None),
     ('AMD oder NVIDIA?', 'finance_compare'),
     ('Vergleiche AMD, NVIDIA und Broadcom', 'finance_compare'), ('Compare AMD and NVIDIA', 'finance_compare'),
     ('Analysiere mein Portfolio', 'finance_portfolio_analysis'), ('Analyze my portfolio', 'finance_portfolio_analysis'),
