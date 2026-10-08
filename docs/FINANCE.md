@@ -14,7 +14,13 @@ questions; explicit company news uses existing web search for context.
 Attached documents retain the existing document-analysis path. Follow-ups such as
 “Welche Risiken hat diese Aktie?” use only a single, unambiguous instrument from
 the most recent user Finance request. Ambiguous comparisons never implicitly
-select one of the compared tickers.
+select one of the compared tickers. Explicitly naming a new company takes
+precedence over conversation context: requests such as “Analysiere Western Digital
+vollständig” resolve WDC and can never inherit a previously discussed AMD ticker.
+For non-aliased single-company requests selected by the Finance tool path, a
+conservative company-name extractor passes the explicit name to provider search;
+deictic, document, code and workspace-like subjects are rejected rather than
+silently reusing an old instrument.
 
 | Tool | Behavior | Example |
 | --- | --- | --- |
@@ -44,8 +50,9 @@ restriction (including fundamentals HTTP 401), absent values or invalid payload
 is reported explicitly. Do not treat missing values as zero. No cookie/crumb or
 credential bypass is attempted.
 
-Aliases AMD, NVIDIA and Broadcom resolve to AMD, NVDA and AVGO, then chart
-metadata verifies the actual listing. Other explicit symbols are validated.
+Common aliases include AMD, NVIDIA, Broadcom and Western Digital, resolving to
+AMD, NVDA, AVGO and WDC before chart metadata verifies the actual listing. Other
+explicit symbols are validated.
 Company-name search requires a unique equity/ETF match. Ambiguous results fail
 rather than taking the first exchange returned.
 
@@ -72,6 +79,24 @@ Quotes older than 900 seconds are marked stale, including closed-market quotes.
 A closed market does not turn an old close into a live price. Future or missing
 timestamps and invalid prices are rejected. Indicators and news keep their own
 dates; fetch time is not an observation date.
+
+## Chat presentation
+
+Finance results use dedicated responsive cards instead of rendering the complete
+dataset as one Markdown paragraph. Quote cards keep company, ticker, exchange,
+currency, session, localized observation time, data age and price change visible
+at a glance. Analysis cards separate performance, deterministic assessment,
+available fundamentals, technical indicators, cases/risks and verified news.
+Unavailable fundamentals are summarized once instead of repeating every missing
+field. Raw price basis, delay information, full scoring detail and source URLs
+remain available in a collapsed “Technical details & sources” section.
+
+Comparisons use one horizontal table with one row per instrument and retain each
+listing's original exchange/currency. Portfolio, history and recommendation
+tracking use the same visual system. All provider-controlled text is inserted via
+DOM text nodes; only validated HTTPS source/news URLs become links. The stored
+plain-text summary remains available for copy/read-aloud and preserves stale,
+delay, confidence and limitation warnings.
 
 ## Performance, caching and errors
 
