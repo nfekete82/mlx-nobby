@@ -787,9 +787,13 @@ def video_runtime(
         # holding the coordinator lease. A missing/unsafe memory estimate
         # retains the established unload behavior.
         def should_unload_image():
-            return not video_image_runtime_may_stay_loaded(
-                memory_budget_snapshot()
-            )
+            try:
+                return not video_image_runtime_may_stay_loaded(
+                    memory_budget_snapshot()
+                )
+            except Exception:
+                # A failing system probe must never permit extra residency.
+                return True
 
         image_health = release_idle_image_runtime(
             cancel_event,
@@ -801,10 +805,23 @@ def video_runtime(
         )
         _check_cancelled(cancel_event)
 
-        # Always measure again after the image-service handoff. This fresh
-        # snapshot is used for chat/speech/MuseTalk decisions and admission,
-        # whether image weights were released or safely retained.
+        # Always measure again after the image-service handoff. If memory
+        # changed after the initial keep decision, release the image runtime
+        # rather than unnecessarily stopping chat or risking admission.
         before = memory_budget_snapshot()
+        if (
+            image_health.get("loaded") is True
+            and not image_health.get("released")
+            and not video_image_runtime_may_stay_loaded(before)
+        ):
+            image_release_started = time.monotonic()
+            image_health = release_idle_image_runtime(
+                cancel_event, requester=requester
+            )
+            timings_ms["image_release"] += round(
+                (time.monotonic() - image_release_started) * 1000, 2
+            )
+            before = memory_budget_snapshot()
         video_reserve_gb = model_load_reserve_gb("video")
 
         def needs_relief(snapshot):
