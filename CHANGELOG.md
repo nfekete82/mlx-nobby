@@ -4,7 +4,8 @@
 
 - Anchor recommendation price performance to the saved quote; show daily-history
   return/alpha/drawdown in a separate dated window and exclude corporate-action
-  ambiguity from price-based hit statistics.
+  ambiguity from price-based hit statistics. Exclude unrated portfolio positions
+  from ranking and use localized, human-readable Finance tool labels.
 
 - Add native Finance Intelligence with dedicated bilingual stock routing, validated
   Yahoo market-data identities, session/freshness/source metadata, bounded caching

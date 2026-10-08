@@ -534,3 +534,18 @@ def test_tracking_corporate_actions_cannot_generate_price_hit(service):
         row['adjusted_close'] = row['close'] * .5
     result = evaluate_snapshot(snapshot, freshness(Provider().quote(INSTRUMENT), NOW), h)
     assert result['corporate_actions'] == 'detected' and result['hit'] is None
+
+
+def test_portfolio_ranking_excludes_positions_without_evidence(service):
+    provider = service.provider.providers[0]
+    original = provider.fundamentals
+    def fundamentals(instrument):
+        if instrument.symbol == 'AMD':
+            raise FinanceError('fundamentals_unavailable')
+        return original(instrument)
+    provider.fundamentals = fundamentals
+    result = service.execute('finance_portfolio_analysis', prompt='Portfolio: AMD: 10, NVDA: 5')
+    assert result['ranking'] == ['NVDA'] and result['ranking_status'] == 'partial'
+    provider.fundamentals = lambda i: (_ for _ in ()).throw(FinanceError('fundamentals_unavailable'))
+    result = service.execute('finance_portfolio_analysis', prompt='Portfolio: AMD: 10, NVDA: 5')
+    assert result['ranking'] == [] and result['ranking_status'] == 'insufficient data'

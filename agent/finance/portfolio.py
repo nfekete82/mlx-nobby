@@ -61,8 +61,10 @@ def analyze_portfolio(positions, reports, histories):
         row['weight'] = row['value'] / total
         sectors[row['sector']] = sectors.get(row['sector'], 0) + row['weight']
     maximum = max(row['weight'] for row in rows)
-    ranked = sorted(rows, key=lambda row: (row['assessment']['score'] is not None, row['assessment']['score'] or 0), reverse=True)
+    ranked = sorted((row for row in rows if row['assessment']['score'] is not None),
+                    key=lambda row: row['assessment']['score'], reverse=True)
     return {'positions': rows, 'ranking': [row['instrument']['symbol'] for row in ranked],
+            'ranking_status': 'complete' if len(ranked) == len(rows) else 'partial' if ranked else 'insufficient data',
             'status': 'partial' if any(row['stale'] for row in rows) else 'analyzed',
             'total_value': total, 'currency': next(iter(currencies)), 'sectors': sectors,
             'max_weight': maximum, 'concentration_hhi': sum(row['weight'] ** 2 for row in rows),

@@ -189,7 +189,9 @@ positive quantities are required. Mixed currencies are not aggregated without
 FX data. Available sectors include an explicit unknown bucket. Correlation uses
 Pearson correlation of aligned daily returns, minimum 30 overlapping observations,
 maximum 252. Concentration uses HHI and maximum weight (>40% high, >20% moderate).
-Overall risk is insufficient when position assessments lack data. There is no
+Ranking includes only positions with an adequate score; unrated positions are
+explicitly excluded and ranking completeness is reported. Overall risk is
+insufficient when position assessments lack data. There is no
 calibrated VaR, cash, short-selling, tax or derivative model.
 
 ## API
