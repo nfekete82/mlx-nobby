@@ -482,11 +482,12 @@ class VideoServiceTests(unittest.TestCase):
                     "duration": 5, "audio": True}
 
         snapshot = {"ram_used_bytes": 10, "swap_used_bytes": 2}
+        final_snapshot = {"ram_used_bytes": 15, "swap_used_bytes": 3}
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
              mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=False), \
-             mock.patch.object(video_service, "_memory_snapshot", return_value=snapshot) as memory_probe, \
+             mock.patch.object(video_service, "_memory_snapshot", side_effect=[snapshot, final_snapshot]) as memory_probe, \
              mock.patch.object(video_service, "MEMORY_SAMPLE_INTERVAL_SECONDS", 1000), \
              mock.patch.object(video_service, "generate", side_effect=fake_generate):
             video_service._run(job_id, request)
@@ -499,7 +500,9 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(job["result"]["pipeline"], "distilled-two-stage")
         self.assertEqual(job["result"]["stage_1_steps"], 8)
         self.assertEqual(job["result"]["stage_2_steps"], 3)
-        self.assertEqual(job["result"]["memory_peak"], snapshot)
+        self.assertEqual(job["result"]["memory_before"], snapshot)
+        self.assertEqual(job["result"]["memory_after"], final_snapshot)
+        self.assertEqual(job["result"]["memory_peak"], final_snapshot)
         # Four progress events did not trigger repeated vm_stat/sysctl calls.
         # We still capture the beginning and final snapshot.
         self.assertEqual(memory_probe.call_count, 2)
