@@ -7,7 +7,7 @@ import time
 
 from .analytics import technicals, performance, scoring, cases
 from .contracts import FinanceError, symbol, number
-from .providers import ProviderChain, YahooProvider
+from .providers import EcbFxProvider, ProviderChain, YahooProvider
 from backend.finance_intent import (
     TOOLS, symbols_from_prompt, explicit_company_query, market_constraints, context_symbols,
 )
@@ -16,11 +16,51 @@ from .portfolio import analyze_portfolio, parse_positions
 
 
 class FinanceService:
-    def __init__(self, provider=None, store=None, clock=time.time):
+    def __init__(self, provider=None, store=None, clock=time.time, fx_provider=None):
         self.clock = clock
+        injected_provider = provider is not None
         self.provider = provider or ProviderChain(YahooProvider(clock=clock), clock=clock)
+        # Tests/custom providers stay network-isolated unless an FX provider is explicitly injected.
+        self.fx_provider = fx_provider if fx_provider is not None else (
+            None if injected_provider else EcbFxProvider(clock=clock)
+        )
         self.store = store or RecommendationStore(Path.home() / '.config/mlx-web/finance/recommendations.json')
         self._capacity = threading.BoundedSemaphore(4)
+
+    def _display_fx(self, *currencies):
+        unique = []
+        for value in currencies:
+            currency = str(value or '').strip().upper()
+            if currency and currency not in unique:
+                unique.append(currency)
+        rates, missing = {}, []
+        for currency in unique:
+            if currency == 'EUR':
+                rates[currency] = {
+                    'base_currency': 'EUR', 'quote_currency': 'EUR', 'rate': 1.0,
+                    'source': 'identity', 'source_url': None, 'as_of': None,
+                    'rate_basis': 'identity'
+                }
+                continue
+            if self.fx_provider is None:
+                missing.append(currency)
+                continue
+            try:
+                rates[currency] = self.fx_provider.rate_to_eur(currency)
+            except FinanceError as exc:
+                missing.append(currency)
+        status = 'available' if rates and not missing else 'partial' if rates else 'unavailable'
+        return {
+            'target_currency': 'EUR',
+            'rates': rates,
+            'missing_currencies': missing,
+            'status': status,
+            'presentation_only': True,
+        }
+
+    def _attach_display_fx(self, report, *currencies):
+        report['display_fx'] = self._display_fx(*currencies)
+        return report
 
     def _analysis(self, instrument):
         with ThreadPoolExecutor(max_workers=4, thread_name_prefix='finance') as pool:
@@ -46,6 +86,7 @@ class FinanceService:
                                     'retrieved_at': value.get('retrieved_at'), 'as_of': value.get('as_of')}
                               for kind, value in data.items()},
                   'untrusted_external_content': True}
+        self._attach_display_fx(report, instrument.currency, data['fundamentals'].get('reporting_currency'))
         return report, data['history']
 
     def execute(self, action, *, prompt='', options=None, owner=None):
@@ -134,11 +175,14 @@ class FinanceService:
         if action == 'finance_compare' and len(instruments) < 2:
             raise FinanceError('comparison_symbols_required')
         if action == 'finance_quote':
-            return {'kind': 'quote', 'instrument': instruments[0].as_dict(), 'quote': self.provider.get('quote', instruments[0])}
+            report = {'kind': 'quote', 'instrument': instruments[0].as_dict(),
+                      'quote': self.provider.get('quote', instruments[0])}
+            return self._attach_display_fx(report, instruments[0].currency)
         if action == 'finance_history':
             history = self.provider.get('history', instruments[0])
-            return {'kind': 'history', 'instrument': instruments[0].as_dict(), 'history': history,
-                    'performance': performance(history), 'technicals': technicals(history)}
+            report = {'kind': 'history', 'instrument': instruments[0].as_dict(), 'history': history,
+                      'performance': performance(history), 'technicals': technicals(history)}
+            return self._attach_display_fx(report, instruments[0].currency)
         reports = []
         for instrument in instruments:
             report, _ = self._analysis(instrument)
@@ -153,7 +197,7 @@ class FinanceService:
         ranking = sorted(reports, key=lambda report: (report['assessment']['score'] is not None, report['assessment']['score'] or 0), reverse=True)
         return {'kind': 'comparison', 'reports': reports, 'ranking': [r['instrument']['symbol'] for r in ranking if r['assessment']['score'] is not None],
                 'ranking_status': 'partial' if any(r['assessment']['score'] is None for r in reports) else 'complete',
-                'price_comparison': 'prices retain original exchange and currency; no FX conversion'}
+                'price_comparison': 'EUR is presentation-only using ECB daily reference rates; original listing currency is retained'}
 
 
 _SERVICE = None
