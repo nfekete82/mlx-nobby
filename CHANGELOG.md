@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Anchor recommendation price performance to the saved quote; show daily-history
+  return/alpha/drawdown in a separate dated window and exclude corporate-action
+  ambiguity from price-based hit statistics.
+
 - Add native Finance Intelligence with dedicated bilingual stock routing, validated
   Yahoo market-data identities, session/freshness/source metadata, bounded caching
   and transport, daily indicators and deterministic confidence-gated scores.

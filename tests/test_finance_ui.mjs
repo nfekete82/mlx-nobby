@@ -47,3 +47,17 @@ test('finance assets and direct tool output are wired to production chat', () =>
     const generation = fs.readFileSync('frontend/assets/chat/generation.js', 'utf8');
     assert.match(generation, /MLXFinance\.summary/); assert.match(generation, /MLXFinance\.failure/);
 });
+
+test('tracking distinguishes saved-price change from the dated daily benchmark window', () => {
+    for (const locale of ['de', 'en']) {
+        const copy = ui(locale).summary({status: 'completed', data: {kind: 'tracking', items: [{
+            symbol: 'AMD', return: -.282, history_return: .38, history_alpha: .1, benchmark_return: .28,
+            quote_from: 1780500000, as_of: 1789500000, history_from: 1780400000, history_to: 1789400000,
+            history_basis: 'adjusted_close', max_drawdown: -.1, drawdown_complete: false
+        }], statistics: {average_return: -.282}}});
+        assert.match(copy, /-28[.,]2%/);
+        assert.match(copy, locale === 'de' ? /seit Empfehlung \(unbereinigt\)/ : /since recommendation \(unadjusted\)/);
+        assert.match(copy, locale === 'de' ? /Separates Tageskursfenster/ : /Separate daily-close window/);
+        assert.match(copy, locale === 'de' ? /keine Gesamtrendite/ : /not total returns/);
+    }
+});

@@ -387,7 +387,7 @@
         try {
             ensureHelpVisibilityFix();
             await loadScript(
-                '/assets/chat/help.js?v=20261008-finance-help-v2',
+                '/assets/chat/help.js?v=20261008-finance-help-v3',
                 'mlx-help-center'
             );
             removeRedundantTopActions();
