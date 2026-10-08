@@ -105,6 +105,12 @@ def explicit_company_query(prompt):
         candidate,
         flags=re.I,
     ).strip(' \t\r\n,;:?!')
+    candidate = re.sub(
+        r'^(?:der|die|das|den|dem|des|ein|eine|einen|einem|einer|the|a|an)\\s+',
+        '',
+        candidate,
+        flags=re.I,
+    ).strip()
 
     lowered = candidate.lower()
     if not candidate or len(candidate) > 80 or len(candidate.split()) > 8:
@@ -122,13 +128,16 @@ def explicit_company_query(prompt):
         'log', 'code', 'projekt', 'project', 'system', 'pc', 'computer', 'mac',
         'macbook', 'laptop', 'website', 'webseite', 'repo', 'repository', 'aktie',
         'stock', 'vertrag', 'contract', 'lage', 'situation', 'bild', 'image', 'foto',
-        'photo', 'audio', 'video', 'datei', 'file',
+        'photo', 'audio', 'video', 'datei', 'file', 'spiel', 'game', 'app',
+        'backend', 'frontend', 'grafik', 'graphics', 'animation', 'animationen',
     }
     words = set(re.findall(r'[a-z0-9]+', lowered))
     if not words or words <= generic or words & {
         'dokument', 'document', 'code', 'projekt', 'project', 'website', 'webseite',
         'repo', 'repository', 'vertrag', 'contract', 'lage', 'situation', 'bild',
-        'image', 'foto', 'photo', 'audio', 'video', 'datei', 'file',
+        'image', 'foto', 'photo', 'audio', 'video', 'datei', 'file', 'spiel',
+        'game', 'app', 'backend', 'frontend', 'grafik', 'graphics', 'animation',
+        'animationen',
     }:
         return None
     return candidate
