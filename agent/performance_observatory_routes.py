@@ -259,6 +259,12 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             "handoff_ms": handoff_ms,
             "handoff_stages_ms": stage_timings,
             "image_released": verified_image_release,
+            "image_preserved": (
+                handoff.get("image_preserved")
+                if type(handoff_version) is int and handoff_version >= 2
+                and type(handoff.get("image_preserved")) is bool
+                else None
+            ),
             "chat_released": (
                 handoff.get("chat_released")
                 if type(handoff.get("chat_released")) is bool
@@ -300,6 +306,8 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
                 for key in HANDOFF_STAGE_KEYS
             },
             "image_releases": sum(job.get("image_released") is True for job in selected),
+            "image_preserves": sum(job.get("image_preserved") is True for job in selected),
+            "image_preserve_samples": sum(job.get("image_preserved") is not None for job in selected),
             "image_release_samples": sum(job.get("image_released") is not None for job in selected),
             "chat_releases": sum(job.get("chat_released") is True for job in selected),
         }

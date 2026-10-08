@@ -58,6 +58,7 @@
         generation: 'Generation',
         handoff: 'Handoff',
         chat_releases: 'Chat unloaded',
+        image_preserves: 'Image kept loaded',
         handoff_title: 'Video handoff breakdown',
         lease_wait: 'Lock wait',
         image_release: 'Release image model',
@@ -329,6 +330,8 @@
             t('handoff_release_summary', {
                 image: Number(summary.image_releases || 0),
                 samples: Number(summary.image_release_samples || 0),
+                preserved: Number(summary.image_preserves || 0),
+                preserveSamples: Number(summary.image_preserve_samples || 0),
                 chat: Number(summary.chat_releases || 0)
             });
     }
