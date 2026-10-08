@@ -41,6 +41,15 @@ POLL_INTERVAL = 0.2
 _PROCESS_LOCK = threading.RLock()
 _LEASE_STATE = threading.local()
 
+# The job queue and read-only dashboards often request the same expensive
+# macOS memory_pressure/sysctl snapshot concurrently. Cache *only* diagnostics;
+# model-load admission and image/video preflight still call the fresh probe.
+DIAGNOSTIC_MEMORY_TTL_SECONDS = 1.5
+_DIAGNOSTIC_MEMORY_CONDITION = threading.Condition()
+_DIAGNOSTIC_MEMORY_SNAPSHOT = None
+_DIAGNOSTIC_MEMORY_AT = 0.0
+_DIAGNOSTIC_MEMORY_REFRESHING = False
+
 
 def _float_env(name, default):
     try:
@@ -204,6 +213,51 @@ def memory_budget_snapshot():
         "swap_used_gb": rounded(swap_used_gb),
         "pressure": pressure,
     }
+
+
+def diagnostic_memory_budget_snapshot():
+    """Coalesce short-lived read-only memory probes across status consumers.
+
+    Never use this cached view for model admission or handoff decisions.
+    """
+    global _DIAGNOSTIC_MEMORY_SNAPSHOT, _DIAGNOSTIC_MEMORY_AT
+    global _DIAGNOSTIC_MEMORY_REFRESHING
+
+    with _DIAGNOSTIC_MEMORY_CONDITION:
+        while True:
+            if (
+                _DIAGNOSTIC_MEMORY_SNAPSHOT is not None
+                and time.monotonic() - _DIAGNOSTIC_MEMORY_AT
+                < DIAGNOSTIC_MEMORY_TTL_SECONDS
+            ):
+                return dict(_DIAGNOSTIC_MEMORY_SNAPSHOT)
+            if not _DIAGNOSTIC_MEMORY_REFRESHING:
+                _DIAGNOSTIC_MEMORY_REFRESHING = True
+                break
+            _DIAGNOSTIC_MEMORY_CONDITION.wait()
+
+    try:
+        snapshot = memory_budget_snapshot()
+    except BaseException:
+        with _DIAGNOSTIC_MEMORY_CONDITION:
+            _DIAGNOSTIC_MEMORY_REFRESHING = False
+            _DIAGNOSTIC_MEMORY_CONDITION.notify_all()
+        raise
+
+    with _DIAGNOSTIC_MEMORY_CONDITION:
+        _DIAGNOSTIC_MEMORY_SNAPSHOT = dict(snapshot)
+        _DIAGNOSTIC_MEMORY_AT = time.monotonic()
+        _DIAGNOSTIC_MEMORY_REFRESHING = False
+        _DIAGNOSTIC_MEMORY_CONDITION.notify_all()
+        return dict(snapshot)
+
+
+def _reset_diagnostic_memory_cache():
+    """Reset cached diagnostic state for isolated tests."""
+    global _DIAGNOSTIC_MEMORY_SNAPSHOT, _DIAGNOSTIC_MEMORY_AT
+    with _DIAGNOSTIC_MEMORY_CONDITION:
+        _DIAGNOSTIC_MEMORY_SNAPSHOT = None
+        _DIAGNOSTIC_MEMORY_AT = 0.0
 
 
 def memory_relief_needed(snapshot, min_headroom_gb=MEDIA_MIN_HEADROOM_GB):
@@ -463,7 +517,7 @@ def runtime_state_snapshot(*, state_dir=STATE_DIR):
         "active": active[-1] if active else None,
         "waiting": waiting,
         "waiting_count": len(waiting),
-        "memory": memory_budget_snapshot(),
+        "memory": diagnostic_memory_budget_snapshot(),
     }
 
 
