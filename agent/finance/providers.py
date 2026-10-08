@@ -26,6 +26,10 @@ TTL = {'quote': 30, 'history': 300, 'fundamentals': 3600, 'news': 600, 'resolve'
 MAX_BYTES = 2_000_000
 FX_MAX_BYTES = 256_000
 FX_TTL = 6 * 3600
+# ECB publishes only on reference-rate business days. Allow long holiday
+# weekends, but never silently use a week-old or future reference date.
+FX_MAX_REFERENCE_AGE_SECONDS = 6 * 86400
+FX_OLD_REFERENCE_AGE_SECONDS = 3 * 86400
 ECB_FX_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
 
 
@@ -333,6 +337,11 @@ class EcbFxProvider:
             as_of = datetime.strptime(date_text, '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp()
         except (ET.ParseError, ValueError, TypeError):
             raise FinanceError('fx_invalid_provider_response') from None
+        reference_age = self.clock() - as_of
+        if reference_age < -86400:
+            raise FinanceError('fx_invalid_reference_date')
+        if reference_age > FX_MAX_REFERENCE_AGE_SECONDS:
+            raise FinanceError('fx_stale_reference_rate')
         result = {'date': date_text, 'as_of': as_of, 'rates_per_eur': rates}
         with self._lock:
             self._cached, self._cached_at = deepcopy(result), self.monotonic()
@@ -353,9 +362,14 @@ class EcbFxProvider:
         reference = data['rates_per_eur'].get(currency)
         if reference is None:
             raise FinanceError('fx_currency_unavailable')
+        age_seconds = max(0.0, self.clock() - data['as_of'])
+        if age_seconds > FX_MAX_REFERENCE_AGE_SECONDS:
+            raise FinanceError('fx_stale_reference_rate')
         return {
             'base_currency': currency, 'quote_currency': 'EUR', 'rate': 1.0 / reference,
             'reference_rate_per_eur': reference, 'as_of': data['as_of'], 'date': data['date'],
+            'reference_age_seconds': age_seconds,
+            'reference_old': age_seconds > FX_OLD_REFERENCE_AGE_SECONDS,
             'source': self.name, 'source_url': ECB_FX_URL,
             'retrieved_at': self.clock(),
             'rate_basis': 'ECB euro foreign exchange reference rate; presentation only'
