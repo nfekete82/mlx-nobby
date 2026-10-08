@@ -361,15 +361,17 @@
         const add = (key, formatter = num) => {
             if (numeric(values[key])) rows.push([metricLabels[key](), formatter(values[key])]);
         };
-        add('market_cap', compact);
-        add('revenue', compact);
+        const listingCurrency = report.quote?.currency || report.instrument?.currency;
+        const reportingCurrency = report.fundamentals?.reporting_currency || listingCurrency;
+        add('market_cap', value => money(report, value, listingCurrency, true));
+        add('revenue', value => money(report, value, reportingCurrency, true));
         add('revenue_growth', pct);
-        add('eps');
+        add('eps', value => money(report, value, reportingCurrency));
         add('eps_growth', pct);
-        add('free_cash_flow', compact);
+        add('free_cash_flow', value => money(report, value, reportingCurrency, true));
         add('profit_margin', pct);
         add('operating_margin', pct);
-        add('debt', compact);
+        add('debt', value => money(report, value, reportingCurrency, true));
         add('debt_to_equity', value => num(value) + '%');
         add('pe');
         add('forward_pe');
@@ -383,11 +385,12 @@
         const rows = [];
         if (t.trend) rows.push([localText('Trend', 'Trend'), trend(t.trend)]);
         if (numeric(t.rsi14)) rows.push(['RSI 14', num(t.rsi14)]);
-        if (numeric(t.sma?.[200])) rows.push(['SMA 200', num(t.sma[200])]);
-        if (numeric(t.ema?.[200])) rows.push(['EMA 200', num(t.ema[200])]);
+        const listingCurrency = report.quote?.currency || report.instrument?.currency;
+        if (numeric(t.sma?.[200])) rows.push(['SMA 200', money(report, t.sma[200], listingCurrency)]);
+        if (numeric(t.ema?.[200])) rows.push(['EMA 200', money(report, t.ema[200], listingCurrency)]);
         if (numeric(t.momentum_20)) rows.push([localText('Momentum 20', 'Momentum 20'), pct(t.momentum_20)]);
         if (numeric(t.volatility_annual)) rows.push([localText('Volatilität', 'Volatility'), pct(t.volatility_annual)]);
-        if (numeric(t.macd?.value)) rows.push(['MACD', `${num(t.macd.value)} / ${num(t.macd.signal)}`]);
+        if (numeric(t.macd?.value)) rows.push(['MACD', `${money(report, t.macd.value, listingCurrency)} / ${money(report, t.macd.signal, listingCurrency)}`]);
         return rows;
     }
 
