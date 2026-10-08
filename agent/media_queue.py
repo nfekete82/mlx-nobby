@@ -36,6 +36,8 @@ KINDS = frozenset({"image", "video"})
 TERMINAL = frozenset({"completed", "failed", "cancelled"})
 MAX_RETAINED_JOBS = 200
 POLL_INTERVAL = 0.75
+SERVICE_RETRY_BASE_SECONDS = 1.5
+SERVICE_RETRY_MAX_SECONDS = 30.0
 
 _jobs_lock = threading.RLock()
 _worker_lock = threading.Lock()
@@ -238,6 +240,7 @@ def enqueue(kind, request_payload):
         ),
         "native_job_id": None,
         "dispatch_attempts": 0,
+        "_retry_after": None,
         "request": deepcopy(request_payload),
         "result": None,
         "error": None,
@@ -310,6 +313,14 @@ def _wait(seconds=POLL_INTERVAL):
     _wake.clear()
 
 
+def _service_retry_delay(attempts):
+    """Bound outage retries without ever abandoning the durable queued job."""
+    return min(
+        SERVICE_RETRY_MAX_SECONDS,
+        SERVICE_RETRY_BASE_SECONDS * 2 ** min(12, max(0, int(attempts) - 1)),
+    )
+
+
 def _dispatch_and_poll(job_id):
     while True:
         with _jobs_lock:
@@ -349,14 +360,19 @@ def _dispatch_and_poll(job_id):
                 )
             except ServiceError as exc:
                 if exc.status_code in {409, 503}:
+                    # Yield to the scheduler so jobs of another healthy kind
+                    # can run. Keep the earliest blocked job at the front of
+                    # its own kind to preserve FIFO and retry after backoff.
                     _update(
                         job_id,
                         status="queued",
                         phase="waiting_for_service",
                         error=None,
+                        _retry_after=time.time() + _service_retry_delay(
+                            job.get("dispatch_attempts", 0) + 1
+                        ),
                     )
-                    _wait()
-                    continue
+                    return
                 _update(
                     job_id,
                     status="failed",
@@ -383,6 +399,7 @@ def _dispatch_and_poll(job_id):
                 phase=str(native.get("phase") or "queued"),
                 started_at=native.get("started_at") or time.time(),
                 error=None,
+                _retry_after=None,
             )
             _mirror_native(job_id, native)
             continue
@@ -441,23 +458,57 @@ def _dispatch_and_poll(job_id):
 
 
 def _next_job_id():
+    """Select the oldest runnable job without overtaking jobs of its kind.
+
+    A dispatched native job is always polled before dispatching another heavy
+    job; the coordinator and media worker remain deliberately single-flight.
+    """
     with _jobs_lock:
         _ensure_loaded_locked()
-        candidates = [
-            job for job in _jobs.values()
-            if job.get("status") not in TERMINAL
-        ]
-    if not candidates:
+        candidates = sorted(
+            (job for job in _jobs.values() if job.get("status") not in TERMINAL),
+            key=lambda item: (float(item.get("created_at") or 0), item["id"]),
+        )
+        # In-flight native jobs must not be left running while new jobs
+        # dispatch, including after agent restart.
+        for job in candidates:
+            if job.get("native_job_id"):
+                return job["id"]
+
+        now = time.time()
+        seen_kinds = set()
+        for job in candidates:
+            kind = job["kind"]
+            if kind in seen_kinds:
+                continue
+            seen_kinds.add(kind)
+            retry_after = float(job.get("_retry_after") or 0)
+            if job.get("cancel_requested") or retry_after <= now:
+                return job["id"]
         return None
-    candidates.sort(key=lambda item: float(item.get("created_at") or 0))
-    return candidates[0]["id"]
+
+
+def _scheduler_wait_seconds():
+    """Sleep until the nearest retry or a new job, at most five seconds."""
+    with _jobs_lock:
+        _ensure_loaded_locked()
+        pending = [
+            float(job.get("_retry_after") or 0)
+            for job in _jobs.values()
+            if job.get("status") not in TERMINAL
+            and not job.get("native_job_id")
+            and job.get("_retry_after")
+        ]
+    if not pending:
+        return 5.0
+    return max(0.1, min(5.0, min(pending) - time.time()))
 
 
 def _worker():
     while True:
         job_id = _next_job_id()
         if job_id is None:
-            _wait(5.0)
+            _wait(_scheduler_wait_seconds())
             continue
         try:
             _dispatch_and_poll(job_id)
