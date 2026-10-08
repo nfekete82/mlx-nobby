@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.8.0-informational)
+![Release](https://img.shields.io/badge/release-v1.9.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -13,11 +13,9 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
-## Recent updates (unreleased)
+## What's new in v1.9.0
 
-The latest changes on `main` after **v1.8.0** are not a published GitHub
-release yet; the release badge above identifies the last formally released
-version. Highlights include:
+Highlights of the **v1.9.0** release:
 
 - **Talking Photo:** direct LTX audio-to-video is the default, with an optional
   LTX + MuseTalk hybrid. The LTX paths now accept up to **20 seconds of
@@ -39,8 +37,8 @@ version. Highlights include:
 - **Finance:** EUR-first price display with unchanged source currencies,
   interactive price-history charts and more resilient quote/FX diagnostics.
 
-See [the changelog](CHANGELOG.md) for all unreleased work, including fixes.
-For new releases follow [the release procedure](docs/RELEASING.md) and
+See [the changelog](CHANGELOG.md) for the complete v1.9.0 change list.
+For future releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
 
