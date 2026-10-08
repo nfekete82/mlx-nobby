@@ -106,7 +106,7 @@ def explicit_company_query(prompt):
         flags=re.I,
     ).strip(' \t\r\n,;:?!')
     candidate = re.sub(
-        r'^(?:der|die|das|den|dem|des|ein|eine|einen|einem|einer|the|a|an)\\s+',
+        r'^(?:der|die|das|den|dem|des|ein|eine|einen|einem|einer|the|a|an)\s+',
         '',
         candidate,
         flags=re.I,
