@@ -38,7 +38,7 @@ def test_finance_quote_and_searchable_help(ui, language):
 )
     chart = card.locator('.finance-chart')
     expect(chart).to_be_visible()
-    expect(card.locator('.finance-chart-range')).to_have_count(5)
+    expect(card.locator('.finance-chart-range')).to_have_count(6)
     year_label = '1J' if language == 'de' else '1Y'
     expect(card.locator('.finance-chart-range', has_text=year_label)).to_have_attribute('aria-pressed', 'true')
     chart.locator('.finance-chart-svg').hover(position={'x': 180, 'y': 100})
