@@ -75,7 +75,7 @@ test('portfolio never renders missing weights as zero and errors are localized',
 });
 test('finance assets and native cards are wired to production chat', () => {
     const html = fs.readFileSync('frontend/chat.html', 'utf8');
-    assert.match(html, /\/assets\/chat\/finance\.css\?v=20261008-finance-chart/);
+    assert.match(html, /\/assets\/chat\/finance\.css\?v=20261008-finance-speed/);
     assert.ok(html.indexOf('/assets/chat/finance.js?') < html.indexOf('/assets/chat/generation.js?'));
     const generation = fs.readFileSync('frontend/assets/chat/generation.js', 'utf8');
     assert.match(generation, /MLXFinance\.summary/); assert.match(generation, /MLXFinance\.failure/);
