@@ -27,7 +27,17 @@ model/media measurements and unified-memory estimates.
   contribute. The image-release flag previously counted already-unloaded image
   models as "released"; this is corrected for new `runtime_handoff.version=2`
   jobs. Older records contribute to timing summaries, but their image-release
-  count is deliberately excluded rather than misrepresented.
+  count is deliberately excluded rather than misrepresented. During a new
+  video handoff, a loaded idle image runtime may remain resident only when a
+  fresh, complete and finite macOS memory estimate reports normal pressure,
+  at least the configured video headroom and sufficient projected RAM below
+  the existing model-load hard limit. The check happens after active image
+  work finishes and is repeated immediately afterward. If either sample is
+  missing/unsafe, the coordinator uses the established image-unload path.
+  Already-cold models are neither unloaded nor counted as preserved. New
+  video jobs record `image_preserved` separately from `image_released`.
+  This avoids unnecessary reloads for a subsequent image job, but does not
+  guarantee faster LTX inference or permit overcommitting unified memory.
 - System: memory budget, available/headroom estimates, pressure, swap, loaded
   runtime state and the current coordinator lease. Repeated read-only
   diagnostic requests coalesce into one macOS memory_pressure/sysctl probe,
