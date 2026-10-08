@@ -332,13 +332,26 @@ async function updateImageModelOptions(
     }
 }
 
+const IMAGE_OPTION_KEYS = Object.freeze({
+    generate: new Set([
+        'prompt', 'negative_prompt', 'model', 'width', 'height',
+        'steps', 'guidance', 'seed', 'auto_size'
+    ]),
+    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed']),
+    reference: new Set([
+        'prompt', 'model', 'steps', 'guidance', 'seed',
+        'width', 'height', 'auto_size', 'negative_prompt'
+    ])
+});
+
 function imageOptionsForRequest(
     options,
     mediaKind,
     format = 'square',
     allowFormat = false,
     negativePrompt = '',
-    imageModel = null
+    imageModel = null,
+    operation = 'generate'
 ) {
     const existing = options?.image || null;
 
@@ -346,12 +359,16 @@ function imageOptionsForRequest(
         return existing;
     }
 
-    const merged = { ...(existing || {}) };
+    const allowed = IMAGE_OPTION_KEYS[operation] || IMAGE_OPTION_KEYS.generate;
+    // Never reuse stale generation-only fields when switching to image edit.
+    const merged = Object.fromEntries(
+        Object.entries(existing || {}).filter(([key]) => allowed.has(key))
+    );
     const normalizedNegativePrompt = String(
         negativePrompt || ''
     ).trim();
 
-    if (normalizedNegativePrompt) {
+    if (allowed.has('negative_prompt') && normalizedNegativePrompt) {
         merged.negative_prompt = normalizedNegativePrompt;
     } else {
         delete merged.negative_prompt;
@@ -3334,7 +3351,10 @@ const imageFiles =
                     selectedNegativePrompt,
                     mediaQualityKind === 'image'
                         ? selectedImageModel
-                        : null
+                        : null,
+                    resolvedTarget === 'image_edit'
+                        ? (referenceMode ? 'reference' : 'edit')
+                        : 'generate'
                 ),
                 video_options: videoOptionsForRequest(
                     options,
