@@ -172,9 +172,15 @@ def finance_intent(prompt, conversation_context=None):
     tickers = symbols_from_prompt(prompt)
     if not tickers:
         company_query = explicit_company_query(prompt)
+        company_words = re.findall(r'[A-Za-zÄÖÜäöüß0-9&.-]+', company_query or '')
+        explicit_finance_subject = re.search(
+            r'\b(?:aktie|stock|ticker|share|shares|börse|boerse|exchange)\b',
+            value,
+        )
         strong_company_name = company_query and (
             company_query.lower() in ALIASES
-            or re.search(r'\b[A-ZÄÖÜ][\w&.-]*', company_query)
+            or len(company_words) >= 2
+            or explicit_finance_subject
         )
         if strong_company_name:
             if re.search(
