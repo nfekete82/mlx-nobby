@@ -312,8 +312,8 @@ Vom Repository-Wurzelverzeichnis aus arbeiten. `agent-venv/bin/python` verwendet
 die passende Umgebung; das allgemeine `python3` kann eine ältere Version sein.
 Für Subprozesse ebenfalls den venv-Pfad voranstellen.
 
-Wichtig: Einige Tests importieren Anwendungscode mit benutzerspezifischen
-Konfigurationspfaden. `Path.home()` vor Test-Discovery/Imports isolieren,
+Pytest isoliert `Path.home()` und Runtime-Lock/State vor Discovery automatisch.
+Standalone-unittest-Aufrufe müssen `Path.home()` weiterhin vor Imports isolieren,
 damit insbesondere Modell-Runtime-Tests keine echte `jobs.json` verändern.
 
 ```sh

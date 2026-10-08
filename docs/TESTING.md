@@ -3,7 +3,10 @@
 ## Unit and integration
 
 `test-venv/bin/python -m pytest -q` runs CPU-only Python tests, including
-production TestClient/proxy contracts. `node --test tests/*.mjs` runs the existing
+production TestClient/proxy contracts. Test discovery automatically isolates
+`Path.home()` and the Runtime Coordinator lock/state in a temporary directory,
+so local CPU tests do not recover real jobs or wait on native production leases.
+Browser and real acceptance keep their existing dedicated isolation contracts. `node --test tests/*.mjs` runs the existing
 JavaScript regressions. See the Tests workflow for syntax, JSON, translation,
 shell, plist, dependency and Docker checks.
 

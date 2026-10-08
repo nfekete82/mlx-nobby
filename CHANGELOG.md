@@ -11,6 +11,8 @@
   existing chat renderer/API; add DE/EN Finance help, documentation and offline tests.
 - Document the decision to retain native Finance analysis without TradingAgents
   dependencies or order execution.
+- Isolate CPU test discovery and runtime leases from live local configuration and
+  services so the canonical release gate can run beside installed runtimes.
 
 - Keep the image-model picker visible for image generation and editing, show
   configured unavailable models as disabled options, and pass the selected
