@@ -46,6 +46,16 @@ model/media measurements and unified-memory estimates.
   for model-load admission or image/video handoff checks**, which still sample
   memory directly before making safety decisions.
 
+The unified media queue retries HTTP 409 (busy) or 503 (service unavailable)
+during native job creation with a bounded 1.5–30 s backoff. While waiting,
+an older job keeps priority **within its own kind**, but jobs of another kind
+may run if no native job is active. Retry deadlines are persisted across Agent
+restarts and do not appear as an extra model load. Once a native job has been
+dispatched, the single worker continues following that job until it finishes;
+it does not start competing heavy jobs merely because the native service's
+status endpoint is temporarily unreachable. This maintains one heavy native
+generation at a time and avoids unintentional concurrent Metal allocations.
+
 Native video generation keeps live in-memory progress visible at full update
 frequency, but coalesces progress-only disk syncs to at most approximately one
 every 1.5 seconds (configurable with `MLX_VIDEO_PROGRESS_PERSIST_SECONDS`).
