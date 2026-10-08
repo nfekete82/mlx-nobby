@@ -514,7 +514,8 @@
         market.append(
             kv(localText('Kursbasis', 'Price basis'), safe(q.price_basis || '—')),
             kv(localText('Verzögerung', 'Delay'), safe(q.delay_status || localText('unbekannt', 'unknown'))),
-            kv('52W', `${price(q.fifty_two_week_low)} – ${price(q.fifty_two_week_high)}`),
+            kv('52W', `${money(report, q.fifty_two_week_low, q.currency)} – ${money(report, q.fifty_two_week_high, q.currency)}`),
+            ...(fxLabel(report, q.currency) ? [kv(localText('EUR-Umrechnung', 'EUR conversion'), fxLabel(report, q.currency))] : []),
             kv(localText('Fundamental-Periode', 'Fundamental period'), safe(f.period || '—')),
             kv(localText('Berichtswährung', 'Reporting currency'), safe(f.reporting_currency || '—')),
             kv(localText('Technik-Stand', 'Technical as of'), date(t.as_of))
@@ -537,6 +538,11 @@
         if (q.source) allSources.push([localText('Kurs', 'Quote'), q.source, q.source_url]);
         for (const [kind, source] of Object.entries(report.sources || {})) {
             if (source?.provider) allSources.push([kind, source.provider, source.url]);
+        }
+        for (const [currency, fx] of Object.entries(report.display_fx?.rates || {})) {
+            if (currency !== 'EUR' && fx?.source) {
+                allSources.push([localText('FX ' + currency + '→EUR', 'FX ' + currency + '→EUR'), fx.source, fx.source_url]);
+            }
         }
         for (const [kind, provider, url] of allSources) {
             const row = el('div');
@@ -587,8 +593,8 @@
         appendDetails(card, report);
         const footer = el('div', 'finance-card-footer',
             localText(
-                'Konfidenz misst Datenqualität, nicht Gewinnwahrscheinlichkeit. Das Scoring ist heuristisch und keine validierte Handelsstrategie.',
-                'Confidence measures data quality, not profit probability. Scoring is heuristic and not a validated trading strategy.'
+                'EUR-Werte sind ungefähre Anzeigeumrechnungen mit dem täglichen EZB-Referenzkurs; die Originalwährung steht in Klammern. Konfidenz misst Datenqualität, nicht Gewinnwahrscheinlichkeit.',
+                'EUR values are approximate display conversions using the daily ECB reference rate; original currency is shown in parentheses. Confidence measures data quality, not profit probability.'
             ));
         card.appendChild(footer);
         return card;
@@ -638,7 +644,7 @@
             ((data.ranking || []).join(' › ') || localText('unzureichende Daten', 'insufficient data'))));
         card.appendChild(section);
         card.appendChild(el('div', 'finance-card-footer',
-            localText('Kurse bleiben in ihrer Originalwährung und am Originalbörsenplatz; keine FX-Umrechnung.', 'Prices retain original listing currency and exchange; no FX conversion.')));
+            localText('EUR zuerst, Originalwährung in Klammern. Umrechnung ungefähr mit täglichem EZB-Referenzkurs; Börsenplatz und Originalkurs bleiben unverändert.', 'EUR first, original currency in parentheses. Conversion is approximate using the daily ECB reference rate; exchange and original quote remain unchanged.')));
         return card;
     }
 
