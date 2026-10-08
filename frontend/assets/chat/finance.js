@@ -241,14 +241,22 @@
                     'Provide positions with quantities, e.g. “Analyze my portfolio: AMD: 10, NVDA: 5”.'
                 );
             }
-            const currencyWarning = data.status === 'currency_conversion_required'
-                ? localText('Verschiedene Währungen: keine Gesamtbewertung ohne FX-Daten.', 'Mixed currencies: no aggregate valuation without FX data.')
-                : `${localText('Gesamtwert', 'Total value')}: ${num(data.total_value)} ${safe(data.currency)}`;
+            const displayTotal = numeric(data.display_total_value)
+                ? currencyValue(data.display_total_value, 'EUR')
+                : null;
+            const nativeTotal = numeric(data.total_value) && data.currency
+                ? currencyValue(data.total_value, data.currency)
+                : null;
+            const currencyWarning = displayTotal
+                ? `${localText('Gesamtwert', 'Total value')}: ≈ ${displayTotal}${nativeTotal && data.currency !== 'EUR' ? ' (' + nativeTotal + ')' : ''}`
+                : data.status === 'currency_conversion_required'
+                    ? localText('Verschiedene Währungen: EUR-Anzeige derzeit nicht verfügbar.', 'Mixed currencies: EUR display currently unavailable.')
+                    : `${localText('Gesamtwert', 'Total value')}: ${nativeTotal || '—'}`;
             return [
                 `**${localText('Portfolio-Analyse', 'Portfolio analysis')}**`,
-                (data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(p.weight)}`).join(' · '),
+                (data.positions || []).map(p => `${safe(p.instrument?.symbol)}: ${pct(numeric(p.display_weight) ? p.display_weight : p.weight)} · ${numeric(p.display_value) ? '≈ ' + currencyValue(p.display_value, 'EUR', true) + (p.currency !== 'EUR' ? ' (' + currencyValue(p.value, p.currency, true) + ')' : '') : currencyValue(p.value, p.currency, true)}`).join(' · '),
                 currencyWarning,
-                localText('Nur Long-Positionen; keine Orderausführung, FX-, Steuer-, Cash- oder Derivatemodellierung.', 'Long-only support; no order execution, FX, tax, cash or derivatives modeling.')
+                localText('EUR-Werte sind reine Anzeigeumrechnungen mit EZB-Referenzkurs. Keine Orderausführung, Steuer-, Cash- oder Derivatemodellierung.', 'EUR values are presentation-only conversions using ECB reference rates. No order execution, tax, cash or derivatives modeling.')
             ].filter(Boolean).join('\n\n');
         }
         if (data.kind === 'tracking') {
