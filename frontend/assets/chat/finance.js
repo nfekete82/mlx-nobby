@@ -161,7 +161,7 @@
         const status = q.stale ? localText('VERALTET', 'STALE') : localText('zuletzt gemeldet', 'last reported');
         return [
             `**${safe(i.name || i.symbol)} (${safe(i.symbol)})**`,
-            `${localText('Kurs', 'Price')}: **${money(report, q.price, q.currency)}** · ${safe(q.exchange)} · ${session(q.session)}`,
+            `${localText('Kurs', 'Price')}: **${money(report, q.price, q.currency)}** · ${safe(q.exchange)} · ${safe(q.currency)} · ${session(q.session)}`,
             `${localText('Stand', 'As of')}: ${date(q.timestamp)} · ${localText('Datenalter', 'Age')}: ${age(q.age_seconds)} · **${status}**`,
             `${localText('Verzögerung', 'Delay')}: ${q.delay_status === 'unknown' ? localText('unbekannt; kein garantierter Echtzeitkurs', 'unknown; no guaranteed live quote') : safe(q.delay_status)}`,
             `${localText('Tagesänderung', 'Day change')}: ${signedPctPoints(q.day_change_percent)} · 52W: ${money(report, q.fifty_two_week_low, q.currency)} – ${money(report, q.fifty_two_week_high, q.currency)}`
