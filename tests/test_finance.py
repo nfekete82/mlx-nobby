@@ -126,6 +126,9 @@ def test_portfolio_keeps_native_values_and_adds_eur_display_values():
 
 @pytest.mark.parametrize('prompt,expected', [
     ('AMD Kurs', 'finance_quote'), ('Wie steht AMD gerade?', 'finance_quote'),
+    ('Wo steht Microsoft gerade?', 'finance_quote'), ('wo steht microsoft gerade?', 'finance_quote'),
+    ('Wo steht Western Digital gerade?', 'finance_quote'),
+    ('Wo steht Example Storage Systems gerade?', 'finance_quote'),
     ('How is AMD trading at the moment?', 'finance_quote'), ('AMD stock price', 'finance_quote'),
     ('Analysiere AMD', 'finance_analyze'), ('Analysiere AMD fundamental und technisch.', 'finance_analyze'),
     ('Ist AMD aktuell attraktiv?', 'finance_analyze'), ('Welche Risiken siehst du bei AMD?', 'finance_analyze'),
@@ -481,6 +484,8 @@ def test_chat_route_bypasses_models_and_web(service, monkeypatch):
     monkeypatch.setattr(application, 'tool_web_search', lambda *a: pytest.fail('No web price lookup'))
     result = application.preflight_chat_action(application.ChatActionRequest(prompt='Wie steht AMD gerade?'))
     assert result['intent'] == 'finance_quote'
+    where_result = application.preflight_chat_action(application.ChatActionRequest(prompt='Wo steht Microsoft gerade?'))
+    assert where_result['intent'] == 'finance_quote'
     result = application.run_chat_action(application.ChatActionRequest(prompt='Analysiere AMD', chat_id='chat1'))
     assert result['tool'] == 'finance_analyze' and result['status'] == 'completed'
     assert result['data']['recommendation_id']
@@ -575,7 +580,11 @@ def test_followup_uses_only_unambiguous_recent_instrument(service, monkeypatch):
     result = application.run_chat_action(application.ChatActionRequest(prompt=prompt, conversation_context=ambiguous))
     assert result['status'] == 'failed' and result['data']['code'] == 'symbol_required'
     assert finance_intent('Wie steht sie gerade?', context) == 'finance_quote'
+    assert finance_intent('Wo steht sie gerade?', context) == 'finance_quote'
     assert finance_intent('Wie steht sie gerade?') is None
+    assert finance_intent('Wo steht sie gerade?') is None
+    assert finance_intent('Wo steht mein Computer gerade?') is None
+    assert explicit_company_query('Wo steht Example Storage Systems gerade?') == 'Example Storage Systems'
 
     # A newly named company must never inherit AMD from the earlier context.
     named = 'Analysiere Western Digital vollständig'
