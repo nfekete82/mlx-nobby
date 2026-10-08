@@ -402,6 +402,7 @@ def _run(job_id, request):
                 "duration_ms": round((time.monotonic() - handoff_started) * 1000, 2),
                 "timings_ms": dict(preflight.get("handoff_timings_ms") or {}),
                 "image_released": bool(preflight.get("image_released")),
+                "image_preserved": bool(preflight.get("image_preserved")),
                 "speech_released": bool(preflight.get("speech_released")),
                 "musetalk_released": bool(preflight.get("musetalk_released")),
                 "chat_released": bool(preflight.get("chat_released")),
