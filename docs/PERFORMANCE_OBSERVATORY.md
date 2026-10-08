@@ -10,6 +10,16 @@ model/media measurements and unified-memory estimates.
   content-free observability traces. Model history lasts for the agent process.
 - Media: recent image/video/Shorts jobs, generation/queue/total timings and
   supplied warm/cold-start metadata from durable queue history.
+- Video resource handoff: successful native video-job preflight records
+  `runtime_handoff.duration_ms` from the request's entry into the coordinator
+  (including the lease wait) through memory admission. The stage timings in
+  `runtime_handoff.timings_ms` distinguish lease waiting, idle image/speech/
+  MuseTalk release, and chat stop where invoked. They do **not** measure LTX
+  model loading or total video generation. A false/missing stage means it was
+  skipped, not zero milliseconds. The Agent mirrors this content-free record
+  into durable queue history; the Observatory displays per-job handoff
+  duration, p50/p95 and the number of completed videos that released chat.
+  Old records lacking timing data remain unknown, not zero.
 - System: memory budget, available/headroom estimates, pressure, swap, loaded
   runtime state and the current coordinator lease.
 
