@@ -21,7 +21,12 @@ model/media measurements and unified-memory estimates.
   duration, p50/p95 and the number of completed videos that released chat.
   Old records lacking timing data remain unknown, not zero.
 - System: memory budget, available/headroom estimates, pressure, swap, loaded
-  runtime state and the current coordinator lease.
+  runtime state and the current coordinator lease. Repeated read-only
+  diagnostic requests coalesce into one macOS memory_pressure/sysctl probe,
+  sharing the estimate for up to 1.5 seconds; Observatory reuses the queue's
+  snapshot rather than probing again. **This diagnostic cache is never used
+  for model-load admission or image/video handoff checks**, which still sample
+  memory directly before making safety decisions.
 
 Unknown/nonfinite values are omitted from metric series, not treated as zeros.
 Series include count, latest, average, p50/p95 and min/max; this endpoint uses

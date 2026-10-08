@@ -1,6 +1,8 @@
 import json
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -47,6 +49,83 @@ class RuntimeBudgetTests(unittest.TestCase):
 
         self.assertEqual(snapshot["pressure"], "critical")
         self.assertEqual(snapshot["free_percent"], 7.0)
+
+    def test_read_only_memory_cache_reuses_probes_but_admission_stays_fresh(self):
+        runtime_coordinator._reset_diagnostic_memory_cache()
+        memory = {"total_gb": 48.0, "used_estimate_gb": 10.0,
+                  "free_percent": 79.0, "pressure": "normal"}
+        with mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            return_value=memory,
+        ) as probe, tempfile.TemporaryDirectory() as directory:
+            first = runtime_coordinator.runtime_state_snapshot(
+                state_dir=Path(directory)
+            )["memory"]
+            first["pressure"] = "critical"
+            second = runtime_coordinator.runtime_state_snapshot(
+                state_dir=Path(directory)
+            )["memory"]
+            self.assertEqual(second["pressure"], "normal")
+            self.assertEqual(probe.call_count, 1)
+
+            runtime_coordinator.ensure_model_load_allowed("vision-classifier")
+            # Heavy runtime admission must never trust the diagnostic cache.
+            self.assertEqual(probe.call_count, 2)
+
+            with runtime_coordinator._DIAGNOSTIC_MEMORY_CONDITION:
+                runtime_coordinator._DIAGNOSTIC_MEMORY_AT -= 30.0
+            runtime_coordinator.diagnostic_memory_budget_snapshot()
+            self.assertEqual(probe.call_count, 3)
+        runtime_coordinator._reset_diagnostic_memory_cache()
+
+    def test_simultaneous_diagnostic_calls_share_one_os_probe(self):
+        runtime_coordinator._reset_diagnostic_memory_cache()
+        started = threading.Event()
+        release = threading.Event()
+        calls = []
+
+        def probe():
+            calls.append(1)
+            started.set()
+            if not release.wait(5):
+                raise TimeoutError("fixture not released")
+            return {"pressure": "normal", "headroom_gb": 15.0}
+
+        with mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot", side_effect=probe
+        ):
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [
+                    pool.submit(runtime_coordinator.diagnostic_memory_budget_snapshot)
+                    for _ in range(8)
+                ]
+                try:
+                    self.assertTrue(started.wait(2))
+                finally:
+                    release.set()
+                snapshots = [future.result(timeout=5) for future in futures]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len({id(value) for value in snapshots}), 8)
+        self.assertTrue(all(value["headroom_gb"] == 15.0 for value in snapshots))
+        runtime_coordinator._reset_diagnostic_memory_cache()
+
+    def test_failed_diagnostic_probe_does_not_poison_cache(self):
+        runtime_coordinator._reset_diagnostic_memory_cache()
+        with mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=[
+                RuntimeError("probe failed"),
+                {"pressure": "normal"},
+            ],
+        ) as probe:
+            with self.assertRaisesRegex(RuntimeError, "probe failed"):
+                runtime_coordinator.diagnostic_memory_budget_snapshot()
+            self.assertEqual(
+                runtime_coordinator.diagnostic_memory_budget_snapshot(),
+                {"pressure": "normal"},
+            )
+            self.assertEqual(probe.call_count, 2)
+        runtime_coordinator._reset_diagnostic_memory_cache()
 
     def test_runtime_lease_publishes_active_workload_state(self):
         with tempfile.TemporaryDirectory() as directory:
