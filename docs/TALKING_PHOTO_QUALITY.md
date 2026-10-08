@@ -10,6 +10,23 @@ Standardstimme: Der Request enthält `input` und `language`. ISO-Codes werden au
 
 Der Speech-Service erzeugt derzeit MP3. Die vorhandene WAV-Konvertierung verändert nur Format, Sample Rate und Kanäle. Das unveränderte zeitliche Signal bleibt erhalten; die MP3-Kodierung ist natürlich nicht verlustfrei. Voice-Manager-Qualitätsprofile beeinflussen die TTS-Samplingparameter, nicht die Daueranpassung im LTX-Pfad. Diese Einstellungen und andere Speech-/MuseTalk-/Shorts-Funktionen wurden nicht verändert.
 
+## Laufender Jobstatus in der Oberfläche
+
+Talking Photo zeigt den aktuellen Schritt (Warten, TTS, LTX-Rendern, optional
+MuseTalk-Lippensynchronisation), eine Aktivitätsanzeige und die bereits
+verstrichene Laufzeit. Fortschrittszahlen sind ausdrücklich **geschätzte
+Orientierungswerte** aus dem vorhandenen Agent-Jobstatus, keine exakte
+Prozentzahl des LTX-Modells. Bei noch nicht messbaren Phasen erscheint ein
+laufender, unbestimmter Balken ohne erfundene Prozentzahl.
+
+Das Status-Polling läuft nach Schließen des Dialogs weiter, solange die Seite
+geöffnet bleibt. Der Talking-Photo-Knopf in der oberen Leiste signalisiert den
+laufenden oder abgeschlossenen Job. Ein erneutes Öffnen setzt die Ansicht fort;
+nach einem Tab-Reload wird die letzte Job-ID aus dem sitzungsgebundenen
+Browser-Storage abgerufen. Neue Videogenerierung wird während eines laufenden
+Jobs verhindert, der Abbruch bleibt verfügbar. Vorübergehende Netzwerkfehler
+führen zu erneuter Statusabfrage statt stiller Aufgabe des Jobs.
+
 ## Audio und LTX
 
 **Beta ab PR #174:** Der direkte LTX-A2V-Pfad akzeptiert Quellaudio bis 20 Sekunden. Die 10-Sekunden-Grenze war in `main` aktiv, während die Erweiterung in dem ungemergten Experiment PR #160 lag. Dies ist eine bewusste Beta-Freigabe für lokale Tests, **kein auf echter Hardware bestätigter Qualitäts- oder RAM-Benchmark**: 15-s- und 20-s-Clips müssen auf Renderdauer, Unified Memory, Identitätsstabilität und Lippensynchronität verglichen werden. Quellaudio über 20 Sekunden wird weiterhin vor dem teuren Video-Rendern abgelehnt; das Audio wird nicht abgeschnitten oder schneller abgespielt.
