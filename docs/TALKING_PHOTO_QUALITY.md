@@ -21,11 +21,18 @@ laufender, unbestimmter Balken ohne erfundene Prozentzahl.
 
 Das Status-Polling läuft nach Schließen des Dialogs weiter, solange die Seite
 geöffnet bleibt. Der Talking-Photo-Knopf in der oberen Leiste signalisiert den
-laufenden oder abgeschlossenen Job. Ein erneutes Öffnen setzt die Ansicht fort;
-nach einem Tab-Reload wird die letzte Job-ID aus dem sitzungsgebundenen
-Browser-Storage abgerufen. Neue Videogenerierung wird während eines laufenden
-Jobs verhindert, der Abbruch bleibt verfügbar. Vorübergehende Netzwerkfehler
-führen zu erneuter Statusabfrage statt stiller Aufgabe des Jobs.
+laufenden oder abgeschlossenen Job. Ein erneutes Öffnen setzt die Ansicht fort.
+**Das Schließen des Dialogs ist kein Abbrechen mehr**; dafür bleibt die explizite
+Abbrechen-Schaltfläche zuständig. Abgeschlossene, nicht gespeicherte Ergebnisse
+werden bei späterem Schließen weiterhin gelöscht.
+
+Beim vollständigen Verlassen oder Neuladen der Seite greift weiterhin die
+bestehende Aufräumlogik: aktive Jobs werden abgebrochen beziehungsweise
+verworfen. Die letzte Job-ID bleibt sitzungsbezogen gespeichert, damit nach
+Neuladen der terminale Status oder eine bereits entfernte Job-ID erkannt werden
+kann; **eine laufende Generierung wird dabei nicht fortgesetzt**. Neue
+Videogenerierung wird während eines aktiven Jobs verhindert. Vorübergehende
+Netzwerkfehler führen zu erneuter Statusabfrage statt stiller Aufgabe des Jobs.
 
 ## Audio und LTX
 
