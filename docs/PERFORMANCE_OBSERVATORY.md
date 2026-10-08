@@ -28,6 +28,16 @@ model/media measurements and unified-memory estimates.
   for model-load admission or image/video handoff checks**, which still sample
   memory directly before making safety decisions.
 
+Native video generation keeps live in-memory progress visible at full update
+frequency, but coalesces progress-only disk syncs to at most approximately one
+every 1.5 seconds (configurable with `MLX_VIDEO_PROGRESS_PERSIST_SECONDS`).
+State, phase changes, errors and terminal results remain durable immediately.
+Native video RAM/swap telemetry is sampled no more frequently than every two
+seconds during generation, plus the initial and final snapshot. Consequently
+`memory_peak` is a sampled estimate, not a guaranteed instantaneous hardware
+peak. These intervals do **not** govern admission: video model-load and runtime
+handoff RAM safety checks continue to use fresh memory measurements.
+
 Unknown/nonfinite values are omitted from metric series, not treated as zeros.
 Series include count, latest, average, p50/p95 and min/max; this endpoint uses
 linear percentile interpolation. A runtime marked warm indicates observed

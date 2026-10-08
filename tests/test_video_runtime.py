@@ -430,6 +430,38 @@ class VideoServiceTests(unittest.TestCase):
             self.assertEqual(request.payload.aspect_ratio, "9:16")
             self.assertEqual(request.payload.resize_mode, "contain")
 
+    def test_progress_persistence_is_throttled_without_losing_live_updates(self):
+        job_id = "d" * 24
+        video_service._jobs[job_id] = self._job(job_id)
+        with mock.patch.object(video_service, "_persist") as persist, \
+             mock.patch.object(video_service.time, "monotonic",
+                               side_effect=[10.0, 10.4, 10.9, 11.7, 11.8]):
+            video_service._update(job_id, progress=0.1)
+            video_service._update(job_id, progress=0.2)
+            video_service._update(job_id, progress=0.2)
+            video_service._update(job_id, memory_peak={"ram_used_bytes": 20})
+            self.assertEqual(video_service._jobs[job_id]["progress"], 0.2)
+            self.assertEqual(video_service._jobs[job_id]["memory_peak"]["ram_used_bytes"], 20)
+            self.assertEqual(persist.call_count, 1)
+
+            video_service._update(job_id, progress=0.3)
+            self.assertEqual(persist.call_count, 2)
+
+            video_service._update(job_id, status="completed", phase="completed")
+            self.assertEqual(persist.call_count, 3)
+
+        self.assertNotIn("_last_persist_at", video_service._public(video_service._jobs[job_id]))
+
+    def test_phase_and_error_changes_persist_immediately(self):
+        job_id = "b" * 24
+        video_service._jobs[job_id] = self._job(job_id)
+        with mock.patch.object(video_service, "_persist") as persist:
+            video_service._update(job_id, phase="encoding", progress=0.2)
+            video_service._update(job_id, phase="generating", progress=0.3)
+            video_service._update(job_id, phase="generating", progress=0.3)
+            video_service._update(job_id, status="failed", error="failure")
+        self.assertEqual(persist.call_count, 3)
+
     def test_job_lifecycle_artifact_and_memory_metrics(self):
         request = self.request()
         job_id = "a" * 24
@@ -438,7 +470,10 @@ class VideoServiceTests(unittest.TestCase):
 
         def fake_generate(_model, _payload, output, **callbacks):
             callbacks["phase_callback"]("generating")
-            callbacks["progress_callback"]({"step": 4, "total_steps": 8, "progress": 50})
+            for step in range(1, 5):
+                callbacks["progress_callback"]({
+                    "step": step, "total_steps": 8, "progress": step / 8,
+                })
             callbacks["phase_callback"]("decoding")
             callbacks["phase_callback"]("muxing")
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -447,11 +482,13 @@ class VideoServiceTests(unittest.TestCase):
                     "duration": 5, "audio": True}
 
         snapshot = {"ram_used_bytes": 10, "swap_used_bytes": 2}
+        final_snapshot = {"ram_used_bytes": 15, "swap_used_bytes": 3}
         with mock.patch.object(video_service.registry, "get_model", return_value=video_registry.builtin_model()), \
              mock.patch.object(video_service, "availability", return_value=(True, "ok")), \
              mock.patch.object(video_service.runtime_coordinator, "release_idle_image_runtime", return_value={"loaded": False}), \
              mock.patch.object(video_service, "_chat_loaded", return_value=False), \
-             mock.patch.object(video_service, "_memory_snapshot", return_value=snapshot), \
+             mock.patch.object(video_service, "_memory_snapshot", side_effect=[snapshot, final_snapshot]) as memory_probe, \
+             mock.patch.object(video_service, "MEMORY_SAMPLE_INTERVAL_SECONDS", 1000), \
              mock.patch.object(video_service, "generate", side_effect=fake_generate):
             video_service._run(job_id, request)
         job = video_service._jobs[job_id]
@@ -463,7 +500,12 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(job["result"]["pipeline"], "distilled-two-stage")
         self.assertEqual(job["result"]["stage_1_steps"], 8)
         self.assertEqual(job["result"]["stage_2_steps"], 3)
-        self.assertEqual(job["result"]["memory_peak"], snapshot)
+        self.assertEqual(job["result"]["memory_before"], snapshot)
+        self.assertEqual(job["result"]["memory_after"], final_snapshot)
+        self.assertEqual(job["result"]["memory_peak"], final_snapshot)
+        # Four progress events did not trigger repeated vm_stat/sysctl calls.
+        # We still capture the beginning and final snapshot.
+        self.assertEqual(memory_probe.call_count, 2)
         handoff = job["runtime_handoff"]
         self.assertGreaterEqual(handoff["duration_ms"], 0)
         self.assertGreaterEqual(handoff["timings_ms"]["lease_wait"], 0)
