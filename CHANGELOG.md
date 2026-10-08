@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Experimentally extend LTX Talking Photo audio from 10 to 20 seconds, with 15/20-second frame-grid and padding regression coverage before real-device validation.
+
 ## v1.8.0
 
 - Anchor recommendation price performance to the saved quote; show daily-history
