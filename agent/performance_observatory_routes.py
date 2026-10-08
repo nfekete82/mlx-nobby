@@ -369,6 +369,14 @@ def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
     limit = _limit(limit)
 
     queue_snapshot = media_queue.snapshot(limit=100)
+    # The queue already captures the coordinator's diagnostic memory view.
+    # Reuse it rather than launching a second memory_pressure/sysctl sweep.
+    runtime_state = queue_snapshot.get("runtime")
+    runtime_state = runtime_state if isinstance(runtime_state, dict) else {}
+    memory = runtime_state.get("memory")
+    if not isinstance(memory, dict):
+        memory = runtime_coordinator.memory_budget_snapshot()
+
     return {
         "ok": True,
         "version": 2,
@@ -376,7 +384,7 @@ def build_performance_snapshot(status_provider=None, limit=DEFAULT_LIMIT):
         "model": model_performance_snapshot(limit),
         "media": media_performance_snapshot(queue_snapshot, limit),
         "system": {
-            "memory": runtime_coordinator.memory_budget_snapshot(),
+            "memory": memory,
             "runtimes": _normalize_runtime_states(runtime_snapshot(status_provider)),
             "runtime_lease": queue_snapshot.get("runtime") or {},
         },
