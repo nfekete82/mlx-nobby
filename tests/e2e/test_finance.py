@@ -12,6 +12,8 @@ def test_finance_quote_and_searchable_help(ui, language):
     output = page.locator('.message.assistant .message-content').last
     expect(output).to_contain_text('NASDAQ')
     expect(output).to_contain_text('USD')
+    expect(output).to_contain_text('Aktienkurs' if language == 'de' else 'Stock quote')
+    expect(output).not_to_contain_text('finance_quote')
     expect(output).to_contain_text('VERALTET' if language == 'de' else 'STALE')
     expect(output).to_contain_text('Regular' if page.evaluate('window.MLXI18n?.getLanguage?.()') == 'en' else 'Regulär')
     assert agent.count('/api/runtime/chat/stream', 'POST') == 0

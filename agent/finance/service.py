@@ -100,7 +100,7 @@ class FinanceService:
                         'average_return': sum(row['return'] for row in evaluated) / len(evaluated) if evaluated else None,
                         'recommendations': {label: sum(row['recommendation'] == label for row in evaluated)
                             for label in ('Strong Buy', 'Buy', 'Hold', 'Reduce', 'Sell', 'insufficient data')}},
-                    'statistics_scope': 'latest 20 snapshots; repeated analyses are not independent trades'}
+                    'statistics_scope': 'latest 20 snapshots; unadjusted quote price changes, not total returns; repeated analyses are not independent trades'}
         if action == 'finance_portfolio_analysis':
             positions = options.get('positions', parse_positions(prompt))
             if not isinstance(positions, list) or not 1 <= len(positions) <= 10:

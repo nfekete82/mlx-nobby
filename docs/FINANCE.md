@@ -169,12 +169,17 @@ to 10,000 snapshots and then rejects new snapshots without deleting history.
 Only one Agent process should own this JSON store.
 
 Tracking reads only the bound chat, displays at most its latest twenty snapshots,
-and never mutates them. Performance uses dated daily history, preserving its
-basis, with a separate spot price change. Alpha requires a USD US-listed
-instrument, SPY data, identical price basis and aligned daily dates. Missing or
+and never mutates them. Price performance uses the exact saved quote as its anchor, explicitly
+unadjusted for dividends/splits/fees/taxes. Daily-history returns, benchmark
+comparison, alpha and drawdown are separate metrics with their actual date window,
+which may start before the recommendation quote. Daily-window alpha requires a
+USD US-listed instrument, SPY data, identical basis and aligned daily dates.
+Quote-anchored alpha remains unavailable without an exact benchmark quote anchor. Missing or
 truncated history produces unavailable metrics rather than fabricated returns.
 Max drawdown uses the observed daily path; completeness is separately indicated.
-BUY/SELL hit classification starts after at least 90 days; Hold has no hit label.
+BUY/SELL price-change hit classification starts after at least 90 days, requires
+verified adjustment factors without detected corporate actions, and excludes
+stale prices. Hold has no hit label.
 Statistics exclude stale and unevaluable results. They describe snapshots,
 including repeated analyses, not independent trades or a backtest.
 
@@ -184,7 +189,9 @@ positive quantities are required. Mixed currencies are not aggregated without
 FX data. Available sectors include an explicit unknown bucket. Correlation uses
 Pearson correlation of aligned daily returns, minimum 30 overlapping observations,
 maximum 252. Concentration uses HHI and maximum weight (>40% high, >20% moderate).
-Overall risk is insufficient when position assessments lack data. There is no
+Ranking includes only positions with an adequate score; unrated positions are
+explicitly excluded and ranking completeness is reported. Overall risk is
+insufficient when position assessments lack data. There is no
 calibrated VaR, cash, short-selling, tax or derivative model.
 
 ## API

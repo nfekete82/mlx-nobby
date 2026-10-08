@@ -663,6 +663,19 @@ function enhanceCodeBlocks(container) {
 
 
 
+function financeToolLabel(tool) {
+    const labels = {
+        finance_quote: ['finance_quote', 'Stock quote'],
+        finance_analyze: ['finance_analyze', 'Stock analysis'],
+        finance_compare: ['finance_compare', 'Stock comparison'],
+        finance_portfolio_analysis: ['finance_portfolio_analysis', 'Portfolio analysis'],
+        finance_history: ['finance_history', 'Price history'],
+        finance_recommendation_performance: ['finance_recommendation_performance', 'Recommendation performance']
+    };
+    return Array.isArray(labels[tool]) ? rt(...labels[tool]) : null;
+}
+
+
 function renderToolCard(message) {
     const result = message?.tool_result;
 
@@ -700,6 +713,7 @@ function renderToolCard(message) {
     };
 
     header.textContent =
+        financeToolLabel(result.tool) ||
         toolNames[result.tool] ||
         result.tool ||
         'Tool';
@@ -949,7 +963,7 @@ function agentStepLabel(step) {
         rejected_by_user: 'Aktion abgelehnt'
     };
 
-    return labels[action] ||
+    return financeToolLabel(action) || labels[action] ||
         action.replace(/_/g, ' ') ||
         'Agent-Aktion';
 }

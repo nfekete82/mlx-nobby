@@ -1,6 +1,7 @@
 """Immutable local analysis snapshots using the existing atomic persistence helper."""
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 import threading
 import uuid
@@ -91,15 +92,29 @@ def evaluate_snapshot(snapshot, quote, history, benchmark=None):
         lookup = {bar['timestamp'] // 86400: value for bar, value in zip(bbars, bvalues)}
         if first_day in lookup and last_day in lookup:
             benchmark_return = lookup[last_day] / lookup[first_day] - 1
-    spot_gain = quote['price'] / entry - 1
-    gain = history_return
+    gain = quote['price'] / entry - 1
+    # A prior daily close cannot replace the recorded recommendation price.
+    # Keep historical benchmark/alpha in its separately dated daily window.
+    corporate_actions = 'unknown'
+    if comparable and history.get('price_basis') == 'adjusted_close':
+        first, last = before[-1], after[-1]
+        raw_first, raw_last = number(bars[first].get('close')), number(bars[last].get('close'))
+        if raw_first and raw_last:
+            factor_first, factor_last = values[first] / raw_first, values[last] / raw_last
+            corporate_actions = 'none_detected' if math.isclose(factor_first, factor_last, rel_tol=1e-6) else 'detected'
     original = snapshot['assessment']['recommendation']
     horizon_complete = end - start >= 90 * 86400
-    hit = (gain > 0 if original in ('Buy', 'Strong Buy') else gain < 0 if original in ('Sell', 'Reduce') else None) if horizon_complete and gain is not None else None
+    hit_eligible = horizon_complete and corporate_actions == 'none_detected' and not quote.get('stale')
+    hit = (gain > 0 if original in ('Buy', 'Strong Buy') else gain < 0 if original in ('Sell', 'Reduce') else None) if hit_eligible else None
     return {'id': snapshot['id'], 'status': 'evaluated', 'symbol': instrument['symbol'], 'recommendation': original,
-            'return': gain, 'return_basis': history.get('price_basis'), 'spot_price_change': spot_gain,
-            'benchmark_return': benchmark_return, 'alpha': gain - benchmark_return if benchmark_return is not None and gain is not None else None,
-            'alpha_basis': 'matched daily dates and identical history basis; no fees/taxes/FX',
+            'return': gain, 'return_basis': 'quote_price_change_unadjusted', 'spot_price_change': gain,
+            'quote_from': start, 'as_of': end, 'corporate_actions': corporate_actions,
+            'history_return': history_return, 'history_basis': history.get('price_basis'),
+            'history_from': bars[before[-1]]['timestamp'] if comparable else None,
+            'history_to': bars[after[-1]]['timestamp'] if comparable else None,
+            'benchmark_return': benchmark_return, 'alpha': None,
+            'history_alpha': history_return - benchmark_return if benchmark_return is not None and history_return is not None else None,
+            'alpha_basis': 'separate matched daily window, not quote-anchored performance; no fees/taxes/FX',
             'max_drawdown': drawdown, 'drawdown_basis': history.get('price_basis'),
-            'drawdown_complete': bool(bars and bars[0]['timestamp'] <= start and bars[-1]['timestamp'] >= end - 4 * 86400),
-            'hit': hit, 'horizon_complete': horizon_complete, 'stale': quote.get('stale'), 'as_of': end}
+            'drawdown_complete': bool(comparable and bars and bars[0]['timestamp'] <= start and bars[-1]['timestamp'] >= end - 4 * 86400),
+            'hit': hit, 'horizon_complete': horizon_complete, 'stale': quote.get('stale')}

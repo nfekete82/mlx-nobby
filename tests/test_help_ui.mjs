@@ -6,7 +6,7 @@ const help = fs.readFileSync('frontend/assets/chat/help.js', 'utf8');
 const chatHtml = fs.readFileSync('frontend/chat.html', 'utf8');
 const dockerfile = fs.readFileSync('Dockerfile', 'utf8');
 
-assert.match(common, /\/assets\/chat\/help\.js\?v=20261008-finance-help-v2/);
+assert.match(common, /\/assets\/chat\/help\.js\?v=20261008-finance-help-v3/);
 assert.match(common, /mlx-help-center/);
 assert.match(common, /frontendBuildRevision/);
 assert.match(common, /versionedAssetUrl/);

@@ -342,7 +342,8 @@ def test_tracking_performance_does_not_rewrite(service):
     q = freshness(Provider().quote(INSTRUMENT), NOW)
     outcome = evaluate_snapshot(snapshot, q, history())
     assert outcome['spot_price_change'] == pytest.approx(2.59) and outcome['horizon_complete']
-    assert outcome['return'] == pytest.approx(359 / 259 - 1)
+    assert outcome['return'] == pytest.approx(2.59)
+    assert outcome['history_return'] == pytest.approx(359 / 259 - 1)
     assert outcome['max_drawdown'] == 0
     assert outcome['benchmark_return'] is None
     before = service.store.path.read_bytes()
@@ -404,9 +405,10 @@ def test_tracking_alpha_uses_same_history_dates_and_basis(service):
     q = freshness(Provider().quote(INSTRUMENT), NOW)
     benchmark = history('SPY')
     outcome = evaluate_snapshot(snapshot, q, history(), benchmark)
-    assert outcome['alpha'] == 0
+    assert outcome['alpha'] is None
+    assert outcome['history_alpha'] == 0
     benchmark['price_basis'] = 'close'
-    assert evaluate_snapshot(snapshot, q, history(), benchmark)['alpha'] is None
+    assert evaluate_snapshot(snapshot, q, history(), benchmark)['history_alpha'] is None
 
 
 def test_capacity_bounded_and_release_after_error(service):
@@ -508,3 +510,42 @@ def test_unidentified_intraday_bars_cannot_change_listing_quote():
     result['indicators'] = {'quote': [{'close': [999]}]}
     q = yahoo(lambda u, t: data).quote(INSTRUMENT)
     assert q['price'] == 100.125 and q['session'] == 'regular'
+
+
+def test_tracking_entry_loss_cannot_be_masked_by_daily_close_gain(service):
+    service.execute('finance_analyze', prompt='AMD analysis', owner='chat1')
+    snapshot = service.store.list('chat1')[0]
+    snapshot['quote'].update(timestamp=NOW - 100 * 86400, price=500)
+    snapshot['assessment']['recommendation'] = 'Buy'
+    result = evaluate_snapshot(snapshot, freshness(Provider().quote(INSTRUMENT), NOW), history())
+    assert result['return'] == pytest.approx(359 / 500 - 1)
+    assert result['return'] < 0 and result['history_return'] > 0
+    assert result['quote_from'] == snapshot['quote']['timestamp'] and result['hit'] is False
+    assert result['return_basis'] == 'quote_price_change_unadjusted'
+
+
+def test_tracking_corporate_actions_cannot_generate_price_hit(service):
+    service.execute('finance_analyze', prompt='AMD analysis', owner='chat1')
+    snapshot = service.store.list('chat1')[0]
+    snapshot['quote']['timestamp'] -= 100 * 86400
+    snapshot['assessment']['recommendation'] = 'Sell'
+    h = history()
+    for row in h['bars'][:-50]:
+        row['adjusted_close'] = row['close'] * .5
+    result = evaluate_snapshot(snapshot, freshness(Provider().quote(INSTRUMENT), NOW), h)
+    assert result['corporate_actions'] == 'detected' and result['hit'] is None
+
+
+def test_portfolio_ranking_excludes_positions_without_evidence(service):
+    provider = service.provider.providers[0]
+    original = provider.fundamentals
+    def fundamentals(instrument):
+        if instrument.symbol == 'AMD':
+            raise FinanceError('fundamentals_unavailable')
+        return original(instrument)
+    provider.fundamentals = fundamentals
+    result = service.execute('finance_portfolio_analysis', prompt='Portfolio: AMD: 10, NVDA: 5')
+    assert result['ranking'] == ['NVDA'] and result['ranking_status'] == 'partial'
+    provider.fundamentals = lambda i: (_ for _ in ()).throw(FinanceError('fundamentals_unavailable'))
+    result = service.execute('finance_portfolio_analysis', prompt='Portfolio: AMD: 10, NVDA: 5')
+    assert result['ranking'] == [] and result['ranking_status'] == 'insufficient data'
