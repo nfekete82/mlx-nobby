@@ -358,6 +358,7 @@ def _run(job_id, request):
         ready, reason = availability(model)
         if not ready:
             raise RuntimeError(reason)
+        handoff_started = time.monotonic()
         with runtime_coordinator.video_runtime(
             cancel,
             chat_loaded=_chat_loaded,
@@ -366,8 +367,21 @@ def _run(job_id, request):
                 job_id,
                 restore_error=f"Chat-Restore fehlgeschlagen: {exc}",
             ),
-        ):
-            _update(job_id, status="loading", phase="loading")
+        ) as preflight:
+            # Persist only content-free timings and decisions. This includes
+            # time waiting for the coordinator lease, not LTX model load time.
+            runtime_handoff = {
+                "duration_ms": round((time.monotonic() - handoff_started) * 1000, 2),
+                "timings_ms": dict(preflight.get("handoff_timings_ms") or {}),
+                "image_released": bool(preflight.get("image_released")),
+                "speech_released": bool(preflight.get("speech_released")),
+                "musetalk_released": bool(preflight.get("musetalk_released")),
+                "chat_released": bool(preflight.get("chat_released")),
+            }
+            _update(
+                job_id, status="loading", phase="loading",
+                runtime_handoff=runtime_handoff,
+            )
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             video_id = secrets.token_hex(12)

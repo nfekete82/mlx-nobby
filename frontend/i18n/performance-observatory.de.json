@@ -44,6 +44,8 @@
   "total": "Gesamt",
   "queue": "Warteschlange",
   "generation": "Generierung",
+  "handoff": "Ressourcenwechsel",
+  "chat_releases": "Chat-Entladungen",
   "kind": "Typ",
   "completed": "Fertig",
   "failed": "Fehlgeschlagen",

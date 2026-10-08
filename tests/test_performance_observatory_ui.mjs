@@ -17,6 +17,9 @@ assert.match(source, /performance-observatory-runtime state-/);
 assert.match(source, /runtime_start/);
 assert.match(source, /warm_starts/);
 assert.match(source, /cold_starts/);
+assert.match(source, /handoff_ms/);
+assert.match(source, /chat_releases/);
+assert.match(source, /t\('handoff'\)/);
 assert.match(source, /recent_calls/);
 assert.match(source, /recent_jobs/);
 

@@ -121,6 +121,57 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertNotIn("private image prompt", json.dumps(snapshot))
 
 
+    def test_video_handoff_metrics_are_sanitized_and_summarized(self):
+        queue_snapshot = {
+            "active_count": 0,
+            "waiting_count": 0,
+            "jobs": [
+                {
+                    "id": "a" * 24,
+                    "kind": "video",
+                    "status": "completed",
+                    "created_at": 1.0,
+                    "started_at": 2.0,
+                    "finished_at": 10.0,
+                    "runtime_handoff": {
+                        "duration_ms": 125.567,
+                        "chat_released": True,
+                        "speech_released": True,
+                    },
+                },
+                {
+                    "id": "b" * 24,
+                    "kind": "video",
+                    "status": "completed",
+                    "created_at": 11.0,
+                    "started_at": 12.0,
+                    "finished_at": 20.0,
+                    "runtime_handoff": {
+                        "duration_ms": float("nan"),
+                        "chat_released": "true",
+                    },
+                },
+                {
+                    "id": "c" * 24,
+                    "kind": "image",
+                    "status": "completed",
+                    "runtime_handoff": {"duration_ms": -12},
+                },
+            ],
+        }
+
+        snapshot = performance.media_performance_snapshot(queue_snapshot)
+        jobs = {job["id"]: job for job in snapshot["recent_jobs"]}
+        self.assertEqual(jobs["a" * 24]["handoff_ms"], 125.57)
+        self.assertTrue(jobs["a" * 24]["chat_released"])
+        self.assertIsNone(jobs["b" * 24]["handoff_ms"])
+        self.assertIsNone(jobs["b" * 24]["chat_released"])
+        self.assertIsNone(jobs["c" * 24]["handoff_ms"])
+        self.assertEqual(snapshot["summary"]["video"]["handoff_ms"]["count"], 1)
+        self.assertEqual(snapshot["summary"]["video"]["chat_releases"], 1)
+        self.assertNotIn("NaN", json.dumps(snapshot))
+
+
 class PerformanceSnapshotTests(unittest.TestCase):
     def test_snapshot_combines_memory_runtime_model_and_media_metrics(self):
         queue_snapshot = {

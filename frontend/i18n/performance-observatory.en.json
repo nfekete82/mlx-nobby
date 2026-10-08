@@ -44,6 +44,8 @@
   "total": "Total",
   "queue": "Queue",
   "generation": "Generation",
+  "handoff": "Resource handoff",
+  "chat_releases": "Chat unloads",
   "kind": "Kind",
   "completed": "Completed",
   "failed": "Failed",
