@@ -5,10 +5,11 @@ from .test_acceptance import send, open_sidebar
 
 
 @pytest.mark.parametrize('language', ['de', 'en'])
-def test_finance_quote_and_searchable_help(ui, language):
+@pytest.mark.parametrize('prompt', ['Wie steht AMD gerade?', 'Wo steht AMD gerade?'])
+def test_finance_quote_and_searchable_help(ui, language, prompt):
     page, agent, _ = ui
     page.evaluate('(language) => window.MLXI18n.setLanguage(language)', language)
-    send(page, 'Wie steht AMD gerade?')
+    send(page, prompt)
 
     output = page.locator('.message.assistant .message-content').last
     card = output.locator('.finance-card')
