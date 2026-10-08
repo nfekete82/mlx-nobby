@@ -310,7 +310,8 @@
         {key: '3M', days: 91, de: '3M', en: '3M'},
         {key: '6M', days: 182, de: '6M', en: '6M'},
         {key: '1Y', days: 365, de: '1J', en: '1Y'},
-        {key: '2Y', days: 730, de: '2J', en: '2Y'}
+        {key: '2Y', days: 730, de: '2J', en: '2Y'},
+        {key: '5Y', days: 1826, de: '5J', en: '5Y'}
     ];
 
     function historySeries(data) {
