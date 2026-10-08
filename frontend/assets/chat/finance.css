@@ -418,6 +418,10 @@
         width: fit-content;
     }
 
+    .finance-chart-head { flex-direction: column; }
+    .finance-chart-ranges { justify-content: flex-start; }
+    .finance-chart { height: 210px; }
+
     .finance-card-header,
     .finance-card-section,
     .finance-card-footer {
