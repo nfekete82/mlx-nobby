@@ -12,7 +12,7 @@ Der Speech-Service erzeugt derzeit MP3. Die vorhandene WAV-Konvertierung veränd
 
 ## Audio und LTX
 
-Die tatsächliche Samplezahl im WAV bestimmt die Videolänge. Die Anzahl der Frames wird auf das nächste gültige `8n+1`-Raster bei 24 FPS aufgerundet. Nur am Ende wird mit Stille aufgefüllt; keine Sprache wird abgeschnitten oder verlangsamt. Leere, abgeschnittene, falsch formatierte WAVs und Audio ohne aktives Signal oberhalb -45 dBFS scheitern vor dem teuren Rendern. Die Messwerte enthalten den Anteil aktiver 10-ms-Fenster; diese Signalprüfung ersetzt keine Spracherkennung.
+Für den aktuellen Testzweig wurde das bisherige 10-Sekunden-Sicherheitslimit auf 20 Sekunden angehoben. Das ist zunächst eine MLX-Nobby-Validierung und keine Aussage, dass lange LTX-Sequenzen qualitativ genauso stabil wie kurze Clips sind. Vor einer dauerhaften Übernahme werden 15-s- und 20-s-Runs auf Renderzeit, Unified Memory, Identitätsdrift, Mundsynchronität und erfolgreiche Ausgabe geprüft.\n\nDie tatsächliche Samplezahl im WAV bestimmt die Videolänge. Die Anzahl der Frames wird auf das nächste gültige `8n+1`-Raster bei 24 FPS aufgerundet. Nur am Ende wird mit Stille aufgefüllt; keine Sprache wird abgeschnitten oder verlangsamt. Leere, abgeschnittene, falsch formatierte WAVs und Audio ohne aktives Signal oberhalb -45 dBFS scheitern vor dem teuren Rendern. Die Messwerte enthalten den Anteil aktiver 10-ms-Fenster; diese Signalprüfung ersetzt keine Spracherkennung.
 
 Das End-Padding rundet die benötigte Samplezahl ausdrücklich nach oben. Beispielsweise benötigen 17 Frames bei 24 FPS mindestens 11334 Samples bei 16 kHz. Die frühere ffmpeg-Dauerrundung auf 11333 Samples ließ MuseTalk mit `floor(audio_seconds * fps)` nur 16 Frames berechnen. Regressionstests prüfen die Rastergrenzen und erhaltene PCM-Samples einschließlich Anfangsstille.
 
@@ -24,7 +24,7 @@ Die ursprünglichen Renderwerte bleiben erhalten:
 - 15 Stage-1-Schritte, 3 Stage-2-Schritte, CFG 3.0, STG 1.0
 - `low_memory=True`, `low_ram_streaming=True`, TeaCache aus
 - Original-Talking-Prompt und ursprünglicher Negative Prompt
-- 24 FPS; maximal 10 Sekunden Quellaudio
+- 24 FPS; experimentelles Testlimit 20 Sekunden Quellaudio (15 s und 20 s werden vor Freigabe real auf Apple Silicon geprüft)
 - Portrait 512×704, Landscape 704×512, quadratisch 640×640
 
 Die installierte Stage-1-Pipeline verwendet zusätzlich `rescale_scale=0.7`, `modality_scale=3.0`, STG-Block 28. Stage 2 verfeinert ohne CFG und verwendet intern Seed + 2. Die Referenz dient als Bildanker im ersten Frame. Diese Runtime-Werte wurden geprüft und nicht geändert.
