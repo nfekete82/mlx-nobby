@@ -61,6 +61,16 @@ _lock = threading.Lock()
 _jobs_lock = threading.RLock()
 _jobs = {}
 
+# Progress events may arrive several times per second. Keep in-memory job
+# polling live, but avoid a disk fsync for every unchanged/volatile update.
+PROGRESS_PERSIST_INTERVAL_SECONDS = max(
+    0.25, float(os.environ.get("MLX_VIDEO_PROGRESS_PERSIST_SECONDS", "1.5"))
+)
+MEMORY_SAMPLE_INTERVAL_SECONDS = 2.0
+_VOLATILE_PROGRESS_FIELDS = frozenset({
+    "progress", "current_step", "total_steps", "memory_peak",
+})
+
 
 class VideoPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -313,8 +323,25 @@ def _update(job_id, **changes):
             return
         if job.get("status") in TERMINAL and changes.get("status") not in {None, job.get("status")}:
             return
-        job.update(changes)
-        _persist(job)
+        changed = {key: value for key, value in changes.items() if job.get(key) != value}
+        if not changed:
+            return
+
+        job.update(changed)
+        now = time.monotonic()
+        # Persist lifecycle/phase/errors immediately. Pure progress and
+        # sampled memory peaks can be reconstructed after a service restart;
+        # native active jobs are already marked failed during recovery.
+        persist_now = bool(set(changed) - _VOLATILE_PROGRESS_FIELDS)
+        if not persist_now:
+            last_persist = job.get("_last_persist_at")
+            persist_now = (
+                last_persist is None
+                or now - last_persist >= PROGRESS_PERSIST_INTERVAL_SECONDS
+            )
+        if persist_now:
+            _persist(job)
+            job["_last_persist_at"] = now
 
 
 def _phase_status(phase):
@@ -392,12 +419,21 @@ def _run(job_id, request):
                     if job_id in _jobs:
                         _jobs[job_id]["_runtime"] = runtime
 
-            def progress_changed(event):
-                current = _memory_snapshot()
+            last_memory_sample_at = time.monotonic()
+
+            def sample_peak(current):
                 for key in peak:
                     if current.get(key) is not None:
                         peak[key] = max(peak.get(key) or 0, current[key])
-                changes = {"memory_peak": peak}
+
+            def progress_changed(event):
+                nonlocal last_memory_sample_at
+                changes = {}
+                now = time.monotonic()
+                if now - last_memory_sample_at >= MEMORY_SAMPLE_INTERVAL_SECONDS:
+                    sample_peak(_memory_snapshot())
+                    last_memory_sample_at = now
+                    changes["memory_peak"] = dict(peak)
                 phase = str(event.get("phase") or "")
                 if phase:
                     changes["phase"] = phase
@@ -430,6 +466,7 @@ def _run(job_id, request):
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
+            sample_peak(after)
             result = {
                 "id": video_id, "path": str(output), "mime_type": "video/mp4",
                 "prompt": request.payload.prompt, "model": model["id"],
@@ -447,7 +484,7 @@ def _run(job_id, request):
                 "seed": request.payload.seed, "operation": request.operation,
                 "quality": request.payload.quality or "standard",
                 "resolution": request.payload.resolution, "first_frame": request.payload.first_frame,
-                "created_at": time.time(), "memory_before": before, "memory_peak": peak,
+                "created_at": time.time(), "memory_before": before, "memory_peak": dict(peak),
                 "memory_after": after, **media,
             }
             _update(
@@ -456,6 +493,7 @@ def _run(job_id, request):
                 total_steps=_job_total_steps(request.payload),
                 progress=1.0, result=result, error=None,
                 finished_at=time.time(), memory_after=after,
+                memory_peak=dict(peak),
             )
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output:
