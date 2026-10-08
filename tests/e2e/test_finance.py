@@ -34,5 +34,5 @@ def test_finance_quote_and_searchable_help(ui, language):
     expect(page.locator('#mlxHelpPanel')).to_contain_text('Finanzanalyse' if language == 'de' else 'Finance Intelligence')
     page.locator('[data-help-topic="finance"]').click()
     expect(page.locator('#mlxHelpPanel')).to_contain_text('Yahoo Finance')
-    expect(page.locator('#mlxHelpPanel')).to_contain_text('European Central Bank')
+    expect(page.locator('#mlxHelpPanel')).to_contain_text('Zentralbank' if language == 'de' else 'European Central Bank')
     expect(page.locator('#mlxHelpPanel')).to_contain_text('insufficient data')
