@@ -20,6 +20,41 @@
     const compact = value => numeric(value)
         ? new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value)
         : localText('—', '—');
+    const currencyValue = (value, currency, compactMode = false) => {
+        if (!numeric(value) || !currency) return localText('—', '—');
+        try {
+            return new Intl.NumberFormat(locale(), {
+                style: 'currency',
+                currency: String(currency).toUpperCase(),
+                currencyDisplay: 'narrowSymbol',
+                notation: compactMode ? 'compact' : 'standard',
+                minimumFractionDigits: compactMode ? 0 : (Math.abs(value) >= 1 ? 2 : 4),
+                maximumFractionDigits: compactMode ? 1 : (Math.abs(value) >= 1 ? 2 : 4)
+            }).format(value);
+        } catch (_) {
+            return (compactMode ? compact(value) : price(value)) + ' ' + safe(currency);
+        }
+    };
+    function fxInfo(report, currency) {
+        const code = String(currency || '').toUpperCase();
+        return report?.display_fx?.rates?.[code] || null;
+    }
+    function money(report, value, currency, compactMode = false) {
+        const code = String(currency || '').toUpperCase();
+        if (!numeric(value) || !code) return localText('—', '—');
+        const original = currencyValue(value, code, compactMode);
+        if (code === 'EUR') return original;
+        const fx = fxInfo(report, code);
+        if (!numeric(fx?.rate) || fx.rate <= 0) return original;
+        const eur = currencyValue(value * fx.rate, 'EUR', compactMode);
+        return '≈ ' + eur + ' (' + original + ')';
+    }
+    function fxLabel(report, currency) {
+        const fx = fxInfo(report, currency);
+        if (!fx || String(currency || '').toUpperCase() === 'EUR') return '';
+        const dateText = fx.date || (numeric(fx.as_of) ? shortDate(fx.as_of) : '');
+        return [safe(fx.source || 'ECB'), dateText].filter(Boolean).join(' · ');
+    }
     const pct = value => numeric(value)
         ? format(value * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
         : localText('—', '—');
