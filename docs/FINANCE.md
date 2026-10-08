@@ -59,7 +59,10 @@ fallback to a conveniently available different market.
 Quotes include source, source URL, retrieval time, price timestamp, regular
 price, session, daily percentage change and available 52-week bounds. A regular
 price is never relabeled as pre-market or after-hours. Extended metadata is
-used only when its own price and newer timestamp are both present. Otherwise
+used only when its own price and newer timestamp are both present. When extended quote metadata is absent, completed one-minute chart bars may
+provide the last extended-session close, but only inside explicit provider
+pre/post trading-period bounds. The output labels this price basis and the
+provider bar-start timestamp. In-progress minute bars are excluded. Otherwise
 regular-session data remains explicitly labeled. The regular trading period
 indicates whether the regular market is open; the delay is `unknown` unless a
 provider supplies a reliable delay declaration.

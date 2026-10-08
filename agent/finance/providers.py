@@ -158,7 +158,8 @@ class YahooProvider:
         data = self._get('quote', '/v8/finance/chart/' + quote(instrument.symbol, safe=''),
                          {'range': '1d', 'interval': '1m', 'includePrePost': 'true'})
         try:
-            meta = data['chart']['result'][0]['meta']
+            result = data['chart']['result'][0]
+            meta = result['meta']
         except (KeyError, TypeError, IndexError):
             raise FinanceError('provider_unavailable') from None
         base = dict(symbol=meta.get('symbol'), exchange=EXCHANGES.get(meta.get('exchangeName'), meta.get('exchangeName')),
@@ -170,6 +171,21 @@ class YahooProvider:
             candidate, timestamp = number(meta.get(prefix + 'MarketPrice')), number(meta.get(prefix + 'MarketTime'))
             if candidate is not None and timestamp is not None and stamp is not None and timestamp > stamp:
                 price, stamp, session = candidate, timestamp, label
+        basis = 'last_reported_trade'
+        periods = meta.get('currentTradingPeriod', {})
+        closes = result.get('indicators', {}).get('quote', [{}])[0].get('close', [])
+        # Yahoo does not always include extended quote metadata. Its completed
+        # minute candles may still provide an explicitly identifiable session.
+        for timestamp, close in zip(result.get('timestamp', []), closes):
+            timestamp, close = number(timestamp), number(close)
+            if timestamp is None or close is None or close <= 0 or timestamp + 60 > self.clock():
+                continue
+            if stamp is not None and timestamp <= stamp:
+                continue
+            for key, label in (('pre', 'pre-market'), ('post', 'after-hours')):
+                start, end = number(periods.get(key, {}).get('start')), number(periods.get(key, {}).get('end'))
+                if start is not None and end is not None and start <= timestamp < end:
+                    price, stamp, session, basis = close, timestamp, label, 'completed_minute_close'
         if price is None or price <= 0:
             raise FinanceError('quote_missing')
         previous = number(meta.get('previousClose')) or number(meta.get('chartPreviousClose'))
@@ -178,7 +194,8 @@ class YahooProvider:
         start, end = number(regular.get('start')), number(regular.get('end'))
         market_open = bool(start is not None and end is not None and start <= now < end)
         return freshness(base | dict(price=price, timestamp=stamp, session=session, market_open=market_open,
-             regular_price=number(meta.get('regularMarketPrice')),
+             regular_price=number(meta.get('regularMarketPrice')), price_basis=basis,
+             timestamp_basis='bar_start' if basis == 'completed_minute_close' else 'reported_trade_time',
              day_change_percent=(price / previous - 1) * 100 if previous and previous > 0 else None,
              fifty_two_week_high=number(meta.get('fiftyTwoWeekHigh')), fifty_two_week_low=number(meta.get('fiftyTwoWeekLow')),
              delay_status='unknown', source=self.name, source_url='https://finance.yahoo.com/quote/' + instrument.symbol,

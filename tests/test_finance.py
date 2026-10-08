@@ -486,3 +486,25 @@ def test_runtime_tool_execution_shares_registry(service, monkeypatch):
     runtime = application.agent_runtime(context)
     result = runtime._execute_tool('finance_quote', 'IBM Kurs', query='IBM')
     assert result['instrument']['symbol'] == 'IBM'
+
+
+@pytest.mark.parametrize('period,label', [('pre', 'pre-market'), ('post', 'after-hours')])
+def test_extended_session_candles_have_explicit_basis(period, label):
+    data = chart({'regularMarketTime': NOW - 2000, 'currentTradingPeriod': {
+        period: {'start': NOW - 1000, 'end': NOW + 1000}}})
+    result = data['chart']['result'][0]
+    result['timestamp'] = [NOW - 120, NOW - 30]
+    result['indicators'] = {'quote': [{'close': [105.25, 999]}]}
+    q = yahoo(lambda u, t: data).quote(INSTRUMENT)
+    assert q['price'] == 105.25 and q['session'] == label
+    assert q['price_basis'] == 'completed_minute_close' and q['timestamp_basis'] == 'bar_start'
+    assert q['timestamp'] == NOW - 120
+
+
+def test_unidentified_intraday_bars_cannot_change_listing_quote():
+    data = chart({'regularMarketTime': NOW - 2000})
+    result = data['chart']['result'][0]
+    result['timestamp'] = [NOW - 120]
+    result['indicators'] = {'quote': [{'close': [999]}]}
+    q = yahoo(lambda u, t: data).quote(INSTRUMENT)
+    assert q['price'] == 100.125 and q['session'] == 'regular'

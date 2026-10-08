@@ -47,10 +47,11 @@
         return [
             `**${safe(i.name || i.symbol)} (${safe(i.symbol)})**`,
             `${localText('Kurs', 'Price')}: **${num(q.price)} ${safe(q.currency)}** · ${safe(q.exchange)} · ${session}`,
+            q.price_basis === 'completed_minute_close' ? localText('Kursbasis: letzter abgeschlossener Minutenschluss; Zeitstempel ist der Bar-Beginn.', 'Price basis: last completed minute close; timestamp is bar start.') : '',
             `${localText('Stand', 'As of')}: ${date(q.timestamp)} · ${localText('Datenalter', 'Age')}: ${num(q.age_seconds)} s · **${status}**`,
             `${localText('Verzögerung', 'Delay')}: ${q.delay_status === 'unknown' ? localText('unbekannt; kein garantierter Echtzeitkurs', 'unknown; no guaranteed live quote') : safe(q.delay_status)} · ${q.market_open ? localText('regulärer Markt offen', 'regular market open') : localText('regulärer Markt geschlossen/Status unbekannt', 'regular market closed/status unknown')}`,
             `${localText('Tagesänderung', 'Day change')}: ${numeric(q.day_change_percent) ? num(q.day_change_percent) + '%' : num(null)} · 52W: ${num(q.fifty_two_week_low)} – ${num(q.fifty_two_week_high)}`
-        ].join('\n\n');
+        ].filter(Boolean).join('\n\n');
     }
     function sources(report) {
         const rows = Object.entries(report.sources || {}).filter(([, s]) => s.provider)
