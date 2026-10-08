@@ -35,6 +35,22 @@ test('EUR display is primary and original USD stays visible', () => {
     }
 });
 
+test('history helpers filter ranges and build stable chart geometry', () => {
+    const api = ui('de');
+    const data = {...quote, history: {price_basis: 'close', bars: Array.from({length: 500}, (_, i) => ({
+        timestamp: 1780500000 - (499 - i) * 86400,
+        close: 100 + i * .2
+    }))}};
+    const oneYear = api.__test.historyRange(data, 365);
+    assert.ok(oneYear.length >= 365 && oneYear.length <= 367);
+    const geometry = api.__test.chartGeometry(oneYear);
+    assert.equal(geometry.points.length, oneYear.length);
+    assert.match(geometry.line, /^M /);
+    assert.match(geometry.area, / Z$/);
+    assert.ok(geometry.high > geometry.low);
+    assert.equal(api.__test.historySeries(data).length, 500);
+});
+
 test('analysis preserves insufficient data rather than rendering a rating', () => {
     for (const locale of ['de', 'en']) {
         const copy = ui(locale).summary({status: 'completed', data: {kind: 'analysis', ...quote,
