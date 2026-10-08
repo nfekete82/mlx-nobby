@@ -75,9 +75,10 @@ recommendations performed to inspect locally saved immutable analyses.
 
 Finance uses the existing AgentRuntime, ToolRegistry, permissions and chat UI.
 Quotes, analyses, comparisons and portfolio results render as responsive Finance
-cards with compact headline metrics; technical details and source URLs stay
-available in collapsible detail sections instead of flooding the chat with raw
-fields.
+cards with compact headline metrics; quote/history cards add an interactive
+daily-close chart with 1M, 3M, 6M, 1Y, 2Y and 5Y ranges plus hover/touch/keyboard
+inspection. Technical details and source URLs stay available in collapsible
+detail sections instead of flooding the chat with raw fields.
 Yahoo Finance supplies keyless market data through a replaceable provider;
 web search only adds news context. Every quote identifies ticker, exchange,
 original currency, session, observation time, age and source. Monetary values are

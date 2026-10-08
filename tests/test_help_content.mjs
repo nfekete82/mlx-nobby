@@ -89,6 +89,7 @@ test('finance help explains verified sources, confidence, markets and tracking i
         for (const pattern of [/Yahoo Finance/, /Western Digital/, /NASDAQ\/USD/, /Stuttgart\/Xetra\/EUR/, /insufficient data/,
             /Confidence/, /70%/, /85–100/, /Strong Buy/, /90/, /docs\/FINANCE\.md/]) assert.match(copy, pattern);
         assert.match(copy, locale === 'de' ? /Finance-Karten/ : /Finance cards/);
+        assert.match(copy, locale === 'de' ? /5 Jahre/ : /5 years/);
         assert.equal(topic.examples.length, 5);
         assert.match(copy, locale === 'de' ? /keine erfundenen Werte/ : /never create invented values/);
     }

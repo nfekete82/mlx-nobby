@@ -305,6 +305,226 @@
             : 'finance-neutral';
     }
 
+    const HISTORY_RANGES = [
+        {key: '1M', days: 30, de: '1M', en: '1M'},
+        {key: '3M', days: 91, de: '3M', en: '3M'},
+        {key: '6M', days: 182, de: '6M', en: '6M'},
+        {key: '1Y', days: 365, de: '1J', en: '1Y'},
+        {key: '2Y', days: 730, de: '2J', en: '2Y'},
+        {key: '5Y', days: 1826, de: '5J', en: '5Y'}
+    ];
+
+    function historySeries(data) {
+        const history = data?.history || {};
+        const basis = history.price_basis === 'adjusted_close' ? 'adjusted_close' : 'close';
+        return (history.bars || [])
+            .map(row => ({
+                timestamp: Number(row?.timestamp),
+                value: Number(row?.[basis] ?? row?.close)
+            }))
+            .filter(row => Number.isFinite(row.timestamp) && Number.isFinite(row.value) && row.value > 0)
+            .sort((a, b) => a.timestamp - b.timestamp);
+    }
+
+    function historyRange(data, days) {
+        const series = historySeries(data);
+        if (!series.length || !numeric(days)) return series;
+        const cutoff = series.at(-1).timestamp - days * 86400;
+        const filtered = series.filter(row => row.timestamp >= cutoff);
+        return filtered.length >= 2 ? filtered : series.slice(-2);
+    }
+
+    function chartGeometry(series, width = 800, height = 240) {
+        if (!Array.isArray(series) || series.length < 2) return null;
+        const left = 12, right = 12, top = 18, bottom = 22;
+        const values = series.map(row => row.value);
+        let low = Math.min(...values), high = Math.max(...values);
+        const spread = high - low;
+        const breathingRoom = spread > 0 ? spread * .08 : Math.max(Math.abs(high) * .02, 1);
+        low -= breathingRoom;
+        high += breathingRoom;
+        const usableWidth = width - left - right;
+        const usableHeight = height - top - bottom;
+        const points = series.map((row, index) => ({
+            ...row,
+            x: left + usableWidth * (index / Math.max(1, series.length - 1)),
+            y: top + usableHeight * (1 - (row.value - low) / (high - low))
+        }));
+        const line = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+        const area = `${line} L ${points.at(-1).x.toFixed(2)} ${(height - bottom).toFixed(2)} L ${points[0].x.toFixed(2)} ${(height - bottom).toFixed(2)} Z`;
+        return {width, height, left, right, top, bottom, low, high, points, line, area};
+    }
+
+    function historyDate(stamp) {
+        return numeric(stamp)
+            ? new Intl.DateTimeFormat(locale(), {day: '2-digit', month: 'short', year: 'numeric'}).format(new Date(stamp * 1000))
+            : localText('unbekannt', 'unknown');
+    }
+
+    function svgNode(tag, className) {
+        const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        if (className) node.setAttribute('class', className);
+        return node;
+    }
+
+    function appendPriceChart(card, data) {
+        if (typeof document === 'undefined' || historySeries(data).length < 2) return;
+        const currency = data.instrument?.currency || data.quote?.currency || data.history?.currency;
+        const section = el('div', 'finance-card-section finance-chart-section');
+        const head = el('div', 'finance-chart-head');
+        const heading = el('div');
+        heading.appendChild(el('h4', 'finance-section-title', localText('Kursverlauf', 'Price history')));
+        const rangeResult = el('div', 'finance-chart-range-result');
+        heading.appendChild(rangeResult);
+        const controls = el('div', 'finance-chart-ranges');
+        head.append(heading, controls);
+        section.appendChild(head);
+
+        const plot = el('div', 'finance-chart');
+        const svg = svgNode('svg', 'finance-chart-svg');
+        svg.setAttribute('viewBox', '0 0 800 240');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('tabindex', '0');
+        const tooltip = el('div', 'finance-chart-tooltip');
+        tooltip.hidden = true;
+        plot.append(svg, tooltip);
+        section.appendChild(plot);
+
+        const axis = el('div', 'finance-chart-axis');
+        const axisStart = el('span');
+        const axisEnd = el('span');
+        axis.append(axisStart, axisEnd);
+        section.appendChild(axis);
+        section.appendChild(el('div', 'finance-chart-note', localText(
+            'Tages-Schlusskurse · EUR ungefähr mit aktuellem EZB-Referenzkurs; Originalwert in Klammern.',
+            'Daily closes · EUR approximate using the current ECB reference rate; original value in parentheses.'
+        )));
+
+        let activeKey = '1Y';
+        let currentSeries = [];
+        let geometry = null;
+        let cursorLine = null;
+        let cursorPoint = null;
+        let activeIndex = null;
+
+        function hideCursor() {
+            tooltip.hidden = true;
+            if (cursorLine) cursorLine.style.visibility = 'hidden';
+            if (cursorPoint) cursorPoint.style.visibility = 'hidden';
+        }
+
+        function showAt(index) {
+            if (!geometry || !currentSeries.length) return;
+            index = clamp(index, 0, currentSeries.length - 1);
+            activeIndex = index;
+            const point = geometry.points[index];
+            const row = currentSeries[index];
+            const ratio = index / Math.max(1, currentSeries.length - 1);
+            cursorLine.setAttribute('x1', point.x);
+            cursorLine.setAttribute('x2', point.x);
+            cursorLine.style.visibility = 'visible';
+            cursorPoint.setAttribute('cx', point.x);
+            cursorPoint.setAttribute('cy', point.y);
+            cursorPoint.style.visibility = 'visible';
+            tooltip.replaceChildren(
+                el('strong', '', money(data, row.value, currency)),
+                el('span', '', historyDate(row.timestamp))
+            );
+            tooltip.hidden = false;
+            tooltip.style.left = `${clamp(ratio * 100, 1, 99)}%`;
+            tooltip.classList.toggle('is-right', ratio > .62);
+        }
+
+        function renderRange(key) {
+            const range = HISTORY_RANGES.find(item => item.key === key) || HISTORY_RANGES[3];
+            activeKey = range.key;
+            currentSeries = historyRange(data, range.days);
+            geometry = chartGeometry(currentSeries);
+            if (!geometry) return;
+            activeIndex = null;
+            svg.replaceChildren();
+            for (let i = 0; i <= 4; i += 1) {
+                const line = svgNode('line', 'finance-chart-grid-line');
+                const y = geometry.top + (geometry.height - geometry.top - geometry.bottom) * (i / 4);
+                line.setAttribute('x1', geometry.left);
+                line.setAttribute('x2', geometry.width - geometry.right);
+                line.setAttribute('y1', y);
+                line.setAttribute('y2', y);
+                svg.appendChild(line);
+            }
+            const area = svgNode('path', 'finance-chart-area');
+            area.setAttribute('d', geometry.area);
+            const line = svgNode('path', 'finance-chart-line');
+            line.setAttribute('d', geometry.line);
+            const change = (currentSeries.at(-1).value / currentSeries[0].value - 1) * 100;
+            line.classList.toggle('is-down', change < 0);
+            area.classList.toggle('is-down', change < 0);
+            cursorLine = svgNode('line', 'finance-chart-cursor');
+            cursorLine.setAttribute('y1', geometry.top);
+            cursorLine.setAttribute('y2', geometry.height - geometry.bottom);
+            cursorLine.style.visibility = 'hidden';
+            cursorPoint = svgNode('circle', 'finance-chart-point');
+            cursorPoint.setAttribute('r', '4.5');
+            cursorPoint.style.visibility = 'hidden';
+            svg.append(area, line, cursorLine, cursorPoint);
+            rangeResult.textContent = `${range.de === range.en ? range.en : localText(range.de, range.en)} · ${signedPctPoints(change)}`;
+            rangeResult.className = 'finance-chart-range-result ' + toneFor(change);
+            axisStart.textContent = historyDate(currentSeries[0].timestamp);
+            axisEnd.textContent = historyDate(currentSeries.at(-1).timestamp);
+            svg.setAttribute('aria-label', localText(
+                `Kursverlauf ${range.de}: ${signedPctPoints(change)}`,
+                `Price history ${range.en}: ${signedPctPoints(change)}`
+            ));
+            controls.querySelectorAll('button').forEach(button => {
+                const selected = button.dataset.range === activeKey;
+                button.classList.toggle('active', selected);
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+            hideCursor();
+        }
+
+        for (const range of HISTORY_RANGES) {
+            const button = el('button', 'finance-chart-range', localText(range.de, range.en));
+            button.type = 'button';
+            button.dataset.range = range.key;
+            button.setAttribute('aria-pressed', 'false');
+            button.addEventListener('click', () => renderRange(range.key));
+            controls.appendChild(button);
+        }
+
+        svg.addEventListener('pointermove', event => {
+            if (!geometry || !currentSeries.length) return;
+            const rect = svg.getBoundingClientRect();
+            if (!rect.width) return;
+            const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+            showAt(Math.round(ratio * (currentSeries.length - 1)));
+        });
+        svg.addEventListener('pointerdown', event => {
+            svg.focus({preventScroll: true});
+            if (!geometry || !currentSeries.length) return;
+            const rect = svg.getBoundingClientRect();
+            const ratio = rect.width ? clamp((event.clientX - rect.left) / rect.width, 0, 1) : 1;
+            showAt(Math.round(ratio * (currentSeries.length - 1)));
+        });
+        svg.addEventListener('pointerleave', hideCursor);
+        svg.addEventListener('focus', () => showAt(activeIndex == null ? currentSeries.length - 1 : activeIndex));
+        svg.addEventListener('blur', hideCursor);
+        svg.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !currentSeries.length) return;
+            event.preventDefault();
+            if (event.key === 'Home') activeIndex = 0;
+            else if (event.key === 'End') activeIndex = currentSeries.length - 1;
+            else {
+                const delta = event.key === 'ArrowLeft' ? -1 : 1;
+                activeIndex = clamp(activeIndex == null ? currentSeries.length - 1 : activeIndex + delta, 0, currentSeries.length - 1);
+            }
+            showAt(activeIndex);
+        });
+
+        renderRange(activeKey);
+        card.appendChild(section);
+    }
     function toolLabel(tool, kind) {
         const labels = {
             finance_quote: localText('Aktienkurs', 'Stock quote'),
@@ -589,6 +809,7 @@
         );
         section.appendChild(grid);
         card.appendChild(section);
+        appendPriceChart(card, report);
         appendDetails(card, report);
         return card;
     }
@@ -670,6 +891,7 @@
             day_change_percent: null
         }};
         appendInstrumentHeader(card, headerReport, toolLabel(tool, data.kind));
+        appendPriceChart(card, data);
         appendPerformance(card, data);
         card.appendChild(el('div', 'finance-card-footer',
             localText('Historische Schlusskurse; keine Echtzeitkurse.', 'Historical closing prices; not live quotes.')));
@@ -766,6 +988,6 @@
         summary,
         failure,
         render,
-        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel }
+        __test: { explicitSafeUrl: safeUrl, price, pct, pctPoints, age, date, money, currencyValue, fxLabel, historySeries, historyRange, chartGeometry }
     };
 })();

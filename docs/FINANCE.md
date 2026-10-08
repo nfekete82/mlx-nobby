@@ -92,11 +92,16 @@ field. Raw price basis, delay information, full scoring detail and source URLs
 remain available in a collapsed “Technical details & sources” section.
 
 Comparisons use one horizontal table with one row per instrument and retain each
-listing's original exchange/currency. Portfolio, history and recommendation
-tracking use the same visual system. All provider-controlled text is inserted via
-DOM text nodes; only validated HTTPS source/news URLs become links. The stored
-plain-text summary remains available for copy/read-aloud and preserves stale,
-delay, confidence and limitation warnings.
+listing's original exchange/currency. Quote and history cards also render an
+interactive daily-close chart with 1M, 3M, 6M, 1Y, 2Y and 5Y ranges. Mouse,
+touch and keyboard navigation reveal the nearest date and price without adding a
+charting dependency. Historical points remain provider prices in the original
+listing currency; the displayed EUR companion value uses the current ECB daily
+reference rate and is explicitly not historical FX. Portfolio, history and
+recommendation tracking use the same visual system. All provider-controlled text
+is inserted via DOM text nodes; only validated HTTPS source/news URLs become
+links. The stored plain-text summary remains available for copy/read-aloud and
+preserves stale, delay, confidence and limitation warnings.
 
 
 ## EUR-first presentation
@@ -144,7 +149,7 @@ No extra web searches or LLM calls are made for finance data.
 
 ## Indicators and fundamentals
 
-The provider supplies two years of daily history. In-progress bars are excluded.
+The provider supplies five years of daily history. In-progress bars are excluded.
 The selected basis is adjusted close only if every accepted bar supplies it;
 otherwise all indicators use raw close. No mixing or gap interpolation occurs.
 

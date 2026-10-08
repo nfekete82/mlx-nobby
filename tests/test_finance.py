@@ -359,6 +359,24 @@ def test_deterministic_scoring_confidence():
     assert scoring(f, technicals(history()), q, NOW)['subscores']['valuation'] is None
 
 
+def test_quote_includes_two_year_daily_history_for_interactive_chart(service):
+    report = service.execute('finance_quote', prompt='AMD Kurs')
+    assert report['quote']['price'] == 359
+    assert report['history_status'] == 'available'
+    assert len(report['history']['bars']) == 260
+    assert report['history']['price_basis'] == 'adjusted_close'
+    assert report['performance']['6M']['percent'] is not None
+
+
+def test_quote_survives_history_provider_failure(service):
+    primary = service.provider.providers[0]
+    primary.history = lambda i: (_ for _ in ()).throw(FinanceError('history_unavailable'))
+    report = service.execute('finance_quote', prompt='AMD Kurs')
+    assert report['quote']['price'] == 359
+    assert report['history_status'] == 'unavailable'
+    assert report['history'] == {}
+    assert report['performance'] == {}
+
 def test_service_tracking_compare_and_portfolio(service):
     report = service.execute('finance_analyze', prompt='Analysiere AMD', owner='chat1')
     assert report['assessment']['score'] is not None and report['recommendation_id']
