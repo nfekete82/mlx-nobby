@@ -66,13 +66,18 @@ and active Shorts jobs can be cancelled from History or the queue.
 
 ## Finance Intelligence
 
-Ask “Wie steht AMD gerade?”, “Analysiere AMD fundamental und technisch.”,
+Ask “Wie steht AMD gerade?”, “Analysiere Western Digital vollständig”,
 “Vergleiche AMD und NVIDIA.” or “Welche Risiken siehst du bei AMD?”. English
-prompts are supported too. For a portfolio, provide explicit quantities:
+prompts are supported too. Explicitly naming a new company overrides prior stock
+context, and supported company names are resolved to a verified market ticker. For a portfolio, provide explicit quantities:
 “Analyze my portfolio: AMD: 10, NVDA: 5”. Ask in the same chat how earlier
 recommendations performed to inspect locally saved immutable analyses.
 
 Finance uses the existing AgentRuntime, ToolRegistry, permissions and chat UI.
+Quotes, analyses, comparisons and portfolio results render as responsive Finance
+cards with compact headline metrics; technical details and source URLs stay
+available in collapsible detail sections instead of flooding the chat with raw
+fields.
 Yahoo Finance supplies keyless market data through a replaceable provider;
 web search only adds news context. Every quote identifies ticker, exchange,
 currency, session, observation time, age and source. NASDAQ/USD is never silently
