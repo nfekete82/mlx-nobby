@@ -138,6 +138,7 @@ class MediaPerformanceTests(unittest.TestCase):
                         "duration_ms": 125.567,
                         "chat_released": True,
                         "image_released": False,
+                        "image_preserved": True,
                         "speech_released": True,
                         "timings_ms": {
                             "lease_wait": 21.123,
@@ -160,6 +161,7 @@ class MediaPerformanceTests(unittest.TestCase):
                         "duration_ms": float("nan"),
                         "chat_released": "true",
                         "image_released": True,
+                        "image_preserved": True,
                         "timings_ms": {
                             "lease_wait": float("nan"),
                             "image_release": "500",
@@ -180,10 +182,12 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertEqual(jobs["a" * 24]["handoff_ms"], 125.57)
         self.assertTrue(jobs["a" * 24]["chat_released"])
         self.assertFalse(jobs["a" * 24]["image_released"])
+        self.assertTrue(jobs["a" * 24]["image_preserved"])
         self.assertEqual(jobs["a" * 24]["handoff_stages_ms"]["lease_wait"], 21.12)
         self.assertIsNone(jobs["a" * 24]["handoff_stages_ms"]["musetalk_release"])
         self.assertIsNone(jobs["a" * 24]["handoff_stages_ms"]["chat_stop"])
         self.assertIsNone(jobs["b" * 24]["image_released"])
+        self.assertIsNone(jobs["b" * 24]["image_preserved"])
         self.assertIsNone(jobs["b" * 24]["handoff_ms"])
         self.assertIsNone(jobs["b" * 24]["chat_released"])
         self.assertIsNone(jobs["c" * 24]["handoff_ms"])
@@ -191,6 +195,8 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertEqual(snapshot["summary"]["video"]["chat_releases"], 1)
         self.assertEqual(snapshot["summary"]["video"]["image_releases"], 0)
         self.assertEqual(snapshot["summary"]["video"]["image_release_samples"], 1)
+        self.assertEqual(snapshot["summary"]["video"]["image_preserves"], 1)
+        self.assertEqual(snapshot["summary"]["video"]["image_preserve_samples"], 1)
         stage_summary = snapshot["summary"]["video"]["handoff_stages_ms"]
         self.assertEqual(stage_summary["lease_wait"]["p50"], 21.12)
         self.assertEqual(stage_summary["image_release"]["p50"], 40)
