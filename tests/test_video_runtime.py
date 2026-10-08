@@ -464,6 +464,14 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(job["result"]["stage_1_steps"], 8)
         self.assertEqual(job["result"]["stage_2_steps"], 3)
         self.assertEqual(job["result"]["memory_peak"], snapshot)
+        handoff = job["runtime_handoff"]
+        self.assertGreaterEqual(handoff["duration_ms"], 0)
+        self.assertGreaterEqual(handoff["timings_ms"]["lease_wait"], 0)
+        self.assertFalse(handoff["chat_released"])
+        self.assertEqual(
+            json.loads((video_service.JOBS / f"{job_id}.json").read_text())["runtime_handoff"],
+            handoff,
+        )
 
     def test_cancel_and_restart_recovery(self):
         path = video_service.JOBS / ("b" * 24 + ".json")
