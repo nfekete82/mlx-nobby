@@ -89,4 +89,4 @@ def analyze_portfolio(positions, reports, histories):
             'max_weight': maximum, 'concentration_hhi': sum(row['weight'] ** 2 for row in rows),
             'concentration_risk': 'high' if maximum > .40 else 'moderate' if maximum > .20 else 'lower',
             'correlations': correlation(histories), 'risk': 'insufficient data' if any(row['assessment']['score'] is None for row in rows) else 'heuristic',
-            'limitations': ['long-only; no FX, cash, tax or derivatives model', 'risk is not a calibrated portfolio VaR']}
+            'limitations': ['long-only; ECB FX is presentation-only, no cash, tax or derivatives model', 'risk is not a calibrated portfolio VaR']}
