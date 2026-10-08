@@ -677,14 +677,22 @@ def video_runtime(
     lock_path=LOCK_PATH,
 ):
     """Hand off resources to video while preserving a healthy warm chat runtime."""
+    lease_started = time.monotonic()
     with runtime_lease(
         cancel_event,
         lock_path=lock_path,
         workload="video",
     ):
+        timings_ms = {
+            "lease_wait": round((time.monotonic() - lease_started) * 1000, 2),
+        }
+        image_release_started = time.monotonic()
         image_health = release_idle_image_runtime(
             cancel_event,
             requester=requester,
+        )
+        timings_ms["image_release"] = round(
+            (time.monotonic() - image_release_started) * 1000, 2
         )
         _check_cancelled(cancel_event)
 
@@ -714,9 +722,13 @@ def video_runtime(
         speech_health = {"available": None, "released": False}
         after_speech = before
         if relief_needed:
+            speech_release_started = time.monotonic()
             speech_health = release_idle_speech_runtime(
                 cancel_event,
                 requester=requester,
+            )
+            timings_ms["speech_release"] = round(
+                (time.monotonic() - speech_release_started) * 1000, 2
             )
             _check_cancelled(cancel_event)
             if speech_health.get("released"):
@@ -726,9 +738,13 @@ def video_runtime(
         musetalk_health = {"available": None, "released": False}
         after_musetalk = after_speech
         if relief_needed:
+            musetalk_release_started = time.monotonic()
             musetalk_health = release_idle_musetalk_runtime(
                 cancel_event,
                 requester=requester,
+            )
+            timings_ms["musetalk_release"] = round(
+                (time.monotonic() - musetalk_release_started) * 1000, 2
             )
             _check_cancelled(cancel_event)
             if musetalk_health.get("released"):
@@ -737,11 +753,17 @@ def video_runtime(
 
         restore_chat = bool(relief_needed and chat_loaded())
         if restore_chat:
+            chat_stop_started = time.monotonic()
             chat_command("stop")
+            timings_ms["chat_stop"] = round(
+                (time.monotonic() - chat_stop_started) * 1000, 2
+            )
 
         admission = memory_budget_snapshot() if restore_chat else after_musetalk
+        timings_ms["total"] = round((time.monotonic() - lease_started) * 1000, 2)
         preflight = {
             "workload": "video",
+            "handoff_timings_ms": timings_ms,
             "memory_before": before,
             "memory_after_speech_release": after_speech,
             "memory_after_musetalk_release": after_musetalk,
