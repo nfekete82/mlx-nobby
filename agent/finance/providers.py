@@ -129,7 +129,7 @@ class YahooProvider:
 
     def _chart(self, ticker):
         data = self._get('history', '/v8/finance/chart/' + quote(symbol(ticker), safe=''),
-                         {'range': '2y', 'interval': '1d', 'includePrePost': 'false'})
+                         {'range': '5y', 'interval': '1d', 'includePrePost': 'false'})
         try:
             chart = data['chart']
             if chart.get('error'):
