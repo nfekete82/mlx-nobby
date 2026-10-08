@@ -7915,6 +7915,38 @@ def optimize_image_edit_prompt(prompt):
         return use_fallback(type(exc).__name__)
 
 
+IMAGE_OPTION_KEYS = {
+    "generate": frozenset({
+        "prompt", "negative_prompt", "model", "width", "height",
+        "steps", "guidance", "seed", "auto_size",
+    }),
+    "edit": frozenset({"prompt", "model", "steps", "guidance", "seed"}),
+    "reference": frozenset({
+        "prompt", "model", "steps", "guidance", "seed",
+        "width", "height", "auto_size", "negative_prompt",
+    }),
+}
+
+
+def _validated_image_options(options, operation):
+    """Validate mode-specific image settings without leaking prompt values."""
+    incoming = dict(options or {})
+    unknown = set(incoming) - IMAGE_OPTION_KEYS[operation]
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        print(f"[image-options] rejected operation={operation} keys={names}", flush=True)
+        labels = {
+            "generate": "Bilderzeugung",
+            "edit": "Bildbearbeitung",
+            "reference": "Referenzbilder",
+        }
+        raise HTTPException(
+            status_code=422,
+            detail=f"Nicht unterstützte Bildparameter für {labels[operation]}: {names}",
+        )
+    return incoming
+
+
 def _image_edit_payload(request):
     context = request.file_context or {}
     intent = decide_media_intent(request.prompt, has_image=True, reference_context=context.get('reference_mode')).intent
@@ -7930,21 +7962,9 @@ def _image_edit_payload(request):
             raise HTTPException(422, 'Für diese Anfrage wird ein Referenzbild benötigt.')
     source = _image_source_path(request, reference_record=reference_record)
 
-    options = dict(request.image_options or {})
-    allowed = {
-        "prompt",
-        "model",
-        "steps",
-        "guidance",
-        "seed",
-    }
-    if is_reference:
-        allowed |= {'width', 'height', 'auto_size', 'negative_prompt'}
-    if set(options) - allowed:
-        raise HTTPException(
-            422,
-            "Unbekannte Bildparameter",
-        )
+    options = _validated_image_options(
+        request.image_options, "reference" if is_reference else "edit"
+    )
 
     payload = {
         # Image editing must not start the large chat runtime merely to
@@ -8170,21 +8190,8 @@ def _image_generate_payload(request):
         payload["quality"] = request.quality
 
     if request.image_options:
-        if set(request.image_options) - {
-            "prompt",
-            "negative_prompt",
-            "model",
-            "width",
-            "height",
-            "steps",
-            "guidance",
-            "seed",
-            "auto_size",
-        }:
-            raise HTTPException(422, "Unbekannte Bildparameter")
-
         # Explicit user options always override automatic defaults.
-        payload.update(request.image_options)
+        payload.update(_validated_image_options(request.image_options, "generate"))
         negative_prompt = payload.get("negative_prompt")
 
         if (
