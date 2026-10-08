@@ -365,7 +365,7 @@ def test_quote_includes_two_year_daily_history_for_interactive_chart(service):
     assert report['history_status'] == 'available'
     assert len(report['history']['bars']) == 260
     assert report['history']['price_basis'] == 'adjusted_close'
-    assert report['performance']['1Y']['percent'] is not None
+    assert report['performance']['6M']['percent'] is not None
 
 
 def test_quote_survives_history_provider_failure(service):
