@@ -378,7 +378,9 @@ def test_read_aloud_playback_cleanup(ui, scenario):
         open_sidebar(page)
         page.locator('#newChat').click()
     else:
-        page.locator('.mlx-message-speech-button').evaluate('(button) => button.remove()')
+        # Remove the same button whose playback we started, not another
+        # speech button that can be present in the message history.
+        page.locator('.mlx-message-speech-button').first.evaluate('(button) => button.remove()')
     page.wait_for_function('window.__media.revoked.length === 1')
     assert page.evaluate('window.__media.audios[0].getAttribute("src")') is None
     assert page.evaluate('window.__media.pauses') >= 1
