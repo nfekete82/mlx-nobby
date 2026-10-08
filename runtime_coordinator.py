@@ -637,7 +637,9 @@ def release_idle_image_runtime(cancel_event=None, *, requester=request_json):
         )
         if health.get("loaded"):
             raise RuntimeError("Image-Runtime konnte nicht entladen werden")
-    return health
+        return health | {"released": True}
+    # Absence of resident weights is not an unload event.
+    return health | {"released": False}
 
 
 def release_idle_musetalk_runtime(cancel_event=None, *, requester=request_json):
@@ -830,7 +832,7 @@ def video_runtime(
             "hard_limit_used_percent": HARD_MEMORY_USED_PERCENT,
             "load_reserve_gb": video_reserve_gb,
             "required_headroom_gb": VIDEO_MIN_HEADROOM_GB,
-            "image_released": not bool(image_health.get("loaded")),
+            "image_released": bool(image_health.get("released")),
             "speech_released": bool(speech_health.get("released")),
             "musetalk_released": bool(musetalk_health.get("released")),
             "chat_released": restore_chat,
