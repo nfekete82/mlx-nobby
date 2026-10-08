@@ -25,7 +25,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                 wav.setsampwidth(2)
                 wav.setframerate(16000)
                 wav.writeframes(pcm)
-            for frames in (9, 17, 25, 33, 73, 81, 241):
+            for frames in (9, 17, 25, 33, 73, 81, 241, 361, 481):
                 with self.subTest(frames=frames):
                     talking_photo_ltx._pad_audio(source, target, frames / 24)
                     with wave.open(str(target)) as wav:
@@ -121,9 +121,17 @@ class TalkingPhotoLtxTests(unittest.TestCase):
         self.assertGreaterEqual(duration, 3.0)
         self.assertEqual((frames - 1) % 8, 0)
 
-    def test_quality_frames_reject_long_beta_audio(self):
-        with self.assertRaisesRegex(RuntimeError, "maximal 10 Sekunden"):
-            talking_photo_ltx.quality_frames(10.01)
+    def test_quality_frames_accept_15_and_20_second_audio(self):
+        for seconds, expected_frames in ((15.0, 361), (20.0, 481)):
+            with self.subTest(seconds=seconds):
+                frames, duration = talking_photo_ltx.quality_frames(seconds)
+                self.assertEqual(frames, expected_frames)
+                self.assertGreaterEqual(duration, seconds)
+                self.assertEqual((frames - 1) % 8, 0)
+
+    def test_quality_frames_reject_audio_above_20_seconds(self):
+        with self.assertRaisesRegex(RuntimeError, "maximal 20 Sekunden"):
+            talking_photo_ltx.quality_frames(20.01)
 
     def test_target_dimensions_are_conservative_and_orientation_aware(self):
         self.assertEqual(talking_photo_ltx.target_dimensions(900, 1400), (512, 704))
@@ -149,7 +157,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
 
         self.assertTrue(health["ready"])
         self.assertEqual(health["provider"], "ltx-2.5-mlx-a2v")
-        self.assertEqual(health["max_audio_seconds"], 10.0)
+        self.assertEqual(health["max_audio_seconds"], 20.0)
 
 
 if __name__ == "__main__":
