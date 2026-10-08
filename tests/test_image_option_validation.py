@@ -85,6 +85,7 @@ def test_reference_generation_accepts_negative_prompt_and_dimensions(monkeypatch
     request = agent.ChatActionRequest(
         prompt="Erstelle ein neues Bild derselben Person in einem Garten.",
         reference_mode="same_identity",
+        file_context={"kind": "image", "stored_path": "/tmp/reference.png", "file_id": "source"},
         image_options={"negative_prompt": "blur", "auto_size": True, "width": 768, "height": 1024},
     )
     payload = agent._image_edit_payload(request)
