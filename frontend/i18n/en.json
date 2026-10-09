@@ -1005,6 +1005,7 @@
     "videos": "Videos",
     "keep_all": "Keep all permanently",
     "refresh": "Refresh",
-    "recent": "Recent chats"
+    "recent": "Recent chats",
+    "delete_all": "Delete all permanently"
   }
 }
