@@ -514,12 +514,21 @@ def _edit_model(model_id):
     candidates = sorted(
         data["models"], key=lambda item: item["id"] != data["default_model"],
     )
-    for model in candidates:
-        if model["enabled"] and "image_edit" in model.get("capabilities", []):
-            ready, _ = availability(model)
-            if ready:
-                return model
-    raise HTTPException(503, "Kein verfügbares Modell für Bildbearbeitung")
+    edit_candidates = [model for model in candidates
+                       if "image_edit" in model.get("capabilities", [])]
+    enabled_candidates = [model for model in edit_candidates if model["enabled"]]
+    if not edit_candidates:
+        raise HTTPException(503, "Kein Bildbearbeitungsmodell konfiguriert")
+    if not enabled_candidates:
+        raise HTTPException(503, "Bildbearbeitungsmodelle sind deaktiviert. Bitte in den Modelleinstellungen aktivieren.")
+    for model in enabled_candidates:
+        ready, _ = availability(model)
+        if ready:
+            return model
+    raise HTTPException(
+        503,
+        "Kein einsatzbereites Bildbearbeitungsmodell: Lokale Modellgewichte oder Runtime-Verfügbarkeit prüfen.",
+    )
 
 
 def _resolved_steps(model, requested_steps, quality=None):
