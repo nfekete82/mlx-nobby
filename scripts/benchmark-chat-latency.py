@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Opt-in, content-free local MLX chat cold/warm latency probe.
 
-Does not load, select, unload or restart models. Run only against an already
-loaded model and an idle local service. No prompts or completions are saved.
+Does not explicitly select, unload or restart models. The requested endpoint
+may lazily load its selected model. Run only on an idle local service with an
+already loaded model. No prompts or completions are saved.
 """
 from __future__ import annotations
 
@@ -87,7 +88,7 @@ def sample(client, model, timeout):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", type=validate_loopback, default="http://127.0.0.1:8000")
-    parser.add_argument("--model", required=True, help="Exact already loaded model ID; never switches models")
+    parser.add_argument("--model", required=True, help="Exact intended loaded model ID; the server may lazily load it")
     parser.add_argument("--samples", type=positive_int, default=5)
     parser.add_argument("--timeout", type=lambda x: bounded_int(x, 1, 600), default=90, help="Seconds per request (1–600)")
     parser.add_argument("--output", type=Path, help="Optional local JSON path; no prompts/completions stored")
