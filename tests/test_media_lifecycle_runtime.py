@@ -148,7 +148,7 @@ def test_direct_image_generate_is_kept_in_library(monkeypatch):
     assert result["id"] == "1234567890-abcdef123456"
     assert calls == [(
         ("image", "1234567890-abcdef123456", "/tmp/generated.png"),
-        {"persistent": False, "owner": "direct-image"},
+        {"persistent": True, "owner": "direct-image"},
     )]
 
 
