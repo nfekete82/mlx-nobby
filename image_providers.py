@@ -21,6 +21,7 @@ from image_registry import FAMILIES, MODEL_ROOTS, validate_path
 from mflux_capabilities import probe_mflux_cli, mflux_contract, mflux_weight_contract
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
+MLXGEN_BIN = Path(os.environ.get("MLX_IMAGE_MLXGEN_BIN", str(Path.home() / ".local/share/mlx-gen-venv/bin/mlxgen")))
 
 MLXSERVE_URL = os.environ.get(
     "MLX_IMAGE_MLXSERVE_URL",
@@ -446,6 +447,15 @@ def _mlxserve_json(path, *, timeout=MLXSERVE_HEALTH_TIMEOUT):
 
 
 def availability(model):
+    if model["provider"] == "mlxgen":
+        root = model_directory(model)
+        if not root or not root.is_dir() or not (root / "text_encoder").is_dir() or not (root / "transformer").is_dir() or not (root / "vae").is_dir():
+            return False, "MLX-Gen: lokaler Qwen-Image-Edit-Cache fehlt oder ist unvollständig"
+        if not any(root.rglob("*.safetensors")):
+            return False, "MLX-Gen: lokale Modellgewichte fehlen"
+        if not MLXGEN_BIN.is_file() or not os.access(MLXGEN_BIN, os.X_OK):
+            return False, "MLX-Gen fehlt: bitte die isolierte MLX-Gen-Umgebung installieren"
+        return True, "Lokaler MLX-Gen-Runner und Qwen-Image-Edit-Gewichte vorhanden (Ladefähigkeit erst beim Render geprüft)"
     if model["provider"] == "mlxserve":
         try:
             health = _mlxserve_json("/health")
@@ -1187,7 +1197,19 @@ def run_provider(
             progress_callback=progress_callback,
         )
         return
-    if model["provider"] == "mlxserve":
+    if model["provider"] == "mlxgen":
+        source = params.get("source_path")
+        if not source:
+            raise ProviderFailure("Bildbearbeitung benötigt ein Quellbild", provider="mlxgen", model=model["id"])
+        command = [str(MLXGEN_BIN), "generate", "--model", str(model_directory(model)),
+                   "--image", str(source), "--prompt", params["prompt"],
+                   "--width", str(params["width"]), "--height", str(params["height"]),
+                   "--steps", str(params["steps"]), "--guidance", str(params["guidance"]),
+                   "--seed", str(params["seed"]), "--output", str(output), "--low-ram"]
+        worker_input = None
+        if progress_callback is not None:
+            progress_callback({"phase": "generating"})
+    elif model["provider"] == "mlxserve":
         command = [
             sys.executable,
             str(Path(__file__).with_name("mlxserve_image_worker.py")),
