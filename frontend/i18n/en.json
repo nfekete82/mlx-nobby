@@ -993,5 +993,18 @@
   "notes.note_content_placeholder": "Note text...",
   "notes.new_subfolder": "New subfolder",
   "notes.rename": "Rename",
-  "notes.drop_here": "Drop here"
+  "notes.drop_here": "Drop here",
+  "library": {
+    "title": "Library",
+    "subtitle": "Your locally generated images and videos · Everything stays on your Mac",
+    "close_label": "Close library",
+    "close": "Close",
+    "search": "Search media …",
+    "all": "All",
+    "images": "Images",
+    "videos": "Videos",
+    "keep_all": "Keep all permanently",
+    "refresh": "Refresh",
+    "recent": "Recent chats"
+  }
 }
