@@ -1006,6 +1006,10 @@
     "keep_all": "Keep all permanently",
     "refresh": "Refresh",
     "recent": "Recent chats",
-    "delete_all": "Delete all permanently"
+    "delete_all": "Delete all permanently",
+    "projects": "Projects",
+    "no_projects": "No projects",
+    "filter": "Filter chats",
+    "search_chats": "Search chats"
   }
 }
