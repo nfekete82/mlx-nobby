@@ -154,6 +154,46 @@
       if (failed) window.alert(t(`${failed} Medien konnten nicht gespeichert werden.`, `${failed} files could not be saved.`));
     } finally { button.disabled = false; }
   });
+  document.getElementById("nobbyLibraryDeleteAll")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    // Bulk deletion intentionally covers the whole local library, not the current search.
+    // Re-read the live count, as cached cards can be stale after media cleanup.
+    let latest;
+    try {
+      const response = await fetch("/api/library/assets?limit=1000", {cache:"no-store"});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      latest = await response.json();
+    } catch (error) { window.alert(error.message); return; }
+    const total = Number(latest.total || 0);
+    if (!total) return;
+    const message = t(
+      `Alle ${total} Bilder und Videos dauerhaft von diesem Mac löschen? Dies kann nicht rückgängig gemacht werden.`,
+      `Permanently delete all ${total} images and videos from this Mac? This cannot be undone.`
+    );
+    const confirmed = window.MLXConfirm
+      ? await window.MLXConfirm({
+          title: t("Alle Medien endgültig löschen", "Permanently delete all media"),
+          message, confirmLabel: t("Alle endgültig löschen", "Delete all permanently"),
+          cancelLabel: t("Abbrechen", "Cancel")
+        })
+      : window.confirm(message);
+    if (!confirmed) return;
+    button.disabled = true;
+    try {
+      const response = await fetch("/api/library/assets/delete-all", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({kind:"all", confirm:"DELETE_ALL_MEDIA_PERMANENTLY"})
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const result = await response.json();
+      await refresh();
+      if (result.errors) window.alert(t(
+        `${result.errors} Dateien konnten nicht gelöscht werden.`,
+        `${result.errors} files could not be deleted.`
+      ));
+    } catch (error) { window.alert(error.message); }
+    finally { button.disabled = false; }
+  });
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
     state.query = event.target.value; render();
   });
