@@ -1,7 +1,7 @@
 from agent import media_lifecycle_runtime
 
 
-def test_register_completed_chat_video_is_temporary(monkeypatch):
+def test_register_completed_chat_video_is_persistent_for_library(monkeypatch):
     calls = []
     monkeypatch.setattr(media_lifecycle_runtime, "_shorts_references_job", lambda _job_id: False)
     monkeypatch.setattr(
@@ -27,7 +27,7 @@ def test_register_completed_chat_video_is_temporary(monkeypatch):
     assert len(calls) == 1
     args, kwargs = calls[0]
     assert args == ("video", "b" * 24, "/tmp/video.mp4")
-    assert kwargs["persistent"] is False
+    assert kwargs["persistent"] is True
     assert kwargs["owner"] == "chat"
 
 
@@ -125,7 +125,7 @@ def test_incomplete_job_is_not_registered(monkeypatch):
     assert calls == []
 
 
-def test_direct_image_generate_is_tracked_as_temporary(monkeypatch):
+def test_direct_image_generate_is_kept_in_library(monkeypatch):
     calls = []
     monkeypatch.setattr(
         media_lifecycle_runtime,
