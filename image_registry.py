@@ -149,7 +149,7 @@ class ImageModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     id: str
     name: str = Field(min_length=1, max_length=120)
-    provider: Literal["diffusionkit", "mflux", "sdxl", "mlxserve"]
+    provider: Literal["diffusionkit", "mflux", "sdxl", "mlxserve", "mlxgen"]
     repository: str | None = None
     local_path: str | None = None
     model_family: str
@@ -195,6 +195,11 @@ class ImageModel(BaseModel):
                 raise ValueError(
                     "Qwen Image 2.1/MLX-Serve verwendet standardmäßig Guidance 0"
                 )
+        elif self.provider == "mlxgen":
+            if (self.id != QWEN_IMAGE_EDIT_ID or self.repository != "AbstractFramework/qwen-image-edit-2511-4bit"
+                    or self.local_path or self.model_family != "qwen-image-edit"
+                    or self.base_model != "qwen-image-edit-2511" or self.quantize_on_load or any(lora.enabled for lora in self.loras)):
+                raise ValueError("MLX-Gen ist nur für den geprüften Qwen Image Edit 2511 4-bit-Eintrag freigegeben")
         elif self.provider == "sdxl":
             if (
                 self.repository
@@ -332,7 +337,7 @@ def builtin_models():
         model_kwargs = dict(
             id=ident,
             name=name,
-            provider="mflux",
+            provider="mlxgen" if ident == QWEN_IMAGE_EDIT_ID else "mflux",
             repository=repo,
             model_family=family,
             base_model=base,
