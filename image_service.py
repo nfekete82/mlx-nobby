@@ -1136,6 +1136,8 @@ def _update_job(job_id, **changes):
 
 def _provider_progress(job_id, event):
     changes = {}
+    if isinstance(event.get("provider_timing"), dict):
+        changes["provider_timing"] = event["provider_timing"]
     phase = event.get("phase")
     if phase:
         changes["phase"] = str(phase)
