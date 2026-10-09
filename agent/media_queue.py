@@ -292,7 +292,7 @@ def _mirror_native(job_id, native):
         "model", "result", "error", "started_at", "finished_at",
         "semantic_operation", "reference_mode", "reference_relation", "reference_used",
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
-        "runtime_handoff", "performance_timings",
+        "runtime_handoff", "performance_timings", "provider_timing",
     ):
         if key in native:
             copied[key] = native.get(key)
