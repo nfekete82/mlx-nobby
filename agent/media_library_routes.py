@@ -67,6 +67,24 @@ def install_routes(app: FastAPI):
             raise HTTPException(404, "Medium nicht gefunden") from exc
         return {"kind": record["kind"], "id": record["id"], "persistent": True}
 
+    @app.post("/api/library/assets/delete-all")
+    def library_delete_all(payload: dict):
+        kind = str(payload.get("kind") or "all")
+        if kind != "all" and kind not in KINDS:
+            raise HTTPException(422, "Ungültiger Medientyp")
+        if payload.get("confirm") != "DELETE_ALL_MEDIA_PERMANENTLY":
+            raise HTTPException(400, "Explizite Löschbestätigung fehlt")
+        candidates = list_assets(kind, 1000000)["assets"]
+        deleted = 0
+        errors = 0
+        for asset in candidates:
+            try:
+                result = media_lifecycle.discard(asset["kind"], asset["id"], force=True)
+                deleted += int(result["deleted"])
+            except (ValueError, OSError):
+                errors += 1
+        return {"deleted": deleted, "errors": errors, "selected": len(candidates)}
+
     @app.delete("/api/library/assets/{kind}/{asset_id}")
     def library_delete(kind: str, asset_id: str):
         try:
