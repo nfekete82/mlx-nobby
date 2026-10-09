@@ -115,6 +115,7 @@
                 gap: 16px;
             }
             .mlx-talking-photo-field { display: grid; gap: 7px; margin-bottom: 13px; }
+            .mlx-talking-photo-field[hidden] { display: none; }
             .mlx-talking-photo-field > span { font-size: .82rem; opacity: .78; }
             .mlx-talking-photo-field input,
             .mlx-talking-photo-field select,
