@@ -76,6 +76,8 @@ def main():
     manifest_path = root / 'inputs.json'
     if args.resume:
         manifest = json.loads(manifest_path.read_text())
+        if manifest.get('lead_in_ms', 0) != args.lead_in_ms or bool(manifest.get('ltx_only', False)) != args.ltx_only:
+            raise SystemExit('Resume settings differ: lead-in and engine must match frozen experiment')
         image_path = root / manifest['image_file']
         wav_path = root / 'frozen.wav'
         for path, key in [(image_path, 'image_sha256'), (wav_path, 'audio_sha256')]:
@@ -102,6 +104,7 @@ def main():
         wav_path.write_bytes(wav)
         manifest = {'tts_request': payload if args.text else None,
                     'voice': args.voice, 'language': args.language,
+                    'lead_in_ms': args.lead_in_ms, 'ltx_only': args.ltx_only,
                     'audio_source': str(Path(args.audio).expanduser().resolve()) if args.audio else 'TTS once',
                     'image_file': image_path.name,
                     'image_sha256': hashlib.sha256(image).hexdigest(),
