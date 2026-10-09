@@ -321,6 +321,33 @@
         ));
         right.append(engineLabel);
 
+        const leadInLabel = node('label', 'mlx-talking-photo-field');
+        leadInLabel.id = 'talkingPhotoLeadInField';
+        leadInLabel.append(node('span', '', localText(
+            'Audiovorlauf · Testoption', 'Audio lead-in · experiment',
+        )));
+        const leadInSelect = document.createElement('select');
+        leadInSelect.id = 'talkingPhotoLeadIn';
+        [
+            ['0', localText('Aus · bisheriges Verhalten', 'Off · existing behavior')],
+            ['500', localText('0,5 Sekunden Stille vor der Sprache', '0.5 seconds of silence before speech')],
+        ].forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            leadInSelect.append(option);
+        });
+        leadInSelect.value = '0';
+        leadInLabel.append(leadInSelect);
+        leadInLabel.append(node(
+            'div', 'mlx-talking-photo-hint',
+            localText(
+                'Experiment gegen verschluckte Lippenbewegungen am Satzanfang. Ton und LTX-Video erhalten denselben Vorlauf; das Audio darf zusammen maximal 20 Sekunden lang sein.',
+                'Experiment for missed lip movements at the start. Audio and LTX video share the same lead-in; combined audio may be at most 20 seconds.',
+            ),
+        ));
+        right.append(leadInLabel);
+
         const voiceLabel = node('label', 'mlx-talking-photo-field');
         voiceLabel.append(node('span', '', localText('Stimme', 'Voice')));
         const voiceSelect = document.createElement('select');
@@ -431,7 +458,11 @@
             preview.hidden = false;
         });
 
-        engineSelect.addEventListener('change', refreshProviderStatus);
+        engineSelect.addEventListener('change', () => {
+            leadInLabel.hidden = engineSelect.value === 'fast';
+            if (leadInLabel.hidden) leadInSelect.value = '0';
+            refreshProviderStatus();
+        });
         create.addEventListener('click', startJob);
         cancel.addEventListener('click', cancelCurrentJob);
         document.body.append(modal);
@@ -685,6 +716,7 @@
                     voice,
                     language: selectedLanguage,
                     engine,
+                    lead_in_ms: Number(document.getElementById('talkingPhotoLeadIn')?.value || 0),
                     speed: 1.0,
                 }),
             });
