@@ -12,7 +12,7 @@ import subprocess
 import time
 
 import runtime_coordinator
-from agent.talking_photo_audio import validate_wav
+from agent.talking_photo_audio import prepend_lead_in, validate_wav
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -207,6 +207,7 @@ def generate(
     cancelled,
     update=None,
     debug_dir: Path | None = None,
+    lead_in_ms: int = 0,
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
     health = provider_health()
@@ -215,9 +216,13 @@ def generate(
 
     seed = resolve_seed(job_id)
     source_stats = validate_wav(audio_wav)
-    # The WAV header is authoritative, rather than a caller's duration estimate.
+    # Use the actual WAV sample count, not the caller's estimate. Validate
+    # total duration before preparing/launching the expensive MLX renderer.
     audio_seconds = source_stats["frames"] / source_stats["sample_rate"]
-    frames, clip_seconds = quality_frames(audio_seconds)
+    conditioned_wav = prepend_lead_in(audio_wav, lead_in_ms)
+    conditioned_stats = validate_wav(conditioned_wav)
+    conditioned_seconds = conditioned_stats["frames"] / conditioned_stats["sample_rate"]
+    frames, clip_seconds = quality_frames(conditioned_seconds)
     debug_dir = debug_dir if debug_dir is not None else debug_directory(job_id)
     work = work.resolve()
     if debug_dir is not None:
@@ -227,19 +232,26 @@ def generate(
         debug_dir.mkdir(parents=True, exist_ok=True)
     source_image = work / f"ltx-quality-source{image_suffix}"
     source_audio = work / "ltx-quality-source.wav"
+    prepared_audio = work / "ltx-quality-leadin.wav"
     padded_audio = work / "ltx-quality-audio.wav"
     output = work / "ltx-quality.mp4"
     source_image.write_bytes(image)
     source_audio.write_bytes(audio_wav)
+    if lead_in_ms:
+        prepared_audio.write_bytes(conditioned_wav)
+    else:
+        prepared_audio = source_audio
     width, height = _image_size(source_image)
     target_width, target_height = target_dimensions(width, height)
-    _pad_audio(source_audio, padded_audio, clip_seconds)
+    _pad_audio(prepared_audio, padded_audio, clip_seconds)
     padded_stats = validate_wav(padded_audio.read_bytes())
     if abs(padded_stats["frames"] / 16000 - clip_seconds) > 1 / 16000:
         raise RuntimeError("LTX-Audio-Padding passt nicht zur Videodauer")
     if debug_dir is not None:
         shutil.copy2(source_image, debug_dir / source_image.name)
         shutil.copy2(source_audio, debug_dir / source_audio.name)
+        if lead_in_ms:
+            shutil.copy2(prepared_audio, debug_dir / prepared_audio.name)
         # Use the retained file itself in --audio, so there is no ambiguity.
         shutil.copy2(padded_audio, debug_dir / padded_audio.name)
         source_image = (debug_dir / source_image.name).resolve()
@@ -271,6 +283,9 @@ def generate(
         "prompt": TALKING_PROMPT, "negative_prompt": NEGATIVE_PROMPT,
         "frames": frames, "fps": FPS, "duration": clip_seconds,
         "audio_seconds": audio_seconds, "source_audio_stats": source_stats,
+        "lead_in_ms": lead_in_ms, "prepad_audio_stats": conditioned_stats,
+        "conditioned_audio_seconds": conditioned_seconds,
+        "source_audio_sha256": hashlib.sha256(audio_wav).hexdigest(),
         "conditioning_audio_stats": padded_stats,
         "conditioning_audio_sha256": hashlib.sha256(padded_audio.read_bytes()).hexdigest(),
         "image_sha256": hashlib.sha256(image).hexdigest(),
