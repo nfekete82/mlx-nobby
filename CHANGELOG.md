@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Redesign Talking Photo as a wide, responsive three-column desktop workspace:
+  source photo left, settings in the middle, and the completed video plus
+  rendering status, estimated progress, Cancel and MP4 download in a dedicated
+  right-side panel. On narrower screens use a two-column layout with results
+  below or a single-column mobile layout; cap preview height and dialog height
+  to avoid unnecessary vertical scrolling. Preserve existing job lifecycle.
+
 - Add an **off-by-default** 500 ms leading-silence experiment for LTX Direct and
   LTX + MuseTalk Talking Photo. Preserve all original speech PCM samples;
   feed the same shifted WAV to LTX and the final MP4 (and MuseTalk in hybrid
