@@ -1244,7 +1244,8 @@ def run_provider(
             command.append("--json-events")
         elif progress_callback is not None:
             progress_callback({'phase': 'generating'})
-    # Do not expose prompts/tokens or unfiltered provider tracebacks. Spool output.
+    # Phase-4 provider telemetry is opt-in to MLX-Gen jobs and contains no prompts.
+    mlxgen_started = time.monotonic() if model["provider"] == "mlxgen" else None
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
@@ -1294,6 +1295,17 @@ def run_provider(
                 progress_callback,
                 params.get("steps"),
             )
+        if mlxgen_started is not None and progress_callback is not None:
+            progress_callback({"provider_timing": {
+                "schema": 1,
+                "process_wall_ms": round((time.monotonic() - mlxgen_started) * 1000, 1),
+                "exit_code": process.returncode,
+                "steps": params.get("steps"),
+                "width": params.get("width"),
+                "height": params.get("height"),
+                "low_ram": True,
+                "note": "Process duration includes MLX-Gen loading and generation; does not isolate weight load or GPU compute.",
+            }})
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
         if process.returncode:
