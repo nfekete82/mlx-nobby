@@ -18,6 +18,8 @@ def list_assets(kind="all", limit=400):
     if kind != "all" and kind not in KINDS:
         raise ValueError("Unsupported media kind")
     results = []
+    with media_lifecycle._lock:
+        records = media_lifecycle._load_locked().get("assets", {})
     for media_kind in kinds:
         root = media_lifecycle._root_for(media_kind)
         if not root.is_dir():
@@ -39,6 +41,8 @@ def list_assets(kind="all", limit=400):
                 "kind": media_kind, "id": asset_id,
                 "created_at": round(stat.st_mtime, 3),
                 "size_bytes": stat.st_size,
+                "persistent": bool((records.get(media_kind + ":" + asset_id) or {}).get("persistent")),
+                "expires_at": (records.get(media_kind + ":" + asset_id) or {}).get("expires_at"),
                 "url": ("/api/mlx/images/" if media_kind == "image" else
                         "/api/mlx/videos/" if media_kind == "video" else
                         "/api/talking-photo/videos/") + asset_id,
