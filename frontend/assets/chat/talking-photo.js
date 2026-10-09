@@ -96,7 +96,10 @@
                 backdrop-filter: blur(5px);
             }
             .mlx-talking-photo-dialog {
-                position: relative; width: min(760px, 96vw); max-height: 92vh;
+                position: relative; box-sizing: border-box;
+                width: min(1640px, calc(100vw - 36px));
+                max-height: calc(100vh - 28px);
+                max-height: calc(100dvh - 28px);
                 overflow: auto; border: 1px solid rgba(148, 163, 184, .22);
                 border-radius: 18px; padding: 22px; background: #0e1623;
                 color: #e5edf7; box-shadow: 0 24px 70px rgba(0,0,0,.45);
@@ -111,8 +114,31 @@
                 font-size: 1.6rem; line-height: 1;
             }
             .mlx-talking-photo-grid {
-                display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-                gap: 16px;
+                display: grid;
+                grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) minmax(0, 1fr);
+                align-items: start; gap: 18px;
+            }
+            .mlx-talking-photo-grid > * { min-width: 0; }
+            .mlx-talking-photo-output {
+                min-width: 0; border: 1px solid rgba(148,163,184,.22);
+                border-radius: 14px; background: rgba(17,29,45,.55);
+                padding: 14px; display: grid; align-content: start; gap: 12px;
+            }
+            .mlx-talking-photo-output h3 {
+                margin: 0; font-size: 1.03rem; line-height: 1.4;
+            }
+            .mlx-talking-photo-result-frame {
+                min-height: 270px; border: 1px solid rgba(148,163,184,.18);
+                border-radius: 12px; background: #070e19;
+                display: grid; place-items: center; overflow: hidden;
+            }
+            .mlx-talking-photo-result-placeholder {
+                padding: 24px 14px; text-align: center; font-size: .86rem;
+                color: #a8b9d0; line-height: 1.5;
+            }
+            .mlx-talking-photo-result-placeholder[hidden] { display: none; }
+            .mlx-talking-photo-placeholder-icon {
+                display: block; font-size: 2rem; opacity: .6; margin-bottom: 10px;
             }
             .mlx-talking-photo-field { display: grid; gap: 7px; margin-bottom: 13px; }
             .mlx-talking-photo-field[hidden] { display: none; }
@@ -125,15 +151,18 @@
             }
             .mlx-talking-photo-field textarea { min-height: 148px; resize: vertical; }
             .mlx-talking-photo-preview {
-                width: 100%; min-height: 240px; max-height: 390px; object-fit: contain;
-                border-radius: 12px; background: #09111d; border: 1px solid rgba(148,163,184,.18);
+                display: block; box-sizing: border-box; width: 100%;
+                min-height: 200px; max-height: min(57vh, 610px);
+                object-fit: contain; border-radius: 12px; background: #09111d;
+                border: 1px solid rgba(148,163,184,.18);
             }
+            .mlx-talking-photo-preview[hidden] { display: none; }
             .mlx-talking-photo-status {
-                margin: 10px 0 14px; padding: 10px 12px; border-radius: 10px;
+                margin: 0; padding: 10px 12px; border-radius: 10px;
                 background: rgba(148,163,184,.08); font-size: .86rem; white-space: pre-wrap;
             }
             .mlx-talking-photo-activity {
-                display: grid; gap: 10px; margin: 0 0 14px; padding: 14px;
+                display: grid; gap: 10px; margin: 0; padding: 14px;
                 background: rgba(37, 99, 235, .09); border: 1px solid rgba(96, 165, 250, .24);
                 border-radius: 12px;
             }
@@ -192,12 +221,31 @@
             .mlx-talking-photo-actions .primary { background: #2563eb; border-color: #2563eb; }
             .mlx-talking-photo-actions button:disabled { opacity: .45; cursor: not-allowed; }
             .mlx-talking-photo-result {
-                width: 100%; margin-top: 16px; border-radius: 12px; background: black;
+                display: block; width: 100%; height: auto;
+                max-height: min(52vh, 540px); max-height: min(52dvh, 540px);
+                object-fit: contain; background: #000;
             }
+            .mlx-talking-photo-result[hidden] { display: none; }
             .mlx-talking-photo-hint { font-size: .78rem; opacity: .66; margin-top: 5px; }
+            @media (min-width: 1101px) {
+                .mlx-talking-photo-output { position: sticky; top: 0; }
+            }
+            @media (max-width: 1100px) {
+                .mlx-talking-photo-grid {
+                    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                }
+                .mlx-talking-photo-output { grid-column: 1 / -1; }
+                .mlx-talking-photo-result-frame { min-height: 240px; }
+                .mlx-talking-photo-result { max-height: 420px; }
+            }
             @media (max-width: 700px) {
-                .mlx-talking-photo-grid { grid-template-columns: 1fr; }
-                .mlx-talking-photo-dialog { padding: 16px; }
+                .mlx-talking-photo-modal { padding: 10px; }
+                .mlx-talking-photo-dialog {
+                    width: 100%; max-height: calc(100dvh - 20px); padding: 16px;
+                }
+                .mlx-talking-photo-grid { grid-template-columns: minmax(0, 1fr); }
+                .mlx-talking-photo-output { grid-column: 1; padding: 12px; }
+                .mlx-talking-photo-result-frame { min-height: 220px; }
             }
         `;
         document.head.append(style);
@@ -266,9 +314,29 @@
         dialog.append(header);
 
         const grid = node('div', 'mlx-talking-photo-grid');
-        const left = node('div');
-        const right = node('div');
-        grid.append(left, right);
+        const left = node('div', 'mlx-talking-photo-source');
+        const right = node('div', 'mlx-talking-photo-settings');
+        const output = node('aside', 'mlx-talking-photo-output');
+        output.id = 'talkingPhotoOutput';
+        output.setAttribute('aria-label', localText('Ergebnis und Fortschritt', 'Result and progress'));
+        output.append(node('h3', '', localText('Ergebnis & Fortschritt', 'Result & progress')));
+
+        const resultFrame = node('div', 'mlx-talking-photo-result-frame');
+        resultFrame.id = 'talkingPhotoResultFrame';
+        const placeholder = node('div', 'mlx-talking-photo-result-placeholder');
+        placeholder.id = 'talkingPhotoResultPlaceholder';
+        const placeholderIcon = node('span', 'mlx-talking-photo-placeholder-icon', '▶');
+        placeholderIcon.setAttribute('aria-hidden', 'true');
+        placeholder.append(placeholderIcon, node(
+            'span', '', localText(
+                'Dein fertiges Video erscheint hier. Während der Erstellung siehst du darunter den Fortschritt.',
+                'Your finished video will appear here. During generation, progress is shown below.',
+            ),
+        ));
+        resultFrame.append(placeholder);
+        output.append(resultFrame);
+
+        grid.append(left, right, output);
         dialog.append(grid);
 
         const imageLabel = node('label', 'mlx-talking-photo-field');
@@ -389,7 +457,7 @@
         status.id = 'talkingPhotoStatus';
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
-        dialog.append(status);
+        output.append(status);
 
         const activity = node('section', 'mlx-talking-photo-activity');
         activity.id = 'talkingPhotoActivity';
@@ -417,7 +485,7 @@
         elapsed.id = 'talkingPhotoElapsed';
         meta.append(progressLabel, elapsed);
         activity.append(activityTitle, track, meta);
-        dialog.append(activity);
+        output.append(activity);
 
         const actions = node('div', 'mlx-talking-photo-actions');
         const create = node('button', 'primary', localText('Video erstellen', 'Create video'));
@@ -433,7 +501,7 @@
         download.hidden = true;
         download.download = 'talking-photo.mp4';
         actions.append(create, cancel, download);
-        dialog.append(actions);
+        output.append(actions);
 
         const result = document.createElement('video');
         result.id = 'talkingPhotoResult';
@@ -441,7 +509,7 @@
         result.controls = true;
         result.playsInline = true;
         result.hidden = true;
-        dialog.append(result);
+        resultFrame.append(result);
 
         imageInput.addEventListener('change', () => {
             const file = imageInput.files?.[0];
