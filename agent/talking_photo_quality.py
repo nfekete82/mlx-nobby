@@ -228,6 +228,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     cancelled=lambda: talking_photo._cancelled(job_id),
                     update=lambda **changes: talking_photo._update_job(job_id, **changes),
                     apply_lipsync=not ltx_only,
+                    lead_in_ms=request_payload.get("lead_in_ms", 0),
                 )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
@@ -253,6 +254,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
+                    "lead_in_ms": request_payload.get("lead_in_ms", 0),
                     "timing": details,
                     "video_url": f"/api/talking-photo/videos/{job_id}",
                 },
@@ -304,6 +306,7 @@ def create_job(payload: dict, *, ltx_only: bool = False) -> dict:
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
         "engine": "ltx" if ltx_only else "quality",
+        "lead_in_ms": payload.get("lead_in_ms", 0),
         "text_characters": len(payload["text"]),
         "provider": "ltx-2.5-mlx-a2v",
         "result": None,
