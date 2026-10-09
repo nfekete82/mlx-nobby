@@ -17,7 +17,7 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 The changes included in **v1.9.0** are prepared for the next GitHub
 release; publication is gated by local acceptance and final-main validation.
-version. Highlights include:
+Highlights include:
 
 - **Talking Photo:** direct LTX audio-to-video is the default, with an optional
   LTX + MuseTalk hybrid. The LTX paths now accept up to **20 seconds of
@@ -39,7 +39,7 @@ version. Highlights include:
 - **Finance:** EUR-first price display with unchanged source currencies,
   interactive price-history charts and more resilient quote/FX diagnostics.
 
-See [the changelog](CHANGELOG.md) for all unreleased work, including fixes.
+See [the changelog](CHANGELOG.md) for the complete v1.9.0 changes.
 For new releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
