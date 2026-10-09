@@ -1245,7 +1245,7 @@ def run_provider(
         elif progress_callback is not None:
             progress_callback({'phase': 'generating'})
     # Phase-4 provider telemetry is opt-in to MLX-Gen jobs and contains no prompts.
-    mlxgen_started = time.monotonic() if model["provider"] == "mlxgen" else None
+    mlxgen_started = None  # Reuse the existing deadline clock sample below.
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
@@ -1255,7 +1255,10 @@ def run_provider(
                                    start_new_session=True)
         if process_callback is not None:
             process_callback(process)
-        deadline = time.monotonic() + GENERATION_TIMEOUT
+        provider_started = time.monotonic()
+        if model["provider"] == "mlxgen":
+            mlxgen_started = provider_started
+        deadline = provider_started + GENERATION_TIMEOUT
         progress_remainder = ""
         try:
             while True:
