@@ -132,7 +132,7 @@ def prepend_lead_in(wav_bytes: bytes, lead_in_ms: int = 0) -> bytes:
     stats = validate_wav(wav_bytes)
     with wave.open(io.BytesIO(wav_bytes), "rb") as source:
         frames = source.readframes(source.getnframes())
-    silence = b"\\x00\\x00" * (stats["sample_rate"] * lead_in_ms // 1000)
+    silence = bytes(2 * (stats["sample_rate"] * lead_in_ms // 1000))
     target = io.BytesIO()
     with wave.open(target, "wb") as output:
         output.setnchannels(1)
