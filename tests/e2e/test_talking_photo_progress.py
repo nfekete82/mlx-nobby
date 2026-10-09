@@ -136,6 +136,16 @@ def test_talking_photo_stale_session_recovers(ui):
 
 def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
     page, _agent, _allowed = ui
+    # The production UI checks provider readiness and available voices while
+    # opening. Give this layout-only test explicit fixture responses, not the
+    # Agent harness's intentionally unimplemented (501) endpoints.
+    page.route("**/api/talking-photo/status", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"providers": {"ltx": {"ready": True, "device": "mlx/metal"}}}),
+    ))
+    page.route("**/api/mlx/audio/voices/manage", lambda route: route.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"voices": []}),
+    ))
     page.locator("#talkingPhotoButton").click()
     expect(page.locator("#talkingPhotoModal")).to_be_visible()
 
