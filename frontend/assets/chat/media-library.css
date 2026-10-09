@@ -53,3 +53,7 @@
 .sidebar .nobby-recent-filter[hidden],.sidebar #chatList[hidden]{display:none!important}
 .sidebar .nobby-recent-filter input{width:100%;border-radius:9px;padding:9px 11px;font:inherit;font-size:12px;border:1px solid #334158;color:inherit;background:#171e2b}
 .sidebar #chatList > [hidden]{display:none!important}
+
+/* Keep primary actions grouped tightly, regardless of older sidebar flex spacing. */
+.sidebar .new-chat-actions{margin-bottom:0!important;padding-bottom:0!important}
+.sidebar #sidebarLibraryButton{margin-top:0!important}
