@@ -41,7 +41,7 @@ def list_assets(kind="all", limit=400):
                 "size_bytes": stat.st_size,
                 "url": ("/api/mlx/images/" if media_kind == "image" else
                         "/api/mlx/videos/" if media_kind == "video" else
-                        "/api/mlx/talking-photo/videos/") + asset_id,
+                        "/api/talking-photo/videos/") + asset_id,
             })
     results.sort(key=lambda asset: (asset["created_at"], asset["id"]), reverse=True)
     return {"assets": results[:limit], "total": len(results), "limit": limit}
