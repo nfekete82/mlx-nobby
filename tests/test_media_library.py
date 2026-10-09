@@ -50,3 +50,23 @@ def test_library_save_and_delete_require_valid_ids(tmp_path):
         result = client.delete("/api/library/assets/video/" + "a" * 24)
         assert result.status_code == 200 and result.json()["deleted"] is True
         discard.assert_called_once_with("video", "a" * 24, force=True)
+
+def test_bulk_delete_requires_confirmation_and_limits_to_managed_media(tmp_path):
+    app = FastAPI()
+    media_library_routes.install_routes(app)
+    client = TestClient(app)
+    assert client.post("/api/library/assets/delete-all", json={"kind":"all"}).status_code == 400
+    assert client.post("/api/library/assets/delete-all", json={
+        "kind":"outside", "confirm":"DELETE_ALL_MEDIA_PERMANENTLY"
+    }).status_code == 422
+    sample = [{"kind": "image", "id": "1791579990-f04fe5195fe0"},
+              {"kind": "video", "id": "a" * 24}]
+    with patch.object(media_library_routes, "list_assets", return_value={"assets":sample}) as scan, \
+         patch.object(media_lifecycle, "discard", return_value={"deleted":True}) as discard:
+        response = client.post("/api/library/assets/delete-all", json={
+            "kind":"all", "confirm":"DELETE_ALL_MEDIA_PERMANENTLY"
+        })
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 2
+        assert discard.call_count == 2
+        scan.assert_called_once_with("all", 1000000)
