@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v1.9.0
+
+- Improve failed video model-load diagnostics by persisting the memory admission
+  snapshot and runtime handoff decisions before a RAM safety rejection. Parse
+  localized macOS memory pressure and swap figures with decimal commas.
+
 - Redesign Talking Photo as a wide, responsive three-column desktop workspace:
   source photo left, settings in the middle, and the completed video plus
   rendering status, estimated progress, Cancel and MP4 download in a dedicated
