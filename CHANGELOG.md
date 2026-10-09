@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v1.10.0
+
+- Add an integrated, responsive media library in the chat sidebar. Browse locally generated images, videos and Talking Photo clips with previews, type filters, search, opening and downloads.
+- Provide explicit permanent storage for existing temporary assets, including a bulk save action, and deletion only after user confirmation.
+- Persist newly completed normal-chat images/videos and direct image results by default while preserving the temporary lifecycle for Talking Photo intermediate media and existing Shorts project retention.
+- Index existing files from validated local output roots without copying them or exposing absolute paths or prompts. Files previously purged by cleanup cannot be recovered.
+- Add Python and browser contract coverage for library discovery and media actions. See [Media Library release notes](docs/MEDIA_LIBRARY_1_10.md).
+
 ## v1.9.0
 
 - Improve failed video model-load diagnostics by persisting the memory admission

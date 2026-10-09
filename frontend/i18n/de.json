@@ -993,5 +993,19 @@
   "notes.note_content_placeholder": "Notiztext...",
   "notes.new_subfolder": "Unterordner anlegen",
   "notes.rename": "Umbenennen",
-  "notes.drop_here": "Hierher ziehen"
+  "notes.drop_here": "Hierher ziehen",
+  "library": {
+    "title": "Bibliothek",
+    "subtitle": "Deine lokal erzeugten Bilder und Videos · Alles bleibt auf deinem Mac",
+    "close_label": "Bibliothek schließen",
+    "close": "Schließen",
+    "search": "Medien suchen …",
+    "all": "Alle",
+    "images": "Bilder",
+    "videos": "Videos",
+    "keep_all": "Alle dauerhaft behalten",
+    "refresh": "Aktualisieren",
+    "recent": "Letzte Chats",
+    "delete_all": "Alle dauerhaft löschen"
+  }
 }
