@@ -34,6 +34,51 @@ kann; **eine laufende Generierung wird dabei nicht fortgesetzt**. Neue
 Videogenerierung wird während eines aktiven Jobs verhindert. Vorübergehende
 Netzwerkfehler führen zu erneuter Statusabfrage statt stiller Aufgabe des Jobs.
 
+## Experiment: 500 ms Stille vor dem ersten Wort
+
+Wenn LTX beim ersten Wort („Guten Morgen“) den Mund noch nicht bewegt, lässt
+sich in Talking Photo bei **LTX direkt** und **Hybrid · LTX + MuseTalk** unter
+**Audiovorlauf · Testoption** zwischen **Aus** (Standard, unverändert) und
+**0,5 Sekunden Stille vor der Sprache** wählen. Das ist ein **A/B-Experiment**,
+keine nachgewiesene Qualitätsverbesserung.
+
+Die originalen 16-kHz-Mono-PCM-Samples bleiben vollständig und in derselben
+Reihenfolge erhalten; vorangestellt werden genau 8.000 stumme Samples. Das
+erweiterte WAV wird anschließend wie bisher nur **am Ende** auf das nächste
+gültige LTX-Frame-Raster gepaddet. **LTX-Conditioning, finales MP4 und – im
+Hybridmodus – MuseTalk bekommen denselben zeitlichen Vorlauf.** Es gibt kein
+nachträgliches Verschieben des MP4-Tons. Das originale WAV wird unverändert
+unter `audio-debug` gesichert; bei aktiviertem Render-Debug enthält das
+LTX-Bundle zusätzlich `ltx-quality-source.wav`,
+`ltx-quality-leadin.wav`, `ltx-quality-audio.wav` sowie den tatsächlichen
+`lead_in_ms`-Wert in `render.json`.
+
+**Maximale gemeinsame Audiodauer weiterhin 20 Sekunden**: Mit 500 ms Vorlauf
+darf das erzeugte Sprach-WAV höchstens 19,5 Sekunden lang sein. Längere
+Aufnahmen werden vor dem teuren LTX-Rendering zurückgewiesen; kein Wort wird
+abgeschnitten.
+
+Für eine aussagekräftige Kontrolle bitte **gleiches Porträt, exakt dasselbe
+Quell-WAV, dieselbe Seed, denselben Modus** mit `--lead-in-ms 0` und
+`--lead-in-ms 500` vergleichen. Das Debug-CLI unterstützt dafür zusätzlich
+`--ltx-only`:
+
+```sh
+test-venv/bin/python scripts/debug-talking-photo-quality.py \
+  --image /pfad/portrait.jpg --audio /pfad/tts-source.wav \
+  --seeds 42 --repeat 1 --ltx-only --lead-in-ms 0 \
+  --output artifacts/talking-photo-regression/leadin-baseline
+
+test-venv/bin/python scripts/debug-talking-photo-quality.py \
+  --image /pfad/portrait.jpg --audio /pfad/tts-source.wav \
+  --seeds 42 --repeat 1 --ltx-only --lead-in-ms 500 \
+  --output artifacts/talking-photo-regression/leadin-500ms
+```
+
+Die echten Ausgaben müssen visuell/gehörmäßig verglichen werden: Mund bewegt
+sich beim ersten Wort, später kein Versatz, keine Identitätsdrift. CI prüft
+nur die PCM- und Schnittstellenverträge – **keine echte Mac-Renderqualität**.
+
 ## Audio und LTX
 
 **Beta ab PR #174:** Der direkte LTX-A2V-Pfad akzeptiert Quellaudio bis 20 Sekunden. Die 10-Sekunden-Grenze war in `main` aktiv, während die Erweiterung in dem ungemergten Experiment PR #160 lag. Dies ist eine bewusste Beta-Freigabe für lokale Tests, **kein auf echter Hardware bestätigter Qualitäts- oder RAM-Benchmark**: 15-s- und 20-s-Clips müssen auf Renderdauer, Unified Memory, Identitätsstabilität und Lippensynchronität verglichen werden. Quellaudio über 20 Sekunden wird weiterhin vor dem teuren Video-Rendern abgelehnt; das Audio wird nicht abgeschnitten oder schneller abgespielt.
