@@ -386,6 +386,26 @@ def _run(job_id, request):
         if not ready:
             raise RuntimeError(reason)
         handoff_started = time.monotonic()
+        def record_admission(preflight):
+            # Persist measured system-level diagnostics before admission can fail.
+            # No prompts, model payload, or media contents are included.
+            _update(
+                job_id,
+                memory_admission=preflight.get("memory_admission"),
+                memory_before_admission=preflight.get("memory_before"),
+                runtime_handoff={
+                    "version": 3,
+                    "timings_ms": dict(preflight.get("handoff_timings_ms") or {}),
+                    "image_released": bool(preflight.get("image_released")),
+                    "image_preserved": bool(preflight.get("image_preserved")),
+                    "speech_released": bool(preflight.get("speech_released")),
+                    "musetalk_released": bool(preflight.get("musetalk_released")),
+                    "chat_released": bool(preflight.get("chat_released")),
+                    "load_reserve_gb": preflight.get("load_reserve_gb"),
+                    "hard_limit_reached": bool(preflight.get("hard_limit_reached")),
+                },
+            )
+
         with runtime_coordinator.video_runtime(
             cancel,
             chat_loaded=_chat_loaded,
@@ -394,6 +414,7 @@ def _run(job_id, request):
                 job_id,
                 restore_error=f"Chat-Restore fehlgeschlagen: {exc}",
             ),
+            admission_observer=record_admission,
         ) as preflight:
             # Persist only content-free timings and decisions. This includes
             # time waiting for the coordinator lease, not LTX model load time.
