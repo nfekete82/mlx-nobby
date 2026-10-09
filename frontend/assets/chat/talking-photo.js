@@ -543,6 +543,14 @@
         if (status && status.textContent !== message) status.textContent = message;
     }
 
+    function syncResultPlaceholder() {
+        const placeholder = document.getElementById('talkingPhotoResultPlaceholder');
+        const result = document.getElementById('talkingPhotoResult');
+        if (placeholder && result) {
+            placeholder.hidden = !result.hidden;
+        }
+    }
+
     function updateButtonIndicator() {
         const button = document.getElementById(BUTTON_ID);
         if (!button) return;
@@ -712,6 +720,7 @@
             }
             if (download) download.hidden = true;
         }
+        syncResultPlaceholder();
 
         if (lastJob) renderJob(lastJob);
         else if (currentJobId) renderActivity({status: 'queued', phase: 'queued'});
@@ -772,6 +781,7 @@
             result.hidden = true;
         }
         if (download) download.hidden = true;
+        syncResultPlaceholder();
         renderActivity({status: 'queued', phase: 'preparing'});
 
         try {
@@ -885,6 +895,7 @@
                 }
             }
         }
+        syncResultPlaceholder();
     }
 
     async function pollJob(jobId) {
