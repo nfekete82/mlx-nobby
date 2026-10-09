@@ -52,3 +52,9 @@ browser. The already existing local-access middleware remains active.
 
 The VERSION bump is staged as 1.10.0 on this branch. **Do not tag/release
 until the acceptance checklist is complete.**
+
+## Permanent deletion
+
+Use **Löschen** on a single card for one file. **Alle dauerhaft löschen** deletes the entire local generated media library (all images, videos and Talking Photo clips, whether temporary or permanent), **not only the filtered list**. The dialog shows the current total and requires confirmation. No model weights, chat text or user uploads outside canonical Nobby generated-media roots are targeted. Deleted files cannot be recovered from the library.
+
+The sidebar **Neuer Chat** action now shares the library navigation styling while retaining its original chat-creation behavior.
