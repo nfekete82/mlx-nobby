@@ -395,6 +395,7 @@ def _dispatch_and_poll(job_id):
             _update(
                 job_id,
                 native_job_id=native_id,
+                service_dispatch_wait_ms=round(max(0.0, time.time() - float(job.get("created_at") or time.time())) * 1000, 1),
                 status=str(native.get("status") or "queued"),
                 phase=str(native.get("phase") or "queued"),
                 started_at=native.get("started_at") or time.time(),
