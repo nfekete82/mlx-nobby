@@ -132,3 +132,72 @@ def test_talking_photo_stale_session_recovers(ui):
     assert page.evaluate("sessionStorage.getItem('mlxTalkingPhotoCurrentJob')") is None
     page.locator("#talkingPhotoButton").click()
     expect(page.locator("#talkingPhotoCreate")).to_be_enabled()
+
+
+def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
+    page, _agent, _allowed = ui
+    # The production UI checks provider readiness and available voices while
+    # opening. Give this layout-only test explicit fixture responses, not the
+    # Agent harness's intentionally unimplemented (501) endpoints.
+    page.route("**/api/talking-photo/status", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps({"providers": {"ltx": {"ready": True, "device": "mlx/metal"}}}),
+    ))
+    page.route("**/api/mlx/audio/voices/manage", lambda route: route.fulfill(
+        status=200, content_type="application/json", body=json.dumps({"voices": []}),
+    ))
+    page.locator("#talkingPhotoButton").click()
+    expect(page.locator("#talkingPhotoModal")).to_be_visible()
+
+    # A finished result is always owned by the third output panel, never
+    # appended below the entire form as in the previous implementation.
+    assert page.locator("#talkingPhotoResultFrame").evaluate(
+        "(frame) => frame.contains(document.getElementById('talkingPhotoResult'))"
+    )
+    assert page.locator("#talkingPhotoOutput").evaluate(
+        "(output) => output.contains(document.getElementById('talkingPhotoStatus'))"
+            " && output.contains(document.getElementById('talkingPhotoActivity'))"
+            " && output.contains(document.getElementById('talkingPhotoCreate'))"
+            " && output.contains(document.getElementById('talkingPhotoDownload'))"
+    )
+    expect(page.locator("#talkingPhotoResultPlaceholder")).to_be_visible()
+    expect(page.locator("#talkingPhotoResult")).to_be_hidden()
+    geometry = page.evaluate("""() => {
+        const bounds = selector => {
+            const box = document.querySelector(selector).getBoundingClientRect();
+            return {left: box.left, right: box.right, top: box.top,
+                    bottom: box.bottom, width: box.width};
+        };
+        return {
+            width: innerWidth, height: innerHeight,
+            dialog: bounds('.mlx-talking-photo-dialog'),
+            source: bounds('.mlx-talking-photo-source'),
+            settings: bounds('.mlx-talking-photo-settings'),
+            output: bounds('#talkingPhotoOutput'),
+        };
+    }""")
+    assert geometry["dialog"]["right"] <= geometry["width"] + 2
+    if geometry["width"] >= 1101:
+        assert geometry["dialog"]["width"] > 1000
+        assert geometry["source"]["right"] < geometry["settings"]["left"]
+        assert geometry["settings"]["right"] < geometry["output"]["left"]
+        assert geometry["output"]["right"] <= geometry["dialog"]["right"]
+        assert abs(geometry["source"]["top"] - geometry["output"]["top"]) < 3
+        assert geometry["dialog"]["bottom"] <= geometry["height"] + 2
+    else:
+        assert geometry["source"]["top"] < geometry["settings"]["top"]
+        assert geometry["settings"]["bottom"] < geometry["output"]["top"]
+        assert geometry["output"]["right"] <= geometry["dialog"]["right"]
+
+    # Simulate reveal without a media fetch: the preview must fit the panel.
+    page.evaluate("""() => {
+        document.getElementById('talkingPhotoResultPlaceholder').hidden = true;
+        document.getElementById('talkingPhotoResult').hidden = false;
+    }""")
+    expect(page.locator("#talkingPhotoResult")).to_be_visible()
+    expect(page.locator("#talkingPhotoResultPlaceholder")).to_be_hidden()
+    frame = page.locator("#talkingPhotoResultFrame").bounding_box()
+    video = page.locator("#talkingPhotoResult").bounding_box()
+    assert frame and video
+    assert video["x"] >= frame["x"] - 2
+    assert video["x"] + video["width"] <= frame["x"] + frame["width"] + 2

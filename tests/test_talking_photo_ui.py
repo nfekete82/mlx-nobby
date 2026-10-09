@@ -33,6 +33,13 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "lead_in_ms:" in source
     assert "leadInSelect.value = '0'" in source
     assert "leadInLabel.hidden = engineSelect.value === 'fast'" in source
+    assert "talkingPhotoOutput" in source
+    assert "talkingPhotoResultFrame" in source
+    assert "talkingPhotoResultPlaceholder" in source
+    assert "syncResultPlaceholder()" in source
+    assert "1640px" in source
+    assert "grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr) minmax(0, 1fr)" in source
+    assert "mlx-talking-photo-activity" in source
     assert "talkingPhotoActivity" in source
     assert "talkingPhotoProgressTrack" in source
     assert "talkingPhotoElapsed" in source

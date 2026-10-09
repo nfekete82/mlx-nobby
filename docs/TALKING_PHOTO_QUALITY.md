@@ -10,6 +10,18 @@ Standardstimme: Der Request enthält `input` und `language`. ISO-Codes werden au
 
 Der Speech-Service erzeugt derzeit MP3. Die vorhandene WAV-Konvertierung verändert nur Format, Sample Rate und Kanäle. Das unveränderte zeitliche Signal bleibt erhalten; die MP3-Kodierung ist natürlich nicht verlustfrei. Voice-Manager-Qualitätsprofile beeinflussen die TTS-Samplingparameter, nicht die Daueranpassung im LTX-Pfad. Diese Einstellungen und andere Speech-/MuseTalk-/Shorts-Funktionen wurden nicht verändert.
 
+## Breites Talking-Photo-Fenster und Ergebnisvorschau
+
+Auf großen Bildschirmen stehen **Quellfoto (links)**, **Einstellungen
+(Mitte)** und **Videovorschau mit Fortschritt/Abbrechen/Download (rechts)**
+nebeneinander, statt das erzeugte Video unter das lange Formular zu hängen.
+Die Oberfläche verwendet ein bis zu 1640 px breites Dialogfenster und
+begrenzt die Videohöhe; bei schmaleren Viewports stapelt sie die Ergebniszone
+unter zwei Eingabespalten beziehungsweise alle Bereiche mobil einspaltig.
+Die Fortschrittsinformationen sind dadurch bereits vor Beginn eines Jobs an
+der späteren Ergebnisposition sichtbar. Rendering, Videodatei, Download und
+Speicher-/Löschverhalten bleiben unverändert.
+
 ## Laufender Jobstatus in der Oberfläche
 
 Talking Photo zeigt den aktuellen Schritt (Warten, TTS, LTX-Rendern, optional
