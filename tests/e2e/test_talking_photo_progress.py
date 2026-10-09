@@ -27,6 +27,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         requests["create"] += 1
         body = route.request.post_data_json
         assert body["engine"] == "ltx"
+        assert body["lead_in_ms"] == 500
         respond(route, dict(job), 202)
 
     def poll(route):
@@ -59,6 +60,12 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         {"name": "portrait.png", "mimeType": "image/png", "buffer": png.getvalue()}
     )
     page.locator("#talkingPhotoText").fill("Hello, this is a progress test.")
+    expect(page.locator("#talkingPhotoLeadIn")).to_have_value("0")
+    page.locator("#talkingPhotoEngine").select_option("fast")
+    expect(page.locator("#talkingPhotoLeadInField")).to_be_hidden()
+    page.locator("#talkingPhotoEngine").select_option("ltx")
+    expect(page.locator("#talkingPhotoLeadInField")).to_be_visible()
+    page.locator("#talkingPhotoLeadIn").select_option("500")
     page.locator("#talkingPhotoCreate").click()
 
     expect(page.locator("#talkingPhotoActivity")).to_be_visible()
