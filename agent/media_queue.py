@@ -292,7 +292,7 @@ def _mirror_native(job_id, native):
         "model", "result", "error", "started_at", "finished_at",
         "semantic_operation", "reference_mode", "reference_relation", "reference_used",
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
-        "runtime_handoff",
+        "runtime_handoff", "performance_timings",
     ):
         if key in native:
             copied[key] = native.get(key)
@@ -395,6 +395,7 @@ def _dispatch_and_poll(job_id):
             _update(
                 job_id,
                 native_job_id=native_id,
+                service_dispatch_wait_ms=round(max(0.0, time.time() - float(job.get("created_at") or time.time())) * 1000, 1),
                 status=str(native.get("status") or "queued"),
                 phase=str(native.get("phase") or "queued"),
                 started_at=native.get("started_at") or time.time(),
