@@ -50,6 +50,7 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
     params = {"source_path": str(source), "prompt": "Make the tree orange",
               "width": 512, "height": 512, "steps": 4, "guidance": 3.5, "seed": 42}
     captured = {}
+    events = []
     class FakeProcess:
         returncode = 0
         pid = 1
@@ -66,7 +67,15 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
          patch.object(image_providers, "terminate_process_tree"), \
          patch.object(image_providers, "_validate_provider_output"), \
          patch.object(image_providers, "_maybe_quality_upscale"):
-        image_providers.run_provider(model, params, output)
+        image_providers.run_provider(model, params, output, progress_callback=events.append)
+    timing = next(event["provider_timing"] for event in events if "provider_timing" in event)
+    assert timing["schema"] == 1
+    assert timing["process_wall_ms"] >= 0
+    assert timing["steps"] == 4
+    assert timing["width"] == 512 and timing["height"] == 512
+    assert timing["low_ram"] is True
+    assert timing["exit_code"] == 0
+    assert "prompt" not in timing and "source_path" not in timing
     command = captured["command"]
     assert command[:2] == [str(runner), "generate"]
     assert command[command.index("--image") + 1] == str(source)
