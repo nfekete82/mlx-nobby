@@ -272,6 +272,33 @@ def image_file(image_id: str, download: bool = False):
         raise HTTPException(status_code=503, detail=f'Agent nicht erreichbar: {exc.reason}')
 
 
+@app.get('/api/library/assets')
+def library_assets(kind: str = 'all', limit: int = 400):
+    return agent_json_request(
+        'GET', '/api/library/assets?kind=' + urllib.parse.quote(kind, safe='') +
+        '&limit=' + str(max(1, min(1000, limit))), timeout=30,
+    )
+
+
+@app.post('/api/library/assets/{kind}/{asset_id}/save')
+def library_save(kind: str, asset_id: str):
+    return agent_json_request(
+        'POST', '/api/library/assets/' +
+        urllib.parse.quote(kind, safe='') + '/' +
+        urllib.parse.quote(asset_id, safe='') + '/save',
+        {}, timeout=30,
+    )
+
+
+@app.delete('/api/library/assets/{kind}/{asset_id}')
+def library_delete(kind: str, asset_id: str):
+    return agent_json_request(
+        'DELETE', '/api/library/assets/' +
+        urllib.parse.quote(kind, safe='') + '/' +
+        urllib.parse.quote(asset_id, safe=''), timeout=30,
+    )
+
+
 @app.get('/api/mlx/video/models')
 def video_models():
     return agent_json_request('GET', '/api/video/models', timeout=15)
