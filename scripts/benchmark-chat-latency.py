@@ -10,7 +10,6 @@ import argparse
 import json
 import math
 from pathlib import Path
-import statistics
 import time
 from urllib.parse import urlsplit
 
@@ -30,9 +29,16 @@ def validate_loopback(url: str) -> str:
 
 
 def positive_int(value: str) -> int:
-    number = int(value)
-    if not 1 <= number <= 20:
-        raise argparse.ArgumentTypeError("Expected an integer from 1 to 20")
+    return bounded_int(value, 1, 20)
+
+
+def bounded_int(value: str, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected an integer") from exc
+    if not minimum <= number <= maximum:
+        raise argparse.ArgumentTypeError(f"Expected an integer from {minimum} to {maximum}")
     return number
 
 
@@ -83,7 +89,7 @@ def main(argv=None):
     parser.add_argument("--url", type=validate_loopback, default="http://127.0.0.1:8000")
     parser.add_argument("--model", required=True, help="Exact already loaded model ID; never switches models")
     parser.add_argument("--samples", type=positive_int, default=5)
-    parser.add_argument("--timeout", type=positive_int, default=90, help="Seconds per request (1–20)")
+    parser.add_argument("--timeout", type=lambda x: bounded_int(x, 1, 600), default=90, help="Seconds per request (1–600)")
     parser.add_argument("--output", type=Path, help="Optional local JSON path; no prompts/completions stored")
     args = parser.parse_args(argv)
     with httpx.Client(base_url=args.url, trust_env=False) as client:
