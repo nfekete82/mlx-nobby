@@ -29,6 +29,10 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "Fast · MuseTalk" in source
     assert "engine," in source
     assert "engineSelect.value = 'ltx'" in source
+    assert "talkingPhotoLeadIn" in source
+    assert "lead_in_ms:" in source
+    assert "leadInSelect.value = '0'" in source
+    assert "leadInLabel.hidden = engineSelect.value === 'fast'" in source
     assert "talkingPhotoActivity" in source
     assert "talkingPhotoProgressTrack" in source
     assert "talkingPhotoElapsed" in source

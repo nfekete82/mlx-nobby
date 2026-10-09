@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from agent import talking_photo_quality
-from agent.talking_photo_audio import validate_wav
+from agent.talking_photo_audio import prepend_lead_in, validate_wav
 
 
 class TalkingPhotoQualityAudioTests(unittest.TestCase):
@@ -75,6 +75,30 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
         self.assertAlmostEqual(stats['leading_silence_ms'], 100, delta=10)
         self.assertAlmostEqual(stats['trailing_silence_ms'], 150, delta=10)
         self.assertIsNotNone(stats['active_rms_dbfs'])
+
+    def test_opt_in_lead_in_preserves_every_original_pcm_sample(self):
+        source = self._wav_bytes([0] * 480 + [2000, -2000] * 800)
+        self.assertIs(prepend_lead_in(source, 0), source)
+        modified = prepend_lead_in(source, 500)
+        with wave.open(io.BytesIO(source), "rb") as original:
+            pcm = original.readframes(original.getnframes())
+            original_count = original.getnframes()
+        with wave.open(io.BytesIO(modified), "rb") as prepared:
+            self.assertEqual(prepared.getframerate(), 16000)
+            self.assertEqual(prepared.getnchannels(), 1)
+            self.assertEqual(prepared.getsampwidth(), 2)
+            self.assertEqual(prepared.getnframes(), original_count + 8000)
+            out = prepared.readframes(prepared.getnframes())
+            self.assertEqual(out[:16000], bytes(16000))
+            self.assertEqual(out[16000:], pcm)
+        stats = validate_wav(modified)
+        self.assertAlmostEqual(stats["leading_silence_ms"], 530, delta=10)
+
+    def test_opt_in_lead_in_rejects_unsupported_values(self):
+        source = self._wav_bytes([1000] * 1600)
+        for invalid in (1, 250, -1, 1000, 500.0, "500", True):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                prepend_lead_in(source, invalid)
 
     def test_validation_rejects_empty_silent_and_wrong_rate_audio(self):
         for samples, rate in [([], 16000), ([0] * 16000, 16000), ([1000] * 1600, 24000)]:

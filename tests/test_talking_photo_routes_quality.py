@@ -1,6 +1,8 @@
 import unittest
 from unittest import mock
 
+from pydantic import ValidationError
+
 from agent import talking_photo_routes
 from agent import talking_photo_quality
 
@@ -30,6 +32,16 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
             engine="ltx",
         )
         self.assertEqual(direct.engine, "ltx")
+
+    def test_audio_lead_in_is_opt_in_and_strictly_validated(self):
+        base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Guten Morgen!"}
+        self.assertEqual(talking_photo_routes.TalkingPhotoRequest(**base).lead_in_ms, 0)
+        self.assertEqual(
+            talking_photo_routes.TalkingPhotoRequest(**base, lead_in_ms=500).lead_in_ms, 500
+        )
+        for value in (-1, 250, 501, 1000, "0.5"):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                talking_photo_routes.TalkingPhotoRequest(**base, lead_in_ms=value)
 
     def test_direct_ltx_health_does_not_require_musetalk(self):
         native = {

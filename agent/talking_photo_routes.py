@@ -25,6 +25,7 @@ class TalkingPhotoRequest(BaseModel):
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
     engine: Literal["fast", "quality", "ltx"] = "ltx"
+    lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
 
 
 def provider_status() -> dict:
@@ -67,6 +68,8 @@ def install_routes(app):
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
             engine = payload.pop("engine", "ltx")
+            if engine == "fast" and payload["lead_in_ms"] != 0:
+                raise HTTPException(422, "Audiovorlauf ist nur für LTX direkt oder Hybrid verfügbar")
             if engine == "quality":
                 return talking_photo_quality.create_job(payload)
             if engine == "ltx":

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add an **off-by-default** 500 ms leading-silence experiment for LTX Direct and
+  LTX + MuseTalk Talking Photo. Preserve all original speech PCM samples;
+  feed the same shifted WAV to LTX and the final MP4 (and MuseTalk in hybrid
+  mode) to avoid introducing audio/video drift. Keep zero-lead-in behavior
+  unchanged, validate the 20-second combined duration before rendering, and
+  expose the selection in the UI. Include CPU-level PCM/conditioning and browser
+  regressions plus an A/B option in the diagnostic CLI.
+
 - Show live Talking Photo processing status with a spinner, stage-specific
   German/English labels, estimated progress (not a precise LTX model percentage),
   elapsed time, and a top-bar running/finished indicator. Closing the dialog

@@ -114,6 +114,80 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             self.assertEqual(metadata["lipsync"]["conditioning_audio_sha256"], metadata["conditioning_audio_sha256"])
             self.assertEqual((bundle / "ltx.log").read_text(), "rendered")
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
+    def test_opt_in_lead_in_is_used_by_ltx_runner_and_preserves_the_source(self):
+        buffer = io.BytesIO()
+        pcm = (5000).to_bytes(2, "little", signed=True) * 6400
+        with wave.open(buffer, "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16000)
+            handle.writeframes(pcm)
+        audio = buffer.getvalue()
+        commands = []
+        native_video = bytes(4) + b"ftyp" + b"0" * 48
+        real_popen = subprocess.Popen
+
+        def fake_popen(command, **kwargs):
+            if "--output" not in command:
+                return real_popen(command, **kwargs)
+            commands.append(command)
+            Path(command[command.index("--output") + 1]).write_bytes(native_video)
+            process = mock.Mock(returncode=0)
+            process.communicate.return_value = ("ok", None)
+            return process
+
+        with tempfile.TemporaryDirectory() as directory:
+            work, bundle = Path(directory) / "work", Path(directory) / "bundle"
+            with (
+                mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_SEED": "42"}),
+                mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
+                mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
+                mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
+                mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+            ):
+                video, details = talking_photo_ltx.generate(
+                    "a" * 24, b"image", ".png", audio, 999, work,
+                    cancelled=lambda: False, debug_dir=bundle, lead_in_ms=500,
+                )
+            self.assertEqual(video, native_video)
+            self.assertEqual(details["lead_in_ms"], 500)
+            self.assertAlmostEqual(details["audio_seconds"], 0.4)
+            self.assertAlmostEqual(details["conditioned_audio_seconds"], 0.9)
+            self.assertEqual((bundle / "ltx-quality-source.wav").read_bytes(), audio)
+            self.assertTrue((bundle / "ltx-quality-leadin.wav").is_file())
+            conditioning = Path(commands[0][commands[0].index("--audio") + 1])
+            self.assertEqual(conditioning, (bundle / "ltx-quality-audio.wav").resolve())
+            with wave.open(str(conditioning), "rb") as handle:
+                samples = handle.readframes(handle.getnframes())
+                self.assertEqual(samples[:16000], bytes(16000))
+                self.assertEqual(samples[16000:16000 + len(pcm)], pcm)
+                self.assertTrue(all(c == 0 for c in samples[16000 + len(pcm):]))
+                self.assertEqual(handle.getnframes(), (details["frames"] * 16000 + 23) // 24)
+            self.assertEqual(details["conditioning_audio_sha256"], hashlib.sha256(conditioning.read_bytes()).hexdigest())
+            self.assertEqual(json.loads((bundle / "render.json").read_text())["lead_in_ms"], 500)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
+    def test_lead_in_over_20_seconds_is_rejected_before_render(self):
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16000)
+            tone = (5000).to_bytes(2, "little", signed=True)
+            handle.writeframes(tone * 160 + bytes(2 * (320000 - 160)))
+        with (
+            mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
+            mock.patch.object(talking_photo_ltx.subprocess, "Popen") as popen,
+        ):
+            with tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(RuntimeError, "maximal 20 Sekunden"):
+                    talking_photo_ltx.generate(
+                        "a" * 24, b"image", ".png", buffer.getvalue(), 20.0, Path(directory),
+                        cancelled=lambda: False, lead_in_ms=500,
+                    )
+            popen.assert_not_called()
+
     def test_quality_frames_cover_audio_on_ltx_grid(self):
         frames, duration = talking_photo_ltx.quality_frames(3.0)
         self.assertEqual(frames, 73)
