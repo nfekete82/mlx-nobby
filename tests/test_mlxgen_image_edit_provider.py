@@ -70,7 +70,7 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
     command = captured["command"]
     assert command[:2] == [str(runner), "generate"]
     assert command[command.index("--image") + 1] == str(source)
-    assert command[command.index("--model") + 1] == str(tmp_path)
+    assert command[command.index("--model") + 1] == "AbstractFramework/qwen-image-edit-2511-4bit"
     assert "--task" not in command and "--i2i-mode" not in command
     assert "--prompt" in command and "--output" in command
 
