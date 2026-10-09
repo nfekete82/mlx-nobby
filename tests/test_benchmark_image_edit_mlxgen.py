@@ -1,4 +1,5 @@
 """Offline benchmark contracts. No real MLX model is required."""
+import argparse
 import importlib.util
 from pathlib import Path
 
@@ -12,7 +13,7 @@ spec.loader.exec_module(mod)
 
 def test_bounds_and_progress():
     assert mod.positive_samples("5") == 5
-    with pytest.raises(ValueError):
+    with pytest.raises(argparse.ArgumentTypeError):
         mod.positive_samples("6")
     assert mod.parse_progress("100%| 4/4 [00:18<00:00]") == {"last_step": 4, "steps": 4}
     assert mod.parse_progress("nothing") is None
