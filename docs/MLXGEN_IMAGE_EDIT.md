@@ -22,8 +22,8 @@ The default executable is
 Hugging Face snapshot of `AbstractFramework/qwen-image-edit-2511-4bit`.
 Neither readiness checks nor generation perform automatic downloads.
 
-The runtime invokes `mlxgen generate --model <local snapshot> --image <local
-source> --prompt ...` without forcing `--task` or `--i2i-mode`: MLX-Gen
+The runtime invokes `mlxgen generate --model AbstractFramework/qwen-image-edit-2511-4bit --image <local
+source> --prompt ...` with HF_HUB_OFFLINE=1 and without forcing `--task` or `--i2i-mode`: MLX-Gen
 0.38.0 selects the valid Qwen edit handler automatically. Existing per-job
 isolation, cancellation, RAM admission, process-RSS bounds, and output
 validation remain active. Provider availability proves required files and CLI
@@ -45,3 +45,8 @@ generation acceptance does not establish that image editing works.
 
 Do not bypass admission limits, delete the existing model cache, or install the
 large separate quality model to work around an availability failure.
+
+**Routing regression:** Avoid passing the absolute HF snapshot directory as `--model`:
+MLX-Gen 0.38.0 may choose latent img2img instead of Qwen edit and exit 2
+with `--image-strength is required`. The repository ID is resolved from the
+same existing local cache because `HF_HUB_OFFLINE=1` is set.
