@@ -1005,6 +1005,7 @@
     "videos": "Videos",
     "keep_all": "Alle dauerhaft behalten",
     "refresh": "Aktualisieren",
-    "recent": "Letzte Chats"
+    "recent": "Letzte Chats",
+    "delete_all": "Alle dauerhaft löschen"
   }
 }
