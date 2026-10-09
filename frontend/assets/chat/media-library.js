@@ -151,7 +151,7 @@
         catch (_error) { failed++; }
       }
       render();
-      if (failed) window.alert(t(failed + " Medien konnten nicht gespeichert werden.", failed + " files could not be saved."));
+      if (failed) window.alert(t(`${failed} Medien konnten nicht gespeichert werden.`, `${failed} files could not be saved.`));
     } finally { button.disabled = false; }
   });
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
