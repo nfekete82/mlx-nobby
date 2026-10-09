@@ -118,6 +118,30 @@ def _analyze_wav(wav_bytes: bytes) -> dict:
     }
 
 
+def prepend_lead_in(wav_bytes: bytes, lead_in_ms: int = 0) -> bytes:
+    """Opt-in silence before speech; preserve every original PCM sample.
+
+    The same returned WAV must be used for both LTX conditioning and final
+    playback. A positive lead-in is deliberately restricted to the 500-ms
+    experiment; normal jobs remain bit-for-bit unchanged.
+    """
+    if type(lead_in_ms) is not int or lead_in_ms not in (0, 500):
+        raise ValueError("Talking-Photo-Audiovorlauf muss 0 oder 500 ms betragen")
+    if lead_in_ms == 0:
+        return wav_bytes
+    stats = validate_wav(wav_bytes)
+    with wave.open(io.BytesIO(wav_bytes), "rb") as source:
+        frames = source.readframes(source.getnframes())
+    silence = b"\\x00\\x00" * (stats["sample_rate"] * lead_in_ms // 1000)
+    target = io.BytesIO()
+    with wave.open(target, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(stats["sample_rate"])
+        output.writeframes(silence + frames)
+    return target.getvalue()
+
+
 def validate_wav(wav_bytes: bytes) -> dict:
     stats = _analyze_wav(wav_bytes)
     if stats["sample_rate"] != 16000:
