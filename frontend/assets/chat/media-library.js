@@ -166,10 +166,7 @@
     } catch (error) { window.alert(error.message); return; }
     const total = Number(latest.total || 0);
     if (!total) return;
-    const message = t(
-      `Alle ${total} Bilder und Videos dauerhaft von diesem Mac löschen? Dies kann nicht rückgängig gemacht werden.`,
-      `Permanently delete all ${total} images and videos from this Mac? This cannot be undone.`
-    );
+    const message = t(`Alle ${total} Bilder und Videos dauerhaft von diesem Mac löschen? Dies kann nicht rückgängig gemacht werden.`, `Permanently delete all ${total} images and videos from this Mac? This cannot be undone.`);
     const confirmed = window.MLXConfirm
       ? await window.MLXConfirm({
           title: t("Alle Medien endgültig löschen", "Permanently delete all media"),
@@ -187,10 +184,7 @@
       if (!response.ok) throw new Error("HTTP " + response.status);
       const result = await response.json();
       await refresh();
-      if (result.errors) window.alert(t(
-        `${result.errors} Dateien konnten nicht gelöscht werden.`,
-        `${result.errors} files could not be deleted.`
-      ));
+      if (result.errors) window.alert(t(`${result.errors} Dateien konnten nicht gelöscht werden.`, `${result.errors} files could not be deleted.`));
     } catch (error) { window.alert(error.message); }
     finally { button.disabled = false; }
   });
