@@ -29,3 +29,27 @@
 .sidebar .nobby-new-chat-action{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;color:inherit;border:0;border-radius:10px;box-shadow:none;padding:12px 16px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s ease}
 .sidebar .nobby-new-chat-action:hover{background:rgba(146,167,206,.12)}
 .sidebar .new-chat-actions{align-items:center;gap:4px}
+
+/* Sidebar navigation v1.10 polish */
+.sidebar .new-chat-actions{padding:4px 7px;display:block}
+.sidebar .nobby-new-chat-action,.sidebar .sidebar-library-action,.sidebar .nobby-sidebar-nav{min-height:38px;display:flex;gap:12px;align-items:center;border:0;background:transparent;box-shadow:none;border-radius:9px;padding:9px 11px;width:100%;color:var(--text,#e8edf6);font:inherit;font-size:13px;font-weight:480;text-align:left;cursor:pointer}
+.sidebar .nobby-new-chat-action:hover,.sidebar .sidebar-library-action:hover,.sidebar .nobby-sidebar-nav:hover{background:rgba(140,155,181,.13)}
+.sidebar .nobby-new-chat-action svg,.sidebar .sidebar-library-action svg,.sidebar .nobby-sidebar-nav svg{width:19px;height:19px;flex:none}
+.sidebar .sidebar-library-action{width:calc(100% - 14px);margin:0 7px}
+.sidebar .nobby-sidebar-nav{width:calc(100% - 14px);margin:0 7px}
+.sidebar .nobby-sidebar-section-label{padding:16px 15px 7px;font-size:12px;font-weight:500;color:#98a1b0;text-transform:none;letter-spacing:0}
+.sidebar .nobby-projects-empty{color:#657080;font-size:12px;padding:8px 16px 12px}
+.sidebar .nobby-recent-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-right:11px}
+.sidebar .nobby-recent-toggle{display:flex;gap:6px;align-items:center;color:inherit;background:transparent;border:0;padding:2px 0;font:inherit;cursor:pointer}
+.sidebar .nobby-recent-toggle svg{width:14px;height:14px;transition:transform .15s}
+.sidebar .nobby-recent-toggle[aria-expanded=false] svg{transform:rotate(-90deg)}
+.sidebar .nobby-recent-controls{display:flex;align-items:center;gap:2px}
+.sidebar .nobby-sidebar-icon,.sidebar .nobby-recent-more summary{display:grid;place-items:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#a6adbb;cursor:pointer;padding:4px;list-style:none}
+.sidebar .nobby-sidebar-icon:hover,.sidebar .nobby-recent-more summary:hover{background:rgba(140,155,181,.15);color:var(--text,#fff)}
+.sidebar .nobby-sidebar-icon svg,.sidebar .nobby-recent-more svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sidebar .nobby-recent-more summary::-webkit-details-marker{display:none}
+.sidebar .nobby-recent-more{position:relative}
+.sidebar .nobby-recent-filter{padding:6px 12px}
+.sidebar .nobby-recent-filter[hidden],.sidebar #chatList[hidden]{display:none!important}
+.sidebar .nobby-recent-filter input{width:100%;border-radius:9px;padding:9px 11px;font:inherit;font-size:12px;border:1px solid #334158;color:inherit;background:#171e2b}
+.sidebar #chatList > [hidden]{display:none!important}
