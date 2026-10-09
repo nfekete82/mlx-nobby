@@ -15,6 +15,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 import image_registry as registry
+from image_job_timings import ImageJobTimings
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 import runtime_coordinator
 import subprocess
@@ -1158,6 +1159,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
     global _active_job_id
 
     output_path = None
+    timings = ImageJobTimings()
     cancel_event = _jobs[job_id]["_cancel_event"]
 
     def prepared(model, params, path):
@@ -1195,6 +1197,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             progress=0.0, started_at=time.time(),
         )
         with runtime_coordinator.image_runtime(cancel_event):
+            timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
             if operation == "edit":
                 execute = _edit_result
@@ -1203,6 +1206,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             else:
                 execute = _generate_result
 
+            timings.mark("execution_started")
             result = execute(
                 request,
                 provider_options=provider_options,
@@ -1212,6 +1216,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
                    if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
             )
+        timings.mark("execution_finished")
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
         with _jobs_lock:
@@ -1264,7 +1269,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 error=detail, finished_at=time.time(), **getattr(exc, 'diagnosis', {}),
             )
     finally:
-        _update_job(job_id, _process=None)
+        _update_job(job_id, _process=None, performance_timings=timings.report())
         with _jobs_lock:
             if _active_job_id == job_id:
                 _active_job_id = None
