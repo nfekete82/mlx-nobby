@@ -15,3 +15,5 @@ assert.match(js,/document\.getElementById\("newChat"\)\?\.click\(\)/);
 assert.match(css,/nobby-recent-heading/);
 assert.match(css,/sidebar-library-action svg/);
 console.log("Sidebar structure, recent tools, new-chat shortcut and DOM filter wiring passed.");
+
+assert.ok(html.indexOf('id="sidebarJobsButton"') > html.indexOf('class="sidebar-bottom"'), 'Files & Jobs must stay in fixed bottom navigation');
