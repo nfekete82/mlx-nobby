@@ -1,0 +1,154 @@
+(() => {
+  "use strict";
+  const panel = document.getElementById("nobbyLibrary");
+  const grid = document.getElementById("nobbyLibraryGrid");
+  const toggle = document.getElementById("sidebarLibraryButton");
+  const close = document.getElementById("nobbyLibraryClose");
+  if (!panel || !grid || !toggle) return;
+  const state = { kind: "all", query: "", assets: [], loaded: false, generation: 0 };
+  const de = () => String(window.MLXI18n?.getLanguage?.() || document.documentElement.lang || "de").startsWith("de");
+  const t = (g, e) => de() ? g : e;
+  function elt(tag, className, label) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (label !== undefined) element.textContent = label;
+    return element;
+  }
+  function setVisible(visible) {
+    panel.hidden = !visible;
+    panel.setAttribute("aria-hidden", String(!visible));
+    document.body.classList.toggle("nobby-library-open", visible);
+    if (visible) {
+      state.loaded = true;
+      refresh();
+      close?.focus();
+    } else {
+      ++state.generation;
+      toggle.focus();
+    }
+  }
+  const formatDate = value => new Date(Number(value) * 1000).toLocaleDateString(de() ? "de-DE" : "en-US");
+  function label(kind) {
+    if (kind === "image") return t("Bild", "Image");
+    if (kind === "talking_photo") return "Talking Photo";
+    return "Video";
+  }
+  function link(url, name, download) {
+    const anchor = elt("a", "nobby-library-action", name);
+    anchor.href = download ? url + "?download=1" : url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    return anchor;
+  }
+  async function action(method, asset, suffix = "") {
+    const url = "/api/library/assets/" + encodeURIComponent(asset.kind) + "/" +
+      encodeURIComponent(asset.id) + suffix;
+    const response = await fetch(url, { method });
+    if (!response.ok) throw new Error(t("Aktion fehlgeschlagen", "Action failed") + " (HTTP " + response.status + ")");
+    return response.json();
+  }
+  function card(asset) {
+    const box = elt("article", "nobby-library-card");
+    const media = elt("div", "nobby-library-media");
+    if (asset.kind === "image") {
+      const image = elt("img");
+      image.src = asset.url;
+      image.loading = "lazy";
+      image.alt = t("Generiertes Bild", "Generated image");
+      media.appendChild(image);
+    } else {
+      const video = elt("video");
+      video.src = asset.url;
+      video.preload = "metadata";
+      video.controls = true;
+      video.playsInline = true;
+      video.setAttribute("aria-label", label(asset.kind));
+      media.appendChild(video);
+    }
+    box.appendChild(media);
+    const text = elt("div", "nobby-library-card-body");
+    text.appendChild(elt("strong", "", label(asset.kind)));
+    text.appendChild(elt("span", "nobby-library-date", formatDate(asset.created_at)));
+    const buttons = elt("div", "nobby-library-card-actions");
+    buttons.append(link(asset.url, t("Öffnen", "Open"), false), link(asset.url, t("Download", "Download"), true));
+    const save = elt("button", "nobby-library-action", t("Behalten", "Keep"));
+    save.type = "button";
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      try {
+        await action("POST", asset, "/save");
+        save.textContent = t("Dauerhaft gespeichert ✓", "Saved permanently ✓");
+      } catch (error) {
+        save.disabled = false;
+        window.alert(error.message);
+      }
+    });
+    const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
+    remove.type = "button";
+    remove.addEventListener("click", async () => {
+      const confirmed = window.MLXConfirm ? await window.MLXConfirm({
+        title: t("Medium löschen", "Delete media"),
+        message: t("Datei dauerhaft von diesem Mac löschen?", "Permanently delete this file from this Mac?"),
+        confirmLabel: t("Endgültig löschen", "Delete permanently"), cancelLabel: t("Abbrechen", "Cancel")
+      }) : window.confirm(t("Datei endgültig löschen?", "Permanently delete file?"));
+      if (!confirmed) return;
+      remove.disabled = true;
+      try { await action("DELETE", asset); await refresh(); }
+      catch (error) { remove.disabled = false; window.alert(error.message); }
+    });
+    buttons.append(save, remove);
+    text.appendChild(buttons);
+    box.appendChild(text);
+    return box;
+  }
+  function render() {
+    const filter = state.query.trim().toLowerCase();
+    const filtered = state.assets.filter(item =>
+      (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
+      (!filter || label(item.kind).toLowerCase().includes(filter) || item.id.includes(filter) || formatDate(item.created_at).includes(filter))
+    );
+    const count = document.getElementById("nobbyLibraryCount");
+    if (count) count.textContent = t(filtered.length + " Medien", filtered.length + " items");
+    const fragment = document.createDocumentFragment();
+    if (!filtered.length) fragment.appendChild(elt("p", "nobby-library-empty",
+      t("Keine gespeicherten Medien gefunden.", "No stored media found.")));
+    for (const asset of filtered) fragment.appendChild(card(asset));
+    grid.replaceChildren(fragment);
+  }
+  async function refresh() {
+    const generation = ++state.generation;
+    grid.replaceChildren(elt("p", "nobby-library-empty", t("Bibliothek wird geladen …", "Loading library …")));
+    try {
+      const response = await fetch("/api/library/assets?limit=1000", { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      if (generation !== state.generation || panel.hidden) return;
+      state.assets = Array.isArray(data.assets) ? data.assets : [];
+      render();
+    } catch (error) {
+      if (generation === state.generation && !panel.hidden) {
+        grid.replaceChildren(elt("p", "nobby-library-empty", t("Bibliothek nicht erreichbar: ", "Library unavailable: ") + error.message));
+      }
+    }
+  }
+  toggle.addEventListener("click", () => setVisible(true));
+  document.getElementById("railLibrary")?.addEventListener("click", () => setVisible(true));
+  close?.addEventListener("click", () => setVisible(false));
+  document.getElementById("nobbyLibraryRefresh")?.addEventListener("click", refresh);
+  document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
+    state.query = event.target.value; render();
+  });
+  for (const button of panel.querySelectorAll("[data-library-kind]")) {
+    button.addEventListener("click", () => {
+      state.kind = button.dataset.libraryKind;
+      for (const item of panel.querySelectorAll("[data-library-kind]")) {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      }
+      render();
+    });
+  }
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !panel.hidden) setVisible(false);
+  });
+})();
