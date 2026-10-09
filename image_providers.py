@@ -1201,7 +1201,10 @@ def run_provider(
         source = params.get("source_path")
         if not source:
             raise ProviderFailure("Bildbearbeitung benötigt ein Quellbild", provider="mlxgen", model=model["id"])
-        # MLX-Gen 0.38.0 detects the edit handler from the known repo ID.\n        # Passing the snapshot directory instead can route into latent img2img\n        # and fail with "--image-strength is required" before loading weights.\n        # HF_HUB_OFFLINE=1 keeps this resolution strictly local.\n        command = [str(MLXGEN_BIN), "generate", "--model", model["repository"],
+        # MLX-Gen 0.38.0 detects the edit handler from the known repo ID.
+        # The absolute snapshot path routes incorrectly to latent img2img.
+        # HF_HUB_OFFLINE=1 ensures repository lookup stays local.
+        command = [str(MLXGEN_BIN), "generate", "--model", model["repository"],
                    "--image", str(source), "--prompt", params["prompt"],
                    "--width", str(params["width"]), "--height", str(params["height"]),
                    "--steps", str(params["steps"]), "--guidance", str(params["guidance"]),
