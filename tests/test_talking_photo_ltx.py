@@ -117,7 +117,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
     def test_opt_in_lead_in_is_used_by_ltx_runner_and_preserves_the_source(self):
         buffer = io.BytesIO()
-        pcm = b"\\x88\\x13" * 6400
+        pcm = (5000).to_bytes(2, "little", signed=True) * 6400
         with wave.open(buffer, "wb") as handle:
             handle.setnchannels(1)
             handle.setsampwidth(2)
@@ -136,11 +136,13 @@ class TalkingPhotoLtxTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             work, bundle = Path(directory) / "work", Path(directory) / "bundle"
-            with mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_SEED": "42"}), \\
-                 mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}), \\
-                 mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)), \\
-                 mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()), \\
-                 mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen):
+            with (
+                mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_SEED": "42"}),
+                mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
+                mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
+                mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
+                mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+            ):
                 video, details = talking_photo_ltx.generate(
                     "a" * 24, b"image", ".png", audio, 999, work,
                     cancelled=lambda: False, debug_dir=bundle, lead_in_ms=500,
@@ -158,7 +160,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                 self.assertEqual(samples[:16000], bytes(16000))
                 self.assertEqual(samples[16000:16000 + len(pcm)], pcm)
                 self.assertTrue(all(c == 0 for c in samples[16000 + len(pcm):]))
-                self.assertEqual(handle.getnframes(), details["frames"] * 16000 // 24 + 1 if details["frames"] * 16000 % 24 else details["frames"] * 16000 // 24)
+                self.assertEqual(handle.getnframes(), (details["frames"] * 16000 + 23) // 24)
             self.assertEqual(details["conditioning_audio_sha256"], hashlib.sha256(conditioning.read_bytes()).hexdigest())
             self.assertEqual(json.loads((bundle / "render.json").read_text())["lead_in_ms"], 500)
 
@@ -169,18 +171,16 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             handle.setnchannels(1)
             handle.setsampwidth(2)
             handle.setframerate(16000)
-            handle.writeframes(bytes(2 * 16000 * 20))
-        # Fill the beginning with a non-silent pulse so WAV validation succeeds.
-        raw = bytearray(buffer.getvalue())
-        raw[44:46] = (5000).to_bytes(2, "little", signed=True)
-        # The signal must be loud enough in the 10ms RMS window.
-        raw[44:44 + 320] = (5000).to_bytes(2, "little", signed=True) * 160
-        with mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}), \\
-             mock.patch.object(talking_photo_ltx.subprocess, "Popen") as popen:
+            tone = (5000).to_bytes(2, "little", signed=True)
+            handle.writeframes(tone * 160 + bytes(2 * (320000 - 160)))
+        with (
+            mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
+            mock.patch.object(talking_photo_ltx.subprocess, "Popen") as popen,
+        ):
             with tempfile.TemporaryDirectory() as directory:
                 with self.assertRaisesRegex(RuntimeError, "maximal 20 Sekunden"):
                     talking_photo_ltx.generate(
-                        "a" * 24, b"image", ".png", bytes(raw), 20.0, Path(directory),
+                        "a" * 24, b"image", ".png", buffer.getvalue(), 20.0, Path(directory),
                         cancelled=lambda: False, lead_in_ms=500,
                     )
             popen.assert_not_called()
