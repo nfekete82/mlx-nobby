@@ -93,3 +93,32 @@ Implementation: `agent/performance_observatory_routes.py`,
 `runtime_coordinator.py`, `frontend/assets/chat/performance-observatory.js`.
 Tests: `tests/test_performance_observatory.py` and
 `tests/test_performance_observatory_ui.mjs`.
+
+
+## Opt-in local chat latency baseline
+
+For a controlled latency comparison on a running Mac, use the read-only
+`scripts/benchmark-chat-latency.py` probe. It sends a short deterministic
+request to an **already selected and loaded** model. It does not explicitly change the selected model, restart runtimes, download
+weights, or manipulate swap; the inference endpoint may lazily load the
+specified model. Ensure the intended model is already loaded beforehand. Run only
+when the service is idle and you consent to short inference requests.
+
+```sh
+python3 scripts/benchmark-chat-latency.py \
+  --url http://127.0.0.1:8000 \
+  --model "/absolute/path/to/your/loaded/model" \
+  --samples 5 \
+  --output artifacts/performance/chat-baseline.json
+```
+
+The first sample is reported separately; subsequent samples have interpolated
+p50/p95 statistics for measured end-to-end latency and server-provided prompt
+and generation timings (when available). The **first call is not necessarily
+cold** and the benchmark **does not establish why** it may be slow. Missing
+timings are absent, never zero. No prompts or responses are persisted.
+Optional JSON output remains local under ignored artifacts. This probe does
+not currently capture TTFT (non-streaming endpoint), model-load duration,
+RAM or swap, nor does it reproduce image/video handoff. It is a narrow baseline
+to be paired with the existing Observatory's runtime and memory history.
+Do not use the benchmark to justify lifting admission reserves or timeouts.
