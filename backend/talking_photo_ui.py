@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 _SCRIPTS = (
-    b'<script src="/assets/chat/talking-photo.js?v=20261008-live-progress"></script>\n'
+    b'<script src="/assets/chat/talking-photo.js?v=20261009-audio-leadin-test"></script>\n'
     b'<script src="/assets/chat/talking-photo-clipboard.js?v=20261004-talking-photo-clipboard"></script>\n'
     b'<script src="/assets/chat/talking-photo-motion.js?v=20261005-talking-photo-motion"></script>\n'
 )
