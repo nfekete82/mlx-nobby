@@ -66,6 +66,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     page.locator("#talkingPhotoEngine").select_option("ltx")
     expect(page.locator("#talkingPhotoLeadInField")).to_be_visible()
     page.locator("#talkingPhotoLeadIn").select_option("500")
+    expect(page.locator("#talkingPhotoCreate")).to_be_enabled()
     page.locator("#talkingPhotoCreate").click()
 
     expect(page.locator("#talkingPhotoActivity")).to_be_visible()
