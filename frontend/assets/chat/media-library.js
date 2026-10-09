@@ -68,16 +68,18 @@
     box.appendChild(media);
     const text = elt("div", "nobby-library-card-body");
     text.appendChild(elt("strong", "", label(asset.kind)));
-    text.appendChild(elt("span", "nobby-library-date", formatDate(asset.created_at)));
+    text.appendChild(elt("span", "nobby-library-date", formatDate(asset.created_at) + " · " + (asset.persistent ? t("Dauerhaft", "Permanent") : t("Temporär", "Temporary"))));
     const buttons = elt("div", "nobby-library-card-actions");
     buttons.append(link(asset.url, t("Öffnen", "Open"), false), link(asset.url, t("Download", "Download"), true));
-    const save = elt("button", "nobby-library-action", t("Behalten", "Keep"));
+    const save = elt("button", "nobby-library-action", asset.persistent ? t("Gespeichert ✓", "Saved ✓") : t("Dauerhaft behalten", "Keep permanently"));
     save.type = "button";
+    save.disabled = Boolean(asset.persistent);
     save.addEventListener("click", async () => {
       save.disabled = true;
       try {
         await action("POST", asset, "/save");
-        save.textContent = t("Dauerhaft gespeichert ✓", "Saved permanently ✓");
+        asset.persistent = true;
+        save.textContent = t("Gespeichert ✓", "Saved ✓");
       } catch (error) {
         save.disabled = false;
         window.alert(error.message);
@@ -135,6 +137,23 @@
   document.getElementById("railLibrary")?.addEventListener("click", () => setVisible(true));
   close?.addEventListener("click", () => setVisible(false));
   document.getElementById("nobbyLibraryRefresh")?.addEventListener("click", refresh);
+  document.getElementById("nobbyLibrarySaveAll")?.addEventListener("click", async event => {
+    const pending = state.assets.filter(asset => !asset.persistent);
+    if (!pending.length) return;
+    const confirmed = window.confirm(t("Alle " + pending.length + " temporären Medien dauerhaft behalten?", "Keep all " + pending.length + " temporary media files permanently?"));
+    if (!confirmed) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    let failed = 0;
+    try {
+      for (const asset of pending) {
+        try { await action("POST", asset, "/save"); asset.persistent = true; }
+        catch (_error) { failed++; }
+      }
+      render();
+      if (failed) window.alert(t(failed + " Medien konnten nicht gespeichert werden.", failed + " files could not be saved."));
+    } finally { button.disabled = false; }
+  });
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
     state.query = event.target.value; render();
   });
