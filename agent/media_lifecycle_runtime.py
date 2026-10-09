@@ -65,7 +65,7 @@ def _register_completed(job_id: str, job: dict) -> None:
         kind,
         asset_id,
         path,
-        persistent=project_owned,
+        persistent=project_owned or owner == "chat",
         owner=owner,
     )
 
@@ -92,7 +92,7 @@ def _wrapped_image_raw_request(method, path, payload=None, timeout=10):
                     "image",
                     asset_id,
                     output_path,
-                    persistent=False,
+                    persistent=True,
                     owner="direct-image",
                 )
             except Exception:
