@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from agent import talking_photo_quality
-from agent.talking_photo_audio import validate_wav
+from agent.talking_photo_audio import prepend_lead_in, validate_wav
 
 
 class TalkingPhotoQualityAudioTests(unittest.TestCase):
