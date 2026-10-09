@@ -31,6 +31,37 @@ class RuntimeCoordinatorTests(unittest.TestCase):
                 )
                 self.assertEqual(float(result.stdout), expected)
 
+    def test_localized_memory_pressure_and_swap_parsing(self):
+        values = {
+            ("sysctl", "-n", "hw.memsize"): str(48 * 1024 ** 3),
+            ("memory_pressure",): "System-wide memory free percentage: 84,5%",
+            ("sysctl", "-n", "vm.swapusage"): (
+                "total = 16384,00M  used = 15253,00M  free = 1131,00M"
+            ),
+        }
+
+        def fake_run(args, **kwargs):
+            return values[tuple(args)]
+
+        with mock.patch.object(runtime_coordinator, "_run_text", side_effect=fake_run):
+            snapshot = runtime_coordinator.memory_budget_snapshot()
+        self.assertEqual(snapshot["free_percent"], 84.5)
+        self.assertAlmostEqual(snapshot["swap_total_gb"], 16.0)
+        self.assertAlmostEqual(snapshot["swap_used_gb"], 14.9, places=1)
+
+    def test_localized_swap_parsing_preserves_dot_decimal(self):
+        values = {
+            ("sysctl", "-n", "hw.memsize"): str(48 * 1024 ** 3),
+            ("memory_pressure",): "System-wide memory free percentage: 84%",
+            ("sysctl", "-n", "vm.swapusage"): (
+                "total = 16384.00M  used = 15253.00M  free = 1131.00M"
+            ),
+        }
+        with mock.patch.object(runtime_coordinator, "_run_text",
+                               side_effect=lambda args, **kwargs: values[tuple(args)]):
+            snapshot = runtime_coordinator.memory_budget_snapshot()
+        self.assertAlmostEqual(snapshot["swap_used_gb"], 14.9, places=1)
+
     def test_idle_loaded_image_is_unloaded_before_video(self):
         calls = []
         health = [

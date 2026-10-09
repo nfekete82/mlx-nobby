@@ -144,22 +144,22 @@ def memory_budget_snapshot():
     free_percent = None
     pressure_raw = _run_text(["memory_pressure"], timeout=10)
     match = re.search(
-        r"System-wide memory free percentage:\s*([0-9.]+)%",
+        r"System-wide memory free percentage:\s*([0-9]+(?:[.,][0-9]+)?)%",
         pressure_raw,
     )
     if match:
-        free_percent = max(0.0, min(100.0, float(match.group(1))))
+        free_percent = max(0.0, min(100.0, float(match.group(1).replace(",", "."))))
 
     swap_used_gb = 0.0
     swap_total_gb = 0.0
     swap_raw = _run_text(["sysctl", "-n", "vm.swapusage"])
-    total_match = re.search(r"total = ([0-9.]+)([MG])", swap_raw)
-    used_match = re.search(r"used = ([0-9.]+)([MG])", swap_raw)
+    total_match = re.search(r"total\s*=\s*([0-9]+(?:[.,][0-9]+)?)\s*([MG])", swap_raw)
+    used_match = re.search(r"used\s*=\s*([0-9]+(?:[.,][0-9]+)?)\s*([MG])", swap_raw)
 
     def to_gb(match_value):
         if not match_value:
             return 0.0
-        value = float(match_value.group(1))
+        value = float(match_value.group(1).replace(",", "."))
         return value / 1024 if match_value.group(2) == "M" else value
 
     swap_total_gb = to_gb(total_match)
@@ -769,6 +769,7 @@ def video_runtime(
     chat_loaded,
     chat_command,
     restore_error=None,
+    admission_observer=None,
     requester=request_json,
     lock_path=LOCK_PATH,
 ):
@@ -909,6 +910,8 @@ def video_runtime(
         }
         try:
             _check_cancelled(cancel_event)
+            if admission_observer is not None:
+                admission_observer(preflight)
             ensure_model_load_allowed(
                 "video",
                 snapshot=admission,
