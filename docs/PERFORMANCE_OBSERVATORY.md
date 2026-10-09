@@ -99,8 +99,9 @@ Tests: `tests/test_performance_observatory.py` and
 
 For a controlled latency comparison on a running Mac, use the read-only
 `scripts/benchmark-chat-latency.py` probe. It sends a short deterministic
-request to an **already selected and loaded** model. It does not change the
-model, restart any runtime, download weights, or manipulate swap. Run only
+request to an **already selected and loaded** model. It does not explicitly change the selected model, restart runtimes, download
+weights, or manipulate swap; the inference endpoint may lazily load the
+specified model. Ensure the intended model is already loaded beforehand. Run only
 when the service is idle and you consent to short inference requests.
 
 ```sh
