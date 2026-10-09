@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.9.0-informational)
+![Release](https://img.shields.io/badge/release-v1.10.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -13,11 +13,13 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
-## Recent updates (v1.9.0)
+## Recent updates (v1.10.0)
 
-The changes included in **v1.9.0** are prepared for the next GitHub
-release; publication is gated by local acceptance and final-main validation.
+**v1.10.0** introduces a local media library and a redesigned chat sidebar. Publication is gated by local acceptance and final-main validation.
+
 Highlights include:
+
+- **Media library:** Browse existing generated images, videos and Talking Photo clips in a responsive gallery, with search, filtering, previews, download, explicit deletion, and keep-permanently controls. Newly completed normal-chat images and videos are preserved by default. See [Media Library](docs/MEDIA_LIBRARY_1_10.md).
 
 - **Talking Photo:** direct LTX audio-to-video is the default, with an optional
   LTX + MuseTalk hybrid. The LTX paths now accept up to **20 seconds of
@@ -39,7 +41,7 @@ Highlights include:
 - **Finance:** EUR-first price display with unchanged source currencies,
   interactive price-history charts and more resilient quote/FX diagnostics.
 
-See [the changelog](CHANGELOG.md) for the complete v1.9.0 changes.
+See [the changelog](CHANGELOG.md) for the complete v1.10.0 changes.
 For new releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
