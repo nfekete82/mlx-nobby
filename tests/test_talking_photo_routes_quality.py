@@ -1,6 +1,8 @@
 import unittest
 from unittest import mock
 
+from pydantic import ValidationError
+
 from agent import talking_photo_routes
 from agent import talking_photo_quality
 
