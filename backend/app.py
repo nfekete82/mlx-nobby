@@ -290,6 +290,13 @@ def library_save(kind: str, asset_id: str):
     )
 
 
+@app.post('/api/library/assets/delete-all')
+def library_delete_all(request: dict):
+    return agent_json_request(
+        'POST', '/api/library/assets/delete-all', request, timeout=120,
+    )
+
+
 @app.delete('/api/library/assets/{kind}/{asset_id}')
 def library_delete(kind: str, asset_id: str):
     return agent_json_request(
