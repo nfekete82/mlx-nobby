@@ -122,3 +122,28 @@
 /* Native dialog enters the browser top layer, above all app stacking contexts. */
 dialog.nobby-runtime-modal{margin:auto!important;max-width:none!important;max-height:none!important;color:var(--text)}
 dialog.nobby-runtime-modal::backdrop{background:rgba(3,8,18,.78);backdrop-filter:blur(5px)}
+
+/* Native dialogs keep UA centering only when legacy left/top/inset rules are reset. */
+dialog#runtimePopover.nobby-runtime-modal[open]{
+  position:fixed!important;
+  inset:0!important;
+  margin:auto!important;
+  width:min(680px,calc(100vw - 32px))!important;
+  height:fit-content!important;
+  max-height:min(88dvh,820px)!important;
+  min-height:0;
+  padding:0!important;
+  display:block!important;
+  overflow:visible!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+dialog#runtimePopover.nobby-runtime-modal .nobby-runtime-dialog{
+  box-sizing:border-box;
+  width:100%;
+  max-height:min(88dvh,820px);
+  overflow:auto;
+}
+dialog#runtimePopover.nobby-runtime-modal .nobby-runtime-backdrop{display:none}
+dialog#runtimePopover.nobby-runtime-modal[hidden]{display:none!important}
