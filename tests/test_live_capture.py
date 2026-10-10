@@ -17,14 +17,14 @@ class LiveCaptureTests(unittest.TestCase):
         calls = []
         def transport(req, timeout):
             calls.append((req.method, json.loads(req.data), timeout))
-            return json.dumps({"answer": "Test", "sources": []}).encode()
+            return json.dumps({"answer": "Test", "status": "completed", "sources": []}).encode()
         rows = capture(["Frage A", "Frage B"], "http://127.0.0.1:8010/agent",
                        transport=transport)
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["response"]["answer"], "Test")
         self.assertEqual(rows[0]["review_status"], "pending")
         self.assertGreaterEqual(rows[0]["elapsed_ms"], 0)
-        self.assertEqual(calls[0][1], {"message": "Frage A"})
+        self.assertEqual(calls[0][1], {"goal": "Frage A", "mode": "diagnostic"})
 
     def test_invalid_questions_are_rejected(self):
         with self.assertRaises(ValueError):
