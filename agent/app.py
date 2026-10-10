@@ -7235,6 +7235,12 @@ def searxng_search_results(query, limit=8):
         if len(normalized) >= max(1, min(int(limit), 20)):
             break
 
+    if not normalized:
+        fallback = _fallback_public_search(query, limit=limit)
+        if fallback.get("results"):
+            fallback["unresponsive_engines"] = unresponsive_engines
+            return fallback
+
     return {
         "query": query,
         "provider": "SearXNG",
