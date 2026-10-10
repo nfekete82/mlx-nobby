@@ -21,6 +21,14 @@ class ContextEvidenceTests(unittest.TestCase):
         result = gate_numerical_claims("Pixel 11 kostet 999 €.", fetched(article))
         self.assertNotIn("nicht verifiziert", result)
 
+    def test_disagreeing_price_sources_are_flagged(self):
+        first = ("Pixel 11 kostet 999 €. " * 12)
+        second = ("Pixel 11 kostet 1099 €. " * 12)
+        result = gate_numerical_claims(
+            "Pixel 11 kostet 999 €.", fetched(first) + fetched(second)
+        )
+        self.assertIn("widersprüchliche Quellendaten", result)
+
     def test_source_without_product_name_is_insufficient(self):
         self.assertFalse(matches_claim("999 €", "Pixel 11 kostet 999 €.",
                                        [(URL, "Ein anderes Gerät kostet 999 €.")]))
