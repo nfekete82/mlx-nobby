@@ -1516,7 +1516,6 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                     temperature=0.0,
                 )
                 if isinstance(revised, str) and revised.strip():
-                    from urllib.parse import urlsplit
                     from agent.claim_validation import _URL
                     candidate = revised.strip()
                     original_urls = set(_URL.findall(str(answer)))
