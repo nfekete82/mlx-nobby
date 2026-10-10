@@ -1529,9 +1529,13 @@ def mlx_system():
 
 @app.get("/api/mlx/logs/all")
 def mlx_logs_all(limit: int = 200):
+    # Aggregating log sources can involve slow filesystem reads on the host.
+    # Keep this timeout local to the diagnostics endpoint, rather than
+    # changing latency budgets for interactive chat and status requests.
+    bounded_limit = max(1, min(limit, 1000))
     return get_json(
-        f"{AGENT_URL}/api/logs/all?limit={limit}",
-        timeout=10,
+        f"{AGENT_URL}/api/logs/all?limit={bounded_limit}",
+        timeout=35,
     )
 
 
