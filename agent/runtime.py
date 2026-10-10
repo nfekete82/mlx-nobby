@@ -567,6 +567,12 @@ class AgentRuntime:
                 # permissions still apply in the normal tool path.
                 if successful_fetches < 2:
                     decision = choose_official_followup(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "official_followup_selected",
+                            "duration_ms": 0.0,
+                        })
 
             if decision is None:
                 decision = self._model_hook(self.hooks.agent_choose_next_step_v2,
