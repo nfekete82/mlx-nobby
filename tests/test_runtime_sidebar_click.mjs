@@ -13,7 +13,10 @@ test('runtime info modal retains sidebar entry and real runtime data',()=>{
 });
 test('modal includes close X, accessible dialog and backdrop',()=>{
  assert.match(html,/id="runtimeModalClose"/);
+ assert.match(html,/<dialog id="runtimePopover"/);
  assert.match(html,/aria-modal="true"/);
+ assert.match(runtime,/runtimePopover\\.showModal\\(\\)/);
+ assert.match(runtime,/runtimePopover\\.close\\(\\)/);
  assert.match(html,/data-runtime-close="true"/);
  assert.match(runtime,/getElementById\('runtimeModalClose'\).*addEventListener\('click', closeRuntimePopover\)/);
  assert.match(runtime,/event\.key === 'Escape'/);
