@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/chat.css?v=20261007-settings-controls">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-10-2">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-11-4">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -191,7 +191,23 @@
 
 
         <div class="sidebar-bottom">
-        <button id="sidebarJobsButton" class="sidebar-action nobby-sidebar-nav" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="ui.jobs">Dateien &amp; Jobs</span></button>
+        <button id="sidebarJobsButton" class="sidebar-action nobby-sidebar-nav" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="sidebar-action-label" data-i18n="ui.jobs">Dateien &amp; Jobs</span></button>
+
+                <button
+                    id="runtimeInfoButton"
+                    class="sidebar-action nobby-sidebar-nav"
+                    type="button"
+                    aria-label="Runtime-Informationen"
+                    title="Runtime-Informationen"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                >
+                    <svg class="sidebar-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 10.75v5.25M12 7.5h.01"></path>
+                    </svg>
+                    <span class="sidebar-action-label">Systeminfo</span>
+                </button>
 
             <button id="sidebarSettingsButton" class="sidebar-action" type="button">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -318,20 +334,7 @@
                     </svg>
                 </button>
 
-                <button
-                    id="runtimeInfoButton"
-                    class="icon-btn top-action-button"
-                    type="button"
-                    aria-label="Runtime-Informationen"
-                    title="Runtime-Informationen"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                >
-                    <svg class="top-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="9"></circle>
-                        <path d="M12 10.75v5.25M12 7.5h.01"></path>
-                    </svg>
-                </button>
+
 
                 <button
                     id="clearButton"
@@ -1742,6 +1745,7 @@
 <script src="/assets/chat/image-settings.js?v=20261002-gallery-final"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20260926-shorts-progress"></script>
+<script src="/assets/chat/sidebar-rail-utilities.js?v=1-11-0" defer></script>
 
 <div
     id="confirmModal"

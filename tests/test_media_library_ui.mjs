@@ -11,7 +11,7 @@ assert.match(html, /id="nobbyLibrary"/);
 assert.match(html, /id="nobbyLibraryGrid"/);
 assert.match(html, /id="nobbyLibrarySaveAll"/);
 assert.match(html, /media-library\.js\?v=1-10-0/);
-assert.match(html, /media-library\.css\?v=1-10-2/);
+assert.match(html, /media-library\.css\?v=1-11-4/);
 assert.match(css, /\.nobby-library-panel\[hidden\]/);
 assert.match(css, /grid-template-columns:repeat\(auto-fill/);
 assert.match(js, /fetch\("\/api\/library\/assets\?limit=1000"/);

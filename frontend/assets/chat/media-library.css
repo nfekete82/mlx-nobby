@@ -61,3 +61,38 @@
 /* Anchor persistent navigation at the sidebar bottom even when chats are collapsed. */
 .sidebar .sidebar-bottom{margin-top:auto;flex-shrink:0}
 .sidebar #chatList{min-height:0}
+
+/* Lower-left utility navigation, shared by runtime info and Talking Photo. */
+.sidebar-bottom #runtimeInfoButton{display:flex!important;align-items:center;width:100%;position:static}
+.sidebar-bottom #runtimeInfoButton .sidebar-action-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sidebar-bottom .nobby-talking-photo-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:0 0 18px;font-size:16px}
+.runtime-popover{position:fixed;top:auto;right:auto;left:calc(var(--sidebar-width, 270px) + 14px);bottom:78px;max-height:min(420px,65vh)}
+@media(max-width:650px){.runtime-popover{left:12px;right:12px;bottom:70px;width:auto}}
+
+/* Shared typography, spacing, and outline icon treatment for all bottom utilities. */
+.sidebar .sidebar-bottom .sidebar-action,
+.sidebar .sidebar-bottom .mlx-shorts-history-launcher {
+    display:flex!important;align-items:center;gap:10px;width:100%;
+    min-height:38px;box-sizing:border-box;margin:0;padding:10px;
+    border:0;border-radius:9px;background:transparent;
+    color:var(--muted);font:inherit;font-size:12px;font-weight:400;
+    line-height:18px;text-align:left;cursor:pointer;
+}
+.sidebar .sidebar-bottom .sidebar-action svg,
+.sidebar .sidebar-bottom .mlx-shorts-history-launcher svg {
+    width:18px;height:18px;flex:0 0 18px;
+    fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round;
+}
+.sidebar .sidebar-bottom .sidebar-action-label {
+    font:inherit;font-size:12px;font-weight:400;line-height:18px;
+    color:inherit;
+}
+.sidebar .sidebar-bottom .sidebar-action:hover,
+.sidebar .sidebar-bottom .mlx-shorts-history-launcher:hover {
+    background:var(--panel2);color:var(--text);
+}
+.sidebar .sidebar-bottom .sidebar-action:focus-visible,
+.sidebar .sidebar-bottom .mlx-shorts-history-launcher:focus-visible {
+    outline:2px solid var(--blue);outline-offset:2px;
+}
