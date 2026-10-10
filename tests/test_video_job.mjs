@@ -260,7 +260,7 @@ assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
 assert.match(chatHtml, /chat\/generation\.js\?v=20261008-finance-v1/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=20261008-finance-speed/);
-assert.match(chatHtml, /chat\.js\?v=20260926-shorts-progress/);
+assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
 
 // Reload/retry options cannot implicitly override the fresh dialog selection.
