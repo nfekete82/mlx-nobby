@@ -265,6 +265,9 @@ class AgentRuntime:
                         progress_callback, allow_approval,
                     )
                     if isinstance(result, dict):
+                        if result.get("status") == "completed" and isinstance(result.get("answer"), str):
+                            from agent.temporal_validation import gate_temporal_claims
+                            result["answer"] = gate_temporal_claims(result["answer"])
                         result["performance"] = {"events": list(self._profile_events)}
                     return result
                 except _RunCancelled:
