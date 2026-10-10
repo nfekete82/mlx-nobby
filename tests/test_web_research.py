@@ -52,7 +52,7 @@ class ResearchTests(unittest.TestCase):
     def test_no_results_are_disclosed(self):
         result = retrieve_web_research("Wer ist aktuell Bundeskanzler?",
             opener=lambda _req, timeout: FakeResponse("<html></html>"))
-        self.assertIn("NICHT VERFÜGBAR", result)
+        self.assertIn("OHNE VERIFIZIERBARE ERGEBNISSE", result)
 
     def test_google_news_fallback_when_lite_has_no_links(self):
         rss = ('<rss><channel><item><title>Elektroauto vorgestellt 2026</title>'
