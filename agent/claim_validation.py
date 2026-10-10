@@ -52,7 +52,8 @@ def audit_numerical_claims(answer, observations):
         for match in _NUMBER.finditer(block):
             claim = match.group(0)
             # A token appearing in article text is necessary but not sufficient.
-            if not any(_normalize(claim) in _normalize(body) for _, body in sources):
+            from agent.claim_context import matches_claim
+            if not matches_claim(claim, block, sources):
                 issues.append(claim)
     return {"checked": True, "unverified": list(dict.fromkeys(issues)),
             "source_count": len(sources)}
