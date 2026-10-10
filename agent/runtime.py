@@ -1830,6 +1830,17 @@ class AgentRuntime:
                 publish()
 
         final_status = "max_steps"
+        # A bounded quick research run completes by synthesizing the observations.
+        # Show max_steps only when no useful web tool evidence was obtained.
+        if mode == "research" and not deep_research and any(
+            isinstance(item, dict)
+            and item.get("status") == "completed"
+            and item.get("action") in {"web_search", "fetch_url"}
+            and isinstance(item.get("result"), dict)
+            and item["result"].get("ok") is True
+            for item in observations
+        ):
+            final_status = "completed"
 
         if mode == "orchestrator":
             missing = self.hooks.orchestrator_missing_evidence(
