@@ -24,4 +24,4 @@ test('modal includes close X, accessible dialog and backdrop',()=>{
  assert.match(css,/\.runtime-popover\.nobby-runtime-modal\[hidden\]\{display:none!important\}/);
 });
 
-test('native Systeminfo dialog is viewport-centered',()=>{ assert.match(css,/dialog#runtimePopover\.nobby-runtime-modal\[open\]/); assert.match(css,/margin:auto!important/); assert.match(css,/max-height:min\(88dvh,820px\)/); });
+test('native Systeminfo dialog is viewport-centered',()=>{ assert.match(css,/dialog#runtimePopover\.nobby-runtime-modal\[open\]/); assert.match(css,/transform: translate\(-50%, -50%\)/); assert.match(css,/max-height: min\(88dvh, 820px\)/); });
