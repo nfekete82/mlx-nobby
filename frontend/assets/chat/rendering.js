@@ -2363,6 +2363,7 @@ function renderMessages(options = {}) {
                     markdownHtml(message.content);
 
                 content.appendChild(answer);
+                window.MLXCharts?.enhance(answer);
             }
 
             if (
