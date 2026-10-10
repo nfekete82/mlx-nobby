@@ -20,3 +20,9 @@ test('Talking Photo launch uses anchored sidebar and existing modal behavior',()
  assert.match(photo,/button.addEventListener\('click', openModal\)/);
  assert.doesNotMatch(photo,/querySelector\('\.top-actions'\)/);
 });
+
+test('Systeminfo stays immediately above Einstellungen after dynamic navigation mounts',()=>{
+ assert.match(runtime,/new MutationObserver\(alignSystemInfo\)\.observe\(sidebarBottom, \{childList:true\}\)/);
+ assert.match(runtime,/runtimeInfoButton\.nextElementSibling !== settings/);
+ assert.match(runtime,/sidebarBottom\.insertBefore\(runtimeInfoButton, settings\)/);
+});
