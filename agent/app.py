@@ -7063,6 +7063,39 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
     }
 
 
+def _fallback_public_search(query, limit=8):
+    """Bounded secondary search when the optional local SearXNG is unavailable."""
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+    from html import unescape
+
+    url = ("https://news.google.com/rss/search?q=" +
+           urllib.parse.quote_plus(query) + "&hl=de&gl=DE&ceid=DE:de")
+    req = urllib.request.Request(url, headers={"User-Agent": "MLX-Nobby/2.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            raw = response.read(160_000)
+        root = ET.fromstring(raw)
+    except (OSError, TimeoutError, ValueError, ET.ParseError):
+        return {"query": query, "provider": "fallback-unavailable",
+                "search_degraded": True, "unresponsive_engines": [],
+                "count": 0, "results": []}
+    results = []
+    for item in root.findall("./channel/item"):
+        title = unescape(str(item.findtext("title") or "")).strip()
+        link = str(item.findtext("link") or "").strip()
+        if title and link and web_url_is_safe(link):
+            results.append({"title": title[:500], "url": link[:2000],
+                            "snippet": "", "engine": "Google News RSS",
+                            "engines": ["Google News RSS"],
+                            "published_date": item.findtext("pubDate")})
+        if len(results) >= max(1, min(int(limit), 20)):
+            break
+    return {"query": query, "provider": "Google News RSS (fallback)",
+            "search_degraded": True, "unresponsive_engines": [],
+            "count": len(results), "results": results}
+
+
 def searxng_search_results(query, limit=8):
     """Search SearXNG and return normalized, safe public results only."""
     import urllib.parse
@@ -7108,7 +7141,7 @@ def searxng_search_results(query, limit=8):
     try:
         with urllib.request.urlopen(
             req,
-            timeout=20,
+            timeout=3,
         ) as response:
             payload = json.loads(
                 response
@@ -7116,32 +7149,9 @@ def searxng_search_results(query, limit=8):
                 .decode("utf-8")
             )
 
-    except urllib.error.HTTPError as exc:
-        detail = (
-            exc.read()
-            .decode(
-                "utf-8",
-                errors="replace",
-            )
-        )
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "SearXNG HTTP-Fehler "
-                f"{exc.code}: "
-                f"{detail[:300]}"
-            ),
-        ) from exc
-
-    except urllib.error.URLError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "SearXNG nicht erreichbar: "
-                f"{exc.reason}"
-            ),
-        ) from exc
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+            ValueError, json.JSONDecodeError):
+        return _fallback_public_search(query, limit=limit)
 
         # SearXNG reports temporarily blocked or unavailable engines
         # separately. Pass this information to the agent so that
