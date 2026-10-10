@@ -175,6 +175,12 @@ class MLXProvider:
                         result.telemetry["lease_wait_ms"] = lease_wait_ms
                         result.telemetry["lock_wait_ms"] = lock_wait_ms
                         result.telemetry.update(lease_evidence)
+                        # No contention means no blocking owner. A concurrent
+                        # agent holder is only a candidate, not proven owner.
+                        if lease_wait_ms < 100:
+                            result.telemetry["observed_holder_role"] = "none"
+                        elif lease_evidence["observed_holder_role"] != "unknown":
+                            result.telemetry["observed_holder_role"] = "possible_agent_holder"
                         return result
         except ProviderError as exc:
             metrics.fail(exc.code)
