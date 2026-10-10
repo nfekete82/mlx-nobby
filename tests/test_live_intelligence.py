@@ -1,6 +1,7 @@
 """Deterministic tests: offline, predictable, no external network."""
 import io
 import json
+from pathlib import Path
 import unittest
 from datetime import datetime, timezone
 from backend.live_intelligence import retrieve_inflation, needs_inflation_lookup
@@ -34,6 +35,12 @@ class LiveIntelligenceTests(unittest.TestCase):
         self.assertIn("2026-10-10", result)
         self.assertIn("World Bank", result)
         self.assertIn("nicht zwingend letzte 36 Monate", result)
+
+    def test_chat_context_is_merged_into_leading_system_message(self):
+        source = (Path(__file__).resolve().parents[1] / "backend" / "app.py").read_text()
+        self.assertIn('messages[0].get("role") == "system"', source)
+        self.assertIn('messages[0]["content"] = (', source)
+        self.assertNotIn('messages.insert(0, {"role": "system", "content": live_context})\\n\\n    if "rag_sources"', source)
 
     def test_offline_does_not_fabricate(self):
         def offline(request, timeout):
