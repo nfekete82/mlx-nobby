@@ -45,6 +45,7 @@ def audit_numerical_claims(answer, observations):
     prose = _URL.sub("", prose)
     blocks = _SENTENCE.split(prose)
     issues = []
+    conflicts = []
     for block in blocks:
         # Quotes/links and pure source listings are not factual assertions.
         if re.match(r"^\s*(?:quellen?\s*:|[-*]\s*https?://)", block, re.I):
@@ -55,17 +56,24 @@ def audit_numerical_claims(answer, observations):
             from agent.claim_context import matches_claim
             if not matches_claim(claim, block, sources):
                 issues.append(claim)
+            from agent.claim_context import conflicting_values
+            competing = conflicting_values(block, claim, sources)
+            if competing:
+                conflicts.append(", ".join(competing))
     return {"checked": True, "unverified": list(dict.fromkeys(issues)),
-            "source_count": len(sources)}
+            "source_count": len(sources), "conflicts": list(dict.fromkeys(conflicts))}
 
 
 def gate_numerical_claims(answer, observations):
     """Mark answers with unsupported precise figures; preserve original text."""
     audit = audit_numerical_claims(answer, observations)
-    if not audit["checked"] or not audit["unverified"]:
+    if not audit["checked"] or not (audit["unverified"] or audit["conflicts"]):
         return answer
     values = ", ".join(audit["unverified"][:6])
+    conflicts = "; ".join(audit["conflicts"][:3])
     return (str(answer).rstrip() +
             "\n\n**Quellenprüfung:** Die folgenden präzisen Angaben konnten "
             "in den tatsächlich geladenen Artikeln nicht nachgewiesen werden "
-            f"und sind nicht verifiziert: {values}.")
+            f"und sind nicht verifiziert: {values}. "
+            + (f"Mögliche widersprüchliche Quellendaten: {conflicts}. " if conflicts else "")
+            + "Dies ist ein Hinweis auf fehlende oder uneinheitliche Evidenz, kein Beweis für einen Fehler.")
