@@ -1332,7 +1332,7 @@ WICHTIGE CODING-EVIDENCE-REGELN:
         answer = compact_coding_answer_markdown(answer)
 
     if re.search(
-        r"(?i)\b(?:quellen(?:links)?|beleg(?:e|t)|artikel.urls|source(?:s)?)\b",
+        r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|nachweislich|source(?:s)?)\b",
         str(goal or ""),
     ) and any(
         isinstance(item, dict) and item.get("action") in {"web_search", "fetch_url"}
