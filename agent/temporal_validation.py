@@ -1,30 +1,52 @@
-"""Conservative temporal status check for explicit future availability dates.
+"""Conservative warnings for internally contradictory availability dates.
 
-Requires both a concrete day/month/year and a current-availability assertion
-in the same line. Only flags an inconsistency; does not infer launch facts.
+This checker does not establish release truth. It only flags dated claims of
+past/current availability when the same assertion refers to a future date.
 """
 import re
-from datetime import date, datetime
+from datetime import date
 
-DATE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b")
-AVAILABLE = re.compile(r"\b(?:bereits erhältlich|jetzt erhältlich|sofort erhältlich|seit heute erhältlich|aktuell erhältlich|currently available|available now)\b", re.I)
-FUTURE_EVENT = re.compile(r"\b(?:erhältlich ab|verfügbar ab|verkaufsstart|marktstart|available from|on sale from)\b", re.I)
+MONTHS = {
+    "januar": 1, "februar": 2, "märz": 3, "maerz": 3,
+    "april": 4, "mai": 5, "juni": 6, "juli": 7,
+    "august": 8, "september": 9, "oktober": 10,
+    "november": 11, "dezember": 12,
+}
+MONTH = "|".join(MONTHS)
+DATES = re.compile(
+    rf"(?<!\d)(?:(\d{{1,2}})\.(\d{{1,2}})\.(20\d{{2}})|"
+    rf"(\d{{1,2}})\.\s*({MONTH})\s+(20\d{{2}}))(?!\d)",
+    re.I,
+)
+SINCE = re.compile(r"\bseit\s+(?:dem\s+)?$", re.I)
+CURRENT = re.compile(r"\b(?:bereits|jetzt|sofort|aktuell)\s+erhältlich\b", re.I)
+FUTURE_EVENT = re.compile(r"\b(?:erhältlich\s+ab|verfügbar\s+ab|verkaufsstart|marktstart)\b", re.I)
+
+
+def _date(match):
+    try:
+        if match.group(1):
+            return date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+        return date(int(match.group(6)), MONTHS[match.group(5).lower()], int(match.group(4)))
+    except (ValueError, KeyError):
+        return None
 
 
 def future_availability_conflicts(answer, today=None):
     today = today or date.today()
     issues = []
     for line in str(answer or "").splitlines():
-        direct = bool(AVAILABLE.search(line) and FUTURE_EVENT.search(line))
-        since = bool(re.search(r"(?i)\bseit\s+\d{1,2}\.\d{1,2}\.20\d{2}\b", line))
-        if not (direct or since):
-            continue
-        for match in DATE.finditer(line):
-            try:
-                target = date(int(match[3]), int(match[2]), int(match[1]))
-            except ValueError:
+        matches = list(DATES.finditer(line))
+        current_and_future = bool(CURRENT.search(line) and FUTURE_EVENT.search(line))
+        for match in matches:
+            target = _date(match)
+            if target is None or target <= today:
                 continue
-            if target > today:
+            prefix = line[:match.start()]
+            # Match the closest nearby availability wording; unrelated dates
+            # in earlier paragraphs must not trigger a warning.
+            since = bool(SINCE.search(prefix[-24:]))
+            if since or current_and_future:
                 issues.append({"line": line.strip()[:300], "date": target.isoformat()})
     return issues
 
@@ -33,8 +55,10 @@ def gate_temporal_claims(answer, today=None):
     issues = future_availability_conflicts(answer, today)
     if not issues:
         return answer
-    dates = ", ".join(dict.fromkeys(issue["date"] for issue in issues))
-    return (str(answer).rstrip() +
-            "\n\n**Zeitprüfung:** Eine Vergangenheitsbehauptung ('seit' oder 'bereits erhältlich') widerspricht "
-            f"einem genannten zukünftigen Verkaufsdatum ({dates}). "
-            "Bitte Produktstatus separat prüfen.")
+    dates = ", ".join(dict.fromkeys(item["date"] for item in issues))
+    return (
+        str(answer).rstrip()
+        + "\n\n**Zeitprüfung:** Eine Aussage über bereits erfolgte Verfügbarkeit "
+        + f"oder einen vergangenen Start widerspricht einem zukünftigen Datum ({dates}). "
+        + "Der Produktstatus muss überprüft werden."
+    )
