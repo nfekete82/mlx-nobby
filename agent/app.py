@@ -9388,6 +9388,11 @@ def _requires_public_source_research(prompt, file_context=None):
     from backend.web_research import needs_web_research
     if not needs_web_research(text):
         return False
+    # Dated public product launches require source-backed research even
+    # when the user does not explicitly ask for links.
+    if re.search(r"(?i)\b(?:vorgestellt|präsentiert|angekündigt|erschienen|"
+                 r"veröffentlicht|neuheiten|launches?)\b", text):
+        return True
     return bool(re.search(
         r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|"
         r"verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|"
