@@ -93,6 +93,13 @@ run against the measured bounds rather than fixed content heights.
 - `python3 scripts/i18n-audit.py`: passed.
 - Changed JavaScript syntax, Python test compilation, and `git diff --check`: passed.
 
+The first GitHub Chromium run on the correction hit the 20-minute job timeout
+without emitting buffered pytest progress. macOS tests and Docker validation
+passed. Browser CI now emits unbuffered per-test progress, dumps Python thread
+stacks after 60 seconds in a test, and times out the test step after eight
+minutes so the separate diagnostics upload can still run. Assertions and
+test selection are unchanged.
+
 Browser execution and socket integration tests require execution outside the
 macOS filesystem sandbox; initial sandbox failures were permission failures,
 not skipped tests. Browser tests validate the real frontend with deterministic
