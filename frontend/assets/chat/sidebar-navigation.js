@@ -13,7 +13,8 @@
     const query = search.value.trim().toLocaleLowerCase();
     const rows = Array.from(list.children);
     for (const row of rows) {
-      const label = (row.textContent || "").toLocaleLowerCase();
+      const titleNode = row.querySelector("[data-session-title], .chat-title, .session-title, .chat-item-title, .chat-name") || row.querySelector("button");
+      const label = (titleNode?.textContent || row.getAttribute("data-session-title") || "").toLocaleLowerCase();
       row.hidden = Boolean(query) && !label.includes(query);
     }
   };
