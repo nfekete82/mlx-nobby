@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/chat.css?v=20261007-settings-controls">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-11-5">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-11-6">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -307,7 +307,7 @@
                 <a class="model-manage-link" href="/settings/models" data-i18n="ui.manage_models">Modelle verwalten …</a>
             </div>
 
-            <div id="runtimePopover" class="runtime-popover nobby-runtime-modal" role="dialog" aria-modal="true" aria-labelledby="runtimeModalTitle" hidden>
+            <dialog id="runtimePopover" class="runtime-popover nobby-runtime-modal" role="dialog" aria-modal="true" aria-labelledby="runtimeModalTitle" hidden>
                 <div class="nobby-runtime-backdrop" data-runtime-close="true"></div>
                 <section class="nobby-runtime-dialog" tabindex="-1">
                     <header class="nobby-runtime-header">
@@ -316,7 +316,7 @@
                     </header>
                     <div id="runtimeInfoContent" class="runtime-info-content"></div>
                 </section>
-            </div>
+            </dialog>
 
             <div class="top-actions">
 
@@ -1512,7 +1512,7 @@
 <script src="/assets/chat/rendering.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/image-preview.js?v=20261002-pending-preview"></script>
 <script src="/assets/chat/compact.js"></script>
-<script src="/assets/chat/runtime.js?v=20261010-runtime-modal"></script>
+<script src="/assets/chat/runtime.js?v=20261010-runtime-dialog"></script>
 <script src="/assets/chat/appearance.js"></script>
 <script src="/assets/chat/charts.js?v=1-11-2"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
