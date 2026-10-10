@@ -1036,8 +1036,17 @@ def enforce_research_citations(answer, observations):
 
 
 def verify_product_launch_items(answer, observations):
-    """Cite product listings only when the exact model occurs in loaded text."""
+    """Conservative claim-to-source gate for dated product presentations.
+
+    A name somewhere on a page is insufficient: require a launch verb and,
+    for precise dates, a matching date near that name. Uncertain statements
+    are not accepted as proof of a completed presentation.
+    """
     import re
+    from datetime import datetime
+
+    def normalize(value):
+        return re.sub(r"[^\w]+", " ", str(value).casefold()).strip()
 
     sources = []
     for item in observations:
@@ -1046,14 +1055,25 @@ def verify_product_launch_items(answer, observations):
         result = item.get("result")
         if not isinstance(result, dict) or result.get("ok") is not True:
             continue
-        url = result.get("url") or result.get("final_url") or item.get("query")
+        url = result.get("final_url") or result.get("url") or item.get("query")
         content = result.get("text")
         if isinstance(url, str) and isinstance(content, str) and len(content) >= 100:
             sources.append((url, content))
 
-    def normalize(value):
-        return re.sub(r"[^\w]+", " ", value.casefold()).strip()
-
+    # Explicit completed-event language, rather than predictions about launches.
+    completed = re.compile(
+        r"(?i)\b(?:wurde[n]?|ist|hat|haben|offiziell|bereits|"
+        r"vorgestellt|präsentiert|enthüllt|unveiled|introduced|"
+        r"announced|launched|debuted)\b"
+    )
+    event = re.compile(r"(?i)\b(?:vorgestellt|präsentiert|enthüllt|"
+                       r"unveiled|introduced|announced|launched|debuted)\b")
+    speculative = re.compile(
+        r"(?i)\b(?:voraussichtlich|vermutlich|angeblich|wohl|"
+        r"soll|sollen|könnte|könnten|geplant|erwartet|"
+        r"expected|rumou?red|rumors?|upcoming|likely|will|"
+        r"preview|prognose)\b"
+    )
     output = []
     for line in str(answer or "").splitlines():
         if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
@@ -1066,15 +1086,39 @@ def verify_product_launch_items(answer, observations):
         model = normalize(name)
         if len(model) < 5:
             continue
+        exact = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b", body)
+        date_variants = ()
+        if exact:
+            try:
+                date = datetime(int(exact[3]), int(exact[2]), int(exact[1]))
+            except ValueError:
+                continue
+            month_names = ("januar", "februar", "märz", "april", "mai", "juni",
+                           "juli", "august", "september", "oktober", "november", "dezember")
+            date_variants = (normalize(exact.group(0)),
+                             normalize(f"{date.day} {month_names[date.month - 1]} {date.year}"),
+                             normalize(f"{date.year}-{date.month:02d}-{date.day:02d}"))
+
         for url, content in sources:
-            if model in normalize(content):
-                cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
-                cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
-                output.append(cleaned.rstrip(" ,;:-") + f" ([Artikelquelle]({url}))")
-                break
+            folded = normalize(content)
+            # Bounded local evidence window, not arbitrary words anywhere in article.
+            match = re.search(r"(?<!\w)" + re.escape(model) + r"(?!\w)", folded)
+            if not match:
+                continue
+            window = folded[max(0, match.start() - 180):match.end() + 220]
+            if not completed.search(window) or not event.search(window):
+                continue
+            if speculative.search(window):
+                continue
+            if date_variants and not any(date in window for date in date_variants):
+                continue
+            cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
+            cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
+            output.append(cleaned.rstrip(" ,;:-") + f" ([Artikelquelle]({url}))")
+            break
     if not output:
-        return ("Keine Produktmodelle konnten eindeutig anhand tatsächlich "
-                "geladener Artikeltexte bestätigt werden.")
+        return ("Die Quellen belegen die konkreten Produktvorstellungen und "
+                "Vorstellungsdaten nicht ausreichend. Ich lasse unsichere Modelle weg.")
     return "\n".join(output)
 
 
