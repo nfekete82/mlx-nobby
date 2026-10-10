@@ -1006,13 +1006,6 @@ def enforce_research_citations(answer, observations):
         return ("Es konnten keine vollständig geladenen Artikelquellen belegt werden. "
                 "Deshalb gebe ich keine vermeintlich verifizierte Modellliste aus.")
 
-    # Only canonical source links explicitly returned by successful fetches.
-    aliases = {}
-    for url in allowed:
-        host = (urlsplit(url).hostname or "").removeprefix("www.")
-        label = host.split(".")[0].upper() if host else "Quelle"
-        aliases.setdefault(label.lower(), []).append(url)
-
     output = []
     for line in str(answer or "").splitlines():
         if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
@@ -1338,9 +1331,12 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     if has_coding_evidence:
         answer = compact_coding_answer_markdown(answer)
 
-    if loaded_web_article_urls(observations) and re.search(
+    if re.search(
         r"(?i)\b(?:quellen(?:links)?|beleg(?:e|t)|artikel.urls|source(?:s)?)\b",
         str(goal or ""),
+    ) and any(
+        isinstance(item, dict) and item.get("action") in {"web_search", "fetch_url"}
+        for item in observations
     ):
         answer = enforce_research_citations(answer, observations)
 
