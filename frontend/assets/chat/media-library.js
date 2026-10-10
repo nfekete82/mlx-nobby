@@ -15,6 +15,7 @@
     return element;
   }
   function setVisible(visible) {
+    if (!visible) closePreview();
     panel.hidden = !visible;
     panel.setAttribute("aria-hidden", String(!visible));
     document.body.classList.toggle("nobby-library-open", visible);
@@ -27,6 +28,67 @@
       toggle.focus();
     }
   }
+
+  const preview = elt("div", "nobby-library-preview");
+  preview.hidden = true;
+  preview.setAttribute("role", "dialog");
+  preview.setAttribute("aria-modal", "true");
+  preview.setAttribute("aria-label", t("Medienvorschau", "Media preview"));
+  const backdrop = elt("button", "nobby-library-preview-backdrop");
+  backdrop.type = "button";
+  backdrop.setAttribute("aria-label", t("Vorschau schließen", "Close preview"));
+  const shell = elt("div", "nobby-library-preview-shell");
+  const previewClose = elt("button", "nobby-library-preview-close", "×");
+  previewClose.type = "button";
+  previewClose.setAttribute("aria-label", t("Vorschau schließen", "Close preview"));
+  const previewBody = elt("div", "nobby-library-preview-body");
+  shell.append(previewClose, previewBody);
+  preview.append(backdrop, shell);
+  document.body.appendChild(preview);
+  let previousFocus = null;
+  function closePreview() {
+    if (preview.hidden) return;
+    preview.hidden = true;
+    previewBody.querySelector("video")?.pause();
+    previewBody.replaceChildren();
+    if (previousFocus?.isConnected) previousFocus.focus();
+    previousFocus = null;
+  }
+  function showPreview(asset) {
+    closePreview();
+    previousFocus = document.activeElement;
+    const media = elt(asset.kind === "image" ? "img" : "video");
+    media.src = asset.url;
+    if (asset.kind === "image") {
+      media.alt = t("Generiertes Bild", "Generated image");
+    } else {
+      media.controls = true;
+      media.playsInline = true;
+      media.preload = "metadata";
+      media.setAttribute("aria-label", label(asset.kind));
+    }
+    previewBody.replaceChildren(media);
+    preview.hidden = false;
+    previewClose.focus();
+  }
+  previewClose.addEventListener("click", closePreview);
+  backdrop.addEventListener("click", closePreview);
+  document.addEventListener("keydown", event => {
+    if (preview.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePreview();
+    } else if (event.key === "Tab") {
+      const focusable = [previewClose, ...previewBody.querySelectorAll("button, a[href]")];
+      if (event.shiftKey && document.activeElement === focusable[0]) {
+        event.preventDefault();
+        focusable[focusable.length - 1].focus();
+      } else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) {
+        event.preventDefault();
+        focusable[0].focus();
+      }
+    }
+  });
   const formatDate = value => new Date(Number(value) * 1000).toLocaleDateString(de() ? "de-DE" : "en-US");
   function label(kind) {
     if (kind === "image") return t("Bild", "Image");
@@ -60,31 +122,35 @@
       const video = elt("video");
       video.src = asset.url;
       video.preload = "metadata";
-      video.controls = true;
+      video.controls = false;
       video.playsInline = true;
       video.setAttribute("aria-label", label(asset.kind));
       media.appendChild(video);
     }
+
+    const zoom = elt("button", "nobby-library-zoom");
+    zoom.type = "button";
+    zoom.title = t("Vorschau öffnen", "Open preview");
+    zoom.setAttribute("aria-label", t("Vorschau öffnen: ", "Open preview: ") + label(asset.kind));
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "10.5");
+    circle.setAttribute("cy", "10.5");
+    circle.setAttribute("r", "6.5");
+    const handle = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    handle.setAttribute("d", "m15.5 15.5 5 5");
+    icon.append(circle, handle);
+    zoom.appendChild(icon);
+    zoom.addEventListener("click", () => showPreview(asset));
+    media.appendChild(zoom);
     box.appendChild(media);
     const text = elt("div", "nobby-library-card-body");
     text.appendChild(elt("strong", "", label(asset.kind)));
     text.appendChild(elt("span", "nobby-library-date", formatDate(asset.created_at) + " · " + (asset.persistent ? t("Dauerhaft", "Permanent") : t("Temporär", "Temporary"))));
     const buttons = elt("div", "nobby-library-card-actions");
-    buttons.append(link(asset.url, t("Öffnen", "Open"), false), link(asset.url, t("Download", "Download"), true));
-    const save = elt("button", "nobby-library-action", asset.persistent ? t("Gespeichert ✓", "Saved ✓") : t("Dauerhaft behalten", "Keep permanently"));
-    save.type = "button";
-    save.disabled = Boolean(asset.persistent);
-    save.addEventListener("click", async () => {
-      save.disabled = true;
-      try {
-        await action("POST", asset, "/save");
-        asset.persistent = true;
-        save.textContent = t("Gespeichert ✓", "Saved ✓");
-      } catch (error) {
-        save.disabled = false;
-        window.alert(error.message);
-      }
-    });
+    buttons.append(link(asset.url, t("Download", "Download"), true));
     const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
     remove.type = "button";
     remove.addEventListener("click", async () => {
@@ -98,7 +164,7 @@
       try { await action("DELETE", asset); await refresh(); }
       catch (error) { remove.disabled = false; window.alert(error.message); }
     });
-    buttons.append(save, remove);
+    buttons.append(remove);
     text.appendChild(buttons);
     box.appendChild(text);
     return box;
