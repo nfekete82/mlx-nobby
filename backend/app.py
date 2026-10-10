@@ -1350,7 +1350,12 @@ def mlx_chat_stream(request: ChatRequest):
         if needs_inflation_lookup(last_user_prompt):
             live_context = retrieve_inflation(last_user_prompt)
             if live_context:
-                messages.insert(0, {"role": "system", "content": live_context})
+                if messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = (
+                        str(messages[0].get("content") or "") + "\n\n" + live_context
+                    )
+                else:
+                    messages.insert(0, {"role": "system", "content": live_context})
 
     if "rag_sources" not in locals():
         rag_sources = []
