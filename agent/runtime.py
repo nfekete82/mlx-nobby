@@ -267,9 +267,12 @@ class AgentRuntime:
                     if isinstance(result, dict):
                         if result.get("status") == "completed" and isinstance(result.get("answer"), str):
                             from agent.count_consistency import align_enumerated_count
+                            from agent.temporal_repair import correct_future_availability
                             from agent.temporal_validation import gate_temporal_claims
                             result["answer"] = gate_temporal_claims(
-                                align_enumerated_count(result["answer"])
+                                correct_future_availability(
+                                    align_enumerated_count(result["answer"])
+                                )
                             )
                         result["performance"] = {"events": list(self._profile_events)}
                     return result
