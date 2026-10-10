@@ -942,8 +942,18 @@
         if (!host) return;
 
         const button = node('button', 'sidebar-action nobby-sidebar-nav');
-        const icon = node('span', 'nobby-talking-photo-icon', '🗣️');
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
         icon.setAttribute('aria-hidden', 'true');
+        const paths = [
+            ['path', 'M4 6.5A3.5 3.5 0 0 1 7.5 3h9A3.5 3.5 0 0 1 20 6.5v7a3.5 3.5 0 0 1-3.5 3.5H10l-5 4v-4.7A3.5 3.5 0 0 1 4 13.5z'],
+            ['path', 'M9 9a3 3 0 0 1 0 3M12 7.5a5.2 5.2 0 0 1 0 6']
+        ];
+        paths.forEach(([, d]) => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', d);
+            icon.appendChild(path);
+        });
         button.appendChild(icon);
         button.appendChild(node('span', 'sidebar-action-label', 'Talking Photo'));
         button.id = BUTTON_ID;
