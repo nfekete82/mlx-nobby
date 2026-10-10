@@ -557,6 +557,17 @@ class AgentRuntime:
                             ],
                         }
 
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.plan_fastpath import choose_official_followup
+                successful_fetches = sum(
+                    item.get("action") == "fetch_url" and item.get("status") == "completed"
+                    for item in observations if isinstance(item, dict)
+                )
+                # Bound deterministic auto-fetching; existing authorization and
+                # permissions still apply in the normal tool path.
+                if successful_fetches < 2:
+                    decision = choose_official_followup(goal, observations)
+
             if decision is None:
                 decision = self._model_hook(self.hooks.agent_choose_next_step_v2,
                     goal,
