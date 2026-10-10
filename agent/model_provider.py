@@ -1,6 +1,6 @@
 """Synchronous agent-model contract and the existing local MLX transport."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from contextlib import nullcontext
 import json
 import time
@@ -28,6 +28,7 @@ class ModelResponse:
     role: str
     usage: dict
     finish_reason: str | None = None
+    telemetry: dict = field(default_factory=dict)
 
 
 class ProviderError(RuntimeError):
@@ -174,6 +175,7 @@ class MLXProvider:
             raise ProviderError("provider_error", str(exc)) from exc
 
     def _complete(self, request, context, metrics):
+        setup_started = time.monotonic()
         try:
             runtime = self.ensure_model_for_role(request.role)
             role = runtime["resolved"]
@@ -211,7 +213,10 @@ class MLXProvider:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        setup_ms = round((time.monotonic() - setup_started) * 1000, 2)
+        inference_started = time.monotonic()
         result = self._request_json(upstream_request, metrics)
+        inference_ms = round((time.monotonic() - inference_started) * 1000, 2)
         _check_cancelled(context)
         try:
             choice = result["choices"][0]
@@ -235,6 +240,9 @@ class MLXProvider:
         return ModelResponse(
             text=output, model=model, role=request.role,
             usage=dict(completed["usage"]), finish_reason=finish_reason,
+            telemetry={"queue_wait_ms": completed["timings_ms"].get("queue_wait"),
+                       "model_setup_ms": setup_ms, "upstream_request_ms": inference_ms,
+                       "usage_method": completed["usage"].get("count_method")},
         )
 
     @staticmethod
