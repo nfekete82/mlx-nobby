@@ -28,3 +28,13 @@ Do not tag `v2.0.0` until release criteria, actual live endpoint and regression 
 - Inference instructions explicitly prohibit attributing World Bank values to Destatis or fabricating higher-precision Destatis values and extra sources.
 - **Not yet enforced end to end:** an LLM can still ignore its instructions or invent a second chart; a server-owned chart rendering payload and source validation are required for hard guarantees.
 - New offline fixtures test requested-year selection and no-data behavior; live endpoints and browser UI still require real-world validation.
+
+## Automatic public web research (experimental)
+
+The chat endpoint now recognizes explicit freshness intent (e.g. "heute", "aktuell", current year, news, recent releases, prices, leadership). It performs a bounded public search before local inference: DuckDuckGo Lite result titles/links for ordinary questions, Google News RSS for news prompts. Retrieval is best-effort with a 5-second request timeout and a 160 KB response limit. No search credentials are required. World Bank inflation retrieval remains separate.
+
+**Privacy:** Only the current user question (8–260 characters) is eligible for outbound search. No conversation history, knowledge-base documents or system prompts are sent. A conservative denylist blocks local addresses, private language, credentials, repository/workspace and other potentially personal requests. This heuristic is not a data-loss-prevention guarantee: avoid entering sensitive content into public questions, and consider an explicit external-search consent control before production.
+
+**Quality limits:** Search responses are *titles and links*, not independently read or verified article bodies; the model is told to distinguish search results from verified facts. The current implementation is **not** a general-purpose fact checker and cannot guarantee that it detects every uncertain answer, or that it rejects every misleading search result. HTML selectors and endpoints are provider dependent and need live browser/integration testing. Network failure is surfaced as unverified, never replaced by fictional results.
+
+Run offline regression tests with `python -m unittest tests.test_web_research tests.test_live_intelligence`, and syntax checks via `python -m py_compile backend/web_research.py backend/live_intelligence.py backend/app.py` before Docker rebuild.
