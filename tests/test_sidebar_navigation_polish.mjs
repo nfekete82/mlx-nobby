@@ -24,4 +24,27 @@ assert.ok(html.indexOf('id="sidebarJobsButton"') > html.indexOf('class="sidebar-
 // The bottom navigation must stay anchored when the recent list is hidden.
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*margin-top\s*:\s*auto/);
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*flex-shrink\s*:\s*0/);
-assert.match(html,/media-library\.css\?v=20261010-runtime-modal-layout/);
+assert.match(html,/media-library\.css\?v=20261010-sidebar-workspaces/);
+
+const chat = fs.readFileSync(new URL("../frontend/assets/chat.js",import.meta.url),"utf8");
+for (const id of ["sidebarWorkspaceList","sidebarWorkspaceAdd","sidebarWorkspaceFeedback"]) {
+  assert.match(html, new RegExp('id="'+id+'"'));
+}
+assert.match(html,/nobby-sidebar-recent-divider/);
+assert.match(chat,/renderSidebarWorkspaces\(data\.workspaces \|\| \[\], data\.active_workspace \|\| null\)/);
+assert.match(chat,/encodeURIComponent\(workspace\.workspace_id\) \+ '\/activate'/);
+assert.match(chat,/workspaceRequest\('\/api\/mlx\/code\/workspaces'/);
+assert.match(css,/\.nobby-sidebar-workspace\.is-active/);
+assert.match(css,/\.nobby-sidebar-recent-divider/);
+
+assert.match(html, />Workspaces<\/div>/);
+assert.match(chat, /nobby-sidebar-workspace-remove/);
+assert.match(chat, /method:'DELETE'/);
+assert.doesNotMatch(chat, /workspace_unregister_hint/);
+assert.match(css, /nobby-sidebar-workspace-row/);
+
+assert.match(chat, /if \(active\) \{/);
+assert.match(chat, /workspaceRequest\('\/api\/mlx\/code\/workspaces\/active', \{method:'DELETE'\}\)/);
+
+assert.match(html, /nobby-sidebar-section-label nobby-sidebar-workspaces-divider/);
+assert.match(css, /\.nobby-sidebar-workspaces-divider\{border-top:1px solid/);

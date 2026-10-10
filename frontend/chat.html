@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/chat.css?v=20261010-runtime-modal-layout">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=20261010-runtime-modal-layout">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=20261010-sidebar-workspaces">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -172,9 +172,11 @@
         </div>
 
         <button id="sidebarLibraryButton" class="sidebar-library-action" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8v8M11 8v8M15 8v8"/></svg><span data-i18n="library.title">Bibliothek</span></button>
-        <div class="nobby-sidebar-section-label" data-i18n="library.projects">Projekte</div>
-        <div class="nobby-projects-empty" data-i18n="library.no_projects">Keine Projekte</div>
-        <div class="nobby-sidebar-section-label nobby-recent-heading">
+        <div class="nobby-sidebar-section-label nobby-sidebar-workspaces-divider">Workspaces</div>
+        <div id="sidebarWorkspaceList" class="nobby-sidebar-workspace-list" aria-label="Workspaces"></div>
+        <button id="sidebarWorkspaceAdd" class="nobby-sidebar-workspace-add" type="button" aria-label="Workspace hinzufügen" title="Workspace hinzufügen"><span aria-hidden="true">＋</span> Workspace hinzufügen</button>
+        <div id="sidebarWorkspaceFeedback" class="nobby-sidebar-workspace-feedback" role="status" hidden></div>
+        <div class="nobby-sidebar-section-label nobby-recent-heading nobby-sidebar-recent-divider">
           <button id="recentToggle" class="nobby-recent-toggle" type="button" aria-expanded="true" aria-controls="chatList"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span data-i18n="library.recent">Letzte Chats</span></button>
           <div class="nobby-recent-controls">
             <details id="chatHistoryMenu" class="chat-history-menu nobby-recent-more"><summary aria-label="Chat-Menü" data-i18n-aria-label="ui.chat_history_menu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></summary><button id="deleteAllChats" type="button" data-i18n="ui.delete_all_chats">Alle Chats löschen</button></details>
@@ -260,32 +262,6 @@
                         Thinking –
                     </span>
 
-                    <span class="active-workspace-separator">│</span>
-
-                    <span
-                        id="activeWorkspaceHeader"
-                        class="active-workspace-header"
-                    >
-                        <button
-                            id="activeWorkspaceHeaderButton"
-                            class="active-workspace-header-button"
-                            type="button"
-                            title="Workspace auswählen" data-i18n-title="ui.workspace_select"
-                        >
-                            <span data-i18n="ui.workspace_open">📁 Workspace öffnen</span>
-                        </button>
-
-                        <button
-                            id="activeWorkspaceHeaderClose"
-                            class="active-workspace-header-close"
-                            type="button"
-                            title="Workspace schließen" data-i18n-title="ui.workspace_close"
-                            aria-label="Workspace schließen" data-i18n-aria-label="ui.workspace_close"
-                            hidden
-                        >
-                            ×
-                        </button>
-                    </span>
 
                 </div>
 
@@ -1730,7 +1706,7 @@
 <script src="/assets/chat/notes.js?v=20260917-notes-i18n-v2"></script>
 <script src="/assets/chat/image-settings.js?v=20261002-gallery-final"></script>
 <script src="/assets/chat/dictation.js?v=20260906"></script>
-<script src="/assets/chat.js?v=20260926-shorts-progress"></script>
+<script src="/assets/chat.js?v=20261010-sidebar-workspaces"></script>
 <script src="/assets/chat/sidebar-rail-utilities.js?v=1-11-0" defer></script>
 
 <div
