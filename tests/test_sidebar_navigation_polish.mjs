@@ -45,3 +45,6 @@ assert.match(css, /nobby-sidebar-workspace-row/);
 
 assert.match(chat, /if \(active\) \{/);
 assert.match(chat, /workspaceRequest\('\/api\/mlx\/code\/workspaces\/active', \{method:'DELETE'\}\)/);
+
+assert.match(html, /nobby-sidebar-section-label nobby-sidebar-workspaces-divider/);
+assert.match(css, /\.nobby-sidebar-workspaces-divider\{border-top:1px solid/);
