@@ -1179,6 +1179,61 @@ function parseWorkspaceTestCommands(value) {
     return commands;
 }
 
+function renderSidebarWorkspaces(workspaces, activeWorkspace) {
+    const list = document.getElementById('sidebarWorkspaceList');
+    if (!list) return;
+    list.replaceChildren();
+    const items = Array.isArray(workspaces) ? workspaces : [];
+    const activeId = activeWorkspace?.workspace_id;
+    if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'nobby-projects-empty';
+        empty.textContent = chatT('library.no_projects', 'Keine Projekte');
+        list.appendChild(empty);
+        return;
+    }
+    items.forEach(workspace => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'nobby-sidebar-workspace';
+        const active = workspace.workspace_id === activeId;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-current', active ? 'true' : 'false');
+        button.setAttribute('aria-label', workspace.name + (active ? ' – aktiv' : ''));
+        button.title = workspace.root_path || workspace.name;
+        button.disabled = workspace.available === false;
+        const icon = document.createElement('span');
+        icon.className = 'nobby-sidebar-workspace-icon';
+        icon.textContent = '▣';
+        icon.setAttribute('aria-hidden', 'true');
+        const name = document.createElement('span');
+        name.className = 'nobby-sidebar-workspace-name';
+        name.textContent = workspace.name || workspace.root_path || 'Workspace';
+        const indicator = document.createElement('span');
+        indicator.className = 'nobby-sidebar-workspace-indicator';
+        indicator.textContent = active ? '●' : '';
+        indicator.setAttribute('aria-hidden', 'true');
+        button.append(icon, name, indicator);
+        button.addEventListener('click', async () => {
+            if (active || button.disabled) return;
+            button.disabled = true;
+            try {
+                await workspaceRequest('/api/mlx/code/workspaces/' +
+                    encodeURIComponent(workspace.workspace_id) + '/activate', {method:'POST'});
+                await loadWorkspaces();
+            } catch (error) {
+                showWorkspaceFeedback(workspaceErrorMessage(error));
+                const feedback = document.getElementById('sidebarWorkspaceFeedback');
+                if (feedback) {feedback.hidden = false; feedback.textContent = workspaceErrorMessage(error);}
+            } finally { button.disabled = false; }
+        });
+        list.appendChild(button);
+    });
+}
+
+const sidebarWorkspaceAdd = document.getElementById('sidebarWorkspaceAdd');
+sidebarWorkspaceAdd?.addEventListener('click', openWorkspacePicker);
+
 function renderActiveWorkspace(workspace) {
     const badge = document.getElementById('activeWorkspaceBadge');
     const header = document.getElementById('activeWorkspaceHeader');
@@ -1230,6 +1285,9 @@ async function loadWorkspaces() {
         const data = await workspaceRequest('/api/mlx/code/workspaces');
 
         renderActiveWorkspace(data.active_workspace || null);
+        renderSidebarWorkspaces(data.workspaces || [], data.active_workspace || null);
+        const feedback = document.getElementById('sidebarWorkspaceFeedback');
+        if (feedback) { feedback.hidden = true; feedback.textContent = ''; }
         renderWorkspaceTestCommands(data.active_workspace || null);
 
         if (
@@ -1242,6 +1300,7 @@ async function loadWorkspaces() {
         }
     } catch (error) {
         renderActiveWorkspace(null);
+        renderSidebarWorkspaces([], null);
         renderWorkspaceTestCommands(null);
         showWorkspaceFeedback(workspaceErrorMessage(error));
     }
