@@ -1035,6 +1035,49 @@ def enforce_research_citations(answer, observations):
     return "\n".join(output)
 
 
+def verify_product_launch_items(answer, observations):
+    """Cite product listings only when the exact model occurs in loaded text."""
+    import re
+
+    sources = []
+    for item in observations:
+        if not isinstance(item, dict) or item.get("action") != "fetch_url" or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        url = result.get("url") or result.get("final_url") or item.get("query")
+        content = result.get("text")
+        if isinstance(url, str) and isinstance(content, str) and len(content) >= 100:
+            sources.append((url, content))
+
+    def normalize(value):
+        return re.sub(r"[^\w]+", " ", value.casefold()).strip()
+
+    output = []
+    for line in str(answer or "").splitlines():
+        if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
+            continue
+        body = re.sub(r"^\s*(?:[-*]|\d+[.)])\s+", "", line).strip()
+        bold = re.match(r"\*\*([^*]+)\*\*", body)
+        name = bold.group(1).strip() if bold else re.split(r"\s+[–—-]\s+|\s*\(", body, maxsplit=1)[0].strip()
+        if not name or len(name) > 90 or "," in name or "/" in name:
+            continue
+        model = normalize(name)
+        if len(model) < 5:
+            continue
+        for url, content in sources:
+            if model in normalize(content):
+                cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
+                cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
+                output.append(cleaned.rstrip(" ,;:-") + f" ([Artikelquelle]({url}))")
+                break
+    if not output:
+        return ("Keine Produktmodelle konnten eindeutig anhand tatsächlich "
+                "geladener Artikeltexte bestätigt werden.")
+    return "\n".join(output)
+
+
 def agent_v2_final_answer(goal, observations, *, observed_agent_llm):
     coding_contract = coding_evidence_contract(observations)
 
@@ -1340,6 +1383,16 @@ WICHTIGE CODING-EVIDENCE-REGELN:
 
     if has_coding_evidence:
         answer = compact_coding_answer_markdown(answer)
+
+    if re.search(
+        r"(?i)\b(?:vorgestellt|präsentiert|angekündigt|erschienen|neuheiten)\b",
+        str(goal or ""),
+    ) and any(
+        isinstance(item, dict) and item.get("action") == "fetch_url"
+        for item in observations
+    ):
+        answer = verify_product_launch_items(answer, observations)
+        return answer
 
     if re.search(
         r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|nachweislich|source(?:s)?)\b",
