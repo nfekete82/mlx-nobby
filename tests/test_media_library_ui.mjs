@@ -16,7 +16,7 @@ assert.match(css, /\.nobby-library-panel\[hidden\]/);
 assert.match(css, /grid-template-columns:repeat\(auto-fill/);
 assert.match(js, /fetch\("\/api\/library\/assets\?limit=1000"/);
 assert.match(js, /asset\.kind === "image"/);
-assert.match(js, /video\.controls = true/);
+assert.match(js, /media\.controls = true/);
 assert.match(js, /window\.confirm/);
 assert.match(js, /encodeURIComponent\(asset\.id\)/);
 assert.match(js, /new Date\(Number\(value\) \* 1000\)/);
