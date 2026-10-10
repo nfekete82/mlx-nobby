@@ -168,6 +168,7 @@ class MLXProvider:
                     metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
                     _check_cancelled(run_context)
                     result = self._complete(request, run_context, metrics)
+                    result.telemetry["queue_wait_ms"] = round(lease_wait_ms + lock_wait_ms, 2)
                     result.telemetry["lease_wait_ms"] = lease_wait_ms
                     result.telemetry["lock_wait_ms"] = lock_wait_ms
                     return result
