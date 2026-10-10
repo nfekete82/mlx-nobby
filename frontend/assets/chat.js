@@ -1215,11 +1215,15 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
         indicator.setAttribute('aria-hidden', 'true');
         button.append(icon, name, indicator);
         button.addEventListener('click', async () => {
-            if (active || button.disabled) return;
+            if (button.disabled) return;
             button.disabled = true;
             try {
-                await workspaceRequest('/api/mlx/code/workspaces/' +
-                    encodeURIComponent(workspace.workspace_id) + '/activate', {method:'POST'});
+                if (active) {
+                    await workspaceRequest('/api/mlx/code/workspaces/active', {method:'DELETE'});
+                } else {
+                    await workspaceRequest('/api/mlx/code/workspaces/' +
+                        encodeURIComponent(workspace.workspace_id) + '/activate', {method:'POST'});
+                }
                 await loadWorkspaces();
             } catch (error) {
                 showWorkspaceFeedback(workspaceErrorMessage(error));
