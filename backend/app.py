@@ -1342,6 +1342,21 @@ def mlx_chat_stream(request: ChatRequest):
                         },
                     )
 
+    # v2 Automatic public research. Only a short, non-private current question
+    # goes to the search provider; no prior turns, workspace or file contents.
+    if last_user_prompt:
+        from backend.web_research import needs_web_research, retrieve_web_research
+        from backend.live_intelligence import needs_inflation_lookup
+        if not needs_inflation_lookup(last_user_prompt) and needs_web_research(last_user_prompt):
+            research_context = retrieve_web_research(last_user_prompt)
+            if research_context:
+                if messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = (
+                        str(messages[0].get("content") or "") + "\n\n" + research_context
+                    )
+                else:
+                    messages.insert(0, {"role": "system", "content": research_context})
+
     # v2 Live Intelligence: fetch verified annual inflation data before inference.
     # Only the user's current prompt leaves this machine; the request to the
     # statistical provider contains no user text, chat history or workspace data.
