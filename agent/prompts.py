@@ -1533,6 +1533,9 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                 pass
         answer = gate_numerical_claims(answer, observations)
 
+    from agent.temporal_validation import gate_temporal_claims
+    answer = gate_temporal_claims(answer)
+
     return answer
 
 
