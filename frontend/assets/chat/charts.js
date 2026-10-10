@@ -37,27 +37,44 @@
     return node;
   }
   function draw(spec) {
-    const svg = svgNode("svg",{viewBox:"0 0 640 270",role:"img","aria-label":spec.title || spec.type});
+    const svg = svgNode("svg",{viewBox:"0 0 640 300",role:"img","aria-label":spec.title || spec.type});
     const {values,labels,type} = spec;
     const min = Math.min(0,...values), max = Math.max(0,...values);
-    const span = max - min || 1, y = v => 228-(v-min)/span*190;
+    const span = max - min || 1, y = v => 230-(v-min)/span*174;
+    const format = v => new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(v) + (spec.unit ? " " + spec.unit : "");
+    const short = label => label.length > 13 ? label.slice(0,12)+"…" : label;
+    const labelAt=(text,x,yy,anchor="middle",color="#a9b7cb")=>{
+      const el=svgNode("text",{x,y:yy,"text-anchor":anchor,fill:color,"font-size":11,"font-family":"system-ui, sans-serif"});
+      el.textContent=text;svg.appendChild(el);return el;
+    };
     if (type === "line") {
       const points=values.map((v,i)=>[46+i*556/Math.max(1,values.length-1),y(v)]);
       svg.appendChild(svgNode("line",{x1:46,x2:608,y1:y(0),y2:y(0),stroke:"#627086"}));
-      const path=svgNode("polyline",{points:points.map(p=>p.join(",")).join(" "),fill:"none",stroke:"#60a5fa","stroke-width":3});
-      svg.appendChild(path);
-      points.forEach(([x,yy],i)=>{const point=svgNode("circle",{cx:x,cy:yy,r:3.6,fill:"#93c5fd"});const tt=svgNode("title");tt.textContent=labels[i]+": "+values[i];point.appendChild(tt);svg.appendChild(point);});
+      svg.appendChild(svgNode("polyline",{points:points.map(p=>p.join(",")).join(" "),fill:"none",stroke:"#60a5fa","stroke-width":3}));
+      const stride=Math.max(1,Math.ceil(values.length/8));
+      points.forEach(([x,yy],i)=>{
+        const point=svgNode("circle",{cx:x,cy:yy,r:3.6,fill:"#93c5fd"});const tt=svgNode("title");tt.textContent=labels[i]+": "+format(values[i]);point.appendChild(tt);svg.appendChild(point);
+        if(i%stride===0 || i===values.length-1) {
+          labelAt(short(labels[i]),x,264);
+          if(values.length<=8) labelAt(format(values[i]),x,Math.max(18,yy-12),"middle","#dceaff");
+        }
+      });
     } else if (type === "donut") {
       const total=values.reduce((a,b)=>a+b,0); let offset=0;
       values.forEach((v,i)=>{const part=total? v/total:0;if(!part)return;
         const ring=svgNode("circle",{cx:320,cy:133,r:80,fill:"none",stroke:["#60a5fa","#34d399","#fbbf24","#c084fc","#fb7185"][i%5],"stroke-width":34,"stroke-dasharray":(part*502.65)+" "+502.65,"stroke-dashoffset":-offset*502.65,transform:"rotate(-90 320 133)"});
-        const title=svgNode("title");title.textContent=labels[i]+": "+v;ring.appendChild(title);svg.appendChild(ring);offset+=part;
+        const title=svgNode("title");title.textContent=labels[i]+": "+format(v);ring.appendChild(title);svg.appendChild(ring);offset+=part;
       });
+      labelAt(format(total),320,138,"middle","#dceaff");
     } else {
-      const width=556/values.length;
+      const width=556/values.length, stride=Math.max(1,Math.ceil(values.length/10));
       values.forEach((v,i)=>{const top=Math.min(y(v),y(0)),height=Math.max(2,Math.abs(y(v)-y(0)));
         const bar=svgNode("rect",{x:46+i*width+3,y:top,width:Math.max(1,width-6),height,rx:3,fill:"#60a5fa"});
-        const title=svgNode("title");title.textContent=labels[i]+": "+v;bar.appendChild(title);svg.appendChild(bar);
+        const title=svgNode("title");title.textContent=labels[i]+": "+format(v);bar.appendChild(title);svg.appendChild(bar);
+        if(i%stride===0 || i===values.length-1) {
+          labelAt(short(labels[i]),46+(i+.5)*width,264);
+          if(values.length<=8) labelAt(format(v),46+(i+.5)*width,Math.max(18,top-10),"middle","#dceaff");
+        }
       });
     }
     return svg;
@@ -90,11 +107,21 @@
   }
   function enhance(root) {
     if (!root?.querySelectorAll) return;
-    for(const code of root.querySelectorAll("pre > code.language-nobby-chart")){
-      const pre=code.parentElement;if(pre.dataset.nobbyChartDone)return;
+    // Models often emit `json` or an unlabelled fence despite the chart
+    // instruction. Recognize the validated data schema, not just the fence tag.
+    for(const code of root.querySelectorAll("pre > code")){
+      const pre=code.parentElement;
+      if(!pre || pre.dataset.nobbyChartDone) continue;
+      const language=Array.from(code.classList || []).find(x=>x.startsWith("language-")) || "";
+      if(language && !["language-nobby-chart","language-json"].includes(language)) continue;
+      let parsed;
+      try { parsed=JSON.parse(code.textContent); } catch(_) { continue; }
+      if(!parsed || typeof parsed !== "object" || !Array.isArray(parsed.data) ||
+          !("type" in parsed || "title" in parsed)) continue;
+      const spec=normalize(parsed);
+      if(!spec) continue;
       pre.dataset.nobbyChartDone="1";
-      let spec=null;try{spec=normalize(JSON.parse(code.textContent));}catch(_){}
-      if(spec) pre.replaceWith(render(spec,pre));
+      pre.replaceWith(render(spec,pre));
     }
   }
   window.MLXCharts={normalize,choose,enhance,csv};
