@@ -333,8 +333,8 @@ class AgentRuntime:
         # Deep research remains opt-in; routine fact-finding should not spend
         # six-plus model-planning rounds after usable web evidence is available.
         deep_research = bool(mode == "research" and re.search(
-            r"(?i)\\b(?:tiefenrecherche|ausführlich recherchier|umfassend recherchier|"
-            r"deep research|in-depth research|systematisch vergleichen)\\b", goal,
+            r"(?i)\b(?:tiefenrecherche|ausführliche recherche|umfassende recherche|"
+            r"deep research|in-depth research|systematisch vergleichen)\b", goal,
         ))
         if deep_research:
             max_steps = max(max_steps, 6)
