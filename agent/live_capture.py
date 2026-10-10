@@ -32,7 +32,7 @@ def capture(questions, endpoint, *, timeout=120, transport=None):
     for i, question in enumerate(questions, 1):
         if not isinstance(question, str) or not question.strip():
             raise ValueError("Every question must be nonempty")
-        payload = json.dumps({"message": question}, ensure_ascii=False).encode("utf-8")
+        payload = json.dumps({"goal": question, "mode": "diagnostic"}, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(endpoint, data=payload,
                                      headers={"Content-Type": "application/json"},
                                      method="POST")
@@ -48,9 +48,18 @@ def capture(questions, endpoint, *, timeout=120, transport=None):
             decoded = json.loads(body)
             if not isinstance(decoded, dict):
                 raise ValueError("Response must be a JSON object")
-            result.append({"id": f"live-{i:03d}", "question": question,
-                           "elapsed_ms": elapsed, "response": decoded,
-                           "review_status": "pending"})
+            if not isinstance(decoded.get("answer"), str) or not decoded.get("answer").strip():
+                raise ValueError("Agent response missing answer")
+            status = str(decoded.get("status") or "")
+            if status != "completed":
+                result.append({"id": f"live-{i:03d}", "question": question,
+                               "elapsed_ms": elapsed, "response": decoded,
+                               "error": "agent_status:" + status,
+                               "review_status": "error"})
+            else:
+                result.append({"id": f"live-{i:03d}", "question": question,
+                               "elapsed_ms": elapsed, "response": decoded,
+                               "review_status": "pending"})
         except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
             elapsed = round((time.perf_counter() - begin) * 1000, 2)
             result.append({"id": f"live-{i:03d}", "question": question,
@@ -62,7 +71,7 @@ def capture(questions, endpoint, *, timeout=120, transport=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", required=True,
-                        help="Local JSON POST agent endpoint accepting {message: question}")
+                        help="Local agent POST /api/agent/run accepting {goal, mode}")
     parser.add_argument("--questions", required=True,
                         help="JSON array of question strings")
     parser.add_argument("--output", required=True, help="Raw JSONL destination")
