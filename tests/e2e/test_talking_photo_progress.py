@@ -8,6 +8,15 @@ from PIL import Image
 from playwright.sync_api import expect
 
 
+def open_talking_photo(page):
+    # On mobile the sidebar is offscreen until opened through navigation.
+    if page.viewport_size['width'] <= 900 and not page.locator('.sidebar').evaluate(
+        "node => node.classList.contains('mobile-open')"
+    ):
+        page.locator('#sidebarToggle').click()
+    page.locator('#talkingPhotoButton').click()
+
+
 def test_talking_photo_progress_reopen_and_cancel(ui):
     page, _agent, _allowed = ui
     job_id = "a" * 24
@@ -52,7 +61,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     page.route(f"**/api/talking-photo/jobs/{job_id}/cancel", cancel)
     page.route(f"**/api/talking-photo/jobs/{job_id}/discard", discard)
 
-    page.locator("#talkingPhotoButton").click()
+    open_talking_photo(page)
     expect(page.locator("#talkingPhotoModal")).to_be_visible()
     png = io.BytesIO()
     Image.new("RGB", (32, 32), (30, 100, 150)).save(png, "PNG")
@@ -94,7 +103,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     assert requests["poll"] > count_before
     assert requests["discard"] == 0
 
-    page.locator("#talkingPhotoButton").click()
+    open_talking_photo(page)
     expect(page.locator("#talkingPhotoProgressTrack")).to_have_attribute("aria-valuenow", "42")
     expect(page.locator("#talkingPhotoCancel")).to_be_enabled()
     assert requests["create"] == 1, "Reload must not start a duplicate generation"
@@ -130,7 +139,7 @@ def test_talking_photo_stale_session_recovers(ui):
     page.reload()
     expect(page.locator("#talkingPhotoButton")).to_have_attribute("aria-busy", "false")
     assert page.evaluate("sessionStorage.getItem('mlxTalkingPhotoCurrentJob')") is None
-    page.locator("#talkingPhotoButton").click()
+    open_talking_photo(page)
     expect(page.locator("#talkingPhotoCreate")).to_be_enabled()
 
 
@@ -146,7 +155,7 @@ def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
     page.route("**/api/mlx/audio/voices/manage", lambda route: route.fulfill(
         status=200, content_type="application/json", body=json.dumps({"voices": []}),
     ))
-    page.locator("#talkingPhotoButton").click()
+    open_talking_photo(page)
     expect(page.locator("#talkingPhotoModal")).to_be_visible()
 
     # A finished result is always owned by the third output panel, never

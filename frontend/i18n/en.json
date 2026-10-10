@@ -898,6 +898,7 @@
   "knowledge.search_failed": "Search failed:",
   "runtime_ui.system_unavailable": "System data unavailable",
   "runtime_ui.info_unavailable": "Runtime information unavailable: {message}",
+  "runtime_ui.close_info": "Close system information",
   "runtime_ui.aliases_failed": "Could not load model aliases",
   "generation.agent_approval_failed": "Agent approval failed: {message}",
   "generation.thinking_enabled": "Thinking enabled.",

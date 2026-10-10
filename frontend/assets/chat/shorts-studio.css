@@ -220,50 +220,6 @@
     font-size: 13px;
 }
 
-/* Runtime details belong visually to the composer rather than the header.
-   The popover lives inside the backdrop-filtered topbar, which Chrome treats
-   as the containing block even for position:fixed. Use viewport units for
-   the coordinates so positioning still follows the actual viewport. */
-.runtime-popover {
-    position: fixed;
-    z-index: 1300;
-    right: auto;
-    bottom: auto;
-    left: 50vw;
-    width: min(520px, calc(100vw - 32px));
-    max-height: min(420px, calc(100vh - 32px));
-    transform: translate(-50%, -100%);
-}
-
-body.mlx-empty-chat .runtime-popover {
-    top: calc(50vh - 14px);
-    max-height: calc(50vh - 30px);
-}
-
-body.mlx-chat-started .runtime-popover {
-    top: calc(100vh - 108px);
-}
-
-body.mlx-chat-started:has(.composer.composer-multiline) .runtime-popover {
-    top: calc(100vh - min(330px, 40vh));
-}
-
-/* Keep the start-screen greeting from visually colliding with the runtime
-   popover. The empty-state container already has an opacity/transform
-   transition in chat.css, so opening and closing the info panel stays soft. */
-body.mlx-empty-chat:has(.runtime-popover:not([hidden])) .empty {
-    opacity: 0;
-    transform: translateY(-110px);
-    pointer-events: none;
-}
-
-@media (max-height: 700px) {
-    body.mlx-empty-chat .runtime-popover {
-        top: calc(46vh - 12px);
-        max-height: calc(46vh - 24px);
-    }
-}
-
 @media (max-width: 720px) {
     .mlx-shorts-studio-preview {
         grid-template-columns: 1fr;
@@ -275,15 +231,6 @@ body.mlx-empty-chat:has(.runtime-popover:not([hidden])) .empty {
 
     .mlx-shorts-studio-controls {
         grid-template-columns: 1fr;
-    }
-
-    .runtime-popover {
-        width: calc(100vw - 24px);
-        max-height: min(400px, calc(100vh - 24px));
-    }
-
-    body.mlx-chat-started .runtime-popover {
-        top: calc(100vh - 104px);
     }
 }
 

@@ -400,7 +400,7 @@
         if (!document.getElementById('runtimeInfoButton')) return;
         try {
             await loadScript(
-                '/assets/chat/runtime-reliability.js?v=20260928-runtime-reliability-v1',
+                '/assets/chat/runtime-reliability.js?v=20261010-runtime-modal-layout',
                 'mlx-runtime-reliability'
             );
         } catch (error) {

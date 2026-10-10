@@ -712,6 +712,10 @@ let runtimeModalPreviousFocus = null;
 
 function closeRuntimePopover() {
     if (runtimePopover.open) runtimePopover.close();
+    finishRuntimeModalClose();
+}
+
+function finishRuntimeModalClose() {
     runtimePopover.hidden = true;
     runtimeInfoButton.setAttribute('aria-expanded', 'false');
     if (runtimeModalPreviousFocus?.isConnected) runtimeModalPreviousFocus.focus();
@@ -768,6 +772,8 @@ function appendRuntimeHeading(section, text) {
 
 
 function renderRuntimeInfo(status, systemData) {
+    const restoreThinkingFocus = document.activeElement ===
+        runtimeInfoContent.querySelector('.message-action-btn');
     runtimeInfoContent.innerHTML = '';
 
     const runtime = document.createElement('div');
@@ -899,6 +905,7 @@ function renderRuntimeInfo(status, systemData) {
     }
 
     runtimeInfoContent.appendChild(metricsSection);
+    if (restoreThinkingFocus) thinkingButton.focus({preventScroll: true});
 }
 
 
@@ -935,6 +942,7 @@ async function refreshRuntimeInfo() {
 
 
 function openRuntimePopover() {
+    if (runtimePopover.open) return;
     closeModelPopover();
     runtimeModalPreviousFocus = document.activeElement;
     runtimePopover.hidden = false;
@@ -1285,9 +1293,6 @@ function initModelSwitcher() {
 
 
 function initRuntimeInfoPopover() {
-    // The topbar uses backdrop-filter and creates a fixed-position containing block.
-    // Move the modal to body so its backdrop covers the entire viewport.
-    if (runtimePopover.parentElement !== document.body) document.body.appendChild(runtimePopover);
     // Help and Shorts are mounted dynamically. Keep Systeminfo directly
     // before Einstellungen regardless of their initialization order.
     const sidebarBottom = document.querySelector('.sidebar-bottom');
@@ -1314,21 +1319,30 @@ function initRuntimeInfoPopover() {
         event.preventDefault();
         closeRuntimePopover();
     });
+    // Also clean up when another caller uses the native dialog.close() API.
+    runtimePopover.addEventListener('close', () => {
+        if (!runtimePopover.open) finishRuntimeModalClose();
+    });
+    const outsideDialog = event => {
+        const rect = runtimePopover.getBoundingClientRect();
+        return event.clientX < rect.left || event.clientX > rect.right ||
+            event.clientY < rect.top || event.clientY > rect.bottom;
+    };
+    let backdropPointerDown = false;
+    runtimePopover.addEventListener('pointerdown', event => {
+        backdropPointerDown = event.target === runtimePopover && outsideDialog(event);
+    });
     runtimePopover.addEventListener('click', event => {
-        if (event.target === runtimePopover || event.target.dataset?.runtimeClose === 'true') {
+        if (backdropPointerDown && event.target === runtimePopover && outsideDialog(event)) {
             closeRuntimePopover();
         }
+        backdropPointerDown = false;
     });
-    document.addEventListener('keydown', event => {
-        if (runtimePopover.hidden) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            closeRuntimePopover();
-        } else if (event.key === 'Tab') {
-            const dialog = runtimePopover.querySelector('.nobby-runtime-dialog');
-            const focusable = Array.from(dialog?.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || [])
-                .filter(node => !node.disabled && !node.hidden);
-            if (!focusable.length) { event.preventDefault(); dialog?.focus(); return; }
+    runtimePopover.addEventListener('keydown', event => {
+        if (event.key === 'Tab') {
+            const focusable = Array.from(runtimePopover.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                .filter(node => !node.disabled && node.getClientRects().length);
+            if (!focusable.length) { event.preventDefault(); runtimePopover.focus(); return; }
             const first = focusable[0], last = focusable[focusable.length - 1];
             if (event.shiftKey && document.activeElement === first) {event.preventDefault();last.focus();}
             else if (!event.shiftKey && document.activeElement === last) {event.preventDefault();first.focus();}
