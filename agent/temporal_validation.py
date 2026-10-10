@@ -52,6 +52,8 @@ def future_availability_conflicts(answer, today=None):
 
 
 def gate_temporal_claims(answer, today=None):
+    if "**Zeitprüfung:**" in str(answer):
+        return answer
     issues = future_availability_conflicts(answer, today)
     if not issues:
         return answer
