@@ -1468,6 +1468,13 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     ):
         answer = enforce_research_citations(answer, observations)
 
+    # Apply a deterministic check only when articles were actually fetched.
+    # Simple questions without web observations take the original fast path.
+    if any(isinstance(item, dict) and item.get("action") == "fetch_url"
+           for item in observations):
+        from agent.claim_validation import gate_numerical_claims
+        answer = gate_numerical_claims(answer, observations)
+
     return answer
 
 
