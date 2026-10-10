@@ -708,9 +708,13 @@ function closeModelPopover() {
 }
 
 
+let runtimeModalPreviousFocus = null;
+
 function closeRuntimePopover() {
     runtimePopover.hidden = true;
     runtimeInfoButton.setAttribute('aria-expanded', 'false');
+    if (runtimeModalPreviousFocus?.isConnected) runtimeModalPreviousFocus.focus();
+    runtimeModalPreviousFocus = null;
 
     if (runtimeInfoInterval) {
         clearInterval(runtimeInfoInterval);
@@ -931,8 +935,10 @@ async function refreshRuntimeInfo() {
 
 function openRuntimePopover() {
     closeModelPopover();
+    runtimeModalPreviousFocus = document.activeElement;
     runtimePopover.hidden = false;
     runtimeInfoButton.setAttribute('aria-expanded', 'true');
+    document.getElementById('runtimeModalClose')?.focus();
     runtimeInfoContent.textContent = rut('runtime_loading', 'Loading runtime…');
 
     refreshRuntimeInfo();
@@ -1298,15 +1304,27 @@ function initRuntimeInfoPopover() {
         }
     });
 
-    document.addEventListener('click', event => {
-        if (
-            !runtimePopover.hidden &&
-            !runtimePopover.contains(event.target) &&
-            !runtimeInfoButton.contains(event.target)
-        ) {
+    document.getElementById('runtimeModalClose')?.addEventListener('click', closeRuntimePopover);
+    runtimePopover.addEventListener('click', event => {
+        if (event.target === runtimePopover || event.target.dataset?.runtimeClose === 'true') {
             closeRuntimePopover();
         }
     });
+    document.addEventListener('keydown', event => {
+        if (runtimePopover.hidden) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeRuntimePopover();
+        } else if (event.key === 'Tab') {
+            const dialog = runtimePopover.querySelector('.nobby-runtime-dialog');
+            const focusable = Array.from(dialog?.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || [])
+                .filter(node => !node.disabled && !node.hidden);
+            if (!focusable.length) { event.preventDefault(); dialog?.focus(); return; }
+            const first = focusable[0], last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {event.preventDefault();last.focus();}
+            else if (!event.shiftKey && document.activeElement === last) {event.preventDefault();first.focus();}
+        }
+    });;
 }
 
 
