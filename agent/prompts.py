@@ -1472,7 +1472,53 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     # Simple questions without web observations take the original fast path.
     if any(isinstance(item, dict) and item.get("action") == "fetch_url"
            for item in observations):
-        from agent.claim_validation import gate_numerical_claims
+        from agent.claim_validation import (
+            audit_numerical_claims,
+            gate_numerical_claims,
+            loaded_articles,
+        )
+        audit = audit_numerical_claims(answer, observations)
+        if audit["checked"] and (audit["unverified"] or audit.get("conflicts")):
+            # One bounded corrective pass; never treat the model's revision
+            # itself as verification. The deterministic gate runs again below.
+            sources = loaded_articles(observations)[:5]
+            evidence = [
+                {"url": url, "excerpt": body[:2500]}
+                for url, body in sources
+            ]
+            try:
+                revised = observed_agent_llm(
+                    "agent.evidence_repair",
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Korrigiere nur anhand der tatsächlich geladenen "
+                                "Artikel-Auszüge. Entferne konkrete unbelegte "
+                                "Zahlen und Daten oder kennzeichne sie klar als "
+                                "nicht verifiziert. Bei widersprüchlichen Quellen "
+                                "nenne den Widerspruch, statt einen Wert zu "
+                                "behaupten. Erfinde weder Fakten noch URLs. "
+                                "Behalte die eigentliche Antwort möglichst bei. "
+                                "Antworte nur mit der korrigierten Antwort."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {"draft": answer, "audit": audit,
+                                 "loaded_evidence": evidence},
+                                ensure_ascii=False,
+                            ),
+                        },
+                    ],
+                    max_tokens=2400,
+                    temperature=0.0,
+                )
+                if isinstance(revised, str) and revised.strip():
+                    answer = revised.strip()
+            except Exception:
+                pass
         answer = gate_numerical_claims(answer, observations)
 
     return answer
