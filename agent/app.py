@@ -5614,6 +5614,8 @@ Entscheide nach der Absicht, nicht nach einzelnen Schlüsselwörtern:
   konkrete Änderung verlangt wird. Beispiele: "Schau dir index.html an",
   "Kann man login.php besser machen?" oder "Prüfe diese CSS-Datei".
 - Eine Wissensfrage über Programmierung gehört zu normal_chat.
+- Wenn der Nutzer bereits Messwerte, Umsätze oder Zahlenreihen liefert und ein Diagramm oder deren Auswertung wünscht, wähle normal_chat. Das Frontend kann die Antwort visualisieren. Verwechsle Umsatzdaten nicht mit Aktienkursen.
+- Wähle finance_* ausschließlich für Börseninstrumente, Depotanalysen oder zugehörige Marktinformationen, niemals allein wegen Euro-Beträgen oder des Wortes Entwicklung.
 - knowledge_search ist für Fragen über Informationen gedacht, die in der lokalen
   Wissensbasis von MLX nobby indexiert sein können.
 - Fragen über die eigene MLX nobby-Architektur, lokale Dokumentation,
@@ -6375,6 +6377,21 @@ def classify_chat_action_details(
         if manager_error:
             result["manager_error"] = manager_error
         return result
+
+    # Data visualization is a presentation request, not a market-data tool.
+    # Let the small router classify it, but reject unsupported finance guesses
+    # when the user already supplied the observations and no security exists.
+    if intent in finance.TOOLS and not file_context and finance.user_supplied_dataset(prompt):
+        return {
+            "intent": "normal_chat",
+            "semantic_intent": intent,
+            "confidence": confidence,
+            "requires_tools": False,
+            "reason": "Provided numeric dataset; no market instrument required",
+            "method": "semantic_data_guard",
+            "small_router": small_router_result,
+            "manager_trigger_reasons": trigger_reasons,
+        }
 
     if intent in MEDIA_ACTIONS:
         return media.chat_routing() | {"original_intent": intent, "guard": "execution_required"}
