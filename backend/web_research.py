@@ -93,6 +93,17 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
             parser = _ResultParser()
             parser.feed(raw)
             sources.extend((title, link, "") for title, link in parser.results[:5])
+            # DuckDuckGo Lite can return a CAPTCHA or markup without result-link
+            # anchors. Try a second, independent public search feed.
+            if not sources:
+                news_url = "https://news.google.com/rss/search?q=" + quote_plus(query) + "&hl=de&gl=DE&ceid=DE:de"
+                news_root = ET.fromstring(_get(news_url, opener))
+                for item in news_root.findall("./channel/item")[:5]:
+                    title = (item.findtext("title") or "").strip()
+                    link = (item.findtext("link") or "").strip()
+                    published = (item.findtext("pubDate") or "").strip()
+                    if title and link.startswith("https://"):
+                        sources.append((title[:180], link, published[:60]))
     except (OSError, ValueError, ET.ParseError, TimeoutError) as exc:
         return (
             "WEBRECHERCHE NICHT VERFÜGBAR. Keine vermeintlich aktuellen Fakten erfinden. "
