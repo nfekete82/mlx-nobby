@@ -1,0 +1,11 @@
+.nobby-chart{width:min(920px,100%);margin:14px 0;padding:18px;border:1px solid var(--border,#293243);border-radius:14px;background:var(--panel,#111827);color:var(--text,#eef2f7)}
+.nobby-chart h3{font-size:15px;margin:0 0 14px;font-weight:650}
+.nobby-chart-body{overflow-x:auto}
+.nobby-chart-body svg{display:block;width:100%;max-height:340px}
+.nobby-chart-body table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.nobby-chart-body td{padding:9px 12px;border-bottom:1px solid var(--border,#303846)}
+.nobby-chart-body td:last-child{text-align:right}
+.nobby-chart-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.nobby-chart-actions button{padding:6px 10px;border:1px solid var(--border,#344054);border-radius:8px;background:var(--panel2,#1f2937);color:var(--text,#eef2f7);cursor:pointer}
+.nobby-chart-actions button:hover,.nobby-chart-actions button:focus-visible{border-color:var(--blue,#60a5fa)}
+@media(max-width:600px){.nobby-chart{padding:11px}.nobby-chart-actions button{font-size:12px}}
