@@ -339,7 +339,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_policy_defaults_and_validation(self):
         policy = RuntimePolicy()
-        self.assertEqual([policy.max_steps(mode) for mode in ("diagnostic", "research", "coding", "orchestrator", "other")], [6, 6, 24, 12, 6])
+        self.assertEqual([policy.max_steps(mode) for mode in ("diagnostic", "research", "coding", "orchestrator", "other")], [6, 3, 24, 12, 6])
         for field, value in (("coding_steps", 0), ("research_steps", True), ("research_continuation_steps", -1)):
             with self.assertRaises(ValueError):
                 replace(policy, **{field: value})
