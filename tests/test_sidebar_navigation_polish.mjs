@@ -24,7 +24,7 @@ assert.ok(html.indexOf('id="sidebarJobsButton"') > html.indexOf('class="sidebar-
 // The bottom navigation must stay anchored when the recent list is hidden.
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*margin-top\s*:\s*auto/);
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*flex-shrink\s*:\s*0/);
-assert.match(html,/media-library\.css\?v=20261010-runtime-modal-layout/);
+assert.match(html,/media-library\.css\?v=20261010-sidebar-workspaces/);
 
 const chat = fs.readFileSync(new URL("../frontend/assets/chat.js",import.meta.url),"utf8");
 for (const id of ["sidebarWorkspaceList","sidebarWorkspaceAdd","sidebarWorkspaceFeedback"]) {
