@@ -25,3 +25,14 @@ assert.ok(html.indexOf('id="sidebarJobsButton"') > html.indexOf('class="sidebar-
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*margin-top\s*:\s*auto/);
 assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*flex-shrink\s*:\s*0/);
 assert.match(html,/media-library\.css\?v=20261010-runtime-modal-layout/);
+
+const chat = fs.readFileSync(new URL("../frontend/assets/chat.js",import.meta.url),"utf8");
+for (const id of ["sidebarWorkspaceList","sidebarWorkspaceAdd","sidebarWorkspaceFeedback"]) {
+  assert.match(html, new RegExp('id="'+id+'"'));
+}
+assert.match(html,/nobby-sidebar-recent-divider/);
+assert.match(chat,/renderSidebarWorkspaces\(data\.workspaces \|\| \[\], data\.active_workspace \|\| null\)/);
+assert.match(chat,/encodeURIComponent\(workspace\.workspace_id\) \+ '\/activate'/);
+assert.match(chat,/workspaceRequest\('\/api\/mlx\/code\/workspaces'/);
+assert.match(css,/\.nobby-sidebar-workspace\.is-active/);
+assert.match(css,/\.nobby-sidebar-recent-divider/);
