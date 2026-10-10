@@ -116,6 +116,14 @@ class AgentRuntime:
                 for message in request.messages
                 if isinstance(message, dict) and isinstance(message.get("content"), str)
             )
+            telemetry = getattr(response, "telemetry", {})
+            if isinstance(telemetry, dict):
+                for key in ("queue_wait_ms", "model_setup_ms", "upstream_request_ms"):
+                    value = telemetry.get(key)
+                    if type(value) in (int, float) and value >= 0:
+                        event[key] = round(value, 2)
+                if telemetry.get("usage_method") in ("upstream", "estimate"):
+                    event["usage_method"] = telemetry["usage_method"]
             usage = response.usage if isinstance(response.usage, dict) else {}
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 value = usage.get(key)
