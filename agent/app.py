@@ -9216,7 +9216,7 @@ def _semantic_agent_route_allowed(
     if not requires_tools:
         return False
 
-    if routing.get("method") in {"deterministic_document", "deterministic_vision"}:
+    if routing.get("method") in {"deterministic_document", "deterministic_vision", "deterministic_public_sources"}:
         return True
     deterministic = _deterministic_chat_action(
         prompt,
@@ -9362,6 +9362,30 @@ def _resolved_media_action(request, routing_file_context):
     return media.intent if media.execution_requested else None
 
 
+def _requires_public_source_research(prompt, file_context=None):
+    """Deterministically require research for public dated facts with citations."""
+    if file_context:
+        return False
+    text = str(prompt or "").strip()
+    if not (8 <= len(text) <= 260):
+        return False
+    from backend.web_research import needs_web_research
+    if not needs_web_research(text):
+        return False
+    return bool(re.search(
+        r"(?i)\\b(?:quellen(?:links)?|belege|links|zitier(?:e|en)|"
+        r"verifizier(?:e|te|ten)|source(?:s)?)\\b", text,
+    ))
+
+
+def _public_sources_route():
+    return {
+        "intent": "research_agent", "confidence": 1.0,
+        "requires_tools": True, "reason": "Aktuelle öffentliche Fakten mit Quellenpflicht",
+        "method": "deterministic_public_sources",
+    }
+
+
 @app.post("/api/chat/actions/route")
 @observability.observed_turn
 def preflight_chat_action(request: ChatActionRequest):
@@ -9375,7 +9399,8 @@ def preflight_chat_action(request: ChatActionRequest):
     )
     if media.handles_turn or request.resolved_target:
         return media.payload()
-    routing = classify_chat_action_details(request.prompt, routing_file_context, request.conversation_context)
+    routing = (_public_sources_route() if _requires_public_source_research(request.prompt, routing_file_context)
+               else classify_chat_action_details(request.prompt, routing_file_context, request.conversation_context))
     return media.payload() | routing | {"target": _chat_preflight_target(routing["intent"])}
 
 
@@ -9420,11 +9445,10 @@ def run_chat_action(request: ChatActionRequest):
                 "method": "deterministic_workspace",
             }
         else:
-            routing = classify_chat_action_details(
-                request.prompt,
-                routing_file_context,
-                request.conversation_context,
-            )
+            routing = (_public_sources_route() if _requires_public_source_research(request.prompt, routing_file_context)
+                       else classify_chat_action_details(
+                           request.prompt, routing_file_context, request.conversation_context,
+                       ))
 
     action = routing["intent"]
     routing = dict(routing)
