@@ -5,7 +5,7 @@ that are already present in the answer with the local calendar date.
 """
 import re
 from datetime import date
-from agent.temporal_validation import DATES, _date
+from agent.temporal_validation import DATES, _date, future_availability_conflicts
 
 SINCE_DATE = re.compile(
     r"(?i)\bseit\s+(?:dem\s+)?(?=\d{1,2}\.)"
@@ -34,7 +34,7 @@ def correct_future_availability(answer, today=None):
                 line = line[:since.start()] + "laut genanntem Termin erst ab " + line[match.start():]
         # For an explicit current/future contradiction, replace the present
         # availability claim; preserve the source's future date unchanged.
-        if FUTURE.search(line) and PRESENT.search(line):
+        if FUTURE.search(line) and PRESENT.search(line) and future_availability_conflicts(line, today):
             line = PRESENT.sub("laut genanntem Termin noch nicht erhältlich", line, count=1)
         corrected.append(line)
     return "".join(corrected)

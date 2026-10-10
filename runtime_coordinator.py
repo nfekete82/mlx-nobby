@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 
@@ -41,6 +42,26 @@ MLX_SERVER_LABEL = "de.nobby.mlx-server"
 POLL_INTERVAL = 0.2
 _PROCESS_LOCK = threading.RLock()
 _LEASE_STATE = threading.local()
+_LEASE_WORKLOAD = ContextVar("runtime_workload", default=None)
+_DIAGNOSTICS_LOCK = threading.Lock()
+LEASE_HISTORY_LIMIT = 128
+_WORKLOADS = frozenset({"chat", "agent", "coding", "image", "video", "embedding",
+                       "speech-stt", "speech-tts", "speech-tts-clone", "router",
+                       "vision-classifier", "image-upscale", "other", "unknown"})
+
+
+def _workload(value):
+    return value if isinstance(value, str) and value in _WORKLOADS else "unknown"
+
+
+@contextmanager
+def lease_workload(workload):
+    """Label the observed caller without changing admission or scheduling."""
+    token = _LEASE_WORKLOAD.set(_workload(workload))
+    try:
+        yield
+    finally:
+        _LEASE_WORKLOAD.reset(token)
 
 # The job queue and read-only dashboards often request the same expensive
 # macOS memory_pressure/sysctl snapshot concurrently. Cache *only* diagnostics;
@@ -454,17 +475,18 @@ def _state_path(state_dir=STATE_DIR, thread_id=None):
     return state_dir / f"{os.getpid()}-{thread_id}.json"
 
 
-def _write_lease_state(workload, state, *, state_dir=STATE_DIR):
+def _write_lease_state(workload, state, *, state_dir=STATE_DIR, **timings):
     try:
-        state_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         path = _state_path(state_dir)
         temporary = path.with_name(f".{path.name}.tmp")
         payload = {
             "pid": os.getpid(),
             "thread": threading.get_ident(),
-            "workload": workload,
+            "workload": _workload(workload),
             "state": state,
             "updated_at": time.time(),
+            **timings,
         }
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False),
@@ -483,6 +505,8 @@ def _clear_lease_state(*, state_dir=STATE_DIR):
 
 
 def _pid_alive(pid):
+    if type(pid) is not int or pid <= 0:
+        return False
     try:
         os.kill(int(pid), 0)
     except (OSError, TypeError, ValueError):
@@ -490,8 +514,9 @@ def _pid_alive(pid):
     return True
 
 
-def runtime_state_snapshot(*, state_dir=STATE_DIR):
-    """Aggregate active/waiting heavy-runtime leases across native services."""
+def lease_state_snapshot(*, state_dir=STATE_DIR, now=None):
+    """Read metadata only; never probe memory on the acquisition hot path."""
+    now = time.time() if now is None else now
     entries = []
     try:
         paths = list(state_dir.glob("*.json"))
@@ -509,7 +534,24 @@ def runtime_state_snapshot(*, state_dir=STATE_DIR):
             except OSError:
                 pass
             continue
-        entries.append(item)
+        try:
+            updated = float(item.get("updated_at"))
+            if not math.isfinite(updated):
+                continue
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if item.get("state") not in ("active", "waiting"):
+            continue
+        thread = item.get("thread")
+        entry = {"pid": item["pid"], "thread": thread if type(thread) is int and thread > 0 else None,
+                 "workload": _workload(item.get("workload")),
+                 "state": item.get("state"), "updated_at": updated,
+                 "age_seconds": round(max(0.0, now - updated), 3)}
+        for key in ("requested_at", "acquired_at", "wait_ms"):
+            value = item.get(key)
+            if type(value) in (int, float) and math.isfinite(value) and value >= 0:
+                entry[key] = value
+        entries.append(entry)
 
     entries.sort(key=lambda item: float(item.get("updated_at") or 0))
     active = [item for item in entries if item.get("state") == "active"]
@@ -518,8 +560,65 @@ def runtime_state_snapshot(*, state_dir=STATE_DIR):
         "active": active[-1] if active else None,
         "waiting": waiting,
         "waiting_count": len(waiting),
-        "memory": diagnostic_memory_budget_snapshot(),
+        "oldest_wait_seconds": max((item["age_seconds"] for item in waiting), default=0.0),
     }
+
+
+def _record_lease(record, state_dir):
+    """Bounded per-process history; no prompts, model names or exception text."""
+    try:
+        with _DIAGNOSTICS_LOCK:
+            directory = state_dir / "history"
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            path = directory / f"{os.getpid()}.json"
+            try:
+                records = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                records = []
+            if not isinstance(records, list):
+                records = []
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps((records + [record])[-LEASE_HISTORY_LIMIT:]), encoding="utf-8")
+            os.replace(temporary, path)
+    except OSError:
+        pass  # Diagnostics must never prevent release or mask a runtime error.
+
+
+def runtime_state_snapshot(*, state_dir=STATE_DIR):
+    """Aggregate current leases and bounded recent waits across services."""
+    snapshot = lease_state_snapshot(state_dir=state_dir)
+    records = []
+    for path in (state_dir / "history").glob("*.json"):
+        try:
+            values = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(values, list):
+            for item in values[-LEASE_HISTORY_LIMIT:]:
+                if not isinstance(item, dict):
+                    continue
+                record = {"workload": _workload(item.get("workload"))}
+                if item.get("outcome") not in {"completed", "cancelled", "timeout", "error"}:
+                    continue
+                record["outcome"] = item["outcome"]
+                for key in ("pid", "thread", "requested_at", "acquired_at", "released_at", "wait_ms", "held_ms"):
+                    value = item.get(key)
+                    if type(value) in (int, float) and math.isfinite(value) and value >= 0:
+                        record[key] = value
+                if "released_at" in record:
+                    records.append(record)
+    records.sort(key=lambda item: item["released_at"])
+    records = records[-LEASE_HISTORY_LIMIT:]
+    grouped = {}
+    for workload in sorted({item["workload"] for item in records}):
+        samples = [item for item in records if item["workload"] == workload]
+        waits = sorted(item["wait_ms"] for item in samples if "wait_ms" in item)
+        grouped[workload] = {"count": len(samples), "wait_total_ms": round(sum(waits), 2),
+                             "wait_max_ms": max(waits, default=0.0),
+                             "outcomes": {outcome: sum(item["outcome"] == outcome for item in samples)
+                                          for outcome in ("completed", "cancelled", "timeout", "error")}}
+    return {**snapshot, "recent": records, "waits_by_workload": grouped,
+            "history_limit": LEASE_HISTORY_LIMIT, "memory": diagnostic_memory_budget_snapshot()}
 
 
 def request_json(method, url, payload=None, timeout=10):
@@ -562,24 +661,49 @@ def runtime_lease(
     lock_path=LOCK_PATH,
     workload="runtime",
     state_dir=STATE_DIR,
+    timeout=None,
 ):
     """Hold the cross-service heavy-runtime lease, waiting cancellably."""
+    if timeout is not None and (not math.isfinite(timeout) or timeout < 0):
+        raise ValueError("Lease timeout must be finite and nonnegative")
+    _check_cancelled(cancel_event)
     depth = getattr(_LEASE_STATE, "depth", 0)
     if depth:
         _PROCESS_LOCK.acquire()
         _LEASE_STATE.depth = depth + 1
         try:
-            yield
+            yield getattr(_LEASE_STATE, "evidence", None)
         finally:
             _LEASE_STATE.depth -= 1
             _PROCESS_LOCK.release()
         return
 
-    _write_lease_state(workload, "waiting", state_dir=state_dir)
+    workload = _workload(workload)
+    started = time.monotonic()
+    requested_at = time.time()
+    acquired = None
+    outcome = "completed"
+    evidence = {"observed_holder_role": "none", "observed_holder_age_ms": None}
+
+    def waiting():
+        _check_cancelled(cancel_event)
+        if timeout is not None and time.monotonic() - started >= timeout:
+            raise TimeoutError("Runtime lease acquisition timed out")
+        holder = lease_state_snapshot(state_dir=state_dir)["active"]
+        if holder:
+            evidence["observed_holder_role"] = holder["workload"]
+            evidence["observed_holder_age_ms"] = holder["age_seconds"] * 1000
+        elif evidence["observed_holder_role"] == "none":
+            evidence["observed_holder_role"] = "unknown"
+
+    _write_lease_state(workload, "waiting", state_dir=state_dir, requested_at=requested_at)
     process_lock_acquired = False
     try:
-        while not _PROCESS_LOCK.acquire(timeout=POLL_INTERVAL):
-            _check_cancelled(cancel_event)
+        while not _PROCESS_LOCK.acquire(blocking=False):
+            waiting()
+            delay = POLL_INTERVAL if timeout is None else min(POLL_INTERVAL, max(0.0, timeout - (time.monotonic() - started)))
+            if _PROCESS_LOCK.acquire(timeout=delay):
+                break
         process_lock_acquired = True
 
         lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -590,18 +714,40 @@ def runtime_lease(
                     fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except BlockingIOError:
-                    time.sleep(POLL_INTERVAL)
+                    waiting()
+                    delay = POLL_INTERVAL if timeout is None else min(POLL_INTERVAL, max(0.0, timeout - (time.monotonic() - started)))
+                    if cancel_event is not None:
+                        cancel_event.wait(delay)
+                    else:
+                        time.sleep(delay)
             _LEASE_STATE.depth = 1
-            _write_lease_state(workload, "active", state_dir=state_dir)
+            acquired = time.monotonic()
+            acquired_at = time.time()
+            evidence["lease_wait_ms"] = round((acquired - started) * 1000, 2)
+            _LEASE_STATE.evidence = evidence
             try:
-                yield
+                _write_lease_state(workload, "active", state_dir=state_dir,
+                                   requested_at=requested_at, acquired_at=acquired_at,
+                                   wait_ms=evidence["lease_wait_ms"])
+                yield evidence
             finally:
                 _LEASE_STATE.depth = 0
+                _LEASE_STATE.evidence = None
+                _clear_lease_state(state_dir=state_dir)
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except BaseException as exc:
+        outcome = "cancelled" if isinstance(exc, CoordinationCancelled) or _cancelled(cancel_event) else "timeout" if isinstance(exc, TimeoutError) else "error"
+        raise
     finally:
         _clear_lease_state(state_dir=state_dir)
         if process_lock_acquired:
             _PROCESS_LOCK.release()
+        ended = time.monotonic()
+        _record_lease({"pid": os.getpid(), "thread": threading.get_ident(), "workload": workload,
+                       "requested_at": requested_at, "acquired_at": acquired_at if acquired is not None else None,
+                       "released_at": time.time(), "wait_ms": round(((acquired or ended) - started) * 1000, 2),
+                       "held_ms": round((ended - acquired) * 1000, 2) if acquired is not None else 0.0,
+                       "outcome": "cancelled" if _cancelled(cancel_event) else outcome}, state_dir)
 
 
 def _generation_active(health):
@@ -1088,8 +1234,8 @@ def chat_runtime(
     with runtime_lease(
         cancel_event,
         lock_path=lock_path,
-        workload="chat",
-    ):
+        workload=_LEASE_WORKLOAD.get() or "chat",
+    ) as evidence:
         if not already_coordinated:
             try:
                 release_idle_image_runtime(cancel_event, requester=requester)
@@ -1099,4 +1245,4 @@ def chat_runtime(
                 # coordinated active generation.
                 pass
         _check_cancelled(cancel_event)
-        yield
+        yield evidence

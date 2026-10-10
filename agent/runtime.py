@@ -2,6 +2,7 @@
 
 from contextvars import ContextVar
 from dataclasses import dataclass
+import json
 import logging
 import time
 import re
@@ -102,9 +103,13 @@ class AgentRuntime:
                 raise _RunCancelled() from exc
             raise
         finally:
+            from agent.model_efficiency import CALL_PURPOSES
+            from backend.observability import current_call_purpose
+            purpose = current_call_purpose("agent.call")
             self._profile_events.append({
                 "phase": "model", "action": "provider.complete",
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "purpose": purpose if purpose in CALL_PURPOSES else "unknown",
             })
         self._check_cancelled()
         # Provider usage is already normalized by observability. Capture only
@@ -118,11 +123,11 @@ class AgentRuntime:
             )
             telemetry = getattr(response, "telemetry", {})
             if isinstance(telemetry, dict):
-                for key in ("queue_wait_ms", "lease_wait_ms", "lock_wait_ms", "model_setup_ms", "upstream_request_ms"):
+                for key in ("queue_wait_ms", "lease_wait_ms", "lock_wait_ms", "model_setup_ms", "upstream_request_ms", "observed_holder_age_ms"):
                     value = telemetry.get(key)
                     if type(value) in (int, float) and value >= 0:
                         event[key] = round(value, 2)
-                if telemetry.get("observed_holder_role") in ("agent", "chat", "coding", "unknown", "none", "possible_agent_holder"):
+                if telemetry.get("observed_holder_role") in ("agent", "chat", "coding", "image", "video", "embedding", "speech-stt", "speech-tts", "speech-tts-clone", "router", "vision-classifier", "image-upscale", "other", "unknown", "none", "possible_agent_holder"):
                     event["observed_holder_role"] = telemetry["observed_holder_role"]
                 if telemetry.get("usage_method") in ("upstream", "estimate"):
                     event["usage_method"] = telemetry["usage_method"]
@@ -199,7 +204,7 @@ class AgentRuntime:
         target = pending["target"]
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.bind_run_context(self.context):
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context):
                 try:
                     self._check_cancelled()
                     self._publish(callback, "running", observations)
@@ -285,7 +290,7 @@ class AgentRuntime:
         self._profile_events = []
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.bind_run_context(self.context):
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context):
                 try:
                     self._check_cancelled()
                     result = self._run_loop(
@@ -294,6 +299,11 @@ class AgentRuntime:
                     )
                     if isinstance(result, dict):
                         if result.get("status") == "completed" and isinstance(result.get("answer"), str):
+                            if any(isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+                                   for item in result.get("steps", [])):
+                                from agent.claim_validation import gate_numerical_claims, gate_source_links
+                                result["answer"] = gate_source_links(
+                                    gate_numerical_claims(result["answer"], result["steps"]), result["steps"])
                             from agent.count_consistency import align_enumerated_count
                             from agent.temporal_repair import correct_future_availability
                             from agent.temporal_validation import gate_temporal_claims
@@ -310,7 +320,14 @@ class AgentRuntime:
                 except ProviderError as exc:
                     result = {"status": "failed", "goal": goal, "steps": observations,
                               "answer": str(exc), "error": {"code": exc.code, "detail": str(exc)}}
+                except ValueError as exc:
+                    if not isinstance(exc, json.JSONDecodeError) and "kein gültiges JSON" not in str(exc) and "kein JSON-Objekt" not in str(exc):
+                        raise
+                    result = {"status": "failed", "goal": goal, "steps": observations,
+                              "answer": "Der Agent konnte die Modellantwort nicht sicher als Aktion interpretieren.",
+                              "error": {"code": "invalid_agent_response", "detail": "Ungültiges Antwortformat des Agent-Modells"}}
                 self._publish(progress_callback, result["status"], observations)
+                result["performance"] = {"events": list(self._profile_events)}
                 return result
         finally:
             _CURRENT_RUNTIME.reset(token)

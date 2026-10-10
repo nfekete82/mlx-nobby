@@ -1,7 +1,7 @@
 """Synchronous agent-model contract and the existing local MLX transport."""
 
 from dataclasses import dataclass, field
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 import json
 import time
 from typing import Callable, ContextManager, Protocol
@@ -45,6 +45,22 @@ class ModelProvider(Protocol):
 def _check_cancelled(context):
     if context is not None and context.cancelled:
         raise ProviderError("cancelled", "Agent-Modellaufruf wurde abgebrochen")
+
+
+@contextmanager
+def _model_lock(lock, context):
+    """Keep production lock waits cancellable without changing lock order."""
+    if context is None or not hasattr(lock, "acquire"):
+        with lock:
+            yield
+        return
+    while not lock.acquire(timeout=.05):
+        _check_cancelled(context)
+    try:
+        _check_cancelled(context)
+        yield
+    finally:
+        lock.release()
 
 
 def _memory_allowed(request: ModelRequest) -> bool:
@@ -161,12 +177,13 @@ class MLXProvider:
             # Production injects the same lease used by chat streaming. Take
             # it BEFORE the model lock; role resolution also enters the lease.
             from agent.lease_diagnostics import observed_agent_lease, acquired_agent_lease
-            with observed_agent_lease(request.role) as (lease_evidence, lease_ident):
-                with self.runtime_lease(run_context):
+            from runtime_coordinator import lease_workload
+            with lease_workload(request.role), observed_agent_lease(request.role) as (lease_evidence, lease_ident):
+                with self.runtime_lease(run_context) as central_evidence:
                     lease_wait_ms = round((time.monotonic() - wait_started) * 1000, 2)
                     acquired_agent_lease(lease_ident, request.role)
                     lock_started = time.monotonic()
-                    with self.runtime_lock:
+                    with _model_lock(self.runtime_lock, run_context):
                         lock_wait_ms = round((time.monotonic() - lock_started) * 1000, 2)
                         metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
                         _check_cancelled(run_context)
@@ -177,7 +194,11 @@ class MLXProvider:
                         result.telemetry.update(lease_evidence)
                         # No contention means no blocking owner. A concurrent
                         # agent holder is only a candidate, not proven owner.
-                        if lease_wait_ms < 100:
+                        if isinstance(central_evidence, dict):
+                            for key in ("observed_holder_role", "observed_holder_age_ms"):
+                                if key in central_evidence:
+                                    result.telemetry[key] = central_evidence[key]
+                        elif lease_wait_ms < 100:
                             result.telemetry["observed_holder_role"] = "none"
                         elif lease_evidence["observed_holder_role"] != "unknown":
                             result.telemetry["observed_holder_role"] = "possible_agent_holder"

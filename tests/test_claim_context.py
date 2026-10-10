@@ -33,5 +33,9 @@ class ContextEvidenceTests(unittest.TestCase):
         self.assertFalse(matches_claim("999 €", "Pixel 11 kostet 999 €.",
                                        [(URL, "Ein anderes Gerät kostet 999 €.")]))
 
+    def test_model_number_prefix_is_not_the_same_product(self):
+        self.assertFalse(matches_claim("999 €", "Pixel 11 kostet 999 €.",
+                                       [(URL, "Pixel 110 kostet 999 €. ")]))
+
 if __name__ == "__main__":
     unittest.main()

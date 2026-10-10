@@ -309,9 +309,9 @@ async def _wait_with_heartbeats(task, timeout: float, vision: bool):
         yield None  # Heartbeat only, not upstream activity or model output.
 
 
-def _media_is_active(snapshot: dict) -> bool:
+def _other_runtime_is_active(snapshot: dict) -> bool:
     workload = (snapshot.get("lease") or {}).get("active_workload")
-    return workload in {"image", "video"}
+    return workload not in {None, "chat"} or bool(snapshot.get("active_agent_runs"))
 
 
 async def _reliable_stream(
@@ -351,7 +351,7 @@ async def _reliable_stream(
             if not ready:
                 snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
 
-                if _media_is_active(snapshot):
+                if _other_runtime_is_active(snapshot):
                     prefill_deadline += max(0.0, MEDIA_WAIT_TIMEOUT - first_timeout)
                     media_remaining = (
                         max(0.0, prefill_deadline - time.monotonic())
@@ -441,7 +441,7 @@ async def _reliable_stream(
                     snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
                     await _close_iterator(iterator, pending)
 
-                    if not _media_is_active(snapshot):
+                    if not _other_runtime_is_active(snapshot):
                         await asyncio.to_thread(
                             _request_recovery,
                             agent_url,

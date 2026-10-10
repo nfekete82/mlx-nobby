@@ -137,6 +137,31 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result["steps"][0]["result"], {"value": "evidence"})
         self.assertIn("evidence", self.provider.calls[1][0].messages[0]["content"])
 
+    def test_active_agent_counter_covers_tools_and_cleans_up(self):
+        self.handler.side_effect = lambda **kwargs: {"active": run_state.active_agent_run_count()}
+        result = self.runtime([{"action": "inspect"}, {"action": "final", "answer": "Done"}]).run("Inspect")
+        self.assertEqual(result["steps"][0]["result"]["active"], 1)
+        self.assertEqual(run_state.active_agent_run_count(), 0)
+
+    def test_invalid_planner_json_keeps_steps_and_call_metrics(self):
+        result = self.runtime([{"action": "inspect"}, 'invalid JSON']).run("Inspect")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "invalid_agent_response")
+        self.assertEqual(result["steps"][0]["action"], "inspect")
+        self.assertEqual(sum(e["action"] == "provider.complete" for e in result["performance"]["events"]), 2)
+        self.assertEqual(run_state.active_agent_run_count(), 0)
+
+    def test_inline_diagnostic_final_runs_source_gates_without_another_model_call(self):
+        self.add_tool("fetch_url", lambda **kwargs: {"ok": True,
+            "url": "https://example.org/article", "text": "Pixel 11 kostet 999 €. " * 15})
+        runtime = self.runtime([{"action": "fetch_url", "query": "https://example.org/article"},
+            {"action": "final", "answer": "Pixel 11 kostet 1599 €. https://fake.example/source"}])
+        result = runtime.run("Inspect")
+        self.assertIn("Quellenprüfung", result["answer"])
+        self.assertIn("Linkprüfung", result["answer"])
+        self.assertNotIn("fake.example", result["answer"])
+        self.assertEqual(len(self.provider.calls), 2)
+
     def test_multiple_tools_in_sequence(self):
         second = mock.Mock(return_value={"second": True})
         self.add_tool("check", second)
@@ -293,6 +318,8 @@ class AgentRuntimeTests(unittest.TestCase):
         result = self.runtime([ProviderError("cancelled", "Cancelled")]).run("Inspect")
         self.assertEqual(result["status"], "cancelled")
         self.assertTrue(self.context.cancelled)
+        self.assertEqual(len(result["performance"]["events"]), 2)
+        self.assertEqual(result["performance"]["events"][0]["action"], "provider.complete")
 
     def test_delegation_keeps_context_provider_and_registry(self):
         runtime = self.runtime([

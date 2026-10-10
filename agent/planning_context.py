@@ -7,12 +7,14 @@ import re
 _EVENT = re.compile(
     r"(?i)\b(?:vorbestell\w*|pre-?order\w*|erhältlich|verfügbar|available|"
     r"verkaufsstart|marktstart|release|launch|angekündigt|vorgestellt|"
-    r"lieferbar|shipping|on sale)\b"
+    r"lieferbar|shipping|on sale|announced|unveiled)\b"
 )
 _DATE = re.compile(
     r"(?i)\b(?:\d{1,2}\.\s*(?:\d{1,2}\.|januar|februar|märz|"
     r"april|mai|juni|juli|august|september|oktober|november|dezember)"
-    r"\s*20\d{2}|20\d{2}-\d{2}-\d{2})\b"
+    r"\s*20\d{2}|20\d{2}-\d{2}-\d{2}|"
+    r"(?:january|february|march|april|may|june|july|august|september|october|november|december)"
+    r"\s+\d{1,2},?\s+20\d{2})\b"
 )
 
 
@@ -22,16 +24,18 @@ def _compact_text(raw, limit=1800, extra=2200):
     # Preserve small, explicitly dated release excerpts even when they fall
     # late in long pages. These are hints for planning, not verified facts.
     snippets = []
-    for line in raw.splitlines():
-        if not (_EVENT.search(line) and _DATE.search(line)):
+    for match in _DATE.finditer(raw):
+        start, end = max(0, match.start() - 200), min(len(raw), match.end() + 200)
+        excerpt = raw[start:end]
+        if not _EVENT.search(excerpt):
             continue
-        clipped = line.strip()[:420]
+        clipped = excerpt.strip()
         if clipped and clipped not in snippets:
             snippets.append(clipped)
         if len("\n".join(snippets)) >= extra:
             break
     context = "\n".join(snippets)
-    return raw[:limit] + ("\n[WEITERE DATIERTE PRODUKT-HINWEISE]\n" + context[:extra]
+    return raw[:limit] + ("\n[WEITERE DATIERTE PRODUKT-HINWEISE; QUELLE GEKÜRZT]\n" + context[:extra]
                           if context else "")
 
 
@@ -48,11 +52,14 @@ def compact_web_planning(items):
         if isinstance(payload, dict):
             payload = dict(payload)
             if isinstance(payload.get("text"), str):
-                payload["text"] = _compact_text(payload["text"])
+                original = payload["text"]
+                payload["text"] = _compact_text(original)
+                payload["text_truncated"] = payload["text"] != original
+                payload["original_text_chars"] = len(original)
             hits = payload.get("results")
             if isinstance(hits, list):
                 payload["results"] = [
-                    {k: v[:300] if isinstance(v, str) and k != "url" else v
+                    {k: _compact_text(v, limit=300, extra=700) if isinstance(v, str) and k != "url" else v
                      for k, v in hit.items() if k in ("url", "title", "snippet")}
                     for hit in hits[:8] if isinstance(hit, dict)
                 ]

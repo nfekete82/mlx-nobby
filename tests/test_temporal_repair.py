@@ -38,6 +38,10 @@ class TemporalRepairTests(unittest.TestCase):
         once = correct_future_availability(line, TODAY)
         self.assertEqual(correct_future_availability(once, TODAY), once)
 
+    def test_future_accessory_does_not_repair_current_product(self):
+        text = "Bereits erhältlich; erhältlich ab 18.09.2026, Zubehör vorbestellbar ab 23.10.2026."
+        self.assertEqual(correct_future_availability(text, TODAY), text)
+
 
 if __name__ == "__main__":
     unittest.main()

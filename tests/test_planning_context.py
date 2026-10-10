@@ -38,6 +38,19 @@ class PlanningContextTests(unittest.TestCase):
                                         "result": {"text": article}}])[0]
         self.assertEqual(len(result["result"]["text"]), 1800)
 
+    def test_single_line_late_availability_and_truncation_are_explicit(self):
+        text = "Background " * 1000 + "Pixel 12 pre-order October 16, 2026, available October 23, 2026."
+        result = compact_web_planning([{"action": "fetch_url", "result": {"text": text}}])[0]["result"]
+        self.assertIn("October 23, 2026", result["text"])
+        self.assertTrue(result["text_truncated"])
+        self.assertEqual(result["original_text_chars"], len(text))
+
+    def test_late_search_snippet_date_is_kept(self):
+        snippet = "Background " * 100 + "Erhältlich ab 2026-10-23."
+        result = compact_web_planning([{"action": "search_web", "result": {
+            "results": [{"url": "https://example.org", "snippet": snippet}]}}])[0]
+        self.assertIn("2026-10-23", result["result"]["results"][0]["snippet"])
+
     def test_coding_observation_preserved(self):
         source = {"action": "code_read", "result": {"content": "important" * 3000}}
         self.assertIs(compact_web_planning([source])[0], source)

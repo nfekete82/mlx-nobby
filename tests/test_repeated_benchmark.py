@@ -27,6 +27,24 @@ class RepeatedBenchmarkTests(unittest.TestCase):
         self.assertIsNone(result["median_ms"])
         self.assertEqual(result["errors"], 1)
 
+    def test_p95_failure_rate_timings_tokens_and_privacy(self):
+        records = [{"id": str(i), "question": "private prompt", "question_index": 1,
+                    "elapsed_ms": i * 100, "captured_at": "2026-10-11T12:00:00+00:00",
+                    "review_status": "pending", "response": {"answer": "391",
+                    "performance": {"events": [{"action": "provider.complete",
+                    "lease_wait_ms": 20, "lock_wait_ms": 1, "total_tokens": 12,
+                    "prompt_tokens": 10, "completion_tokens": 2,
+                    "observed_holder_role": "secret prompt"}]}}} for i in range(1, 6)]
+        records.append({"id": "error", "question": "private prompt", "review_status": "error"})
+        result = summarize_runs(records)
+        self.assertEqual(result["median_ms"], 300)
+        self.assertEqual(result["p95_ms"], 500)
+        self.assertEqual(result["error_rate"], 1 / 6)
+        self.assertEqual(result["cases"][0]["timings_ms"]["lease_wait_ms"], 20)
+        self.assertEqual(result["cases"][0]["known_total_tokens"], 12)
+        self.assertNotIn("private prompt", str(result))
+        self.assertNotIn("secret prompt", str(result))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,8 +16,15 @@ def subject_in_text(text):
 def nearby_passages(text, subject, radius=160):
     if not subject:
         return [text]
-    return [text[max(0, match.start()-radius):match.end()+radius]
-            for match in re.finditer(re.escape(subject), text, re.I)]
+    passages = []
+    # Do not borrow a neighbouring product's price across list/sentence
+    # boundaries. Numeric dates and decimal punctuation remain intact.
+    for block in re.split(r"[;\n]|(?<=[a-zäöü€])\.\s+", text, flags=re.I):
+        for match in re.finditer(r"(?<!\w)" + re.escape(subject) + r"(?!\w)", block, re.I):
+            following = MODEL.search(block, match.end())
+            end = min(match.end() + radius, following.start()) if following else match.end() + radius
+            passages.append(block[max(0, match.start()-radius):end])
+    return passages
 
 
 def normalized(value):

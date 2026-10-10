@@ -46,6 +46,20 @@ class TemporalValidationTests(unittest.TestCase):
         self.assertEqual(future_availability_conflicts(
             "Bereits erhältlich; erhältlich ab 38.19.2026.", date(2026, 10, 10)), [])
 
+    def test_iso_and_english_dates_are_checked(self):
+        for answer in ("Jetzt verfügbar; Verkaufsstart 2026-10-23.",
+                       "Already available; available from October 23, 2026.",
+                       "Neu, seit 2026-10-23."):
+            self.assertTrue(future_availability_conflicts(answer, date(2026, 10, 10)))
+
+    def test_future_preorder_does_not_change_past_sale(self):
+        answer = "Bereits erhältlich; erhältlich ab 18.09.2026, Zubehör vorbestellbar ab 23.10.2026."
+        self.assertFalse(future_availability_conflicts(answer, date(2026, 10, 10)))
+
+    def test_negated_current_availability_is_not_a_conflict(self):
+        answer = "Noch nicht aktuell erhältlich; erhältlich ab 23.10.2026."
+        self.assertFalse(future_availability_conflicts(answer, date(2026, 10, 10)))
+
     def test_no_false_positive_without_explicit_availability(self):
         answer = "Apple zeigt aktuell iPhone Duo, verfügbar ab 23.10.2026."
         self.assertEqual(gate_temporal_claims(answer, date(2026, 10, 10)), answer)

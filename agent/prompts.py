@@ -1,7 +1,10 @@
 """Existing agent prompts and JSON handling; model access is injected."""
 
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from agent.evidence import (
     compact_agent_observations,
@@ -100,6 +103,26 @@ def parse_agent_json(value):
             return result
     except Exception:
         pass
+
+    # A common local-model failure is an unescaped quotation mark inside the
+    # final prose field. Repair only this exact, read-only two-field envelope;
+    # malformed tool actions still require the existing controlled repair.
+    final = re.fullmatch(r'\{\s*"action"\s*:\s*"final"\s*,\s*"answer"\s*:\s*"(.*)"\s*\}', value, re.S)
+    if final and not re.search(r'"\s*,\s*"[^"\n]+"\s*:', final.group(1)):
+        body = []
+        escaped = False
+        for char in final.group(1):
+            if char == '"' and not escaped:
+                body.append('\\"')
+            elif ord(char) < 32:
+                body.append(json.dumps(char)[1:-1])
+            else:
+                body.append(char)
+            escaped = not escaped if char == "\\" else False
+        try:
+            return {"action": "final", "answer": json.loads('"' + ''.join(body) + '"')}
+        except (ValueError, TypeError):
+            pass
 
     # Eingebettetes JSON robust finden.
     decoder = json.JSONDecoder()
@@ -812,17 +835,8 @@ Bei allgemeinen Systemdiagnosen:
     try:
         return parse_agent_json(answer)
 
-    except ValueError as exc:
-        print(
-            "[agent-json] initial parse failed:",
-            repr(str(exc)),
-            flush=True,
-        )
-        print(
-            "[agent-json] raw answer:",
-            repr(str(answer or "")[:12000]),
-            flush=True,
-        )
+    except ValueError:
+        logger.warning("Agent JSON parse failed; attempting format repair (chars=%d)", len(str(answer or "")))
 
     # Perform exactly one controlled format repair.
     # Do not execute an action until parsing succeeds.
@@ -858,17 +872,8 @@ Bei allgemeinen Systemdiagnosen:
         try:
             return parse_agent_json(repaired_answer)
 
-        except ValueError as repair_exc:
-            print(
-                "[agent-json] repair parse failed:",
-                repr(str(repair_exc)),
-                flush=True,
-            )
-            print(
-                "[agent-json] repaired answer:",
-                repr(str(repaired_answer or "")[:12000]),
-                flush=True,
-            )
+        except ValueError:
+            logger.warning("Agent JSON format repair failed (chars=%d)", len(str(repaired_answer or "")))
             raise
 
 

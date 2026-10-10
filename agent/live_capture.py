@@ -5,6 +5,7 @@ question/response/latency records, without inventing before/after or reviews.
 """
 import argparse
 import json
+import math
 import time
 import urllib.error
 import urllib.request
@@ -28,10 +29,12 @@ def capture(questions, endpoint, *, timeout=120, transport=None):
         raise ValueError("At least one question required")
     if len(questions) > 100:
         raise ValueError("At most 100 questions per capture")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Timeout must be finite and positive")
+    if any(not isinstance(question, str) or not question.strip() for question in questions):
+        raise ValueError("Every question must be nonempty")
     result = []
     for i, question in enumerate(questions, 1):
-        if not isinstance(question, str) or not question.strip():
-            raise ValueError("Every question must be nonempty")
         payload = json.dumps({"goal": question, "mode": "diagnostic"}, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(endpoint, data=payload,
                                      headers={"Content-Type": "application/json"},
