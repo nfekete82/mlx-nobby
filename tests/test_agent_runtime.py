@@ -250,7 +250,7 @@ class AgentRuntimeTests(unittest.TestCase):
         source = "https://example.org/docs"
         observations = [{"action": "search_web", "status": "completed", "result": {"results": [{"url": source}]}}]
         runtime = self.runtime([{"action": "fetch_url", "query": source}, {"action": "fetch_url", "query": source}, "Summary"], policy=RuntimePolicy(research_steps=1, research_continuation_steps=1))
-        result = runtime.run("Inspect", observations=observations, mode="research")
+        result = runtime.run("Tiefenrecherche Inspect", observations=observations, mode="research")
         self.assertEqual(fetch.call_count, 2)
         self.assertEqual(result["status"], "max_steps")
         self.assertEqual(len(observations), 1)
