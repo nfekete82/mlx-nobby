@@ -15,7 +15,9 @@ def future_availability_conflicts(answer, today=None):
     today = today or date.today()
     issues = []
     for line in str(answer or "").splitlines():
-        if not AVAILABLE.search(line) or not FUTURE_EVENT.search(line):
+        direct = bool(AVAILABLE.search(line) and FUTURE_EVENT.search(line))
+        since = bool(re.search(r"(?i)\bseit\s+\d{1,2}\.\d{1,2}\.20\d{2}\b", line))
+        if not (direct or since):
             continue
         for match in DATE.finditer(line):
             try:
@@ -33,6 +35,6 @@ def gate_temporal_claims(answer, today=None):
         return answer
     dates = ", ".join(dict.fromkeys(issue["date"] for issue in issues))
     return (str(answer).rstrip() +
-            "\n\n**Zeitprüfung:** Die Aussage 'bereits erhältlich' widerspricht "
+            "\n\n**Zeitprüfung:** Eine Vergangenheitsbehauptung ('seit' oder 'bereits erhältlich') widerspricht "
             f"einem genannten zukünftigen Verkaufsdatum ({dates}). "
             "Bitte Produktstatus separat prüfen.")
