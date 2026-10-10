@@ -17,6 +17,10 @@ class PublicSourceRoutingTests(unittest.TestCase):
                   "Nenne nur nachweislich belegte Modelle und verlinke für jedes Modell den konkreten Artikel.")
         self.assertTrue(_requires_public_source_research(prompt))
 
+    def test_recent_phone_launches_require_research_without_explicit_links(self):
+        prompt = "welche handys wurden in den letzten 3 monaten vorgestellt?"
+        self.assertTrue(_requires_public_source_research(prompt))
+
     def test_no_public_research_for_private_prompts(self):
         self.assertFalse(_requires_public_source_research("Welche Quellen gibt es 2026 für mein Portfolio?"))
         self.assertFalse(_requires_public_source_research("Was ist neu in meinem Workspace 2026? Nenne Quellen."))
