@@ -83,9 +83,8 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
                 if title and link.startswith("https://"):
                     sources.append((title[:180], link, published[:60]))
         else:
-            url = "https://www.google.com/search?tbm=nws&q=" + quote_plus(query)
             # The lite engine exposes direct result links; do not scrape snippets or arbitrary pages.
-            url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=5"
+            url = "https://lite.duckduckgo.com/lite/?q=" + quote_plus(query)
             raw = _get(url, opener).decode("utf-8", "replace")
             parser = _ResultParser()
             parser.feed(raw)
