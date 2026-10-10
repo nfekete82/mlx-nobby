@@ -6,7 +6,6 @@ const css = fs.readFileSync('frontend/assets/chat.css', 'utf8');
 
 for (const id of [
     'sidebarToggle',
-    'clearButton',
     'settingsButton',
     'powerButton',
 ]) {
@@ -18,12 +17,7 @@ for (const id of [
     assert.match(match[0], /<svg class="top-action-icon"/);
 }
 
-const clear = html.match(
-    /<button[\s\S]*?id="clearButton"[\s\S]*?<\/button>/
-)?.[0] || '';
-assert.match(clear, /aria-label="Chat leeren"/);
-assert.match(clear, /data-i18n-aria-label="ui\.clear_chat"/);
-assert.doesNotMatch(clear, />\s*Chat leeren\s*</);
+assert.doesNotMatch(html, /id="clearButton"/);
 
 assert.match(css, /\.top-action-button\s*\{/);
 assert.match(css, /\.top-action-icon\s*\{/);
