@@ -42,3 +42,6 @@ assert.match(chat, /nobby-sidebar-workspace-remove/);
 assert.match(chat, /method:'DELETE'/);
 assert.doesNotMatch(chat, /workspace_unregister_hint/);
 assert.match(css, /nobby-sidebar-workspace-row/);
+
+assert.match(chat, /if \(active\) \{/);
+assert.match(chat, /workspaceRequest\('\/api\/mlx\/code\/workspaces\/active', \{method:'DELETE'\}\)/);
