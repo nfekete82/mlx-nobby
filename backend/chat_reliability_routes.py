@@ -257,9 +257,9 @@ def _has_vision_input(request: ReliableChatRequest) -> bool:
     return False
 
 
-async def _vision_iterator(request, stream_factory):
-    # The gateway factory performs synchronous context/routing HTTP calls.
-    # Keep those off the event loop so the watchdog and heartbeats can run.
+async def _offloaded_iterator(request, stream_factory):
+    # Every gateway request performs blocking context/routing/research calls.
+    # Offload even text-only requests so watchdog deadlines stay responsive.
     response = await asyncio.to_thread(stream_factory, request)
     iterator = response.body_iterator.__aiter__()
     try:
@@ -307,11 +307,7 @@ async def _reliable_stream(
     while attempt < 2:
         attempt += 1
         prefill_deadline = time.monotonic() + first_timeout
-        if vision:
-            iterator = _vision_iterator(request, stream_factory).__aiter__()
-        else:
-            response = stream_factory(request)
-            iterator = response.body_iterator.__aiter__()
+        iterator = _offloaded_iterator(request, stream_factory).__aiter__()
         semantic = _SemanticSseTracker()
         pending = None
 
