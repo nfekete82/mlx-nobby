@@ -36,3 +36,9 @@ assert.match(chat,/encodeURIComponent\(workspace\.workspace_id\) \+ '\/activate'
 assert.match(chat,/workspaceRequest\('\/api\/mlx\/code\/workspaces'/);
 assert.match(css,/\.nobby-sidebar-workspace\.is-active/);
 assert.match(css,/\.nobby-sidebar-recent-divider/);
+
+assert.match(html, />Workspaces<\/div>/);
+assert.match(chat, /nobby-sidebar-workspace-remove/);
+assert.match(chat, /method:'DELETE'/);
+assert.match(chat, /workspace_unregister_hint/);
+assert.match(css, /nobby-sidebar-workspace-row/);
