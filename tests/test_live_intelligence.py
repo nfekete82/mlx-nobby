@@ -36,6 +36,28 @@ class LiveIntelligenceTests(unittest.TestCase):
         self.assertIn("World Bank", result)
         self.assertIn("nicht zwingend letzte 36 Monate", result)
 
+    def test_requested_years_used_for_text_and_chart(self):
+        data = [{"page": 1}, [
+            {"date": "2025", "value": 2.24},
+            {"date": "2024", "value": 2.26},
+            {"date": "2023", "value": 5.95},
+            {"date": "2022", "value": 6.9}
+        ]]
+        result = retrieve_inflation("Inflation 2023 2025",
+            opener=lambda request, timeout: FakeResponse(data))
+        self.assertIn("2023: 5.95 %", result)
+        self.assertIn("2025: 2.24 %", result)
+        self.assertNotIn("- 2024:", result)
+        self.assertIn('"label": "2023", "value": 5.95', result)
+        self.assertIn('"label": "2025", "value": 2.24', result)
+        self.assertIn("nicht Destatis als vermeintlich abgefragte Primärquelle", result)
+
+    def test_missing_year_not_invented(self):
+        data = [{"page": 1}, [{"date": "2024", "value": 2.2}]]
+        result = retrieve_inflation("Inflation 2025", opener=lambda req, timeout: FakeResponse(data))
+        self.assertIn("Fehlende Jahreswerte: 2025", result)
+        self.assertNotIn('"label": "2025"', result)
+
     def test_chat_context_is_merged_into_leading_system_message(self):
         source = (Path(__file__).resolve().parents[1] / "backend" / "app.py").read_text()
         self.assertIn('messages[0].get("role") == "system"', source)
