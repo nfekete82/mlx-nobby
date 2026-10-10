@@ -90,11 +90,21 @@
   }
   function enhance(root) {
     if (!root?.querySelectorAll) return;
-    for(const code of root.querySelectorAll("pre > code.language-nobby-chart")){
-      const pre=code.parentElement;if(pre.dataset.nobbyChartDone)return;
+    // Models often emit `json` or an unlabelled fence despite the chart
+    // instruction. Recognize the validated data schema, not just the fence tag.
+    for(const code of root.querySelectorAll("pre > code")){
+      const pre=code.parentElement;
+      if(!pre || pre.dataset.nobbyChartDone) continue;
+      const language=Array.from(code.classList || []).find(x=>x.startsWith("language-")) || "";
+      if(language && !["language-nobby-chart","language-json"].includes(language)) continue;
+      let parsed;
+      try { parsed=JSON.parse(code.textContent); } catch(_) { continue; }
+      if(!parsed || typeof parsed !== "object" || !Array.isArray(parsed.data) ||
+          !("type" in parsed || "title" in parsed)) continue;
+      const spec=normalize(parsed);
+      if(!spec) continue;
       pre.dataset.nobbyChartDone="1";
-      let spec=null;try{spec=normalize(JSON.parse(code.textContent));}catch(_){}
-      if(spec) pre.replaceWith(render(spec,pre));
+      pre.replaceWith(render(spec,pre));
     }
   }
   window.MLXCharts={normalize,choose,enhance,csv};
