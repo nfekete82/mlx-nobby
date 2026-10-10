@@ -47,6 +47,8 @@ def retrieve_inflation(prompt: str, *, opener=None, now=None) -> str:
         # This is the sole machine-readable basis for any generated chart.
         chart = {
             "type": "bar",
+            "unit": "%",
+            "decimals": 2,
             "title": "Jährliche Verbraucherpreisinflation Deutschland (Weltbank)",
             "data": [
                 {"label": str(year), "value": round(values[year], 2)}
