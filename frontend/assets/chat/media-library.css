@@ -126,3 +126,10 @@
 .sidebar .nobby-sidebar-workspace-add:hover{color:#fff;background:rgba(140,155,181,.13)}
 .sidebar .nobby-sidebar-workspace-feedback{padding:4px 14px;color:#f5a5a5;font-size:11px;overflow-wrap:anywhere}
 .sidebar .nobby-sidebar-recent-divider{border-top:1px solid var(--border,#283244);margin-top:8px;padding-top:13px!important}
+
+.sidebar .nobby-sidebar-workspace-row{display:flex;align-items:center;min-width:0;gap:2px}
+.sidebar .nobby-sidebar-workspace-row>.nobby-sidebar-workspace{flex:1;min-width:0;width:auto}
+.sidebar .nobby-sidebar-workspace-remove{flex:0 0 25px;width:25px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#91a0b7;font-size:18px;line-height:1;cursor:pointer;opacity:0}
+.sidebar .nobby-sidebar-workspace-row:hover .nobby-sidebar-workspace-remove,.sidebar .nobby-sidebar-workspace-remove:focus-visible{opacity:1}
+.sidebar .nobby-sidebar-workspace-remove:hover{color:#ffb2b2;background:rgba(220,85,85,.15)}
+@media(hover:none){.sidebar .nobby-sidebar-workspace-remove{opacity:1}}
