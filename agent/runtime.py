@@ -107,6 +107,24 @@ class AgentRuntime:
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             })
         self._check_cancelled()
+        # Provider usage is already normalized by observability. Capture only
+        # numeric counters and rough request size, never message contents.
+        if self._profile_events and self._profile_events[-1].get("action") == "provider.complete":
+            event = self._profile_events[-1]
+            event["input_chars"] = sum(
+                len(message.get("content", ""))
+                for message in request.messages
+                if isinstance(message, dict) and isinstance(message.get("content"), str)
+            )
+            usage = response.usage if isinstance(response.usage, dict) else {}
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = usage.get(key)
+                if type(value) is int and value >= 0:
+                    event[key] = value
+            output = event.get("completion_tokens")
+            elapsed = event["duration_ms"]
+            if output is not None and elapsed > 0:
+                event["effective_output_tokens_per_s"] = round(output * 1000 / elapsed, 2)
         return response
 
     def _model_hook(self, function, *args, **kwargs):
