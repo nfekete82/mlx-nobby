@@ -160,18 +160,22 @@ class MLXProvider:
         try:
             # Production injects the same lease used by chat streaming. Take
             # it BEFORE the model lock; role resolution also enters the lease.
-            with self.runtime_lease(run_context):
-                lease_wait_ms = round((time.monotonic() - wait_started) * 1000, 2)
-                lock_started = time.monotonic()
-                with self.runtime_lock:
-                    lock_wait_ms = round((time.monotonic() - lock_started) * 1000, 2)
-                    metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
-                    _check_cancelled(run_context)
-                    result = self._complete(request, run_context, metrics)
-                    result.telemetry["queue_wait_ms"] = round(lease_wait_ms + lock_wait_ms, 2)
-                    result.telemetry["lease_wait_ms"] = lease_wait_ms
-                    result.telemetry["lock_wait_ms"] = lock_wait_ms
-                    return result
+            from agent.lease_diagnostics import observed_agent_lease, acquired_agent_lease
+            with observed_agent_lease(request.role) as (lease_evidence, lease_ident):
+                with self.runtime_lease(run_context):
+                    lease_wait_ms = round((time.monotonic() - wait_started) * 1000, 2)
+                    acquired_agent_lease(lease_ident, request.role)
+                    lock_started = time.monotonic()
+                    with self.runtime_lock:
+                        lock_wait_ms = round((time.monotonic() - lock_started) * 1000, 2)
+                        metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
+                        _check_cancelled(run_context)
+                        result = self._complete(request, run_context, metrics)
+                        result.telemetry["queue_wait_ms"] = round(lease_wait_ms + lock_wait_ms, 2)
+                        result.telemetry["lease_wait_ms"] = lease_wait_ms
+                        result.telemetry["lock_wait_ms"] = lock_wait_ms
+                        result.telemetry.update(lease_evidence)
+                        return result
         except ProviderError as exc:
             metrics.fail(exc.code)
             raise
