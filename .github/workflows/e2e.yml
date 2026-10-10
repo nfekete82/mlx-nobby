@@ -39,7 +39,11 @@ jobs:
           python -m pip check
           python -m playwright install --with-deps chromium --only-shell
       - name: Browser acceptance (isolated production app and fixture Agent)
-        run: MLX_TEST_PYTHON=$(command -v python) ./scripts/mlx test-e2e
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          mkdir -p test-results
+          PYTHONUNBUFFERED=1 MLX_TEST_PYTHON=$(command -v python) ./scripts/mlx test-e2e -vv -o faulthandler_timeout=60 2>&1 | tee test-results/pytest.log
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

@@ -439,19 +439,80 @@ button {
     box-shadow: 0 20px 60px rgba(0,0,0,.5);
 }
 
-.runtime-popover {
-    position: absolute;
-    z-index: 30;
-    top: 58px;
-    right: 18px;
-    width: min(390px, calc(100vw - 36px));
-    max-height: 420px;
+/* Native top-layer modal: inset + auto margins center without transforms.
+   Keep the header visible and every runtime section in one scroll container. */
+.runtime-modal {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    box-sizing: border-box;
+    width: min(640px, calc(100% - 32px));
+    max-width: calc(100% - 32px);
+    height: fit-content;
+    max-height: min(820px, calc(100vh - 32px));
+    max-height: min(820px, calc(100dvh - 32px));
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 18px;
+    background: #0e1623;
+    color: #e5edf7;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+}
+
+.runtime-modal[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.runtime-modal[hidden] { display: none; }
+
+.runtime-modal::backdrop {
+    background: rgba(3, 8, 18, .72);
+    backdrop-filter: blur(5px);
+}
+
+.runtime-modal-header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px;
+}
+
+.runtime-modal-header h2 { margin: 0; font-size: 1.2rem; }
+
+.runtime-modal-body {
+    min-height: 0;
     overflow: auto;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: #111620;
-    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+    padding: 0 20px 20px;
+}
+
+#runtimeModalClose {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#runtimeModalClose:hover { background: var(--panel2); }
+#runtimeModalClose:focus-visible,
+.runtime-modal-body:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
+@media (max-width: 650px) {
+    .runtime-modal-header { padding: 16px; }
+    .runtime-modal-body { padding: 0 16px 16px; }
 }
 
 .runtime-info-section + .runtime-info-section {

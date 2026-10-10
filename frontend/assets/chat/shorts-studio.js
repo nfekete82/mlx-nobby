@@ -283,7 +283,7 @@
         if (document.querySelector('link[data-mlx-shorts-studio-style]')) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = '/assets/chat/shorts-studio.css?v=20261002-studio-ui';
+        link.href = '/assets/chat/shorts-studio.css?v=20261010-runtime-modal-layout';
         link.dataset.mlxShortsStudioStyle = '1';
         document.head.appendChild(link);
     }

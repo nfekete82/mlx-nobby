@@ -66,8 +66,6 @@
 .sidebar-bottom #runtimeInfoButton{display:flex!important;align-items:center;width:100%;position:static}
 .sidebar-bottom #runtimeInfoButton .sidebar-action-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .sidebar-bottom .nobby-talking-photo-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:0 0 18px;font-size:16px}
-.runtime-popover{position:fixed;top:auto;right:auto;left:calc(var(--sidebar-width, 270px) + 14px);bottom:78px;max-height:min(420px,65vh)}
-@media(max-width:650px){.runtime-popover{left:12px;right:12px;bottom:70px;width:auto}}
 
 /* Shared typography, spacing, and outline icon treatment for all bottom utilities. */
 .sidebar .sidebar-bottom .sidebar-action,

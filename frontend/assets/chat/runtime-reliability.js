@@ -117,7 +117,7 @@
         section = document.createElement('section');
         section.id = 'mlxRuntimeReliability';
         section.setAttribute('aria-live', 'polite');
-        popover.appendChild(section);
+        popover.querySelector('.runtime-modal-body').appendChild(section);
         return section;
     }
 

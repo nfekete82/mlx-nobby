@@ -13,7 +13,7 @@ assert.match(css, /\.settings-organized \.model-role-item select/);
 assert.match(css, /box-shadow:\s*0 0 0 3px rgba\(79, 140, 255, \.16\)/);
 assert.match(
     html,
-    /\/assets\/chat\.css\?v=20261007-settings-controls/
+    /\/assets\/chat\.css\?v=20261010-runtime-modal-layout/
 );
 
 console.log('Settings controls share one polished visual system.');
