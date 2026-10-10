@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v1.11.0
+
+- Add opt-in-by-answer structured offline charts to normal chat: safe validated `nobby-chart` JSON blocks, automatic selection, SVG line/bar/donut and accessible table fallback, switching and CSV export. The model is instructed to include only real numeric data when visualization helps.
+- Render charts from completed assistant Markdown without replacing Finance Intelligence cards. No external chart CDN, no executable chart payloads.
+
 ## v1.10.0
 
 - Add an integrated, responsive media library in the chat sidebar. Browse locally generated images, videos and Talking Photo clips with previews, type filters, search, opening and downloads.

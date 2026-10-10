@@ -1388,7 +1388,7 @@ try {
 
                     system_prompt:
                         MLXChatRuntime
-                            .getSessionSystemPrompt(),
+                            .getSessionSystemPrompt() + (window.MLXCharts ? '\nWhen the user asks for a data analysis or numeric comparison and real numeric data are available, optionally include ONE fenced nobby-chart JSON block after your explanation. Format: {"type":"auto","title":"Short title","unit":"€","data":[{"label":"2025-01","value":12.5},{"label":"2025-02","value":15.2}]}. Values must be finite JSON numbers, not strings. Only use measured or supplied values: never invent numbers, sources or time series. Prefer text when charts do not improve the answer. Use part_of_whole:true only for actual nonnegative parts of a whole. Never place untrusted data in code or HTML.\n' : ''),
 
                     trace_id: traceId,
 
