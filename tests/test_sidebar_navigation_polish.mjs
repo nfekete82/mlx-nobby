@@ -20,3 +20,8 @@ assert.match(css,/sidebar-library-action svg/);
 console.log("Sidebar structure, recent tools, new-chat shortcut and DOM filter wiring passed.");
 
 assert.ok(html.indexOf('id="sidebarJobsButton"') > html.indexOf('class="sidebar-bottom"'), 'Files & Jobs must stay in fixed bottom navigation');
+
+// The bottom navigation must stay anchored when the recent list is hidden.
+assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*margin-top\s*:\s*auto/);
+assert.match(css,/\.sidebar \.sidebar-bottom\s*\{[^}]*flex-shrink\s*:\s*0/);
+assert.match(html,/media-library\.css\?v=1-10-2/);
