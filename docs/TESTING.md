@@ -1,5 +1,13 @@
 # Testing
 
+## Test levels
+
+- `./scripts/mlx test-quick tests/test_intent_aware_chart_routing.py` runs only selected CPU Python tests. The user must specify paths or a pytest selection (`-k`); this deliberately avoids silently treating a targeted check as a release pass.
+- `./scripts/mlx test-medium` runs all standard CPU Python tests and all Node JavaScript tests. It does **not** start Docker, models, Playwright or native media generation.
+- `./scripts/mlx test-release` remains the mandatory comprehensive release gate with browser and real local acceptance.
+
+The installed `mlx` command supports the same subcommands once the updated `scripts/mlx` is installed. A successful quick or medium check does not replace release acceptance.
+
 ## Unit and integration
 
 `test-venv/bin/python -m pytest -q` runs CPU-only Python tests, including
