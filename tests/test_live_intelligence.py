@@ -1,6 +1,7 @@
 """Deterministic tests: offline, predictable, no external network."""
 import io
 import json
+import ast
 from pathlib import Path
 import unittest
 from datetime import datetime, timezone
@@ -17,6 +18,10 @@ class FakeResponse:
         return json.dumps(self.payload).encode()
 
 class LiveIntelligenceTests(unittest.TestCase):
+    def test_live_module_parses(self):
+        source = (Path(__file__).resolve().parents[1] / "backend" / "live_intelligence.py").read_text()
+        ast.parse(source)
+
     def test_trigger(self):
         self.assertTrue(needs_inflation_lookup("Wie viel muss mein Gehalt steigen, um die Inflation auszugleichen?"))
         self.assertTrue(needs_inflation_lookup("Inflationsrate 2025"))
