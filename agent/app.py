@@ -7246,7 +7246,7 @@ def searxng_search_results(query, limit=8):
         "provider": "SearXNG",
 
         "unresponsive_engines": unresponsive_engines,
-        "search_degraded": bool(unresponsive_engines),
+        "search_degraded": bool(unresponsive_engines) and not bool(normalized),
         "count": len(normalized),
         "results": normalized,
     }
