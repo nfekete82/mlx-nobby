@@ -118,7 +118,7 @@ class AgentRuntime:
             )
             telemetry = getattr(response, "telemetry", {})
             if isinstance(telemetry, dict):
-                for key in ("queue_wait_ms", "model_setup_ms", "upstream_request_ms"):
+                for key in ("queue_wait_ms", "lease_wait_ms", "lock_wait_ms", "model_setup_ms", "upstream_request_ms"):
                     value = telemetry.get(key)
                     if type(value) in (int, float) and value >= 0:
                         event[key] = round(value, 2)
