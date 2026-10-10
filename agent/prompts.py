@@ -1457,7 +1457,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
         for item in observations
     ):
         answer = verify_product_launch_items(answer, observations)
-        return answer
+        from agent.temporal_validation import gate_temporal_claims
+        return gate_temporal_claims(answer)
 
     if re.search(
         r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|nachweislich|source(?:s)?)\b",
