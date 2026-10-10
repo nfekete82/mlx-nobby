@@ -96,3 +96,25 @@
 .sidebar .sidebar-bottom .mlx-shorts-history-launcher:focus-visible {
     outline:2px solid var(--blue);outline-offset:2px;
 }
+
+/* Centered Systeminfo dialog: use the same visual language as Talking Photo. */
+.runtime-popover.nobby-runtime-modal{
+ position:fixed!important;inset:0!important;top:0!important;left:0!important;
+ right:0!important;bottom:0!important;width:auto!important;max-height:none!important;
+ display:grid;place-items:center;z-index:10030;padding:24px;
+ overflow:auto;background:transparent;border:0;border-radius:0;box-shadow:none;
+}
+.runtime-popover.nobby-runtime-modal[hidden]{display:none!important}
+.nobby-runtime-backdrop{position:fixed;inset:0;background:rgba(3,8,18,.78);backdrop-filter:blur(5px)}
+.nobby-runtime-dialog{position:relative;width:min(600px,100%);max-height:min(85vh,780px);
+ overflow:auto;background:#111827;color:var(--text);border:1px solid #344054;
+ border-radius:18px;box-shadow:0 24px 80px #0009;padding:20px}
+.nobby-runtime-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.nobby-runtime-header h2{font-size:20px;font-weight:700;margin:0}
+#runtimeModalClose{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;
+ border:1px solid #344054;border-radius:9px;background:#202938;color:var(--text);
+ font-size:25px;line-height:1;cursor:pointer}
+#runtimeModalClose:hover{background:#303d52}
+#runtimeModalClose:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@media(max-width:650px){.runtime-popover.nobby-runtime-modal{padding:12px}
+.nobby-runtime-dialog{max-height:90vh;padding:16px}}
