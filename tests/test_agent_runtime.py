@@ -239,7 +239,7 @@ class AgentRuntimeTests(unittest.TestCase):
         search = mock.Mock(return_value={"results": [{"url": "https://example.org/docs"}]})
         self.add_tool("search_web", search)
         replies = [{"action": "search_web", "query": str(i)} for i in range(4)] + [{"action": "final"}, "Summary"]
-        result = self.runtime(replies).run("Inspect", mode="research")
+        result = self.runtime(replies).run("Tiefenrecherche Inspect", mode="research")
         self.assertEqual(search.call_count, 3)
         self.assertEqual(result["steps"][-1]["action"], "research_search_loop_guard")
         self.assertEqual(set(self.planner_limits), {6})
