@@ -6,7 +6,6 @@ const css = fs.readFileSync('frontend/assets/chat.css', 'utf8');
 
 for (const id of [
     'sidebarToggle',
-    'runtimeInfoButton',
     'clearButton',
     'settingsButton',
     'powerButton',
