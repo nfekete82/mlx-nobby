@@ -50,7 +50,14 @@ class LiveIntelligenceTests(unittest.TestCase):
         self.assertNotIn("- 2024:", result)
         self.assertIn('"label": "2023", "value": 5.95', result)
         self.assertIn('"label": "2025", "value": 2.24', result)
+        self.assertIn('"decimals": 2', result)
+        self.assertIn('"unit": "%"', result)
         self.assertIn("nicht Destatis als vermeintlich abgefragte Primärquelle", result)
+
+    def test_chart_formatter_respects_precision(self):
+        source = (Path(__file__).resolve().parents[1] / "frontend" / "assets" / "chat" / "charts.js").read_text()
+        self.assertIn("minimumFractionDigits:spec.decimals", source)
+        self.assertIn("raw.decimals >= 0 && raw.decimals <= 4", source)
 
     def test_missing_year_not_invented(self):
         data = [{"page": 1}, [{"date": "2024", "value": 2.2}]]
