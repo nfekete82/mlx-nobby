@@ -133,3 +133,6 @@
 .sidebar .nobby-sidebar-workspace-row:hover .nobby-sidebar-workspace-remove,.sidebar .nobby-sidebar-workspace-remove:focus-visible{opacity:1}
 .sidebar .nobby-sidebar-workspace-remove:hover{color:#ffb2b2;background:rgba(220,85,85,.15)}
 @media(hover:none){.sidebar .nobby-sidebar-workspace-remove{opacity:1}}
+
+/* Match the subtle separator above Letzte Chats. */
+.sidebar .nobby-sidebar-workspaces-divider{border-top:1px solid var(--border,#283244);margin-top:8px;padding-top:13px!important}
