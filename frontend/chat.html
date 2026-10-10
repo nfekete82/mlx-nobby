@@ -17,10 +17,10 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20261007-settings-controls">
+<link rel="stylesheet" href="/assets/chat.css?v=20261010-runtime-modal-layout">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-11-library-preview">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=20261010-runtime-modal-layout">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -199,7 +199,8 @@
                     type="button"
                     aria-label="Runtime-Informationen"
                     title="Runtime-Informationen"
-                    aria-haspopup="true"
+                    aria-haspopup="dialog"
+                    aria-controls="runtimePopover"
                     aria-expanded="false"
                 >
                     <svg class="sidebar-action-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -305,17 +306,6 @@
                     class="model-list"
                 ></div>
                 <a class="model-manage-link" href="/settings/models" data-i18n="ui.manage_models">Modelle verwalten …</a>
-            </div>
-
-            <div
-                id="runtimePopover"
-                class="runtime-popover"
-                hidden
-            >
-                <div
-                    id="runtimeInfoContent"
-                    class="runtime-info-content"
-                ></div>
             </div>
 
             <div class="top-actions">
@@ -1505,6 +1495,16 @@
 </section>
 <script src="/assets/chat/media-library.js?v=1-11-library-preview"></script>
 <script src="/assets/chat/sidebar-navigation.js?v=1-10-1"></script>
+<dialog id="runtimePopover" class="runtime-modal" aria-labelledby="runtimeModalTitle" hidden>
+    <header class="runtime-modal-header">
+        <h2 id="runtimeModalTitle">Systeminfo</h2>
+        <button id="runtimeModalClose" type="button" aria-label="Systeminfo schließen" data-i18n-aria-label="runtime_ui.close_info" title="Schließen" data-i18n-title="common.close" autofocus>×</button>
+    </header>
+    <div class="runtime-modal-body" tabindex="0" role="region" aria-labelledby="runtimeModalTitle">
+        <div id="runtimeInfoContent" class="runtime-info-content"></div>
+    </div>
+</dialog>
+
 <script src="/assets/common.js"></script>
 <script src="/assets/chat/sessions.js?v=20260914-image-ui-final"></script>
 <script src="/assets/chat/attachments.js?v=20260913-image-upscale"></script>
@@ -1512,7 +1512,7 @@
 <script src="/assets/chat/rendering.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/image-preview.js?v=20261002-pending-preview"></script>
 <script src="/assets/chat/compact.js"></script>
-<script src="/assets/chat/runtime.js?v=20260923-media-quality"></script>
+<script src="/assets/chat/runtime.js?v=20261010-runtime-modal-layout"></script>
 <script src="/assets/chat/appearance.js"></script>
 <script src="/assets/chat/charts.js?v=1-11-2"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>

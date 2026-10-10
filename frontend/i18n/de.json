@@ -898,6 +898,7 @@
   "knowledge.search_failed": "Suche fehlgeschlagen:",
   "runtime_ui.system_unavailable": "Systemdaten nicht erreichbar",
   "runtime_ui.info_unavailable": "Runtime-Informationen nicht erreichbar: {message}",
+  "runtime_ui.close_info": "Systeminfo schließen",
   "runtime_ui.aliases_failed": "Alias-Liste konnte nicht geladen werden",
   "generation.agent_approval_failed": "Agent-Freigabe fehlgeschlagen: {message}",
   "generation.thinking_enabled": "Thinking wurde aktiviert.",
