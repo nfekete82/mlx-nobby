@@ -42,6 +42,13 @@ class ResearchTests(unittest.TestCase):
         self.assertIn("https://example.org/article", result)
         self.assertIn("Suchtreffer", result)
 
+    def test_redirect_links_are_decoded(self):
+        html = '<a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fnews">Real headline</a>'
+        result = retrieve_web_research("Wer ist aktuell Bundeskanzler?",
+            opener=lambda _req, timeout: FakeResponse(html))
+        self.assertIn("https://example.org/news", result)
+        self.assertNotIn("duckduckgo.com/l/", result)
+
     def test_no_results_are_disclosed(self):
         result = retrieve_web_research("Wer ist aktuell Bundeskanzler?",
             opener=lambda _req, timeout: FakeResponse("<html></html>"))
