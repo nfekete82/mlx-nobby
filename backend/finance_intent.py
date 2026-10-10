@@ -143,8 +143,35 @@ def explicit_company_query(prompt):
     return candidate
 
 
+
+def user_supplied_dataset(prompt):
+    """Identify self-contained chart/comparison requests without a market instrument.
+
+    This guards semantic-finance false positives; it does not determine chart type.
+    It deliberately requires numeric observations and a visualization/data intent.
+    """
+    value = str(prompt or '')
+    lowered = value.lower()
+    if re.search(r'\\b(?:aktien?|stocks?|tickers?|etfs?|nasdaq|nyse|boerse|börse)\\b', lowered):
+        return False
+    if symbols_from_prompt(value):
+        return False
+    has_data_intent = re.search(
+        r'(?i)diagramm|chart|graph|grafik|visualisier|plot|datenreihe|'
+        r'ums[aä]tz|revenue|sales|messwert|statistik|kennzahl|'
+        r'werte\\s+(?:darstellen|vergleichen)|data\\s+(?:series|points)',
+        value,
+    )
+    # At least three observations, not merely a year, date or one quoted price.
+    numbers = re.findall(r'(?<![\\w])[-+]?\\d+(?:[.,]\\d+)*(?![\\w])', value)
+    return bool(has_data_intent and len(numbers) >= 3)
+
+
 def finance_intent(prompt, conversation_context=None):
     value = str(prompt or '').lower()
+
+    if user_supplied_dataset(prompt):
+        return None
 
     # Programming, creative and workspace instructions retain their own routing.
     if re.search(
