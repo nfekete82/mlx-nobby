@@ -996,6 +996,52 @@ def loaded_web_article_urls(observations):
     return urls
 
 
+def enforce_research_citations(answer, observations):
+    """Fail closed on source-required research; never fabricate article links."""
+    import re
+    from urllib.parse import urlsplit
+
+    allowed = loaded_web_article_urls(observations)
+    if not allowed:
+        return ("Es konnten keine vollständig geladenen Artikelquellen belegt werden. "
+                "Deshalb gebe ich keine vermeintlich verifizierte Modellliste aus.")
+
+    # Only canonical source links explicitly returned by successful fetches.
+    aliases = {}
+    for url in allowed:
+        host = (urlsplit(url).hostname or "").removeprefix("www.")
+        label = host.split(".")[0].upper() if host else "Quelle"
+        aliases.setdefault(label.lower(), []).append(url)
+
+    output = []
+    for line in str(answer or "").splitlines():
+        if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
+            # Discard free-form claims in the answer body; preserve only
+            # evidence-backed numbered/bulleted items and a source footer.
+            continue
+        links = re.findall(r"https://[^\s)\]>]+", line)
+        approved = next((url for url in allowed if url in links), None)
+        if approved is None:
+            # Resolve a bare source reference only if its host uniquely maps
+            # to a single successfully opened article.
+            mentions = [url for url in allowed
+                        if (urlsplit(url).hostname or "").removeprefix("www.").split(".")[0].lower()
+                        in line.lower()]
+            if len(mentions) == 1:
+                approved = mentions[0]
+        if approved is None:
+            continue
+        # Replace any unverified outbound links with the one fetched URL.
+        cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
+        cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
+        cleaned = cleaned.rstrip(" ,;:-")
+        output.append(f"{cleaned} ([Artikelquelle]({approved}))")
+    if not output:
+        return ("Die geladenen Artikel reichen nicht aus, um einzelne Modelle "
+                "mit eindeutigen Quellenlinks zu belegen. Ich lasse unbelegte Angaben weg.")
+    return "\n".join(output)
+
+
 def agent_v2_final_answer(goal, observations, *, observed_agent_llm):
     coding_contract = coding_evidence_contract(observations)
 
@@ -1292,6 +1338,11 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     if has_coding_evidence:
         answer = compact_coding_answer_markdown(answer)
 
+    if loaded_web_article_urls(observations) and re.search(
+        r"(?i)\b(?:quellen(?:links)?|beleg(?:e|t)|artikel.urls|source(?:s)?)\b",
+        str(goal or ""),
+    ):
+        answer = enforce_research_citations(answer, observations)
 
     return answer
 
