@@ -160,10 +160,17 @@ class MLXProvider:
         try:
             # Production injects the same lease used by chat streaming. Take
             # it BEFORE the model lock; role resolution also enters the lease.
-            with self.runtime_lease(run_context), self.runtime_lock:
-                metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
-                _check_cancelled(run_context)
-                return self._complete(request, run_context, metrics)
+            with self.runtime_lease(run_context):
+                lease_wait_ms = round((time.monotonic() - wait_started) * 1000, 2)
+                lock_started = time.monotonic()
+                with self.runtime_lock:
+                    lock_wait_ms = round((time.monotonic() - lock_started) * 1000, 2)
+                    metrics.set_queue_wait((time.monotonic() - wait_started) * 1000)
+                    _check_cancelled(run_context)
+                    result = self._complete(request, run_context, metrics)
+                    result.telemetry["lease_wait_ms"] = lease_wait_ms
+                    result.telemetry["lock_wait_ms"] = lock_wait_ms
+                    return result
         except ProviderError as exc:
             metrics.fail(exc.code)
             raise
