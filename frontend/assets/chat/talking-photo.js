@@ -938,10 +938,14 @@
 
     function mountButton() {
         if (document.getElementById(BUTTON_ID)) return;
-        const host = document.querySelector('.top-actions');
+        const host = document.querySelector('.sidebar-bottom');
         if (!host) return;
 
-        const button = node('button', 'icon-btn', '🗣️');
+        const button = node('button', 'sidebar-action nobby-sidebar-nav');
+        const icon = node('span', 'nobby-talking-photo-icon', '🗣️');
+        icon.setAttribute('aria-hidden', 'true');
+        button.appendChild(icon);
+        button.appendChild(node('span', 'sidebar-action-label', 'Talking Photo'));
         button.id = BUTTON_ID;
         button.type = 'button';
         button.title = localText('Talking Photo', 'Talking Photo');
@@ -951,8 +955,8 @@
         ));
         button.addEventListener('click', openModal);
 
-        const settings = document.getElementById('settingsButton');
-        host.insertBefore(button, settings || host.firstChild);
+        const runtimeInfo = document.getElementById('runtimeInfoButton');
+        host.insertBefore(button, runtimeInfo || host.firstChild);
         try {
             const remembered = sessionStorage.getItem(JOB_STORAGE_KEY);
             if (remembered && /^[a-f0-9]{24}$/.test(remembered)) {
