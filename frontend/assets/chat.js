@@ -245,12 +245,7 @@ document.getElementById(
 );
 
 
-document.getElementById(
-    'clearButton'
-).addEventListener(
-    'click',
-    MLXChatSessions.deleteMessages
-);
+// MLXChatSessions.deleteMessages remains available for future navigation actions.
 
 
 document.getElementById(
