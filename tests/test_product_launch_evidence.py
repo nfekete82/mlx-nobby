@@ -8,7 +8,7 @@ class ProductLaunchEvidenceTests(unittest.TestCase):
         observations = [
             {"action": "fetch_url", "status": "completed", "result": {
                 "ok": True, "url": "https://example.org/phones",
-                "text": "Report about the Pixel 11 announcement. " * 12}},
+                "text": "Pixel 11 was officially introduced on 12 August 2026. " * 12}},
             {"action": "web_search", "status": "completed", "result": {
                 "results": [{"url": "https://example.org/other"}]}}
         ]
@@ -19,11 +19,25 @@ class ProductLaunchEvidenceTests(unittest.TestCase):
         self.assertIn("https://example.org/phones", result)
         self.assertNotIn("Phantom 42", result)
 
+    def test_forecast_is_not_proof_of_presentation(self):
+        observations = [{"action": "fetch_url", "status": "completed",
+            "result": {"ok": True, "url": "https://example.org/forecast",
+                       "text": "The Pixel 11 will likely be introduced on 12 August 2026. " * 12}}]
+        result = verify_product_launch_items("1. **Pixel 11** (12.08.2026)", observations)
+        self.assertIn("nicht ausreichend", result)
+
+    def test_wrong_date_is_not_proof(self):
+        observations = [{"action": "fetch_url", "status": "completed",
+            "result": {"ok": True, "url": "https://example.org/event",
+                       "text": "The Pixel 11 was introduced on 12 August 2026. " * 12}}]
+        result = verify_product_launch_items("1. **Pixel 11** (13.08.2026)", observations)
+        self.assertIn("nicht ausreichend", result)
+
     def test_search_hits_alone_are_not_proof(self):
         observations = [{"action": "web_search", "status": "completed",
                          "result": {"results": [{"title": "Pixel 11"}]}}]
         result = verify_product_launch_items("1. **Pixel 11**", observations)
-        self.assertIn("Keine Produktmodelle", result)
+        self.assertIn("nicht ausreichend", result)
 
 
 if __name__ == "__main__":
