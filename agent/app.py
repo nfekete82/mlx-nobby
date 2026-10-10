@@ -9373,8 +9373,8 @@ def _requires_public_source_research(prompt, file_context=None):
     if not needs_web_research(text):
         return False
     return bool(re.search(
-        r"(?i)\\b(?:quellen(?:links)?|belege|links|zitier(?:e|en)|"
-        r"verifizier(?:e|te|ten)|source(?:s)?)\\b", text,
+        r"(?i)\b(?:quellen(?:links)?|belege|links|zitier(?:e|en)|"
+        r"verifizier(?:e|te|ten)|source(?:s)?)\b", text,
     ))
 
 
