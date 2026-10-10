@@ -33,8 +33,15 @@ test('reject malformed or unsafe numeric data, preserve original code when inval
 test('CSV escaping and frontend integration', () => {
   const spec=api.normalize(fixture(['a,"quoted"','b'],[1,2]));
   assert.match(api.csv(spec), /"a,""quoted"""/);
-  assert.match(html,/charts\.js\?v=1-11-0/);
+  assert.match(html,/charts\.js\?v=1-11-1/);
   assert.match(html,/charts\.css\?v=1-11-0/);
   assert.match(rendering,/MLXCharts\?\.enhance\(answer\)/);
   assert.match(generation,/nobby-chart JSON block/);
+});
+
+test('model JSON fences are recognized without proprietary language tag', () => {
+  assert.match(source, /language-json/);
+  assert.match(source, /querySelectorAll\("pre > code"\)/);
+  assert.match(source, /Array\.isArray\(parsed\.data\)/);
+  assert.doesNotMatch(source, /JSON\.parse\(code\.innerHTML\)/);
 });
