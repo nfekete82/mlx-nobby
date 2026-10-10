@@ -122,6 +122,8 @@ class AgentRuntime:
                     value = telemetry.get(key)
                     if type(value) in (int, float) and value >= 0:
                         event[key] = round(value, 2)
+                if telemetry.get("observed_holder_role") in ("agent", "chat", "coding", "unknown"):
+                    event["observed_holder_role"] = telemetry["observed_holder_role"]
                 if telemetry.get("usage_method") in ("upstream", "estimate"):
                     event["usage_method"] = telemetry["usage_method"]
             usage = response.usage if isinstance(response.usage, dict) else {}
