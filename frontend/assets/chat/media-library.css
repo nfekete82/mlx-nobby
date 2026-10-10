@@ -66,8 +66,6 @@
 .sidebar-bottom #runtimeInfoButton{display:flex!important;align-items:center;width:100%;position:static}
 .sidebar-bottom #runtimeInfoButton .sidebar-action-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .sidebar-bottom .nobby-talking-photo-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:0 0 18px;font-size:16px}
-.runtime-popover{position:fixed;top:auto;right:auto;left:calc(var(--sidebar-width, 270px) + 14px);bottom:78px;max-height:min(420px,65vh)}
-@media(max-width:650px){.runtime-popover{left:12px;right:12px;bottom:70px;width:auto}}
 
 /* Shared typography, spacing, and outline icon treatment for all bottom utilities. */
 .sidebar .sidebar-bottom .sidebar-action,
@@ -97,53 +95,50 @@
     outline:2px solid var(--blue);outline-offset:2px;
 }
 
-/* Centered Systeminfo dialog: use the same visual language as Talking Photo. */
-.runtime-popover.nobby-runtime-modal{
- position:fixed!important;inset:0!important;top:0!important;left:0!important;
- right:0!important;bottom:0!important;width:auto!important;max-height:none!important;
- display:grid;place-items:center;z-index:10030;padding:24px;
- overflow:auto;background:transparent;border:0;border-radius:0;box-shadow:none;
+/* Systeminfo is a native top-layer dialog. Do not mix old popover inset/grid styles. */
+dialog#runtimePopover.nobby-runtime-modal {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
+  transform: translate(-50%, -50%);
+  margin: 0 !important;
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 32px)) !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: min(88dvh, 820px) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: block;
+  border: 1px solid #344054 !important;
+  border-radius: 18px !important;
+  background: #111827 !important;
+  color: var(--text);
+  box-shadow: 0 24px 80px #000a !important;
 }
-.runtime-popover.nobby-runtime-modal[hidden]{display:none!important}
-.nobby-runtime-backdrop{position:fixed;inset:0;background:rgba(3,8,18,.78);backdrop-filter:blur(5px)}
-.nobby-runtime-dialog{position:relative;width:min(600px,100%);max-height:min(85vh,780px);
- overflow:auto;background:#111827;color:var(--text);border:1px solid #344054;
- border-radius:18px;box-shadow:0 24px 80px #0009;padding:20px}
-.nobby-runtime-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+dialog#runtimePopover.nobby-runtime-modal:not([open]),
+dialog#runtimePopover.nobby-runtime-modal[hidden] { display: none !important; }
+dialog#runtimePopover.nobby-runtime-modal::backdrop {
+  background: rgba(3, 8, 18, .78);
+  backdrop-filter: blur(5px);
+}
+dialog#runtimePopover .nobby-runtime-backdrop { display: none; }
+dialog#runtimePopover .nobby-runtime-dialog {
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(88dvh, 820px);
+  overflow-y: auto;
+  padding: 20px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.nobby-runtime-header {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
 .nobby-runtime-header h2{font-size:20px;font-weight:700;margin:0}
-#runtimeModalClose{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;
- border:1px solid #344054;border-radius:9px;background:#202938;color:var(--text);
- font-size:25px;line-height:1;cursor:pointer}
+#runtimeModalClose{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border:1px solid #344054;border-radius:9px;background:#202938;color:var(--text);font-size:25px;line-height:1;cursor:pointer}
 #runtimeModalClose:hover{background:#303d52}
 #runtimeModalClose:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-@media(max-width:650px){.runtime-popover.nobby-runtime-modal{padding:12px}
-.nobby-runtime-dialog{max-height:90vh;padding:16px}}
-
-/* Native dialog enters the browser top layer, above all app stacking contexts. */
-dialog.nobby-runtime-modal{margin:auto!important;max-width:none!important;max-height:none!important;color:var(--text)}
-dialog.nobby-runtime-modal::backdrop{background:rgba(3,8,18,.78);backdrop-filter:blur(5px)}
-
-/* Native dialogs keep UA centering only when legacy left/top/inset rules are reset. */
-dialog#runtimePopover.nobby-runtime-modal[open]{
-  position:fixed!important;
-  inset:0!important;
-  margin:auto!important;
-  width:min(680px,calc(100vw - 32px))!important;
-  height:fit-content!important;
-  max-height:min(88dvh,820px)!important;
-  min-height:0;
-  padding:0!important;
-  display:block!important;
-  overflow:visible!important;
-  border:0!important;
-  background:transparent!important;
-  box-shadow:none!important;
-}
-dialog#runtimePopover.nobby-runtime-modal .nobby-runtime-dialog{
-  box-sizing:border-box;
-  width:100%;
-  max-height:min(88dvh,820px);
-  overflow:auto;
-}
-dialog#runtimePopover.nobby-runtime-modal .nobby-runtime-backdrop{display:none}
-dialog#runtimePopover.nobby-runtime-modal[hidden]{display:none!important}
+@media(max-width:650px){dialog#runtimePopover .nobby-runtime-dialog{padding:16px}}
