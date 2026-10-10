@@ -16,6 +16,19 @@ class PlanningFastpathTests(unittest.TestCase):
         self.assertEqual(result["action"], "fetch_url")
         self.assertEqual(result["query"], URL)
 
+    def test_apple_domain_without_official_title(self):
+        search = {"action": "search_web", "status": "completed",
+                  "result": {"results": [
+                      {"url": URL, "title": "iPhone Produktneuheiten"}]}}
+        result = choose_official_followup("Welche aktuellen iPhone-Modelle bietet Apple offiziell an?", [search])
+        self.assertEqual(result["query"], URL)
+
+    def test_similar_lookalike_domain_not_trusted(self):
+        search = {"action": "search_web", "status": "completed",
+                  "result": {"results": [
+                      {"url": "https://apple.com.example.org/news", "title": "iPhone Neuheiten"}]}}
+        self.assertIsNone(choose_official_followup("Welche iPhones bietet Apple offiziell an?", [search]))
+
     def test_skips_already_fetched(self):
         fetched = {"action": "fetch_url", "status": "completed", "query": URL}
         self.assertIsNone(choose_official_followup("Offizielle Modelle?", [SEARCH, fetched]))
