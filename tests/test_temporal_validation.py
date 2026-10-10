@@ -23,6 +23,17 @@ class TemporalValidationTests(unittest.TestCase):
         answer = "iPhone Duo: vorbestellbar ab 16. Oktober, erhältlich ab 23. Oktober 2026."
         self.assertEqual(gate_temporal_claims(answer, date(2026, 10, 10)), answer)
 
+    def test_guard_is_idempotent(self):
+        answer = "iPhone Duo (Neu, seit 23. Oktober 2026)"
+        first = gate_temporal_claims(answer, date(2026, 10, 10))
+        self.assertEqual(gate_temporal_claims(first, date(2026, 10, 10)), first)
+
+    def test_real_diagnostic_answer_excerpt(self):
+        answer = ("Apple bietet aktuell (Stand 10. Oktober 2026) sechs Modelle an:\n"
+                  "1. **iPhone Duo** (Neu, seit 23. Oktober 2026) – faltbar")
+        result = gate_temporal_claims(answer, date(2026, 10, 10))
+        self.assertIn("**Zeitprüfung:**", result)
+
     def test_announced_future_product_is_allowed(self):
         answer = "iPhone Duo wurde vorgestellt; erhältlich ab 23.10.2026."
         self.assertEqual(gate_temporal_claims(answer, date(2026, 10, 10)), answer)
