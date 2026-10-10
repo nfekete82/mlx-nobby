@@ -971,6 +971,31 @@ def agent_coding_read_only_final_answer(goal, observations, *, observed_agent_ll
 
 
 
+def loaded_web_article_urls(observations):
+    """Only URLs from successfully opened web tool results count as loaded."""
+    from urllib.parse import urlsplit
+    urls = []
+    for item in observations:
+        if not isinstance(item, dict):
+            continue
+        if item.get("action") != "fetch_url" or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        candidates = [result.get("url"), result.get("final_url"), item.get("query")]
+        for candidate in candidates:
+            if not isinstance(candidate, str):
+                continue
+            parsed = urlsplit(candidate)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.path in {"", "/"}:
+                continue
+            if candidate not in urls:
+                urls.append(candidate)
+            break
+    return urls
+
+
 def agent_v2_final_answer(goal, observations, *, observed_agent_llm):
     coding_contract = coding_evidence_contract(observations)
 
@@ -1202,6 +1227,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                         ensure_ascii=False,
                         indent=2,
                     )
+                    + "\n\nTATSÄCHLICH GELADENE ARTIKEL-URLS (keine anderen URLs als geprüfte Quellen ausgeben):\n"
+                    + json.dumps(loaded_web_article_urls(observations), ensure_ascii=False)
                     + "\n\nDETERMINISTIC CODING EVIDENCE CONTRACT:\n"
                     + json.dumps(
                         coding_contract,
