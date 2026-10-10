@@ -1188,7 +1188,7 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
     if (!items.length) {
         const empty = document.createElement('div');
         empty.className = 'nobby-projects-empty';
-        empty.textContent = chatT('library.no_projects', 'Keine Projekte');
+        empty.textContent = chatT('ui.no_workspaces', 'Keine Workspaces');
         list.appendChild(empty);
         return;
     }
@@ -1227,7 +1227,39 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
                 if (feedback) {feedback.hidden = false; feedback.textContent = workspaceErrorMessage(error);}
             } finally { button.disabled = false; }
         });
-        list.appendChild(button);
+        const row = document.createElement('div');
+        row.className = 'nobby-sidebar-workspace-row';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'nobby-sidebar-workspace-remove';
+        remove.textContent = '×';
+        remove.title = chatT('ui.workspace_remove', 'Workspace entfernen');
+        remove.setAttribute('aria-label', remove.title + ': ' + (workspace.name || 'Workspace'));
+        remove.addEventListener('click', async () => {
+            const name = workspace.name || workspace.root_path || 'Workspace';
+            const confirmed = window.MLXConfirm ? await window.MLXConfirm({
+                title: chatT('ui.workspace_remove', 'Workspace entfernen'),
+                message: name + ' – ' + chatT('ui.workspace_unregister_hint', 'Nur aus MLX Nobby entfernen? Der Ordner auf deinem Mac bleibt erhalten.'),
+                confirmLabel: chatT('ui.workspace_remove', 'Entfernen'),
+                cancelLabel: chatT('ui.cancel', 'Abbrechen')
+            }) : window.confirm(name + ' – ' +
+                chatT('ui.workspace_unregister_hint', 'Nur aus MLX Nobby entfernen? Der Ordner auf deinem Mac bleibt erhalten.'));
+            if (!confirmed) return;
+            remove.disabled = true;
+            button.disabled = true;
+            try {
+                await workspaceRequest('/api/mlx/code/workspaces/' +
+                    encodeURIComponent(workspace.workspace_id), {method:'DELETE'});
+                await loadWorkspaces();
+            } catch (error) {
+                const feedback = document.getElementById('sidebarWorkspaceFeedback');
+                if (feedback) { feedback.hidden = false; feedback.textContent = workspaceErrorMessage(error); }
+                remove.disabled = false;
+                button.disabled = false;
+            }
+        });
+        row.append(button, remove);
+        list.appendChild(row);
     });
 }
 
