@@ -118,3 +118,7 @@
 #runtimeModalClose:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 @media(max-width:650px){.runtime-popover.nobby-runtime-modal{padding:12px}
 .nobby-runtime-dialog{max-height:90vh;padding:16px}}
+
+/* Native dialog enters the browser top layer, above all app stacking contexts. */
+dialog.nobby-runtime-modal{margin:auto!important;max-width:none!important;max-height:none!important;color:var(--text)}
+dialog.nobby-runtime-modal::backdrop{background:rgba(3,8,18,.78);backdrop-filter:blur(5px)}
