@@ -152,18 +152,18 @@ def user_supplied_dataset(prompt):
     """
     value = str(prompt or '')
     lowered = value.lower()
-    if re.search(r'\\b(?:aktien?|stocks?|tickers?|etfs?|nasdaq|nyse|boerse|börse)\\b', lowered):
+    if re.search(r'\b(?:aktien?|stocks?|tickers?|etfs?|nasdaq|nyse|boerse|börse)\b', lowered):
         return False
     if symbols_from_prompt(value):
         return False
     has_data_intent = re.search(
         r'(?i)diagramm|chart|graph|grafik|visualisier|plot|datenreihe|'
         r'ums[aä]tz|revenue|sales|messwert|statistik|kennzahl|'
-        r'werte\\s+(?:darstellen|vergleichen)|data\\s+(?:series|points)',
+        r'werte\s+(?:darstellen|vergleichen)|data\s+(?:series|points)',
         value,
     )
     # At least three observations, not merely a year, date or one quoted price.
-    numbers = re.findall(r'(?<![\\w])[-+]?\\d+(?:[.,]\\d+)*(?![\\w])', value)
+    numbers = re.findall(r'(?<![\w])[-+]?\d+(?:[.,]\d+)*(?![\w])', value)
     return bool(has_data_intent and len(numbers) >= 3)
 
 
