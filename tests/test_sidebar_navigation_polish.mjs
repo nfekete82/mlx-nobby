@@ -40,5 +40,5 @@ assert.match(css,/\.nobby-sidebar-recent-divider/);
 assert.match(html, />Workspaces<\/div>/);
 assert.match(chat, /nobby-sidebar-workspace-remove/);
 assert.match(chat, /method:'DELETE'/);
-assert.match(chat, /workspace_unregister_hint/);
+assert.doesNotMatch(chat, /workspace_unregister_hint/);
 assert.match(css, /nobby-sidebar-workspace-row/);
