@@ -21,6 +21,23 @@ class PlanningContextTests(unittest.TestCase):
         self.assertEqual(result["result"]["results"][0]["url"], "https://apple.com/news")
         self.assertEqual(len(result["result"]["results"][0]["snippet"]), 300)
 
+    def test_release_date_near_end_is_kept(self):
+        article = ("Allgemeine Beschreibung. " * 300
+                   + "\nVorbestellung ab 16. Oktober 2026, erhältlich ab 23. Oktober 2026.")
+        original = {"action": "fetch_url", "status": "completed",
+                    "result": {"ok": True, "text": article}}
+        compact = compact_web_planning([original])[0]["result"]["text"]
+        self.assertIn("23. Oktober 2026", compact)
+        self.assertIn("16. Oktober 2026", compact)
+        self.assertLess(len(compact), 4500)
+        self.assertEqual(original["result"]["text"], article)
+
+    def test_unrelated_late_text_not_copied(self):
+        article = "x" * 10000 + "\nBeliebiger Kommentar ohne Termin."
+        result = compact_web_planning([{"action": "fetch_url",
+                                        "result": {"text": article}}])[0]
+        self.assertEqual(len(result["result"]["text"]), 1800)
+
     def test_coding_observation_preserved(self):
         source = {"action": "code_read", "result": {"content": "important" * 3000}}
         self.assertIs(compact_web_planning([source])[0], source)
