@@ -6,6 +6,16 @@ normal runtime permission and URL checks still apply.
 """
 from urllib.parse import urlsplit
 
+OFFICIAL_HOSTS = {"apple": ("apple.com",), "google": ("google.com", "blog.google"), "microsoft": ("microsoft.com",), "samsung": ("samsung.com",)}
+
+
+def _trusted_primary_host(goal, hostname):
+    host = (hostname or "").lower().rstrip(".")
+    for brand, hosts in OFFICIAL_HOSTS.items():
+        if brand in goal:
+            return any(host == domain or host.endswith("." + domain) for domain in hosts)
+    return False
+
 
 def choose_official_followup(goal, observations):
     goal = str(goal or "").lower()
@@ -40,7 +50,8 @@ def choose_official_followup(goal, observations):
             # alone is insufficient to classify it as official.
             evidence = " ".join(str(entry.get(k) or "") for k in
                                 ("title", "snippet", "description")).lower()
-            if not any(word in evidence for word in ("official", "offiziell", "hersteller")):
+            if not (_trusted_primary_host(goal, parts.hostname) or
+                    any(word in evidence for word in ("official", "offiziell", "hersteller"))):
                 continue
             return {"action": "fetch_url", "query": url,
                     "reason": "Offizielle Quelle aus Suchergebnis direkt prüfen"}
