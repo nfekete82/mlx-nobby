@@ -92,6 +92,7 @@ class AgentRuntime:
 
     def complete_model(self, request: ModelRequest):
         self._check_cancelled()
+        started = time.perf_counter()
         try:
             response = self.provider.complete(request, run_context=self.context)
         except ProviderError as exc:
@@ -100,6 +101,11 @@ class AgentRuntime:
                 self.context.cancel()
                 raise _RunCancelled() from exc
             raise
+        finally:
+            self._profile_events.append({
+                "phase": "model", "action": "provider.complete",
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            })
         self._check_cancelled()
         return response
 
@@ -248,6 +254,7 @@ class AgentRuntime:
         if not goal:
             raise ValueError("Kein Agent-Ziel angegeben")
         observations = list(observations or [])
+        self._profile_events = []
         token = _CURRENT_RUNTIME.set(self)
         try:
             with run_state.bind_run_context(self.context):
