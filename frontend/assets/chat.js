@@ -1236,15 +1236,6 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
         remove.title = chatT('ui.workspace_remove', 'Workspace entfernen');
         remove.setAttribute('aria-label', remove.title + ': ' + (workspace.name || 'Workspace'));
         remove.addEventListener('click', async () => {
-            const name = workspace.name || workspace.root_path || 'Workspace';
-            const confirmed = window.MLXConfirm ? await window.MLXConfirm({
-                title: chatT('ui.workspace_remove', 'Workspace entfernen'),
-                message: name + ' – ' + chatT('ui.workspace_unregister_hint', 'Nur aus MLX Nobby entfernen? Der Ordner auf deinem Mac bleibt erhalten.'),
-                confirmLabel: chatT('ui.workspace_remove', 'Entfernen'),
-                cancelLabel: chatT('ui.cancel', 'Abbrechen')
-            }) : window.confirm(name + ' – ' +
-                chatT('ui.workspace_unregister_hint', 'Nur aus MLX Nobby entfernen? Der Ordner auf deinem Mac bleibt erhalten.'));
-            if (!confirmed) return;
             remove.disabled = true;
             button.disabled = true;
             try {
