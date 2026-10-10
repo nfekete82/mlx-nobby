@@ -57,3 +57,7 @@
 /* Keep primary actions grouped tightly, regardless of older sidebar flex spacing. */
 .sidebar .new-chat-actions{margin-bottom:0!important;padding-bottom:0!important}
 .sidebar #sidebarLibraryButton{margin-top:0!important}
+
+/* Anchor persistent navigation at the sidebar bottom even when chats are collapsed. */
+.sidebar .sidebar-bottom{margin-top:auto;flex-shrink:0}
+.sidebar #chatList{min-height:0}
