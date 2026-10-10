@@ -1516,7 +1516,20 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                     temperature=0.0,
                 )
                 if isinstance(revised, str) and revised.strip():
-                    answer = revised.strip()
+                    from urllib.parse import urlsplit
+                    from agent.claim_validation import _URL
+                    candidate = revised.strip()
+                    original_urls = set(_URL.findall(str(answer)))
+                    allowed_urls = {url for url, _ in sources} | original_urls
+                    new_urls = set(_URL.findall(candidate)) - allowed_urls
+                    revised_audit = audit_numerical_claims(candidate, observations)
+                    before_issues = len(audit["unverified"]) + len(audit.get("conflicts", []))
+                    after_issues = (len(revised_audit["unverified"])
+                                    + len(revised_audit.get("conflicts", [])))
+                    # Do not replace a draft with a worse or citation-inventing
+                    # revision. A tie is not evidence of improvement.
+                    if not new_urls and revised_audit["checked"] and after_issues < before_issues:
+                        answer = candidate
             except Exception:
                 pass
         answer = gate_numerical_claims(answer, observations)
