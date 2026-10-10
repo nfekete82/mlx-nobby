@@ -1342,6 +1342,16 @@ def mlx_chat_stream(request: ChatRequest):
                         },
                     )
 
+    # v2 Live Intelligence: fetch verified annual inflation data before inference.
+    # Only the user's current prompt leaves this machine; the request to the
+    # statistical provider contains no user text, chat history or workspace data.
+    if last_user_prompt:
+        from backend.live_intelligence import retrieve_inflation, needs_inflation_lookup
+        if needs_inflation_lookup(last_user_prompt):
+            live_context = retrieve_inflation(last_user_prompt)
+            if live_context:
+                messages.insert(0, {"role": "system", "content": live_context})
+
     if "rag_sources" not in locals():
         rag_sources = []
 
