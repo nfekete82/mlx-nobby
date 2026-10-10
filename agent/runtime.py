@@ -336,8 +336,8 @@ class AgentRuntime:
             r"(?i)\b(?:tiefenrecherche|ausführliche recherche|umfassende recherche|"
             r"deep research|in-depth research|systematisch vergleichen)\b", goal,
         ))
-        if deep_research:
-            max_steps = max(max_steps, 6)
+        if deep_research and max_steps == RuntimePolicy().research_steps:
+            max_steps = 6
         research_continuation_steps = (
             self.policy.research_continuation_steps
             if mode == "research" and deep_research else 0
