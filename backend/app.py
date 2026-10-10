@@ -86,11 +86,11 @@ def get_json(url, timeout=5):
         with urllib.request.urlopen(url, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, TimeoutError) as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"Dienst nicht erreichbar: {exc.reason}",
-        )
+            detail=f"Dienst nicht erreichbar oder Antwort-Timeout: {exc}",
+        ) from exc
 
 
 def post_json(url, timeout=180):
