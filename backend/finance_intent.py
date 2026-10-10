@@ -146,6 +146,13 @@ def explicit_company_query(prompt):
 def finance_intent(prompt, conversation_context=None):
     value = str(prompt or '').lower()
 
+    # User-supplied business/time-series figures are not market securities.
+    # Do not intercept normal chat visualizations with Finance Intelligence.
+    if (re.search(r'\\b(?:monatsumsatz\\w*|monatsumsätze|umsatzentwicklung|sales figures|monthly revenue|monthly sales)\\b', value)
+            and re.search(r'\\d[\\d.,]*\\s*(?:€|eur|%|euro)|\\b(?:januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\\b', value)
+            and not re.search(r'\\b(?:aktie|aktien|stock|stocks|ticker|börse|boerse|nasdaq|nyse|etf)\\b', value)):
+        return None
+
     # Programming, creative and workspace instructions retain their own routing.
     if re.search(
         r'\b(?:implement\w*|code|python|javascript|workspace|repo|erzähle|story|'
