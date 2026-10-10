@@ -299,6 +299,7 @@ def agent_choose_next_step_v2(
     conversation_context=None,
     *, observed_agent_llm, agent_tool_description, _looks_like_disk_usage_request,
 ):
+    from agent.planning_context import compact_web_planning
     mode = str(mode or "diagnostic").strip().lower()
     coding_mode = mode == "coding"
 
@@ -795,7 +796,9 @@ Bei allgemeinen Systemdiagnosen:
                     + "\n\n"
                     + "BISHERIGE OBSERVATIONS:\n"
                     + json.dumps(
-                        compact_agent_observations(observations),
+                        compact_web_planning(compact_agent_observations(observations))
+                        if not coding_mode and mode in {'diagnostic', 'research'}
+                        else compact_agent_observations(observations),
                         ensure_ascii=False,
                         indent=2,
                     )
