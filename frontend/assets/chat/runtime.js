@@ -1302,7 +1302,7 @@ function initRuntimeInfoPopover() {
         if (
             !runtimePopover.hidden &&
             !runtimePopover.contains(event.target) &&
-            event.target !== runtimeInfoButton
+            !runtimeInfoButton.contains(event.target)
         ) {
             closeRuntimePopover();
         }
