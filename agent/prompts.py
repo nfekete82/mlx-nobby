@@ -1457,8 +1457,7 @@ WICHTIGE CODING-EVIDENCE-REGELN:
         for item in observations
     ):
         answer = verify_product_launch_items(answer, observations)
-        from agent.temporal_validation import gate_temporal_claims
-        return gate_temporal_claims(answer)
+        return answer
 
     if re.search(
         r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|nachweislich|source(?:s)?)\b",
@@ -1534,9 +1533,7 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                 pass
         answer = gate_numerical_claims(answer, observations)
 
-    from agent.temporal_validation import gate_temporal_claims
-    answer = gate_temporal_claims(answer)
-
+    # Final temporal reconciliation runs once at the AgentRuntime boundary.
     return answer
 
 
