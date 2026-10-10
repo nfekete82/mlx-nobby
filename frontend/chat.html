@@ -307,15 +307,15 @@
                 <a class="model-manage-link" href="/settings/models" data-i18n="ui.manage_models">Modelle verwalten …</a>
             </div>
 
-            <div
-                id="runtimePopover"
-                class="runtime-popover"
-                hidden
-            >
-                <div
-                    id="runtimeInfoContent"
-                    class="runtime-info-content"
-                ></div>
+            <div id="runtimePopover" class="runtime-popover nobby-runtime-modal" role="dialog" aria-modal="true" aria-labelledby="runtimeModalTitle" hidden>
+                <div class="nobby-runtime-backdrop" data-runtime-close="true"></div>
+                <section class="nobby-runtime-dialog" tabindex="-1">
+                    <header class="nobby-runtime-header">
+                        <h2 id="runtimeModalTitle">Systeminfo</h2>
+                        <button id="runtimeModalClose" type="button" aria-label="Systeminfo schließen" title="Schließen">×</button>
+                    </header>
+                    <div id="runtimeInfoContent" class="runtime-info-content"></div>
+                </section>
             </div>
 
             <div class="top-actions">
