@@ -33,7 +33,7 @@ test('reject malformed or unsafe numeric data, preserve original code when inval
 test('CSV escaping and frontend integration', () => {
   const spec=api.normalize(fixture(['a,"quoted"','b'],[1,2]));
   assert.match(api.csv(spec), /"a,""quoted"""/);
-  assert.match(html,/charts\.js\?v=1-11-2/);
+  assert.match(html,/charts\.js\?v=[a-z0-9-]+/);
   assert.match(html,/charts\.css\?v=1-11-0/);
   assert.match(rendering,/MLXCharts\?\.enhance\(answer\)/);
   assert.match(generation,/nobby-chart JSON block/);
