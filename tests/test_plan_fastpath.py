@@ -29,6 +29,12 @@ class PlanningFastpathTests(unittest.TestCase):
                       {"url": "https://apple.com.example.org/news", "title": "iPhone Neuheiten"}]}}
         self.assertIsNone(choose_official_followup("Welche iPhones bietet Apple offiziell an?", [search]))
 
+    def test_official_words_cannot_promote_an_aggregator_or_lookalike(self):
+        for url in ("https://news.google.com/rss/articles/123", "https://apple.com.example.org/news", "https://[bad/news"):
+            search = {"action": "search_web", "status": "completed", "result": {
+                "results": [{"url": url, "title": "Offizieller Apple Herstellerbericht"}]}}
+            self.assertIsNone(choose_official_followup("Welche iPhones bietet Apple offiziell an?", [search]))
+
     def test_skips_already_fetched(self):
         fetched = {"action": "fetch_url", "status": "completed", "query": URL}
         self.assertIsNone(choose_official_followup("Offizielle Modelle?", [SEARCH, fetched]))

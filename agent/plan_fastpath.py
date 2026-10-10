@@ -41,17 +41,22 @@ def choose_official_followup(goal, observations):
             url = entry.get("url")
             if not isinstance(url, str) or url in fetched:
                 continue
-            parts = urlsplit(url)
+            try:
+                parts = urlsplit(url)
+            except ValueError:
+                continue
             if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
                 continue
             if not parts.path or parts.path == "/":
                 continue
-            # The result needs an explicit official/primary signal; a high rank
-            # alone is insufficient to classify it as official.
+            # For a known manufacturer, an untrusted result title cannot
+            # establish primary-source ownership (including RSS aggregators).
             evidence = " ".join(str(entry.get(k) or "") for k in
                                 ("title", "snippet", "description")).lower()
-            if not (_trusted_primary_host(goal, parts.hostname) or
-                    any(word in evidence for word in ("official", "offiziell", "hersteller"))):
+            known_brand = any(brand in goal for brand in OFFICIAL_HOSTS)
+            if known_brand and not _trusted_primary_host(goal, parts.hostname):
+                continue
+            if not known_brand and not any(word in evidence for word in ("official", "offiziell", "hersteller")):
                 continue
             return {"action": "fetch_url", "query": url,
                     "reason": "Offizielle Quelle aus Suchergebnis direkt prüfen"}
