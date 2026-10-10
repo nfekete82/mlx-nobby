@@ -3,6 +3,7 @@
 from contextvars import ContextVar
 from dataclasses import dataclass
 import logging
+import time
 import re
 from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
@@ -83,6 +84,7 @@ class AgentRuntime:
         self.policy = policy or RuntimePolicy()
         self.logger = logger or logging.getLogger(__name__)
         self.model_role = "agent"
+        self._profile_events = []
 
     def _check_cancelled(self):
         if self.context.cancelled:
@@ -103,17 +105,31 @@ class AgentRuntime:
 
     def _model_hook(self, function, *args, **kwargs):
         self._check_cancelled()
-        result = function(*args, **kwargs)
+        started = time.perf_counter()
+        try:
+            result = function(*args, **kwargs)
+        finally:
+            self._profile_events.append({
+                "phase": "model_hook",
+                "action": getattr(function, "__name__", "unknown"),
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            })
         self._check_cancelled()
         return result
 
     def _execute_tool(self, action, goal, query=None, instruction=None, files=None, options=None):
         self._check_cancelled()
-        result = self.registry.execute(
-            action, run_context=self.context, goal=goal, query=query,
-            instruction=instruction, files=files, options=options,
-        )
-        return result
+        started = time.perf_counter()
+        try:
+            return self.registry.execute(
+                action, run_context=self.context, goal=goal, query=query,
+                instruction=instruction, files=files, options=options,
+            )
+        finally:
+            self._profile_events.append({
+                "phase": "tool", "action": action,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            })
 
     def _allowed_tools(self, mode):
         allowed = set(self.registry.names(permission="READ"))
@@ -237,10 +253,13 @@ class AgentRuntime:
             with run_state.bind_run_context(self.context):
                 try:
                     self._check_cancelled()
-                    return self._run_loop(
+                    result = self._run_loop(
                         goal, observations, start_step, mode, conversation_context,
                         progress_callback, allow_approval,
                     )
+                    if isinstance(result, dict):
+                        result["performance"] = {"events": list(self._profile_events)}
+                    return result
                 except _RunCancelled:
                     result = {"status": "cancelled", "goal": goal, "steps": observations,
                               "pending_action": None, "answer": ""}
