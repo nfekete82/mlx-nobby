@@ -1283,6 +1283,9 @@ function initModelSwitcher() {
 
 
 function initRuntimeInfoPopover() {
+    // The topbar uses backdrop-filter and creates a fixed-position containing block.
+    // Move the modal to body so its backdrop covers the entire viewport.
+    if (runtimePopover.parentElement !== document.body) document.body.appendChild(runtimePopover);
     // Help and Shorts are mounted dynamically. Keep Systeminfo directly
     // before Einstellungen regardless of their initialization order.
     const sidebarBottom = document.querySelector('.sidebar-bottom');
