@@ -52,7 +52,18 @@ class ResearchTests(unittest.TestCase):
     def test_no_results_are_disclosed(self):
         result = retrieve_web_research("Wer ist aktuell Bundeskanzler?",
             opener=lambda _req, timeout: FakeResponse("<html></html>"))
-        self.assertIn("OHNE VERIFIZIERBARE ERGEBNISSE", result)
+        self.assertIn("NICHT VERFÜGBAR", result)
+
+    def test_google_news_fallback_when_lite_has_no_links(self):
+        rss = ('<rss><channel><item><title>Elektroauto vorgestellt 2026</title>'
+               '<link>https://news.google.com/rss/articles/123</link>'
+               '<pubDate>Sat, 10 Oct 2026 12:00:00 GMT</pubDate>'
+               '</item></channel></rss>')
+        def opener(request, timeout):
+            return FakeResponse(rss if "news.google.com" in request.full_url else "<html></html>")
+        result = retrieve_web_research("Welche Elektroautos wurden 2026 vorgestellt?", opener=opener)
+        self.assertIn("Elektroauto vorgestellt 2026", result)
+        self.assertIn("https://news.google.com/rss/articles/123", result)
 
     def test_network_error_not_fabricated(self):
         def offline(_req, timeout):
