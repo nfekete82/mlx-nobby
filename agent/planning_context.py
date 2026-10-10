@@ -12,9 +12,9 @@ _EVENT = re.compile(
 _DATE = re.compile(
     r"(?i)\b(?:\d{1,2}\.\s*(?:\d{1,2}\.|januar|februar|märz|"
     r"april|mai|juni|juli|august|september|oktober|november|dezember)"
-    r"\s*20\d{2}|20\d{2}-\d{2}-\d{2}|"
+    r"(?:\s*20\d{2})?|20\d{2}-\d{2}-\d{2}|"
     r"(?:january|february|march|april|may|june|july|august|september|october|november|december)"
-    r"\s+\d{1,2},?\s+20\d{2})\b"
+    r"\s+\d{1,2}(?:,?\s+20\d{2})?)\b"
 )
 
 
@@ -25,6 +25,8 @@ def _compact_text(raw, limit=1800, extra=2200):
     # late in long pages. These are hints for planning, not verified facts.
     snippets = []
     for match in _DATE.finditer(raw):
+        if match.end() <= limit:
+            continue  # Already present; reserve the supplement for omitted evidence.
         start, end = max(0, match.start() - 200), min(len(raw), match.end() + 200)
         excerpt = raw[start:end]
         if not _EVENT.search(excerpt):

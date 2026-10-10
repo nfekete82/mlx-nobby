@@ -51,6 +51,14 @@ class PlanningContextTests(unittest.TestCase):
             "results": [{"url": "https://example.org", "snippet": snippet}]}}])[0]
         self.assertIn("2026-10-23", result["result"]["results"][0]["snippet"])
 
+    def test_official_availability_dates_without_repeated_year_are_preserved(self):
+        text = "Pressemitteilung 1. September 2026. " + "Background " * 1000 + (
+            "Es kann ab Freitag, 16. Oktober vorbestellt werden und ist ab Freitag, 23. Oktober erhältlich.")
+        result = compact_web_planning([{"action": "fetch_url", "result": {"text": text}}])[0]["result"]
+        self.assertIn("16. Oktober", result["text"])
+        self.assertIn("23. Oktober", result["text"])
+        self.assertIn("September 2026", result["text"])
+
     def test_coding_observation_preserved(self):
         source = {"action": "code_read", "result": {"content": "important" * 3000}}
         self.assertIs(compact_web_planning([source])[0], source)
