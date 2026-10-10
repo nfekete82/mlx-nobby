@@ -711,6 +711,7 @@ function closeModelPopover() {
 let runtimeModalPreviousFocus = null;
 
 function closeRuntimePopover() {
+    if (runtimePopover.open) runtimePopover.close();
     runtimePopover.hidden = true;
     runtimeInfoButton.setAttribute('aria-expanded', 'false');
     if (runtimeModalPreviousFocus?.isConnected) runtimeModalPreviousFocus.focus();
@@ -937,6 +938,7 @@ function openRuntimePopover() {
     closeModelPopover();
     runtimeModalPreviousFocus = document.activeElement;
     runtimePopover.hidden = false;
+    if (!runtimePopover.open) runtimePopover.showModal();
     runtimeInfoButton.setAttribute('aria-expanded', 'true');
     document.getElementById('runtimeModalClose')?.focus();
     runtimeInfoContent.textContent = rut('runtime_loading', 'Loading runtime…');
@@ -1308,6 +1310,10 @@ function initRuntimeInfoPopover() {
     });
 
     document.getElementById('runtimeModalClose')?.addEventListener('click', closeRuntimePopover);
+    runtimePopover.addEventListener('cancel', event => {
+        event.preventDefault();
+        closeRuntimePopover();
+    });
     runtimePopover.addEventListener('click', event => {
         if (event.target === runtimePopover || event.target.dataset?.runtimeClose === 'true') {
             closeRuntimePopover();
