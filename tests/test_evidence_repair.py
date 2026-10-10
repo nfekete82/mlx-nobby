@@ -31,6 +31,37 @@ class EvidenceRepairTests(unittest.TestCase):
                                        observed_agent_llm=llm)
         self.assertIn("nicht verifiziert", answer)
 
+    def test_repair_cannot_introduce_new_unverified_price(self):
+        def llm(label, messages, **kwargs):
+            if label == "agent.evidence_repair":
+                return "Pixel 11 kostet 1799 €."
+            return "Pixel 11 kostet 1599 €."
+        answer = agent_v2_final_answer(
+            "Preis Pixel 11?", observations(), observed_agent_llm=llm)
+        self.assertIn("1599 €", answer)
+        self.assertNotIn("1799 €", answer)
+        self.assertIn("nicht verifiziert", answer)
+
+    def test_repair_cannot_invent_source_url(self):
+        def llm(label, messages, **kwargs):
+            if label == "agent.evidence_repair":
+                return "Pixel 11 kostet 999 €. https://fake.example.org/claim"
+            return "Pixel 11 kostet 1599 €."
+        answer = agent_v2_final_answer(
+            "Preis Pixel 11?", observations(), observed_agent_llm=llm)
+        self.assertNotIn("fake.example.org", answer)
+        self.assertIn("nicht verifiziert", answer)
+
+    def test_non_improving_repair_does_not_replace_draft(self):
+        def llm(label, messages, **kwargs):
+            if label == "agent.evidence_repair":
+                return "Es gibt keine gesicherten Preise."
+            return "Pixel 11 kostet 1599 €. Zusätzlich gilt 1299 €."
+        answer = agent_v2_final_answer(
+            "Preis Pixel 11?", observations(), observed_agent_llm=llm)
+        # Removing both unsupported values is an improvement and allowed.
+        self.assertEqual(answer, "Es gibt keine gesicherten Preise.")
+
     def test_no_repair_without_web(self):
         calls = []
         def llm(label, messages, **kwargs):
