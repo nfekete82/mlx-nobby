@@ -16,7 +16,7 @@ from agent.tool_registry import ToolRegistry
 @dataclass(frozen=True)
 class RuntimePolicy:
     diagnostic_steps: int = 6
-    research_steps: int = 6
+    research_steps: int = 3
     coding_steps: int = 24
     orchestrator_steps: int = 12
     research_continuation_steps: int = 3
@@ -330,7 +330,18 @@ class AgentRuntime:
                     self.model_role = "coding"
 
         max_steps = self.policy.max_steps(mode)
-        research_continuation_steps = self.policy.research_continuation_steps if mode == "research" else 0
+        # Deep research remains opt-in; routine fact-finding should not spend
+        # six-plus model-planning rounds after usable web evidence is available.
+        deep_research = bool(mode == "research" and re.search(
+            r"(?i)\\b(?:tiefenrecherche|ausführlich recherchier|umfassend recherchier|"
+            r"deep research|in-depth research|systematisch vergleichen)\\b", goal,
+        ))
+        if deep_research:
+            max_steps = max(max_steps, 6)
+        research_continuation_steps = (
+            self.policy.research_continuation_steps
+            if mode == "research" and deep_research else 0
+        )
         loop_max_steps = max_steps + research_continuation_steps
 
         def publish(status="running", current_step=None, pending_action=None):
@@ -374,6 +385,28 @@ class AgentRuntime:
 
                 if not continuation_available:
                     break
+            # In quick research, two loaded sources are sufficient evidence
+            # to stop planning and synthesize with the existing final-answer
+            # prompt. An explicit deep-research request keeps the full loop.
+            if mode == "research" and not deep_research:
+                loaded_sources = [
+                    item for item in observations
+                    if isinstance(item, dict)
+                    and item.get("action") == "fetch_url"
+                    and item.get("status") == "completed"
+                    and isinstance(item.get("result"), dict)
+                    and item["result"].get("ok") is True
+                ]
+                if len(loaded_sources) >= 2:
+                    answer = self._model_hook(
+                        self.hooks.agent_v2_final_answer, goal, observations,
+                    )
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": answer,
+                    }
+                    publish("completed")
+                    return result
             # ---------------------------------------------------------
             # Read-only coding fast final
             # ---------------------------------------------------------
