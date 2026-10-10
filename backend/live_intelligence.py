@@ -67,7 +67,10 @@ def retrieve_inflation(prompt: str, *, opener=None, now=None) -> str:
             "Jahresinflationsraten hier NICHT als exakte 36-Monats-Indexänderung behandeln. "
             "Für Gehalts-Kaufkraftausgleich monatliche VPI-Indexstände am Start-/Enddatum vergleichen; "
             "falls nicht vorhanden, nach Zeitraum fragen oder Berechnung ausdrücklich als Näherung kennzeichnen. "
-            "Erfinde keine zusätzlichen Dezimalstellen, Destatis-Einzelwerte, Pressemitteilungen, Prognosen oder Quellen. "\n            "Nenne die Weltbank als tatsächliche Quelle, nicht Destatis als vermeintlich abgefragte Primärquelle. "\n            "Falls du ein Diagramm ausgibst, verwende ausschließlich die VERIFIZIERTEN DIAGRAMMDATEN; "\n            "weichen die Werte ab, gib kein Diagramm aus. Gib Quelle und Datenstand an."
+            "Erfinde keine zusätzlichen Dezimalstellen, Destatis-Einzelwerte, Pressemitteilungen, Prognosen oder Quellen. "
+            "Nenne die Weltbank als tatsächliche Quelle, nicht Destatis als vermeintlich abgefragte Primärquelle. "
+            "Falls du ein Diagramm ausgibst, verwende ausschließlich die VERIFIZIERTEN DIAGRAMMDATEN; "
+            "weichen die Werte ab, gib kein Diagramm aus. Gib Quelle und Datenstand an."
         )
     except (OSError, ValueError, TypeError, KeyError, IndexError, json.JSONDecodeError) as exc:
         return (
