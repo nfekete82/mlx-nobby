@@ -1277,6 +1277,19 @@ function initModelSwitcher() {
 
 
 function initRuntimeInfoPopover() {
+    // Help and Shorts are mounted dynamically. Keep Systeminfo directly
+    // before Einstellungen regardless of their initialization order.
+    const sidebarBottom = document.querySelector('.sidebar-bottom');
+    const settings = document.getElementById('sidebarSettingsButton');
+    if (sidebarBottom && settings) {
+        const alignSystemInfo = () => {
+            if (runtimeInfoButton.nextElementSibling !== settings) {
+                sidebarBottom.insertBefore(runtimeInfoButton, settings);
+            }
+        };
+        alignSystemInfo();
+        new MutationObserver(alignSystemInfo).observe(sidebarBottom, {childList:true});
+    }
     runtimeInfoButton.addEventListener('click', () => {
         if (runtimePopover.hidden) {
             openRuntimePopover();
