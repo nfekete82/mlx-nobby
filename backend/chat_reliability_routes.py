@@ -24,6 +24,12 @@ VISION_FIRST_BYTE_TIMEOUT = max(
     FIRST_BYTE_TIMEOUT,
     float(os.environ.get("MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT", "60")),
 )
+# Current-information queries perform routing and bounded public research before
+# the model starts streaming. The generic 30s budget is too short for this path.
+RESEARCH_FIRST_BYTE_TIMEOUT = max(
+    FIRST_BYTE_TIMEOUT,
+    float(os.environ.get("MLX_CHAT_RESEARCH_FIRST_BYTE_TIMEOUT", "90")),
+)
 VISION_HEARTBEAT_INTERVAL = 5.0
 VISION_HEARTBEAT = b": vision request pending\n\n"
 
@@ -241,6 +247,21 @@ async def _close_iterator(iterator, pending_task=None):
                 await result
 
 
+def _has_current_information_query(request: ReliableChatRequest) -> bool:
+    # Must mirror the gateway's last user text selection. No history is sent
+    # outside the machine by the watchdog.
+    for message in reversed(request.messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        prompt = message.get("content")
+        if isinstance(prompt, str):
+            from backend.web_research import needs_web_research
+            from backend.live_intelligence import needs_inflation_lookup
+            return needs_web_research(prompt) or needs_inflation_lookup(prompt)
+        break
+    return False
+
+
 def _has_vision_input(request: ReliableChatRequest) -> bool:
     # Match the gateway's image_url handling, including images in history.
     for message in request.messages:
@@ -302,7 +323,11 @@ async def _reliable_stream(
     emitted = False
     attempt = 0
     vision = _has_vision_input(request)
-    first_timeout = VISION_FIRST_BYTE_TIMEOUT if vision else FIRST_BYTE_TIMEOUT
+    first_timeout = (
+        VISION_FIRST_BYTE_TIMEOUT if vision else
+        RESEARCH_FIRST_BYTE_TIMEOUT if _has_current_information_query(request) else
+        FIRST_BYTE_TIMEOUT
+    )
 
     while attempt < 2:
         attempt += 1
