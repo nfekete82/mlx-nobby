@@ -98,6 +98,28 @@ def choose_official_publisher_step(goal, observations):
               and o.get("status") == "completed"
               and isinstance(o.get("result"), dict)
               and o["result"].get("ok") is True]
+    if loaded and missing_requested_identifiers(goal, observations):
+        # After the first official document, pursue an explicitly requested
+        # missing version once instead of repeatedly downloading more chunks
+        # of a document about a different version. Values are not inferred.
+        names = list(dict.fromkeys(match.casefold() for match in re.findall(
+            r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal or "")
+        )))
+        corpus = "\n".join(str(item["result"].get("text") or "").casefold()
+                           for item in loaded)
+        missing = [name for name in names if not re.search(
+            r"(?<!\w)" + re.escape(name) + r"(?!\w)", corpus
+        )]
+        recent_search = any(
+            isinstance(item, dict) and item.get("action") == "search_web"
+            for item in observations[observations.index(loaded[-1]) + 1:]
+        )
+        if missing and not recent_search:
+            return {
+                "action": "search_web",
+                "query": f"{' '.join(missing[:2])} address specification {host}",
+                "reason": "Gezielt nach der noch unbelegten angefragten Version suchen",
+            }
     # One genuinely fetched official source is enough to hand over to evidence
     # unless it has a useful same-site topic link. No speculative cycling.
     matches = []
