@@ -85,3 +85,60 @@ Upstream references:
 - https://docs.searxng.org/admin/installation-docker
 - https://docs.searxng.org/dev/search_api.html
 - https://docs.searxng.org/admin/settings/settings.html
+
+
+## Diagnose: SearXNG erreichbar, aber alle Suchmaschinen blockiert
+
+Wenn die JSON-Suche erreichbar ist, jedoch ausschließlich `degraded` und null
+Suchtreffer liefert, behebt ein weiterer SearXNG-Container das Problem nicht.
+Das Problem liegt dann bei den aktiven Upstream-Suchmaschinen oder ihrer
+Konfiguration. Die Klassifizierungen `captcha` und `rate_limited` betreffen
+die externen Suchmaschinen, nicht die JSON-Ausgabe des lokalen Dienstes.
+
+Aktuelle Beispiel-Diagnose (2026-10-11; diese Werte sind zeitabhängig):
+Brave und Google CSE: `rate_limited`; DuckDuckGo und Startpage:
+`captcha`; Wikipedia: `unavailable`.
+
+**Vor jeder Änderung** den bestehenden Container und die Quelle der
+Konfiguration schreibgeschützt prüfen:
+
+```sh
+docker inspect searxng --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
+docker inspect searxng --format '{{index .Config.Labels "com.docker.compose.project"}}'
+docker exec searxng sh -c 'grep -n -E "^(use_default_settings:|engines:|[[:space:]]+- name:|[[:space:]]+disabled:|[[:space:]]+inactive:)" /etc/searxng/settings.yml | head -100'
+```
+
+Die Ausgabe filtert sensible Schlüssel und API-Tokens weg. Für bestehende
+Installationen die tatsächlich gemountete Konfigurationsdatei sichern,
+bevor Suchmaschinen verändert werden. Keine komplette `settings.yml`
+durch eine Vorlage ersetzen: Darin können wichtige vorhandene Einstellungen,
+Tokens und Secrets stehen. Wenn kein persistenter Mount existiert, erst die
+Containerverwaltung identifizieren und die Persistenz herstellen; Änderungen
+nur innerhalb des Containers wären nicht dauerhaft.
+
+SearXNG erlaubt gezielte Overrides einzelner Engines per Namen:
+
+```yaml
+use_default_settings: true
+engines:
+  - name: brave
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: google cse
+    disabled: true
+  - name: startpage
+    disabled: true
+```
+
+**Das ist ein Ausschnitt, keine komplette Ersatz-Konfiguration.** Vorhandene
+`use_default_settings`- und `engines`-Abschnitte sachgerecht ergänzen,
+nicht duplizieren. Andere Engines gezielt testen und nur solche einschalten,
+die auf dieser Maschine zuverlässig direkte Artikel-URLs zurückliefern.
+`bing` und `mojeek` sind mögliche Testkandidaten, **keine zugesicherte
+Lösung**; Installation, Verfügbarkeit, Nutzungsbedingungen und eventuelle
+Blockierung hängen von der Instanz ab. Erst nach erfolgreichem Suchtest
+über die normale Containerverwaltung neu starten und Nobby erneut prüfen.
+Keine CAPTCHA-Umgehung, aggressiven Retry-Schleifen oder Proxyrotation.
+
+Weitere Details: https://docs.searxng.org/admin/settings/settings.html
