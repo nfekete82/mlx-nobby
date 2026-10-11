@@ -7,7 +7,7 @@ GOAL = "Welche Modelle bietet Apple offiziell an?"
 def article(text):
     return [{"action": "fetch_url", "status": "completed",
              "result": {"ok": True, "url": "https://www.apple.com/de/newsroom/test",
-                        "text": text + " " * 90}}]
+                        "text": text + " Additional context describing the manufacturer announcement, product specifications, and availability details."}}]
 
 
 def test_unknown_model_removed_but_sourced_model_kept():
