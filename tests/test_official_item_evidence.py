@@ -42,3 +42,18 @@ def test_multi_model_row_requires_each_model():
     sources = article("iPhone 16 Pro available now.")
     fixed = filter_unsupported_official_items(answer, GOAL, sources)
     assert "weiterhin verfügbar" not in fixed
+
+
+def test_removed_product_also_removes_its_nested_feature_bullets():
+    answer = ("1. **iPhone 99 Pro** – available now\n"
+              "   - A99 chip and fictional camera\n"
+              "   - Colors: invented\n"
+              "2. **iPhone Duo** – introduced\n"
+              "   - Folding display")
+    sources = article("Apple introduced iPhone Duo with a folding display.")
+    fixed = filter_unsupported_official_items(answer, GOAL, sources)
+    assert "iPhone 99" not in fixed
+    assert "A99 chip" not in fixed
+    assert "Colors: invented" not in fixed
+    assert "iPhone Duo" in fixed
+    assert "Folding display" in fixed
