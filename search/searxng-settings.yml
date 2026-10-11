@@ -1,0 +1,18 @@
+# Local, private search backend for MLX-Nobby.
+# The JSON format is required by agent/search_status.py.
+use_default_settings: true
+
+general:
+  instance_name: "MLX-Nobby Search"
+  debug: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
