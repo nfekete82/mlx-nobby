@@ -75,7 +75,8 @@ def test_official_support_versions_are_distinct_from_download_pages():
     assert need_support_policy_source(POSTGRES_GOAL, [initial, download])
     decision = choose_support_policy_followup(POSTGRES_GOAL, [initial, download])
     assert decision["action"] == "search_web"
-    assert "site:postgresql.org" in decision["query"]
+    assert "postgresql.org" in decision["query"]
+    assert "site:" not in decision["query"]
     assert "versions" in decision["query"].lower()
 
 
