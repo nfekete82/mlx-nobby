@@ -305,6 +305,18 @@ def choose_official_publisher_step(goal, observations):
                 continue
             if not re.search(r"(?i)/(?:info|rfc)/rfc\d+", urlsplit(url).path):
                 continue
+            # An additional chunk of an already covered protocol does not
+            # help when the question explicitly still needs another version.
+            # Preserve continuation for single-protocol questions and for
+            # sources that actually mention the outstanding identifier.
+            if missing_identifiers and covered_identifiers:
+                document_text = str(result.get("text") or "").casefold()
+                if any(re.search(r"(?<!\w)" + re.escape(p) + r"(?!\w)",
+                                 document_text) for p in covered_identifiers) and not any(
+                    re.search(r"(?<!\w)" + re.escape(p) + r"(?!\w)",
+                              document_text) for p in missing_identifiers
+                ):
+                    continue
             passage = str(result.get("text") or "")
             address_measurement = any(
                 re.search(
@@ -482,6 +494,35 @@ def choose_official_publisher_step(goal, observations):
             "query": " ".join((alternates or terms)[:5]) + " " + host,
             "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
         }
+    # After an official source URL fails (e.g. HTTP 404), refine the
+    # publisher-specific topic once instead of trusting dead search hits.
+    # The refinement is ONLY a search query; fetched URLs must still be
+    # observed original links and pass the research allowlist.
+    failed_official = [
+        o for o in observations if isinstance(o, dict)
+        and o.get("action") == "fetch_url"
+        and o.get("status") == "completed"
+        and isinstance(o.get("result"), dict)
+        and o["result"].get("ok") is False
+        and _safe_official_url(
+            o["result"].get("url") or o.get("query"), host
+        ) is not None
+    ]
+    if failed_official and host == "ecb.europa.eu" and (
+        "einlagezins" in str(goal).casefold()
+        or "deposit facility" in str(goal).casefold()
+    ):
+        retry_query = f"standing facilities deposit facility rate effective date {host}"
+        if not any(
+            isinstance(o, dict) and o.get("action") == "search_web"
+            and str(o.get("query") or "").casefold() == retry_query.casefold()
+            for o in observations
+        ):
+            return {
+                "action": "search_web", "query": retry_query,
+                "reason": "Nicht erreichbare amtliche Zinsseite durch eine neue Quellensuche ersetzen",
+            }
+
     if not loaded and official_home_fallback_host(goal, observations):
         # Search pollution may justify ONE root-only discovery after two
         # genuinely distinct searches. Replayed identical observations do
