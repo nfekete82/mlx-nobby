@@ -7167,6 +7167,23 @@ def _fallback_public_search(query, limit=8):
             "count": len(results), "results": results}
 
 
+def web_search_language_for_query(query):
+    """Use English indexes for explicitly English technical/policy terms.
+
+    SearXNG's German-only ranking can bury English RFCs and ECB source
+    tables beneath translations, commercial shops or general dictionaries.
+    The choice is a search hint, not source evidence or a URL allowlist.
+    """
+    value = str(query or "").casefold()
+    if re.search(
+        r"(?i)\\b(?:ipv[46]|ietf|rfc\\d+|deposit facility|key interest rates)\\b"
+        r"|rfc-editor\\.org|ecb\\.europa\\.eu",
+        value,
+    ):
+        return "en-US"
+    return "de-DE"
+
+
 @reuse_research_observation
 def searxng_search_results(query, limit=8):
     """Search SearXNG and return normalized, safe public results only."""
@@ -7191,7 +7208,7 @@ def searxng_search_results(query, limit=8):
     params = urllib.parse.urlencode({
         "q": query,
         "format": "json",
-        "language": "de-DE",
+        "language": web_search_language_for_query(query),
         "safesearch": 0,
     })
 
