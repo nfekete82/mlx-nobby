@@ -171,3 +171,54 @@ def test_blank_html_row_separators_do_not_allow_merging_unrelated_tables():
     bundle = build_evidence([fetched(POLICY, text)], goal=GOAL)
     records = support_matrix_candidates(GOAL, bundle)
     assert [subject for subject, _, _ in records] == ["PostgreSQL 18"]
+
+
+def test_pretty_printed_official_html_keeps_rows_atomic():
+    """Real HTML has newlines between cells; do not confuse them with rows."""
+    from agent.app import extract_web_text
+    from agent.research_followup import support_policy_windows
+
+    markup = """
+    <html><body>
+      <h1>Versioning Policy</h1>
+      <table>
+        <thead><tr>
+          <th>Version</th>
+          <th>Current minor</th>
+          <th><span>Supported</span></th>
+          <th>First Release</th>
+          <th>Final Release</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>18</td>
+            <td>
+              18.6
+            </td>
+            <td><span>Yes</span></td>
+            <td>September 25, 2025</td>
+            <td>November 14, 2030</td>
+          </tr>
+          <tr>
+            <td>17</td><td>17.11</td><td>Yes</td>
+            <td>September 26, 2024</td><td>November 8, 2029</td>
+          </tr>
+          <tr>
+            <td>13</td><td>13.23</td><td>No</td>
+            <td>September 24, 2020</td><td>November 13, 2025</td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>
+    """
+    extracted = extract_web_text(markup)
+    assert "| Version | Current minor | Supported | First Release | Final Release" in extracted
+    assert "| 18 | 18.6 | Yes | September 25, 2025 | November 14, 2030" in extracted
+    assert "| 17 | 17.11 | Yes | September 26, 2024 | November 8, 2029" in extracted
+    assert "| 13 | 13.23 | No | September 24, 2020 | November 13, 2025" in extracted
+    assert len(support_policy_windows(GOAL, extracted)) == 1
+    evidence = build_evidence([fetched(POLICY, extracted)], goal=GOAL)
+    candidates = support_matrix_candidates(GOAL, evidence)
+    assert [subject for subject, _, _ in candidates] == ["PostgreSQL 18", "PostgreSQL 17"]
+    assert all(passage_id in {fact.id for fact in evidence.facts}
+               for _, _, passage_id in candidates)
