@@ -12,7 +12,8 @@ from urllib.parse import urlsplit
 # algorithm handles other institutions without per-question answer templates.
 _PUBLISHERS = (
     (("robert koch-institut", "robert-koch-institut", "rki"), "rki.de"),
-    (("europäische zentralbank", "european central bank", "ezb", "ecb"), "ecb.europa.eu"),
+    (("europäische zentralbank", "europäischen zentralbank",
+      "europäischer zentralbank", "european central bank", "ezb", "ecb"), "ecb.europa.eu"),
     (("internet engineering task force", "ietf", "rfc editor"), "rfc-editor.org"),
 )
 _STOP = frozenset((
