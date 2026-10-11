@@ -88,9 +88,30 @@ def same_site_html_links(page, base_url):
             continue
         seen.add(url)
         output.append({"url": url, "title": label})
-        if len(output) >= _MAX_LINKS:
-            break
-    return output
+
+    if len(output) <= _MAX_LINKS:
+        return output
+
+    # Keep the bounded list useful when long global menus appear before the
+    # actual article links. A source-exact deep document URL generally carries
+    # more navigational information than a generic single-level menu item.
+    # Score only already parsed, same-host HTTPS links. Retain source order so
+    # existing navigation consumers do not see an arbitrary reordering.
+    def specificity(link):
+        path = urlsplit(link["url"]).path
+        segments = [segment for segment in path.split("/") if segment]
+        document = bool(re.search(r"\\.(?:html?|pdf)$", path, re.I))
+        return (min(len(segments), 8), document)
+
+    selected = set(sorted(
+        range(len(output)),
+        key=lambda i: (
+            -specificity(output[i])[0],
+            -int(specificity(output[i])[1]),
+            i,
+        ),
+    )[:_MAX_LINKS])
+    return [link for i, link in enumerate(output) if i in selected]
 
 
 def choose_catalog_page_link(goal, observations):
