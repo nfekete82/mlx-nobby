@@ -1567,6 +1567,47 @@ class AgentRuntime:
                                 normalize_fetch_url(result_url)
                             )
 
+                # Search URLs are allowed by the existing prefix-aware rule.
+                # Links from a fetched page are different: accept only the
+                # *exact* discovered HTTPS URL on the same hostname.
+                discovered_page_urls = set()
+                for item in observations:
+                    if (
+                        not isinstance(item, dict)
+                        or item.get("action") != "fetch_url"
+                        or item.get("status") != "completed"
+                    ):
+                        continue
+                    result = item.get("result")
+                    if not isinstance(result, dict) or result.get("ok") is not True:
+                        continue
+                    origin = result.get("final_url") or result.get("url")
+                    try:
+                        root = urlsplit(origin)
+                        if (root.scheme != "https" or not root.hostname
+                                or root.username or root.password
+                                or root.port not in {None, 443}):
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                    links = result.get("page_links")
+                    for link in links if isinstance(links, list) else []:
+                        if not isinstance(link, dict):
+                            continue
+                        href = link.get("url")
+                        if not isinstance(href, str) or len(href) > 1200:
+                            continue
+                        try:
+                            target = urlsplit(href)
+                            if (target.scheme != "https"
+                                    or target.hostname != root.hostname
+                                    or target.username or target.password
+                                    or target.port not in {None, 443}):
+                                continue
+                        except ValueError:
+                            continue
+                        discovered_page_urls.add(normalize_fetch_url(href))
+
                 canonical_repo = self.hooks.canonical_github_repo_from_goal(goal)
 
                 if canonical_repo:
@@ -1633,7 +1674,7 @@ class AgentRuntime:
                     None,
                 )
 
-                if matching_allowed_url is None:
+                if matching_allowed_url is None and requested_url not in discovered_page_urls:
                     observations.append({
                         "step": step,
                         "action": "fetch_url_allowlist_guard",
