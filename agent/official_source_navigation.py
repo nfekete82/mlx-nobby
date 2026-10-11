@@ -496,7 +496,11 @@ def choose_official_publisher_step(goal, observations):
             r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal)
         )
         if host == "rfc-editor.org":
-            refinement = f"{' '.join(names)} address size RFC specification {host}"
+            # Public search engines often cannot rank a single RFC document
+            # for TWO protocol versions. Locate one requested version first;
+            # the existing missing-counterpart logic pursues the second.
+            target = names[-1] if names else ""
+            refinement = f"{target} address specification RFC {host}"
         else:
             refinement = f"deposit facility key ECB interest rates effective date {host}"
         attempted = any(
