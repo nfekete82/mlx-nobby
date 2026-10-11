@@ -364,7 +364,11 @@ def _render(bundle, claims, decisions, timings, error=None):
     ):
         # Keep every rejected claim in the audit, but never repeat the same
         # unhelpful non-answer eight times in the user-facing response.
-        text = ("Die geladenen Quellen belegen die konkret erfragten Angaben "
+        # Preserve one safe subject label for continuity with the question,
+        # but do not repeat model-generated, unverified factual statements.
+        subjects = {claim.subject for claim in claims}
+        topic = ("Zu „" + _escape_text(next(iter(subjects))) + "“: ") if len(subjects) == 1 else ""
+        text = (topic + "Die geladenen Quellen belegen die konkret erfragten Angaben "
                 "nicht ausreichend. Ich gebe deshalb keine unbestätigte Liste aus.")
     else:
         text = "Nach den geladenen Quellen:\n\n" + "\n".join(lines)
