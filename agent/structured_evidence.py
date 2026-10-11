@@ -180,6 +180,63 @@ def _quantitative_windows(goal, text, *, max_windows=3):
     return windows
 
 
+def _temporal_windows(goal, text, *, max_windows=3):
+    """Source-exact date windows for questions asking WHEN a value applies.
+
+    Short dates on separate HTML lines can be under _passages' 20-character
+    minimum. Include neighboring topic/value context without joining,
+    interpreting or inventing facts. The semantic verifier still decides
+    whether a date is actually an effective date, not a nearby news date.
+    """
+    request = str(goal or "").casefold()
+    if (not isinstance(text, str) or not re.search(
+        r"(?i)\b(?:seit|datum|wirksam|gültig|effective|effect from|"
+        r"valid from|as of|ab wann|starting)\b", request
+    )):
+        return []
+    # Both ISO dates and day-month-year source text, without assuming that
+    # any matched date is necessarily a valid-from date.
+    date_regex = re.compile(
+        r"(?i)\b(?:19|20)\d{2}-\d{2}-\d{2}\b|"
+        r"\b\d{1,2}\s+(?:january|february|march|april|may|june|july|"
+        r"august|september|october|november|december|"
+        r"januar|februar|märz|mai|juni|juli|oktober|dezember)"
+        r"\s+(?:19|20)\d{2}\b"
+    )
+    date_matches = list(date_regex.finditer(text))
+    windows = []
+    finance_question = bool(re.search(
+        r"(?i)einlagezins|deposit facility|leitzins|interest rates?", request
+    ))
+    for found in date_matches[:100]:
+        # The preceding interest-rate rows plus the date must be visible
+        # together to the extraction and verification models.
+        start = max(0, found.start() - 450)
+        if start:
+            newline = text.find("\n", start, found.start())
+            if newline >= 0:
+                start = newline + 1
+        end = min(len(text), found.end() + 90)
+        nextline = text.find("\n", found.end(), end)
+        if nextline >= 0:
+            end = nextline
+        excerpt = text[start:end]
+        if not 25 <= len(excerpt) <= 900:
+            continue
+        if finance_question and not (
+            re.search(r"(?i)\bdeposit facility\b|einlagezins|"
+                      r"leitzins|interest rates?", excerpt)
+            and re.search(r"\d{1,3}(?:[.,]\d{1,4})?\s*%", excerpt)
+        ):
+            continue
+        if any(abs(start - previous[0]) < 200 for previous in windows):
+            continue
+        windows.append((start, end, excerpt))
+        if len(windows) >= max_windows:
+            break
+    return windows
+
+
 def build_evidence(observations, *, now=None, goal=""):
     timestamp = now or datetime.now(timezone.utc).isoformat()
     sources, facts, seen = [], [], set()
@@ -263,16 +320,19 @@ def build_evidence(observations, *, now=None, goal=""):
         catalog_windows = catalog_source_windows(goal, text)
         support_windows = support_policy_windows(goal, text)
         quantitative_windows = _quantitative_windows(goal, text)
+        temporal_windows = _temporal_windows(goal, text)
+        temporal_spans = {(start, end) for start, end, _ in temporal_windows}
         catalog_spans = {(start, end) for start, end, _ in catalog_windows}
         support_spans = {(start, end) for start, end, _ in support_windows}
         quantitative_spans = {(start, end) for start, end, _ in quantitative_windows}
-        passages = support_windows + catalog_windows + quantitative_windows + list(_passages(text))
+        passages = (support_windows + catalog_windows + quantitative_windows
+                    + temporal_windows + list(_passages(text)))
         # Retrieval ranking never implies entailment. Catalog headings and
         # short model cards need their original contiguous context; generic
         # marketing blurbs must not exhaust the evidence budget before them.
         passages.sort(key=lambda p: (
             (p[0], p[1]) in catalog_spans or (p[0], p[1]) in support_spans or
-            (p[0], p[1]) in quantitative_spans,
+            (p[0], p[1]) in quantitative_spans or (p[0], p[1]) in temporal_spans,
             bool(_DATE.search(p[2]) and _EVENT.search(p[2])),
             topic_overlap(p[2]),
             len(query_terms.intersection(word.casefold() for word in re.findall(r"\w{3,}", p[2]))),
@@ -286,7 +346,8 @@ def build_evidence(observations, *, now=None, goal=""):
                 break
             prefix = ("-catalog-" if (start, end) in catalog_spans
                       else "-support-" if (start, end) in support_spans
-                      else "-quant-" if (start, end) in quantitative_spans else "-")
+                      else "-quant-" if (start, end) in quantitative_spans
+                      else "-date-" if (start, end) in temporal_spans else "-")
             fid = sid + prefix + str(start)
             facts.append(EvidenceFact(fid, sid, "source_statement", excerpt, (), sid,
                                       excerpt, (start + offset, end + offset), publication, retrieved_at))
