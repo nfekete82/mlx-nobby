@@ -334,18 +334,55 @@ def test_official_support_policy_navigation_uses_only_returned_urls():
     assert choose_support_policy_research_step(GOAL, [
         search, fetched(POLICY, support_table()),
     ]) is None
-    assert choose_support_policy_research_step(GOAL, [{
+    retry = choose_support_policy_research_step(GOAL, [{
         "action": "search_web", "status": "completed",
+        "query": "postgresql versioning policy supported major versions official",
         "result": {"results": [
             {"url": "https://www.postgresql.org/support/", "title": "Support"},
         ]},
-    }]) is None
+    }])
+    assert retry["action"] == "search_web"
+    assert "postgresql.org" in retry["query"]
     assert choose_support_policy_research_step(
         "Welche MySQL-Versionen werden unterstützt?", []
     ) is None
     assert choose_support_policy_research_step(
         "Vergleiche PostgreSQL und andere Datenbanken bei den unterstützten Versionen", []
     ) is None
+
+
+def test_support_policy_uses_second_search_result_without_model_planning():
+    from dataclasses import replace
+    from test_agent_runtime import AgentRuntimeTests
+
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    calls = []
+    def search(**kwargs):
+        calls.append(("search", kwargs["query"]))
+        if len([x for x in calls if x[0] == "search"]) == 1:
+            return {"provider": "SearXNG", "results": [
+                {"url": "https://unrelated.example/support/", "title": "Support"},
+            ]}
+        return {"provider": "SearXNG", "results": [
+            {"url": POLICY, "title": "PostgreSQL Versioning Policy"},
+        ]}
+    def fetch(**kwargs):
+        calls.append(("fetch", kwargs["query"]))
+        assert kwargs["query"] == POLICY
+        return {"ok": True, "url": POLICY, "text": support_table()}
+    harness.add_tool("search_web", search)
+    harness.add_tool("fetch_url", fetch)
+    harness.hooks = replace(
+        harness.hooks,
+        agent_evidence_answer=lambda goal, observations: "Source read; verification required",
+    )
+    outcome = harness.runtime([]).run(GOAL, mode="research")
+    assert [s["action"] for s in outcome["steps"]] == [
+        "search_web", "search_web", "fetch_url",
+    ]
+    assert [name for name, _ in calls] == ["search", "search", "fetch"]
+    assert not harness.provider.calls
 
 
 def test_official_support_policy_navigation_can_use_a_fetched_same_site_link():
@@ -439,11 +476,20 @@ def test_policy_navigation_uses_discovered_download_page_only_as_first_fallback(
     assert choose_support_policy_research_step(
         GOAL, [download_only, fetched(download, "PostgreSQL downloads")]
     ) is None
-    assert choose_support_policy_research_step(GOAL, [{
-        "action": "search_web", "status": "completed", "result": {
-            "results": [{"url": "https://postgresql.org.evil.example/download/"}],
-        }
-    }]) is None
+    no_primary = {
+        "action": "search_web", "status": "completed",
+        "query": "postgresql versioning policy supported major versions official",
+        "result": {"results": [
+            {"url": "https://postgresql.org.evil.example/download/"}
+        ]},
+    }
+    retry = choose_support_policy_research_step(GOAL, [no_primary])
+    assert retry["action"] == "search_web"
+    assert choose_support_policy_research_step(GOAL, [
+        no_primary,
+        {"action": "search_web", "status": "completed",
+         "query": retry["query"], "result": {"results": []}},
+    ]) is None
 
 
 def test_discovered_download_fallback_removes_last_planner_call():

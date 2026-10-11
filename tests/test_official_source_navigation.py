@@ -38,6 +38,27 @@ def test_explicit_organizations_generate_search_hints_without_inventing_urls():
     assert choose_official_publisher_step("Welche Symptome bei Grippe?", []) is None
 
 
+def test_named_nasa_and_bpb_require_actual_primary_search_urls():
+    cases = (
+        ("Wann landete Apollo 11 laut NASA auf dem Mond?", "nasa.gov",
+         "https://www.nasa.gov/missions/apollo-11/landing/",
+         "https://en.wikipedia.org/wiki/Apollo_11", "Apollo 11 landing"),
+        ("Wann fiel die Mauer laut Bundeszentrale für politische Bildung?",
+         "bpb.de", "https://www.bpb.de/themen/deutschlandarchiv/mauerfall/",
+         "https://www.bpb.de.evil.example/themen/mauerfall/", "Mauerfall"),
+    )
+    for goal, host, official, untrusted, topic in cases:
+        first = choose_official_publisher_step(goal, [])
+        assert first["action"] == "search_web"
+        assert host in first["query"]
+        # No unobserved document URL or answer may be generated here.
+        assert "https://" not in first["query"]
+        found = search((untrusted, topic), (official, topic))
+        selected = choose_official_publisher_step(goal, [found])
+        assert selected["action"] == "fetch_url"
+        assert selected["query"] == official
+
+
 def test_publisher_rejects_spoof_and_prefers_specific_rki_faq():
     faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
     found = search(

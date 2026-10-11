@@ -262,6 +262,19 @@ def choose_support_policy_research_step(goal, observations):
                         "Gefundene offizielle Downloadübersicht als Einstieg prüfen"
                     ),
                 }
+        # If the first provider search offered no actual official policy or
+        # homepage URL, retry once with a domain-scoped topical query. A query
+        # is discovery only: never manufacture /support/ URLs as evidence.
+        if len(searches) == 1 and not attempted:
+            retry_query = f"{host} supported versions versioning lifecycle official"
+            previous = {" ".join(str(s.get("query") or "").casefold().split())
+                        for s in searches}
+            if retry_query.casefold() not in previous:
+                return {
+                    "action": "search_web",
+                    "query": retry_query,
+                    "reason": "Zweite gezielte Herausgebersuche nach fehlender Versionsrichtlinie",
+                }
         return None
     _, url = max(candidates, key=lambda item: item[0])
     return {

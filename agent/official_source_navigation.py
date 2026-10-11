@@ -16,6 +16,9 @@ _PUBLISHERS = (
     (("europäische zentralbank", "europäischen zentralbank",
       "europäischer zentralbank", "european central bank", "ezb", "ecb"), "ecb.europa.eu"),
     (("internet engineering task force", "ietf", "rfc editor"), "rfc-editor.org"),
+    (("national aeronautics and space administration", "nasa"), "nasa.gov"),
+    (("bundeszentrale für politische bildung", "bundeszentrale fuer politische bildung",
+      "bpb"), "bpb.de"),
 )
 _STOP = frozenset((
     "welche", "welcher", "welches", "wie", "viele", "viel", "hoch", "ist", "sind",
