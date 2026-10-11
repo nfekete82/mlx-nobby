@@ -1,0 +1,78 @@
+{
+  "suite": "v15-cross-domain-unseen-1",
+  "created_on": "2026-10-11",
+  "description": "Cross-topic native agent live prompts. Independent manual review required: source-relative supported != true/relevant/complete. Never train/tune specifically to these exact questions.",
+  "case_count": 10,
+  "cases": [
+    {
+      "id": "CD01",
+      "category": "products",
+      "question": "Welche aktuellen Pixel-Smartphones bietet Google im deutschen Google Store offiziell an?",
+      "case_type": "manufacturer_catalog",
+      "review_criteria": "Offizielle aktuell angebotene Modelle; reine Features oder US-only Angebote reichen nicht."
+    },
+    {
+      "id": "CD02",
+      "category": "software",
+      "question": "Welche PostgreSQL-Hauptversionen werden auf der offiziellen PostgreSQL-Website derzeit unterstützt?",
+      "case_type": "official_support",
+      "review_criteria": "Supportstatus und zeitlicher Bezug von offizieller Dokumentation, nicht nur eine Versionsnummer."
+    },
+    {
+      "id": "CD03",
+      "category": "standards",
+      "question": "Wie viele Bit haben IPv4- und IPv6-Adressen laut den entsprechenden IETF-RFCs?",
+      "case_type": "standards_comparison",
+      "review_criteria": "Beide Längen den richtigen Protokollen zuordnen und konkrete RFCs zitieren."
+    },
+    {
+      "id": "CD04",
+      "category": "health",
+      "question": "Welche typischen Symptome einer Influenza nennt das Robert Koch-Institut?",
+      "case_type": "health_information",
+      "review_criteria": "RKI als Primärquelle; Symptome statt unbelegter Diagnosen oder persönlicher Empfehlungen."
+    },
+    {
+      "id": "CD05",
+      "category": "economy",
+      "question": "Wie hoch ist aktuell der Einlagezins der Europäischen Zentralbank, und seit welchem Datum gilt dieser Zinssatz?",
+      "case_type": "current_rate",
+      "review_criteria": "Aktueller Zins und gültiges Datum aus EZB-Quelle, ältere Werte nicht als gegenwärtig ausgeben."
+    },
+    {
+      "id": "CD06",
+      "category": "law",
+      "question": "Wie viele gesetzliche Mindesturlaubstage haben Arbeitnehmer in Deutschland bei einer Fünf-Tage-Woche? Bitte nenne die Rechtsgrundlage.",
+      "case_type": "statute",
+      "review_criteria": "Gesetzlicher Mindestanspruch für Fünf-Tage-Woche und nachvollziehbare amtliche Quelle."
+    },
+    {
+      "id": "CD07",
+      "category": "science",
+      "question": "Wann landete Apollo 11 nach Angaben der NASA auf dem Mond, und wer betrat die Oberfläche zuerst?",
+      "case_type": "historical_science",
+      "review_criteria": "Beide historischen Angaben und NASA-Quelle; unterschiedliche Zeiten für Landung und ersten Schritt nicht vermischen."
+    },
+    {
+      "id": "CD08",
+      "category": "history",
+      "question": "An welchem Datum wurde die Berliner Mauer geöffnet? Bitte nenne eine Quelle der Bundeszentrale für politische Bildung.",
+      "case_type": "historical_event",
+      "review_criteria": "Historisches Datum mit passender Quelle; Ereignis nicht mit Wiedervereinigung verwechseln."
+    },
+    {
+      "id": "CD09",
+      "category": "software_current",
+      "question": "Welche Python-3-Version wird auf python.org derzeit als neueste stabile Version veröffentlicht?",
+      "case_type": "current_version",
+      "review_criteria": "Offizieller aktueller Veröffentlichungsstand statt einer älteren Ankündigung; Beta und Release Candidate unterscheiden."
+    },
+    {
+      "id": "CD10",
+      "category": "negative_control",
+      "question": "Ist das Smartphone „Nobby Phantom X999“ offiziell in Deutschland erhältlich? Bitte überprüfe das anhand belastbarer Herstellerquellen.",
+      "case_type": "unsupported_entity",
+      "review_criteria": "Bei fehlenden belastbaren Herstellerbelegen klar Unsicherheit erklären; nicht Existenz, Preis, Verkaufsstart oder Nicht-Existenz erfinden."
+    }
+  ]
+}
