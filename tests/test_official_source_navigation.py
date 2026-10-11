@@ -416,3 +416,19 @@ def test_named_clinical_research_keeps_primary_link_without_inventing_symptoms()
     assert not clinical_presentation_question(
         "Welche Nebenwirkungen der Influenza-Impfung nennt das RKI?"
     )
+
+
+
+def test_vaccination_adverse_effect_text_never_counts_as_disease_presentation():
+    from agent.official_source_navigation import missing_clinical_article
+    url = "https://www.rki.de/SharedDocs/FAQs/DE/Impfen/Influenza/FAQ-Liste_gesamt.html"
+    vaccine = fetched(url)
+    vaccine["result"]["text"] = (
+        "Bei der Influenza-Impfung können als Nebenwirkungen Symptome "
+        "wie Fieber und Gliederschmerzen auftreten."
+    )
+    assert missing_clinical_article(RKI_GOAL, [vaccine])
+    assert not missing_clinical_article(
+        "Welche Nebenwirkungen der Influenza-Impfung nennt das RKI?",
+        [vaccine],
+    )
