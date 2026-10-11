@@ -56,6 +56,26 @@ the slowest observation.
 No fabricated before/after metrics, quality labels, performance wins or
 ground-truth statuses are included.
 
+## Read-only investigation of zero-supported captures
+
+If a smoke run finishes with zero supported facts, **do not repeat all
+questions or count completed as a quality pass**. Inspect the existing
+capture before editing prompts or changing the model:
+
+```sh
+python -m agent.v15_run_inspection --run-dir artifacts/performance/REPLACE_WITH_ACTUAL_RUN
+```
+
+The inspector prints each original question, search providers and status,
+first result domains/paths, successful fetches and text lengths, evidence
+error/claim decisions, recorded model-call time by purpose, and the final
+answer. It does **not** call the native agent or the internet, read extra
+sources, print complete fetched web documents, or infer accuracy.
+
+The stage_hint labels are preliminary triage buckets, **not confirmed root
+causes**. A zero-supported result might be an appropriate refusal, and
+the cited-source or factual-quality judgment still requires independent
+review. The existing capture.jsonl is never overwritten.
 ## Mandatory human review
 
 For each returned answer, open `capture.jsonl` and fill all
