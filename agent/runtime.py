@@ -493,10 +493,13 @@ class AgentRuntime:
                 from agent.structured_evidence import build_evidence
                 from agent.plan_fastpath import insufficient_catalog_sources
                 from agent.research_followup import need_support_policy_source
-                from agent.official_source_navigation import missing_requested_identifiers
+                from agent.official_source_navigation import (
+                    missing_requested_identifiers, has_discovered_deeper_primary_link,
+                )
                 if (build_evidence(observations).facts
                         and not insufficient_catalog_sources(goal, observations)
                         and not missing_requested_identifiers(goal, observations)
+                        and not has_discovered_deeper_primary_link(goal, observations)
                         and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
                     result = {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
@@ -546,10 +549,13 @@ class AgentRuntime:
                 ]
                 from agent.plan_fastpath import insufficient_catalog_sources
                 from agent.research_followup import need_support_policy_source
-                from agent.official_source_navigation import missing_requested_identifiers
+                from agent.official_source_navigation import (
+                    missing_requested_identifiers, has_discovered_deeper_primary_link,
+                )
                 if (len(loaded_sources) >= 2
                         and not insufficient_catalog_sources(goal, observations)
                         and not missing_requested_identifiers(goal, observations)
+                        and not has_discovered_deeper_primary_link(goal, observations)
                         and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(
                         self.hooks.agent_v2_final_answer, goal, observations,
