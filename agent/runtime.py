@@ -442,6 +442,13 @@ class AgentRuntime:
                     self.model_role = "coding"
 
         max_steps = self.policy.max_steps(mode)
+        # One additional READ-only action can be necessary when the initial
+        # official-catalog search returns only a homepage. Keep this narrowly
+        # scoped to the default quick-research budget, not every web question.
+        if mode == "research" and max_steps == RuntimePolicy().research_steps:
+            from agent.plan_fastpath import official_catalog_goal
+            if official_catalog_goal(goal):
+                max_steps += 1
         # Deep research remains opt-in; routine fact-finding should not spend
         # six-plus model-planning rounds after usable web evidence is available.
         deep_research = bool(mode == "research" and re.search(
@@ -532,7 +539,8 @@ class AgentRuntime:
                     and isinstance(item.get("result"), dict)
                     and item["result"].get("ok") is True
                 ]
-                if len(loaded_sources) >= 2:
+                from agent.plan_fastpath import insufficient_catalog_sources
+                if len(loaded_sources) >= 2 and not insufficient_catalog_sources(goal, observations):
                     answer = self._model_hook(
                         self.hooks.agent_v2_final_answer, goal, observations,
                     )
