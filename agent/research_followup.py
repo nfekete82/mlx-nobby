@@ -119,7 +119,10 @@ def choose_support_policy_followup(goal, observations):
 # its nearby rows to remain together. These windows are byte-for-byte substrings
 # of the fetched page, not generated or inferred version claims.
 _SUPPORT_MATRIX_HEADING = re.compile(
-    r"(?im)^[^\n]{0,180}\bversions?\b[^\n]{0,130}"
+    # A real extracted HTML table has pipe-separated cells. Requiring the
+    # column boundary prevents ordinary prose like "version is supported"
+    # from displacing the actual status matrix in the limited evidence budget.
+    r"(?im)^[^\n]{0,80}\bversions?\s*\|[^\n]{0,150}"
     r"\b(?:supported|support\s+status|unterstützt|active)\b[^\n]{0,200}$"
 )
 
