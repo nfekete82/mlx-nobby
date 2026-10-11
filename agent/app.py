@@ -6721,7 +6721,12 @@ def web_url_is_safe(url):
 
 
 def extract_web_text(html):
-    """Very small stdlib-only HTML → readable text extractor."""
+    """Very small stdlib-only HTML → readable text extractor.
+
+    Within a table row, HTML indentation and nested cell markup must not
+    turn cells into separate source lines: downstream evidence requires each
+    status to remain paired with its version on the SAME row.
+    """
     from html.parser import HTMLParser
     import html as html_module
 
@@ -6730,9 +6735,13 @@ def extract_web_text(html):
             super().__init__()
             self.parts = []
             self.skip_depth = 0
+            self.row_depth = 0
 
         def handle_starttag(self, tag, attrs):
             tag = tag.lower()
+
+            if self.skip_depth == 0 and tag == "tr":
+                self.row_depth += 1
 
             if tag in {
                 "script",
@@ -6746,6 +6755,7 @@ def extract_web_text(html):
 
             if (
                 self.skip_depth == 0
+                and (self.row_depth == 0 or tag == "tr")
                 and tag in {
                     "p",
                     "br",
@@ -6760,8 +6770,9 @@ def extract_web_text(html):
                 }
             ):
                 self.parts.append("\n")
-            # Keep table cells separate on the same line so the relationship
-            # between a version and its support status survives extraction.
+            # The table's structural boundaries (rather than HTML source
+            # whitespace) delimit columns. Do not split <th>/<td> across
+            # lines just because the original HTML was pretty-printed.
             if self.skip_depth == 0 and tag in {"th", "td"}:
                 self.parts.append(" | ")
 
@@ -6783,6 +6794,7 @@ def extract_web_text(html):
 
             if (
                 self.skip_depth == 0
+                and (self.row_depth == 0 or tag == "tr")
                 and tag in {
                     "p",
                     "li",
@@ -6797,8 +6809,18 @@ def extract_web_text(html):
             ):
                 self.parts.append("\n")
 
+            if tag == "tr" and self.skip_depth == 0:
+                self.row_depth = max(0, self.row_depth - 1)
+
         def handle_data(self, data):
             if self.skip_depth == 0:
+                if self.row_depth:
+                    # HTML indentation is layout, not a source row boundary.
+                    # Collapse ALL whitespace inside cells, and discard
+                    # whitespace-only tokens between cells.
+                    data = re.sub(r"\s+", " ", data)
+                    if not data.strip():
+                        return
                 self.parts.append(data)
 
     parser = TextExtractor()
