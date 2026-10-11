@@ -216,3 +216,54 @@ def test_rfc_specific_titled_document_outscores_rfc_index():
     choice = choose_official_publisher_step(RFC_GOAL, [first])
     assert choice["action"] == "fetch_url"
     assert choice["query"] == article
+
+
+
+def test_research_reads_deeper_official_faq_before_source_synthesis():
+    """An RKI influenza index is navigation, not yet clinical evidence."""
+    from agent.official_source_navigation import has_discovered_deeper_primary_link
+    from test_agent_runtime import AgentRuntimeTests
+
+    index = "https://www.rki.de/DE/Themen/Influenza/Influenza.html"
+    faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    homepage = fetched(index, links=[
+        {"url": faq, "title": "Influenza Krankheitsbild häufige Fragen"},
+        {"url": "https://www.rki.de/DE/Verwaltung/Kontakt.html",
+         "title": "Kontakt"},
+    ])
+    assert has_discovered_deeper_primary_link(
+        RKI_GOAL, [search((index, "Influenza Überblick")), homepage]
+    )
+    assert not has_discovered_deeper_primary_link(
+        RKI_GOAL, [search((index, "Influenza Überblick")), fetched(faq)]
+    )
+
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    calls = []
+    def do_search(**kwargs):
+        return {"provider": "SearXNG", "results": [
+            {"url": index, "title": "Influenza Überblick"},
+        ]}
+    def do_fetch(**kwargs):
+        url = kwargs["query"]
+        calls.append(url)
+        if url == index:
+            return homepage["result"]
+        assert url == faq
+        return {"ok": True, "url": url, "text":
+                "Die Influenza beginnt oft plötzlich mit Fieber und Muskelschmerzen. "
+                "Später können Kopfschmerzen und trockener Reizhusten auftreten."}
+    harness.add_tool("search_web", do_search)
+    harness.add_tool("fetch_url", do_fetch)
+    harness.hooks = replace(
+        harness.hooks,
+        agent_evidence_answer=lambda goal, obs: "Fetched primary-source article",
+    )
+    out = harness.runtime([]).run(RKI_GOAL, mode="diagnostic")
+    assert out["status"] == "completed"
+    assert calls == [index, faq]
+    assert [s["action"] for s in out["steps"]] == [
+        "search_web", "fetch_url", "fetch_url",
+    ]
+    assert not harness.provider.calls
