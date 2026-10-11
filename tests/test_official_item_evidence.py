@@ -35,3 +35,10 @@ def test_official_research_only():
 def test_without_loaded_articles_delegates_to_other_gate():
     a = "- iPhone 99 Pro – erhältlich"
     assert filter_unsupported_official_items(a, GOAL, []) == a
+
+
+def test_multi_model_row_requires_each_model():
+    answer = "- iPhone 16 Pro / iPhone 15 Pro / iPhone 14 Pro weiterhin verfügbar"
+    sources = article("iPhone 16 Pro available now.")
+    fixed = filter_unsupported_official_items(answer, GOAL, sources)
+    assert "weiterhin verfügbar" not in fixed
