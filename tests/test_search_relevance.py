@@ -42,3 +42,23 @@ def test_site_query_does_not_promote_spoofed_evidence():
         {"url": "https://evil.test/?redirect=site.example.org"},
     ]
     assert filter_site_results("site:site.example.org", results) == ([], 2)
+
+
+
+def test_english_standards_and_policy_searches_do_not_force_german_locale():
+    from agent.app import web_search_language_for_query
+    assert web_search_language_for_query(
+        "rfc-editor.org ipv4 ipv6 32 bits 128 bits"
+    ) == "en-US"
+    assert web_search_language_for_query(
+        "ecb.europa.eu deposit facility key interest rates"
+    ) == "en-US"
+    assert web_search_language_for_query(
+        "site:rfc-editor.org RFC 8200 IPv6"
+    ) == "en-US"
+    assert web_search_language_for_query(
+        "Influenza typische Symptome Robert Koch Institut"
+    ) == "de-DE"
+    assert web_search_language_for_query(
+        "Wie viele Besucher hatte unsere Landingpage?"
+    ) == "de-DE"
