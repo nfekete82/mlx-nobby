@@ -512,12 +512,13 @@ class AgentRuntime:
                 from agent.research_followup import need_support_policy_source
                 from agent.official_source_navigation import (
                     missing_requested_identifiers, has_discovered_deeper_primary_link,
-                    missing_clinical_article,
+                    missing_clinical_article, missing_official_answer_document,
                 )
                 if (build_evidence(observations).facts
                         and not insufficient_catalog_sources(goal, observations)
                         and not missing_requested_identifiers(goal, observations)
                         and not missing_clinical_article(goal, observations)
+                        and not missing_official_answer_document(goal, observations)
                         and not has_discovered_deeper_primary_link(goal, observations)
                         and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
