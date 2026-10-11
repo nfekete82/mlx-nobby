@@ -141,10 +141,12 @@ def _quantitative_windows(goal, text, *, max_windows=3):
         ("sekunde", r"\bseconds?\b"),
         ("second", r"\bseconds?\b"),
     )
-    wanted = [pattern for key, pattern in units if key in request]
+    wanted = [
+        pattern for key, pattern in units
+        if re.search(r"\b" + re.escape(key) + r"(?:s|n)?\b", request)
+    ]
     if not wanted or not isinstance(text, str):
         return []
-    import re
     terms = set(re.findall(r"(?i)\b[a-z]{2,}\d{1,3}\b", request))
     terms.update(
         word for word in re.findall(r"\w{4,}", request)
