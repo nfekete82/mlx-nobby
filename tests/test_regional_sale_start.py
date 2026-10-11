@@ -85,7 +85,16 @@ def test_model_insufficient_decision_is_corrected_by_anchor_and_asof():
         as_of="2026-10-11")
     assert result[0]["status"] == "contradicted"
     assert result[0]["decision_origin"] == "deterministic_temporal"
-    assert result[0]["passage_ids"] == [fact.id]
+    # The extractor can expose overlapping, source-exact passages for the
+    # same future start. All cited IDs must be genuine matching anchors; it
+    # need not collapse them to the single passage chosen for this claim.
+    cited = result[0]["passage_ids"]
+    assert fact.id in cited
+    passage_by_id = {item.id: item for item in bundle.facts}
+    assert len(cited) == len(set(cited))
+    assert all(pid in passage_by_id for pid in cited)
+    assert all("Belgium sales begin on 2026-12-01" in
+               passage_by_id[pid].evidence_excerpt for pid in cited)
 
 
 def test_model_insufficient_decision_stays_insufficient_for_other_region():
