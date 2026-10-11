@@ -289,7 +289,7 @@ def test_numbered_policy_navigation_is_not_a_supported_version_reference():
         f"Documentation menu entry number {i}: explore releases and general guides."
         for i in range(20)
     )
-    note = "PostgreSQL 17 has a separate revision note without a support status."
+    note = "PostgreSQL 17 has a separate revision note."
     bundle = build_evidence([
         fetched(POLICY, nav + "\n" + note + "\n" + support_table()),
     ], goal=GOAL)
