@@ -227,6 +227,13 @@ def build_evidence(observations, *, now=None, goal=""):
         # consume the complete selection payload.
         from agent.planning_context import _DATE, _EVENT
         query_terms = {word.casefold() for word in re.findall(r"\w{3,}", str(goal))}
+        # A German question may say "Symptome" while its primary source
+        # uses "Symptomatik", or "typischen" vs "typisch". Stems rank
+        # the source-exact passages but do not count as factual proof.
+        query_stems = {word[:5] for word in query_terms if len(word) >= 6}
+        def topic_overlap(excerpt):
+            tokens = re.findall(r"\w{6,}", excerpt.casefold())
+            return len(query_stems.intersection(token[:5] for token in tokens))
         from agent.catalog_evidence import catalog_source_windows
         from agent.research_followup import support_policy_windows
         catalog_windows = catalog_source_windows(goal, text)
@@ -243,6 +250,7 @@ def build_evidence(observations, *, now=None, goal=""):
             (p[0], p[1]) in catalog_spans or (p[0], p[1]) in support_spans or
             (p[0], p[1]) in quantitative_spans,
             bool(_DATE.search(p[2]) and _EVENT.search(p[2])),
+            topic_overlap(p[2]),
             len(query_terms.intersection(word.casefold() for word in re.findall(r"\w{3,}", p[2]))),
         ), reverse=True)
         for start, end, excerpt in passages:
