@@ -41,7 +41,7 @@ def _safe_official_url(url, host):
     try:
         parsed = urlsplit(url)
         if (parsed.scheme != "https"
-                or parsed.hostname not in {host, "www." + host}
+                or not (parsed.hostname == host or (parsed.hostname or "").endswith("." + host))
                 or parsed.username is not None or parsed.password is not None
                 or parsed.port not in {None, 443}):
             return None
