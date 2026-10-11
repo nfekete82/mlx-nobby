@@ -102,6 +102,7 @@ def missing_clinical_article(goal, observations):
         return False
     official = _publisher(goal)
     bodies = []
+    seen_official = False
     for item in observations:
         if not isinstance(item, dict) or item.get("action") != "fetch_url":
             continue
@@ -111,10 +112,16 @@ def missing_clinical_article(goal, observations):
                 or _safe_official_url(result.get("final_url") or result.get("url"),
                                       official) is None):
             continue
+        seen_official = True
+        source_url = result.get("final_url") or result.get("url") or ""
+        # A vaccine side-effects page is not evidence about presentation of
+        # the infection, even if both pages mention similar symptoms.
+        if re.search(r"(?i)(?:^|/)(?:impfen|impfungen)(?:/|$)", urlsplit(source_url).path):
+            continue
         if isinstance(result.get("text"), str):
             bodies.append(result["text"])
     if not bodies:
-        return False
+        return seen_official
 
     # Strong *source relevance* indicators only. These are not symptom values
     # and should never be used to synthesize a medical answer.
