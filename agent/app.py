@@ -7059,10 +7059,18 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
             truncated = end_offset < total_characters
 
 
+            from agent.page_navigation import same_site_html_links
+            page_links = (
+                same_site_html_links(page, current_url)
+                if "text/html" in content_type or "application/xhtml+xml" in content_type
+                else []
+            )
+
             return {
                 "ok": True,
                 "url": current_url,
                 "content_type": content_type,
+                "page_links": page_links,
                 "text": chunk,
                 "characters": len(chunk),
                 "total_characters": total_characters,
