@@ -536,6 +536,7 @@ def test_truncated_rfc_document_continues_on_same_verified_url_once():
     missing_search = search((
         "https://de.wikipedia.org/wiki/IPv6", "IPv6 introduction",
     ))
+    missing_search["query"] = "ipv6 RFC Internet Protocol Specification rfc-editor.org"
     next_step = choose_official_publisher_step(
         RFC_GOAL, [discovered, first, missing_search],
     )
