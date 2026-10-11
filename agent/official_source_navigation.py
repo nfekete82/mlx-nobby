@@ -202,7 +202,7 @@ def choose_official_publisher_step(goal, observations):
         already_refined = any(
             isinstance(item, dict)
             and item.get("action") == "search_web"
-            and "address specification " + host in str(item.get("query") or "")
+            and "RFC Internet Protocol Specification site:" + host in str(item.get("query") or "")
             for item in observations
         )
         recent_search = any(
