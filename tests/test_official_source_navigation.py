@@ -462,6 +462,7 @@ def test_named_official_publisher_home_after_two_irrelevant_searches():
 def test_official_root_exception_rejects_unseen_rates_subpaths_in_research():
     from agent.runtime import RuntimePolicy
     from test_agent_runtime import AgentRuntimeTests
+    from unittest.mock import patch
 
     root = "https://www.ecb.europa.eu/"
     guessed = "https://www.ecb.europa.eu/stats/unobserved/rates.html"
@@ -481,10 +482,14 @@ def test_official_root_exception_rejects_unseen_rates_subpaths_in_research():
                     "text": "Source content with enough context for validation. " * 3}
 
         harness.add_tool("fetch_url", fetch)
-        out = harness.runtime(
-            [{"action": "fetch_url", "query": url}, "Finished"],
-            policy=RuntimePolicy(research_steps=1),
-        ).run(ECB_GOAL, mode="research", observations=observed)
+        with patch(
+            "agent.official_source_navigation.choose_official_publisher_step",
+            return_value=None,
+        ):
+            out = harness.runtime(
+                [{"action": "fetch_url", "query": url}, "Finished"],
+                policy=RuntimePolicy(research_steps=1),
+            ).run(ECB_GOAL, mode="research", observations=observed)
         assert opened == ([url] if allowed else [])
         assert bool([
             s for s in out["steps"] if s.get("action") == "fetch_url_allowlist_guard"
