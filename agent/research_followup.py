@@ -115,6 +115,100 @@ def choose_support_policy_followup(goal, observations):
             "reason": "Einmalige präzise Suche nach offizieller Support-/Versionsrichtlinie"}
 
 
+def choose_support_policy_research_step(goal, observations):
+    """Avoid LLM planning for a *narrow* named official support-policy lookup.
+
+    An initial search string is never evidence. Every fetched URL must come
+    verbatim from an actual search result or a loaded page's same-site links.
+    Keep the ordinary planner for unknown publishers and failed discovery.
+    """
+    if not support_policy_question(goal) or re.search(
+        r"(?i)\b(?:vergleich\w*|compare|compared|versus)\b", str(goal)
+    ):
+        return None
+    # Import lazily to reuse the exact hostname whitelist used by the
+    # source-exact support matrix, avoiding a second divergent trust list.
+    from agent.support_table_evidence import _OFFICIAL_POLICY_HOSTS
+    value = str(goal or "")
+    matches = [
+        (stem, host)
+        for stem, host in _OFFICIAL_POLICY_HOSTS.items()
+        if re.search(r"(?<!\w)" + re.escape(stem) + r"(?!\w)", value, re.I)
+    ]
+    if len(matches) != 1:
+        return None
+    stem, host = matches[0]
+    if not observations:
+        # Query terms are only discovery hints; search/fetch permissions and
+        # semantic source verification remain entirely unchanged.
+        return {
+            "action": "search_web",
+            "query": f"{stem} versioning policy supported major versions official",
+            "reason": "Offizielle Versionsrichtlinie gezielt suchen",
+        }
+
+    attempted = {
+        str(item.get("query") or "")
+        for item in observations
+        if isinstance(item, dict) and item.get("action") == "fetch_url"
+    }
+    # Reuse actual public URLs only. Never synthesize /support/versioning/.
+    candidates = []
+    for item in observations:
+        if not isinstance(item, dict) or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict):
+            continue
+        links = ()
+        if item.get("action") in {"search_web", "web_search"}:
+            links = result.get("results")
+        elif item.get("action") == "fetch_url" and result.get("ok") is True:
+            origin = result.get("final_url") or result.get("url")
+            try:
+                parsed_origin = urlsplit(origin)
+                if (parsed_origin.scheme != "https"
+                        or parsed_origin.hostname not in {host, "www." + host}
+                        or parsed_origin.username or parsed_origin.password
+                        or parsed_origin.port not in {None, 443}):
+                    continue
+            except (ValueError, TypeError):
+                continue
+            links = result.get("page_links")
+        if not isinstance(links, list):
+            continue
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+            url = link.get("url")
+            if not isinstance(url, str) or url in attempted or len(url) > 1200:
+                continue
+            try:
+                parts = urlsplit(url)
+                if (parts.scheme != "https"
+                        or parts.hostname not in {host, "www." + host}
+                        or parts.username or parts.password
+                        or parts.port not in {None, 443}
+                        or not _RELEVANT_PATH.search(parts.path)):
+                    continue
+            except ValueError:
+                continue
+            # Prioritize an exact policy page over a generic support index.
+            title = str(link.get("title") or "")
+            score = 20 * bool(re.search(r"/versioning(?:/|$)", parts.path, re.I))
+            score += 10 * bool(_POLICY_TITLE.search(title))
+            score += 5 * bool(re.search(r"/(?:versions|lifecycle)(?:/|$)", parts.path, re.I))
+            candidates.append((score, url))
+    if not candidates:
+        return None
+    _, url = max(candidates, key=lambda item: item[0])
+    return {
+        "action": "fetch_url",
+        "query": url,
+        "reason": "Gefundene offizielle Versionsrichtlinie direkt prüfen",
+    }
+
+
 # Anchoring a publisher's genuine support matrix requires the table header and
 # its nearby rows to remain together. These windows are byte-for-byte substrings
 # of the fetched page, not generated or inferred version claims.
