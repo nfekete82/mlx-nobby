@@ -5,6 +5,8 @@ evidence for a named product. This is not a semantic entailment engine.
 """
 import re
 
+from agent.temporal_validation import DATES, _date
+
 MODEL = re.compile(r"\b(?:iPhone|Pixel|Galaxy|MacBook|ThinkPad)\s+[A-Za-z0-9]+(?:\s+(?:Pro|Max|Ultra|Plus|Air|XL))?\b", re.I)
 
 
@@ -27,8 +29,26 @@ def nearby_passages(text, subject, radius=160):
     return passages
 
 
+_PERCENT = re.compile(r"(?<!\w)(\d+(?:[.,]\d+)?)\s*%")
+
+
+def _normalize_percent(match):
+    number = match.group(1).replace(",", ".")
+    if "." in number:
+        number = number.rstrip("0").rstrip(".")
+    return number + "%"
+
+
 def normalized(value):
-    return re.sub(r"\s+", "", str(value).casefold()).replace(",", ".")
+    text = str(value).casefold()
+    # Canonicalize recognized calendar dates without inventing invalid dates.
+    def canonical_date(match):
+        parsed = _date(match)
+        return parsed.isoformat() if parsed is not None else match.group(0)
+
+    text = DATES.sub(canonical_date, text)
+    text = _PERCENT.sub(_normalize_percent, text)
+    return re.sub(r"\s+", "", text).replace(",", ".")
 
 
 def matches_claim(claim, block, articles):

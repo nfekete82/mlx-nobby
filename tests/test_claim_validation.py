@@ -46,6 +46,35 @@ class ClaimValidationTests(unittest.TestCase):
         for value in ("23. Oktober 2026", "2026-10-23", "October 23, 2026", "$1599"):
             self.assertEqual(audit_numerical_claims("Termin/Preis: " + value, fetched())["unverified"], [value])
 
+    def test_ecb_date_formats_match_equivalent_source_date(self):
+        source = ("Interest rates\n| Deposit facility | 2.50 %\n"
+                  "16 September 2026\n") * 5
+        for value in ("16. September 2026", "16.09.2026",
+                      "2026-09-16", "16 September 2026"):
+            with self.subTest(value=value):
+                audit = audit_numerical_claims(
+                    f"Der Einlagezins beträgt 2,50 % und gilt seit dem {value}.",
+                    fetched(source),
+                )
+                self.assertEqual(audit["unverified"], [])
+
+    def test_ecb_different_effective_date_is_rejected(self):
+        source = ("Interest rates\n| Deposit facility | 2.50 %\n"
+                  "16 September 2026\n") * 5
+        audit = audit_numerical_claims(
+            "Der Einlagezins gilt seit dem 17. September 2026.",
+            fetched(source),
+        )
+        self.assertEqual(audit["unverified"], ["17. September 2026"])
+
+    def test_percentages_are_checked_with_localized_decimal_formats(self):
+        source = ("Interest rates\n| Deposit facility | 2.50 %\n"
+                  "16 September 2026\n") * 5
+        correct = audit_numerical_claims("Einlagezins: 2,5 %.", fetched(source))
+        wrong = audit_numerical_claims("Einlagezins: 2,60 %.", fetched(source))
+        self.assertEqual(correct["unverified"], [])
+        self.assertEqual(wrong["unverified"], ["2,60 %"])
+
     def test_product_list_checks_each_subject(self):
         text = "Pixel 11 kostet 999 €. " * 15 + "Galaxy S26 kostet 1299 €. " * 15
         audit = audit_numerical_claims("Pixel 11 kostet 999 €.\nGalaxy S26 kostet 999 €.", fetched(text))

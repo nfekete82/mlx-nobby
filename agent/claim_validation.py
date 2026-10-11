@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from agent.temporal_validation import MONTH
 
-_NUMBER = re.compile(rf"(?<![\w])(?:\d{{1,2}}[./-]\d{{1,2}}[./-]20\d{{2}}|20\d{{2}}-\d{{2}}-\d{{2}}|\d{{1,2}}\.?\s+(?:{MONTH})\s+20\d{{2}}|(?:{MONTH})\s+\d{{1,2}},?\s+20\d{{2}}|\d[\d.,]*\s*(?:€|EUR|USD|\$)|[$€]\s*\d(?:[\d.,]*\d)?)(?!\w)", re.I)
+_NUMBER = re.compile(rf"(?<![\w])(?:\d{{1,2}}[./-]\d{{1,2}}[./-]20\d{{2}}|20\d{{2}}-\d{{2}}-\d{{2}}|\d{{1,2}}\.?\s+(?:{MONTH})\s+20\d{{2}}|(?:{MONTH})\s+\d{{1,2}},?\s+20\d{{2}}|\d[\d.,]*\s*(?:€|EUR|USD|\$)|[$€]\s*\d(?:[\d.,]*\d)?|\d+(?:[.,]\d+)?\s*%)(?!\w)", re.I)
 _URL = re.compile(r"https?://[^\s)\]>]+")
 _SENTENCE = re.compile(r"\n+|(?<=[!?])\s+|(?<=[a-zäöü])\.\s+(?=[A-ZÄÖÜ])")
 
