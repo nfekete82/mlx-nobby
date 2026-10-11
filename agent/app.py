@@ -6756,9 +6756,14 @@ def extract_web_text(html):
                     "h2",
                     "h3",
                     "h4",
+                    "tr",
                 }
             ):
                 self.parts.append("\n")
+            # Keep table cells separate on the same line so the relationship
+            # between a version and its support status survives extraction.
+            if self.skip_depth == 0 and tag in {"th", "td"}:
+                self.parts.append(" | ")
 
         def handle_endtag(self, tag):
             tag = tag.lower()
@@ -6787,6 +6792,7 @@ def extract_web_text(html):
                     "h2",
                     "h3",
                     "h4",
+                    "tr",
                 }
             ):
                 self.parts.append("\n")
