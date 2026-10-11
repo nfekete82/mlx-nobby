@@ -391,7 +391,7 @@ def choose_official_publisher_step(goal, observations):
             if deposit_question:
                 if re.search(
                     r"(?i)euro.short.term.rates|interest.rate.benchmarks|"
-                    r"risk.free.rates|fxrates|exchange.rates|\bestr\b|€str",
+                    r"risk.free.rates|fxrates|\bestr\b|€str",
                     name,
                 ):
                     continue
