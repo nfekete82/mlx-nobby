@@ -32,6 +32,15 @@ def filter_unsupported_official_items(answer, goal, observations):
         if not subject_match:
             kept.append(line)
             continue
+        # Combined rows must not borrow evidence from only the first
+        # model (e.g. "iPhone 16 / iPhone 15 / iPhone 14").
+        subjects = list(dict.fromkeys(m.group(0) for m in MODEL.finditer(body)))
+        if len(subjects) > 1:
+            if not all(any(re.search(r"(?<!\\w)" + re.escape(name) + r"(?!\\w)",
+                                     article, re.I)
+                           for _, article in articles) for name in subjects):
+                removed += 1
+                continue
         subject = subject_match.group(0)
         # A model name alone or an isolated number in unrelated prose is
         # insufficient. Require a source passage naming the same model.
