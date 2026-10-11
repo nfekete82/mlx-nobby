@@ -182,6 +182,19 @@ def choose_official_publisher_step(goal, observations):
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
             score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
                      + 8 * is_home)
+            # When asked about a medical condition's clinical presentation,
+            # an actual linked FAQ, symptom description or disease guide is
+            # a better next source than another category index. This score
+            # only ranks *discovered* source links; it asserts no symptoms.
+            if re.search(r"(?i)symptom|krankheitsbild|clinical (?:signs|features)", str(goal)):
+                if re.search(
+                    r"(?i)symptom|krankheitsbild|(?:^|[/_.-])faq|"
+                    r"antworten|häufige fragen|ratgeber|clinical",
+                    name,
+                ):
+                    score += 20
+                if re.search(r"(?i)(?:-node\.html|/rfc-index/|/index\.html)$", parsed.path):
+                    score -= 12
             if re.search(r"/(?:login|signin|account|user)/", parsed.path, re.I):
                 score -= 100
             matches.append((score, url))
@@ -257,15 +270,26 @@ def has_discovered_deeper_primary_link(goal, observations):
         and isinstance(item.get("result"), dict)
         and item["result"].get("ok") is True
     ]
-    if len(fetched_ok) != 1:
+    if not 1 <= len(fetched_ok) <= 2:
         return False
     choice = choose_official_publisher_step(goal, observations)
     if choice is None or choice.get("action") != "fetch_url":
         return False
     target = choice.get("query")
-    # A real link must appear in the one loaded page, not merely in search.
-    links = fetched_ok[0]["result"].get("page_links")
-    return isinstance(links, list) and any(
-        isinstance(link, dict) and link.get("url") == target
-        for link in links
-    )
+    # Follow only a real document linked by an already-loaded official page.
+    # The research URL allowlist separately checks exact link provenance.
+    # After two loaded pages, prefer substantive FAQ/guide/article links;
+    # otherwise return current evidence without indefinite site crawling.
+    links = [
+        link for item in fetched_ok
+        for link in item["result"].get("page_links", [])
+        if isinstance(link, dict)
+    ]
+    discovered = [link for link in links if link.get("url") == target]
+    if len(fetched_ok) == 2 and not any(re.search(
+        r"(?i)faq|antwort|ratgeber|krankheitsbild|symptom|"
+        r"clinical|/article/|/guide/|/report/",
+        str(link.get("title") or "") + " " + str(link.get("url") or ""),
+    ) for link in discovered):
+        return False
+    return bool(discovered)
