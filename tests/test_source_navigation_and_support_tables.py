@@ -321,6 +321,7 @@ def test_official_support_policy_navigation_uses_only_returned_urls():
             {"url": "http://www.postgresql.org/support/versioning/",
              "title": "Insecure URL"},
             {"url": "https://www.postgresql.org/download/", "title": "Downloads"},
+            {"url": "https://www.postgresql.org/support/", "title": "Support"},
             {"url": POLICY, "title": "Versioning Policy"},
         ],
     }}
@@ -333,6 +334,12 @@ def test_official_support_policy_navigation_uses_only_returned_urls():
     assert choose_support_policy_research_step(GOAL, [
         search, fetched(POLICY, support_table()),
     ]) is None
+    assert choose_support_policy_research_step(GOAL, [{
+        "action": "search_web", "status": "completed",
+        "result": {"results": [
+            {"url": "https://www.postgresql.org/support/", "title": "Support"},
+        ]},
+    }]) is None
     assert choose_support_policy_research_step(
         "Welche MySQL-Versionen werden unterstützt?", []
     ) is None
