@@ -106,15 +106,26 @@ def test_catalog_relevance_does_not_change_unrelated_technical_answers():
 def test_native_like_off_topic_eight_claims_abstain_without_verifier():
     bundle = build_evidence(observed(), goal=GOAL)
     pid = next(f.id for f in bundle.facts if "-catalog-" in f.id)
-    camera = make_claim("Das iPhone 18 Pro hat eine 48 MP Kamera.",
-                        passage_ids=(pid,))
-    llm, calls = scripted({"claims": [camera] * 8})
+    features = [
+        "Das iPhone 18 Pro hat eine 48 MP Kamera.",
+        "Das iPhone 18 Pro bietet variable Blende.",
+        "Das iPhone Duo unterstützt On-Device KI.",
+        "Das iPhone Duo filmt in Dolby Vision.",
+        "Das iPhone 17 schützt seine Daten.",
+        "Das iPhone 16 hat ein stabiles Glas.",
+        "Das iPhone 17e empfängt Satellitensignale.",
+        "Das iPhone Air unterstützt ein modernes Betriebssystem.",
+    ]
+    claims = [
+        make_claim(statement, subject="iPhone 18 Pro",
+                   value="iPhone 18 Pro", passage_ids=(pid,))
+        for statement in features
+    ]
+    llm, calls = scripted({"claims": claims})
     answer = synthesize_verified_evidence(GOAL, observed(), llm)
     assert answer.audit["verified_supported_count"] == 0
     assert len(calls) == 1
-    assert answer.audit["error_status"] in {
-        "off_topic_catalog_candidates", "invalid_extraction_schema",
-    }
+    assert answer.audit["error_status"] == "off_topic_catalog_candidates"
 
 
 def test_catalog_model_list_can_be_verified_from_anchored_source_passage():
