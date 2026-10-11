@@ -539,6 +539,7 @@ def test_missing_rfc_version_outranks_known_version_category_page():
 
 def test_truncated_rfc_document_continues_on_same_verified_url_once():
     """A first 18k-character slice without address-width facts is not final."""
+    single_goal = "Wie viele Bit haben IPv4-Adressen laut dem IETF-RFC?"
     page = "https://www.rfc-editor.org/info/rfc791/"
     first = fetched(page)
     first["result"].update({
@@ -552,7 +553,7 @@ def test_truncated_rfc_document_continues_on_same_verified_url_once():
     ))
     missing_search["query"] = "ipv6 RFC Internet Protocol Specification rfc-editor.org"
     next_step = choose_official_publisher_step(
-        RFC_GOAL, [discovered, first, missing_search],
+        single_goal, [discovered, first, missing_search],
     )
     assert next_step == {
         "action": "fetch_url",
@@ -567,13 +568,13 @@ def test_truncated_rfc_document_continues_on_same_verified_url_once():
         "total_characters": 48000, "truncated": False,
     })
     recovered = choose_official_publisher_step(
-        RFC_GOAL, [discovered, first, missing_search, continuation],
+        single_goal, [discovered, first, missing_search, continuation],
     )
     assert recovered is None or recovered["action"] != "fetch_url"
     assert not any(
         "offset=" in str(step) for step in [
             choose_official_publisher_step(
-                RFC_GOAL, [discovered, first, missing_search, continuation],
+                single_goal, [discovered, first, missing_search, continuation],
             ),
         ]
     )
@@ -659,3 +660,74 @@ def test_two_protocol_question_continues_beyond_generic_rfc_editor_homepage():
     assert choose_official_publisher_step(
         RFC_GOAL, observations + [second]
     ) is None
+
+
+def test_missing_ipv6_does_not_reload_known_ipv4_rfc_offset():
+    from agent.official_source_navigation import missing_official_answer_document
+    known = "https://www.rfc-editor.org/info/rfc791/"
+    initial = dict(search((known, "IPv4 Internet Protocol Specification")),
+                   query="rfc-editor.org ipv4 ipv6 address bits")
+    ipv4 = fetched(known)
+    ipv4["result"].update({
+        "text": "IPv4 internet protocol source address header fields. " * 6,
+        "offset": 0, "next_offset": 18000, "truncated": True,
+    })
+    search_ipv6 = dict(
+        search(("https://de.wikipedia.org/wiki/IPv6", "IPv6 encyclopedia")),
+        query="ipv6 RFC Internet Protocol Specification rfc-editor.org",
+    )
+    observations = [initial, ipv4, search_ipv6]
+    assert missing_official_answer_document(RFC_GOAL, observations)
+    action = choose_official_publisher_step(RFC_GOAL, observations)
+    assert action is None or (
+        action.get("action") == "search_web"
+        and "ipv6" in action.get("query", "").casefold()
+    )
+    assert not (
+        action and action.get("action") == "fetch_url"
+        and action.get("query") == known
+    )
+
+
+def test_ecb_404_triggers_distinct_official_standing_facilities_search_once():
+    home = "https://www.ecb.europa.eu/home/html/index.en.html"
+    bad = (
+        "https://www.ecb.europa.eu/stats/policy_and_exchange/"
+        "key_interest_rates/html/index.en.html"
+    )
+    found = dict(search((home, "ECB home")), query="ECB deposit facility")
+    landing = fetched(home)
+    failure = fetched(bad)
+    failure["result"].update({"ok": False, "error": "HTTP 404", "http_status": 404})
+    observations = [
+        found,
+        landing,
+        dict(search((bad, "Key interest rates")),
+             query="deposit facility key ECB interest rates effective date ecb.europa.eu"),
+        failure,
+    ]
+    chosen = choose_official_publisher_step(ECB_GOAL, observations)
+    assert chosen["action"] == "search_web"
+    assert "standing facilities" in chosen["query"]
+    assert "2.50" not in chosen["query"]
+    assert not chosen["query"].startswith("http")
+    retry = dict(search(), query=chosen["query"])
+    again = choose_official_publisher_step(ECB_GOAL, observations + [retry])
+    assert again is None or again != chosen
+
+
+def test_ecb_standing_facilities_exact_link_beats_rate_benchmark():
+    home = "https://www.ecb.europa.eu/mopo/html/index.en.html"
+    facility = "https://www.ecb.europa.eu/mopo/implement/sf/html/index.en.html"
+    estr = "https://www.ecb.europa.eu/stats/euro-short-term-rates/html/index.en.html"
+    doc = fetched(home, links=[
+        {"url": estr, "title": "Euro short-term rates"},
+        {"url": facility, "title": "Standing facilities: deposit facility"},
+    ])
+    decision = choose_official_publisher_step(
+        ECB_GOAL,
+        [dict(search((home, "Monetary policy")), query="ecb.europa.eu policy"),
+         doc],
+    )
+    assert decision["action"] == "fetch_url"
+    assert decision["query"] == facility
