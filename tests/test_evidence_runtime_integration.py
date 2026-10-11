@@ -222,3 +222,32 @@ def test_general_research_extraction_excludes_product_lineup_constraints():
     assert "aktuell angebotenen Modellen" not in prompts[0]
     assert "Entdecke alle Modelle" not in prompts[0]
     assert "product" not in prompts[0].lower()
+
+
+
+def test_morphological_topic_ranking_keeps_relevant_medical_excerpt():
+    """A query for Symptome must also surface primary text saying Symptomatik."""
+    from agent.structured_evidence import build_evidence
+    goal = "Welche typischen Symptome einer Influenza nennt das Robert Koch-Institut?"
+    navigation = "\n".join(
+        f"Influenza Informationen und allgemeine Dokumentation Abschnitt {i}."
+        for i in range(160)
+    )
+    symptom = (
+        "Die Influenza-typische Symptomatik ist oft durch einen plötzlichen "
+        "Erkrankungsbeginn mit Fieber, Muskel- und Kopfschmerzen gekennzeichnet."
+    )
+    body = navigation + "\n" + symptom + "\n"
+    url = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    observations = [{
+        "action": "fetch_url", "status": "completed", "query": url,
+        "result": {"ok": True, "url": url, "text": body},
+    }]
+    bundle = build_evidence(observations, goal=goal)
+    assert bundle.facts
+    assert symptom in [p.evidence_excerpt for p in bundle.facts]
+    # Ranking affects admission, not truth. The quote remains byte exact.
+    assert any(
+        body[p.source_location[0]:p.source_location[1]] == symptom
+        for p in bundle.facts if p.evidence_excerpt == symptom
+    )
