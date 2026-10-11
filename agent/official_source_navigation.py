@@ -282,7 +282,7 @@ def has_discovered_deeper_primary_link(goal, observations):
     # otherwise return current evidence without indefinite site crawling.
     links = [
         link for item in fetched_ok
-        for link in item["result"].get("page_links", [])
+        for link in (item["result"].get("page_links") or [])
         if isinstance(link, dict)
     ]
     discovered = [link for link in links if link.get("url") == target]
