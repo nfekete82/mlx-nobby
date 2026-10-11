@@ -232,6 +232,25 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
             continue
         decisions[claim.id] = {"id": claim.id, "status": status, "reason": reason,
                                "passage_ids": ids, "verification_method": METHOD, "decision_origin": "model"}
+        # A narrow deterministic cross-check can correct an equivocal model
+        # judgment: an explicit regional start AFTER as_of refutes a claim that
+        # sales have already begun in that region. Only validated passages in
+        # this claim's own scope may participate. Unclear cases abstain.
+        if status in {"supported", "insufficient_evidence"}:
+            from agent.regional_sale_start import future_regional_sale_start_conflicts
+            temporal_anchors = future_regional_sale_start_conflicts(
+                claim.statement,
+                [(pid, passages[pid].evidence_excerpt) for pid in sorted(scopes[claim.id])],
+                as_of=payload["as_of"],
+            )
+            if temporal_anchors:
+                decisions[claim.id] = {
+                    "id": claim.id, "status": "contradicted",
+                    "reason": "Der ausdrücklich genannte regionale Verkaufsstart liegt nach dem Stichtag.",
+                    "passage_ids": temporal_anchors[:6],
+                    "verification_method": "anchored_regional_date_comparison",
+                    "decision_origin": "deterministic_temporal",
+                }
     # A missing model decision never retains an earlier optimistic status.
     return [decisions[c.id] for c in candidates if isinstance(c, SemanticClaim) and isinstance(c.id, str)]
 
