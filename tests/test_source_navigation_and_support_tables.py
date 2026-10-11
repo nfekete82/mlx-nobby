@@ -2,7 +2,9 @@
 import json
 
 from agent.page_navigation import same_site_html_links, choose_catalog_page_link
-from agent.support_table_evidence import support_matrix_candidates
+from agent.support_table_evidence import (
+    support_matrix_candidates, support_matrix_verification_scope,
+)
 from agent.structured_evidence import build_evidence
 from agent.semantic_evidence import synthesize_verified_evidence
 
@@ -222,3 +224,60 @@ def test_pretty_printed_official_html_keeps_rows_atomic():
     assert [subject for subject, _, _ in candidates] == ["PostgreSQL 18", "PostgreSQL 17"]
     assert all(passage_id in {fact.id for fact in evidence.facts}
                for _, _, passage_id in candidates)
+
+
+def test_scoped_support_verifier_preserves_competing_version_evidence():
+    """Shrink the verifier prompt but retain possible contradictions."""
+    from agent.semantic_evidence import synthesize_verified_evidence
+    other = "https://www.postgresql.org/download/"
+    noise = "\n".join(
+        f"Documentation menu entry number {i}: explore releases and general guides."
+        for i in range(35)
+    )
+    contradiction = (
+        "PostgreSQL 18 is no longer supported according to this source; "
+        "check this apparent inconsistency against the versioning policy."
+    )
+    observations = [
+        fetched(other, noise + "\n" + contradiction),
+        fetched(POLICY, support_table() + "\n" + noise),
+    ]
+    bundle = build_evidence(observations, goal=GOAL)
+    records = support_matrix_candidates(GOAL, bundle)
+    assert len(records) == 5
+    scope = support_matrix_verification_scope(GOAL, bundle, records)
+    assert scope is not None
+    included = set(scope["c-1"])
+    assert included == set(scope["c-5"])
+    assert all(pid in included for _, _, pid in records)
+    passages = {fact.id: fact.evidence_excerpt for fact in bundle.facts}
+    assert any(contradiction in excerpt
+               for pid, excerpt in passages.items() if pid in included)
+    assert not any("Documentation menu entry number" in excerpt
+                   for pid, excerpt in passages.items()
+                   if pid in included and "-support-" not in pid)
+    assert len(included) < len(passages)
+
+    requests = []
+    def llm(purpose, prompt, limit):
+        assert purpose == "agent.verify"
+        payload = json.loads(prompt.split("\n")[-1])
+        requests.append(payload)
+        assert all(set(claim["passage_ids"]) <= set(claim["context_passage_ids"])
+                   for claim in payload["claims"])
+        return json.dumps({"claims": [
+            {"id": claim["id"], "status": "supported", "reason": "Supported by source table",
+             "passage_ids": [claim["passage_ids"][0]]}
+            for claim in payload["claims"]
+        ]})
+
+    synthesize_verified_evidence(GOAL, observations, llm)
+    assert len(requests) == 1
+    assert len(requests[0]["passages"]) == len(included)
+    assert len(requests[0]["passages"]) < len(passages)
+
+
+def test_support_verification_scope_does_not_accept_untrusted_policy_host():
+    fake = "https://postgresql.org.evil.example/support/versioning/"
+    bundle = build_evidence([fetched(fake, support_table())], goal=GOAL)
+    assert support_matrix_verification_scope(GOAL, bundle, [("PostgreSQL 18", "test", "missing")]) is None
