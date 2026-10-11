@@ -432,3 +432,60 @@ def test_vaccination_adverse_effect_text_never_counts_as_disease_presentation():
         "Welche Nebenwirkungen der Influenza-Impfung nennt das RKI?",
         [vaccine],
     )
+
+
+
+def test_named_official_publisher_home_after_two_irrelevant_searches():
+    """Search pollution may justify a canonical root, never a guessed article."""
+    irrelevant = search(
+        ("https://www.vonjacob.de/", "Wedding rings"),
+        ("https://www.linguee.de/", "Dictionary"),
+    )
+    decision = choose_official_publisher_step(ECB_GOAL, [irrelevant, irrelevant])
+    assert decision == {
+        "action": "fetch_url",
+        "query": "https://www.ecb.europa.eu/",
+        "reason": "Offiziellen HTTPS-Einstiegspunkt nach irrelevanten Suchtreffern prüfen",
+    }
+    # Once the root has been attempted, there is no retry loop.
+    assert choose_official_publisher_step(
+        ECB_GOAL, [irrelevant, irrelevant,
+                   fetched("https://www.ecb.europa.eu/")]
+    ) is None
+    # Ambiguous third-party questions cannot seed official root URLs.
+    assert choose_official_publisher_step(
+        "Wie hoch sind die Einlagenzinsen?",
+        [irrelevant, irrelevant],
+    ) is None
+
+
+def test_official_root_exception_rejects_unseen_rates_subpaths_in_research():
+    from agent.runtime import RuntimePolicy
+    from test_agent_runtime import AgentRuntimeTests
+
+    root = "https://www.ecb.europa.eu/"
+    guessed = "https://www.ecb.europa.eu/stats/unobserved/rates.html"
+    unrelated = "https://www.ecb.europa.eu.evil.example/"
+    observed = [
+        search(("https://vonjacob.de/", "Rings")),
+        search(("https://linguee.de/", "Dictionary")),
+    ]
+    for url, allowed in ((root, True), (guessed, False), (unrelated, False)):
+        harness = AgentRuntimeTests()
+        harness.setUp()
+        opened = []
+
+        def fetch(**kwargs):
+            opened.append(kwargs["query"])
+            return {"ok": True, "url": kwargs["query"],
+                    "text": "Source content with enough context for validation. " * 3}
+
+        harness.add_tool("fetch_url", fetch)
+        out = harness.runtime(
+            [{"action": "fetch_url", "query": url}, "Finished"],
+            policy=RuntimePolicy(research_steps=1),
+        ).run(ECB_GOAL, mode="research", observations=observed)
+        assert opened == ([url] if allowed else [])
+        assert bool([
+            s for s in out["steps"] if s.get("action") == "fetch_url_allowlist_guard"
+        ]) is not allowed
