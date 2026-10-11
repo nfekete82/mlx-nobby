@@ -29,6 +29,13 @@ def catalog_source_windows(goal, text, *, max_windows=2):
     for hit in _SECTION.finditer(text):
         start = hit.start()
         end = min(len(text), start + _WINDOW)
+        # Do not cut in the middle of a sentence, especially not before a
+        # caveat such as 'not yet on sale'. Keep a complete source line.
+        if end < len(text):
+            boundary = text.rfind("\n", start + _MIN_TEXT, end)
+            if boundary < 0:
+                continue
+            end = boundary
         # Keep a single short cohesive block rather than an arbitrarily
         # spliced set of product names from unrelated site sections.
         block = text[start:end]
