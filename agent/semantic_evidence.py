@@ -456,7 +456,9 @@ def synthesize_verified_evidence(goal, observations, llm):
     timings = {"extraction_ms": 0.0, "verification_ms": 0.0}
     if not _anchored_passages(bundle):
         return _render(bundle, [], [], timings, "no_usable_evidence")
-    from agent.support_table_evidence import support_matrix_candidates
+    from agent.support_table_evidence import (
+        support_matrix_candidates, support_matrix_verification_scope,
+    )
     rows = support_matrix_candidates(goal, bundle)
     if rows:
         # Source-exact table extraction only. The ordinary verifier still
@@ -485,7 +487,10 @@ def synthesize_verified_evidence(goal, observations, llm):
         answer.audit["extraction_method"] = extraction_method
         return answer
     started = time.perf_counter()
-    decisions = verify_candidates(goal, bundle, claims, llm)
+    # Only the source-exact support-matrix path scopes the verifier: all
+    # other extraction workflows still check the entire bounded corpus.
+    scope = support_matrix_verification_scope(goal, bundle, rows) if rows else None
+    decisions = verify_candidates(goal, bundle, claims, llm, context_scope=scope)
     decisions = _final_validation(claims, decisions, observations)
     timings["verification_ms"] = round((time.perf_counter() - started) * 1000, 2)
     answer = _render(bundle, claims, decisions, timings, error)
