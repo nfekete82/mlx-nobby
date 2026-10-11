@@ -69,7 +69,11 @@ def _topic_terms(goal):
     # "RFC" on its own labels thousands of unrelated index entries;
     # a document is relevant only through its actual topic or RFC number
     # explicitly given in the question.
-    return list(dict.fromkeys(words))[:9]
+    terms = list(dict.fromkeys(words))
+    # Protocol / version identifiers are much more discriminative than
+    # generic measurement units in technical search queries.
+    names = [w for w in terms if re.fullmatch(r"[a-z]{2,15}\d{1,4}", w)]
+    return (names + [w for w in terms if w not in names])[:9]
 
 
 def choose_official_publisher_step(goal, observations):
