@@ -441,7 +441,12 @@ def test_named_official_publisher_home_after_two_irrelevant_searches():
         ("https://www.vonjacob.de/", "Wedding rings"),
         ("https://www.linguee.de/", "Dictionary"),
     )
-    decision = choose_official_publisher_step(ECB_GOAL, [irrelevant, irrelevant])
+    irrelevant["query"] = "ecb.europa.eu deposit facility key interest rates"
+    retry = search(("https://www.linguee.de/", "Dictionary"))
+    retry["query"] = "deposit facility rate european central bank"
+    # Repeated result objects are NOT independent searches.
+    assert choose_official_publisher_step(ECB_GOAL, [irrelevant, irrelevant]) is None
+    decision = choose_official_publisher_step(ECB_GOAL, [irrelevant, retry])
     assert decision == {
         "action": "fetch_url",
         "query": "https://www.ecb.europa.eu/",
@@ -449,7 +454,7 @@ def test_named_official_publisher_home_after_two_irrelevant_searches():
     }
     # Once the root has been attempted, there is no retry loop.
     assert choose_official_publisher_step(
-        ECB_GOAL, [irrelevant, irrelevant,
+        ECB_GOAL, [irrelevant, retry,
                    fetched("https://www.ecb.europa.eu/")]
     ) is None
     # Ambiguous third-party questions cannot seed official root URLs.
@@ -471,6 +476,8 @@ def test_official_root_exception_rejects_unseen_rates_subpaths_in_research():
         search(("https://vonjacob.de/", "Rings")),
         search(("https://linguee.de/", "Dictionary")),
     ]
+    observed[0]["query"] = "ecb.europa.eu deposit facility key interest rates"
+    observed[1]["query"] = "deposit facility rate european central bank"
     for url, allowed in ((root, True), (guessed, False), (unrelated, False)):
         harness = AgentRuntimeTests()
         harness.setUp()
