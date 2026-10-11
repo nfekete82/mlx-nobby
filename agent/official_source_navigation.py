@@ -203,6 +203,11 @@ def missing_official_answer_document(goal, observations):
     if not loaded:
         return False
     if paired:
+        # A document that covers IPv4 alone is not a complete source set
+        # for a paired IPv4+IPv6 request. Its 32-bit statement must not
+        # suppress discovery of the missing IPv6 specification.
+        if missing_requested_identifiers(goal, observations):
+            return True
         return not any(
             re.search(r"/(?:info|rfc)/rfc\d+", path)
             and re.search(r"\b(?:ipv4|ipv6|ip version [46])\b", body)
@@ -410,7 +415,7 @@ def choose_official_publisher_step(goal, observations):
                 if not re.search(
                     r"(?i)deposit.facility|key.ecb.interest.rates|"
                     r"key.interest.rates|monetary.policy|"
-                    r"geldpolitik|einlagefazilit",
+                    r"geldpolitik|einlagefazilit|standing.facilit",
                     name,
                 ):
                     # The homepage is a permitted discovery entry, never a
@@ -427,7 +432,7 @@ def choose_official_publisher_step(goal, observations):
                      + 8 * is_home + 24 * bool(missing_hits))
             if deposit_question:
                 if re.search(r"(?i)deposit.facility|key.ecb.interest.rates|"
-                             r"key.interest.rates|einlagefazilit", name):
+                             r"key.interest.rates|einlagefazilit|standing.facilit", name):
                     score += 40
                 elif re.search(r"(?i)monetary.policy|geldpolitik", name):
                     score += 8
