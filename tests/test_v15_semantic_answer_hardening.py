@@ -82,5 +82,5 @@ def test_confirmed_claim_kept_and_cited_when_another_is_unverified():
                  {"id": "c-2", "status": "insufficient_evidence", "passage_ids": []}]
     answer = _render(bundle, claims, decisions, {"extraction_ms": 0.0, "verification_ms": 0.0})
     assert "PostgreSQL 17" in answer
-    assert "www\\.postgresql\\.org" in answer
+    assert "www.postgresql.org" in answer
     assert answer.audit["verified_supported_count"] == 1
