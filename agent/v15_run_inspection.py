@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from agent.v15_cross_domain import case_technical
+from agent.model_efficiency import model_efficiency
 
 
 def _short(value, limit=260):
@@ -114,6 +115,7 @@ def inspect_case(row):
         "source_count": result["loaded_source_count"],
         "model_calls": result["model_calls"],
         "model_ms_by_purpose": result["model_call_ms_by_purpose"],
+        "model_call_details": model_efficiency(response)["calls"],
         "unattributed_ms": result["unattributed_ms"],
         "stage_hint": hint,
         "steps": traces,
