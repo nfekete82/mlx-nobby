@@ -464,10 +464,27 @@ def _final_validation(claims, decisions, observations, *, goal="", bundle=None):
                 )
                 checked.append(result)
                 continue
+            from agent.effective_date_validation import effective_date_conflict
+            anchor_sources = {
+                passage_by_id[pid].source_id for pid in result.get("passage_ids", [])
+                if pid in passage_by_id
+            }
+            effective = effective_date_conflict(
+                claim.statement,
+                [source_by_id[sid].text for sid in anchor_sources if sid in source_by_id],
+            )
             numerical = audit_numerical_claims(claim.statement, observations)
             temporal = future_availability_conflicts(claim.statement)
-            result["deterministic_validation"] = {"numerical": numerical, "temporal": temporal}
-            if temporal:
+            result["deterministic_validation"] = {
+                "numerical": numerical, "temporal": temporal, "effective_date": effective,
+            }
+            if effective:
+                result.update(
+                    status="contradicted",
+                    decision_origin="effective_date_validation",
+                    reason="Behauptetes Gültigkeitsdatum weicht vom ausdrücklich genannten Wirksamkeitsdatum der Quelle ab.",
+                )
+            elif temporal:
                 result.update(status="contradicted", decision_origin="deterministic_validation",
                               reason="Aktuelle Verfügbarkeit widerspricht einem künftigen Datum.")
             elif numerical.get("conflicts"):
