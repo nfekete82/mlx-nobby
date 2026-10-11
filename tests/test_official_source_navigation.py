@@ -731,3 +731,62 @@ def test_ecb_standing_facilities_exact_link_beats_rate_benchmark():
     )
     assert decision["action"] == "fetch_url"
     assert decision["query"] == facility
+
+
+
+def test_ecb_current_rate_homepage_is_refetched_with_focus_before_offsite_searches():
+    from agent.official_source_navigation import (
+        missing_official_answer_document, has_discovered_deeper_primary_link,
+    )
+    url = "https://www.ecb.europa.eu/home/html/index.en.html"
+    first = fetched(url)
+    first["result"].update({
+        "text": "ECB newsroom monetary policy summaries and navigation. " * 120,
+        "truncated": True, "offset": 0, "next_offset": 18000,
+        "total_characters": 55000,
+        "page_links": [{
+            "url": "https://www.ecb.europa.eu/mopo/interest_rates/html/index.en.html",
+            "title": "Interest rates",
+        }],
+    })
+    observed = [
+        dict(search((url, "ECB homepage")), query="ecb.europa.eu deposit facility"),
+        first,
+    ]
+    choice = choose_official_publisher_step(ECB_GOAL, observed)
+    assert choice == {
+        "action": "fetch_url",
+        "query": url,
+        "instruction": "focus=deposit facility",
+        "reason": "Themenabschnitt derselben amtlichen Seite quellengetreu lesen",
+    }
+    focused = fetched(url)
+    focused["instruction"] = "focus=deposit facility"
+    focused["result"].update({
+        "focus": "deposit facility",
+        "text": (
+            "Interest rates\n"
+            "Deposit facility | 2.50 %\n"
+            "Main refinancing operations (fixed rate) | 2.65 %\n"
+            "Marginal lending facility | 2.90 %\n"
+            "16 September 2026 Past key ECB interest rates\n"
+        ),
+        "offset": 43000,
+        "next_offset": 49000,
+        "truncated": True,
+    })
+    now = observed + [focused]
+    assert not missing_official_answer_document(ECB_GOAL, now)
+    assert not has_discovered_deeper_primary_link(ECB_GOAL, now)
+    assert choose_official_publisher_step(ECB_GOAL, now) != choice
+
+
+def test_unverified_mention_of_deposit_rate_not_assumed_current():
+    from agent.official_source_navigation import missing_official_answer_document
+    url = "https://www.ecb.europa.eu/home/html/index.en.html"
+    o = fetched(url)
+    o["result"]["focus"] = "deposit facility"
+    o["result"]["text"] = (
+        "Deposit facility: An overnight monetary policy instrument. " * 5
+    )
+    assert missing_official_answer_document(ECB_GOAL, [o])
