@@ -125,6 +125,54 @@ def _passages(text):
                 yield cursor, end, text[cursor:end]
 
 
+def _quantitative_windows(goal, text, *, max_windows=3):
+    """Bounded byte-exact spans for measured values in technical sources.
+
+    Numbers here are never interpreted or promoted to verified facts. This
+    only prevents a long specification's navigation/header from crowding out
+    lines bearing the units the user specifically asked about.
+    """
+    request = str(goal or "").casefold()
+    units = (
+        ("bit", r"\bbits?\b"),
+        ("byte", r"\bbytes?\b"),
+        ("meter", r"\bmeters?\b"),
+        ("metre", r"\bmetres?\b"),
+        ("sekunde", r"\bseconds?\b"),
+        ("second", r"\bseconds?\b"),
+    )
+    wanted = [pattern for key, pattern in units if key in request]
+    if not wanted or not isinstance(text, str):
+        return []
+    import re
+    terms = set(re.findall(r"(?i)\b[a-z]{2,}\d{1,3}\b", request))
+    terms.update(
+        word for word in re.findall(r"\w{4,}", request)
+        if word not in {"welche", "welcher", "haben", "wieviele", "entsprechenden"}
+    )
+    windows = []
+    for match in re.finditer(r"[^\n]+", text):
+        line = match.group()
+        if (not re.search(r"\b\d+(?:[.,]\d+)?\s*(?:" + "|".join(
+                pattern.removeprefix(r"\b").removesuffix(r"\b") for pattern in wanted
+            ) + r")", line, re.I)
+                or (terms and not any(word in line.casefold() for word in terms))):
+            continue
+        start, end = match.span()
+        # Keep exact adjacent sentence context, excluding huge navigation lists.
+        start = max(0, text.rfind("\n", max(0, start - 450), start) + 1)
+        end = min(len(text), text.find("\n", end) if "\n" in text[end:] else len(text))
+        excerpt = text[start:end]
+        if not 30 <= len(excerpt) <= 1000 or any(
+            abs(start - prior[0]) < 300 for prior in windows
+        ):
+            continue
+        windows.append((start, end, excerpt))
+        if len(windows) >= max_windows:
+            break
+    return windows
+
+
 def build_evidence(observations, *, now=None, goal=""):
     timestamp = now or datetime.now(timezone.utc).isoformat()
     sources, facts, seen = [], [], set()
@@ -181,14 +229,17 @@ def build_evidence(observations, *, now=None, goal=""):
         from agent.research_followup import support_policy_windows
         catalog_windows = catalog_source_windows(goal, text)
         support_windows = support_policy_windows(goal, text)
+        quantitative_windows = _quantitative_windows(goal, text)
         catalog_spans = {(start, end) for start, end, _ in catalog_windows}
         support_spans = {(start, end) for start, end, _ in support_windows}
-        passages = support_windows + catalog_windows + list(_passages(text))
+        quantitative_spans = {(start, end) for start, end, _ in quantitative_windows}
+        passages = support_windows + catalog_windows + quantitative_windows + list(_passages(text))
         # Retrieval ranking never implies entailment. Catalog headings and
         # short model cards need their original contiguous context; generic
         # marketing blurbs must not exhaust the evidence budget before them.
         passages.sort(key=lambda p: (
-            (p[0], p[1]) in catalog_spans or (p[0], p[1]) in support_spans,
+            (p[0], p[1]) in catalog_spans or (p[0], p[1]) in support_spans or
+            (p[0], p[1]) in quantitative_spans,
             bool(_DATE.search(p[2]) and _EVENT.search(p[2])),
             len(query_terms.intersection(word.casefold() for word in re.findall(r"\w{3,}", p[2]))),
         ), reverse=True)
@@ -198,7 +249,8 @@ def build_evidence(observations, *, now=None, goal=""):
             if len(excerpt) > budget or per_source >= 6000 or len(facts) >= 100:
                 break
             prefix = ("-catalog-" if (start, end) in catalog_spans
-                      else "-support-" if (start, end) in support_spans else "-")
+                      else "-support-" if (start, end) in support_spans
+                      else "-quant-" if (start, end) in quantitative_spans else "-")
             fid = sid + prefix + str(start)
             facts.append(EvidenceFact(fid, sid, "source_statement", excerpt, (), sid,
                                       excerpt, (start + offset, end + offset), publication, retrieved_at))
