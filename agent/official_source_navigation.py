@@ -251,7 +251,7 @@ def choose_official_publisher_step(goal, observations):
             already_read = any(
                 isinstance(other, dict) and other.get("action") == "fetch_url"
                 and (other.get("result") or {}).get("offset") == next_offset
-                and (other.get("result") or {}).get("final_url"
+                and ((other.get("result") or {}).get("final_url")
                      or (other.get("result") or {}).get("url")) == url
                 for other in observations
             )
