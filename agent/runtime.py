@@ -312,6 +312,10 @@ class AgentRuntime:
                                     align_enumerated_count(result["answer"])
                                 )
                             )
+                            from agent.official_evidence_gate import gate_unverified_official_answer
+                            result["answer"] = gate_unverified_official_answer(
+                                result["answer"], goal, result.get("steps", [])
+                            )
                         result["performance"] = {"events": list(self._profile_events)}
                     return result
                 except _RunCancelled:
