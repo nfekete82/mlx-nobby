@@ -266,7 +266,8 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
 def _compact_general_extraction_instructions():
     """Domain-neutral extract prompt, separated from catalog-only constraints."""
     return (
-        "Extrahiere die minimale notwendige Zahl ATOMARER Fakten, maximal acht, die die konkrete Frage beantworten. "
+        "Extrahiere die minimale notwendige Zahl ATOMARER Fakten, maximal acht; schöpfe das Budget nicht aus. "
+        "Wenn nur Namen gefragt sind, nenne nur diese Namen ohne zusätzliche Eigenschaften. "
         "Benutze ausschließlich die geladenen Originalpassagen; Weltwissen ist kein Beleg. "
         "qualifiers enthalten nur fachlich relevante Angaben, keine Quellenmetadaten. "
         "Mehrteilige Fragen: jeden nachgewiesenen Teil getrennt nennen. "
@@ -281,7 +282,7 @@ def _compact_general_extraction_instructions():
         "qualifiers: Objekt mit Stringwerten. passage_ids: Liste echter, "
         "maximal sechs IDs aus dem beigefügten Kontext. "
         "Wenn die Passagen keinen beantwortbaren Fakt enthalten, claims=[]. "
-        'Antworte ausschließlich als kompaktes JSON: '
+        'Antworte ausschließlich als kompaktes JSON ohne Einrückung oder Markdown: '
         '{"claims":[{"subject":"...","predicate":"...","value":"...",'
         '"qualifiers":{},"statement":"...","passage_ids":["..."]}]}.'
     )
