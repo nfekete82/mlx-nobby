@@ -5,7 +5,7 @@ from agent.official_source_navigation import (
 )
 
 RKI_GOAL = "Welche typischen Symptome einer Influenza nennt das Robert Koch-Institut?"
-ECB_GOAL = "Wie hoch ist aktuell der Einlagezins der Europäischen Zentralbank (EZB), und seit welchem Datum gilt er?"
+ECB_GOAL = "Wie hoch ist aktuell der Einlagezins der Europäischen Zentralbank, und seit welchem Datum gilt dieser Zinssatz?"
 RFC_GOAL = "Wie viele Bit haben IPv4- und IPv6-Adressen laut den entsprechenden IETF-RFCs?"
 
 
