@@ -281,3 +281,25 @@ def test_support_verification_scope_does_not_accept_untrusted_policy_host():
     fake = "https://postgresql.org.evil.example/support/versioning/"
     bundle = build_evidence([fetched(fake, support_table())], goal=GOAL)
     assert support_matrix_verification_scope(GOAL, bundle, [("PostgreSQL 18", "test", "missing")]) is None
+
+
+def test_numbered_policy_navigation_is_not_a_supported_version_reference():
+    """Navigation index 18 is not PostgreSQL 18; explicit project references matter."""
+    nav = "\n".join(
+        f"Documentation menu entry number {i}: explore releases and general guides."
+        for i in range(20)
+    )
+    note = "PostgreSQL 17 has a separate revision note without a support status."
+    bundle = build_evidence([
+        fetched(POLICY, nav + "\n" + note + "\n" + support_table()),
+    ], goal=GOAL)
+    rows = support_matrix_candidates(GOAL, bundle)
+    scope = support_matrix_verification_scope(GOAL, bundle, rows)
+    assert scope is not None
+    selected = [
+        fact for fact in bundle.facts
+        if fact.id in set(scope["c-1"]) and "-support-" not in fact.id
+    ]
+    assert any(note in fact.evidence_excerpt for fact in selected)
+    assert not any("Documentation menu entry number" in fact.evidence_excerpt
+                   for fact in selected)
