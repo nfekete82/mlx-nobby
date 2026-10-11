@@ -644,8 +644,8 @@ def test_two_protocol_question_continues_beyond_generic_rfc_editor_homepage():
     assert missing_official_answer_document(RFC_GOAL, observations)
     choice = choose_official_publisher_step(RFC_GOAL, observations)
     assert choice["action"] == "search_web"
-    assert "ipv4" in choice["query"].casefold()
     assert "ipv6" in choice["query"].casefold()
+    assert "ipv4" not in choice["query"].casefold()
     assert "rfc-editor.org" in choice["query"]
     second = dict(search(), query=choice["query"])
     assert choose_official_publisher_step(
