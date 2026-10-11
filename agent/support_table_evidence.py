@@ -75,9 +75,10 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
                     version = values[0]
                     key = publisher.casefold() + "/" + version
                     item = (publisher, version, status.casefold(), fact.id)
-                    if key in versions and versions[key][2] != item[2]:
-                        versions[key] = None
-                    elif key not in versions:
+                    if key in versions:
+                        if versions[key] is not None and versions[key][2] != item[2]:
+                            versions[key] = None
+                    else:
                         versions[key] = item
                 break
     records = []
