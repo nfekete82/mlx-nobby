@@ -157,6 +157,7 @@ def test_numeric_source_windows_prioritize_exact_unit_passages():
     key = "IPv6 increases the IP address size from 32 bits to 128 bits."
     body = preface + "\n" + key + "\nAdditional technical specifications."
     windows = _quantitative_windows(goal, body)
+    assert _quantitative_windows("Bitte fasse die Dokumentation zusammen.", body) == []
     assert windows
     assert any(key in excerpt for _, _, excerpt in windows)
     assert all(body[start:end] == excerpt for start, end, excerpt in windows)
