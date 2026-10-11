@@ -25,7 +25,12 @@ def _publisher_name(goal, url):
             return None
         if host.startswith("www."):
             host = host[4:]
-        stem = host.split(".")[0]
+        labels = host.split(".")
+        # Conservative canonical apex domain. A project-name prefix on a
+        # longer attacker-controlled hostname must never grant authority.
+        if len(labels) != 2:
+            return None
+        stem = labels[0]
         if len(stem) < 4 or stem in {"support", "docs", "help", "versions"}:
             return None
         # A matching named publisher and its actual source URL are required;
