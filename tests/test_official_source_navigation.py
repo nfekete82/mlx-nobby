@@ -494,3 +494,29 @@ def test_official_root_exception_rejects_unseen_rates_subpaths_in_research():
         assert bool([
             s for s in out["steps"] if s.get("action") == "fetch_url_allowlist_guard"
         ]) is not allowed
+
+
+
+def test_missing_rfc_version_outranks_known_version_category_page():
+    """Never load a generic IPv4 category when explicitly still missing IPv6."""
+    ipv4 = "https://www.rfc-editor.org/info/rfc791/"
+    ipv6 = "https://www.rfc-editor.org/info/rfc8200/"
+    index = "https://www.rfc-editor.org/subjects/ipv4/"
+    loaded = fetched(ipv4, links=[
+        {"url": index, "title": "IPv4 RFC subject index"},
+    ])
+    loaded["result"]["text"] = (
+        "Internet Protocol version IPv4 addressing is the subject of this RFC. " * 4
+    )
+    initial = search((ipv4, "Internet Protocol Version 4"))
+    targeted = search(
+        (index, "IPv4 RFC documents"),
+        (ipv6, "IPv6 Internet Protocol Specification, IETF"),
+    )
+    choice = choose_official_publisher_step(RFC_GOAL, [initial, loaded, targeted])
+    assert choice["action"] == "fetch_url"
+    assert choice["query"] == ipv6
+    no_ipv6 = search((index, "IPv4 RFC documents"))
+    assert choose_official_publisher_step(
+        RFC_GOAL, [initial, loaded, no_ipv6]
+    ) is None
