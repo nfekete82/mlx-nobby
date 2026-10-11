@@ -219,6 +219,10 @@ def choose_support_policy_research_step(goal, observations):
             and isinstance(item.get("result"), dict)
         ]
         if len(searches) == 1 and not attempted:
+            # A named publisher's *discovered* homepage may directly link to
+            # the support matrix (and thus avoids a second search). Prefer
+            # this over a generic download hub, which often has no policy link.
+            # These are navigation hints only, not evidence.
             fallback_urls = []
             for link in searches[0]["result"].get("results", []):
                 if not isinstance(link, dict) or link.get("source_type") == "rss_search_entry":
@@ -234,18 +238,29 @@ def choose_support_policy_research_step(goal, observations):
                         and parts.username is None
                         and parts.password is None
                         and parts.port in {None, 443}
-                        and re.fullmatch(r"/download/?", parts.path, re.I)
+                        and (
+                            parts.path in {"", "/"}
+                            or re.fullmatch(r"/download/?", parts.path, re.I)
+                        )
                         and not parts.query
                         and not parts.fragment
                     ):
-                        fallback_urls.append(url)
+                        # Rank only URLs actually supplied by the search engine.
+                        # Never derive the homepage from a download result.
+                        priority = 1 if parts.path in {"", "/"} else 0
+                        fallback_urls.append((priority, url))
                 except ValueError:
                     continue
             if fallback_urls:
+                priority, url = max(fallback_urls, key=lambda item: item[0])
                 return {
                     "action": "fetch_url",
-                    "query": fallback_urls[0],
-                    "reason": "Gefundene offizielle Downloadübersicht als Einstieg prüfen",
+                    "query": url,
+                    "reason": (
+                        "Gefundene offizielle Startseite nach Versionsrichtlinie durchsuchen"
+                        if priority else
+                        "Gefundene offizielle Downloadübersicht als Einstieg prüfen"
+                    ),
                 }
         return None
     _, url = max(candidates, key=lambda item: item[0])
