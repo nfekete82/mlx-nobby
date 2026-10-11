@@ -65,10 +65,14 @@ def same_site_html_links(page, base_url):
             continue
         try:
             target = urlsplit(urljoin(base_url, href))
+            acceptable = (
+                target.scheme == "https" and target.hostname == parts.hostname
+                and not target.username and not target.password
+                and target.port in {None, 443}
+            )
         except ValueError:
             continue
-        if (target.scheme != "https" or target.hostname != parts.hostname
-                or target.username or target.password or target.port not in {None, 443}):
+        if not acceptable:
             continue
         if not target.path or target.path == "/":
             continue
