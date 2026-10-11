@@ -58,6 +58,15 @@ def compact_web_planning(items):
                 payload["text"] = _compact_text(original)
                 payload["text_truncated"] = payload["text"] != original
                 payload["original_text_chars"] = len(original)
+            page_links = payload.get("page_links")
+            if isinstance(page_links, list):
+                # Keep the complete bounded link pool in observations for
+                # deterministic source navigation, but not in model prompts.
+                payload["page_links"] = [
+                    {"url": str(hit.get("url") or "")[:1200],
+                     "title": str(hit.get("title") or "")[:120]}
+                    for hit in page_links[:24] if isinstance(hit, dict)
+                ]
             hits = payload.get("results")
             if isinstance(hits, list):
                 payload["results"] = [
