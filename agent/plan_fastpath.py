@@ -20,7 +20,10 @@ _GENERIC_BRAND_PATH = re.compile(
 _DATE_ARTICLE = re.compile(r"/newsroom/20\d\d/\d\d/[^/]+", re.I)
 _LOCALE_HOME = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2})?)?/?$", re.I)
 _CATALOG_TERMS = re.compile(r"\b(?:modell\w*|model\w*|produkt\w*|product\w*|"
-                            r"sortiment|lineup|angebot\w*|iphone\w*|ipad\w*)\b", re.I)
+                            r"sortiment|lineup|portfolio|angebot\w*|smartphone\w*|"
+                            r"telefon\w*|handy\w*|iphone\w*|ipad\w*|pixel\w*|"
+                            r"galaxy\w*|surface\w*|airpods\w*|macbook\w*|"
+                            r"tablet\w*|watch\w*|laptop\w*)\b", re.I)
 _CATALOG_INTENT = re.compile(r"\b(?:welch\w*|aktuell\w*|currently|list\w*|"
                              r"which|available|erhältlich|bietet|offered)\b", re.I)
 _OFFICIAL = re.compile(r"\b(?:offiziell\w*|official\w*|herstellerseite)\b", re.I)
