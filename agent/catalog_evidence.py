@@ -13,9 +13,11 @@ from agent.plan_fastpath import official_catalog_goal
 _SECTION = re.compile(
     r"(?i)(?:entdecke|entdecken|alle|unsere|vergleiche|vergleichen|"
     r"discover|explore|compare|shop|browse|our)\s+"
-    r"(?:die\s+|alle\s+|all\s+|our\s+)?"
+    r"(?:die\s+|das\s+|alle\s+|all\s+|our\s+)?"
+    r"(?:gesamte\s+|gesamten\s+|entire\s+)?"
     r"(?:neuen?\s+|current\s+)?"
-    r"(?:modelle|models|produkte|products|geräte|devices|lineup)"
+    r"(?:modelle|models|produkte|products|geräte|devices|lineup|"
+    r"portfolio|sortiment|modellreihe|serie|series|smartphones|phones)"
 )
 _MIN_TEXT = 75
 _WINDOW = 900
