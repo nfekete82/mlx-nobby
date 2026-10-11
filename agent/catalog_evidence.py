@@ -13,7 +13,7 @@ from agent.plan_fastpath import official_catalog_goal
 _SECTION = re.compile(
     r"(?i)(?:entdecke|entdecken|alle|unsere|vergleiche|vergleichen|"
     r"discover|explore|compare|shop|browse|our)\s+"
-    r"(?:die\s+|all\s+|our\s+)?"
+    r"(?:die\s+|alle\s+|all\s+|our\s+)?"
     r"(?:neuen?\s+|current\s+)?"
     r"(?:modelle|models|produkte|products|geräte|devices|lineup)"
 )
