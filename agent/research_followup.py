@@ -198,6 +198,10 @@ def choose_support_policy_research_step(goal, observations):
             score = 20 * bool(re.search(r"/versioning(?:/|$)", parts.path, re.I))
             score += 10 * bool(_POLICY_TITLE.search(title))
             score += 5 * bool(re.search(r"/(?:versions|lifecycle)(?:/|$)", parts.path, re.I))
+            # /support/ alone is a generic index, not a version matrix.
+            # Do not treat it as sufficient evidence for this question.
+            if score <= 0:
+                continue
             candidates.append((score, url))
     if not candidates:
         return None
