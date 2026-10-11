@@ -177,10 +177,15 @@ def build_evidence(observations, *, now=None, goal=""):
         # consume the complete selection payload.
         from agent.planning_context import _DATE, _EVENT
         query_terms = {word.casefold() for word in re.findall(r"\w{3,}", str(goal))}
-        passages = list(_passages(text))
-        # Retrieval ranking never implies entailment. Preserve dated event
-        # units before navigation can exhaust the per-source evidence budget.
+        from agent.catalog_evidence import catalog_source_windows
+        catalog_windows = catalog_source_windows(goal, text)
+        catalog_spans = {(start, end) for start, end, _ in catalog_windows}
+        passages = catalog_windows + list(_passages(text))
+        # Retrieval ranking never implies entailment. Catalog headings and
+        # short model cards need their original contiguous context; generic
+        # marketing blurbs must not exhaust the evidence budget before them.
         passages.sort(key=lambda p: (
+            (p[0], p[1]) in catalog_spans,
             bool(_DATE.search(p[2]) and _EVENT.search(p[2])),
             len(query_terms.intersection(word.casefold() for word in re.findall(r"\w{3,}", p[2]))),
         ), reverse=True)
@@ -189,7 +194,7 @@ def build_evidence(observations, *, now=None, goal=""):
                 continue  # A chunk boundary is not the end of the source statement.
             if len(excerpt) > budget or per_source >= 6000 or len(facts) >= 100:
                 break
-            fid = sid + "-" + str(start)
+            fid = sid + ("-catalog-" if (start, end) in catalog_spans else "-") + str(start)
             facts.append(EvidenceFact(fid, sid, "source_statement", excerpt, (), sid,
                                       excerpt, (start + offset, end + offset), publication, retrieved_at))
             budget -= len(excerpt)
