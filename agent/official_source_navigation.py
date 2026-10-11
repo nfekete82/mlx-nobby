@@ -22,7 +22,8 @@ _STOP = frozenset((
     "in", "im", "am", "auf", "aus", "von", "laut", "bei", "und", "oder", "nach",
     "aktuell", "derzeit", "typischen", "entsprechenden", "bitte", "nennt",
     "seit", "welchem", "datum", "wird", "werden", "zum", "zur", "offiziell",
-    "offiziellen", "website", "seite", "rfc", "rfcs",
+    "offiziellen", "website", "seite", "rfc", "rfcs", "haben", "gilt",
+    "dieser", "diese", "diesen", "zinssatz", "sowie",
 ))
 
 
@@ -65,8 +66,9 @@ def _topic_terms(goal):
         words.extend(("deposit", "facility", "rate", "effective"))
     if any(w.startswith(("adress", "ipv")) for w in words):
         words.extend(("address", "bits"))
-    if re.search(r"(?i)\brfcs?\b", str(goal or "")):
-        words.append("rfc")
+    # "RFC" on its own labels thousands of unrelated index entries;
+    # a document is relevant only through its actual topic or RFC number
+    # explicitly given in the question.
     return list(dict.fromkeys(words))[:9]
 
 
@@ -124,8 +126,14 @@ def choose_official_publisher_step(goal, observations):
                             str(link.get("snippet") or "").casefold()))
             word_hits = sum(bool(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", name))
                             for w in terms)
-            # Never follow an arbitrary menu item just because an official
-            # homepage links to it. Page hyperlinks need a topic match.
+            # A publisher domain or its index is not relevant evidence.
+            # In particular, RFC indexes and their numeric navigation links
+            # must not be followed based on the word "RFC" alone.
+            if host == "rfc-editor.org" and re.search(
+                r"(?i)/(?:rfc-index|(?:info|rfc)/rfc\d+)(?:/|$)", parsed.path
+            ) and not word_hits:
+                continue
+            # Page hyperlinks need a topic match, not just same-host status.
             if base_score and not word_hits:
                 continue
             # Specific document beats generic login/home index even when its
@@ -149,10 +157,14 @@ def choose_official_publisher_step(goal, observations):
                 and o.get("action") == "search_web"
                 and o.get("status") == "completed"]
     if len(searches) == 1 and not loaded:
+        # A second query drops quoted/site-scoped domains. The search engine
+        # may ignore or overconstrain those tokens; use topical synonyms.
+        alternates = [term for term in terms
+                      if term not in {"bit", "bits", "address", "adressen", "symptoms"}]
         return {
             "action": "search_web",
-            "query": f'"{host}" ' + " ".join(terms[:5]),
-            "reason": "Einmalige präzisierte Suche nach offizieller Primärquelle",
+            "query": " ".join((alternates or terms)[:5]) + " " + host,
+            "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
         }
     return None
 
