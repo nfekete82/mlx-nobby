@@ -303,3 +303,100 @@ def test_numbered_policy_navigation_is_not_a_supported_version_reference():
     assert any(note in fact.evidence_excerpt for fact in selected)
     assert not any("Documentation menu entry number" in fact.evidence_excerpt
                    for fact in selected)
+
+
+
+def test_official_support_policy_navigation_uses_only_returned_urls():
+    from agent.research_followup import choose_support_policy_research_step
+
+    first = choose_support_policy_research_step(GOAL, [])
+    assert first["action"] == "search_web"
+    assert "postgresql" in first["query"].lower()
+    assert "https://" not in first["query"]
+
+    search = {"action": "search_web", "status": "completed", "result": {
+        "results": [
+            {"url": "https://postgresql.org.evil.example/support/versioning/",
+             "title": "Spoofed Versioning Policy"},
+            {"url": "http://www.postgresql.org/support/versioning/",
+             "title": "Insecure URL"},
+            {"url": "https://www.postgresql.org/download/", "title": "Downloads"},
+            {"url": POLICY, "title": "Versioning Policy"},
+        ],
+    }}
+    selected = choose_support_policy_research_step(GOAL, [search])
+    assert selected == {
+        "action": "fetch_url",
+        "query": POLICY,
+        "reason": "Gefundene offizielle Versionsrichtlinie direkt prüfen",
+    }
+    assert choose_support_policy_research_step(GOAL, [
+        search, fetched(POLICY, support_table()),
+    ]) is None
+    assert choose_support_policy_research_step(
+        "Welche MySQL-Versionen werden unterstützt?", []
+    ) is None
+    assert choose_support_policy_research_step(
+        "Vergleiche PostgreSQL und andere Datenbanken bei den unterstützten Versionen", []
+    ) is None
+
+
+def test_official_support_policy_navigation_can_use_a_fetched_same_site_link():
+    from agent.research_followup import choose_support_policy_research_step
+
+    obs = [
+        fetched(
+            "https://www.postgresql.org/download/",
+            "PostgreSQL downloads",
+            links=[
+                {"url": "https://postgresql.org.evil.example/support/versioning/",
+                 "title": "Versioning Policy"},
+                {"url": POLICY, "title": "Versioning Policy"},
+            ],
+        ),
+    ]
+    assert choose_support_policy_research_step(GOAL, obs)["query"] == POLICY
+
+
+def test_support_policy_runtime_skips_planner_but_keeps_source_verification():
+    """Search/fetch still use the normal registry; no hardcoded source URL."""
+    from dataclasses import replace
+    from test_agent_runtime import AgentRuntimeTests
+
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    queries = []
+    def search(**kwargs):
+        queries.append(kwargs.get("query"))
+        return {
+            "provider": "SearXNG",
+            "results": [{"url": POLICY, "title": "PostgreSQL: Versioning Policy"}],
+        }
+    def fetch(**kwargs):
+        assert kwargs.get("query") == POLICY
+        return {"ok": True, "url": POLICY, "text": support_table()}
+    harness.add_tool("search_web", search)
+    harness.add_tool("fetch_url", fetch)
+
+    def evidence_answer(goal, observations):
+        def llm(purpose, prompt, limit):
+            assert purpose == "agent.verify"
+            payload = json.loads(prompt.split("\n")[-1])
+            return json.dumps({"claims": [
+                {"id": claim["id"], "status": "supported",
+                 "reason": "Explicit source matrix row",
+                 "passage_ids": claim["passage_ids"]}
+                for claim in payload["claims"]
+            ]})
+        return synthesize_verified_evidence(goal, observations, llm)
+
+    harness.hooks = replace(harness.hooks, agent_evidence_answer=evidence_answer)
+    runtime = harness.runtime([])
+    result = runtime.run(GOAL, mode="research")
+
+    assert result["status"] == "completed"
+    assert [s["action"] for s in result["steps"]] == ["search_web", "fetch_url"]
+    assert queries and "postgresql" in queries[0].lower()
+    assert result["evidence"]["verified_supported_count"] == 5
+    assert not harness.planner_limits
+    assert not harness.provider.calls
