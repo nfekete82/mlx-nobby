@@ -698,3 +698,47 @@ def test_navigation_late_document_priority_preserves_bounded_safe_links():
     indices = [int(link["url"].split("-")[-1]) for link in links
                if "/generic-menu-" in link["url"]]
     assert indices == sorted(indices)
+
+
+
+def test_source_focus_offset_selects_late_factual_section_not_early_topic_mention():
+    from agent.app import source_focus_offset
+    head = (
+        "Deposit facility is a monetary policy instrument.\n"
+        + "General ECB publications and news without current rates. " * 450
+    )
+    rates = (
+        "\nInterest rates\n"
+        "Deposit facility | 2.50 %\n"
+        "Main refinancing operations | 2.65 %\n"
+        "Marginal lending facility | 2.90 %\n"
+        "16 September 2026 Past key ECB interest rates\n"
+    )
+    readable = head + rates + "End of official ECB document.\n"
+    assert len(head) > 18000
+    offset = source_focus_offset(readable, "deposit facility", chunk_size=6000)
+    assert offset is not None and offset > 18000
+    exact = readable[offset:offset+6000]
+    assert rates.strip() in exact
+    assert source_focus_offset(readable, "not actually on page") is None
+    assert source_focus_offset(readable, "", chunk_size=6000) is None
+
+
+def test_fetch_tool_focus_is_passed_as_source_navigation_not_answer_text():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from agent.app import tool_fetch_url
+
+    sample_url = "https://www.ecb.europa.eu/"
+    with patch("agent.app.fetch_web_page") as fake:
+        fake.return_value = {
+            "ok": True, "url": sample_url, "text": "Verbatim source",
+            "focus": "deposit facility", "offset": 42000,
+        }
+        output = tool_fetch_url(SimpleNamespace(
+            prompt=sample_url, instruction="focus=deposit facility"
+        ))
+    fake.assert_called_once_with(sample_url, offset=0, focus="deposit facility")
+    assert output["requested_url"] == sample_url
+    assert output["offset"] == 42000
+    assert output["text"] == "Verbatim source"
