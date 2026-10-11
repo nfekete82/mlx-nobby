@@ -684,13 +684,21 @@ class AgentRuntime:
                 from agent.plan_fastpath import (
                     choose_official_followup, choose_official_catalog_refinement,
                 )
+                from agent.page_navigation import choose_catalog_page_link
+                decision = choose_catalog_page_link(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "catalog_source_navigation",
+                        "duration_ms": 0.0,
+                    })
                 successful_fetches = sum(
                     item.get("action") == "fetch_url" and item.get("status") == "completed"
                     for item in observations if isinstance(item, dict)
                 )
                 # Use only discovered URLs via the existing allowlist. A
                 # manufacturer homepage isn't proof of a current product list.
-                if successful_fetches < 2:
+                if decision is None and successful_fetches < 2:
                     decision = choose_official_followup(goal, observations)
                     if decision is not None:
                         self._profile_events.append({
