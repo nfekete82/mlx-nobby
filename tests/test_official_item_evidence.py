@@ -57,3 +57,35 @@ def test_removed_product_also_removes_its_nested_feature_bullets():
     assert "Colors: invented" not in fixed
     assert "iPhone Duo" in fixed
     assert "Folding display" in fixed
+
+
+def test_removed_numbered_products_drop_entire_indented_blocks_and_summary():
+    answer = (
+        "Apple bietet offiziell folgende Modelle an:\n"
+        "1. **iPhone 99 Pro** – ab 13. Oktober 2026\n"
+        "   - A99 Prozessor\n"
+        "   - iPhone 99 Pro hat erfundene Funktionen\n\n"
+        "2. **iPhone 88 Pro** – ab 14. Oktober 2026\n"
+        "   - Fantasiefarben\n"
+        "3. **iPhone Duo** – vorgestellt\n"
+        "   - Mit faltbarem Display\n"
+        "Zusammengefasst: iPhone 99 und iPhone 88 sind offiziell erhältlich.\n"
+        "Quellen:\n"
+    )
+    result = filter_unsupported_official_items(
+        answer, GOAL, article("Apple introduced iPhone Duo with folding display.")
+    )
+    assert "A99" not in result
+    assert "Fantasiefarben" not in result
+    assert "Zusammengefasst" not in result
+    assert "iPhone Duo" in result
+    assert "faltbarem Display" in result
+
+
+def test_unverified_date_discards_its_child_bullets():
+    answer = ("- **iPhone Duo** – erhältlich ab 23. Oktober 2026\n"
+              "  - Erstes faltbares iPhone\n")
+    result = filter_unsupported_official_items(
+        answer, GOAL, article("Apple introduced iPhone Duo with foldable display.")
+    )
+    assert "Erstes faltbares" not in result
