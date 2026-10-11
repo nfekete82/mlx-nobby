@@ -456,9 +456,23 @@ def synthesize_verified_evidence(goal, observations, llm):
     timings = {"extraction_ms": 0.0, "verification_ms": 0.0}
     if not _anchored_passages(bundle):
         return _render(bundle, [], [], timings, "no_usable_evidence")
-    started = time.perf_counter()
-    claims, error = _extract_candidates(goal, bundle, llm)
-    timings["extraction_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    from agent.support_table_evidence import support_matrix_candidates
+    rows = support_matrix_candidates(goal, bundle)
+    if rows:
+        # Source-exact table extraction only. The ordinary verifier still
+        # examines each claim and can reject, contradict or abstain.
+        claims = [
+            SemanticClaim("c-" + str(i), subject, "supported_major_version",
+                          subject, (), statement, (passage_id,))
+            for i, (subject, statement, passage_id) in enumerate(rows, 1)
+        ]
+        error = None
+        extraction_method = "source_exact_support_matrix"
+    else:
+        started = time.perf_counter()
+        claims, error = _extract_candidates(goal, bundle, llm)
+        timings["extraction_ms"] = round((time.perf_counter() - started) * 1000, 2)
+        extraction_method = "model_anchored_extraction"
     from agent.catalog_evidence import catalog_claim_is_lineup
     # Distinguish source-relative truth from actual question relevance. A
     # truthful camera feature is not an answer to "which models are sold?".
@@ -467,9 +481,13 @@ def synthesize_verified_evidence(goal, observations, llm):
         if not claims:
             error = "off_topic_catalog_candidates"
     if not claims:
-        return _render(bundle, [], [], timings, error)
+        answer = _render(bundle, [], [], timings, error)
+        answer.audit["extraction_method"] = extraction_method
+        return answer
     started = time.perf_counter()
     decisions = verify_candidates(goal, bundle, claims, llm)
     decisions = _final_validation(claims, decisions, observations)
     timings["verification_ms"] = round((time.perf_counter() - started) * 1000, 2)
-    return _render(bundle, claims, decisions, timings, error)
+    answer = _render(bundle, claims, decisions, timings, error)
+    answer.audit["extraction_method"] = extraction_method
+    return answer
