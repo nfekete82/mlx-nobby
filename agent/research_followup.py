@@ -113,3 +113,34 @@ def choose_support_policy_followup(goal, observations):
     return {"action": "search_web",
             "query": f"site:{host} supported major versions versioning policy lifecycle",
             "reason": "Einmalige präzise Suche nach offizieller Support-/Versionsrichtlinie"}
+
+
+# Anchoring a publisher's genuine support matrix requires the table header and
+# its nearby rows to remain together. These windows are byte-for-byte substrings
+# of the fetched page, not generated or inferred version claims.
+_SUPPORT_MATRIX_HEADING = re.compile(
+    r"(?im)^[^\n]{0,180}\bversions?\b[^\n]{0,130}"
+    r"\b(?:supported|support\s+status|unterstützt|active)\b[^\n]{0,200}$"
+)
+
+
+def support_policy_windows(goal, text, *, max_windows=2):
+    """Return bounded, full-line source spans for supported-version tables."""
+    if not support_policy_question(goal) or not isinstance(text, str):
+        return []
+    windows = []
+    for match in _SUPPORT_MATRIX_HEADING.finditer(text):
+        start = match.start()
+        end = min(len(text), start + 1550)
+        if end < len(text):
+            newline = text.rfind("\n", start + 80, end)
+            if newline < 0:
+                continue
+            end = newline
+        block = text[start:end]
+        if len(block) < 80 or any(abs(start - prev[0]) < 1000 for prev in windows):
+            continue
+        windows.append((start, end, block))
+        if len(windows) >= max_windows:
+            break
+    return windows
