@@ -469,6 +469,16 @@ class AgentRuntime:
         from agent.official_source_navigation import clinical_presentation_question
         if mode == "diagnostic" and clinical_presentation_question(goal):
             research_continuation_steps = 2
+        # Bounded time for paired, explicitly named protocol versions:
+        # one extra source window and an additional targeted search/fetch.
+        # Most factual queries retain the normal six diagnostic steps.
+        if mode == "diagnostic" and re.search(r"(?i)\\bbits?\\b", goal):
+            from agent.official_source_navigation import _publisher
+            identifiers = set(re.findall(
+                r"(?i)(?<!\\w)[a-z]{2,12}\\d{1,3}(?!\\w)", goal
+            ))
+            if _publisher(goal) and 2 <= len(identifiers) <= 5:
+                research_continuation_steps = max(research_continuation_steps, 2)
         loop_max_steps = max_steps + research_continuation_steps
 
         def publish(status="running", current_step=None, pending_action=None):
