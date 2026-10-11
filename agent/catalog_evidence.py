@@ -43,13 +43,15 @@ def catalog_source_windows(goal, text, *, max_windows=2):
 
 
 _LINEUP_STATUSES = re.compile(
-    r"(?i)\b(?:im\s+(?:aktuellen?\s+)?(?:sortiment|angebot|lineup)|"
-    r"(?:aktuell\s+)?(?:erhältlich|verfügbar|available|offered)|"
-    r"(?:kaufen|gekauft|bestellen|bestellbar|buy|shop|purchase)|"
-    r"(?:bietet|verkauft|führt|gelistet|gelisteten|listet|"
-    r"angeboten|verkaufsmodell|available|sold|listed|offers|sells|"
-    r"(?:aktuelle[nrs]?\s+)?(?:modellpalette|modellauswahl|modelle|models|lineup))\b"
+    r"(?i)\b(?:sortiment|modellsortiment|modellpalette|modellauswahl|"
+    r"modellübersicht|angebot|lineup|catalog|catalogue|"
+    r"(?:aktuell\s+)?(?:erhältlich|verfügbar|available)|"
+    r"vorbestellbar|bestellbar|"
+    r"(?:zum|jetzt)\s+(?:kauf|kaufen|bestellen|buy|purchase)|"
+    r"(?:zum\s+verkauf|for\s+sale))\b"
 )
+# Verbs such as "bietet/offers" also describe *features* (e.g. a camera).
+# They only signal catalog status if the named manufacturer is the subject.
 _MODEL_TOPICS = ("iphone", "ipad", "macbook", "airpods", "galaxy",
                  "surface", "pixel", "watch", "laptop", "tablet", "smartphone")
 
@@ -64,7 +66,14 @@ def catalog_claim_is_lineup(goal, claim):
         return True
     statement = str(getattr(claim, "statement", "") or "")
     if not _LINEUP_STATUSES.search(statement):
-        return False
+        from agent.plan_fastpath import _brand_for_goal
+        brand = _brand_for_goal(goal)
+        if not brand or not re.search(
+            r"(?i)\b" + re.escape(brand) +
+            r"\s+(?:(?:offiziell|aktuell)\s+)?(?:bietet|verkauft|führt|listet|offers|sells|lists)\b",
+            statement,
+        ):
+            return False
     names = " ".join(str(getattr(claim, k, "") or "")
                      for k in ("subject", "value", "statement")).lower()
     goal_lower = str(goal).lower()
