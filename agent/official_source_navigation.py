@@ -545,11 +545,16 @@ def choose_official_publisher_step(goal, observations):
             r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal)
         )
         if host == "rfc-editor.org":
-            # Public search engines often cannot rank a single RFC document
-            # for TWO protocol versions. Locate one requested version first;
-            # the existing missing-counterpart logic pursues the second.
+            # An initially generic RFC landing page and an already loaded
+            # version-specific RFC need distinct follow-up queries. Never
+            # guess a document number: the search backend must return the
+            # specific RFC URL before we can fetch or cite it.
             target = names[-1] if names else ""
-            refinement = f"{target} address specification RFC {host}"
+            if covered_identifiers and missing_identifiers:
+                target = missing_identifiers[0]
+                refinement = f"{target} Internet Protocol version specification RFC Editor"
+            else:
+                refinement = f"{target} address specification RFC {host}"
         else:
             refinement = f"deposit facility key ECB interest rates effective date {host}"
         attempted = any(
