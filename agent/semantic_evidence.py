@@ -266,8 +266,9 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
 def _compact_general_extraction_instructions():
     """Domain-neutral extract prompt, separated from catalog-only constraints."""
     return (
-        "Extrahiere maximal acht ATOMARE Fakten, die die konkrete Frage beantworten. "
+        "Extrahiere die minimale notwendige Zahl ATOMARER Fakten, maximal acht, die die konkrete Frage beantworten. "
         "Benutze ausschließlich die geladenen Originalpassagen; Weltwissen ist kein Beleg. "
+        "qualifiers enthalten nur fachlich relevante Angaben, keine Quellenmetadaten. "
         "Mehrteilige Fragen: jeden nachgewiesenen Teil getrennt nennen. "
         "Keine Aussage über einen fehlenden Teil erfinden. "
         "Keine Faktbehauptung ohne ausdrücklich passende passage_ids. "
