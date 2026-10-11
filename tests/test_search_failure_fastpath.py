@@ -1,5 +1,10 @@
 """The official search fastpath only stops proven empty retrieval."""
 from agent.search_failure_fastpath import exhausted_official_search
+import io
+import urllib.error
+from unittest.mock import patch
+
+import pytest
 
 
 def item(hits, *, ok=True, status="completed"):
@@ -35,3 +40,57 @@ def test_loaded_article_keeps_research_running():
               "result": {"ok": True, "url": "https://www.apple.com/de/newsroom/item",
                          "text": "Official product announcement. " * 10}}
     assert not exhausted_official_search(goal, [item([]), item([]), source])
+
+
+def provider_item(payload):
+    return {"action": "search_web", "status": "completed", "result": payload}
+
+
+@pytest.mark.parametrize("failure", [
+    urllib.error.URLError("offline"),
+    urllib.error.HTTPError("https://news.google.com/rss/search", 429, "too many requests", {}, None),
+    urllib.error.HTTPError("https://news.google.com/rss/search", 403, "access denied", {}, None),
+    TimeoutError("timed out"),
+])
+def test_actual_production_provider_failure_payload_can_stop_after_two_searches(failure):
+    from agent.app import searxng_search_results
+    with patch.dict("os.environ", {"MLX_PUBLIC_SEARCH_FALLBACK": "1"}), \
+         patch("agent.app.request_searxng", return_value=(None, [{"provider": "SearXNG", "status": "unavailable"}])), \
+         patch("urllib.request.urlopen", side_effect=failure):
+        payload = searxng_search_results("Apple iPhones offiziell")
+    assert "ok" not in payload
+    assert payload["results"] == [] and payload["count"] == 0
+    assert exhausted_official_search("Apple iPhones offiziell", [provider_item(payload), provider_item(payload)])
+
+
+@pytest.mark.parametrize("fallback_disabled", [True, False])
+def test_actual_production_empty_or_disabled_fallback_payload_is_recognized(fallback_disabled):
+    from agent.app import searxng_search_results
+    with patch.dict("os.environ", {"MLX_PUBLIC_SEARCH_FALLBACK": "0" if fallback_disabled else "1"}), \
+         patch("agent.app.request_searxng", return_value=({"results": [],
+             "unresponsive_engines": [["startpage", "Suspended: CAPTCHA"]]}, [])), \
+         patch("urllib.request.urlopen", return_value=io.BytesIO(b"<rss><channel/></rss>")):
+        payload = searxng_search_results("Apple iPhones offiziell")
+    assert payload["provider_status"] == ("disabled" if fallback_disabled else "empty")
+    assert payload["primary_provider_status"] == "degraded"
+    assert exhausted_official_search("Apple iPhones offiziell", [provider_item(payload), provider_item(payload)])
+
+
+@pytest.mark.parametrize("patch_payload", [
+    {"ok": False}, {"ok": None}, {"count": 1}, {"count": "0"}, {"count": False},
+    {"provider_status": "available"}, {"provider_status": "unknown"},
+    {"provider_status": []}, {"provider": "unknown-service"},
+    {"error": "tool execution failed"}, {"results": None},
+    {"results": [{"url": "https://example.org/article"}]},
+])
+def test_provider_errors_unknown_schema_or_nonempty_results_do_not_stop(patch_payload):
+    payload = {"provider": "Google News RSS (fallback)", "provider_status": "empty",
+               "count": 0, "results": []} | patch_payload
+    assert not exhausted_official_search("Apple iPhones offiziell", [item([]), provider_item(payload)])
+
+
+def test_provider_schema_allows_omitted_count_but_requires_known_provider():
+    payload = {"provider": "Google News RSS (fallback)", "provider_status": "empty", "results": []}
+    assert exhausted_official_search("Apple iPhones offiziell", [provider_item(payload), provider_item(payload)])
+    assert not exhausted_official_search("Apple iPhones offiziell", [provider_item(payload),
+        provider_item({"provider_status": "empty", "results": []})])

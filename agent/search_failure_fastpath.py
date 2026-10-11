@@ -1,9 +1,34 @@
 """Conservative stop for repeated empty official web searches.
 
-Only a strict sequence of two completed, empty successful searches qualifies.
-Never infer failure from an unfamiliar schema or a temporary tool error.
+Only completed, explicitly empty observations qualify. Both the legacy tool
+envelope and the actual provider diagnostic schema are recognized. An arbitrary
+tool error or unfamiliar response never proves that research is exhausted.
 """
 from agent.claim_validation import loaded_articles
+
+EMPTY_PROVIDER_STATUSES = frozenset({
+    "empty", "degraded", "unavailable", "disabled", "rate_limited", "captcha",
+    "access_denied", "timeout", "invalid_response",
+})
+SEARCH_PROVIDERS = frozenset({"SearXNG", "Google News RSS (fallback)", "fallback-unavailable"})
+
+
+def _known_empty_search(payload):
+    if not isinstance(payload, dict) or payload.get("error") not in (None, ""):
+        return False
+    # Explicit tool failure wins over provider diagnostics.
+    if "ok" in payload and payload["ok"] is not True:
+        return False
+    hits = payload.get("results")
+    if not isinstance(hits, list) or hits:
+        return False
+    if "count" in payload and (type(payload["count"]) is not int or payload["count"] != 0):
+        return False
+    if payload.get("ok") is True:
+        return True
+    status, provider = payload.get("provider_status"), payload.get("provider")
+    return (isinstance(status, str) and status in EMPTY_PROVIDER_STATUSES
+            and isinstance(provider, str) and provider in SEARCH_PROVIDERS)
 
 
 def exhausted_official_search(goal, observations):
@@ -21,13 +46,10 @@ def exhausted_official_search(goal, observations):
         if item.get("status") != "completed":
             return False
         payload = item.get("result")
-        if not isinstance(payload, dict) or payload.get("ok") is not True:
+        if not _known_empty_search(payload):
             return False
-        hits = payload.get("results")
-        if not isinstance(hits, list):
-            return False
-        searches.append(hits)
-    return len(searches) >= 2 and all(not hits for hits in searches)
+        searches.append(payload)
+    return len(searches) >= 2
 
 
 UNAVAILABLE_ANSWER = (
