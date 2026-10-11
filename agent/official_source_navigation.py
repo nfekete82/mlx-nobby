@@ -180,6 +180,7 @@ def choose_official_publisher_step(goal, observations):
               and o.get("status") == "completed"
               and isinstance(o.get("result"), dict)
               and o["result"].get("ok") is True]
+    covered_identifiers, missing_identifiers = (), ()
     if loaded and missing_requested_identifiers(goal, observations):
         # After the first official document, pursue an explicitly requested
         # missing version once instead of repeatedly downloading more chunks
@@ -193,6 +194,7 @@ def choose_official_publisher_step(goal, observations):
             r"(?<!\w)" + re.escape(name) + r"(?!\w)", corpus
         )]
         missing = [name for name in names if name not in present]
+        covered_identifiers, missing_identifiers = tuple(present), tuple(missing)
         # A generic index/homepage is not evidence for any requested
         # protocol. Only search for a *missing counterpart* once a loaded
         # source actually discusses another requested identifier.
@@ -210,7 +212,7 @@ def choose_official_publisher_step(goal, observations):
         if present and missing and not recent_search and not already_refined:
             return {
                 "action": "search_web",
-                "query": f"{' '.join(missing[:2])} address specification {host}",
+                "query": f"{' '.join(missing[:2])} RFC Internet Protocol Specification site:{host}",
                 "reason": "Gezielt nach der noch unbelegten angefragten Version suchen",
             }
     # One genuinely fetched official source is enough to hand over to evidence
@@ -245,6 +247,17 @@ def choose_official_publisher_step(goal, observations):
                             str(link.get("snippet") or "").casefold()))
             word_hits = sum(bool(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", name))
                             for w in terms)
+            # If the first requested identifier is already documented, do
+            # not repeatedly crawl pages explicitly limited to that same
+            # identifier while the other requested identifier is absent.
+            missing_hits = any(re.search(
+                r"(?<!\w)" + re.escape(w) + r"(?!\w)", name
+            ) for w in missing_identifiers)
+            covered_hits = any(re.search(
+                r"(?<!\w)" + re.escape(w) + r"(?!\w)", name
+            ) for w in covered_identifiers)
+            if host == "rfc-editor.org" and covered_hits and not missing_hits:
+                continue
             # A publisher domain or its index is not relevant evidence.
             # In particular, RFC indexes and their numeric navigation links
             # must not be followed based on the word "RFC" alone.
@@ -259,7 +272,7 @@ def choose_official_publisher_step(goal, observations):
             # query match is only in the path. Scores never prove correctness.
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
             score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
-                     + 8 * is_home)
+                     + 8 * is_home + 24 * bool(missing_hits))
             # Side effects of vaccination must not be mistaken for clinical
             # symptoms of the disease. Only reject the irrelevant branch;
             # the fetched URL must still be independently discovered.
