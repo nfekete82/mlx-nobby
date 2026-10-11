@@ -69,7 +69,7 @@ five dimensions in `human_review.csv` using **0, 1 or 2**:
 | citations | No usable links / fake links | Some valid links but insufficient grounding | Applicable individual claims backed by relevant loaded sources |
 | safe_uncertainty | Fabricates certainty | Some limitations hidden | Accurately scopes uncertainty and does not invent unsupported existence or sale status |
 
-The final dimension matters especially for the **Nobby Phantom X999** negative
+The final dimension matters especially for the **Asterium Cloudphone Q-98765** negative
 control: failure to establish existence does not prove it does not exist. An
 honest source-limited refusal can receive a good review.
 
