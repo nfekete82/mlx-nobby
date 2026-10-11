@@ -489,6 +489,8 @@ def test_discovered_download_fallback_removes_last_planner_call():
         "search_web", "fetch_url", "search_web", "fetch_url",
     ]
     assert len(search_queries) == 2
+    assert search_queries[1] == "postgresql.org versioning policy supported major versions"
+    assert "site:" not in search_queries[1]
     assert result["evidence"]["verified_supported_count"] == 5
     assert not harness.planner_limits
     assert not harness.provider.calls
