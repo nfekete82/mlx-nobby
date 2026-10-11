@@ -33,7 +33,7 @@ def evidence_inspection(row):
         ][:4]
         reports.append({
             "url": source.final_url,
-            "status": source.status,
+            "status": source.retrieval_status,
             "text_chars": len(source.text),
             "anchored_passage_count": len(entries),
             "anchored_passage_chars": sum(len(f.evidence_excerpt) for f in entries),
