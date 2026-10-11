@@ -84,7 +84,8 @@ def test_publisher_mismatch_gets_only_one_bounded_retry():
     poor = search(("https://restaurantrobert.de/", "Robert"))
     decision = choose_official_publisher_step(RKI_GOAL, [poor])
     assert decision["action"] == "search_web"
-    assert '"rki.de"' in decision["query"]
+    assert "rki.de" in decision["query"]
+    assert "site:" not in decision["query"]
     assert choose_official_publisher_step(
         RKI_GOAL, [poor, poor]
     ) is None
@@ -176,3 +177,42 @@ def test_numeric_source_windows_prioritize_exact_unit_passages():
         source["result"]["text"][fact.source_location[0]:fact.source_location[1]]
         == fact.evidence_excerpt for fact in bundle.facts
     )
+
+
+
+def test_rfc_index_is_not_a_document_answer_and_does_not_trigger_numeric_crawl():
+    goal = RFC_GOAL
+    index = "https://www.rfc-editor.org/rfc-index/"
+    first = search(
+        (index, "RFC Index"),
+        ("https://www.rfc-editor.org/info/rfc1/", "RFC 1"),
+        ("https://www.rfc-editor.org/info/rfc2/", "RFC 2"),
+    )
+    decision = choose_official_publisher_step(goal, [first])
+    assert decision["action"] == "search_web", decision
+    assert decision["query"] != choose_official_publisher_step(goal, [])["query"]
+    assert "rfc-editor.org" in decision["query"]
+    assert "site:" not in decision["query"]
+
+    indexed = fetched(index, links=[
+        {"url": "https://www.rfc-editor.org/info/rfc1/", "title": "RFC 1"},
+        {"url": "https://www.rfc-editor.org/info/rfc2/", "title": "RFC 2"},
+        {"url": "https://www.rfc-editor.org/info/rfc3/", "title": "RFC 3"},
+    ])
+    assert choose_official_publisher_step(goal, [first, indexed]) is None
+    assert not any(
+        "info/rfc1" in str(x)
+        for x in [choose_official_publisher_step(goal, [first, indexed])]
+    )
+
+
+def test_rfc_specific_titled_document_outscores_rfc_index():
+    index = "https://www.rfc-editor.org/rfc-index/"
+    article = "https://www.rfc-editor.org/info/rfc8200/"
+    first = search(
+        (index, "RFC Index"),
+        (article, "IPv6 Specification and IPv4 address size"),
+    )
+    choice = choose_official_publisher_step(RFC_GOAL, [first])
+    assert choice["action"] == "fetch_url"
+    assert choice["query"] == article
