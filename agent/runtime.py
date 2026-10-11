@@ -681,6 +681,15 @@ class AgentRuntime:
                         }
 
             if decision is None and mode in {"diagnostic", "research"}:
+                from agent.official_source_navigation import choose_official_publisher_step
+                decision = choose_official_publisher_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "named_official_publisher_navigation",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
                 from agent.research_followup import choose_support_policy_research_step
                 decision = choose_support_policy_research_step(goal, observations)
                 if decision is not None:
