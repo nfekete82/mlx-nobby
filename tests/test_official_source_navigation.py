@@ -583,3 +583,71 @@ def test_rfc_addresses_from_german_question_rank_source_exact_english_lines():
     assert windows
     assert any("32 bits" in snippet and "Address" in snippet for _, _, snippet in windows)
     assert all(text[start:end] == snippet for start, end, snippet in windows)
+
+
+
+def test_rate_topic_navigation_avoids_benchmarks_and_defers_homepage_extraction():
+    """Policy deposit facility != euro short-term reference rate."""
+    from agent.official_source_navigation import missing_official_answer_document
+    home = "https://www.ecb.europa.eu/home/html/index.en.html"
+    benchmark = ("https://www.ecb.europa.eu/stats/euro-short-term-rates/"
+                 "interest_rate_benchmarks/WG_euro_risk-free_rates/html/index.en.html")
+    policy = ("https://www.ecb.europa.eu/stats/policy_and_exchange_rates/"
+              "key_ecb_interest_rates/html/index.en.html")
+    found = search((home, "European Central Bank"))
+    page = fetched(home, links=[
+        {"url": benchmark, "title": "Euro short-term interest rate benchmarks"},
+        {"url": policy, "title": "Key ECB interest rates"},
+    ])
+    assert missing_official_answer_document(ECB_GOAL, [found, page])
+    decision = choose_official_publisher_step(ECB_GOAL, [found, page])
+    assert decision["action"] == "fetch_url"
+    assert decision["query"] == policy
+    article = fetched(policy)
+    article["result"]["text"] = (
+        "Key ECB interest rates. Deposit facility rate is determined by monetary "
+        "policy decisions. The effective date and rate are listed in this table. "
+    )
+    assert not missing_official_answer_document(
+        ECB_GOAL, [found, page, article]
+    )
+
+
+def test_policy_question_researches_again_instead_of_using_estr_article():
+    from agent.official_source_navigation import missing_official_answer_document
+    home = "https://www.ecb.europa.eu/home/html/index.en.html"
+    benchmark = ("https://www.ecb.europa.eu/stats/euro-short-term-rates/"
+                 "interest_rate_benchmarks/WG_euro_risk-free_rates/html/index.en.html")
+    found = search((home, "European Central Bank"))
+    page = fetched(home, links=[
+        {"url": benchmark, "title": "Interest rate benchmarks"},
+    ])
+    off_topic = fetched(benchmark)
+    off_topic["result"]["text"] = "€STR is an overnight wholesale benchmark. " * 5
+    observations = [found, page, off_topic]
+    assert missing_official_answer_document(ECB_GOAL, observations)
+    decision = choose_official_publisher_step(ECB_GOAL, observations)
+    assert decision["action"] == "search_web"
+    assert "deposit facility" in decision["query"]
+    assert choose_official_publisher_step(
+        ECB_GOAL, observations + [dict(search(), query=decision["query"])]
+    ) is None
+
+
+def test_two_protocol_question_continues_beyond_generic_rfc_editor_homepage():
+    from agent.official_source_navigation import missing_official_answer_document
+    home = "https://www.rfc-editor.org/"
+    observations = [
+        dict(search((home, "RFC Editor")), query="rfc-editor.org IPv4 IPv6"),
+        fetched(home),
+    ]
+    assert missing_official_answer_document(RFC_GOAL, observations)
+    choice = choose_official_publisher_step(RFC_GOAL, observations)
+    assert choice["action"] == "search_web"
+    assert "ipv4" in choice["query"].casefold()
+    assert "ipv6" in choice["query"].casefold()
+    assert "rfc-editor.org" in choice["query"]
+    second = dict(search(), query=choice["query"])
+    assert choose_official_publisher_step(
+        RFC_GOAL, observations + [second]
+    ) is None
