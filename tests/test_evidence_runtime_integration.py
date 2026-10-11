@@ -178,3 +178,47 @@ def test_institution_attribution_requires_primary_anchor():
     primary = run_with("https://www.ecb.europa.eu/press/official.html")
     assert primary.audit["verified_supported_count"] == 1
     assert primary.audit["claims"][0]["status"] == "supported"
+
+
+
+def test_general_research_extraction_excludes_product_lineup_constraints():
+    """Influenza and standards extraction should use one short generic contract."""
+    from agent.semantic_evidence import _extract_candidates
+    goal = "Welche Symptome sind bei Influenza typisch?"
+    source = {
+        "action": "fetch_url", "status": "completed",
+        "query": "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html",
+        "result": {
+            "ok": True,
+            "url": "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html",
+            "text": (
+                "Die Influenza beginnt oft plötzlich mit Fieber und "
+                "Muskel- oder Kopfschmerzen. Ein trockener Reizhusten "
+                "kann später hinzukommen. "
+            ) * 3,
+        },
+    }
+    bundle = build_evidence([source], goal=goal)
+    pid = bundle.facts[0].id
+    prompts = []
+
+    def llm(purpose, prompt, max_tokens):
+        assert purpose == "agent.extract"
+        prompts.append(prompt)
+        return json.dumps({"claims": [{
+            "subject": "Influenza",
+            "predicate": "symptom",
+            "value": "Fieber",
+            "qualifiers": {},
+            "statement": "Typische Influenza kann mit Fieber beginnen.",
+            "passage_ids": [pid],
+        }]})
+
+    claims, error = _extract_candidates(goal, bundle, llm)
+    assert error is None
+    assert len(claims) == 1
+    assert "Originalpassagen" in prompts[0]
+    assert "QUELLEN" not in prompts[0]
+    assert "aktuell angebotenen Modellen" not in prompts[0]
+    assert "Entdecke alle Modelle" not in prompts[0]
+    assert "product" not in prompts[0].lower()
