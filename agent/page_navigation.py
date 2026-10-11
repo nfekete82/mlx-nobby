@@ -100,7 +100,7 @@ def same_site_html_links(page, base_url):
     def specificity(link):
         path = urlsplit(link["url"]).path
         segments = [segment for segment in path.split("/") if segment]
-        document = bool(re.search(r"\\.(?:html?|pdf)$", path, re.I))
+        document = bool(re.search(r"\.(?:html?|pdf)$", path, re.I))
         return (min(len(segments), 8), document)
 
     selected = set(sorted(
