@@ -70,11 +70,11 @@ def _catalog_topic_match(goal, url, title):
     evidence that the source addresses the user's requested product family.
     """
     topics = [t for t in _SUBJECT_TERMS
-              if re.search(r"(?<!\\w)" + re.escape(t) + r"(?!\\w)", str(goal).lower())]
+              if re.search(r"(?<!\w)" + re.escape(t) + r"(?!\w)", str(goal).lower())]
     if not topics:
         return True  # Broad company catalogs can legitimately span families.
     path = urlsplit(url).path.lower()
-    return any(t in path or re.search(r"(?<!\\w)" + re.escape(t) + r"(?!\\w)",
+    return any(t in path or re.search(r"(?<!\w)" + re.escape(t) + r"(?!\w)",
                                    title.lower()) for t in topics)
 
 
