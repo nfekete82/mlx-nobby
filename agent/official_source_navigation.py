@@ -154,3 +154,33 @@ def choose_official_publisher_step(goal, observations):
             "reason": "Einmalige präzisierte Suche nach offizieller Primärquelle",
         }
     return None
+
+
+
+def missing_requested_identifiers(goal, observations):
+    """Prevent premature synthesis for explicitly requested paired identifiers.
+
+    Only unambiguous letter+digit names such as IPv4/IPv6 or USB3/USB4 are
+    considered. This is a completeness hint, not a semantic fact checker.
+    """
+    names = list(dict.fromkeys(
+        match.casefold() for match in re.findall(
+            r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal or "")
+        )
+    ))
+    if len(names) < 2 or len(names) > 5:
+        return False
+    texts = []
+    for item in observations:
+        if (not isinstance(item, dict) or item.get("action") != "fetch_url"
+                or item.get("status") != "completed"):
+            continue
+        result = item.get("result")
+        if (isinstance(result, dict) and result.get("ok") is True
+                and isinstance(result.get("text"), str)):
+            texts.append(result["text"].casefold())
+    if not texts:
+        return False
+    corpus = "\n".join(texts)
+    return any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", corpus)
+               is None for name in names)
