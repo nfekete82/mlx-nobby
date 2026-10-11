@@ -425,11 +425,19 @@ def test_policy_navigation_uses_discovered_download_page_only_as_first_fallback(
     }}
     decision = choose_support_policy_research_step(GOAL, [search])
     assert decision["action"] == "fetch_url"
-    assert decision["query"] == download
+    assert decision["query"] == "https://www.postgresql.org/"
 
-    # Never refetch the same landing page, nor choose an injected URL.
+    # Only a genuine discovered homepage may take priority. Without it,
+    # the previously discovered download index remains a safe fallback.
+    download_only = {"action": "search_web", "status": "completed", "result": {
+        "results": [
+            {"url": download, "title": "PostgreSQL Downloads"},
+            {"url": "https://postgresql.org.evil.example/", "title": "Spoof"},
+        ],
+    }}
+    assert choose_support_policy_research_step(GOAL, [download_only])["query"] == download
     assert choose_support_policy_research_step(
-        GOAL, [search, fetched(download, "PostgreSQL downloads")]
+        GOAL, [download_only, fetched(download, "PostgreSQL downloads")]
     ) is None
     assert choose_support_policy_research_step(GOAL, [{
         "action": "search_web", "status": "completed", "result": {
@@ -492,5 +500,76 @@ def test_discovered_download_fallback_removes_last_planner_call():
     assert search_queries[1] == "postgresql.org versioning policy supported major versions"
     assert "site:" not in search_queries[1]
     assert result["evidence"]["verified_supported_count"] == 5
+    assert not harness.planner_limits
+    assert not harness.provider.calls
+
+
+
+def test_discovered_homepage_link_avoids_secondary_search_and_model_plan():
+    """Prefer a genuinely returned official home URL and fetched policy link."""
+    from dataclasses import replace
+    from agent.page_navigation import same_site_html_links
+    from test_agent_runtime import AgentRuntimeTests
+
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    home = "https://www.postgresql.org/"
+    downloads = "https://www.postgresql.org/download/"
+    search_queries = []
+    fetched_urls = []
+
+    def search(**kwargs):
+        search_queries.append(kwargs.get("query"))
+        return {
+            "provider": "SearXNG",
+            "results": [
+                {"url": downloads, "title": "PostgreSQL Downloads"},
+                {"url": home, "title": "PostgreSQL Home"},
+                {"url": "https://postgresql.org.evil.example/support/versioning/",
+                 "title": "Bogus versioning policy"},
+            ],
+        }
+
+    def fetch(**kwargs):
+        url = kwargs.get("query")
+        fetched_urls.append(url)
+        if url == home:
+            markup = (
+                '<html><body><nav>'
+                '<a href="https://postgresql.org.evil.example/support/versioning/">Bogus</a>'
+                '<a href="/support/versioning/">Versioning Policy</a>'
+                '</nav><h1>PostgreSQL</h1></body></html>'
+            )
+            return {
+                "ok": True, "url": home, "text": "PostgreSQL Home",
+                "page_links": same_site_html_links(markup, home),
+            }
+        assert url == POLICY
+        return {"ok": True, "url": POLICY, "text": support_table()}
+
+    harness.add_tool("search_web", search)
+    harness.add_tool("fetch_url", fetch)
+
+    def evidence_answer(goal, observations):
+        def llm(purpose, prompt, limit):
+            assert purpose == "agent.verify"
+            payload = json.loads(prompt.split("\n")[-1])
+            return json.dumps({"claims": [
+                {"id": c["id"], "status": "supported",
+                 "reason": "Support policy explicitly marks version yes",
+                 "passage_ids": c["passage_ids"]}
+                for c in payload["claims"]
+            ]})
+        return synthesize_verified_evidence(goal, observations, llm)
+
+    harness.hooks = replace(harness.hooks, agent_evidence_answer=evidence_answer)
+    outcome = harness.runtime([]).run(GOAL, mode="research")
+    assert outcome["status"] == "completed"
+    assert [s["action"] for s in outcome["steps"]] == [
+        "search_web", "fetch_url", "fetch_url",
+    ]
+    assert fetched_urls == [home, POLICY]
+    assert len(search_queries) == 1
+    assert outcome["evidence"]["verified_supported_count"] == 5
     assert not harness.planner_limits
     assert not harness.provider.calls
