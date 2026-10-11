@@ -150,16 +150,26 @@ def support_matrix_verification_scope(goal, bundle, rows):
     version_terms = [re.compile(r"(?<![\w.])" + re.escape(name) + r"(?![\w.])")
                      for name in version_names]
 
+    # Bare version numbers occur in menus, pagination and dates. On the
+    # official policy page, a standalone version mention is relevant only
+    # when it is project-qualified. Keep support-policy prose separately.
+    named_project_versions = [
+        re.compile(r"(?<!\w)" + re.escape(subject) + r"(?![\w.])", re.I)
+        for subject, _, _ in rows
+    ]
+
     relevant = set(anchor_ids)
     for fact in bundle.facts:
         excerpt = fact.evidence_excerpt
         named_version = any(term.search(excerpt) for term in version_terms)
+        named_project_version = any(term.search(excerpt)
+                                    for term in named_project_versions)
         policy_source = fact.source_id in official_ids
         # Includes conflicting Yes/No rows in other policy windows, even if
         # the candidate versions are not mentioned in their first row.
         if policy_source and "-support-" in fact.id:
             relevant.add(fact.id)
-        elif policy_source and (named_version or _POLICY_CONFLICT_CUE.search(excerpt)):
+        elif policy_source and (named_project_version or _POLICY_CONFLICT_CUE.search(excerpt)):
             relevant.add(fact.id)
         elif named_version and _POLICY_CONFLICT_CUE.search(excerpt):
             relevant.add(fact.id)
