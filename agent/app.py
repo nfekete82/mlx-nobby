@@ -7238,6 +7238,22 @@ def searxng_search_results(query, limit=8):
         if len(normalized) >= max(1, min(int(limit), 20)):
             break
 
+    # Some upstream engines ignore the site: operator entirely. Never
+    # present matches from unrelated hosts as site-restricted evidence.
+    from agent.search_relevance import filter_site_results, required_site
+    normalized, mismatched_site_results = filter_site_results(query, normalized)
+    if mismatched_site_results and not normalized and required_site(query):
+        return {
+            "query": query, "provider": "SearXNG",
+            "provider_status": "irrelevant_site_results",
+            "provider_attempts": provider_attempts,
+            "unresponsive_engines": unresponsive_engines,
+            "search_degraded": True,
+            "search_relevance_status": "site_scope_mismatch",
+            "site_scope_mismatch_count": mismatched_site_results,
+            "count": 0, "results": [],
+        }
+
     if not normalized:
         fallback = _fallback_public_search(query, limit=limit)
         fallback["unresponsive_engines"] = unresponsive_engines
@@ -7254,6 +7270,8 @@ def searxng_search_results(query, limit=8):
         "provider_attempts": provider_attempts,
         "unresponsive_engines": unresponsive_engines,
         "search_degraded": bool(unresponsive_engines),
+        "search_relevance_status": "site_scope_filtered" if mismatched_site_results else "not_scoped",
+        "site_scope_mismatch_count": mismatched_site_results,
         "count": len(normalized),
         "results": normalized,
     }
