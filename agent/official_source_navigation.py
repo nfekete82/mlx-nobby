@@ -70,8 +70,12 @@ def _topic_terms(goal):
     # a document is relevant only through its actual topic or RFC number
     # explicitly given in the question.
     terms = list(dict.fromkeys(words))
-    # Protocol / version identifiers are much more discriminative than
-    # generic measurement units in technical search queries.
+    # Technical source terminology may differ from a colloquial German term.
+    # These are query synonyms only, never facts or unobserved source URLs.
+    if any(w.startswith("einlagezins") for w in terms):
+        terms = list(dict.fromkeys(["deposit", "facility", "key", "interest", "rates"] + terms))
+    # Protocol / version identifiers are more discriminative than generic
+    # measurement units and should dominate the initial search query.
     names = [w for w in terms if re.fullmatch(r"[a-z]{2,15}\d{1,4}", w)]
     return (names + [w for w in terms if w not in names])[:9]
 
