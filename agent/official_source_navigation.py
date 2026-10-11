@@ -64,6 +64,8 @@ def _topic_terms(goal):
         words.extend(("deposit", "facility", "rate", "effective"))
     if any(w.startswith(("adress", "ipv")) for w in words):
         words.extend(("address", "bits"))
+    if re.search(r"(?i)\brfcs?\b", str(goal or "")):
+        words.append("rfc")
     return list(dict.fromkeys(words))[:9]
 
 
@@ -123,7 +125,9 @@ def choose_official_publisher_step(goal, observations):
                             for w in terms)
             # Specific document beats generic login/home index even when its
             # query match is only in the path. Scores never prove correctness.
-            score = base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
+            is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
+            score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
+                     + 8 * is_home)
             if re.search(r"/(?:login|signin|account|user)/", parsed.path, re.I):
                 score -= 100
             matches.append((score, url))
