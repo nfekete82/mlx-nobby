@@ -209,11 +209,14 @@ def missing_official_answer_document(goal, observations):
             and re.search(r"\bbits?\b", body)
             for path, body in loaded
         )
+    # A dedicated monetary-policy rate document is an appropriate place to
+    # hand off to source-exact extraction, even when its loaded snippet
+    # ultimately proves too thin and the verifier must abstain. Do not keep
+    # navigating after reaching that documented source family.
     return not any(
         re.search(r"key.ecb.interest.rates|monetary.policy.decisions|"
                   r"monetary-policy-decisions|key.interest.rates", path)
-        and re.search(r"deposit facility|einlagefazilit|einlagezins", body)
-        for path, body in loaded
+        for path, _body in loaded
     )
 
 
