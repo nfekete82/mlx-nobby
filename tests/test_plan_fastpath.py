@@ -112,5 +112,87 @@ class PlanningFastpathTests(unittest.TestCase):
         self.assertIsNone(choose_official_followup("Welche iPhones bietet Apple an?", [search]))
 
 
+
+class OfficialCatalogFollowupTests(unittest.TestCase):
+    def setUp(self):
+        from agent.plan_fastpath import (
+            official_catalog_goal, choose_official_catalog_refinement,
+            insufficient_catalog_sources,
+        )
+        self.catalog = official_catalog_goal
+        self.refine = choose_official_catalog_refinement
+        self.insufficient = insufficient_catalog_sources
+        self.goal = "Welche aktuellen iPhone-Modelle bietet Apple offiziell an?"
+
+    def search(self, *urls, provider="SearXNG"):
+        return {"action": "search_web", "status": "completed",
+                "result": {"provider": provider, "count": len(urls),
+                           "results": [{"url": u, "title": u} for u in urls]}}
+
+    def fetched(self, url, *, ok=True):
+        return {"action": "fetch_url", "status": "completed",
+                "query": url,
+                "result": {"ok": ok, "url": url,
+                           "text": "Apple iPhone product details. " * 25}}
+
+    def test_apple_official_lineup_intent(self):
+        self.assertTrue(self.catalog(self.goal))
+        self.assertFalse(self.catalog("Wann wurde das iPhone 15 offiziell vorgestellt?"))
+        self.assertFalse(self.catalog("Was kostet das iPhone?"))
+
+    def test_locale_root_is_not_a_model_specific_source(self):
+        hits = self.search("https://www.apple.com/de/",
+                           "https://www.apple.com/de/iphone/")
+        self.assertIsNone(choose_official_followup(self.goal, [hits]))
+        self.assertTrue(self.insufficient(self.goal,
+                                          [hits, self.fetched("https://www.apple.com/de/")]))
+        self.assertTrue(self.insufficient(self.goal,
+                                          [hits, self.fetched("https://www.apple.com/de/iphone/")]))
+
+    def test_refines_once_after_generic_landing_results(self):
+        hits = self.search("https://www.apple.com/de/",
+                           "https://www.apple.com/de/iphone/")
+        decision = self.refine(self.goal, [hits])
+        self.assertEqual(decision["action"], "search_web")
+        self.assertIn("site:apple.com", decision["query"])
+        self.assertIn("iphone", decision["query"].lower())
+        self.assertIsNone(self.refine(self.goal, [hits, hits]))
+        self.assertIsNone(self.refine(self.goal,
+                                     [self.search("https://www.apple.com/de/", provider="Google News RSS (fallback)")]))
+        self.assertIsNone(self.refine(self.goal, [self.search(provider="SearXNG")]))
+
+    def test_fetches_real_topic_detail_from_results(self):
+        page = "https://www.apple.com/de/shop/buy-iphone/example-model"
+        hits = self.search("https://www.apple.com/de/", page)
+        answer = choose_official_followup(self.goal, [hits])
+        self.assertEqual(answer["query"], page)
+        self.assertIsNone(self.refine(self.goal, [hits]))
+
+    def test_relevant_product_beats_unrelated_newsroom_article(self):
+        relevant = "https://www.apple.com/de/shop/buy-iphone/iphone-example"
+        unrelated = "https://www.apple.com/newsroom/2026/10/mac-example/"
+        hits = self.search(unrelated, relevant)
+        self.assertEqual(choose_official_followup(self.goal, [hits])["query"], relevant)
+
+    def test_good_source_allows_early_answer_and_generic_does_not(self):
+        article = "https://www.apple.com/newsroom/2026/10/iphone-example/"
+        root = "https://www.apple.com/de/"
+        self.assertFalse(self.insufficient(self.goal, [self.fetched(article)]))
+        self.assertFalse(self.insufficient(self.goal,
+                                           [self.fetched(root), self.fetched(article)]))
+        self.assertFalse(self.insufficient("Apple Gründungsgeschichte", [self.fetched(root)]))
+
+    def test_no_authority_bypass_with_lookalikes_or_rss(self):
+        hits = self.search("https://apple.com.example.org/iphone/iphone-19/",
+                           "https://news.google.com/rss/articles/example")
+        self.assertIsNone(choose_official_followup(self.goal, [hits]))
+        self.assertIsNotNone(self.refine(self.goal, [hits]))
+
+    def test_no_repeated_fetch_of_already_fetched_article(self):
+        article = "https://www.apple.com/de/shop/buy-iphone/example"
+        hits = self.search("https://www.apple.com/de/", article)
+        self.assertIsNone(choose_official_followup(self.goal, [hits, self.fetched(article)]))
+
+
 if __name__ == "__main__":
     unittest.main()
