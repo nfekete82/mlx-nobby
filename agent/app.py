@@ -7176,8 +7176,8 @@ def web_search_language_for_query(query):
     """
     value = str(query or "").casefold()
     if re.search(
-        r"(?i)\\b(?:ipv[46]|ietf|rfc\\d+|deposit facility|key interest rates)\\b"
-        r"|rfc-editor\\.org|ecb\\.europa\\.eu",
+        r"(?i)\b(?:ipv[46]|ietf|rfc\d+|deposit facility|key interest rates)\b"
+        r"|rfc-editor\.org|ecb\.europa\.eu",
         value,
     ):
         return "en-US"
