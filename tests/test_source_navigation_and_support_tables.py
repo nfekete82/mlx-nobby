@@ -407,3 +407,88 @@ def test_support_policy_runtime_skips_planner_but_keeps_source_verification():
     assert result["evidence"]["verified_supported_count"] == 5
     assert not harness.planner_limits
     assert not harness.provider.calls
+
+
+
+def test_policy_navigation_uses_discovered_download_page_only_as_first_fallback():
+    from agent.research_followup import choose_support_policy_research_step
+
+    download = "https://www.postgresql.org/download/"
+    search = {"action": "search_web", "status": "completed", "result": {
+        "results": [
+            {"url": "https://postgresql.org.evil.example/download/", "title": "Fake"},
+            {"url": "https://www.postgresql.org/download/windows/", "title": "Windows"},
+            {"url": "https://www.postgresql.org/download/?redirect=evil", "title": "Redirect"},
+            {"url": download, "title": "PostgreSQL Downloads"},
+            {"url": "https://www.postgresql.org/", "title": "PostgreSQL"},
+        ],
+    }}
+    decision = choose_support_policy_research_step(GOAL, [search])
+    assert decision["action"] == "fetch_url"
+    assert decision["query"] == download
+
+    # Never refetch the same landing page, nor choose an injected URL.
+    assert choose_support_policy_research_step(
+        GOAL, [search, fetched(download, "PostgreSQL downloads")]
+    ) is None
+    assert choose_support_policy_research_step(GOAL, [{
+        "action": "search_web", "status": "completed", "result": {
+            "results": [{"url": "https://postgresql.org.evil.example/download/"}],
+        }
+    }]) is None
+
+
+def test_discovered_download_fallback_removes_last_planner_call():
+    """Two real searches with a poor first result still reach source evidence."""
+    from dataclasses import replace
+    from test_agent_runtime import AgentRuntimeTests
+
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    download = "https://www.postgresql.org/download/"
+    search_queries = []
+
+    def search(**kwargs):
+        search_queries.append(kwargs.get("query"))
+        if len(search_queries) == 1:
+            return {
+                "provider": "SearXNG",
+                "results": [{"url": download, "title": "PostgreSQL Downloads"}],
+            }
+        return {
+            "provider": "SearXNG",
+            "results": [{"url": POLICY, "title": "PostgreSQL Versioning Policy"}],
+        }
+
+    def fetch(**kwargs):
+        if kwargs.get("query") == download:
+            return {"ok": True, "url": download, "text": "PostgreSQL Downloads"}
+        assert kwargs.get("query") == POLICY
+        return {"ok": True, "url": POLICY, "text": support_table()}
+
+    harness.add_tool("search_web", search)
+    harness.add_tool("fetch_url", fetch)
+
+    def evidence_answer(goal, observations):
+        def llm(purpose, prompt, limit):
+            assert purpose == "agent.verify"
+            payload = json.loads(prompt.split("\n")[-1])
+            return json.dumps({"claims": [
+                {"id": claim["id"], "status": "supported",
+                 "reason": "Official support table says Yes",
+                 "passage_ids": claim["passage_ids"]}
+                for claim in payload["claims"]
+            ]})
+        return synthesize_verified_evidence(goal, observations, llm)
+
+    harness.hooks = replace(harness.hooks, agent_evidence_answer=evidence_answer)
+    result = harness.runtime([]).run(GOAL, mode="research")
+
+    assert result["status"] == "completed"
+    assert [step["action"] for step in result["steps"]] == [
+        "search_web", "fetch_url", "search_web", "fetch_url",
+    ]
+    assert len(search_queries) == 2
+    assert result["evidence"]["verified_supported_count"] == 5
+    assert not harness.planner_limits
+    assert not harness.provider.calls
