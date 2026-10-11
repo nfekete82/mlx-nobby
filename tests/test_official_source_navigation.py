@@ -300,3 +300,46 @@ def test_missing_protocol_identifier_triggers_one_focused_search_after_fetch():
     choice2 = choose_official_publisher_step(RFC_GOAL, obs + [followup])
     assert choice2["action"] == "fetch_url"
     assert choice2["query"] == "https://www.rfc-editor.org/info/rfc8200/"
+
+
+
+def test_two_rki_navigation_pages_are_not_mistaken_for_clinical_article():
+    """A real FAQ linked after two RKI index pages remains navigable."""
+    from agent.official_source_navigation import has_discovered_deeper_primary_link
+    index = "https://www.rki.de/DE/Infektionskrankheiten/Influenza.html"
+    node = "https://www.rki.de/DE/Infektionskrankheiten/influenza-node.html"
+    faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+
+    initial = search((index, "Influenza Krankheit"), (node, "Influenza Übersicht"))
+    landing = fetched(index, links=[
+        {"url": node, "title": "Influenza Übersicht"},
+        {"url": faq, "title": "Influenza: Antworten auf häufig gestellte Fragen"},
+    ])
+    second = fetched(node, links=[
+        {"url": index, "title": "Influenza Übersicht"},
+        {"url": faq, "title": "Krankheitsbild der Influenza FAQ"},
+    ])
+    choice = choose_official_publisher_step(
+        RKI_GOAL, [initial, landing, second],
+    )
+    assert choice["action"] == "fetch_url"
+    assert choice["query"] == faq
+    assert has_discovered_deeper_primary_link(
+        RKI_GOAL, [initial, landing, second],
+    )
+    assert not has_discovered_deeper_primary_link(
+        RKI_GOAL, [initial, landing, second, fetched(faq)],
+    )
+
+
+def test_two_general_index_pages_without_topical_link_do_not_loop():
+    """Avoid burning an extra inference step on undifferentiated navigation."""
+    from agent.official_source_navigation import has_discovered_deeper_primary_link
+    index = "https://www.rki.de/DE/Infektionen/Influenza.html"
+    node = "https://www.rki.de/DE/Infektionen/influenza-node.html"
+    observations = [
+        search((index, "Influenza")),
+        fetched(index, links=[{"url": node, "title": "Influenza Übersicht"}]),
+        fetched(node),
+    ]
+    assert not has_discovered_deeper_primary_link(RKI_GOAL, observations)
