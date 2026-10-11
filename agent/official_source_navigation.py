@@ -197,3 +197,34 @@ def missing_requested_identifiers(goal, observations):
     corpus = "\n".join(texts)
     return any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", corpus)
                is None for name in names)
+
+
+
+def has_discovered_deeper_primary_link(goal, observations):
+    """Defer early evidence only when an actual on-page topical link is next.
+
+    A broad official index is not necessarily the requested factual article.
+    Follow one stronger document link before synthesis, without inventing a
+    URL, looping through numbered indexes or suppressing useful evidence.
+    """
+    if not _publisher(goal):
+        return False
+    fetched_ok = [
+        item for item in observations
+        if isinstance(item, dict) and item.get("action") == "fetch_url"
+        and item.get("status") == "completed"
+        and isinstance(item.get("result"), dict)
+        and item["result"].get("ok") is True
+    ]
+    if len(fetched_ok) != 1:
+        return False
+    choice = choose_official_publisher_step(goal, observations)
+    if choice is None or choice.get("action") != "fetch_url":
+        return False
+    target = choice.get("query")
+    # A real link must appear in the one loaded page, not merely in search.
+    links = fetched_ok[0]["result"].get("page_links")
+    return isinstance(links, list) and any(
+        isinstance(link, dict) and link.get("url") == target
+        for link in links
+    )
