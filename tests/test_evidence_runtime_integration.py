@@ -87,3 +87,48 @@ def test_cancellation_between_extraction_and_verification_keeps_no_supported_ans
     assert result["status"] == "cancelled"
     assert result["answer"] == ""
     assert len(harness.provider.calls) == 2
+
+
+
+def test_decision_date_and_effective_date_are_separate_in_evidence_prompts():
+    """Prevent a decision announcement date from silently becoming 'valid since'."""
+    statement = (
+        "At its 10 September 2026 meeting, the council decided to raise the "
+        "deposit facility rate to 2.50%. The new rate takes effect from "
+        "16 September 2026. The announcement was published on 10 September 2026."
+    )
+    source = {
+        "action": "fetch_url", "status": "completed",
+        "query": "https://example.org/official/rates",
+        "result": {"ok": True, "url": "https://example.org/official/rates",
+                   "text": statement},
+    }
+    goal = "What is the current deposit rate and when did it take effect?"
+    passages = build_evidence([source], goal=goal).facts
+    assert passages
+    pid = next(p.id for p in passages if "takes effect" in p.evidence_excerpt)
+    prompts = {}
+
+    def llm(purpose, prompt, max_tokens):
+        prompts[purpose] = prompt
+        if purpose == "agent.extract":
+            return json.dumps({"claims": [{
+                "subject": "Deposit facility rate",
+                "predicate": "effective_since",
+                "value": "16 September 2026",
+                "qualifiers": {},
+                "statement": "The new deposit facility rate applies from 16 September 2026.",
+                "passage_ids": [pid],
+            }]})
+        return json.dumps({"claims": [{
+            "id": "c-1", "status": "supported",
+            "reason": "Source explicitly supplies the effective date",
+            "passage_ids": [pid],
+        }]})
+
+    synthesize_verified_evidence(goal, [source], llm)
+    assert "agent.extract" in prompts
+    assert "agent.verify" in prompts
+    assert "Beschlussdatum" in prompts["agent.extract"]
+    assert "Wirksamkeitsdatum" in prompts["agent.verify"]
+    assert "seit-X-Behauptung" in prompts["agent.verify"]
