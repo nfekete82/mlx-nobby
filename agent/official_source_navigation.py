@@ -214,6 +214,30 @@ def missing_official_answer_document(goal, observations):
             and re.search(r"\bbits?\b", body)
             for path, body in loaded
         )
+    # An explicitly focused, source-exact homepage excerpt can itself be
+    # a primary source when the page publishes its policy rate next to the
+    # applicable date. Mere topic mentions or unrelated rate headlines
+    # are not enough. This is a completeness hint, NOT value verification.
+    for item in observations or ():
+        if not isinstance(item, dict) or item.get("action") != "fetch_url":
+            continue
+        result = item.get("result")
+        if (item.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True
+                or result.get("focus") != "deposit facility"):
+            continue
+        url = result.get("final_url") or result.get("url")
+        if _safe_official_url(url, host) is None:
+            continue
+        body = str(result.get("text") or "")
+        rate = re.search(
+            r"(?is)\bdeposit facility\b[^\n]{0,100}\b\d{1,3}(?:[.,]\d{1,4})?\s*%",
+            body,
+        )
+        if rate and re.search(
+            r"\b(?:19|20)\d{2}\b", body[rate.start():rate.end()+500]
+        ):
+            return False
     # A dedicated monetary-policy rate document is an appropriate place to
     # hand off to source-exact extraction, even when its loaded snippet
     # ultimately proves too thin and the verifier must abstain. Do not keep
@@ -288,6 +312,39 @@ def choose_official_publisher_step(goal, observations):
                 "query": f"{' '.join(missing[:2])} RFC Internet Protocol Specification {host}",
                 "reason": "Gezielt nach der noch unbelegten angefragten Version suchen",
             }
+    # Many official homepages contain current rates near the *bottom*
+    # while the first 18k chars contain only media releases/navigation.
+    # Re-fetch the exact same previously observed URL with a topic focus;
+    # the fetch tool returns a verbatim excerpt with its original offset.
+    if host == "ecb.europa.eu" and (
+        "einlagezins" in str(goal).casefold()
+        or "deposit facility" in str(goal).casefold()
+    ):
+        focused = any(
+            isinstance(item, dict) and item.get("action") == "fetch_url"
+            and (str(item.get("instruction") or "").casefold()
+                 == "focus=deposit facility"
+                 or (item.get("result") or {}).get("focus") == "deposit facility")
+            for item in observations
+        )
+        if not focused:
+            for item in reversed(loaded):
+                result = item["result"]
+                url = result.get("final_url") or result.get("url")
+                parsed = _safe_official_url(url, host)
+                if parsed is None or not (
+                    parsed.path in {"", "/"}
+                    or re.search(r"(?i)/home/(?:html/)?index\.", parsed.path)
+                ):
+                    continue
+                if (result.get("truncated") is True
+                        and type(result.get("next_offset")) is int):
+                    return {
+                        "action": "fetch_url",
+                        "query": item.get("query") or url,
+                        "instruction": "focus=deposit facility",
+                        "reason": "Themenabschnitt derselben amtlichen Seite quellengetreu lesen",
+                    }
     # Large technical standards are served in 18k character windows. If
     # the first page slice has no address-width statement, load the next
     # *same observed URL* with its advertised offset once. Do not construct
@@ -610,6 +667,17 @@ def has_discovered_deeper_primary_link(goal, observations):
     URL, looping through numbered indexes or suppressing useful evidence.
     """
     if not _publisher(goal):
+        return False
+    # A focused primary page that already contains an attributable rate
+    # and effective date should go to the verifier before any link crawl.
+    if (_publisher(goal) == "ecb.europa.eu"
+            and not missing_official_answer_document(goal, observations)
+            and any(
+                isinstance(o, dict) and o.get("action") == "fetch_url"
+                and isinstance(o.get("result"), dict)
+                and o["result"].get("focus") == "deposit facility"
+                for o in observations
+            )):
         return False
     fetched_ok = [
         item for item in observations
