@@ -299,6 +299,12 @@ fetch_url
 - Lade gezielt eine URL aus einem vorherigen search_web-Ergebnis.
 - Übergib die vollständige URL im JSON-Feld "query".
 - Öffne bevorzugt relevante Primärquellen und seriöse Quellen.
+- Google-News-RSS-Links (news.google.com/rss/...) sind Such-Wrapper und keine Artikeltexte.
+  Rufe sie nicht mit fetch_url ab. Suche stattdessen die echte Hersteller- oder Verlags-URL.
+- Allgemeine Hersteller-Übersichtsseiten wie /iphone/ belegen Features, aber nicht
+  automatisch den aktuellen Verkauf oder Preis eines bestimmten Modells.
+  Für konkrete Verfügbarkeitsfragen bevorzuge datierte Hersteller-Ankündigungen
+  oder modellbezogene offizielle Kaufseiten, sofern als Suchtreffer vorhanden.
 - Du darfst mehrere Quellen nacheinander laden.
 
 {runtime_tools_text}
