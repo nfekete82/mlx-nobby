@@ -6858,8 +6858,43 @@ def extract_web_text(html):
     return value.strip()
 
 
+def source_focus_offset(readable, phrase, *, chunk_size=6000):
+    """Locate a source-exact, topic-relevant window in an already-fetched page.
+
+    A search hint selects a character offset, never an answer. Prefer an
+    occurrence next to a numeric measure and a date over a navigation label.
+    Every downstream quote still comes verbatim from the original article.
+    """
+    if not isinstance(readable, str) or not isinstance(phrase, str):
+        return None
+    phrase = " ".join(phrase.split()).strip()
+    if not 3 <= len(phrase) <= 100 or not readable:
+        return None
+    candidates = list(re.finditer(re.escape(phrase), readable, re.IGNORECASE))
+    if not candidates:
+        return None
+    scored = []
+    for hit in candidates[:200]:
+        neighborhood = readable[max(0, hit.start()-300):hit.end()+450]
+        right = readable[hit.start():hit.end()+450]
+        percent = bool(re.search(r"\b\d{1,3}(?:[.,]\d{1,4})?\s*%", right))
+        date = bool(re.search(
+            r"\b(?:20\d{2}|19\d{2})\b|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+            r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|"
+            r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+            right, re.I,
+        ))
+        section = bool(re.search(r"\b(?:interest rates?|zinssätze?|leitzinsen)\b",
+                                 neighborhood, re.I))
+        score = 8 * percent + 4 * date + 3 * section
+        scored.append((score, hit.start()))
+    _score, position = max(scored)
+    return max(0, position - min(600, max(200, chunk_size // 5)))
+
+
 @reuse_research_observation
-def fetch_web_page(url, offset=0, chunk_size=18_000):
+def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
     try:
         offset = max(0, int(offset or 0))
     except (TypeError, ValueError):
@@ -7071,6 +7106,16 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
 
     # Provide enough context for Qwen without flooding the context window.
             total_characters = len(readable)
+            if focus:
+                focus_at = source_focus_offset(readable, focus, chunk_size=6000)
+                if focus_at is None:
+                    return {
+                        "ok": False, "url": current_url,
+                        "error": "Gesuchter Themenabschnitt in der Quellseite nicht gefunden",
+                        "retrieval_status": "focus_not_found",
+                    }
+                offset = focus_at
+                chunk_size = min(chunk_size, 6000)
 
             if offset >= total_characters:
                 return {
@@ -7107,6 +7152,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
                 "total_characters": total_characters,
                 "offset": offset,
                 "end_offset": end_offset,
+                "focus": focus if focus else None,
                 "truncated": truncated,
                 "next_offset": (
                     end_offset
@@ -7370,7 +7416,8 @@ def tool_fetch_url(request):
     Load one specific public URL.
 
     Optional:
-        instruction="offset=18000"
+        instruction="offset=18000" or "focus=deposit facility"
+    Focus selects a verbatim article window, never a factual answer.
     """
     url = str(
         request.prompt or ""
@@ -7398,9 +7445,19 @@ def tool_fetch_url(request):
         if match:
             offset = int(match.group(1))
 
+    focus = None
+    if instruction:
+        focus_match = re.fullmatch(
+            r"focus\s*=\s*([\w][\w\- ]{2,99})",
+            instruction, flags=re.IGNORECASE,
+        )
+        if focus_match:
+            focus = focus_match.group(1).strip()
+
     result = fetch_web_page(
         url,
         offset=offset,
+        focus=focus,
     )
 
     return {
