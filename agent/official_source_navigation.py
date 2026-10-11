@@ -111,14 +111,25 @@ def choose_official_publisher_step(goal, observations):
         )))
         corpus = "\n".join(str(item["result"].get("text") or "").casefold()
                            for item in loaded)
-        missing = [name for name in names if not re.search(
+        present = [name for name in names if re.search(
             r"(?<!\w)" + re.escape(name) + r"(?!\w)", corpus
         )]
+        missing = [name for name in names if name not in present]
+        # A generic index/homepage is not evidence for any requested
+        # protocol. Only search for a *missing counterpart* once a loaded
+        # source actually discusses another requested identifier.
+        # Prevent repeating the specialized search after a failed attempt.
+        already_refined = any(
+            isinstance(item, dict)
+            and item.get("action") == "search_web"
+            and "address specification " + host in str(item.get("query") or "")
+            for item in observations
+        )
         recent_search = any(
             isinstance(item, dict) and item.get("action") == "search_web"
             for item in observations[observations.index(loaded[-1]) + 1:]
         )
-        if missing and not recent_search:
+        if present and missing and not recent_search and not already_refined:
             return {
                 "action": "search_web",
                 "query": f"{' '.join(missing[:2])} address specification {host}",
