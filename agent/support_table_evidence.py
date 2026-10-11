@@ -63,9 +63,13 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
                 continue
             lines = fact.evidence_excerpt.splitlines()
             for start, line in enumerate(lines):
-                if not _HEADER.match(line):
+                # The HTML extractor emits a leading " | " before the
+                # first <th>/<td>. Strip only framing delimiters, never
+                # cell content or line breaks between status rows.
+                header = line.strip(" |\\t")
+                if not _HEADER.match(header):
                     continue
-                columns = [part.strip().lower() for part in line.split("|")]
+                columns = [part.strip().lower() for part in header.split("|")]
                 if not columns or columns[0] not in {"version", "versions"}:
                     continue
                 supported = next(
@@ -75,7 +79,7 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
                 if supported is None:
                     continue
                 for row in lines[start + 1:]:
-                    values = [value.strip() for value in row.split("|")]
+                    values = [value.strip() for value in row.strip(" |\\t").split("|")]
                     if len(values) != len(columns) or not _NAME.fullmatch(values[0]):
                         break
                     status = values[supported]
