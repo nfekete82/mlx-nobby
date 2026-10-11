@@ -637,3 +637,30 @@ def test_deep_official_link_remains_available_without_inflating_planner_context(
     projected = compact_web_planning(original)
     assert len(original[0]["result"]["page_links"]) == 56
     assert len(projected[0]["result"]["page_links"]) == 24
+
+
+
+def test_article_text_ignores_nav_but_keeps_links_to_related_primary_documents():
+    """Top-level boilerplate cannot consume the first 18 KB of article text."""
+    from agent.app import extract_web_text
+    html = (
+        "<html><body>"
+        "<nav>" +
+        "".join(f'<a href="/generic-menu-{i}">Generic navigation {i}</a>'
+                for i in range(110)) +
+        '<a href="/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html">'
+        'Influenza FAQ</a></nav>'
+        '<main><article><h1>Influenza</h1>'
+        '<p>Die Influenza beginnt oft plötzlich mit Fieber und Kopfschmerzen.</p>'
+        '</article></main>'
+        '<aside>Unrelated tips and contact boxes.</aside>'
+        '<footer>Generic footer notices.</footer>'
+        '</body></html>'
+    )
+    text = extract_web_text(html)
+    assert "plötzlich mit Fieber" in text
+    assert "Generic navigation" not in text
+    assert "Unrelated tips" not in text
+    assert "Generic footer" not in text
+    links = same_site_html_links(html, "https://www.rki.de/")
+    assert any("Influenza/FAQ_Liste.html" in x["url"] for x in links)
