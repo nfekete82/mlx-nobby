@@ -198,7 +198,9 @@ def build_evidence(observations, *, now=None, goal=""):
         url = _public_url(result.get("final_url") or result.get("url") or item.get("query"))
         content = result.get("text")
         if url and isinstance(content, str) and len(content.strip()) >= 80:
-            usable.add((url, result.get("offset", 0)))
+            raw_offset = result.get("offset", 0)
+            safe_offset = raw_offset if type(raw_offset) is int and raw_offset >= 0 else 0
+            usable.add((url, safe_offset))
     per_source_fact_limit = max(12, 100 // max(1, min(len(usable), 8)))
     for item in observations or []:
         if not isinstance(item, dict) or item.get("action") != "fetch_url":
