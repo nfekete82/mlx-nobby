@@ -9,6 +9,7 @@ services:
     environment:
       SEARXNG_SECRET: "${SEARXNG_SECRET:?Set SEARXNG_SECRET in .env.search}"
       SEARXNG_BASE_URL: "http://127.0.0.1:${SEARXNG_PORT:-8081}/"
+      SEARXNG_BIND_ADDRESS: "0.0.0.0"
       SEARXNG_LIMITER: "false"
       FORCE_OWNERSHIP: "false"
     volumes:
