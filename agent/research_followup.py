@@ -111,8 +111,11 @@ def choose_support_policy_followup(goal, observations):
     if len(searches) != 1:
         return None
     return {"action": "search_web",
-            "query": f"site:{host} supported major versions versioning policy lifecycle",
-            "reason": "Einmalige präzise Suche nach offizieller Support-/Versionsrichtlinie"}
+            # The SearXNG provider may return zero relevant hits for site: filters.
+            # A plain, publisher-qualified query preserves discovery while
+            # leaving URL trust checks to the existing fetch gate.
+            "query": f"{host} versioning policy supported major versions",
+            "reason": "Einmalige Herausgebersuche nach offizieller Versionsrichtlinie"}
 
 
 def choose_support_policy_research_step(goal, observations):
