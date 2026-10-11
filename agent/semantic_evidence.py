@@ -433,14 +433,37 @@ def _render(bundle, claims, decisions, timings, error=None):
     return EvidenceAnswer(text, audit)
 
 
-def _final_validation(claims, decisions, observations):
+def _final_validation(claims, decisions, observations, *, goal="", bundle=None):
     """Additional non-mutating consistency checks can only downgrade support."""
+    from agent.official_source_navigation import _publisher, _safe_official_url
+    requested_host = _publisher(goal) if bundle is not None else None
+    source_by_id = {source.id: source for source in bundle.sources} if bundle else {}
+    passage_by_id = _anchored_passages(bundle) if bundle else {}
     by_id = {c.id: c for c in claims}
     checked = []
     for decision in decisions:
         result = dict(decision)
         if result["status"] == "supported":
             claim = by_id[result["id"]]
+            # A request about a named institution must not attribute a claim
+            # to that institution solely on a secondary publisher's testimony.
+            # Recheck only the model-confirmed anchors, never other found hits.
+            if requested_host and not any(
+                (pid in passage_by_id
+                 and passage_by_id[pid].source_id in source_by_id
+                 and _safe_official_url(
+                     source_by_id[passage_by_id[pid].source_id].final_url,
+                     requested_host,
+                 ) is not None)
+                for pid in result.get("passage_ids", [])
+            ):
+                result.update(
+                    status="insufficient_evidence",
+                    decision_origin="primary_source_validation",
+                    reason="Die bestätigte Behauptung ist nicht mit einer Primärquelle der genannten Institution verankert.",
+                )
+                checked.append(result)
+                continue
             numerical = audit_numerical_claims(claim.statement, observations)
             temporal = future_availability_conflicts(claim.statement)
             result["deterministic_validation"] = {"numerical": numerical, "temporal": temporal}
@@ -498,7 +521,7 @@ def synthesize_verified_evidence(goal, observations, llm):
     # other extraction workflows still check the entire bounded corpus.
     scope = support_matrix_verification_scope(goal, bundle, rows) if rows else None
     decisions = verify_candidates(goal, bundle, claims, llm, context_scope=scope)
-    decisions = _final_validation(claims, decisions, observations)
+    decisions = _final_validation(claims, decisions, observations, goal=goal, bundle=bundle)
     timings["verification_ms"] = round((time.perf_counter() - started) * 1000, 2)
     answer = _render(bundle, claims, decisions, timings, error)
     answer.audit["extraction_method"] = extraction_method
