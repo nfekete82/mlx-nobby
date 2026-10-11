@@ -264,7 +264,7 @@ def _extract_candidates(goal, bundle, llm):
 
 
 _MONEY_STATEMENT = re.compile(
-    r"(?i)(?:[$€]\\s*\\d|\\d[\\d.,]*\\s*(?:US[- ]?Dollar|Dollar|USD|EUR|€)\\b)"
+    r"(?i)(?:[$€]\\s*\\d|\\d[\\d.,]*\\s*(?:(?:US[- ]?Dollar|Dollar|USD|EUR)\\b|€))"
 )
 _LAUNCH_URL = re.compile(
     r"(?i)(?:^|/)(?:introducing[-_/]|announcing[-_/]|launch[-_/])"
