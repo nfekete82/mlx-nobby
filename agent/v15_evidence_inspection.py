@@ -11,6 +11,7 @@ from pathlib import Path
 from agent.catalog_evidence import catalog_source_windows
 from agent.research_followup import support_policy_windows
 from agent.structured_evidence import build_evidence
+from agent.support_table_evidence import support_matrix_candidates
 
 
 def evidence_inspection(row):
@@ -20,6 +21,8 @@ def evidence_inspection(row):
     observations = response.get("steps")
     observations = observations if isinstance(observations, list) else []
     bundle = build_evidence(observations, goal=goal)
+    candidates = support_matrix_candidates(goal, bundle)
+    audit = response.get("evidence") if isinstance(response.get("evidence"), dict) else {}
     reports = []
     for source in bundle.sources:
         entries = [f for f in bundle.facts if f.source_id == source.id]
@@ -31,8 +34,28 @@ def evidence_inspection(row):
             if ("supported" in text.lower() and "version" in text.lower())
             or ("modell" in text.lower() and "pixel" in text.lower())
         ][:4]
+        # Display tiny, exact excerpts of a known public support-policy
+        # table without dumping full scraped pages or unrelated sources.
+        from urllib.parse import urlsplit
+        from agent.support_table_evidence import _publisher_name
+        version_policy = bool(_publisher_name(goal, source.final_url))
+        table_rows = [i for i, line in enumerate(rows)
+                      if "version" in line.lower() or "supported" in line.lower()]
+        sample_indices = []
+        if version_policy:
+            for ix in (header_rows[:2] or table_rows[:2]):
+                sample_indices.extend(range(max(0, ix - 1), min(len(rows), ix + 9)))
+        sample_indices = list(dict.fromkeys(sample_indices))[:20]
         reports.append({
             "url": source.final_url,
+            "exact_supported_table_candidates": [
+                subject for subject, _statement, passage_id in candidates
+                if passage_id in {fact.id for fact in entries}
+            ],
+            "source_table_line_samples": [
+                {"line": i, "text": rows[i][:190]}
+                for i in sample_indices
+            ],
             "status": source.retrieval_status,
             "text_chars": len(source.text),
             "anchored_passage_count": len(entries),
@@ -51,6 +74,8 @@ def evidence_inspection(row):
         })
     return {"case_id": row.get("id"), "question": goal,
             "fetched_source_count": len(bundle.sources), "sources": reports,
+            "extraction_method": audit.get("extraction_method"),
+            "source_table_candidate_count": len(candidates),
             "warning": "Offline source-shape diagnostics only, not a semantic truth assessment"}
 
 
