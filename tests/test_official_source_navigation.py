@@ -343,3 +343,76 @@ def test_two_general_index_pages_without_topical_link_do_not_loop():
         fetched(node),
     ]
     assert not has_discovered_deeper_primary_link(RKI_GOAL, observations)
+
+
+
+def test_saved_rki_capture_shape_is_not_mistaken_for_a_symptom_answer():
+    """An Epid Bull literature title is no disease presentation evidence."""
+    from agent.official_source_navigation import (
+        missing_clinical_article, clinical_presentation_question,
+    )
+    overview = "https://www.rki.de/DE/Themen/Infektionskrankheiten/Infektionskrankheiten-A-Z/I/Influenza/Influenza.html"
+    node = "https://www.rki.de/DE/Themen/Infektionskrankheiten/Infektionskrankheiten-A-Z/I/Influenza/influenza-node.html"
+    vaccination = "https://www.rki.de/SharedDocs/FAQs/DE/Impfen/Influenza/FAQ-Liste_gesamt.html"
+    article = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    title = (
+        "Symptomprofile, Erkrankungsraten und Sequenzierung der häufigsten "
+        "Atemwegserreger auf Bevölkerungsebene, Epid Bull 35/2025"
+    )
+    obs = [
+        search((overview, "Influenza Themenübersicht"), (node, "Influenza Index")),
+        fetched(overview, links=[{"url": vaccination, "title": "Influenza-Impfung FAQ"}]),
+        fetched(node, links=[{"url": vaccination, "title": "Influenza-Impfung FAQ"}]),
+    ]
+    for item in obs[1:]:
+        item["result"]["text"] = (
+            "Informationen zu Influenza und Publikationen\n" + title
+        )
+    assert clinical_presentation_question(RKI_GOAL)
+    assert missing_clinical_article(RKI_GOAL, obs)
+    next_step = choose_official_publisher_step(RKI_GOAL, obs)
+    assert next_step["action"] == "search_web"
+    assert "krankheitsbild" in next_step["query"].casefold()
+    assert "symptomatik" in next_step["query"].casefold()
+    assert not any("Impfen" in str(item) for item in [next_step])
+    # Already attempted a targeted fallback: no recurring search loop.
+    followup = search(
+        (vaccination, "Impfreaktionen nach Influenza-Impfung"),
+        (article, "Wie ist das Krankheitsbild der Influenza? FAQ"),
+    )
+    picked = choose_official_publisher_step(RKI_GOAL, obs + [followup])
+    assert picked == {
+        "action": "fetch_url",
+        "query": article,
+        "reason": "Tatsächlich gefundene Primärquelle öffnen",
+    }
+    source = fetched(article)
+    source["result"]["text"] = (
+        "Die Influenza-typische Symptomatik ist oft durch einen plötzlichen "
+        "Erkrankungsbeginn mit Fieber, Muskel- und Kopfschmerzen gekennzeichnet."
+    )
+    assert not missing_clinical_article(RKI_GOAL, obs + [followup, source])
+    assert not missing_clinical_article("Wie viele Bit hat IPv4 laut IETF?", obs)
+
+
+def test_rki_faq_about_vaccination_is_not_selected_for_disease_symptoms():
+    vaccination = "https://www.rki.de/SharedDocs/FAQs/DE/Impfen/Influenza/FAQ-Liste_gesamt.html"
+    disease = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    hits = search(
+        (vaccination, "FAQ Influenza Impfung und Nebenwirkungen"),
+        (disease, "FAQ Influenza Krankheitsbild und Symptome"),
+    )
+    decision = choose_official_publisher_step(RKI_GOAL, [hits])
+    assert decision["query"] == disease
+
+
+def test_named_clinical_research_keeps_primary_link_without_inventing_symptoms():
+    from agent.official_source_navigation import clinical_presentation_question
+    query = choose_official_publisher_step(RKI_GOAL, [])
+    assert "Krankheitsbild" in query["query"]
+    assert "FAQ" in query["query"]
+    assert "fieber" not in query["query"].casefold()
+    assert clinical_presentation_question("Welche Krankheitsbild-Symptome nennt das RKI?")
+    assert not clinical_presentation_question(
+        "Welche Nebenwirkungen der Influenza-Impfung nennt das RKI?"
+    )
