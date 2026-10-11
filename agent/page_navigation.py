@@ -9,7 +9,10 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from agent.plan_fastpath import official_catalog_goal, _brand_for_goal, OFFICIAL_HOSTS
 
-_MAX_LINKS = 24
+# HTML navigation commonly begins with dozens of generic links; keep a
+# bounded larger discovery pool for the deterministic topical selector.
+# Model planning still gets a smaller projection in planning_context.py.
+_MAX_LINKS = 96
 _TOPIC = re.compile(r"(?i)(?:iphone|ipad|pixel|galaxy|surface|smartphone|"
                     r"phones|telefone|modelle|products|portfolio|geräte|device|category)")
 _EXCLUDE = re.compile(r"(?i)(?:account|login|signin|privacy|cookies|"
