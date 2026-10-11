@@ -462,6 +462,13 @@ class AgentRuntime:
             self.policy.research_continuation_steps
             if mode == "research" and deep_research else 0
         )
+        # One search + one fetch can be needed after an official disease
+        # overview turns out to contain no actual clinical presentation.
+        # This bounded allowance is restricted to named-publisher questions;
+        # normal diagnostic/coding budgets remain unchanged.
+        from agent.official_source_navigation import clinical_presentation_question
+        if mode == "diagnostic" and clinical_presentation_question(goal):
+            research_continuation_steps = 2
         loop_max_steps = max_steps + research_continuation_steps
 
         def publish(status="running", current_step=None, pending_action=None):
@@ -495,10 +502,12 @@ class AgentRuntime:
                 from agent.research_followup import need_support_policy_source
                 from agent.official_source_navigation import (
                     missing_requested_identifiers, has_discovered_deeper_primary_link,
+                    missing_clinical_article,
                 )
                 if (build_evidence(observations).facts
                         and not insufficient_catalog_sources(goal, observations)
                         and not missing_requested_identifiers(goal, observations)
+                        and not missing_clinical_article(goal, observations)
                         and not has_discovered_deeper_primary_link(goal, observations)
                         and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
