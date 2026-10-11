@@ -219,7 +219,7 @@ def choose_official_publisher_step(goal, observations):
     # the first page slice has no address-width statement, load the next
     # *same observed URL* with its advertised offset once. Do not construct
     # a sibling document URL or treat an offset as proof of the answer.
-    if host == "rfc-editor.org" and re.search(r"(?i)\\bbits?\\b", str(goal or "")):
+    if host == "rfc-editor.org" and re.search(r"(?i)\bbits?\b", str(goal or "")):
         for item in reversed(loaded):
             result = item["result"]
             url = result.get("final_url") or result.get("url")
@@ -235,13 +235,13 @@ def choose_official_publisher_step(goal, observations):
                     continue
             except (ValueError, TypeError):
                 continue
-            if not re.search(r"(?i)/(?:info|rfc)/rfc\\d+", urlsplit(url).path):
+            if not re.search(r"(?i)/(?:info|rfc)/rfc\d+", urlsplit(url).path):
                 continue
             passage = str(result.get("text") or "")
             address_measurement = any(
                 re.search(
-                    r"(?i)(?:addresses?|adressen?)\\W.{0,90}\\b\\d+\\s*bits?\\b"
-                    r"|\\b\\d+\\s*bits?\\W.{0,90}(?:addresses?|adressen?)",
+                    r"(?i)(?:addresses?|adressen?)\W.{0,90}\b\d+\s*bits?\b"
+                    r"|\b\d+\s*bits?\W.{0,90}(?:addresses?|adressen?)",
                     line,
                 )
                 for line in passage.splitlines()
