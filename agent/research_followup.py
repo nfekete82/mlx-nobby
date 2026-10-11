@@ -204,6 +204,46 @@ def choose_support_policy_research_step(goal, observations):
                 continue
             candidates.append((score, url))
     if not candidates:
+        # Some search engines omit the support policy page but expose the
+        # publisher's general download index. Reading the *returned* index
+        # is preferable to spending a model call picking the same URL.
+        # Only the first search can take this route, at most once per run.
+        searches = [
+            item for item in observations
+            if isinstance(item, dict)
+            and item.get("action") in {"search_web", "web_search"}
+            and item.get("status") == "completed"
+            and isinstance(item.get("result"), dict)
+        ]
+        if len(searches) == 1 and not attempted:
+            fallback_urls = []
+            for link in searches[0]["result"].get("results", []):
+                if not isinstance(link, dict) or link.get("source_type") == "rss_search_entry":
+                    continue
+                url = link.get("url")
+                if not isinstance(url, str) or len(url) > 1200:
+                    continue
+                try:
+                    parts = urlsplit(url)
+                    if (
+                        parts.scheme == "https"
+                        and parts.hostname in {host, "www." + host}
+                        and parts.username is None
+                        and parts.password is None
+                        and parts.port in {None, 443}
+                        and re.fullmatch(r"/download/?", parts.path, re.I)
+                        and not parts.query
+                        and not parts.fragment
+                    ):
+                        fallback_urls.append(url)
+                except ValueError:
+                    continue
+            if fallback_urls:
+                return {
+                    "action": "fetch_url",
+                    "query": fallback_urls[0],
+                    "reason": "Gefundene offizielle Downloadübersicht als Einstieg prüfen",
+                }
         return None
     _, url = max(candidates, key=lambda item: item[0])
     return {
