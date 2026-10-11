@@ -18,7 +18,7 @@ _GENERIC_BRAND_PATH = re.compile(
     r"shop|store|newsroom|products)/?$", re.I,
 )
 _DATE_ARTICLE = re.compile(r"/newsroom/20\d\d/\d\d/[^/]+", re.I)
-_LOCALE_HOME = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?$", re.I)
+_LOCALE_HOME = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2})?)?/?$", re.I)
 _CATALOG_TERMS = re.compile(r"\b(?:modell\w*|model\w*|produkt\w*|product\w*|"
                             r"sortiment|lineup|angebot\w*|iphone\w*|ipad\w*)\b", re.I)
 _CATALOG_INTENT = re.compile(r"\b(?:welch\w*|aktuell\w*|currently|list\w*|"
@@ -54,6 +54,28 @@ def _general_landing_page(url):
     """Country-specific roots and broad category hubs are not product detail."""
     path = urlsplit(url).path or "/"
     return bool(_LOCALE_HOME.fullmatch(path) or _GENERIC_BRAND_PATH.fullmatch(path))
+
+
+def _unrelated_official_host(host):
+    """Help, sign-in and identity subdomains are not official product catalogs."""
+    return host.split(".")[0] in {"support", "help", "accounts", "account",
+                                  "login", "signin", "appleid", "id"}
+
+
+def _catalog_topic_match(goal, url, title):
+    """A named product family must be present in the path or source title.
+
+    The search title is merely a relevance hint; source content remains subject
+    to independent extraction and verification. Brand mentions alone are not
+    evidence that the source addresses the user's requested product family.
+    """
+    topics = [t for t in _SUBJECT_TERMS
+              if re.search(r"(?<!\\w)" + re.escape(t) + r"(?!\\w)", str(goal).lower())]
+    if not topics:
+        return True  # Broad company catalogs can legitimately span families.
+    path = urlsplit(url).path.lower()
+    return any(t in path or re.search(r"(?<!\\w)" + re.escape(t) + r"(?!\\w)",
+                                   title.lower()) for t in topics)
 
 
 def _direct_official_score(url):
@@ -123,7 +145,9 @@ def choose_official_followup(goal, observations):
             if not known_brand and not any(word in evidence for word in
                                            ("official", "offiziell", "hersteller")):
                 continue
-            if catalog and _general_landing_page(url):
+            if catalog and (_general_landing_page(url)
+                            or _unrelated_official_host(host)
+                            or not _catalog_topic_match(goal, url, str(entry.get("title") or ""))):
                 continue
             priority = _direct_official_score(url) + _topic_score(goal, url, evidence)
             choices.append((priority, url))
