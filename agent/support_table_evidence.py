@@ -110,3 +110,64 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
         if len(records) >= max(0, min(8, limit)):
             break
     return records
+
+
+# These terms select additional potentially contradictory or qualifying claims;
+# they never establish that any version is supported.
+_POLICY_CONFLICT_CUE = re.compile(
+    r"(?i)\\b(?:support(?:ed|s|ing)?|unsupported|unterstützt\\w*|"
+    r"end[- ]of[- ]life|eol|retir(?:ed|ement)|obsolete|deprecated|"
+    r"discontinued|maintain(?:ed|ance)?|ausgelaufen|veraltet)\\b"
+)
+
+
+def support_matrix_verification_scope(goal, bundle, rows):
+    """Limit table verification to evidence relevant to version support.
+
+    Every anchored support matrix from the *same named official publisher*
+    remains in scope, together with prose discussing support and every mention
+    of a candidate version from the official policy. Other retrieved pages
+    contribute potentially conflicting, version-specific statements.
+
+    This narrows the verifier's prompt, not its authority: selected evidence
+    remains byte-for-byte anchored and the ordinary LLM verifier still checks
+    every candidate. If attribution fails, retain the full-context behavior.
+    """
+    if not rows or not support_policy_question(goal):
+        return None
+    official_ids = {
+        source.id for source in bundle.sources
+        if source.retrieval_status == "loaded"
+        and _publisher_name(str(goal), source.final_url)
+    }
+    anchor_ids = {pid for _, _, pid in rows}
+    available = {fact.id for fact in bundle.facts}
+    if not official_ids or not anchor_ids.issubset(available):
+        return None
+    version_names = [subject.rsplit(" ", 1)[-1] for subject, _, _ in rows]
+    if any(not _NAME.fullmatch(name) for name in version_names):
+        return None
+    version_terms = [re.compile(r"(?<![\\w.])" + re.escape(name) + r"(?![\\w.])")
+                     for name in version_names]
+
+    relevant = set(anchor_ids)
+    for fact in bundle.facts:
+        excerpt = fact.evidence_excerpt
+        named_version = any(term.search(excerpt) for term in version_terms)
+        policy_source = fact.source_id in official_ids
+        # Includes conflicting Yes/No rows in other policy windows, even if
+        # the candidate versions are not mentioned in their first row.
+        if policy_source and "-support-" in fact.id:
+            relevant.add(fact.id)
+        elif policy_source and (named_version or _POLICY_CONFLICT_CUE.search(excerpt)):
+            relevant.add(fact.id)
+        elif named_version and _POLICY_CONFLICT_CUE.search(excerpt):
+            relevant.add(fact.id)
+
+    if not anchor_ids.issubset(relevant):
+        return None
+    # Same bounded cross-source evidence is visible to every table claim;
+    # a contradictory status for one version must never be hidden by splitting
+    # the input into isolated per-version windows.
+    return {"c-" + str(i): tuple(sorted(relevant))
+            for i, _ in enumerate(rows, 1)}
