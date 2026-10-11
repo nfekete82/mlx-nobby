@@ -520,3 +520,58 @@ def test_missing_rfc_version_outranks_known_version_category_page():
     assert choose_official_publisher_step(
         RFC_GOAL, [initial, loaded, no_ipv6]
     ) is None
+
+
+
+def test_truncated_rfc_document_continues_on_same_verified_url_once():
+    """A first 18k-character slice without address-width facts is not final."""
+    page = "https://www.rfc-editor.org/info/rfc791/"
+    first = fetched(page)
+    first["result"].update({
+        "text": "Internet Protocol version IPv4 is a standard specification. " * 100,
+        "offset": 0, "next_offset": 18000,
+        "total_characters": 48000, "truncated": True,
+    })
+    discovered = search((page, "RFC 791 IPv4"))
+    missing_search = search((
+        "https://de.wikipedia.org/wiki/IPv6", "IPv6 introduction",
+    ))
+    next_step = choose_official_publisher_step(
+        RFC_GOAL, [discovered, first, missing_search],
+    )
+    assert next_step == {
+        "action": "fetch_url",
+        "query": page,
+        "instruction": "offset=18000",
+        "reason": "Fortsetzung desselben verifizierten RFC-Dokuments laden",
+    }
+    continuation = fetched(page)
+    continuation["result"].update({
+        "text": "Addresses are fixed length of four octets (32 bits). " * 3,
+        "offset": 18000, "next_offset": None,
+        "total_characters": 48000, "truncated": False,
+    })
+    assert choose_official_publisher_step(
+        RFC_GOAL, [discovered, first, missing_search, continuation],
+    ) is None
+    assert not any(
+        "offset=" in str(step) for step in [
+            choose_official_publisher_step(
+                RFC_GOAL, [discovered, first, missing_search, continuation],
+            ),
+        ]
+    )
+
+
+def test_rfc_addresses_from_german_question_rank_source_exact_english_lines():
+    from agent.structured_evidence import _quantitative_windows
+    goal = "Wie viele Bit haben IPv4- und IPv6-Adressen laut den IETF-RFCs?"
+    text = (
+        "Header Flags: 3 bits.\n"
+        "Addresses are fixed length of four octets (32 bits).\n"
+        "Source Address: 32 bits\n"
+    )
+    windows = _quantitative_windows(goal, text)
+    assert windows
+    assert any("32 bits" in snippet and "Address" in snippet for _, _, snippet in windows)
+    assert all(text[start:end] == snippet for start, end, snippet in windows)
