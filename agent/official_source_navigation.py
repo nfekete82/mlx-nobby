@@ -175,6 +175,48 @@ def official_home_fallback_host(goal, observations):
     return host if len(queries) >= 2 else None
 
 
+def missing_official_answer_document(goal, observations):
+    """Topic-only check: page navigation cannot certify an answer."""
+    host = _publisher(goal)
+    q = str(goal or "").casefold()
+    paired = (
+        host == "rfc-editor.org"
+        and len(set(re.findall(r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", q))) >= 2
+        and bool(re.search(r"(?i)\bbits?\b", q))
+    )
+    deposit = host == "ecb.europa.eu" and (
+        "einlagezins" in q or "deposit facility" in q
+    )
+    if not (paired or deposit):
+        return False
+    loaded = []
+    for item in observations or ():
+        if not isinstance(item, dict) or item.get("action") != "fetch_url":
+            continue
+        result = item.get("result")
+        if (item.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True):
+            continue
+        parsed = _safe_official_url(result.get("final_url") or result.get("url"), host)
+        if parsed is not None:
+            loaded.append((parsed.path.casefold(), str(result.get("text") or "").casefold()))
+    if not loaded:
+        return False
+    if paired:
+        return not any(
+            re.search(r"/(?:info|rfc)/rfc\d+", path)
+            and re.search(r"\b(?:ipv4|ipv6|ip version [46])\b", body)
+            and re.search(r"\bbits?\b", body)
+            for path, body in loaded
+        )
+    return not any(
+        re.search(r"key.ecb.interest.rates|monetary.policy.decisions|"
+                  r"monetary-policy-decisions|key.interest.rates", path)
+        and re.search(r"deposit facility|einlagefazilit|einlagezins", body)
+        for path, body in loaded
+    )
+
+
 def choose_official_publisher_step(goal, observations):
     host = _publisher(goal)
     if not host:
@@ -338,11 +380,36 @@ def choose_official_publisher_step(goal, observations):
             # Page hyperlinks need a topic match, not just same-host status.
             if base_score and not word_hits:
                 continue
+            # Monetary-policy deposit rates differ from reference-rate benchmarks.
+            deposit_question = host == "ecb.europa.eu" and (
+                "einlagezins" in str(goal).casefold()
+                or "deposit facility" in str(goal).casefold()
+            )
+            if deposit_question:
+                if re.search(
+                    r"(?i)euro.short.term.rates|interest.rate.benchmarks|"
+                    r"risk.free.rates|fxrates|exchange.rates|\bestr\b|€str",
+                    name,
+                ):
+                    continue
+                if not re.search(
+                    r"(?i)deposit.facility|key.ecb.interest.rates|"
+                    r"key.interest.rates|monetary.policy|"
+                    r"geldpolitik|einlagefazilit",
+                    name,
+                ):
+                    continue
             # Specific document beats generic login/home index even when its
             # query match is only in the path. Scores never prove correctness.
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
             score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
                      + 8 * is_home + 24 * bool(missing_hits))
+            if deposit_question:
+                if re.search(r"(?i)deposit.facility|key.ecb.interest.rates|"
+                             r"key.interest.rates|einlagefazilit", name):
+                    score += 40
+                elif re.search(r"(?i)monetary.policy|geldpolitik", name):
+                    score += 8
             # Side effects of vaccination must not be mistaken for clinical
             # symptoms of the disease. Only reject the irrelevant branch;
             # the fetched URL must still be independently discovered.
@@ -416,6 +483,26 @@ def choose_official_publisher_step(goal, observations):
                 "action": "fetch_url",
                 "query": root,
                 "reason": "Offiziellen HTTPS-Einstiegspunkt nach irrelevanten Suchtreffern prüfen",
+            }
+    # One bounded source-discovery retry, never guessed factual values or URLs.
+    if loaded and missing_official_answer_document(goal, observations):
+        names = re.findall(
+            r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal)
+        )
+        if host == "rfc-editor.org":
+            refinement = f"{' '.join(names)} address size RFC specification {host}"
+        else:
+            refinement = f"deposit facility key ECB interest rates effective date {host}"
+        attempted = any(
+            isinstance(item, dict) and item.get("action") == "search_web"
+            and str(item.get("query") or "").casefold() == refinement.casefold()
+            for item in observations
+        )
+        if not attempted:
+            return {
+                "action": "search_web",
+                "query": refinement,
+                "reason": "Passende offizielle Fachquelle statt Übersichtsseite suchen",
             }
     return None
 
