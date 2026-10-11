@@ -263,3 +263,111 @@ def test_large_verification_response_and_duplicate_json_fields_fail_closed():
         results = verify_candidates("Recherche", bundle(), [candidate()], llm)
         assert results[0]["status"] == "not_checked"
         assert results[0]["decision_origin"] == "invalid_response"
+
+
+@pytest.mark.parametrize("language", ["json", "", "JSON"])
+def test_complete_single_json_wrapper_accepted_for_both_native_model_stages(language):
+    extraction = "```" + language + "\n" + json.dumps({"claims": [extracted()]}, indent=2) + "\n```"
+    verification = "```" + language + "\n" + json.dumps({"claims": [decision()]}, indent=2) + "\n```"
+    llm = ScriptedLLM(extraction, verification)
+    answer = synthesize_verified_evidence("Ankündigung", [observation()], llm)
+    assert answer.audit["selected_count"] == 1
+    assert candidate().statement in answer
+    assert len(llm.calls) == 2
+
+
+@pytest.mark.parametrize("wrapper", [
+    "Explanation\n```json\n%s\n```", "```json\n%s\n```\nExplanation",
+    "```javascript\n%s\n```", "```json\n%s", "```json %s ```",
+    "```json\n%s\n```\n```json\n{}\n```",
+])
+def test_wrapper_acceptance_does_not_accept_prose_multiple_fences_or_other_formats(wrapper):
+    llm = ScriptedLLM(wrapper % json.dumps({"claims": [extracted()]}))
+    answer = synthesize_verified_evidence("Recherche", [observation()], llm)
+    assert answer.audit["selected_count"] == 0
+    assert len(llm.calls) == 1
+
+
+def test_fenced_unknown_ids_and_duplicate_fields_still_fail_closed():
+    llm = ScriptedLLM("```json\n" + json.dumps({"claims": [extracted(passage_ids=("forged",))]}) + "\n```")
+    answer = synthesize_verified_evidence("Recherche", [observation()], llm)
+    assert answer.audit["selected_count"] == 0 and len(llm.calls) == 1
+    for raw in ('```json\n{"claims":[],"claims":[]}\n```',
+                "```json\n" + json.dumps({"claims": [decision(), decision()]}) + "\n```",
+                "```json\n" + json.dumps({"claims": [decision(id="forged")]}) + "\n```"):
+        results = verify_candidates("Recherche", bundle(), [candidate()], ScriptedLLM(raw))
+        assert results[0]["status"] != "supported"
+        assert results[0]["decision_origin"] == "invalid_response"
+
+
+def test_extraction_prompt_requests_minimal_direct_answers_and_compact_json():
+    llm = ScriptedLLM({"claims": []})
+    synthesize_verified_evidence("Wie heißen die Monde?", [observation()], llm)
+    prompt = llm.calls[0][1]
+    assert "minimale notwendige Zahl" in prompt
+    assert "schöpfe das Budget nicht aus" in prompt
+    assert "nur diese Namen" in prompt
+    assert "kompaktes JSON ohne Einrückung oder Markdown" in prompt
+
+
+def test_actual_production_hook_disables_dynamic_memory_and_clock_for_machine_output(monkeypatch):
+    from agent import app, semantic_evidence
+    from agent.model_provider import ModelRequest, _memory_allowed, _with_system_clock
+    calls = []
+    def observed(purpose, messages, **kwargs):
+        calls.append((purpose, messages, kwargs))
+        return '{"claims":[]}'
+    monkeypatch.setattr(app, "observed_agent_llm", observed)
+    monkeypatch.setattr(semantic_evidence, "synthesize_verified_evidence",
+                        lambda goal, observations, llm: llm("agent.extract", "explicit as_of", 2200))
+    app.agent_evidence_answer("Question", [])
+    request = ModelRequest(messages=calls[0][1], role="agent")
+    assert "Return JSON only." in request.messages[0]["content"]
+    assert not _memory_allowed(request)
+    assert _with_system_clock(request) is request
+    assert calls[0][0] == "agent.extract"
+
+
+def test_both_stage_payloads_preserve_all_passages_and_reconstruct_source_metadata():
+    observations = [observation(publication_date="2026-10-01", retrieved_at="2026-10-11T12:00:00+00:00"),
+        observation("Boreal Laptop was announced for Japan. It is not available in Germany and no launch date has been announced.",
+                    "https://example.net/announcement", publication_date="2026-09-30",
+                    retrieved_at="2026-10-11T12:00:00+00:00")]
+    b = build_evidence(observations)
+    llm = ScriptedLLM({"claims": [extracted(b)]}, {"claims": [decision(b)]})
+    synthesize_verified_evidence("Ankündigung", observations, llm)
+    for _, prompt, _ in llm.calls:
+        payload = json.loads(prompt.split("\n")[-1])
+        assert {p["id"] for p in payload["passages"]} == {f.id for f in b.facts}
+        assert len(payload["passages"]) == len(b.facts)
+        sources = {s["id"]: s for s in payload["sources"]}
+        assert len(payload["sources"]) == len(b.sources)
+        for fact in b.facts:
+            passage = next(p for p in payload["passages"] if p["id"] == fact.id)
+            assert set(passage) == {"id", "source_id", "quotation", "source_location"}
+            assert passage["quotation"] == fact.evidence_excerpt
+            assert passage["source_location"] == list(fact.source_location)
+            source = next(s for s in b.sources if s.id == fact.source_id)
+            metadata = sources[passage["source_id"]]
+            assert metadata == {"id": source.id, "domain": source.domain,
+                "authority": source.authority, "publication_date": source.publication_date,
+                "retrieved_at": source.retrieved_at}
+
+
+def test_source_metadata_normalization_reduces_payload_without_dropping_source_units():
+    text = "\n".join("Document passage " + str(i) + ": This statement remains complete and independently anchored."
+                     for i in range(40))
+    observations = [observation(text, publication_date="2026-10-01")]
+    b = build_evidence(observations)
+    llm = ScriptedLLM({"claims": [extracted(b)]}, {"claims": [decision(b)]})
+    synthesize_verified_evidence("Document", observations, llm)
+    for _, prompt, _ in llm.calls:
+        payload = json.loads(prompt.split("\n")[-1])
+        assert len(payload["passages"]) == len(b.facts) == 40
+        metadata = {s["id"]: {k: v for k, v in s.items() if k != "id"} for s in payload["sources"]}
+        repeated = [{**p, **metadata[p["source_id"]]} for p in payload["passages"]]
+        normalized_size = len(json.dumps({"sources": payload["sources"], "passages": payload["passages"]}))
+        assert normalized_size < len(json.dumps({"passages": repeated}))
+    assert "höchstens 20 Wörter" in llm.calls[1][1]
+    assert "Passage-IDs ausschließlich im passage_ids-Feld" in llm.calls[1][1]
+    assert "keine Quellenmetadaten" in llm.calls[0][1]
