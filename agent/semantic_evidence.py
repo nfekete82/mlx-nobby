@@ -129,10 +129,9 @@ def _unchecked(claim, reason, status="not_checked", origin="invalid_response"):
 
 
 _SUBJECTIVE_PREFERENCE = re.compile(
-    r"(?i)^\\s*(?:i\\s+prefer|ich\\s+bevorzuge|ich\\s+mag)\\s+"
-    r"(?!.{0,160}\\b(?:because|weil|since|denn)\\b)[^.!?]{1,140}[.!?]?\\s*$"
+    r"(?i)^\s*(?:i\s+prefer|ich\s+bevorzuge|ich\s+mag)\s+"
+    r"(?!.{0,160}\b(?:because|weil|since|denn)\b)[^.!?]{1,140}[.!?]?\s*$"
 )
-
 
 def _subjective_preference(claim):
     """Only narrow first-person preferences; factual statements still need evidence."""
