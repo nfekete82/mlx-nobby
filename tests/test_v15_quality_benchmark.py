@@ -80,7 +80,7 @@ def test_same_output_paths_are_rejected_before_opening(tmp_path):
     assert not output.exists()
 
 
-def test_actual_verifier_batch_receives_no_human_gold_and_keeps_case_sources_separate():
+def test_actual_verifier_batch_receives_no_reference_gold_and_keeps_case_sources_separate():
     data, _ = benchmark.load_dataset(benchmark.DEFAULT_DATASET)
     data = {**data, 'cases': [data['cases'][0], data['cases'][4]]}
     prompts = []
@@ -104,7 +104,7 @@ def test_actual_verifier_batch_receives_no_human_gold_and_keeps_case_sources_sep
     assert report['batches'][0]['case_ids'] == ['astronomy-1', 'software-python-1']
 
 
-def test_provider_failures_count_as_missing_predictions_not_human_not_checked_matches():
+def test_provider_failures_count_as_missing_predictions_not_reference_not_checked_matches():
     data, _ = benchmark.load_dataset(benchmark.DEFAULT_DATASET)
     data = {**data, 'cases': data['cases'][:2]}
     def unavailable(*args):
@@ -126,7 +126,7 @@ def test_verifier_batches_are_bounded_before_model_calls(size):
         benchmark.run_benchmark(data, forbidden, batch_size=size)
 
 
-def test_invalid_model_protocol_never_matches_human_subjective_not_checked():
+def test_invalid_model_protocol_never_matches_reference_subjective_not_checked():
     data, _ = benchmark.load_dataset(benchmark.DEFAULT_DATASET)
     subjective = next(c for c in data['cases'] if c['id'] == 'opinion')
     result = benchmark.score_cases([subjective], {'opinion': {

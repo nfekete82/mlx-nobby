@@ -1,6 +1,6 @@
 """Independent fixture contract and quality scoring; pipeline checks follow below.
 
-Human semantic labels are NOT inferred from runtime output. In particular,
+Authored semantic labels are NOT inferred from runtime output. In particular,
 returning not_checked for every real question never counts as semantic success.
 """
 import json
@@ -99,7 +99,7 @@ def test_official_frozen_quote_is_anchored_without_promoting_paraphrases(source)
     assert evaluate_claim(shifted, [admitted])['status'] == 'insufficient_evidence'
 
 
-def test_human_semantic_gold_is_not_relabelled_to_make_quote_engine_pass():
+def test_reference_semantic_gold_is_not_relabelled_to_make_quote_engine_pass():
     from agent.structured_evidence import evaluate_claim
     actual = {}
     for case in CASES:

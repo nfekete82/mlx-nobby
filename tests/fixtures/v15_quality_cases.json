@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "frozen_on": "2026-10-11",
-  "purpose": "Independent human semantic gold labels, separate from deterministic quotation/field validation. Not a claim that arbitrary prose is machine-verified.",
+  "purpose": "Authored semantic reference labels fixed before integration, separate from deterministic quotation/field validation. Not a claim that arbitrary prose is machine-verified.",
   "sources": {
     "nasa": {
       "id": "nasa",

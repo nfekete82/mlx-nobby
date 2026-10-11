@@ -1,6 +1,6 @@
-"""Evaluate frozen human claim labels with the guarded local semantic verifier.
+"""Evaluate frozen authored reference claim labels with the guarded local semantic verifier.
 
-This measures model judgments against a small authored human oracle; it is not
+This measures model judgments against a small authored reference oracle; it is not
 independent verification of real-world truth and does not measure web retrieval.
 Native configuration/model files are read, while app background state is isolated.
 """
@@ -31,7 +31,7 @@ def load_dataset(path):
             raise ValueError('Cases require unique string IDs')
         seen.add(case['id'])
         if not isinstance(case.get('claim'), str) or not case['claim'].strip() or case.get('expected_status') not in STATUSES:
-            raise ValueError('Case claim or human gold label invalid')
+            raise ValueError('Case claim or reference gold label invalid')
         if not isinstance(case.get('source_ids'), list) or any(s not in data['sources'] for s in case['source_ids']):
             raise ValueError('Unknown case source ID')
         if case.get('as_of') != data.get('frozen_on'):
@@ -141,7 +141,7 @@ def run_benchmark(data, llm, *, batch_size=8, emit=None):
             emit({'kind': 'verification_batch', **batch})
     return {**score_cases(data['cases'], predictions), 'batches': batches,
             'independent_truth_verification': False,
-            'measurement': 'local_model_semantic_judgments_against_frozen_human_labels',
+            'measurement': 'local_model_semantic_judgments_against_frozen_reference_labels',
             'limits': 'Small nonrepresentative frozen excerpt corpus; no live search, no retrieval or full-answer usefulness score.'}
 
 
