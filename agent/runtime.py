@@ -60,6 +60,7 @@ class RuntimeHooks:
     canonical_github_repo_from_goal: Callable
     execute_agent_approved_action: Callable | None = None
     verify_agent_action: Callable | None = None
+    agent_evidence_answer: Callable | None = None
 
 
 _CURRENT_RUNTIME = ContextVar("mlx_agent_runtime", default=None)
@@ -204,7 +205,8 @@ class AgentRuntime:
         target = pending["target"]
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.active_agent_run(), run_state.bind_run_context(self.context):
+            from agent.research_cache import request_research_cache
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context), request_research_cache():
                 try:
                     self._check_cancelled()
                     self._publish(callback, "running", observations)
@@ -290,7 +292,8 @@ class AgentRuntime:
         self._profile_events = []
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.active_agent_run(), run_state.bind_run_context(self.context):
+            from agent.research_cache import request_research_cache
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context), request_research_cache():
                 try:
                     self._check_cancelled()
                     result = self._run_loop(
@@ -299,6 +302,27 @@ class AgentRuntime:
                     )
                     if isinstance(result, dict):
                         if result.get("status") == "completed" and isinstance(result.get("answer"), str):
+                            from agent.structured_evidence import EvidenceAnswer
+                            web_steps = any(isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+                                            for item in result.get("steps", []))
+                            from agent.evidence import orchestrator_required_evidence
+                            local_evidence = any(isinstance(item, dict) and item.get("status") == "completed"
+                                                 and item.get("action") not in {"fetch_url", "search_web", "web_search"}
+                                                 for item in result.get("steps", []))
+                            research_requested = mode == "research" or (
+                                orchestrator_required_evidence(goal)["web"] and not local_evidence)
+                            if mode in {"diagnostic", "research"} and (web_steps or research_requested) and self.hooks.agent_evidence_answer:
+                                if not isinstance(result["answer"], EvidenceAnswer):
+                                    result["answer"] = self._model_hook(self.hooks.agent_evidence_answer, goal, result.get("steps", []))
+                                if isinstance(result["answer"], EvidenceAnswer):
+                                    result["evidence"] = result["answer"].audit
+                                    result["answer"] = str(result["answer"])
+                                    # Exact quotations must not be rewritten by prose
+                                    # repair/filter heuristics. Anchors were validated
+                                    # before rendering; legacy gates remain below for
+                                    # all unstructured answer paths.
+                                    result["performance"] = {"events": list(self._profile_events)}
+                                    return result
                             if any(isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
                                    for item in result.get("steps", [])):
                                 from agent.claim_validation import gate_numerical_claims, gate_source_links
@@ -457,6 +481,13 @@ class AgentRuntime:
             loop_max_steps + 1,
         ):
             self._check_cancelled()
+            if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
+                from agent.structured_evidence import build_evidence
+                if build_evidence(observations).facts:
+                    answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
+                    result = {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
+                    publish("completed")
+                    return result
             if mode in {"diagnostic", "research"}:
                 from agent.search_failure_fastpath import exhausted_official_search, UNAVAILABLE_ANSWER
                 if exhausted_official_search(goal, observations):
@@ -1985,6 +2016,13 @@ class AgentRuntime:
                     ),
                 })
 
+        if mode in {"diagnostic", "research"} and self.hooks.agent_evidence_answer and any(
+            isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+            for item in observations
+        ):
+            answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
+            publish("completed")
+            return {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
         result = {
             "status": final_status,
             "goal": goal,

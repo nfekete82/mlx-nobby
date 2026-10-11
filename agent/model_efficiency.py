@@ -2,6 +2,7 @@
 import math
 
 CALL_PURPOSES = frozenset({"agent.call", "agent.plan", "agent.plan_repair",
+    "agent.extract", "agent.verify",
     "agent.final", "agent.final_repair", "agent.evidence_repair",
     "agent.coding_readonly_final", "agent.subagent_report", "unknown"})
 

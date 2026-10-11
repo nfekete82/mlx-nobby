@@ -65,6 +65,22 @@ def summarize_runs(records):
                 action = event.get("action")
                 if action in {"agent_choose_next_step_v2", "agent_v2_final_answer", "agent_llm"}:
                     phases[action] = phases.get(action, 0) + 1
+        evidence = response.get("evidence")
+        evidence = evidence if isinstance(evidence, dict) else {}
+        evidence_timings = evidence.get("timings_ms", {})
+        evidence_timings = evidence_timings if isinstance(evidence_timings, dict) else {}
+        supported_count = evidence.get("verified_supported_count", evidence.get("selected_count"))
+        supported_count = supported_count if type(supported_count) is int and supported_count >= 0 else None
+        if evidence.get("method") and supported_count == 0:
+            flags.append("no_verified_facts")
+        evidence_claims = evidence.get("claims", [])
+        evidence_statuses = {status: sum(isinstance(c, dict) and c.get("status") == status for c in evidence_claims)
+                             for status in ("supported", "contradicted", "insufficient_evidence", "conflicting_evidence", "not_checked")} if isinstance(evidence_claims, list) else {}
+        research_ms = sum(event.get("duration_ms", 0) for event in events
+                          if isinstance(event, dict) and event.get("phase") == "tool"
+                          and event.get("action") in {"search_web", "web_search", "fetch_url"}
+                          and type(event.get("duration_ms")) in (int, float)
+                          and math.isfinite(event["duration_ms"]) and event["duration_ms"] >= 0) if isinstance(events, list) else 0
         totals = {key: round(sum(call.get(key, 0) for call in efficiency["calls"]), 2)
                   for key in ("lease_wait_ms", "lock_wait_ms", "model_setup_ms", "upstream_request_ms")}
         findings.append({
@@ -77,6 +93,14 @@ def summarize_runs(records):
             "known_completion_tokens": efficiency["known_completion_tokens"],
             "known_total_tokens": sum(call.get("total_tokens", 0) for call in efficiency["calls"]),
             "fetches": fetched, "heuristic_flags": flags,
+            "research_ms": round(research_ms, 2),
+            "evidence_timings_ms": {key: round(value, 2) for key, value in evidence_timings.items()
+                                    if key in {"extraction", "verification"} and type(value) in (int, float)
+                                    and math.isfinite(value) and value >= 0},
+            "quality_review": "manual_review_required",
+            "verified_supported_count": supported_count,
+            "claim_status_counts": evidence_statuses,
+            "evidence_method": evidence.get("method") if evidence.get("method") in {"anchored_extractive", "model_semantic_verification"} else None,
         })
     return {
         "status": "heuristic_review_only",
