@@ -152,6 +152,29 @@ def missing_clinical_article(goal, observations):
     return True
 
 
+def official_home_fallback_host(goal, observations):
+    """Authorize publisher-root discovery after two DISTINCT completed queries.
+
+    Duplicate/cached observations or fabricated step counts do not justify a
+    new fetch. This only enables an exact registered HTTPS homepage; article
+    subpaths still require actual search/link provenance.
+    """
+    host = _publisher(goal)
+    if not host:
+        return None
+    queries = set()
+    for item in observations or ():
+        if (not isinstance(item, dict)
+                or item.get("action") != "search_web"
+                or item.get("status") != "completed"
+                or not isinstance(item.get("result"), dict)):
+            continue
+        query = item.get("query")
+        if isinstance(query, str) and query.strip():
+            queries.add(" ".join(query.casefold().split()))
+    return host if len(queries) >= 2 else None
+
+
 def choose_official_publisher_step(goal, observations):
     host = _publisher(goal)
     if not host:
@@ -383,12 +406,10 @@ def choose_official_publisher_step(goal, observations):
             "query": " ".join((alternates or terms)[:5]) + " " + host,
             "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
         }
-    if len(searches) >= 2 and not loaded:
-        # Search backends can return unrelated advertisements even for
-        # explicitly named official institutions. The registry contains
-        # canonical publisher HOSTS, not guessed documents: as a final
-        # discovery step, fetch only the publisher's HTTPS root. Any
-        # factual article must still be reached by an observed hyperlink.
+    if not loaded and official_home_fallback_host(goal, observations):
+        # Search pollution may justify ONE root-only discovery after two
+        # genuinely distinct searches. Replayed identical observations do
+        # not trigger the fallback.
         root = f"https://www.{host}/"
         if root not in fetched:
             return {
