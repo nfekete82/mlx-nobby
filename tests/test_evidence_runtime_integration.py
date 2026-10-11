@@ -294,3 +294,63 @@ def test_single_source_retains_full_evidence_passage_capacity():
     }
     bundle = build_evidence([source], goal="Protocol address specifications")
     assert len(bundle.facts) >= 75
+
+
+
+def test_short_effective_date_is_anchored_next_to_rate_without_claiming_its_meaning():
+    """A 17-char ECB date must reach the verifier, not vanish due to line length."""
+    from dataclasses import asdict
+    from agent.structured_evidence import (
+        _temporal_windows, build_evidence, evaluate_claim,
+    )
+    url = "https://www.ecb.europa.eu/home/html/index.en.html"
+    question = (
+        "Wie hoch ist aktuell der Einlagezins der Europäischen Zentralbank, "
+        "und seit welchem Datum gilt dieser Zinssatz?"
+    )
+    text = (
+        "Interest rates\n"
+        "| Deposit facility | 2.50 %\n"
+        "| Main refinancing operations | 2.65 %\n"
+        "| Marginal lending facility | 2.90 %\n"
+        "16 September 2026\n"
+        "Past key ECB interest rates\n"
+        "21 September 2026\n"
+        "Some unrelated financial press coverage.\n"
+    )
+    window = _temporal_windows(question, text)
+    assert window and any(
+        "Deposit facility | 2.50 %" in excerpt
+        and "16 September 2026" in excerpt
+        for _, _, excerpt in window
+    )
+    source = {
+        "action": "fetch_url", "status": "completed",
+        "query": url,
+        "result": {"ok": True, "url": url, "text": text, "offset": 35559},
+    }
+    bundle = build_evidence([source], goal=question)
+    dated = [
+        fact for fact in bundle.facts if "-date-" in fact.id
+        and "16 September 2026" in fact.evidence_excerpt
+    ]
+    assert dated
+    original = asdict(bundle.sources[0])
+    for fact in dated:
+        assert evaluate_claim(asdict(fact), [original])["status"] == "supported"
+        assert fact.source_location[0] >= 35559
+    # Extractive evidence alone DOES NOT certify that the date is valid-from.
+    assert all(fact.predicate == "source_statement" for fact in dated)
+
+
+def test_temporal_windows_do_not_borrow_unrelated_press_dates():
+    from agent.structured_evidence import _temporal_windows
+    question = "Welcher Einlagezins gilt seit welchem Datum?"
+    unrelated = (
+        "Deposit facility | 2.50 %\n"
+        + "An unrelated long introduction " * 35
+        + "\n8 October 2026\n"
+        + "Press release published today.\n"
+    )
+    assert _temporal_windows(question, unrelated) == []
+    assert _temporal_windows("Was ist die Bank?", unrelated) == []
