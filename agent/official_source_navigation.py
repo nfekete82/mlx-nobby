@@ -202,7 +202,7 @@ def choose_official_publisher_step(goal, observations):
         already_refined = any(
             isinstance(item, dict)
             and item.get("action") == "search_web"
-            and "RFC Internet Protocol Specification site:" + host in str(item.get("query") or "")
+            and "RFC Internet Protocol Specification " + host in str(item.get("query") or "")
             for item in observations
         )
         recent_search = any(
@@ -212,7 +212,7 @@ def choose_official_publisher_step(goal, observations):
         if present and missing and not recent_search and not already_refined:
             return {
                 "action": "search_web",
-                "query": f"{' '.join(missing[:2])} RFC Internet Protocol Specification site:{host}",
+                "query": f"{' '.join(missing[:2])} RFC Internet Protocol Specification {host}",
                 "reason": "Gezielt nach der noch unbelegten angefragten Version suchen",
             }
     # One genuinely fetched official source is enough to hand over to evidence
