@@ -115,9 +115,9 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
 # These terms select additional potentially contradictory or qualifying claims;
 # they never establish that any version is supported.
 _POLICY_CONFLICT_CUE = re.compile(
-    r"(?i)\\b(?:support(?:ed|s|ing)?|unsupported|unterstützt\\w*|"
+    r"(?i)\b(?:support(?:ed|s|ing)?|unsupported|unterstützt\w*|"
     r"end[- ]of[- ]life|eol|retir(?:ed|ement)|obsolete|deprecated|"
-    r"discontinued|maintain(?:ed|ance)?|ausgelaufen|veraltet)\\b"
+    r"discontinued|maintain(?:ed|ance)?|ausgelaufen|veraltet)\b"
 )
 
 
@@ -147,7 +147,7 @@ def support_matrix_verification_scope(goal, bundle, rows):
     version_names = [subject.rsplit(" ", 1)[-1] for subject, _, _ in rows]
     if any(not _NAME.fullmatch(name) for name in version_names):
         return None
-    version_terms = [re.compile(r"(?<![\\w.])" + re.escape(name) + r"(?![\\w.])")
+    version_terms = [re.compile(r"(?<![\w.])" + re.escape(name) + r"(?![\w.])")
                      for name in version_names]
 
     relevant = set(anchor_ids)
