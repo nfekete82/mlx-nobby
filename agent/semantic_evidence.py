@@ -128,6 +128,19 @@ def _unchecked(claim, reason, status="not_checked", origin="invalid_response"):
             "passage_ids": [], "verification_method": METHOD, "decision_origin": origin}
 
 
+_SUBJECTIVE_PREFERENCE = re.compile(
+    r"(?i)^\\s*(?:i\\s+prefer|ich\\s+bevorzuge|ich\\s+mag)\\s+"
+    r"(?!.{0,160}\\b(?:because|weil|since|denn)\\b)[^.!?]{1,140}[.!?]?\\s*$"
+)
+
+
+def _subjective_preference(claim):
+    """Only narrow first-person preferences; factual statements still need evidence."""
+    return (isinstance(claim, SemanticClaim)
+            and isinstance(claim.statement, str)
+            and bool(_SUBJECTIVE_PREFERENCE.fullmatch(claim.statement)))
+
+
 def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scope=None):
     """Verify at most eight already anchored candidates in one model call.
 
@@ -144,9 +157,15 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
     for claim in candidates:
         if isinstance(claim, SemanticClaim) and isinstance(claim.id, str):
             counts[claim.id] = counts.get(claim.id, 0) + 1
-    valid = [c for c in candidates if _valid_claim(c, passages) and counts[c.id] == 1]
+    valid = [c for c in candidates if _valid_claim(c, passages)
+             and counts[c.id] == 1 and not _subjective_preference(c)]
     decisions = {c.id: _unchecked(c, "Keine eindeutig verankerte Quellpassage.", "insufficient_evidence", "no_anchor")
                  for c in candidates if isinstance(c, SemanticClaim) and isinstance(c.id, str)}
+    for claim in candidates:
+        if _subjective_preference(claim) and isinstance(claim.id, str) and counts[claim.id] == 1:
+            decisions[claim.id] = _unchecked(
+                claim, "Persönliche Vorliebe ist keine extern überprüfbare Tatsachenbehauptung.",
+                "not_checked", "nonfactual_preference")
     for claim in valid:
         decisions[claim.id] = _unchecked(claim, "Keine gültige Verifikation vorhanden.")
     if not valid:
@@ -172,10 +191,14 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
         "Prüfe die vollständige Aussage UND subject/predicate/value/qualifiers; sie müssen dieselbe Behauptung ausdrücken. "
         "Ordne Daten, Preise, Spezifikationen und Einschränkungen dem richtigen Modell zu. "
         "Beachte Negation, Vorbestellung versus Verkauf, Zukunft relativ zu as_of und regionale Unterschiede. "
+        "Wenn ein ausdrücklich genanntes regionales Verkaufsstartdatum nach as_of liegt, "
+        "widerspricht dies der Behauptung, der Verkauf habe in dieser Region bereits begonnen. "
         "Eine frühere Verkaufsankündigung beweist nicht den aktuellen Lagerbestand. "
         "Ein historischer Einführungspreis ist kein Beleg eines derzeit gültigen Verkaufspreises. "
         "supported: Die genauen Passagen tragen ALLE Details der Aussage. "
-        "contradicted: Die Passagen sagen das Gegenteil. insufficient_evidence: Details sind nicht belegt. "
+        "contradicted: Die Passagen sagen ausdrücklich das Gegenteil über dieselbe Entität und denselben Sachverhalt. "
+        "insufficient_evidence: Details sind nicht belegt; bloße Nichterwähnung, andere Versionen, "
+        "andere Ereignisse oder verwandte, aber verschiedene Begriffe beweisen keinen Widerspruch. "
         "conflicting_evidence: Die genannten Passagen widersprechen einander zu genau derselben Aussage. "
         "not_checked: Nicht überprüfbare subjektive Aussagen. Ein zweites Modellurteil ist kein Wahrheitsbeweis. "
         "Prüfe im gesamten erlaubten Kontext auf ausgelassene Gegenbelege und Einschränkungen. "
@@ -336,6 +359,14 @@ def _render(bundle, claims, decisions, timings, error=None):
                              "anchors": [asdict(f) for f in anchors]})
     if not lines:
         text = "Die Recherche liefert derzeit keine ausreichend belegten Angaben zur Frage. Die gewünschten Fakten bleiben offen."
+    elif supported == 0 and all(
+        d["status"] in {"insufficient_evidence", "not_checked"}
+        for d in decisions
+    ):
+        # Keep every rejected claim in the audit, but never repeat the same
+        # unhelpful non-answer eight times in the user-facing response.
+        text = ("Die geladenen Quellen belegen die konkret erfragten Angaben "
+                "nicht ausreichend. Ich gebe deshalb keine unbestätigte Liste aus.")
     else:
         text = "Nach den geladenen Quellen:\n\n" + "\n".join(lines)
         text += "\n\nDie Zuordnung wurde modellgestützt geprüft; eine unabhängige Bestätigung und eine vollständige Übersicht sind damit nicht nachgewiesen."
