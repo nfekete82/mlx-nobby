@@ -267,3 +267,27 @@ def test_research_reads_deeper_official_faq_before_source_synthesis():
         "search_web", "fetch_url", "fetch_url",
     ]
     assert not harness.provider.calls
+
+
+
+def test_missing_protocol_identifier_triggers_one_focused_search_after_fetch():
+    """A fetched IPv4 RFC must not cause repeated pagination instead of IPv6."""
+    page = "https://www.rfc-editor.org/rfc/rfc791.txt"
+    initial = search((page, "RFC 791 - IPv4"))
+    loaded = fetched(page)
+    loaded["result"]["text"] = (
+        "Internet Protocol Version 4 (IPv4) describes a 32 bit address field. "
+        "This document does not discuss later successor protocols."
+    )
+    obs = [initial, loaded]
+    choice = choose_official_publisher_step(RFC_GOAL, obs)
+    assert choice["action"] == "search_web"
+    assert "ipv6" in choice["query"].lower()
+    assert "rfc-editor.org" in choice["query"]
+    followup = search((
+        "https://www.rfc-editor.org/info/rfc8200/",
+        "RFC 8200 IPv6 Address Size 128 bits",
+    ))
+    choice2 = choose_official_publisher_step(RFC_GOAL, obs + [followup])
+    assert choice2["action"] == "fetch_url"
+    assert choice2["query"] == "https://www.rfc-editor.org/info/rfc8200/"
