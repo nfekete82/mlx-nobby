@@ -208,10 +208,12 @@ def test_rfc_index_is_not_a_document_answer_and_does_not_trigger_numeric_crawl()
         {"url": "https://www.rfc-editor.org/info/rfc2/", "title": "RFC 2"},
         {"url": "https://www.rfc-editor.org/info/rfc3/", "title": "RFC 3"},
     ])
-    assert choose_official_publisher_step(goal, [first, indexed]) is None
+    choice = choose_official_publisher_step(goal, [first, indexed])
+    assert choice["action"] == "search_web"
+    assert "ipv6" in choice["query"].casefold()
     assert not any(
         "info/rfc1" in str(x)
-        for x in [choose_official_publisher_step(goal, [first, indexed])]
+        for x in [choice]
     )
 
 
@@ -452,11 +454,14 @@ def test_named_official_publisher_home_after_two_irrelevant_searches():
         "query": "https://www.ecb.europa.eu/",
         "reason": "Offiziellen HTTPS-Einstiegspunkt nach irrelevanten Suchtreffern prüfen",
     }
-    # Once the root has been attempted, there is no retry loop.
-    assert choose_official_publisher_step(
+    # The root is navigation, not rate evidence. One focused discovery
+    # query is allowed afterwards, but never another root attempt.
+    follow = choose_official_publisher_step(
         ECB_GOAL, [irrelevant, retry,
                    fetched("https://www.ecb.europa.eu/")]
-    ) is None
+    )
+    assert follow["action"] == "search_web"
+    assert "deposit facility" in follow["query"]
     # Ambiguous third-party questions cannot seed official root URLs.
     assert choose_official_publisher_step(
         "Wie hoch sind die Einlagenzinsen?",
@@ -524,9 +529,11 @@ def test_missing_rfc_version_outranks_known_version_category_page():
     assert choice["action"] == "fetch_url"
     assert choice["query"] == ipv6
     no_ipv6 = search((index, "IPv4 RFC documents"))
-    assert choose_official_publisher_step(
+    recovery = choose_official_publisher_step(
         RFC_GOAL, [initial, loaded, no_ipv6]
-    ) is None
+    )
+    assert recovery["action"] == "search_web"
+    assert "ipv6" in recovery["query"].casefold()
 
 
 
@@ -559,9 +566,10 @@ def test_truncated_rfc_document_continues_on_same_verified_url_once():
         "offset": 18000, "next_offset": None,
         "total_characters": 48000, "truncated": False,
     })
-    assert choose_official_publisher_step(
+    recovered = choose_official_publisher_step(
         RFC_GOAL, [discovered, first, missing_search, continuation],
-    ) is None
+    )
+    assert recovered is None or recovered["action"] != "fetch_url"
     assert not any(
         "offset=" in str(step) for step in [
             choose_official_publisher_step(
