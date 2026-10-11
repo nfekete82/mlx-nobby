@@ -1650,13 +1650,9 @@ class AgentRuntime:
                 # entry point if the search backend twice failed to produce
                 # a topical primary link. This exception is the exact HTTPS
                 # homepage only; it never allowlists guessed article paths.
-                from agent.official_source_navigation import _publisher
-                publisher_host = _publisher(goal)
-                if publisher_host and sum(
-                    item.get("action") == "search_web"
-                    and item.get("status") == "completed"
-                    for item in observations if isinstance(item, dict)
-                ) >= 2:
+                from agent.official_source_navigation import official_home_fallback_host
+                publisher_host = official_home_fallback_host(goal, observations)
+                if publisher_host:
                     allowed_urls.add(f"https://www.{publisher_host}/")
 
                 canonical_repo = self.hooks.canonical_github_repo_from_goal(goal)
