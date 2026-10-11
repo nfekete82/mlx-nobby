@@ -52,6 +52,15 @@ def test_publisher_rejects_spoof_and_prefers_specific_rki_faq():
     assert choice["query"] == faq
 
 
+def test_ecb_search_prefers_official_interest_rate_terms_without_asserting_values():
+    decision = choose_official_publisher_step(ECB_GOAL, [])
+    assert decision["action"] == "search_web"
+    assert "ecb.europa.eu" in decision["query"]
+    assert "deposit facility key interest rates" in decision["query"]
+    assert "2.50" not in decision["query"]
+    assert "2026-09-16" not in decision["query"]
+
+
 def test_ecb_primary_home_beats_other_banks_and_about_us():
     home = "https://www.ecb.europa.eu/home/html/index.de.html"
     found = search(
