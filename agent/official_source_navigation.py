@@ -123,6 +123,10 @@ def choose_official_publisher_step(goal, observations):
                             str(link.get("snippet") or "").casefold()))
             word_hits = sum(bool(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", name))
                             for w in terms)
+            # Never follow an arbitrary menu item just because an official
+            # homepage links to it. Page hyperlinks need a topic match.
+            if base_score and not word_hits:
+                continue
             # Specific document beats generic login/home index even when its
             # query match is only in the path. Scores never prove correctness.
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
