@@ -126,3 +126,52 @@ def test_real_runtime_prioritizes_named_publisher_with_no_planner():
     assert [c[0] for c in calls] == ["search", "fetch"]
     assert not harness.planner_limits
     assert not harness.provider.calls
+
+
+
+def test_paired_numbered_identifiers_require_both_in_loaded_corpus():
+    from agent.official_source_navigation import missing_requested_identifiers
+
+    goal = "Vergleiche die Bit-Längen von IPv4 und IPv6 laut IETF."
+    first = fetched("https://www.rfc-editor.org/info/rfc791/")
+    first["result"]["text"] = "RFC 791 describes the IPv4 header and addresses."
+    assert missing_requested_identifiers(goal, [first])
+
+    second = fetched("https://www.rfc-editor.org/info/rfc8200/")
+    second["result"]["text"] = (
+        "IPv6 increases the IP address size from 32 bits to 128 bits."
+    )
+    assert not missing_requested_identifiers(goal, [first, second])
+    assert not missing_requested_identifiers("Wie funktioniert IPv4?", [first])
+    assert not missing_requested_identifiers(goal, [])
+
+
+def test_numeric_source_windows_prioritize_exact_unit_passages():
+    from agent.structured_evidence import build_evidence, _quantitative_windows
+
+    goal = "Wie viele Bit haben IPv4- und IPv6-Adressen laut IETF-RFCs?"
+    preface = "\n".join(
+        f"Document navigation page {i} with many unrelated explanatory notes."
+        for i in range(130)
+    )
+    key = "IPv6 increases the IP address size from 32 bits to 128 bits."
+    body = preface + "\n" + key + "\nAdditional technical specifications."
+    windows = _quantitative_windows(goal, body)
+    assert windows
+    assert any(key in excerpt for _, _, excerpt in windows)
+    assert all(body[start:end] == excerpt for start, end, excerpt in windows)
+
+    source = {
+        "action": "fetch_url", "status": "completed",
+        "query": "https://www.rfc-editor.org/info/rfc8200/",
+        "result": {"ok": True,
+                   "url": "https://www.rfc-editor.org/info/rfc8200/",
+                   "text": body},
+    }
+    bundle = build_evidence([source], goal=goal)
+    assert any("-quant-" in fact.id and key in fact.evidence_excerpt
+               for fact in bundle.facts)
+    assert all(
+        source["result"]["text"][fact.source_location[0]:fact.source_location[1]]
+        == fact.evidence_excerpt for fact in bundle.facts
+    )
