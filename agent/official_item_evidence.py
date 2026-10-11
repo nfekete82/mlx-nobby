@@ -23,12 +23,15 @@ def filter_unsupported_official_items(answer, goal, observations):
     removed = 0
     kept = []
     skip_children = False
-    removed_all = False
+    removed_heading_indent = 0
     for line in answer.splitlines():
         match = _LIST.match(line)
         indent = len(line) - len(line.lstrip())
         if skip_children:
-            if not line.strip() or (indent > 0 and match and not MODEL.search(line)):
+            # The next top-level numbered item ends the removed item block.
+            # Indented bullets belong to the removed item even when they
+            # contain other product names or no bullet marker.
+            if not line.strip() or indent > removed_heading_indent:
                 continue
             skip_children = False
         if not match:
@@ -48,6 +51,7 @@ def filter_unsupported_official_items(answer, goal, observations):
                            for _, article in articles) for name in subjects):
                 removed += 1
                 skip_children = True
+                removed_heading_indent = indent
                 continue
         subject = subject_match.group(0)
         # A model name alone or an isolated number in unrelated prose is
@@ -60,6 +64,7 @@ def filter_unsupported_official_items(answer, goal, observations):
         if not excerpts:
             removed += 1
             skip_children = True
+            removed_heading_indent = indent
             continue
         # Check precise figures associated with this item locally, not against
         # a different model elsewhere on the fetched page.
@@ -67,6 +72,8 @@ def filter_unsupported_official_items(answer, goal, observations):
         if any(not any(normalized(number) in normalized(excerpt)
                        for excerpt in excerpts) for number in figures):
             removed += 1
+            skip_children = True
+            removed_heading_indent = indent
             continue
         kept.append(line)
     if not removed:
@@ -79,8 +86,9 @@ def filter_unsupported_official_items(answer, goal, observations):
     # Do not retain introductory aggregate assertions or references that
     # could imply the discarded rows are still official current products.
     kept = [line for line in kept if not (
-        not _LIST.match(line) and
-        re.search(r"(?i)\b(?:insgesamt|alle modelle|gesamte palette)\b", line)
+        not _LIST.match(line) and re.search(
+            r"(?i)\b(?:insgesamt|alle modelle|gesamte palette|zusammengefasst|bestätigt dieses vollständige lineup)\b", line
+        )
     )]
     return "\n".join(kept).rstrip() + (
         "\n\n**Evidenzstatus:** " + str(removed)
