@@ -453,6 +453,20 @@ class AgentRuntime:
             loop_max_steps + 1,
         ):
             self._check_cancelled()
+            if mode in {"diagnostic", "research"}:
+                from agent.search_failure_fastpath import exhausted_official_search, UNAVAILABLE_ANSWER
+                if exhausted_official_search(goal, observations):
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "official_search_exhausted",
+                        "duration_ms": 0,
+                    })
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": UNAVAILABLE_ANSWER,
+                    }
+                    publish("completed")
+                    return result
             # Additional research steps are allowed only to continue an
             # already loaded, truncated web source.
             if mode == "research" and step > max_steps:
