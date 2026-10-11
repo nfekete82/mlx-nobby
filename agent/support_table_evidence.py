@@ -9,6 +9,10 @@ from urllib.parse import urlsplit
 
 from agent.research_followup import support_policy_question
 
+# Trusted canonical publisher hosts. Unknown projects keep the ordinary
+# extraction/verification path; no cross-domain authority is inferred from
+# matching a project name to a lookalike hostname.
+_OFFICIAL_POLICY_HOSTS = {"postgresql": "postgresql.org"}
 _HEADER = re.compile(r"(?i)^\s*versions?\s*\|")
 _NAME = re.compile(r"^[0-9]{1,2}(?:\.[0-9])?$")
 _STATUS_YES = re.compile(r"^(?:yes|ja|supported|active)$", re.I)
@@ -31,7 +35,7 @@ def _publisher_name(goal, url):
         if len(labels) != 2:
             return None
         stem = labels[0]
-        if len(stem) < 4 or stem in {"support", "docs", "help", "versions"}:
+        if _OFFICIAL_POLICY_HOSTS.get(stem) != host:
             return None
         # A matching named publisher and its actual source URL are required;
         # even a different subdomain or a lookalike suffix is not promoted.
