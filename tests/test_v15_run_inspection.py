@@ -53,6 +53,8 @@ def test_inspects_existing_search_and_fetch_without_dumping_text_or_url_tokens()
         "agent.plan": 100, "agent.extract": 300,
     }
     assert report["unattributed_ms"] == 1100
+    assert [call["purpose"] for call in report["model_call_details"]] == ["agent.plan", "agent.extract"]
+    assert [call["duration_ms"] for call in report["model_call_details"]] == [100, 300]
     assert report["steps"][0]["first_hits"][0]["source"] == "example.org/search/path"
     assert report["steps"][1]["source"] == "example.org/article"
     serialized = json.dumps(report)
@@ -93,3 +95,25 @@ def test_invalid_result_rejected():
         inspect_case([{"id": "CD01"}])
     assert _source_locator("https://user:pass@example.org/safe?secret=q") == "example.org/safe"
     assert _source_locator("not a url") == ""
+
+
+def test_per_call_telemetry_is_numeric_only_and_does_not_disclose_prompt():
+    record = row()
+    record["response"]["performance"]["events"] = [
+        {"action": "provider.complete", "purpose": "agent.verify",
+         "duration_ms": 35580.9, "input_chars": 12345,
+         "prompt_tokens": 3098, "completion_tokens": 260,
+         "queue_wait_ms": 25.0, "upstream_request_ms": 35000,
+         "private_prompt": "DO_NOT_ECHO_SENSITIVE_PROMPT"},
+    ]
+    calls = inspect_case(record)["model_call_details"]
+    assert calls == [{
+        "duration_ms": 35580.9,
+        "input_chars": 12345,
+        "prompt_tokens": 3098,
+        "completion_tokens": 260,
+        "queue_wait_ms": 25.0,
+        "upstream_request_ms": 35000,
+        "purpose": "agent.verify",
+    }]
+    assert "DO_NOT_ECHO_SENSITIVE_PROMPT" not in str(calls)
