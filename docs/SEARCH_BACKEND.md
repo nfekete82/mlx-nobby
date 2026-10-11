@@ -15,13 +15,20 @@ verified claims is a *research coverage failure*, not a good factual answer.
 From the repository root, run:
 
 ```sh
-python -m agent.search_diagnostic
+python -m agent.search_diagnostic --query "Apple iPhone"
+python -m agent.search_diagnostic --query "site:apple.com/newsroom iPhone"
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
 The diagnostic checks configured SearXNG instances with one read-only search.
-It prints provider statuses, number of usable results, and sample URL **hosts**
-but not full URLs or fetched page content. If `json_search_usable` is false,
+It prints provider statuses, number of usable results, sample URL **hosts**,
+and the names and **classified** failure types of unresponsive engines.
+Raw engine error strings, full result URLs and fetched page content are omitted.
+Compare the broad query with the site-restricted query: if only the restricted
+query fails, the search engines' site-filter support may be the issue.
+A `degraded` result with five unresponsive engines and zero results means
+SearXNG's JSON endpoint is reachable but the *configured engines* failed;
+do not install a second SearXNG container over an existing one. If `json_search_usable` is false,
 inspect the `provider_attempts` and Docker logs. Failure causes include
 stopped service, unavailable port, missing JSON permission, rate limits, and
 all search engines being degraded.
