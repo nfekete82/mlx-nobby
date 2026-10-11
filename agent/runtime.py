@@ -312,6 +312,10 @@ class AgentRuntime:
                                     align_enumerated_count(result["answer"])
                                 )
                             )
+                            from agent.official_item_evidence import filter_unsupported_official_items
+                            result["answer"] = filter_unsupported_official_items(
+                                result["answer"], goal, result.get("steps", [])
+                            )
                             from agent.official_evidence_gate import gate_unverified_official_answer
                             result["answer"] = gate_unverified_official_answer(
                                 result["answer"], goal, result.get("steps", [])
