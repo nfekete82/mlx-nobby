@@ -483,7 +483,9 @@ class AgentRuntime:
             self._check_cancelled()
             if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
                 from agent.structured_evidence import build_evidence
-                if build_evidence(observations).facts:
+                from agent.plan_fastpath import insufficient_catalog_sources
+                if (build_evidence(observations).facts
+                        and not insufficient_catalog_sources(goal, observations)):
                     answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
                     result = {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
                     publish("completed")
@@ -665,19 +667,29 @@ class AgentRuntime:
                         }
 
             if decision is None and mode in {"diagnostic", "research"}:
-                from agent.plan_fastpath import choose_official_followup
+                from agent.plan_fastpath import (
+                    choose_official_followup, choose_official_catalog_refinement,
+                )
                 successful_fetches = sum(
                     item.get("action") == "fetch_url" and item.get("status") == "completed"
                     for item in observations if isinstance(item, dict)
                 )
-                # Bound deterministic auto-fetching; existing authorization and
-                # permissions still apply in the normal tool path.
+                # Use only discovered URLs via the existing allowlist. A
+                # manufacturer homepage isn't proof of a current product list.
                 if successful_fetches < 2:
                     decision = choose_official_followup(goal, observations)
                     if decision is not None:
                         self._profile_events.append({
                             "phase": "planning_fastpath",
                             "action": "official_followup_selected",
+                            "duration_ms": 0.0,
+                        })
+                if decision is None:
+                    decision = choose_official_catalog_refinement(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "official_catalog_refinement",
                             "duration_ms": 0.0,
                         })
 
