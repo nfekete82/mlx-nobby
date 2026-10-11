@@ -573,3 +573,42 @@ def test_discovered_homepage_link_avoids_secondary_search_and_model_plan():
     assert outcome["evidence"]["verified_supported_count"] == 5
     assert not harness.planner_limits
     assert not harness.provider.calls
+
+
+
+def test_research_allows_exact_fetched_same_host_link_but_not_unlisted_sibling():
+    """The URL allowlist may follow real links, never inferred sibling paths."""
+    from agent.runtime import RuntimePolicy
+    from test_agent_runtime import AgentRuntimeTests
+
+    home = "https://www.postgresql.org/"
+    sibling = "https://www.postgresql.org/support/unlisted/"
+    evil = "https://www.postgresql.org.evil.example/support/versioning/"
+    observations = [
+        fetched(home, "Publisher homepage", links=[
+            {"url": POLICY, "title": "Versioning Policy"},
+            {"url": evil, "title": "Spoofed"},
+        ]),
+    ]
+    for url, should_fetch in [(POLICY, True), (sibling, False), (evil, False)]:
+        harness = AgentRuntimeTests()
+        harness.setUp()
+        fetched_urls = []
+
+        def handle_fetch(**kwargs):
+            fetched_urls.append(kwargs["query"])
+            return {"ok": True, "url": kwargs["query"], "text": "Fetched content"}
+
+        harness.add_tool("fetch_url", handle_fetch)
+        runtime = harness.runtime(
+            [{"action": "fetch_url", "query": url}, "Answer"],
+            policy=RuntimePolicy(research_steps=1),
+        )
+        result = runtime.run(
+            "Load the selected source page", mode="research",
+            observations=observations,
+        )
+        assert fetched_urls == ([url] if should_fetch else [])
+        blocked = [s for s in result["steps"]
+                   if s.get("action") == "fetch_url_allowlist_guard"]
+        assert bool(blocked) is not should_fetch
