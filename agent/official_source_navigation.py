@@ -80,6 +80,70 @@ def _topic_terms(goal):
     return (names + [w for w in terms if w not in names])[:9]
 
 
+def clinical_presentation_question(goal):
+    """Clinical features, not vaccination effects or outbreak statistics."""
+    return bool(
+        _publisher(goal)
+        and re.search(r"(?i)\b(?:symptom\w*|krankheitsbild|symptomatik|clinical signs)\b",
+                      str(goal or ""))
+        and not re.search(r"(?i)\b(?:impf\w*|vaccin\w*|nebenwirkung\w*)\b",
+                          str(goal or ""))
+    )
+
+
+def missing_clinical_article(goal, observations):
+    """Navigation hint: loaded article text lacks an explanatory clinical passage.
+
+    This heuristic cannot certify medical facts; extraction/verification must
+    still inspect source-exact anchored passages. Exclude bibliographies and
+    general epidemiological indices from early evidence synthesis.
+    """
+    if not clinical_presentation_question(goal):
+        return False
+    official = _publisher(goal)
+    bodies = []
+    for item in observations:
+        if not isinstance(item, dict) or item.get("action") != "fetch_url":
+            continue
+        result = item.get("result")
+        if (item.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True
+                or _safe_official_url(result.get("final_url") or result.get("url"),
+                                      official) is None):
+            continue
+        if isinstance(result.get("text"), str):
+            bodies.append(result["text"])
+    if not bodies:
+        return False
+
+    # Strong *source relevance* indicators only. These are not symptom values
+    # and should never be used to synthesize a medical answer.
+    topic_terms = [w for w in _topic_terms(goal)
+                   if w not in {"symptom", "symptome", "symptoms"}]
+    for body in bodies:
+        for line in body.splitlines():
+            normalized = " ".join(line.casefold().split())
+            if len(normalized) < 45 or len(normalized) > 1500:
+                continue
+            if re.search(r"(?i)\b(?:epid(?:emiologisches)? bull(?:etin)?|literatur|referenzen)\b",
+                         normalized):
+                continue
+            if topic_terms and not any(term in normalized for term in topic_terms):
+                continue
+            if re.search(
+                r"(?i)\b(?:symptomatik|symptome|krankheitsbild|"
+                r"beginnt|auftreten|gekennzeichnet|äußert sich|"
+                r"manifestiert sich|clinical presentation)\b",
+                normalized,
+            ) and re.search(
+                r"(?i)\b(?:ist|sind|durch|mit|bei|"
+                r"beginnt|auftreten|gekennzeichnet|gehören|zeigt)\b",
+                normalized,
+            ):
+                return False
+    return True
+
+
 def choose_official_publisher_step(goal, observations):
     host = _publisher(goal)
     if not host:
@@ -88,9 +152,15 @@ def choose_official_publisher_step(goal, observations):
     if not terms:
         return None
     if not observations:
+        query = f"{host} {' '.join(terms[:7])}"
+        if clinical_presentation_question(goal):
+            clinical_topics = [w for w in terms if w not in {
+                "symptome", "symptom", "symptoms", "krankheitsbild",
+            }]
+            query = f"{host} {' '.join(clinical_topics[:3])} Krankheitsbild FAQ Symptome"
         return {
             "action": "search_web",
-            "query": f"{host} {' '.join(terms[:7])}",
+            "query": query,
             "reason": "Genannte Institution mit präzisen Fachbegriffen suchen",
         }
     fetched = {
@@ -182,11 +252,16 @@ def choose_official_publisher_step(goal, observations):
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
             score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
                      + 8 * is_home)
-            # When asked about a medical condition's clinical presentation,
-            # an actual linked FAQ, symptom description or disease guide is
-            # a better next source than another category index. This score
-            # only ranks *discovered* source links; it asserts no symptoms.
-            if re.search(r"(?i)symptom|krankheitsbild|clinical (?:signs|features)", str(goal)):
+            # Side effects of vaccination must not be mistaken for clinical
+            # symptoms of the disease. Only reject the irrelevant branch;
+            # the fetched URL must still be independently discovered.
+            if clinical_presentation_question(goal) and re.search(
+                r"(?i)(?:^|/)(?:impfen|impfungen)(?:/|$)|impfung|vaccin",
+                name,
+            ):
+                continue
+            # Clinical presentation pages outrank generic disease indexes.
+            if clinical_presentation_question(goal):
                 if re.search(
                     r"(?i)symptom|krankheitsbild|(?:^|[/_.-])faq|"
                     r"antworten|häufige fragen|ratgeber|clinical",
@@ -207,6 +282,26 @@ def choose_official_publisher_step(goal, observations):
         ):
             return {"action": "fetch_url", "query": url,
                     "reason": "Tatsächlich gefundene Primärquelle öffnen"}
+    # If an official article was fetched but only general navigation or
+    # bibliography was present, request a more precise search ONCE. No
+    # invented URL or medical facts are created by this research fallback.
+    if loaded and missing_clinical_article(goal, observations):
+        suffix = "krankheitsbild FAQ"
+        attempted = any(
+            isinstance(item, dict) and item.get("action") == "search_web"
+            and suffix in str(item.get("query") or "").casefold()
+            and "symptomatik" in str(item.get("query") or "").casefold()
+            for item in observations
+        )
+        if not attempted:
+            topics = [w for w in terms if w not in {
+                "symptome", "symptoms", "symptom", "krankheitsbild",
+            }]
+            return {
+                "action": "search_web",
+                "query": f"{host} {' '.join(topics[:3])} {suffix} symptomatik",
+                "reason": "Geladene Übersichtsseite enthält keine klinische Beschreibung",
+            }
     searches = [o for o in observations if isinstance(o, dict)
                 and o.get("action") == "search_web"
                 and o.get("status") == "completed"]
