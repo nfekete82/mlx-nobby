@@ -13,7 +13,7 @@ def article(text):
 def test_unknown_model_removed_but_sourced_model_kept():
     answer = ("1. **iPhone Duo** – ab 23. Oktober 2026\n"
               "2. **iPhone 99 Pro** – ab 13. Oktober 2026")
-    sources = article("Apple unveils iPhone Duo; erhältlich ab 23. Oktober 2026.")
+    sources = article("Apple unveils iPhone Duo, erhältlich ab 23. Oktober 2026.")
     fixed = filter_unsupported_official_items(answer, GOAL, sources)
     assert "iPhone Duo" in fixed
     assert "iPhone 99" not in fixed
