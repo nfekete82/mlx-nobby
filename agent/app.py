@@ -6858,9 +6858,10 @@ def fetch_web_page(url, offset=0, chunk_size=18_000):
         ):
             return None
 
-    opener = urllib.request.build_opener(
-        NoRedirect()
-    )
+    # Resolve, validate and connect to the SAME public IP; a preflight
+    # DNS check alone cannot prevent rebinding before urllib connects.
+    from agent.public_http_transport import build_public_article_opener
+    opener = build_public_article_opener(NoRedirect)
 
     for _ in range(4):
         if not web_url_is_safe(current_url):
