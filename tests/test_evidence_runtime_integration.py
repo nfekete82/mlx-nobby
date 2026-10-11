@@ -132,3 +132,49 @@ def test_decision_date_and_effective_date_are_separate_in_evidence_prompts():
     assert "Beschlussdatum" in prompts["agent.extract"]
     assert "Wirksamkeitsdatum" in prompts["agent.verify"]
     assert "seit-X-Behauptung" in prompts["agent.verify"]
+
+
+
+def test_institution_attribution_requires_primary_anchor():
+    """A secondary article cannot independently certify its subject's policy."""
+    goal = "Wie erläutert die Europäische Zentralbank (EZB) ihre aktuelle Geldpolitik?"
+    text = (
+        "Die Europäische Zentralbank beschreibt ihre Geldpolitik als "
+        "wichtigen Bestandteil ihrer Arbeit. Für die weitere Planung "
+        "gelten die veröffentlichten Berichte und Mitteilungen."
+    )
+
+    def run_with(url):
+        source = {
+            "action": "fetch_url", "status": "completed", "query": url,
+            "result": {"ok": True, "url": url, "text": text},
+        }
+        bundle = build_evidence([source], goal=goal)
+        pid = bundle.facts[0].id
+
+        def llm(purpose, prompt, limit):
+            if purpose == "agent.extract":
+                return json.dumps({"claims": [{
+                    "subject": "Europäische Zentralbank",
+                    "predicate": "describes_policy",
+                    "value": "Geldpolitik",
+                    "qualifiers": {},
+                    "statement": "Die Europäische Zentralbank beschreibt ihre Geldpolitik.",
+                    "passage_ids": [pid],
+                }]})
+            return json.dumps({"claims": [{
+                "id": "c-1", "status": "supported",
+                "reason": "Die Passage nennt die Geldpolitik",
+                "passage_ids": [pid],
+            }]})
+
+        return synthesize_verified_evidence(goal, [source], llm)
+
+    secondary = run_with("https://www.lbbw.de/artikel/geldpolitik")
+    assert secondary.audit["verified_supported_count"] == 0
+    assert secondary.audit["claims"][0]["status"] == "insufficient_evidence"
+    assert secondary.audit["claims"][0]["decision_origin"] == "primary_source_validation"
+
+    primary = run_with("https://www.ecb.europa.eu/press/official.html")
+    assert primary.audit["verified_supported_count"] == 1
+    assert primary.audit["claims"][0]["status"] == "supported"
