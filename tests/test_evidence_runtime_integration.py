@@ -251,3 +251,46 @@ def test_morphological_topic_ranking_keeps_relevant_medical_excerpt():
         body[p.source_location[0]:p.source_location[1]] == symptom
         for p in bundle.facts if p.evidence_excerpt == symptom
     )
+
+
+
+def test_evidence_budget_keeps_source_exact_passages_from_late_third_document():
+    """Long preceding pages cannot consume the entire 100-passage budget."""
+    from agent.structured_evidence import build_evidence, evaluate_claim
+    from dataclasses import asdict
+    sources = []
+    for page in range(3):
+        url = f"https://www.rfc-editor.org/info/rfc{791 + page}/"
+        lines = [
+            f"Source document {page} address width measurement context line {i}."
+            for i in range(120)
+        ]
+        sources.append({
+            "action": "fetch_url", "status": "completed", "query": url,
+            "result": {"ok": True, "url": url, "text": "\n".join(lines)},
+        })
+    bundle = build_evidence(sources, goal="Welche Adresslängen in Bit werden genannt?")
+    assert len(bundle.facts) <= 100
+    for source in bundle.sources:
+        facts = [f for f in bundle.facts if f.source_id == source.id]
+        assert facts, "Even the last loaded article must receive evidence capacity"
+        for fact in facts:
+            assert evaluate_claim(asdict(fact), [asdict(source)])["status"] == "supported"
+
+
+def test_single_source_retains_full_evidence_passage_capacity():
+    from agent.structured_evidence import build_evidence
+    source = {
+        "action": "fetch_url", "status": "completed",
+        "query": "https://www.rfc-editor.org/info/rfc8200/",
+        "result": {
+            "ok": True,
+            "url": "https://www.rfc-editor.org/info/rfc8200/",
+            "text": "\n".join(
+                f"Protocol addressing field statement {i} includes source context."
+                for i in range(95)
+            ),
+        },
+    }
+    bundle = build_evidence([source], goal="Protocol address specifications")
+    assert len(bundle.facts) >= 75
