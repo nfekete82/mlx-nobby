@@ -56,7 +56,7 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
     versions = {}
     for source in bundle.sources:
         publisher = _publisher_name(str(goal), source.final_url)
-        if not publisher or source.status != "loaded":
+        if not publisher or source.retrieval_status != "loaded":
             continue
         for fact in bundle.facts:
             if fact.source_id != source.id or "-support-" not in fact.id:
