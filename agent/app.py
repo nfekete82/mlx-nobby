@@ -6723,6 +6723,9 @@ def web_url_is_safe(url):
 def extract_web_text(html):
     """Very small stdlib-only HTML → readable text extractor.
 
+    Ignore global navigation/sidebars/footer when assembling article evidence.
+    Real HTML links are extracted separately from the untouched source bytes.
+
     Within a table row, HTML indentation and nested cell markup must not
     turn cells into separate source lines: downstream evidence requires each
     status to remain paired with its version on the SAME row.
@@ -6750,6 +6753,9 @@ def extract_web_text(html):
                 "svg",
                 "canvas",
                 "template",
+                "nav",
+                "aside",
+                "footer",
             }:
                 self.skip_depth += 1
 
@@ -6787,6 +6793,9 @@ def extract_web_text(html):
                     "svg",
                     "canvas",
                     "template",
+                    "nav",
+                    "aside",
+                    "footer",
                 }
                 and self.skip_depth > 0
             ):
