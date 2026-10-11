@@ -398,7 +398,13 @@ def choose_official_publisher_step(goal, observations):
                     r"geldpolitik|einlagefazilit",
                     name,
                 ):
-                    continue
+                    # The homepage is a permitted discovery entry, never a
+                    # policy-rate citation by itself.
+                    landing = parsed.path in {"", "/"} or bool(re.search(
+                        r"(?i)/home/(?:html/)?index\.", parsed.path,
+                    ))
+                    if loaded or not landing:
+                        continue
             # Specific document beats generic login/home index even when its
             # query match is only in the path. Scores never prove correctness.
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
