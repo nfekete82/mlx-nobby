@@ -157,6 +157,7 @@ def test_support_version_table_header_and_rows_remain_contiguous():
     windows = support_policy_windows(POSTGRES_GOAL, article)
     assert windows
     block = windows[0][2]
+    assert block.startswith("Version | Current minor | Supported")
     assert "Version | Current minor | Supported" in block
     assert "18 | 18.6 | Yes" in block
     assert "13 | 13.23 | No" in block
@@ -194,3 +195,22 @@ def test_html_table_extraction_retains_complete_version_status_rows():
     assert any("13" in row and "13.23" in row and "No" in row for row in rows)
     assert any("17.11" in row for row in rows)
     assert not any("18.6" in row and "13.23" in row for row in rows)
+
+
+
+def test_support_prose_cannot_displace_status_table():
+    from agent.research_followup import support_policy_windows
+    text = (
+        "Each major version is supported for five years.\n"
+        "Every version supported is maintained according to the policy.\n"
+        "Other paragraphs may refer to version supported counts and releases.\n"
+        "Version | Current minor | Supported | First Release | Final Release\n"
+        "18 | 18.6 | Yes | September 2025 | November 2030\n"
+        "17 | 17.11 | Yes | September 2024 | November 2029\n"
+        "13 | 13.23 | No | September 2020 | November 2025\n"
+        "Other unrelated footnotes.\n"
+    )
+    windows = support_policy_windows(POSTGRES_GOAL, text)
+    assert len(windows) == 1
+    assert windows[0][2].startswith("Version | Current minor | Supported")
+    assert "13 | 13.23 | No" in windows[0][2]
