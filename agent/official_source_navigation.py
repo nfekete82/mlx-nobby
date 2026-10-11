@@ -1,9 +1,10 @@
 """General, source-grounded routing for questions naming an official publisher.
 
-A canonical domain here is a *search constraint* and an authority preference,
-never evidence, an invented article URL, or permission to bypass URL guards.
-Every fetch must use an actual search hit or same-host hyperlink discovered
-from a successfully loaded page. Ambiguous questions use the model planner.
+Canonical publisher hosts are registry entries, never evidence. Article URLs
+must be actual search hits or same-host links from loaded official pages.
+After repeated unusable searches a publisher's exact HTTPS ROOT may be used
+as a bounded discovery entry point, never as authority for unquoted facts.
+Ambiguous questions use the model planner.
 """
 import re
 from urllib.parse import urlsplit
@@ -322,6 +323,19 @@ def choose_official_publisher_step(goal, observations):
             "query": " ".join((alternates or terms)[:5]) + " " + host,
             "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
         }
+    if len(searches) >= 2 and not loaded:
+        # Search backends can return unrelated advertisements even for
+        # explicitly named official institutions. The registry contains
+        # canonical publisher HOSTS, not guessed documents: as a final
+        # discovery step, fetch only the publisher's HTTPS root. Any
+        # factual article must still be reached by an observed hyperlink.
+        root = f"https://www.{host}/"
+        if root not in fetched:
+            return {
+                "action": "fetch_url",
+                "query": root,
+                "reason": "Offiziellen HTTPS-Einstiegspunkt nach irrelevanten Suchtreffern prüfen",
+            }
     return None
 
 
