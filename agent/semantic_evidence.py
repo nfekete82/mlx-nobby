@@ -5,7 +5,7 @@ whether those passages entail an atomic claim; it is not independent proof of
 truth. Neither model response may supply URLs or replace the captured passages.
 """
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import re
 import time
@@ -173,6 +173,7 @@ def verify_candidates(goal, bundle, candidates, llm, *, as_of=None, context_scop
         "Ordne Daten, Preise, Spezifikationen und Einschränkungen dem richtigen Modell zu. "
         "Beachte Negation, Vorbestellung versus Verkauf, Zukunft relativ zu as_of und regionale Unterschiede. "
         "Eine frühere Verkaufsankündigung beweist nicht den aktuellen Lagerbestand. "
+        "Ein historischer Einführungspreis ist kein Beleg eines derzeit gültigen Verkaufspreises. "
         "supported: Die genauen Passagen tragen ALLE Details der Aussage. "
         "contradicted: Die Passagen sagen das Gegenteil. insufficient_evidence: Details sind nicht belegt. "
         "conflicting_evidence: Die genannten Passagen widersprechen einander zu genau derselben Aussage. "
@@ -230,6 +231,8 @@ def _extract_candidates(goal, bundle, llm):
         "Füge alle relevanten widersprechenden Passagen zur jeweiligen Aussage hinzu. "
         "Ein Produktname allein belegt nur seine Nennung, keine Verfügbarkeit oder Vollständigkeit. "
         "Behalte künftig angekündigt, vorbestellbar, Verkauf, Region, Datum und Einschränkungen getrennt. "
+        "Historische Preise aus Produkteinführungen immer ausdrücklich als damalige Einführungspreise bezeichnen. "
+        "Nie aktuelle Verfügbarkeit oder gegenwärtige Preise allein aus einer alten Ankündigung ableiten. "
         "Keine Zusatzkenntnisse, URLs, Links, Einleitung, Zusammenfassung oder Listen innerhalb eines Eintrags. "
         "Nutze unterschiedliche belegte Produkte statt unbelegte Details; bei fehlenden Belegen leere Liste. "
         'Nur kompaktes JSON ohne Einrückung oder Markdown {"claims":[{"subject":"...","predicate":"...","value":"...",'
@@ -260,6 +263,46 @@ def _extract_candidates(goal, bundle, llm):
     return claims, None if claims or not rows else "no_anchored_candidates"
 
 
+_MONEY_STATEMENT = re.compile(
+    r"(?i)(?:[$€]\\s*\\d|\\d[\\d.,]*\\s*(?:US[- ]?Dollar|Dollar|USD|EUR|€)\\b)"
+)
+_LAUNCH_URL = re.compile(
+    r"(?i)(?:^|/)(?:introducing[-_/]|announcing[-_/]|launch[-_/])"
+)
+
+
+def _historical_price_context(claim, anchors, sources, *, today=None):
+    """Never promote an old product announcement into a current-price claim.
+
+    Publication metadata may be absent; an explicit launch URL is a separate,
+    conservative signal. This only labels provenance, never computes a current
+    price or invents a publication date.
+    """
+    if not _MONEY_STATEMENT.search(claim.statement) or not anchors:
+        return ""
+    old_sources = []
+    for anchor in anchors:
+        source = sources.get(anchor.source_id)
+        if source is None:
+            return ""
+        outdated = False
+        if source.publication_date:
+            try:
+                published = datetime.strptime(source.publication_date, "%Y-%m-%d").date()
+                outdated = published < (today or datetime.now(timezone.utc).date()) - timedelta(days=90)
+            except ValueError:
+                pass
+        if not outdated:
+            outdated = bool(_LAUNCH_URL.search(urlsplit(source.final_url).path))
+        if not outdated:
+            return ""  # A recent source may support the current price.
+        old_sources.append(source)
+    dates = {s.publication_date for s in old_sources if s.publication_date}
+    if len(dates) == 1:
+        return "Historische Preisangabe (Quelle vom " + next(iter(dates)) + "; kein Nachweis des heutigen Preises): "
+    return "Preisangabe aus älterer Produktankündigung (kein Nachweis des heutigen Preises): "
+
+
 def _render(bundle, claims, decisions, timings, error=None):
     passages = _anchored_passages(bundle)
     sources = {s.id: s for s in bundle.sources}
@@ -278,7 +321,8 @@ def _render(bundle, claims, decisions, timings, error=None):
             url = quote(source.final_url, safe=":/?=&%+#@~;,-._")
             citations.append("[" + _escape_text(urlsplit(source.final_url).hostname) + "](" + url + ")")
         if decision["status"] == "supported" and anchors:
-            lines.append("- " + _escape_text(claim.statement) + " " + " ".join(citations))
+            history = _historical_price_context(claim, anchors, sources)
+            lines.append("- " + history + _escape_text(claim.statement) + " " + " ".join(citations))
             supported += 1
         elif decision["status"] == "conflicting_evidence":
             lines.append("- Zu „" + _escape_text(claim.subject) + "“ widersprechen sich die geladenen Quellen; die Angabe bleibt offen.")
