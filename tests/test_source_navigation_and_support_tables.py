@@ -124,3 +124,32 @@ def test_support_matrix_requires_same_named_publisher_and_no_conflicting_rows():
                 support_table()),
     ], goal=GOAL)
     assert support_matrix_candidates(GOAL, fake) == []
+
+
+
+def test_real_html_extractor_to_source_evidence_to_table_candidates():
+    """Unlike hand-written pipe data, HTML extraction prefixes each <th>/<td>."""
+    from agent.app import extract_web_text
+    from agent.research_followup import support_policy_windows
+    tr = lambda cells, tag: "<tr>" + "".join(
+        "<" + tag + ">" + str(cell) + "</" + tag + ">" for cell in cells
+    ) + "</tr>"
+    markup = (
+        "<html><body><h1>Versioning Policy</h1>"
+        "<p>Each PostgreSQL major version receives five years of support.</p>"
+        "<table>" + tr(
+            ["Version", "Current minor", "Supported", "First Release", "Final Release"], "th"
+        ) + tr(["18", "18.6", "Yes", "September 25, 2025", "November 14, 2030"], "td")
+        + tr(["17", "17.11", "Yes", "September 26, 2024", "November 8, 2029"], "td")
+        + tr(["13", "13.23", "No", "September 24, 2020", "November 13, 2025"], "td")
+        + "</table><p>See also other projects.</p></body></html>"
+    )
+    extracted = extract_web_text(markup)
+    assert " | Version" in extracted
+    windows = support_policy_windows(GOAL, extracted)
+    assert len(windows) == 1
+    source = build_evidence([fetched(POLICY, extracted)], goal=GOAL)
+    candidates = support_matrix_candidates(GOAL, source)
+    assert [subject for subject, _, _ in candidates] == ["PostgreSQL 18", "PostgreSQL 17"]
+    assert all("13" not in subject for subject, _, _ in candidates)
+    assert all(source.facts for _ in candidates)
