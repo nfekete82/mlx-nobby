@@ -22,8 +22,15 @@ def filter_unsupported_official_items(answer, goal, observations):
         return answer  # Existing fail-closed gate handles missing articles.
     removed = 0
     kept = []
+    skip_children = False
+    removed_all = False
     for line in answer.splitlines():
         match = _LIST.match(line)
+        indent = len(line) - len(line.lstrip())
+        if skip_children:
+            if not line.strip() or (indent > 0 and match and not MODEL.search(line)):
+                continue
+            skip_children = False
         if not match:
             kept.append(line)
             continue
@@ -40,6 +47,7 @@ def filter_unsupported_official_items(answer, goal, observations):
                                      article, re.I)
                            for _, article in articles) for name in subjects):
                 removed += 1
+                skip_children = True
                 continue
         subject = subject_match.group(0)
         # A model name alone or an isolated number in unrelated prose is
@@ -51,6 +59,7 @@ def filter_unsupported_official_items(answer, goal, observations):
         ]
         if not excerpts:
             removed += 1
+            skip_children = True
             continue
         # Check precise figures associated with this item locally, not against
         # a different model elsewhere on the fetched page.
