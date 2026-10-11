@@ -664,3 +664,37 @@ def test_article_text_ignores_nav_but_keeps_links_to_related_primary_documents()
     assert "Generic footer" not in text
     links = same_site_html_links(html, "https://www.rki.de/")
     assert any("Influenza/FAQ_Liste.html" in x["url"] for x in links)
+
+
+
+def test_navigation_late_document_priority_preserves_bounded_safe_links():
+    """More than 96 generic links cannot hide a real on-site document."""
+    from agent.page_navigation import _MAX_LINKS
+
+    base = "https://www.rki.de/"
+    faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    html = (
+        "<nav>"
+        + "".join(
+            f'<a href="/generic-menu-{i}">Generic navigation {i}</a>'
+            for i in range(150)
+        )
+        + '<a href="/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html">'
+          'Influenza FAQ</a>'
+        + '<a href="https://www.rki.de.evil.example/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html">'
+          'Spoof</a>'
+        + "</nav>"
+    )
+    links = same_site_html_links(html, base)
+    assert len(links) == _MAX_LINKS
+    assert any(link["url"] == faq and link["title"] == "Influenza FAQ"
+               for link in links)
+    assert all(link["url"].startswith(base) for link in links)
+    assert not any("evil.example" in link["url"] for link in links)
+    assert [link["url"] for link in links] == list(dict.fromkeys(
+        link["url"] for link in links
+    ))
+    # The chosen links retain their document order for deterministic routing.
+    indices = [int(link["url"].split("-")[-1]) for link in links
+               if "/generic-menu-" in link["url"]]
+    assert indices == sorted(indices)
