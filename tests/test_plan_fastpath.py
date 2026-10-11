@@ -188,6 +188,65 @@ class OfficialCatalogFollowupTests(unittest.TestCase):
         self.assertIsNone(choose_official_followup(self.goal, [hits]))
         self.assertIsNotNone(self.refine(self.goal, [hits]))
 
+    def test_actual_observed_search_results_skip_unrelated_support_and_refine(self):
+        # This is the real source-path failure from the 11.1s native run.
+        hits = self.search(
+            "https://www.apple.com/de/",
+            "https://www.apple.com/de/store",
+            "https://appleid.apple.com/de-de/",
+            "https://www.icloud.com/",
+            "https://en.wikipedia.org/wiki/Apple_Inc",
+            "https://support.apple.com/de-de",
+        )
+        self.assertIsNone(choose_official_followup(self.goal, [hits]))
+        decision = self.refine(self.goal, [hits])
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision["action"], "search_web")
+        self.assertIn("site:apple.com", decision["query"])
+        self.assertTrue(self.insufficient(self.goal, [
+            hits, self.fetched("https://support.apple.com/de-de"),
+        ]))
+
+    def test_slashless_locale_roots_are_not_credible_catalog_pages(self):
+        from agent.plan_fastpath import _general_landing_page
+        for url in (
+            "https://www.apple.com/de", "https://www.apple.com/de/",
+            "https://support.apple.com/de-de", "https://appleid.apple.com/de-de/",
+            "https://www.apple.com/", "https://www.apple.com/de/store",
+        ):
+            self.assertTrue(_general_landing_page(url), url)
+
+    def test_official_support_cannot_be_used_even_when_title_mentions_product(self):
+        hits = {"action": "search_web", "status": "completed",
+                "result": {"provider": "SearXNG", "results": [
+                    {"url": "https://support.apple.com/de-de/iphone",
+                     "title": "iPhone Hilfe und Support"},
+                    {"url": "https://www.apple.com/de/shop/buy-iphone/model",
+                     "title": "iPhone kaufen"},
+                ]}}
+        self.assertEqual(choose_official_followup(self.goal, [hits])["query"],
+                         "https://www.apple.com/de/shop/buy-iphone/model")
+
+    def test_company_name_alone_is_not_enough_for_specific_catalog(self):
+        hits = {"action": "search_web", "status": "completed",
+                "result": {"provider": "SearXNG", "results": [
+                    {"url": "https://www.apple.com/newsroom/2026/10/macbook-only/",
+                     "title": "Apple officially presents new Macs"},
+                ]}}
+        self.assertIsNone(choose_official_followup(self.goal, [hits]))
+
+    def test_same_security_rules_apply_to_different_manufacturers(self):
+        goal = "Which current Pixel models does Google officially offer?"
+        hits = {"action": "search_web", "status": "completed",
+                "result": {"provider": "SearXNG", "results": [
+                    {"url": "https://support.google.com/pixelphone/answer/test",
+                     "title": "Pixel phone help"},
+                    {"url": "https://store.google.com/product/pixel_example",
+                     "title": "Pixel phone official store"},
+                ]}}
+        self.assertEqual(choose_official_followup(goal, [hits])["query"],
+                         "https://store.google.com/product/pixel_example")
+
     def test_no_repeated_fetch_of_already_fetched_article(self):
         article = "https://www.apple.com/de/shop/buy-iphone/example"
         hits = self.search("https://www.apple.com/de/", article)
