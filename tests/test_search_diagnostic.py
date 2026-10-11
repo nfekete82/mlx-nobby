@@ -46,3 +46,42 @@ def test_sample_does_not_expose_url_tokens_or_page_text():
         report = summarize("http://127.0.0.1:8081", "iPhone")
     assert "private-secret" not in str(report)
     assert "Secret page" not in str(report)
+
+
+
+def test_engine_names_and_diagnostic_classes_without_raw_errors():
+    payload = {
+        "results": [],
+        "unresponsive_engines": [
+            ["duckduckgo", "Suspended: CAPTCHA"],
+            {"engine": "google", "reason": "Too many requests 429"},
+            ["brave", "timeout after 3s"],
+            ["bad?token=supersecret", "failed"],
+            {"name": "bing", "error": "403 forbidden"},
+        ],
+    }
+    with patch("agent.search_diagnostic.request_searxng",
+               return_value=(payload, [{"provider": "SearXNG", "status": "degraded"}])):
+        report = summarize("http://127.0.0.1:8081", "Apple iPhone")
+    assert report["unresponsive_engine_count"] == 5
+    assert report["unresponsive_engines"] == [
+        {"engine": "duckduckgo", "status": "captcha"},
+        {"engine": "google", "status": "rate_limited"},
+        {"engine": "brave", "status": "timeout"},
+        {"engine": "unknown_engine", "status": "unavailable"},
+        {"engine": "bing", "status": "access_denied"},
+    ]
+    assert "supersecret" not in str(report)
+
+
+def test_engine_diagnostic_does_not_echo_exception_text_or_credentials():
+    payload = {"results": [], "unresponsive_engines": [
+        {"engine": "startpage", "reason": "https://evil.test/?api_key=topsecret failed"},
+    ]}
+    with patch("agent.search_diagnostic.request_searxng",
+               return_value=(payload, [{"provider": "SearXNG", "status": "degraded"}])):
+        report = summarize("http://127.0.0.1:8081", "Apple iPhone")
+    assert report["unresponsive_engines"] == [
+        {"engine": "startpage", "status": "unavailable"},
+    ]
+    assert "topsecret" not in str(report)
