@@ -179,6 +179,22 @@ def build_evidence(observations, *, now=None, goal=""):
     timestamp = now or datetime.now(timezone.utc).isoformat()
     sources, facts, seen = [], [], set()
     budget = 18000
+    # A long early homepage/specification must not consume the entire
+    # 100-passage audit budget before later fetched primary documents.
+    # Count only actually loaded, public text sources; single-source audits
+    # retain their existing full capacity. The snippets remain source exact.
+    usable = set()
+    for item in observations or []:
+        if not isinstance(item, dict) or item.get("action") != "fetch_url" or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        url = _public_url(result.get("final_url") or result.get("url") or item.get("query"))
+        content = result.get("text")
+        if url and isinstance(content, str) and len(content.strip()) >= 80:
+            usable.add((url, result.get("offset", 0)))
+    per_source_fact_limit = max(12, 100 // max(1, min(len(usable), 8)))
     for item in observations or []:
         if not isinstance(item, dict) or item.get("action") != "fetch_url":
             continue
@@ -223,6 +239,7 @@ def build_evidence(observations, *, now=None, goal=""):
         if status != "loaded":
             continue
         per_source = 0
+        per_source_fact_count = 0
         # Reserve later sources their own budget; early navigation cannot
         # consume the complete selection payload.
         from agent.planning_context import _DATE, _EVENT
@@ -256,7 +273,9 @@ def build_evidence(observations, *, now=None, goal=""):
         for start, end, excerpt in passages:
             if end == len(text.rstrip()) and (was_cut or result.get("truncated") is True):
                 continue  # A chunk boundary is not the end of the source statement.
-            if len(excerpt) > budget or per_source >= 6000 or len(facts) >= 100:
+            if (len(excerpt) > budget or per_source >= 6000
+                    or per_source_fact_count >= per_source_fact_limit
+                    or len(facts) >= 100):
                 break
             prefix = ("-catalog-" if (start, end) in catalog_spans
                       else "-support-" if (start, end) in support_spans
@@ -266,6 +285,7 @@ def build_evidence(observations, *, now=None, goal=""):
                                       excerpt, (start + offset, end + offset), publication, retrieved_at))
             budget -= len(excerpt)
             per_source += len(excerpt)
+            per_source_fact_count += 1
     return EvidenceBundle(tuple(sources), tuple(facts))
 
 
