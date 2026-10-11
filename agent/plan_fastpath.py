@@ -189,9 +189,20 @@ def choose_official_catalog_refinement(goal, observations):
     terms = [term for term in _SUBJECT_TERMS
              if re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", str(goal).lower())]
     topic = " ".join(terms[:2]) if terms else "Produkte"
-    domain = OFFICIAL_HOSTS[brand][0]
+    # A product-catalog request for the German Google Store needs that
+    # manufacturer's actual storefront search scope. A general google.com
+    # query tends to return Search/Account landing pages, not Pixel products.
+    # This determines only WHERE to search, never which product is available.
+    german_store = (brand == "google" and "store" in str(goal).lower()
+                    and re.search(r"(?i)\b(?:deutsch\w*|germany|german)\b",
+                                  str(goal)) is not None)
+    if german_store:
+        search_query = f"site:store.google.com/DE {brand} {topic} Smartphones"
+    else:
+        domain = OFFICIAL_HOSTS[brand][0]
+        search_query = f"site:{domain} {brand} {topic} Modelle kaufen offiziell"
     return {"action": "search_web",
-            "query": f"site:{domain} {brand} {topic} Modelle kaufen offiziell",
+            "query": search_query,
             "reason": "Einmalige zielgerichtete Suche nach offiziellen Produkt-Detailseiten"}
 
 
