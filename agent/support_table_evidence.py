@@ -79,6 +79,11 @@ def support_matrix_candidates(goal, bundle, *, limit=8):
                 if supported is None:
                     continue
                 for row in lines[start + 1:]:
+                    # HTML extraction retains paragraph/row separation as
+                    # blank lines. Ignore ONLY whitespace separators: never
+                    # skip unrelated text or malformed table rows.
+                    if not row.strip():
+                        continue
                     values = [value.strip() for value in row.strip(" |").split("|")]
                     if len(values) != len(columns) or not _NAME.fullmatch(values[0]):
                         break
