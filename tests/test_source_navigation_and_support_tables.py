@@ -612,3 +612,28 @@ def test_research_allows_exact_fetched_same_host_link_but_not_unlisted_sibling()
         blocked = [s for s in result["steps"]
                    if s.get("action") == "fetch_url_allowlist_guard"]
         assert bool(blocked) is not should_fetch
+
+
+
+def test_deep_official_link_remains_available_without_inflating_planner_context():
+    """A topical policy link after 40 generic nav items must not disappear."""
+    from agent.planning_context import compact_web_planning
+    home = "https://www.ecb.europa.eu/home/html/index.en.html"
+    markup = (
+        "<html><nav>"
+        + "".join(f'<a href="/about/generic-{i}">Generic menu {i}</a>'
+                  for i in range(55))
+        + '<a href="/stats/policy_and_exchange_rates/key_ecb_interest_rates/'
+          'html/index.en.html">Key ECB interest rates</a>'
+        + "</nav></html>"
+    )
+    links = same_site_html_links(markup, home)
+    assert len(links) == 56
+    assert any("key_ecb_interest_rates" in x["url"] for x in links)
+    original = [{"action": "fetch_url", "status": "completed",
+                 "query": home, "result": {
+                     "ok": True, "url": home,
+                     "page_links": links, "text": "ECB information " * 30}}]
+    projected = compact_web_planning(original)
+    assert len(original[0]["result"]["page_links"]) == 56
+    assert len(projected[0]["result"]["page_links"]) == 24
