@@ -142,3 +142,35 @@ Blockierung hängen von der Instanz ab. Erst nach erfolgreichem Suchtest
 Keine CAPTCHA-Umgehung, aggressiven Retry-Schleifen oder Proxyrotation.
 
 Weitere Details: https://docs.searxng.org/admin/settings/settings.html
+
+
+### Safe automated host-config override (existing `searxng` Compose project)
+
+When the host mount is `~/searxng/config -> /etc/searxng`, and the original
+file contains `use_default_settings: true` with **no top-level `engines:`**,
+the repository provides a guarded script. It does **not** replace or print the
+existing secret key or other settings. It stops if custom `engines:` overrides
+already exist, makes a timestamped private backup in the same directory,
+preserves permissions and writes the changes atomically.
+
+```sh
+python -m pytest -q tests/test_configure_searxng_engines.py
+python scripts/configure_searxng_engines.py
+python scripts/configure_searxng_engines.py --apply
+docker restart searxng
+python -m agent.search_diagnostic --query "Apple iPhone"
+python -m agent.search_diagnostic --query "site:apple.com/newsroom iPhone"
+```
+
+The override disables Brave, DuckDuckGo, Google CSE and Startpage after
+observed 429/CAPTCHA responses. It enables Bing, Qwant and Yahoo for testing,
+**without guaranteeing those engines work**. Keep Wikipedia's status separate;
+it may fail on the site-restricted query. If all replacement engines fail,
+inspect `docker logs --tail 80 searxng`, review upstream errors, and avoid
+repeated rapid retries. To restore the old configuration, copy the
+timestamped `settings.yml.backup-...` back to `settings.yml` and restart
+only `searxng`.
+
+Once SearXNG returns direct search URLs, restart the Nobby agent and repeat
+the live question. The 64-case semantic verifier benchmark is not a substitute
+for testing real search coverage.
