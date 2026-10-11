@@ -215,6 +215,53 @@ def choose_official_publisher_step(goal, observations):
                 "query": f"{' '.join(missing[:2])} RFC Internet Protocol Specification {host}",
                 "reason": "Gezielt nach der noch unbelegten angefragten Version suchen",
             }
+    # Large technical standards are served in 18k character windows. If
+    # the first page slice has no address-width statement, load the next
+    # *same observed URL* with its advertised offset once. Do not construct
+    # a sibling document URL or treat an offset as proof of the answer.
+    if host == "rfc-editor.org" and re.search(r"(?i)\\bbits?\\b", str(goal or "")):
+        for item in reversed(loaded):
+            result = item["result"]
+            url = result.get("final_url") or result.get("url")
+            if _safe_official_url(url, host) is None:
+                continue
+            try:
+                current_offset = result.get("offset")
+                next_offset = result.get("next_offset")
+                if (type(current_offset) is not int or current_offset != 0
+                        or type(next_offset) is not int
+                        or not 1000 <= next_offset <= 18000
+                        or result.get("truncated") is not True):
+                    continue
+            except (ValueError, TypeError):
+                continue
+            if not re.search(r"(?i)/(?:info|rfc)/rfc\\d+", urlsplit(url).path):
+                continue
+            passage = str(result.get("text") or "")
+            address_measurement = any(
+                re.search(
+                    r"(?i)(?:addresses?|adressen?)\\W.{0,90}\\b\\d+\\s*bits?\\b"
+                    r"|\\b\\d+\\s*bits?\\W.{0,90}(?:addresses?|adressen?)",
+                    line,
+                )
+                for line in passage.splitlines()
+            )
+            if address_measurement:
+                continue
+            already_read = any(
+                isinstance(other, dict) and other.get("action") == "fetch_url"
+                and (other.get("result") or {}).get("offset") == next_offset
+                and (other.get("result") or {}).get("final_url"
+                     or (other.get("result") or {}).get("url")) == url
+                for other in observations
+            )
+            if not already_read:
+                return {
+                    "action": "fetch_url",
+                    "query": url,
+                    "instruction": f"offset={next_offset}",
+                    "reason": "Fortsetzung desselben verifizierten RFC-Dokuments laden",
+                }
     # One genuinely fetched official source is enough to hand over to evidence
     # unless it has a useful same-site topic link. No speculative cycling.
     matches = []
