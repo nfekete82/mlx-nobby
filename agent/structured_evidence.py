@@ -152,6 +152,11 @@ def _quantitative_windows(goal, text, *, max_windows=3):
         word for word in re.findall(r"\w{4,}", request)
         if word not in {"welche", "welcher", "haben", "wieviele", "entsprechenden"}
     )
+    # A German request for Adressen must be able to match the English
+    # word "Address" in an IETF specification. The source still must
+    # literally contain the measurement; synonyms only rank windows.
+    if re.search(r"(?i)adress|address", request):
+        terms.update({"address", "addresses"})
     windows = []
     for match in re.finditer(r"[^\n]+", text):
         line = match.group()
