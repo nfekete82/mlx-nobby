@@ -447,7 +447,8 @@ class AgentRuntime:
         # scoped to the default quick-research budget, not every web question.
         if mode == "research" and max_steps == RuntimePolicy().research_steps:
             from agent.plan_fastpath import official_catalog_goal
-            if official_catalog_goal(goal):
+            from agent.research_followup import support_policy_question
+            if official_catalog_goal(goal) or support_policy_question(goal):
                 max_steps += 1
         # Deep research remains opt-in; routine fact-finding should not spend
         # six-plus model-planning rounds after usable web evidence is available.
@@ -491,8 +492,10 @@ class AgentRuntime:
             if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
                 from agent.structured_evidence import build_evidence
                 from agent.plan_fastpath import insufficient_catalog_sources
+                from agent.research_followup import need_support_policy_source
                 if (build_evidence(observations).facts
-                        and not insufficient_catalog_sources(goal, observations)):
+                        and not insufficient_catalog_sources(goal, observations)
+                        and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
                     result = {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
                     publish("completed")
@@ -540,7 +543,10 @@ class AgentRuntime:
                     and item["result"].get("ok") is True
                 ]
                 from agent.plan_fastpath import insufficient_catalog_sources
-                if len(loaded_sources) >= 2 and not insufficient_catalog_sources(goal, observations):
+                from agent.research_followup import need_support_policy_source
+                if (len(loaded_sources) >= 2
+                        and not insufficient_catalog_sources(goal, observations)
+                        and not need_support_policy_source(goal, observations)):
                     answer = self._model_hook(
                         self.hooks.agent_v2_final_answer, goal, observations,
                     )
@@ -698,6 +704,15 @@ class AgentRuntime:
                         self._profile_events.append({
                             "phase": "planning_fastpath",
                             "action": "official_catalog_refinement",
+                            "duration_ms": 0.0,
+                        })
+                if decision is None:
+                    from agent.research_followup import choose_support_policy_followup
+                    decision = choose_support_policy_followup(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "support_policy_followup",
                             "duration_ms": 0.0,
                         })
 
