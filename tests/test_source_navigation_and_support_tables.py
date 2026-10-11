@@ -153,3 +153,21 @@ def test_real_html_extractor_to_source_evidence_to_table_candidates():
     assert [subject for subject, _, _ in candidates] == ["PostgreSQL 18", "PostgreSQL 17"]
     assert all("13" not in subject for subject, _, _ in candidates)
     assert all(source.facts for _ in candidates)
+
+
+
+def test_blank_html_row_separators_do_not_allow_merging_unrelated_tables():
+    """Never jump over intervening prose when attributing a support status."""
+    text = (
+        "Versioning Policy\n"
+        "Version | Current minor | Supported | First Release | Final Release\n"
+        "\n"
+        "18 | 18.6 | Yes | September 2025 | November 2030\n"
+        "\n"
+        "These subsequent figures are unrelated historical information.\n"
+        "\n"
+        "17 | 17.11 | Yes | September 2024 | November 2029\n"
+    )
+    bundle = build_evidence([fetched(POLICY, text)], goal=GOAL)
+    records = support_matrix_candidates(GOAL, bundle)
+    assert [subject for subject, _, _ in records] == ["PostgreSQL 18"]
