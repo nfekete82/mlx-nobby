@@ -124,13 +124,14 @@ def same_site_html_links(page, base_url):
         # Release rows on python.org are often preceded by many navigation
         # links. Preserve authentic final-release links when the 96-link
         # source discovery pool would otherwise omit the current release.
+        # Real Python release links often use the generic label "Download".
+        # Preserve source-observed final-version URLs regardless of anchor
+        # text; whether a release is the newest/stable must still be checked
+        # against the fetched article, not inferred from its URL.
         python_release = (
             parts.hostname in {"www.python.org", "python.org"}
             and bool(re.fullmatch(
                 r"(?i)/downloads/release/python-3\d{2,4}/?", path
-            ))
-            and bool(re.fullmatch(
-                r"(?i)Python\s+3\.\d{1,2}\.\d{1,2}", title
             ))
         )
         return (int(mission_index or numbered_mission or mission_chronology
