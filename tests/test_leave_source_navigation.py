@@ -69,3 +69,26 @@ def test_fails_closed_for_spoof_and_unrelated_questions():
     obs = [fetched(LAW), searched(q, {"url": fake, "title": "Urlaub"})]
     assert choose_leave_explanation_step(GOAL, obs) is None
     assert choose_leave_explanation_step("Was sagt das BUrlG?", obs) is None
+
+
+
+def test_bmas_fallback_search_is_not_locked_to_site_operator():
+    q = choose_leave_explanation_step(GOAL, [fetched(LAW)])["query"]
+    assert q.startswith("!go ")
+    assert "site:" not in q
+    assert "bmas.de" in q
+    assert "Urlaubsanspruch" in q
+    assert "20 Arbeitstage" not in q
+
+
+def test_bmas_official_leave_faq_outranks_general_statute_page():
+    q = choose_leave_explanation_step(GOAL, [fetched(LAW)])["query"]
+    obs = [fetched(LAW), searched(q,
+        {"url": "https://www.bmas.de/DE/Service/Gesetze-und-Gesetzesvorhaben/bundesurlaubsgesetz.html",
+         "title": "Bundesurlaubsgesetz BMAS"},
+        {"url": BMAS,
+         "title": "Fragen und Antworten zur Brückenteilzeit: Urlaubsanspruch"},
+    )]
+    result = choose_leave_explanation_step(GOAL, obs)
+    assert result["action"] == "fetch_url"
+    assert result["query"] == BMAS
