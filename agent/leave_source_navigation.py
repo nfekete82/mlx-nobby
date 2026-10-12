@@ -101,7 +101,8 @@ def choose_leave_explanation_step(goal, observations):
             ):
                 continue
             score = 10 * bool(re.search(r"urlaub|urlaubsanspruch", topic))
-            score += 5 * bool("teilzeit" in topic)
+            score += 25 * bool("teilzeit" in topic)
+            score += 15 * bool("fragen-und-antworten" in path or "/faq-" in path)
             matches.append((score, url))
 
     if matches:
