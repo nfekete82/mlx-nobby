@@ -114,6 +114,10 @@ def inspect_case(row):
         hint = "evidence_processing_error"
     elif not fetched:
         hint = "no_successfully_fetched_sources"
+    elif (evidence.get("extraction_method") == "derived_statutory_workweek_conversion"
+          and evidence.get("method") == "source_anchored_arithmetic"
+          and result["verified_supported_count"] > 0):
+        hint = "deterministic_source_anchored_calculation"
     elif not claims:
         hint = "no_extracted_claims_or_valid_abstention"
     elif result["verified_supported_count"] == 0:
