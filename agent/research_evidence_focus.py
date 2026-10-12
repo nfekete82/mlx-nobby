@@ -52,6 +52,39 @@ def evidence_focus_observations(goal, observations):
                         in focused_urls
                 )
             ]
+        # Another officially fetched stable-release directory can supersede
+        # a broad /downloads/ source which contains no usable current-release
+        # passage. Keep the original trace and all newly loaded sources.
+        alternate_release_loaded = False
+        for item in observations:
+            if not isinstance(item, dict) or item.get("action") != "fetch_url":
+                continue
+            result = item.get("result")
+            if (item.get("status") != "completed" or not isinstance(result, dict)
+                    or result.get("ok") is not True):
+                continue
+            parsed = urlsplit(str(result.get("final_url") or result.get("url") or ""))
+            if (parsed.scheme == "https" and parsed.hostname in
+                    {"www.python.org", "python.org"} and
+                    parsed.path.rstrip("/") in {
+                        "/downloads/macos", "/downloads/windows", "/downloads/source",
+                    } and re.search(r"(?i)\bpython\s+3\.\d", str(result.get("text") or ""))):
+                alternate_release_loaded = True
+        if alternate_release_loaded:
+            return [
+                item for item in observations
+                if not (
+                    isinstance(item, dict) and item.get("action") == "fetch_url"
+                    and isinstance(item.get("result"), dict)
+                    and item["result"].get("ok") is True
+                    and urlsplit(str(
+                        item["result"].get("final_url") or item["result"].get("url") or ""
+                    )).path.rstrip("/") == "/downloads"
+                    and urlsplit(str(
+                        item["result"].get("final_url") or item["result"].get("url") or ""
+                    )).hostname in {"www.python.org", "python.org"}
+                )
+            ]
     mission = _nasa_numbered_mission(goal)
     if not mission:
         return observations
