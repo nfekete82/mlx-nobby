@@ -92,3 +92,53 @@ def test_bmas_official_leave_faq_outranks_general_statute_page():
     result = choose_leave_explanation_step(GOAL, obs)
     assert result["action"] == "fetch_url"
     assert result["query"] == BMAS
+
+
+
+def test_official_law_discovery_runs_before_model_planner():
+    from agent.leave_source_navigation import choose_leave_official_discovery_step
+    first = choose_leave_official_discovery_step(GOAL, [])
+    assert first["action"] == "search_web"
+    assert "gesetze-im-internet.de" in first["query"]
+    assert "20 Arbeitstage" not in first["query"]
+    source = searched(first["query"],
+        {"url": LAW, "title": "Mindesturlaubsgesetz für Arbeitnehmer (BUrlG)"},
+        {"url": "https://gesetze-im-internet.de.evil.example/burlg/__3.html",
+         "title": "Gesetzesspiegel"},
+    )
+    second = choose_leave_official_discovery_step(GOAL, [source])
+    assert second["action"] == "fetch_url"
+    assert second["query"] == LAW
+    assert choose_leave_official_discovery_step(
+        GOAL, [source, fetched(LAW)],
+    ) is None
+
+
+def test_official_law_discovery_falls_back_only_once_and_no_fake_url():
+    from agent.leave_source_navigation import choose_leave_official_discovery_step
+    first = choose_leave_official_discovery_step(GOAL, [])
+    empty = searched(first["query"], {
+        "url": "https://untrusted.example/law", "title": "Not an official law"
+    })
+    second = choose_leave_official_discovery_step(GOAL, [empty])
+    assert second["action"] == "search_web"
+    assert second["query"] != first["query"]
+    assert "bmas.de" in second["query"]
+    exhausted = choose_leave_official_discovery_step(
+        GOAL, [empty, searched(second["query"])],
+    )
+    assert exhausted is None
+    assert choose_leave_official_discovery_step(
+        "Was regelt das Arbeitszeitgesetz?", [],
+    ) is None
+
+
+def test_official_law_discovery_accepts_observed_ministry_article():
+    from agent.leave_source_navigation import choose_leave_official_discovery_step
+    first = choose_leave_official_discovery_step(GOAL, [])
+    observations = [searched(first["query"], {
+        "url": BMAS, "title": "Fragen und Antworten zur Teilzeit und Urlaub"
+    })]
+    next_step = choose_leave_official_discovery_step(GOAL, observations)
+    assert next_step["action"] == "fetch_url"
+    assert next_step["query"] == BMAS
