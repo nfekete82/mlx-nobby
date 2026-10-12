@@ -57,6 +57,15 @@ def test_english_standards_and_policy_searches_do_not_force_german_locale():
         "site:rfc-editor.org RFC 8200 IPv6"
     ) == "en-US"
     assert web_search_language_for_query(
+        "site:nasa.gov Apollo 11 moon landing NASA"
+    ) == "en-US"
+    assert web_search_language_for_query(
+        "nasa.gov wann landete apollo angaben mond wer betrat"
+    ) == "en-US"
+    assert web_search_language_for_query(
+        "Berliner Mauer Mauerfall bpb.de"
+    ) == "de-DE"
+    assert web_search_language_for_query(
         "Influenza typische Symptome Robert Koch Institut"
     ) == "de-DE"
     assert web_search_language_for_query(

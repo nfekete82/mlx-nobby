@@ -32,11 +32,21 @@ def _engine_failures(unresponsive):
 
 
 def summarize(primary_url, query):
-    params = urlencode({"q": query, "format": "json", "language": "de-DE", "safesearch": 0})
+    # Run the same locale policy as the live agent. English NASA documents
+    # should not be evaluated through an artificially forced German locale.
+    from agent.app import web_search_language_for_query
+    from agent.search_relevance import required_site
+    language = web_search_language_for_query(query)
+    params = urlencode({"q": query, "format": "json", "language": language, "safesearch": 0})
     payload, attempts = request_searxng(primary_url, params)
     results = payload.get("results", []) if isinstance(payload, dict) else []
     engines = payload.get("unresponsive_engines", []) if isinstance(payload, dict) else []
     hosts = []
+    official_domain = required_site(query)
+    if not official_domain:
+        match = re.search(r"(?i)(?<![a-z0-9.-])(nasa\.gov|bpb\.de)(?![a-z0-9.-])", query)
+        official_domain = match.group(1).casefold() if match else None
+    official_matches = 0
     for result in results[:8]:
         if not isinstance(result, dict):
             continue
@@ -46,16 +56,31 @@ def summarize(primary_url, query):
             continue
         if host:
             hosts.append(host)
+    if official_domain:
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            try:
+                host = (urlsplit(str(result.get("url") or "")).hostname or "").lower().rstrip(".")
+            except ValueError:
+                continue
+            if host == official_domain or host.endswith("." + official_domain):
+                official_matches += 1
     return {
         "configured_primary_endpoint": primary_url,
+        "search_language": language,
+        "requested_primary_host": official_domain,
+        "primary_host_hit_count": official_matches if official_domain else None,
         "provider_attempts": attempts,
         "searxng_results": len(results),
         "result_hosts_sample": hosts,
         "unresponsive_engine_count": len(engines),
         "unresponsive_engines": _engine_failures(engines),
-        "json_search_usable": bool(results),
+        "json_search_usable": bool(results) and (not official_domain or official_matches > 0),
         "next_step": (
-            "SearXNG returned article search results."
+            "SearXNG returned results, but none from the requested primary publisher."
+            if results and official_domain and not official_matches else
+            "SearXNG returned search results; verify article relevance separately."
             if results else
             "Inspect unresponsive_engines and SearXNG logs; JSON is responding but returned no results."
         ),

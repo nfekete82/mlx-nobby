@@ -16,3 +16,25 @@ server:
   limiter: false
   public_instance: false
   image_proxy: false
+
+# Research provider trial: Qwant/Yahoo failed on the reported local instance.
+# Publisher search results remain navigation hints, not verified facts.
+engines:
+  - name: brave
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: google cse
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: bing
+    disabled: false
+  - name: qwant
+    disabled: true
+  - name: yahoo
+    disabled: true
+  - name: google
+    disabled: false
+  - name: bpb
+    disabled: false

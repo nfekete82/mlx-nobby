@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts.configure_searxng_engines import configure, proposed_settings
+from scripts.configure_searxng_engines import (
+    configure, proposed_settings, reconciled_settings,
+    LEGACY_OVERRIDES, GENERATED_MARKER,
+)
 
 
 def test_appends_only_engine_overrides_and_preserves_secret_lines():
@@ -12,9 +15,9 @@ def test_appends_only_engine_overrides_and_preserves_secret_lines():
     updated = proposed_settings(original)
     assert updated.startswith(original)
     assert "secret_key: 'keep-me'" in updated
-    for name in ("brave", "duckduckgo", "google cse", "startpage"):
+    for name in ("brave", "duckduckgo", "google cse", "startpage", "qwant", "yahoo"):
         assert f"  - name: {name}\n    disabled: true" in updated
-    for name in ("bing", "qwant", "yahoo"):
+    for name in ("bing", "google", "bpb"):
         assert f"  - name: {name}\n    disabled: false" in updated
 
 
@@ -70,3 +73,34 @@ def test_refuses_symlink(tmp_path):
     with pytest.raises(ValueError, match="non-symlink"):
         configure(link, apply=True)
     assert target.read_text() == "use_default_settings: true\n"
+
+
+def test_reconcile_known_generated_block_only(tmp_path):
+    original = (
+        "use_default_settings: true\nserver:\n  secret_key: priv\n\n"
+        + GENERATED_MARKER + "\nengines:\n"
+        + "".join(
+            f"  - name: {name}\n    disabled: {str(disabled).lower()}\n"
+            for name, disabled in LEGACY_OVERRIDES
+        )
+    )
+    updated = reconciled_settings(original)
+    assert "secret_key: priv" in updated
+    assert "  - name: qwant\n    disabled: true" in updated
+    assert "  - name: yahoo\n    disabled: true" in updated
+    assert "  - name: google\n    disabled: false" in updated
+    assert "  - name: bpb\n    disabled: false" in updated
+    assert reconciled_settings(updated) == updated
+
+    path = tmp_path / "settings.yml"
+    path.write_text(original)
+    outcome = configure(path, apply=True, reconcile=True)
+    assert outcome["applied"]
+    assert Path(outcome["backup"]).read_text() == original
+    assert path.read_text() == updated
+
+
+def test_reconcile_refuses_custom_engines():
+    custom = "use_default_settings: true\nengines:\n  - name: bing\n    disabled: false\n"
+    with pytest.raises(ValueError, match="Custom engines"):
+        reconciled_settings(custom)

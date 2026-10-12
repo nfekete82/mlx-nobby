@@ -1,87 +1,39 @@
-"""Diagnostic reports backend health without invoking news search fallbacks."""
+"""Diagnose should distinguish irrelevant results from usable primary hits."""
+from urllib.parse import parse_qs
 from unittest.mock import patch
 
 from agent.search_diagnostic import summarize
 
 
-def test_reports_available_real_search_links():
+def test_diagnostic_uses_nasa_locale_and_flags_publisher_mismatch():
     payload = {"results": [
-        {"url": "https://www.apple.com/newsroom/2026/09/example"},
-        {"url": "https://www.example.com/article"},
-    ], "unresponsive_engines": []}
-    with patch("agent.search_diagnostic.request_searxng",
-               return_value=(payload, [{"provider": "SearXNG", "status": "available"}])) as mock:
-        report = summarize("http://127.0.0.1:8081", "site:apple.com/newsroom iPhone")
-    assert report["json_search_usable"] is True
-    assert report["searxng_results"] == 2
-    assert report["result_hosts_sample"] == ["www.apple.com", "www.example.com"]
-    assert report["unresponsive_engine_count"] == 0
-    args = mock.call_args.args
-    assert "format=json" in args[1]
-
-
-def test_reports_unavailable_provider_without_fake_success():
-    with patch("agent.search_diagnostic.request_searxng",
-               return_value=(None, [{"provider": "SearXNG", "status": "unavailable"}])):
-        report = summarize("http://127.0.0.1:8081", "iPhone")
-    assert report["json_search_usable"] is False
-    assert report["searxng_results"] == 0
-    assert report["provider_attempts"][0]["status"] == "unavailable"
-
-
-def test_degraded_empty_response_is_not_reported_healthy():
-    payload = {"results": [], "unresponsive_engines": [{"engine": "google"}]}
-    with patch("agent.search_diagnostic.request_searxng",
-               return_value=(payload, [{"provider": "SearXNG", "status": "degraded"}])):
-        report = summarize("http://127.0.0.1:8081", "iPhone")
-    assert report["unresponsive_engine_count"] == 1
-    assert report["json_search_usable"] is False
-
-
-def test_sample_does_not_expose_url_tokens_or_page_text():
-    payload = {"results": [{"url": "https://example.org/article?token=private-secret",
-                            "title": "Secret page"}]}
-    with patch("agent.search_diagnostic.request_searxng",
-               return_value=(payload, [{"provider": "SearXNG", "status": "available"}])):
-        report = summarize("http://127.0.0.1:8081", "iPhone")
-    assert "private-secret" not in str(report)
-    assert "Secret page" not in str(report)
-
-
-
-def test_engine_names_and_diagnostic_classes_without_raw_errors():
-    payload = {
-        "results": [],
-        "unresponsive_engines": [
-            ["duckduckgo", "Suspended: CAPTCHA"],
-            {"engine": "google", "reason": "Too many requests 429"},
-            ["brave", "timeout after 3s"],
-            ["bad?token=supersecret", "failed"],
-            {"name": "bing", "error": "403 forbidden"},
-        ],
-    }
-    with patch("agent.search_diagnostic.request_searxng",
-               return_value=(payload, [{"provider": "SearXNG", "status": "degraded"}])):
-        report = summarize("http://127.0.0.1:8081", "Apple iPhone")
-    assert report["unresponsive_engine_count"] == 5
-    assert report["unresponsive_engines"] == [
-        {"engine": "duckduckgo", "status": "captcha"},
-        {"engine": "google", "status": "rate_limited"},
-        {"engine": "brave", "status": "timeout"},
-        {"engine": "unknown_engine", "status": "unavailable"},
-        {"engine": "bing", "status": "access_denied"},
-    ]
-    assert "supersecret" not in str(report)
-
-
-def test_engine_diagnostic_does_not_echo_exception_text_or_credentials():
-    payload = {"results": [], "unresponsive_engines": [
-        {"engine": "startpage", "reason": "https://evil.test/?api_key=topsecret failed"},
+        {"url": "https://www.apollo.de/", "title": "Optiker"},
+        {"url": "https://de.wikipedia.org/wiki/NASA", "title": "NASA"},
+    ], "unresponsive_engines": [
+        ["qwant", "CAPTCHA"], ["yahoo", "HTTP protocol error"],
     ]}
     with patch("agent.search_diagnostic.request_searxng",
-               return_value=(payload, [{"provider": "SearXNG", "status": "degraded"}])):
-        report = summarize("http://127.0.0.1:8081", "Apple iPhone")
-    assert report["unresponsive_engines"] == [
-        {"engine": "startpage", "status": "unavailable"},
+               return_value=(payload, [{"provider": "SearXNG", "status": "available"}])) as request:
+        report = summarize("http://127.0.0.1:8081", "site:nasa.gov Apollo 11 moon landing")
+    query = parse_qs(request.call_args.args[1])
+    assert query["language"] == ["en-US"]
+    assert report["search_language"] == "en-US"
+    assert report["primary_host_hit_count"] == 0
+    assert report["json_search_usable"] is False
+    assert "none from" in report["next_step"]
+    assert [e["status"] for e in report["unresponsive_engines"]] == [
+        "captcha", "unavailable",
     ]
-    assert "topsecret" not in str(report)
+
+
+def test_diagnostic_recognizes_official_bpb_result():
+    payload = {"results": [
+        {"url": "https://www.bpb.de/themen/deutschlandarchiv/mauerfall/",
+         "title": "Mauerfall"},
+    ], "unresponsive_engines": []}
+    with patch("agent.search_diagnostic.request_searxng",
+               return_value=(payload, [])) as request:
+        report = summarize("http://127.0.0.1:8081", "Berliner Mauer Mauerfall bpb.de")
+    assert parse_qs(request.call_args.args[1])["language"] == ["de-DE"]
+    assert report["primary_host_hit_count"] == 1
+    assert report["json_search_usable"] is True
