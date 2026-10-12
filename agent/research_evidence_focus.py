@@ -20,6 +20,38 @@ def evidence_focus_observations(goal, observations):
     """
     if not isinstance(observations, (list, tuple)):
         return observations
+    # A focused reread of a real Python download page supersedes only its
+    # earlier broad 18k-character chunk for LLM evidence ranking. Both fetch
+    # steps remain in the original immutable research trace.
+    from agent.software_release_navigation import python_latest_version_question
+    if python_latest_version_question(goal):
+        focused_urls = set()
+        for item in observations:
+            if not isinstance(item, dict) or item.get("action") != "fetch_url":
+                continue
+            result = item.get("result")
+            if (item.get("status") != "completed" or not isinstance(result, dict)
+                    or result.get("ok") is not True
+                    or result.get("focus") != "Active Python releases"):
+                continue
+            url = result.get("final_url") or result.get("url")
+            parsed = urlsplit(str(url or ""))
+            if (parsed.scheme == "https" and parsed.hostname in
+                    {"www.python.org", "python.org"}
+                    and parsed.path.rstrip("/") == "/downloads"):
+                focused_urls.add(url)
+        if focused_urls:
+            return [
+                item for item in observations
+                if not (
+                    isinstance(item, dict) and item.get("action") == "fetch_url"
+                    and isinstance(item.get("result"), dict)
+                    and item["result"].get("ok") is True
+                    and item["result"].get("focus") is None
+                    and (item["result"].get("final_url") or item["result"].get("url"))
+                        in focused_urls
+                )
+            ]
     mission = _nasa_numbered_mission(goal)
     if not mission:
         return observations
