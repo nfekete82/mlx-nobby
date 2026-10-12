@@ -22,6 +22,24 @@ def python_release_focus_step(goal, observations):
     if not python_latest_version_question(goal):
         return None
 
+    # A source-linked official release article answers this question more
+    # directly than another reread of the general downloads landing page.
+    for item in observations or ():
+        if not isinstance(item, dict) or item.get("action") != "fetch_url":
+            continue
+        result = item.get("result")
+        if (item.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True):
+            continue
+        try:
+            fetched = urlsplit(result.get("final_url") or result.get("url"))
+        except (TypeError, ValueError):
+            continue
+        if (fetched.scheme == "https" and fetched.hostname in
+                {"www.python.org", "python.org"} and
+                re.fullmatch(r"/downloads/release/python-3\d{2,4}/?", fetched.path)):
+            return None
+
     candidates = []
     for item in observations or []:
         if not isinstance(item, dict) or item.get("action") != "fetch_url":
@@ -84,9 +102,8 @@ def python_source_linked_release_step(goal, observations):
                     str(item.get("instruction") or "")):
             failed_focus = True
             break
-    if not failed_focus:
-        return None
-
+    # Do not wait for an unnecessary failed focus if the downloaded official
+    # index already exposes an exact stable version article hyperlink.
     attempted_urls = {
         str(item.get("query") or "")
         for item in observations or []
@@ -139,6 +156,8 @@ def python_source_linked_release_step(goal, observations):
             links.append(((major, minor), destination))
     if not links:
         return None
+    # No speculative source discovery: without observed hyperlinks, retain
+    # the previous focus-then-search fallback instead.
     # Choose the newest *observed* release first, including already attempted
     # links. If that link was fetched (successfully OR unsuccessfully), stop.
     # Do not fall back to an older release and mislabel it the latest.
