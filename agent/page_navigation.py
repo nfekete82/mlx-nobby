@@ -101,13 +101,28 @@ def same_site_html_links(page, base_url):
         path = urlsplit(link["url"]).path
         segments = [segment for segment in path.split("/") if segment]
         document = bool(re.search(r"\.(?:html?|pdf)$", path, re.I))
-        return (min(len(segments), 8), document)
+        title = str(link.get("title") or "").casefold()
+        # Large institution pages can contain hundreds of deep news links.
+        # Keep authentic navigation to alphabetical mission/catalog indexes,
+        # plus individual numbered mission links, ahead of that noise. This
+        # grants no authority to the link's text; URLs are still fetched and
+        # validated separately by the agent.
+        mission_index = bool(re.search(
+            r"(?i)a\s*(?:to|-|–)\s*z.*missions?|a-to-z-of-.*missions",
+            title + " " + path,
+        ))
+        numbered_mission = bool(re.fullmatch(
+            r"(?i)(?:apollo|artemis|gemini|mercury)\s+\d{1,3}", title,
+        )) and bool(re.search(r"/mission/", path, re.I))
+        return (int(mission_index or numbered_mission),
+                min(len(segments), 8), document)
 
     selected = set(sorted(
         range(len(output)),
         key=lambda i: (
             -specificity(output[i])[0],
-            -int(specificity(output[i])[1]),
+            -specificity(output[i])[1],
+            -int(specificity(output[i])[2]),
             i,
         ),
     )[:_MAX_LINKS])
