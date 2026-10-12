@@ -198,7 +198,18 @@ def python_release_search_step(goal, observations):
         and "focus=Active Python releases" in str(step.get("instruction") or "")
         for step in observations or ()
     )
-    if not failed_focus:
+    unusable_download = any(
+        isinstance(step, dict) and step.get("action") == "fetch_url"
+        and step.get("status") == "completed"
+        and isinstance(step.get("result"), dict)
+        and step["result"].get("retrieval_status") == "publisher_identity_mismatch"
+        and urlsplit(str(step.get("result", {}).get("url") or "")).hostname in
+            {"python.org", "www.python.org"}
+        and urlsplit(str(step.get("result", {}).get("url") or "")).path.rstrip("/")
+            == "/downloads"
+        for step in observations or ()
+    )
+    if not (failed_focus or unusable_download):
         return None
 
     already = {
