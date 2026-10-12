@@ -127,6 +127,39 @@ def exhausted_unmatched_item_search(goal, observations):
     return len(set(searches)) >= 2
 
 
+def exhausted_unreadable_catalog(goal, observations):
+    """Fail closed after two distinct official catalog fetches prove unreadable.
+
+    This does not conclude that products are unavailable; it says the
+    static HTTP fetcher cannot verify the current retailer listing. Ordinary
+    news articles and unrelated companies do not trigger the guard.
+    """
+    from agent.plan_fastpath import official_catalog_goal, _trusted_primary_host
+    if not official_catalog_goal(goal) or loaded_articles(observations):
+        return False
+    unreadable = set()
+    for step in observations or []:
+        if not isinstance(step, dict) or step.get("action") != "fetch_url":
+            continue
+        result = step.get("result")
+        if step.get("status") != "completed" or not isinstance(result, dict):
+            continue
+        if result.get("ok") is True:
+            return False
+        if "zu wenig verwertbarer seiteninhalt" not in str(
+                result.get("error") or "").casefold():
+            continue
+        url = result.get("url") or step.get("query")
+        try:
+            parsed = urlsplit(url)
+        except (ValueError, TypeError):
+            continue
+        if parsed.scheme == "https" and _trusted_primary_host(
+                goal, parsed.hostname):
+            unreadable.add((parsed.hostname.lower(), parsed.path.rstrip("/")))
+    return len(unreadable) >= 2
+
+
 UNAVAILABLE_ANSWER = (
     "Die offizielle Recherche konnte derzeit keine verwertbaren "
     "Suchtreffer oder geladenen Artikel liefern. Deshalb bestätige ich "
