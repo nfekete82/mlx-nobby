@@ -331,3 +331,25 @@ def test_current_python_release_link_survives_oversized_navigation_menu():
                "https://www.python.org/downloads/release/python-3150/"
                for link in links)
     assert all("evil.example" not in link["url"] for link in links)
+
+
+
+def test_fetched_stable_release_article_beats_generic_download_text_for_evidence():
+    base = page(text="Historic downloads, navigation, and old release notes. " * 80)
+    released = "https://www.python.org/downloads/release/python-3150/"
+    article = {
+        "action": "fetch_url", "status": "completed", "query": released,
+        "result": {
+            "ok": True, "url": released,
+            "text": (
+                "Python 3.15.0. This is the stable release of Python 3.15.0. "
+                "Python 3.15.0 is the newest major release, October 9 2026. "
+            ) * 8,
+        },
+    }
+    originals = [base, article]
+    focused = evidence_focus_observations(GOAL, originals)
+    assert originals == [base, article]
+    assert focused == [article]
+    assert any("Python 3.15.0" in f.evidence_excerpt
+               for f in build_evidence(focused, goal=GOAL).facts)
