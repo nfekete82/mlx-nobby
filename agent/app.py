@@ -7064,7 +7064,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
                 _publisher = _source_urlsplit(current_url).hostname
                 if _publisher in {"www.bmas.de", "bmas.de"}:
                     main_html = re.search(
-                        r"<main\\b[^>]*>.*?</main\\s*>",
+                        r"<main\b[^>]*>.*?</main\s*>",
                         page, flags=re.IGNORECASE | re.DOTALL,
                     )
                     if main_html:
@@ -7080,7 +7080,7 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
             _source = _publisher_urlsplit(current_url)
             if (_source.hostname in {"python.org", "www.python.org"}
                     and _source.path.rstrip("/") == "/downloads"
-                    and not re.search(r"(?i)\\bpython\\b", readable)):
+                    and not re.search(r"(?i)\bpython\b", readable)):
                 return {
                     "ok": False, "url": current_url,
                     "content_type": content_type,
