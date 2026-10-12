@@ -377,7 +377,7 @@ def choose_official_publisher_step(goal, observations):
             # The explicit site: operator overconstrains providers and can
             # be ignored or degrade results; the publisher hostname remains
             # a search hint. Source URLs are independently host-validated.
-            query = f"!go {host} {' '.join(clinical_topics[:2])} Krankheitsbild FAQ Symptome"
+            query = f'!go {host} "Krankheitsbild der {clinical_topics[0]}" FAQ Symptome' if clinical_topics else f"!go {host} Krankheitsbild FAQ Symptome"
         return {
             "action": "search_web",
             "query": query,
@@ -743,6 +743,30 @@ def choose_official_publisher_step(goal, observations):
                 "action": "search_web", "query": retry_query,
                 "reason": "Nicht erreichbare amtliche Zinsseite durch eine neue Quellensuche ersetzen",
             }
+
+    # The RKI has retired older /DE/Content/InfAZ/... links. A 404 is
+    # retrieval failure, NOT proof that the clinical FAQ is unavailable.
+    # Retry once by searching the question's original disease name plus an
+    # official FAQ title; no article URL, symptom or medical fact is guessed.
+    if (failed_official and host == "rki.de"
+            and clinical_presentation_question(goal)):
+        topics = [w for w in terms if w not in {
+            "symptome", "symptoms", "symptom", "krankheitsbild",
+            "typischen", "typische",
+        }]
+        if topics:
+            rescue = f'!go {host} "Häufig gestellte Fragen" {topics[0]} Krankheitsbild'
+            attempted = any(
+                isinstance(o, dict) and o.get("action") == "search_web"
+                and " ".join(str(o.get("query") or "").casefold().split())
+                    == " ".join(rescue.casefold().split())
+                for o in observations
+            )
+            if not attempted:
+                return {
+                    "action": "search_web", "query": rescue,
+                    "reason": "Nach veralteter amtlicher 404-Seite neue RKI-FAQ suchen",
+                }
 
     if not loaded and official_home_fallback_host(goal, observations):
         # Search pollution may justify ONE root-only discovery after two
