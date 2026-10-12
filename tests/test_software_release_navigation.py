@@ -134,7 +134,10 @@ def test_failed_download_focus_follows_observed_stable_release_link():
         "query": URL, "instruction": "focus=Active Python releases",
         "result": {"ok": False, "url": URL, "error": "focus_not_found"},
     }
-    assert python_source_linked_release_step(GOAL, [original]) is None
+    # A real stable-release hyperlink is stronger navigation than a blind
+    # focus attempt, so the article is selected immediately.
+    first = python_source_linked_release_step(GOAL, [original])
+    assert first["query"] == "https://www.python.org/downloads/release/python-3150/"
     chosen = python_source_linked_release_step(GOAL, [original, failed])
     assert chosen["action"] == "fetch_url"
     assert chosen["query"] == (
@@ -287,3 +290,24 @@ def test_unrelated_or_spoofed_alternate_index_never_suppresses_original_source()
         },
     }
     assert evidence_focus_observations(GOAL, [old, bogus]) == [old, bogus]
+
+
+
+def test_real_official_release_article_suppresses_redundant_text_focus():
+    from agent.software_release_navigation import (
+        python_release_focus_step, python_source_linked_release_step,
+    )
+    original = page()
+    url = "https://www.python.org/downloads/release/python-3150/"
+    original["result"]["page_links"] = [
+        {"url": url, "title": "Python 3.15.0"},
+    ]
+    next_step = python_source_linked_release_step(GOAL, [original])
+    assert next_step["query"] == url
+    done = {
+        "action": "fetch_url", "status": "completed", "query": url,
+        "result": {"ok": True, "url": url, "text":
+                   "Python 3.15.0 is the newest stable major release. " * 8},
+    }
+    assert python_release_focus_step(GOAL, [original, done]) is None
+    assert python_source_linked_release_step(GOAL, [original, done]) is None
