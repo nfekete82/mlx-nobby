@@ -76,6 +76,11 @@ def test_distinguishes_no_audit_empty_candidates_and_fetch_failures():
     extraction = row()
     extraction["response"]["evidence"]["error_status"] = "invalid_extraction_schema"
     assert inspect_case(extraction)["stage_hint"] == "evidence_processing_error"
+    abstained = row(search=True, fetch=False)
+    abstained["response"]["evidence"]["error_status"] = "no_usable_evidence"
+    report = inspect_case(abstained)
+    assert report["stage_hint"] == "no_usable_source_evidence"
+    assert report["evidence_error"] == "no_usable_evidence"
 
 
 def test_reuses_saved_jsonl_only_and_rejects_missing_capture(tmp_path):
