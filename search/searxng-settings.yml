@@ -1,0 +1,40 @@
+# Local, private search backend for MLX-Nobby.
+# The JSON format is required by agent/search_status.py.
+use_default_settings: true
+
+general:
+  instance_name: "MLX-Nobby Search"
+  debug: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+# Research provider trial: Qwant/Yahoo failed on the reported local instance.
+# Publisher search results remain navigation hints, not verified facts.
+engines:
+  - name: brave
+    disabled: true
+  - name: duckduckgo
+    disabled: true
+  - name: google cse
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: bing
+    disabled: false
+  - name: qwant
+    disabled: true
+  - name: yahoo
+    disabled: true
+  - name: google
+    disabled: false
+  - name: bpb
+    disabled: false

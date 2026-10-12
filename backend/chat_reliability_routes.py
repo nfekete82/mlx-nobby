@@ -24,6 +24,12 @@ VISION_FIRST_BYTE_TIMEOUT = max(
     FIRST_BYTE_TIMEOUT,
     float(os.environ.get("MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT", "60")),
 )
+# Current-information queries perform routing and bounded public research before
+# the model starts streaming. The generic 30s budget is too short for this path.
+RESEARCH_FIRST_BYTE_TIMEOUT = max(
+    FIRST_BYTE_TIMEOUT,
+    float(os.environ.get("MLX_CHAT_RESEARCH_FIRST_BYTE_TIMEOUT", "90")),
+)
 VISION_HEARTBEAT_INTERVAL = 5.0
 VISION_HEARTBEAT = b": vision request pending\n\n"
 
@@ -241,6 +247,21 @@ async def _close_iterator(iterator, pending_task=None):
                 await result
 
 
+def _has_current_information_query(request: ReliableChatRequest) -> bool:
+    # Must mirror the gateway's last user text selection. No history is sent
+    # outside the machine by the watchdog.
+    for message in reversed(request.messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        prompt = message.get("content")
+        if isinstance(prompt, str):
+            from backend.web_research import needs_web_research
+            from backend.live_intelligence import needs_inflation_lookup
+            return needs_web_research(prompt) or needs_inflation_lookup(prompt)
+        break
+    return False
+
+
 def _has_vision_input(request: ReliableChatRequest) -> bool:
     # Match the gateway's image_url handling, including images in history.
     for message in request.messages:
@@ -257,9 +278,9 @@ def _has_vision_input(request: ReliableChatRequest) -> bool:
     return False
 
 
-async def _vision_iterator(request, stream_factory):
-    # The gateway factory performs synchronous context/routing HTTP calls.
-    # Keep those off the event loop so the watchdog and heartbeats can run.
+async def _offloaded_iterator(request, stream_factory):
+    # Every gateway request performs blocking context/routing/research calls.
+    # Offload even text-only requests so watchdog deadlines stay responsive.
     response = await asyncio.to_thread(stream_factory, request)
     iterator = response.body_iterator.__aiter__()
     try:
@@ -288,9 +309,9 @@ async def _wait_with_heartbeats(task, timeout: float, vision: bool):
         yield None  # Heartbeat only, not upstream activity or model output.
 
 
-def _media_is_active(snapshot: dict) -> bool:
+def _other_runtime_is_active(snapshot: dict) -> bool:
     workload = (snapshot.get("lease") or {}).get("active_workload")
-    return workload in {"image", "video"}
+    return workload not in {None, "chat"} or bool(snapshot.get("active_agent_runs"))
 
 
 async def _reliable_stream(
@@ -302,16 +323,16 @@ async def _reliable_stream(
     emitted = False
     attempt = 0
     vision = _has_vision_input(request)
-    first_timeout = VISION_FIRST_BYTE_TIMEOUT if vision else FIRST_BYTE_TIMEOUT
+    first_timeout = (
+        VISION_FIRST_BYTE_TIMEOUT if vision else
+        RESEARCH_FIRST_BYTE_TIMEOUT if _has_current_information_query(request) else
+        FIRST_BYTE_TIMEOUT
+    )
 
     while attempt < 2:
         attempt += 1
         prefill_deadline = time.monotonic() + first_timeout
-        if vision:
-            iterator = _vision_iterator(request, stream_factory).__aiter__()
-        else:
-            response = stream_factory(request)
-            iterator = response.body_iterator.__aiter__()
+        iterator = _offloaded_iterator(request, stream_factory).__aiter__()
         semantic = _SemanticSseTracker()
         pending = None
 
@@ -330,7 +351,7 @@ async def _reliable_stream(
             if not ready:
                 snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
 
-                if _media_is_active(snapshot):
+                if _other_runtime_is_active(snapshot):
                     prefill_deadline += max(0.0, MEDIA_WAIT_TIMEOUT - first_timeout)
                     media_remaining = (
                         max(0.0, prefill_deadline - time.monotonic())
@@ -420,7 +441,7 @@ async def _reliable_stream(
                     snapshot = await asyncio.to_thread(_agent_diagnostics, agent_url)
                     await _close_iterator(iterator, pending)
 
-                    if not _media_is_active(snapshot):
+                    if not _other_runtime_is_active(snapshot):
                         await asyncio.to_thread(
                             _request_recovery,
                             agent_url,

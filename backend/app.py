@@ -86,11 +86,11 @@ def get_json(url, timeout=5):
         with urllib.request.urlopen(url, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    except urllib.error.URLError as exc:
+    except (urllib.error.URLError, TimeoutError) as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"Dienst nicht erreichbar: {exc.reason}",
-        )
+            detail=f"Dienst nicht erreichbar oder Antwort-Timeout: {exc}",
+        ) from exc
 
 
 def post_json(url, timeout=180):
@@ -1342,6 +1342,36 @@ def mlx_chat_stream(request: ChatRequest):
                         },
                     )
 
+    # v2 Automatic public research. Only a short, non-private current question
+    # goes to the search provider; no prior turns, workspace or file contents.
+    if last_user_prompt:
+        from backend.web_research import needs_web_research, retrieve_web_research
+        from backend.live_intelligence import needs_inflation_lookup
+        if not needs_inflation_lookup(last_user_prompt) and needs_web_research(last_user_prompt):
+            research_context = retrieve_web_research(last_user_prompt)
+            if research_context:
+                if messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = (
+                        str(messages[0].get("content") or "") + "\n\n" + research_context
+                    )
+                else:
+                    messages.insert(0, {"role": "system", "content": research_context})
+
+    # v2 Live Intelligence: fetch verified annual inflation data before inference.
+    # Only the user's current prompt leaves this machine; the request to the
+    # statistical provider contains no user text, chat history or workspace data.
+    if last_user_prompt:
+        from backend.live_intelligence import retrieve_inflation, needs_inflation_lookup
+        if needs_inflation_lookup(last_user_prompt):
+            live_context = retrieve_inflation(last_user_prompt)
+            if live_context:
+                if messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = (
+                        str(messages[0].get("content") or "") + "\n\n" + live_context
+                    )
+                else:
+                    messages.insert(0, {"role": "system", "content": live_context})
+
     if "rag_sources" not in locals():
         rag_sources = []
 
@@ -1499,9 +1529,13 @@ def mlx_system():
 
 @app.get("/api/mlx/logs/all")
 def mlx_logs_all(limit: int = 200):
+    # Aggregating log sources can involve slow filesystem reads on the host.
+    # Keep this timeout local to the diagnostics endpoint, rather than
+    # changing latency budgets for interactive chat and status requests.
+    bounded_limit = max(1, min(limit, 1000))
     return get_json(
-        f"{AGENT_URL}/api/logs/all?limit={limit}",
-        timeout=10,
+        f"{AGENT_URL}/api/logs/all?limit={bounded_limit}",
+        timeout=35,
     )
 
 

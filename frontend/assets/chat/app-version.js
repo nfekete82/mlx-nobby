@@ -29,13 +29,17 @@
          * `translate` property so we do not overwrite any existing
          * transform that controls the vertical start-screen layout.
          */
-        style.textContent = [
+        const css = [
             '@media (min-width:901px){',
             '.app.sidebar-collapsed .empty{',
             'translate:112px 0;',
             '}',
             '}'
         ].join('');
+        // The mount observer watches this style too. Replacing identical text
+        // would trigger itself until the asynchronously mounted health panel
+        // appears, starving the task that would actually mount that panel.
+        if (style.textContent !== css) style.textContent = css;
     }
 
     function syncDraftChatVisibility() {

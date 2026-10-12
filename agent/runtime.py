@@ -2,7 +2,9 @@
 
 from contextvars import ContextVar
 from dataclasses import dataclass
+import json
 import logging
+import time
 import re
 from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
@@ -16,7 +18,7 @@ from agent.tool_registry import ToolRegistry
 @dataclass(frozen=True)
 class RuntimePolicy:
     diagnostic_steps: int = 6
-    research_steps: int = 6
+    research_steps: int = 3
     coding_steps: int = 24
     orchestrator_steps: int = 12
     research_continuation_steps: int = 3
@@ -58,6 +60,7 @@ class RuntimeHooks:
     canonical_github_repo_from_goal: Callable
     execute_agent_approved_action: Callable | None = None
     verify_agent_action: Callable | None = None
+    agent_evidence_answer: Callable | None = None
 
 
 _CURRENT_RUNTIME = ContextVar("mlx_agent_runtime", default=None)
@@ -83,6 +86,7 @@ class AgentRuntime:
         self.policy = policy or RuntimePolicy()
         self.logger = logger or logging.getLogger(__name__)
         self.model_role = "agent"
+        self._profile_events = []
 
     def _check_cancelled(self):
         if self.context.cancelled:
@@ -90,6 +94,7 @@ class AgentRuntime:
 
     def complete_model(self, request: ModelRequest):
         self._check_cancelled()
+        started = time.perf_counter()
         try:
             response = self.provider.complete(request, run_context=self.context)
         except ProviderError as exc:
@@ -98,22 +103,73 @@ class AgentRuntime:
                 self.context.cancel()
                 raise _RunCancelled() from exc
             raise
+        finally:
+            from agent.model_efficiency import CALL_PURPOSES
+            from backend.observability import current_call_purpose
+            purpose = current_call_purpose("agent.call")
+            self._profile_events.append({
+                "phase": "model", "action": "provider.complete",
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                "purpose": purpose if purpose in CALL_PURPOSES else "unknown",
+            })
         self._check_cancelled()
+        # Provider usage is already normalized by observability. Capture only
+        # numeric counters and rough request size, never message contents.
+        if self._profile_events and self._profile_events[-1].get("action") == "provider.complete":
+            event = self._profile_events[-1]
+            event["input_chars"] = sum(
+                len(message.get("content", ""))
+                for message in request.messages
+                if isinstance(message, dict) and isinstance(message.get("content"), str)
+            )
+            telemetry = getattr(response, "telemetry", {})
+            if isinstance(telemetry, dict):
+                for key in ("queue_wait_ms", "lease_wait_ms", "lock_wait_ms", "model_setup_ms", "upstream_request_ms", "observed_holder_age_ms"):
+                    value = telemetry.get(key)
+                    if type(value) in (int, float) and value >= 0:
+                        event[key] = round(value, 2)
+                if telemetry.get("observed_holder_role") in ("agent", "chat", "coding", "image", "video", "embedding", "speech-stt", "speech-tts", "speech-tts-clone", "router", "vision-classifier", "image-upscale", "other", "unknown", "none", "possible_agent_holder"):
+                    event["observed_holder_role"] = telemetry["observed_holder_role"]
+                if telemetry.get("usage_method") in ("upstream", "estimate"):
+                    event["usage_method"] = telemetry["usage_method"]
+            usage = response.usage if isinstance(response.usage, dict) else {}
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = usage.get(key)
+                if type(value) is int and value >= 0:
+                    event[key] = value
+            output = event.get("completion_tokens")
+            elapsed = event["duration_ms"]
+            if output is not None and elapsed > 0:
+                event["effective_output_tokens_per_s"] = round(output * 1000 / elapsed, 2)
         return response
 
     def _model_hook(self, function, *args, **kwargs):
         self._check_cancelled()
-        result = function(*args, **kwargs)
+        started = time.perf_counter()
+        try:
+            result = function(*args, **kwargs)
+        finally:
+            self._profile_events.append({
+                "phase": "model_hook",
+                "action": getattr(function, "__name__", "unknown"),
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            })
         self._check_cancelled()
         return result
 
     def _execute_tool(self, action, goal, query=None, instruction=None, files=None, options=None):
         self._check_cancelled()
-        result = self.registry.execute(
-            action, run_context=self.context, goal=goal, query=query,
-            instruction=instruction, files=files, options=options,
-        )
-        return result
+        started = time.perf_counter()
+        try:
+            return self.registry.execute(
+                action, run_context=self.context, goal=goal, query=query,
+                instruction=instruction, files=files, options=options,
+            )
+        finally:
+            self._profile_events.append({
+                "phase": "tool", "action": action,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            })
 
     def _allowed_tools(self, mode):
         allowed = set(self.registry.names(permission="READ"))
@@ -149,7 +205,8 @@ class AgentRuntime:
         target = pending["target"]
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.bind_run_context(self.context):
+            from agent.research_cache import request_research_cache
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context), request_research_cache():
                 try:
                     self._check_cancelled()
                     self._publish(callback, "running", observations)
@@ -232,22 +289,77 @@ class AgentRuntime:
         if not goal:
             raise ValueError("Kein Agent-Ziel angegeben")
         observations = list(observations or [])
+        self._profile_events = []
         token = _CURRENT_RUNTIME.set(self)
         try:
-            with run_state.bind_run_context(self.context):
+            from agent.research_cache import request_research_cache
+            with run_state.active_agent_run(), run_state.bind_run_context(self.context), request_research_cache():
                 try:
                     self._check_cancelled()
-                    return self._run_loop(
+                    result = self._run_loop(
                         goal, observations, start_step, mode, conversation_context,
                         progress_callback, allow_approval,
                     )
+                    if isinstance(result, dict):
+                        if result.get("status") == "completed" and isinstance(result.get("answer"), str):
+                            from agent.structured_evidence import EvidenceAnswer
+                            web_steps = any(isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+                                            for item in result.get("steps", []))
+                            from agent.evidence import orchestrator_required_evidence
+                            local_evidence = any(isinstance(item, dict) and item.get("status") == "completed"
+                                                 and item.get("action") not in {"fetch_url", "search_web", "web_search"}
+                                                 for item in result.get("steps", []))
+                            research_requested = mode == "research" or (
+                                orchestrator_required_evidence(goal)["web"] and not local_evidence)
+                            if mode in {"diagnostic", "research"} and (web_steps or research_requested) and self.hooks.agent_evidence_answer:
+                                if not isinstance(result["answer"], EvidenceAnswer):
+                                    result["answer"] = self._model_hook(self.hooks.agent_evidence_answer, goal, result.get("steps", []))
+                                if isinstance(result["answer"], EvidenceAnswer):
+                                    result["evidence"] = result["answer"].audit
+                                    result["answer"] = str(result["answer"])
+                                    # Exact quotations must not be rewritten by prose
+                                    # repair/filter heuristics. Anchors were validated
+                                    # before rendering; legacy gates remain below for
+                                    # all unstructured answer paths.
+                                    result["performance"] = {"events": list(self._profile_events)}
+                                    return result
+                            if any(isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+                                   for item in result.get("steps", [])):
+                                from agent.claim_validation import gate_numerical_claims, gate_source_links
+                                result["answer"] = gate_source_links(
+                                    gate_numerical_claims(result["answer"], result["steps"]), result["steps"])
+                            from agent.count_consistency import align_enumerated_count
+                            from agent.temporal_repair import correct_future_availability
+                            from agent.temporal_validation import gate_temporal_claims
+                            result["answer"] = gate_temporal_claims(
+                                correct_future_availability(
+                                    align_enumerated_count(result["answer"])
+                                )
+                            )
+                            from agent.official_item_evidence import filter_unsupported_official_items
+                            result["answer"] = filter_unsupported_official_items(
+                                result["answer"], goal, result.get("steps", [])
+                            )
+                            from agent.official_evidence_gate import gate_unverified_official_answer
+                            result["answer"] = gate_unverified_official_answer(
+                                result["answer"], goal, result.get("steps", [])
+                            )
+                        result["performance"] = {"events": list(self._profile_events)}
+                    return result
                 except _RunCancelled:
                     result = {"status": "cancelled", "goal": goal, "steps": observations,
                               "pending_action": None, "answer": ""}
                 except ProviderError as exc:
                     result = {"status": "failed", "goal": goal, "steps": observations,
                               "answer": str(exc), "error": {"code": exc.code, "detail": str(exc)}}
+                except ValueError as exc:
+                    if not isinstance(exc, json.JSONDecodeError) and "kein gültiges JSON" not in str(exc) and "kein JSON-Objekt" not in str(exc):
+                        raise
+                    result = {"status": "failed", "goal": goal, "steps": observations,
+                              "answer": "Der Agent konnte die Modellantwort nicht sicher als Aktion interpretieren.",
+                              "error": {"code": "invalid_agent_response", "detail": "Ungültiges Antwortformat des Agent-Modells"}}
                 self._publish(progress_callback, result["status"], observations)
+                result["performance"] = {"events": list(self._profile_events)}
                 return result
         finally:
             _CURRENT_RUNTIME.reset(token)
@@ -330,7 +442,49 @@ class AgentRuntime:
                     self.model_role = "coding"
 
         max_steps = self.policy.max_steps(mode)
-        research_continuation_steps = self.policy.research_continuation_steps if mode == "research" else 0
+        # One additional READ-only action can be necessary when the initial
+        # official-catalog search returns only a homepage. Keep this narrowly
+        # scoped to the default quick-research budget, not every web question.
+        if mode == "research" and max_steps == RuntimePolicy().research_steps:
+            from agent.plan_fastpath import official_catalog_goal
+            from agent.research_followup import support_policy_question
+            if official_catalog_goal(goal) or support_policy_question(goal):
+                max_steps += 1
+        # Deep research remains opt-in; routine fact-finding should not spend
+        # six-plus model-planning rounds after usable web evidence is available.
+        deep_research = bool(mode == "research" and re.search(
+            r"(?i)\b(?:tiefenrecherche|ausführliche recherche|umfassende recherche|"
+            r"deep research|in-depth research|systematisch vergleichen)\b", goal,
+        ))
+        if deep_research and max_steps == RuntimePolicy().research_steps:
+            max_steps = 6
+        research_continuation_steps = (
+            self.policy.research_continuation_steps
+            if mode == "research" and deep_research else 0
+        )
+        # One search + one fetch can be needed after an official disease
+        # overview turns out to contain no actual clinical presentation.
+        # This bounded allowance is restricted to named-publisher questions;
+        # normal diagnostic/coding budgets remain unchanged.
+        from agent.official_source_navigation import clinical_presentation_question
+        if mode == "diagnostic" and clinical_presentation_question(goal):
+            research_continuation_steps = 2
+        if mode == "diagnostic":
+            from agent.leave_source_navigation import _five_day_leave_question
+            if _five_day_leave_question(goal):
+                # Searching, loading and following real government links can
+                # require a bounded homepage -> employment law -> FAQ chain.
+                research_continuation_steps = max(research_continuation_steps, 5)
+        # Bounded time for paired, explicitly named protocol versions:
+        # one extra source window and an additional targeted search/fetch.
+        # Most factual queries retain the normal six diagnostic steps.
+        if mode == "diagnostic" and re.search(r"(?i)\bbits?\b", goal):
+            from agent.official_source_navigation import _publisher
+            identifiers = set(re.findall(
+                r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", goal
+            ))
+            if _publisher(goal) and 2 <= len(identifiers) <= 5:
+                research_continuation_steps = max(research_continuation_steps, 2)
         loop_max_steps = max_steps + research_continuation_steps
 
         def publish(status="running", current_step=None, pending_action=None):
@@ -358,6 +512,68 @@ class AgentRuntime:
             loop_max_steps + 1,
         ):
             self._check_cancelled()
+            # Stop redundant discovery only after an exact official document
+            # already supplies every operand for a bounded deterministic
+            # answer. Other research topics retain their existing checks.
+            if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
+                from agent.leave_workweek_validation import grounded_five_day_leave
+                if grounded_five_day_leave(goal, observations) is not None:
+                    answer = self._model_hook(
+                        self.hooks.agent_evidence_answer, goal, observations
+                    )
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": answer,
+                    }
+                    publish("completed")
+                    return result
+            if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
+                from agent.structured_evidence import build_evidence
+                from agent.plan_fastpath import insufficient_catalog_sources
+                from agent.software_release_navigation import (
+                    needs_python_release_focus, needs_python_release_article,
+                    needs_python_release_search,
+                )
+                from agent.leave_source_navigation import needs_leave_explanation
+                from agent.research_followup import need_support_policy_source
+                from agent.official_source_navigation import (
+                    missing_requested_identifiers, has_discovered_deeper_primary_link,
+                    missing_clinical_article, missing_official_answer_document,
+                )
+                if (build_evidence(observations).facts
+                        and not insufficient_catalog_sources(goal, observations)
+                        and not missing_requested_identifiers(goal, observations)
+                        and not missing_clinical_article(goal, observations)
+                        and not needs_python_release_focus(goal, observations)
+                        and not needs_python_release_article(goal, observations)
+                        and not needs_python_release_search(goal, observations)
+                        and not needs_leave_explanation(goal, observations)
+                        and not missing_official_answer_document(goal, observations)
+                        and not has_discovered_deeper_primary_link(goal, observations)
+                        and not need_support_policy_source(goal, observations)):
+                    answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
+                    result = {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
+                    publish("completed")
+                    return result
+            if mode in {"diagnostic", "research"}:
+                from agent.search_failure_fastpath import (
+                    exhausted_official_search, exhausted_unmatched_item_search,
+                    exhausted_unreadable_catalog, UNAVAILABLE_ANSWER,
+                )
+                if (exhausted_official_search(goal, observations)
+                        or exhausted_unmatched_item_search(goal, observations)
+                        or exhausted_unreadable_catalog(goal, observations)):
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "official_search_exhausted",
+                        "duration_ms": 0,
+                    })
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": UNAVAILABLE_ANSWER,
+                    }
+                    publish("completed")
+                    return result
             # Additional research steps are allowed only to continue an
             # already loaded, truncated web source.
             if mode == "research" and step > max_steps:
@@ -374,6 +590,37 @@ class AgentRuntime:
 
                 if not continuation_available:
                     break
+            # In quick research, two loaded sources are sufficient evidence
+            # to stop planning and synthesize with the existing final-answer
+            # prompt. An explicit deep-research request keeps the full loop.
+            if mode == "research" and not deep_research:
+                loaded_sources = [
+                    item for item in observations
+                    if isinstance(item, dict)
+                    and item.get("action") == "fetch_url"
+                    and item.get("status") == "completed"
+                    and isinstance(item.get("result"), dict)
+                    and item["result"].get("ok") is True
+                ]
+                from agent.plan_fastpath import insufficient_catalog_sources
+                from agent.research_followup import need_support_policy_source
+                from agent.official_source_navigation import (
+                    missing_requested_identifiers, has_discovered_deeper_primary_link,
+                )
+                if (len(loaded_sources) >= 2
+                        and not insufficient_catalog_sources(goal, observations)
+                        and not missing_requested_identifiers(goal, observations)
+                        and not has_discovered_deeper_primary_link(goal, observations)
+                        and not need_support_policy_source(goal, observations)):
+                    answer = self._model_hook(
+                        self.hooks.agent_v2_final_answer, goal, observations,
+                    )
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": answer,
+                    }
+                    publish("completed")
+                    return result
             # ---------------------------------------------------------
             # Read-only coding fast final
             # ---------------------------------------------------------
@@ -497,6 +744,112 @@ class AgentRuntime:
                                 "Aufgabe anhand des Dateiinhalts bearbeiten",
                             ],
                         }
+
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.official_source_navigation import choose_official_publisher_step
+                decision = choose_official_publisher_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "named_official_publisher_navigation",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.leave_source_navigation import choose_leave_official_discovery_step
+                decision = choose_leave_official_discovery_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath", "action": "statutory_leave_discovery",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.leave_source_navigation import choose_leave_explanation_step
+                decision = choose_leave_explanation_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "official_leave_explanation",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.software_release_navigation import python_source_linked_release_step
+                decision = python_source_linked_release_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "source_linked_python_release",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.software_release_navigation import python_release_search_step
+                decision = python_release_search_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "alternate_source_linked_python_release",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.software_release_navigation import python_release_focus_step
+                decision = python_release_focus_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "source_exact_release_focus",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.research_followup import choose_support_policy_research_step
+                decision = choose_support_policy_research_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "official_support_policy_navigation",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.plan_fastpath import (
+                    choose_official_followup, choose_official_catalog_refinement,
+                )
+                from agent.page_navigation import choose_catalog_page_link
+                decision = choose_catalog_page_link(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "catalog_source_navigation",
+                        "duration_ms": 0.0,
+                    })
+                successful_fetches = sum(
+                    item.get("action") == "fetch_url" and item.get("status") == "completed"
+                    for item in observations if isinstance(item, dict)
+                )
+                # Use only discovered URLs via the existing allowlist. A
+                # manufacturer homepage isn't proof of a current product list.
+                if decision is None and successful_fetches < 2:
+                    decision = choose_official_followup(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "official_followup_selected",
+                            "duration_ms": 0.0,
+                        })
+                if decision is None:
+                    decision = choose_official_catalog_refinement(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "official_catalog_refinement",
+                            "duration_ms": 0.0,
+                        })
+                if decision is None:
+                    from agent.research_followup import choose_support_policy_followup
+                    decision = choose_support_policy_followup(goal, observations)
+                    if decision is not None:
+                        self._profile_events.append({
+                            "phase": "planning_fastpath",
+                            "action": "support_policy_followup",
+                            "duration_ms": 0.0,
+                        })
 
             if decision is None:
                 decision = self._model_hook(self.hooks.agent_choose_next_step_v2,
@@ -1096,6 +1449,35 @@ class AgentRuntime:
 
             # -------------------------------------------------
             # Research search-loop guard
+            # Duplicate searches cannot improve evidence: the exact same
+            # provider query already returned its known result. This guard
+            # applies to diagnostic research too, including deterministic
+            # publisher follow-ups that bypass the orchestrator's guard.
+            if (mode in {"diagnostic", "research"}
+                    and action in {"search_web", "web_search"} and query
+                    and any(
+                        isinstance(previous, dict)
+                        and previous.get("action") in {"search_web", "web_search"}
+                        and previous.get("status") == "completed"
+                        and " ".join(str(previous.get("query") or "").split()).casefold()
+                            == " ".join(query.split()).casefold()
+                        for previous in observations
+                    )):
+                observations.append({
+                    "step": step, "action": "research_duplicate_search_guard",
+                    "status": "rejected", "blocked_query": query,
+                    "reason": "Diese identische Recherche wurde bereits ausgeführt; keine erneute Suche.",
+                })
+                if self.hooks.agent_evidence_answer:
+                    answer = self._model_hook(
+                        self.hooks.agent_evidence_answer, goal, observations,
+                    )
+                    publish("completed")
+                    return {"status": "completed", "goal": goal,
+                            "steps": observations, "answer": answer}
+                publish("running", observations[-1])
+                continue
+
             # -------------------------------------------------
             # Research should not consume its entire step budget on new search
             # variations when concrete results already exist. After three web
@@ -1332,6 +1714,56 @@ class AgentRuntime:
                                 normalize_fetch_url(result_url)
                             )
 
+                # Search URLs are allowed by the existing prefix-aware rule.
+                # Links from a fetched page are different: accept only the
+                # *exact* discovered HTTPS URL on the same hostname.
+                discovered_page_urls = set()
+                for item in observations:
+                    if (
+                        not isinstance(item, dict)
+                        or item.get("action") != "fetch_url"
+                        or item.get("status") != "completed"
+                    ):
+                        continue
+                    result = item.get("result")
+                    if not isinstance(result, dict) or result.get("ok") is not True:
+                        continue
+                    origin = result.get("final_url") or result.get("url")
+                    try:
+                        root = urlsplit(origin)
+                        if (root.scheme != "https" or not root.hostname
+                                or root.username or root.password
+                                or root.port not in {None, 443}):
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                    links = result.get("page_links")
+                    for link in links if isinstance(links, list) else []:
+                        if not isinstance(link, dict):
+                            continue
+                        href = link.get("url")
+                        if not isinstance(href, str) or len(href) > 1200:
+                            continue
+                        try:
+                            target = urlsplit(href)
+                            if (target.scheme != "https"
+                                    or target.hostname != root.hostname
+                                    or target.username or target.password
+                                    or target.port not in {None, 443}):
+                                continue
+                        except ValueError:
+                            continue
+                        discovered_page_urls.add(normalize_fetch_url(href))
+
+                # A named official publisher may be used as a discovery
+                # entry point if the search backend twice failed to produce
+                # a topical primary link. This exception is the exact HTTPS
+                # homepage only; it never allowlists guessed article paths.
+                from agent.official_source_navigation import official_home_fallback_host
+                publisher_host = official_home_fallback_host(goal, observations)
+                if publisher_host:
+                    allowed_urls.add(f"https://www.{publisher_host}/")
+
                 canonical_repo = self.hooks.canonical_github_repo_from_goal(goal)
 
                 if canonical_repo:
@@ -1398,7 +1830,7 @@ class AgentRuntime:
                     None,
                 )
 
-                if matching_allowed_url is None:
+                if matching_allowed_url is None and requested_url not in discovered_page_urls:
                     observations.append({
                         "step": step,
                         "action": "fetch_url_allowlist_guard",
@@ -1797,6 +2229,17 @@ class AgentRuntime:
                 publish()
 
         final_status = "max_steps"
+        # A bounded quick research run completes by synthesizing the observations.
+        # Show max_steps only when no useful web tool evidence was obtained.
+        if mode == "research" and not deep_research and any(
+            isinstance(item, dict)
+            and item.get("status") == "completed"
+            and item.get("action") in {"web_search", "fetch_url"}
+            and isinstance(item.get("result"), dict)
+            and item["result"].get("ok") is True
+            for item in observations
+        ):
+            final_status = "completed"
 
         if mode == "orchestrator":
             missing = self.hooks.orchestrator_missing_evidence(
@@ -1822,6 +2265,13 @@ class AgentRuntime:
                     ),
                 })
 
+        if mode in {"diagnostic", "research"} and self.hooks.agent_evidence_answer and any(
+            isinstance(item, dict) and item.get("action") in {"fetch_url", "search_web", "web_search"}
+            for item in observations
+        ):
+            answer = self._model_hook(self.hooks.agent_evidence_answer, goal, observations)
+            publish("completed")
+            return {"status": "completed", "goal": goal, "steps": observations, "answer": answer}
         result = {
             "status": final_status,
             "goal": goal,

@@ -1,7 +1,10 @@
 """Existing agent prompts and JSON handling; model access is injected."""
 
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from agent.evidence import (
     compact_agent_observations,
@@ -100,6 +103,26 @@ def parse_agent_json(value):
             return result
     except Exception:
         pass
+
+    # A common local-model failure is an unescaped quotation mark inside the
+    # final prose field. Repair only this exact, read-only two-field envelope;
+    # malformed tool actions still require the existing controlled repair.
+    final = re.fullmatch(r'\{\s*"action"\s*:\s*"final"\s*,\s*"answer"\s*:\s*"(.*)"\s*\}', value, re.S)
+    if final and not re.search(r'"\s*,\s*"[^"\n]+"\s*:', final.group(1)):
+        body = []
+        escaped = False
+        for char in final.group(1):
+            if char == '"' and not escaped:
+                body.append('\\"')
+            elif ord(char) < 32:
+                body.append(json.dumps(char)[1:-1])
+            else:
+                body.append(char)
+            escaped = not escaped if char == "\\" else False
+        try:
+            return {"action": "final", "answer": json.loads('"' + ''.join(body) + '"')}
+        except (ValueError, TypeError):
+            pass
 
     # Eingebettetes JSON robust finden.
     decoder = json.JSONDecoder()
@@ -276,6 +299,12 @@ fetch_url
 - Lade gezielt eine URL aus einem vorherigen search_web-Ergebnis.
 - Übergib die vollständige URL im JSON-Feld "query".
 - Öffne bevorzugt relevante Primärquellen und seriöse Quellen.
+- Google-News-RSS-Links (news.google.com/rss/...) sind Such-Wrapper und keine Artikeltexte.
+  Rufe sie nicht mit fetch_url ab. Suche stattdessen die echte Hersteller- oder Verlags-URL.
+- Allgemeine Hersteller-Übersichtsseiten wie /iphone/ belegen Features, aber nicht
+  automatisch den aktuellen Verkauf oder Preis eines bestimmten Modells.
+  Für konkrete Verfügbarkeitsfragen bevorzuge datierte Hersteller-Ankündigungen
+  oder modellbezogene offizielle Kaufseiten, sofern als Suchtreffer vorhanden.
 - Du darfst mehrere Quellen nacheinander laden.
 
 {runtime_tools_text}
@@ -299,6 +328,7 @@ def agent_choose_next_step_v2(
     conversation_context=None,
     *, observed_agent_llm, agent_tool_description, _looks_like_disk_usage_request,
 ):
+    from agent.planning_context import compact_web_planning
     mode = str(mode or "diagnostic").strip().lower()
     coding_mode = mode == "coding"
 
@@ -795,7 +825,9 @@ Bei allgemeinen Systemdiagnosen:
                     + "\n\n"
                     + "BISHERIGE OBSERVATIONS:\n"
                     + json.dumps(
-                        compact_agent_observations(observations),
+                        compact_web_planning(compact_agent_observations(observations))
+                        if not coding_mode and mode in {'diagnostic', 'research'}
+                        else compact_agent_observations(observations),
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -809,17 +841,8 @@ Bei allgemeinen Systemdiagnosen:
     try:
         return parse_agent_json(answer)
 
-    except ValueError as exc:
-        print(
-            "[agent-json] initial parse failed:",
-            repr(str(exc)),
-            flush=True,
-        )
-        print(
-            "[agent-json] raw answer:",
-            repr(str(answer or "")[:12000]),
-            flush=True,
-        )
+    except ValueError:
+        logger.warning("Agent JSON parse failed; attempting format repair (chars=%d)", len(str(answer or "")))
 
     # Perform exactly one controlled format repair.
     # Do not execute an action until parsing succeeds.
@@ -855,17 +878,8 @@ Bei allgemeinen Systemdiagnosen:
         try:
             return parse_agent_json(repaired_answer)
 
-        except ValueError as repair_exc:
-            print(
-                "[agent-json] repair parse failed:",
-                repr(str(repair_exc)),
-                flush=True,
-            )
-            print(
-                "[agent-json] repaired answer:",
-                repr(str(repaired_answer or "")[:12000]),
-                flush=True,
-            )
+        except ValueError:
+            logger.warning("Agent JSON format repair failed (chars=%d)", len(str(repaired_answer or "")))
             raise
 
 
@@ -971,6 +985,157 @@ def agent_coding_read_only_final_answer(goal, observations, *, observed_agent_ll
 
 
 
+def loaded_web_article_urls(observations):
+    """Only URLs from successfully opened web tool results count as loaded."""
+    from urllib.parse import urlsplit
+    urls = []
+    for item in observations:
+        if not isinstance(item, dict):
+            continue
+        if item.get("action") != "fetch_url" or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        candidates = [result.get("url"), result.get("final_url"), item.get("query")]
+        for candidate in candidates:
+            if not isinstance(candidate, str):
+                continue
+            parsed = urlsplit(candidate)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.path in {"", "/"}:
+                continue
+            if candidate not in urls:
+                urls.append(candidate)
+            break
+    return urls
+
+
+def enforce_research_citations(answer, observations):
+    """Fail closed on source-required research; never fabricate article links."""
+    import re
+    from urllib.parse import urlsplit
+
+    allowed = loaded_web_article_urls(observations)
+    if not allowed:
+        return ("Es konnten keine vollständig geladenen Artikelquellen belegt werden. "
+                "Deshalb gebe ich keine vermeintlich verifizierte Modellliste aus.")
+
+    output = []
+    for line in str(answer or "").splitlines():
+        if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
+            # Discard free-form claims in the answer body; preserve only
+            # evidence-backed numbered/bulleted items and a source footer.
+            continue
+        links = re.findall(r"https://[^\s)\]>]+", line)
+        approved = next((url for url in allowed if url in links), None)
+        if approved is None:
+            # Resolve a bare source reference only if its host uniquely maps
+            # to a single successfully opened article.
+            mentions = [url for url in allowed
+                        if (urlsplit(url).hostname or "").removeprefix("www.").split(".")[0].lower()
+                        in line.lower()]
+            if len(mentions) == 1:
+                approved = mentions[0]
+        if approved is None:
+            continue
+        # Replace any unverified outbound links with the one fetched URL.
+        cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
+        cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
+        cleaned = cleaned.rstrip(" ,;:-")
+        output.append(f"{cleaned} ([Artikelquelle]({approved}))")
+    if not output:
+        return ("Die geladenen Artikel reichen nicht aus, um einzelne Modelle "
+                "mit eindeutigen Quellenlinks zu belegen. Ich lasse unbelegte Angaben weg.")
+    return "\n".join(output)
+
+
+def verify_product_launch_items(answer, observations):
+    """Conservative claim-to-source gate for dated product presentations.
+
+    A name somewhere on a page is insufficient: require a launch verb and,
+    for precise dates, a matching date near that name. Uncertain statements
+    are not accepted as proof of a completed presentation.
+    """
+    import re
+    from datetime import datetime
+
+    def normalize(value):
+        return re.sub(r"[^\w]+", " ", str(value).casefold()).strip()
+
+    sources = []
+    for item in observations:
+        if not isinstance(item, dict) or item.get("action") != "fetch_url" or item.get("status") != "completed":
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        url = result.get("final_url") or result.get("url") or item.get("query")
+        content = result.get("text")
+        if isinstance(url, str) and isinstance(content, str) and len(content) >= 100:
+            sources.append((url, content))
+
+    # Explicit completed-event language, rather than predictions about launches.
+    completed = re.compile(
+        r"(?i)\b(?:wurde[n]?|ist|hat|haben|offiziell|bereits|"
+        r"vorgestellt|präsentiert|enthüllt|unveiled|introduced|"
+        r"announced|launched|debuted)\b"
+    )
+    event = re.compile(r"(?i)\b(?:vorgestellt|präsentiert|enthüllt|"
+                       r"unveiled|introduced|announced|launched|debuted)\b")
+    speculative = re.compile(
+        r"(?i)\b(?:voraussichtlich|vermutlich|angeblich|wohl|"
+        r"soll|sollen|könnte|könnten|geplant|erwartet|"
+        r"expected|rumou?red|rumors?|upcoming|likely|will|"
+        r"preview|prognose)\b"
+    )
+    output = []
+    for line in str(answer or "").splitlines():
+        if not re.match(r"^\s*(?:[-*]|\d+[.)])\s+", line):
+            continue
+        body = re.sub(r"^\s*(?:[-*]|\d+[.)])\s+", "", line).strip()
+        bold = re.match(r"\*\*([^*]+)\*\*", body)
+        name = bold.group(1).strip() if bold else re.split(r"\s+[–—-]\s+|\s*\(", body, maxsplit=1)[0].strip()
+        if not name or len(name) > 90 or "," in name or "/" in name:
+            continue
+        model = normalize(name)
+        if len(model) < 5:
+            continue
+        exact = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b", body)
+        date_variants = ()
+        if exact:
+            try:
+                date = datetime(int(exact[3]), int(exact[2]), int(exact[1]))
+            except ValueError:
+                continue
+            month_names = ("januar", "februar", "märz", "april", "mai", "juni",
+                           "juli", "august", "september", "oktober", "november", "dezember")
+            date_variants = (normalize(exact.group(0)),
+                             normalize(f"{date.day} {month_names[date.month - 1]} {date.year}"),
+                             normalize(f"{date.year}-{date.month:02d}-{date.day:02d}"))
+
+        for url, content in sources:
+            folded = normalize(content)
+            # Bounded local evidence window, not arbitrary words anywhere in article.
+            match = re.search(r"(?<!\w)" + re.escape(model) + r"(?!\w)", folded)
+            if not match:
+                continue
+            window = folded[max(0, match.start() - 180):match.end() + 220]
+            if not completed.search(window) or not event.search(window):
+                continue
+            if speculative.search(window):
+                continue
+            if date_variants and not any(date in window for date in date_variants):
+                continue
+            cleaned = re.sub(r"\[([^]]+)\]\(https?://[^)]+\)", r"\1", line)
+            cleaned = re.sub(r"https?://[^\s)\]>]+", "", cleaned)
+            output.append(cleaned.rstrip(" ,;:-") + f" ([Artikelquelle]({url}))")
+            break
+    if not output:
+        return ("Die Quellen belegen die konkreten Produktvorstellungen und "
+                "Vorstellungsdaten nicht ausreichend. Ich lasse unsichere Modelle weg.")
+    return "\n".join(output)
+
+
 def agent_v2_final_answer(goal, observations, *, observed_agent_llm):
     coding_contract = coding_evidence_contract(observations)
 
@@ -1049,6 +1214,16 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                     "Observations eine direkte, natürliche Antwort auf das "
                     "konkrete Nutzerziel. "
                     "Erfinde keine neuen Fakten. "
+                    "Für aktuelle Produktneuheiten mit Vorstellungsdaten: "
+                    "Nenne nur Modelle, deren Name und Ereignis aus einer "
+                    "tatsächlich geladenen Quelle hervorgehen. "
+                    "Verlinke jeden belegten Listeneintrag direkt mit seiner "
+                    "konkreten geladenen Artikel-URL statt nur am Ende "
+                    "eine allgemeine Quellenliste anzufügen. "
+                    "Eine Quelle für mehrere Modelle ist zulässig, aber "
+                    "nur wenn der geladene Text jedes Modell wirklich nennt. "
+                    "Unterscheide Vorstellung, Ankündigung, Verkaufsstart "
+                    "und Prognose; erfinde keine exakten Termine. "
                     "Passe Länge, Detailgrad und Struktur an die Frage an. "
                     "Einfache Ja/Nein-, Existenz-, Sichtbarkeits-, "
                     "Lokalisierungs- oder Statusfragen beantwortest du "
@@ -1093,11 +1268,49 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                     "untersucht zu haben, wenn keine entsprechende "
                     "Observation vorhanden ist. "
 
+                    "QUELLENPFLICHT BEI WEBRECHERCHE: "
+                    "Wenn der Nutzer Quellen verlangt, nenne ausschließlich "
+                    "konkret in den Observations enthaltene vollständige "
+                    "https-Artikel-URLs (nicht nur Domains oder Startseiten). "
+                    "Jede recherchierte Einzelbehauptung braucht einen "
+                    "passenden Artikel-Link direkt am betreffenden Punkt. "
+                    "Eine bloße Domain wie adac.de oder electrive.net ist "
+                    "niemals ein konkreter Quellenbeleg. "
+                    "Verwende keine aus Modellwissen geratenen URLs. "
+                    "Wenn eine Observation nur einen Suchtreffer, aber keinen "
+                    "geladenen Artikel enthält, kennzeichne diesen als "
+                    "unbestätigten Suchtreffer. "
+                    "Verwechsle nicht Vorstellung, Ankündigung, Modelljahr, "
+                    "Facelift oder Marktstart. "
+                    "Ist eine geforderte Zahl an belegbaren Punkten nicht "
+                    "erreichbar, liefere ausdrücklich weniger Punkte statt "
+                    "unbelegte Modelle zu ergänzen. "
+                    "AKTUALITÄTS- UND PROGNOSEPRÜFUNG (verbindlich): "
+                    "Prüfe bei zeitabhängigen Tatsachen das Ereignisdatum und "
+                    "den Veröffentlichungsstand der tatsächlich geladenen Quelle. "
+                    "Ein älterer Artikel kann keine spätere Gegenwart bestätigen. "
+                    "Widersprechen sich geladene Quellen, benenne den Konflikt "
+                    "und bevorzuge die aktuellere einschlägige Primärquelle, "
+                    "statt stillschweigend eine Version als sicher auszugeben. "
+                    "Eine Suchergebnisüberschrift oder ein URL-Titel ist kein "
+                    "Beleg für den Inhalt des Artikels. "
+                    "Trenne strikt bereits stattgefundene Präsentationen, "
+                    "Vorbestellungen, Verkaufsstarts und kommende Releases. "
+                    "Für noch nicht offiziell bestätigte Produkte, Namen, "
+                    "Release-Daten oder Preise dürfen keine exakten Werte "
+                    "als Fakten genannt werden. Schätzwerte müssen als "
+                    "unbestätigte Prognose kenntlich sein und aus tatsächlich "
+                    "geladenen Quellen stammen; andernfalls keine konkrete "
+                    "Zahl oder Datumsbehauptung erfinden. "
+                    "Mache aus einer Vermutung durch bloße Quellenauflistung "
+                    "niemals eine bestätigte Tatsache. "
+                    "Wenn eine zentrale Aussage nicht durch geladene Quellen "
+                    "gestützt ist, sage klar: nicht verifiziert. "
                     "WICHTIGE WEB-GROUNDING-REGELN: "
-                    "Wenn mindestens eine Web-Observation "
-                    "search_degraded=true enthält, erwähne ausdrücklich, "
-                    "dass die Webrecherche teilweise degradiert war und "
-                    "nicht alle Suchanbieter verfügbar waren. "
+                    "Erwähne Suchanbieter-Ausfälle nur wenn dadurch keine ausreichenden "
+                    "Rechercheergebnisse vorliegen. Wenn nutzbare Treffer und "
+                    "geladene Artikel vorhanden sind, beantworte die Frage ohne "
+                    "den technischen Anbieterstatus in den Vordergrund zu stellen. "
                     "Unterscheide strikt zwischen Suchtreffern und tatsächlich "
                     "mit fetch_url geladenen Quellen. "
                     "Eine URL, die nur in web_search-Ergebnissen auftaucht, "
@@ -1185,6 +1398,8 @@ WICHTIGE CODING-EVIDENCE-REGELN:
                         ensure_ascii=False,
                         indent=2,
                     )
+                    + "\n\nTATSÄCHLICH GELADENE ARTIKEL-URLS (keine anderen URLs als geprüfte Quellen ausgeben):\n"
+                    + json.dumps(loaded_web_article_urls(observations), ensure_ascii=False)
                     + "\n\nDETERMINISTIC CODING EVIDENCE CONTRACT:\n"
                     + json.dumps(
                         coding_contract,
@@ -1248,7 +1463,91 @@ WICHTIGE CODING-EVIDENCE-REGELN:
     if has_coding_evidence:
         answer = compact_coding_answer_markdown(answer)
 
+    if re.search(
+        r"(?i)\b(?:vorgestellt|präsentiert|angekündigt|erschienen|neuheiten)\b",
+        str(goal or ""),
+    ) and any(
+        isinstance(item, dict) and item.get("action") == "fetch_url"
+        for item in observations
+    ):
+        answer = verify_product_launch_items(answer, observations)
+        return answer
 
+    if re.search(
+        r"(?i)\b(?:quellen?(?:links?)?|beleg(?:e|t|te|ten|bar|bare|baren)|verlink(?:e|en|t)?|links?|artikeln?|artikel.urls?|nachweislich|source(?:s)?)\b",
+        str(goal or ""),
+    ) and any(
+        isinstance(item, dict) and item.get("action") in {"web_search", "fetch_url"}
+        for item in observations
+    ):
+        answer = enforce_research_citations(answer, observations)
+
+    # Apply a deterministic check only when articles were actually fetched.
+    # Simple questions without web observations take the original fast path.
+    if any(isinstance(item, dict) and item.get("action") == "fetch_url"
+           for item in observations):
+        from agent.claim_validation import (
+            audit_numerical_claims,
+            gate_numerical_claims,
+            loaded_articles,
+        )
+        audit = audit_numerical_claims(answer, observations)
+        if audit["checked"] and (audit["unverified"] or audit.get("conflicts")):
+            # One bounded corrective pass; never treat the model's revision
+            # itself as verification. The deterministic gate runs again below.
+            sources = loaded_articles(observations)[:5]
+            evidence = [
+                {"url": url, "excerpt": body[:2500]}
+                for url, body in sources
+            ]
+            try:
+                revised = observed_agent_llm(
+                    "agent.evidence_repair",
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Korrigiere nur anhand der tatsächlich geladenen "
+                                "Artikel-Auszüge. Entferne konkrete unbelegte "
+                                "Zahlen und Daten oder kennzeichne sie klar als "
+                                "nicht verifiziert. Bei widersprüchlichen Quellen "
+                                "nenne den Widerspruch, statt einen Wert zu "
+                                "behaupten. Erfinde weder Fakten noch URLs. "
+                                "Behalte die eigentliche Antwort möglichst bei. "
+                                "Antworte nur mit der korrigierten Antwort."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {"draft": answer, "audit": audit,
+                                 "loaded_evidence": evidence},
+                                ensure_ascii=False,
+                            ),
+                        },
+                    ],
+                    max_tokens=2400,
+                    temperature=0.0,
+                )
+                if isinstance(revised, str) and revised.strip():
+                    from agent.claim_validation import _URL
+                    candidate = revised.strip()
+                    original_urls = set(_URL.findall(str(answer)))
+                    allowed_urls = {url for url, _ in sources} | original_urls
+                    new_urls = set(_URL.findall(candidate)) - allowed_urls
+                    revised_audit = audit_numerical_claims(candidate, observations)
+                    before_issues = len(audit["unverified"]) + len(audit.get("conflicts", []))
+                    after_issues = (len(revised_audit["unverified"])
+                                    + len(revised_audit.get("conflicts", [])))
+                    # Do not replace a draft with a worse or citation-inventing
+                    # revision. A tie is not evidence of improvement.
+                    if not new_urls and revised_audit["checked"] and after_issues < before_issues:
+                        answer = candidate
+            except Exception:
+                pass
+        answer = gate_numerical_claims(answer, observations)
+
+    # Final temporal reconciliation runs once at the AgentRuntime boundary.
     return answer
 
 

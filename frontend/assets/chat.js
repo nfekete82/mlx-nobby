@@ -1188,7 +1188,7 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
     if (!items.length) {
         const empty = document.createElement('div');
         empty.className = 'nobby-projects-empty';
-        empty.textContent = chatT('ui.no_workspaces', 'Keine Workspaces');
+        empty.textContent = chatT('ui.no_workspaces', 'No workspaces');
         list.appendChild(empty);
         return;
     }
@@ -1199,7 +1199,7 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
         const active = workspace.workspace_id === activeId;
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-current', active ? 'true' : 'false');
-        button.setAttribute('aria-label', workspace.name + (active ? ' – aktiv' : ''));
+        button.setAttribute('aria-label', workspace.name + (active ? ' – active' : ''));
         button.title = workspace.root_path || workspace.name;
         button.disabled = workspace.available === false;
         const icon = document.createElement('span');
@@ -1237,7 +1237,7 @@ function renderSidebarWorkspaces(workspaces, activeWorkspace) {
         remove.type = 'button';
         remove.className = 'nobby-sidebar-workspace-remove';
         remove.textContent = '×';
-        remove.title = chatT('ui.workspace_remove', 'Workspace entfernen');
+        remove.title = chatT('ui.workspace_remove', 'Remove workspace');
         remove.setAttribute('aria-label', remove.title + ': ' + (workspace.name || 'Workspace'));
         remove.addEventListener('click', async () => {
             remove.disabled = true;

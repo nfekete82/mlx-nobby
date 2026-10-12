@@ -137,6 +137,31 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertEqual(result["steps"][0]["result"], {"value": "evidence"})
         self.assertIn("evidence", self.provider.calls[1][0].messages[0]["content"])
 
+    def test_active_agent_counter_covers_tools_and_cleans_up(self):
+        self.handler.side_effect = lambda **kwargs: {"active": run_state.active_agent_run_count()}
+        result = self.runtime([{"action": "inspect"}, {"action": "final", "answer": "Done"}]).run("Inspect")
+        self.assertEqual(result["steps"][0]["result"]["active"], 1)
+        self.assertEqual(run_state.active_agent_run_count(), 0)
+
+    def test_invalid_planner_json_keeps_steps_and_call_metrics(self):
+        result = self.runtime([{"action": "inspect"}, 'invalid JSON']).run("Inspect")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "invalid_agent_response")
+        self.assertEqual(result["steps"][0]["action"], "inspect")
+        self.assertEqual(sum(e["action"] == "provider.complete" for e in result["performance"]["events"]), 2)
+        self.assertEqual(run_state.active_agent_run_count(), 0)
+
+    def test_inline_diagnostic_final_runs_source_gates_without_another_model_call(self):
+        self.add_tool("fetch_url", lambda **kwargs: {"ok": True,
+            "url": "https://example.org/article", "text": "Pixel 11 kostet 999 €. " * 15})
+        runtime = self.runtime([{"action": "fetch_url", "query": "https://example.org/article"},
+            {"action": "final", "answer": "Pixel 11 kostet 1599 €. https://fake.example/source"}])
+        result = runtime.run("Inspect")
+        self.assertIn("Quellenprüfung", result["answer"])
+        self.assertIn("Linkprüfung", result["answer"])
+        self.assertNotIn("fake.example", result["answer"])
+        self.assertEqual(len(self.provider.calls), 2)
+
     def test_multiple_tools_in_sequence(self):
         second = mock.Mock(return_value={"second": True})
         self.add_tool("check", second)
@@ -239,7 +264,7 @@ class AgentRuntimeTests(unittest.TestCase):
         search = mock.Mock(return_value={"results": [{"url": "https://example.org/docs"}]})
         self.add_tool("search_web", search)
         replies = [{"action": "search_web", "query": str(i)} for i in range(4)] + [{"action": "final"}, "Summary"]
-        result = self.runtime(replies).run("Inspect", mode="research")
+        result = self.runtime(replies).run("Tiefenrecherche Inspect", mode="research")
         self.assertEqual(search.call_count, 3)
         self.assertEqual(result["steps"][-1]["action"], "research_search_loop_guard")
         self.assertEqual(set(self.planner_limits), {6})
@@ -250,7 +275,7 @@ class AgentRuntimeTests(unittest.TestCase):
         source = "https://example.org/docs"
         observations = [{"action": "search_web", "status": "completed", "result": {"results": [{"url": source}]}}]
         runtime = self.runtime([{"action": "fetch_url", "query": source}, {"action": "fetch_url", "query": source}, "Summary"], policy=RuntimePolicy(research_steps=1, research_continuation_steps=1))
-        result = runtime.run("Inspect", observations=observations, mode="research")
+        result = runtime.run("Tiefenrecherche Inspect", observations=observations, mode="research")
         self.assertEqual(fetch.call_count, 2)
         self.assertEqual(result["status"], "max_steps")
         self.assertEqual(len(observations), 1)
@@ -293,6 +318,8 @@ class AgentRuntimeTests(unittest.TestCase):
         result = self.runtime([ProviderError("cancelled", "Cancelled")]).run("Inspect")
         self.assertEqual(result["status"], "cancelled")
         self.assertTrue(self.context.cancelled)
+        self.assertEqual(len(result["performance"]["events"]), 2)
+        self.assertEqual(result["performance"]["events"][0]["action"], "provider.complete")
 
     def test_delegation_keeps_context_provider_and_registry(self):
         runtime = self.runtime([
@@ -339,7 +366,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
     def test_policy_defaults_and_validation(self):
         policy = RuntimePolicy()
-        self.assertEqual([policy.max_steps(mode) for mode in ("diagnostic", "research", "coding", "orchestrator", "other")], [6, 6, 24, 12, 6])
+        self.assertEqual([policy.max_steps(mode) for mode in ("diagnostic", "research", "coding", "orchestrator", "other")], [6, 3, 24, 12, 6])
         for field, value in (("coding_steps", 0), ("research_steps", True), ("research_continuation_steps", -1)):
             with self.assertRaises(ValueError):
                 replace(policy, **{field: value})

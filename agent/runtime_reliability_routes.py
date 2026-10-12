@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shlex
 import subprocess
@@ -13,6 +14,7 @@ from typing import Callable
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from agent.run_state import active_agent_run_count
 
 
 STATE_DIR = Path(
@@ -78,6 +80,8 @@ def _read_runtime_leases(now: float | None = None) -> dict:
             updated_at = float(item.get("updated_at") or now)
         except (TypeError, ValueError):
             updated_at = now
+        if not math.isfinite(updated_at):
+            continue
 
         item = dict(item)
         item["updated_at"] = updated_at
@@ -162,6 +166,7 @@ def diagnostics(status_provider: Callable[[], dict] | None = None) -> dict:
         "status": "ok",
         "agent_pid": os.getpid(),
         "checked_at": now,
+        "active_agent_runs": active_agent_run_count(),
         "runtime": {
             "online": runtime.get("online"),
             "model": runtime.get("model"),
@@ -218,7 +223,8 @@ def request_recovery(
         active_age = float(lease.get("active_age_seconds") or 0.0)
         recovery = snapshot["recovery"]
 
-        if not request.force and active_workload in {"image", "video"}:
+        if not request.force and (active_agent_run_count() > 0 or
+                                  active_workload not in {None, "chat"}):
             raise HTTPException(
                 status_code=409,
                 detail=(

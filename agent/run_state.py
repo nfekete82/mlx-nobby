@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 import time
 import uuid
 
@@ -91,6 +91,26 @@ class RunContext:
 
 
 _CURRENT_RUN = ContextVar("mlx_agent_run", default=None)
+_ACTIVE_AGENT_LOCK = Lock()
+_ACTIVE_AGENT_COUNT = 0
+
+
+def active_agent_run_count():
+    with _ACTIVE_AGENT_LOCK:
+        return _ACTIVE_AGENT_COUNT
+
+
+@contextmanager
+def active_agent_run():
+    """Count live execution, including tool work between inference leases."""
+    global _ACTIVE_AGENT_COUNT
+    with _ACTIVE_AGENT_LOCK:
+        _ACTIVE_AGENT_COUNT += 1
+    try:
+        yield
+    finally:
+        with _ACTIVE_AGENT_LOCK:
+            _ACTIVE_AGENT_COUNT -= 1
 
 
 def current_run_context():

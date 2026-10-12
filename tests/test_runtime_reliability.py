@@ -72,6 +72,33 @@ def test_recovery_never_interrupts_active_media(tmp_path, monkeypatch):
     assert scheduled == []
 
 
+@pytest.mark.parametrize("workload", ["agent", "coding", "embedding", "unknown"])
+def test_recovery_does_not_kill_other_runtime_owners(tmp_path, monkeypatch, workload):
+    monkeypatch.setattr(agent_routes, "_read_runtime_leases", lambda now: {
+        "active": {"workload": workload, "age_seconds": 120}})
+    scheduler = []
+    with pytest.raises(Exception) as error:
+        agent_routes.request_recovery(agent_routes.RuntimeRecoveryRequest(),
+                                      restart_scheduler=scheduler.append)
+    assert error.value.status_code == 409
+    assert scheduler == []
+
+
+def test_recovery_is_blocked_during_agent_tool_work_and_counter_cleans_up(tmp_path, monkeypatch):
+    from agent.run_state import active_agent_run, active_agent_run_count
+    monkeypatch.setattr(agent_routes, "STATE_DIR", tmp_path)
+    assert active_agent_run_count() == 0
+    with pytest.raises(RuntimeError):
+        with active_agent_run():
+            assert agent_routes.diagnostics()["active_agent_runs"] == 1
+            with pytest.raises(Exception) as error:
+                agent_routes.request_recovery(agent_routes.RuntimeRecoveryRequest(),
+                                              restart_scheduler=lambda delay: pytest.fail("unexpected restart"))
+            assert error.value.status_code == 409
+            raise RuntimeError("tool failed")
+    assert active_agent_run_count() == 0
+
+
 def test_stale_chat_recovery_is_scheduled_once_with_cooldown(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_routes, "STATE_DIR", tmp_path / "leases")
     monkeypatch.setattr(agent_routes, "RECOVERY_STATE_FILE", tmp_path / "recovery.json")

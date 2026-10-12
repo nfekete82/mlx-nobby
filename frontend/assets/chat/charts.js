@@ -21,7 +21,7 @@
     const type = requested === "auto" ? choose(raw, labels, values) : requested;
     if (type === "donut" && values.some(v => v < 0)) return null;
     return { title:String(raw.title || "").slice(0,120), unit:String(raw.unit || "").slice(0,16),
-      type, labels, values };
+      type, labels, values, decimals: Number.isInteger(raw.decimals) && raw.decimals >= 0 && raw.decimals <= 4 ? raw.decimals : 1 };
   }
   function choose(raw, labels, values) {
     if (values.length <= 3) return "kpi";
@@ -41,7 +41,7 @@
     const {values,labels,type} = spec;
     const min = Math.min(0,...values), max = Math.max(0,...values);
     const span = max - min || 1, y = v => 230-(v-min)/span*174;
-    const format = v => new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(v) + (spec.unit ? " " + spec.unit : "");
+    const format = v => new Intl.NumberFormat(undefined,{minimumFractionDigits:spec.decimals,maximumFractionDigits:spec.decimals}).format(v) + (spec.unit ? " " + spec.unit : "");
     const short = label => label.length > 13 ? label.slice(0,12)+"…" : label;
     const labelAt=(text,x,yy,anchor="middle",color="#a9b7cb")=>{
       const el=svgNode("text",{x,y:yy,"text-anchor":anchor,fill:color,"font-size":11,"font-family":"system-ui, sans-serif"});
