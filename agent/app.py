@@ -7055,11 +7055,39 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
             if "text/plain" in content_type:
                 readable = page
             else:
-                readable = extract_web_text(
-                    page
-                )
+                readable = extract_web_text(page)
+                # BMAS pages contain very large global site menus. Prefer
+                # the genuine HTML <main> region when it includes substantial
+                # article content; source quotes still come from the original
+                # publisher response, never from a search result.
+                from urllib.parse import urlsplit as _source_urlsplit
+                _publisher = _source_urlsplit(current_url).hostname
+                if _publisher in {"www.bmas.de", "bmas.de"}:
+                    main_html = re.search(
+                        r"<main\\b[^>]*>.*?</main\\s*>",
+                        page, flags=re.IGNORECASE | re.DOTALL,
+                    )
+                    if main_html:
+                        main_text = extract_web_text(main_html.group(0))
+                        if len(main_text.strip()) >= 500:
+                            readable = main_text
 
             readable = readable.strip()
+            # A 200-OK HTML response containing no publisher name is not
+            # evidence of a working Python release catalog. Do not pass
+            # unrelated interstitial/edge HTML to the evidence verifier.
+            from urllib.parse import urlsplit as _publisher_urlsplit
+            _source = _publisher_urlsplit(current_url)
+            if (_source.hostname in {"python.org", "www.python.org"}
+                    and _source.path.rstrip("/") == "/downloads"
+                    and not re.search(r"(?i)\\bpython\\b", readable)):
+                return {
+                    "ok": False, "url": current_url,
+                    "content_type": content_type,
+                    "error": "Python-Downloadseite ohne erkennbaren Publisher-Inhalt",
+                    "retrieval_status": "publisher_identity_mismatch",
+                    "characters": len(readable),
+                }
             blocked = blocked_page_status(readable)
             if blocked:
                 return {"ok": False, "url": current_url,
