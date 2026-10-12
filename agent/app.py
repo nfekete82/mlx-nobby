@@ -7122,8 +7122,12 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
                     "characters": len(readable),
                 }
 
-    # Extremely short pages are also unsuitable as web context.
-            if len(readable) < 500:
+    # A complete short legal section can be useful evidence. Reject short
+    # navigation/noise pages, but not a recognizable statutory provision.
+            from agent.publisher_page_quality import short_official_document_usable
+            if len(readable) < 500 and not short_official_document_usable(
+                current_url, readable
+            ):
                 return {
                     "ok": False,
                     "url": current_url,
@@ -7133,15 +7137,17 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
 
     # Provide enough context for Qwen without flooding the context window.
             total_characters = len(readable)
+            focus_missing = False
             if focus:
                 focus_at = source_focus_offset(readable, focus, chunk_size=6000)
                 if focus_at is None:
-                    return {
-                        "ok": False, "url": current_url,
-                        "error": "Gesuchter Themenabschnitt in der Quellseite nicht gefunden",
-                        "retrieval_status": "focus_not_found",
-                    }
-                offset = focus_at
+                    # Preserve real fetched material as unverified context.
+                    # A missing heading is not a network failure and must not
+                    # be silently represented as a successful focused match.
+                    focus_missing = True
+                    offset = 0
+                else:
+                    offset = focus_at
                 chunk_size = min(chunk_size, 6000)
 
             if offset >= total_characters:
@@ -7186,7 +7192,10 @@ def fetch_web_page(url, offset=0, chunk_size=18_000, focus=None):
                     if truncated
                     else None
                 ),
-                "retrieval_status": "retrieved",
+                "retrieval_status": (
+                    "focus_fallback_unverified" if focus_missing else "retrieved"
+                ),
+                "focus_found": not focus_missing,
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
             }
 
