@@ -472,7 +472,9 @@ class AgentRuntime:
         if mode == "diagnostic":
             from agent.leave_source_navigation import _five_day_leave_question
             if _five_day_leave_question(goal):
-                research_continuation_steps = max(research_continuation_steps, 2)
+                # Searching, loading and following real government links can
+                # require a bounded homepage -> employment law -> FAQ chain.
+                research_continuation_steps = max(research_continuation_steps, 5)
         # Bounded time for paired, explicitly named protocol versions:
         # one extra source window and an additional targeted search/fetch.
         # Most factual queries retain the normal six diagnostic steps.
