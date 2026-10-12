@@ -114,7 +114,14 @@ def same_site_html_links(page, base_url):
         numbered_mission = bool(re.fullmatch(
             r"(?i)(?:apollo|artemis|gemini|mercury)\s+\d{1,3}", title,
         )) and bool(re.search(r"/mission/", path, re.I))
-        return (int(mission_index or numbered_mission),
+        # A dated mission's original site often links to its flight
+        # chronology with a generic "Read the Story" button. Preserve such
+        # actual URLs even among hundreds of unrelated news links.
+        mission_chronology = bool(re.search(
+            r"(?i)/(?:apollo|artemis|gemini|mercury)[-_]?\d{1,3}[-_](?:mission-)?overview/?$",
+            path,
+        ))
+        return (int(mission_index or numbered_mission or mission_chronology),
                 min(len(segments), 8), document)
 
     selected = set(sorted(
