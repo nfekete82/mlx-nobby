@@ -203,7 +203,13 @@ def test_bmas_faq_uses_one_source_exact_leave_heading_focus():
         "result": {"ok": False, "url": BMAS, "error": "focus_not_found"},
     })
     next_step = choose_leave_explanation_step(GOAL, observations)
-    assert next_step is None
+    # A different publisher-search fallback is allowed, but NEVER the same
+    # failed topic-focus request again.
+    assert next_step is None or not (
+        next_step.get("action") == "fetch_url"
+        and next_step.get("query") == BMAS
+        and next_step.get("instruction") == action["instruction"]
+    )
 
 
 def test_bmas_full_fact_avoids_unneeded_focus():
