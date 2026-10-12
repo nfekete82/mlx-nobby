@@ -60,13 +60,26 @@ def test_irrelevant_bmas_statute_only_does_not_prove_five_day_total():
     selected = choose_leave_explanation_step(GOAL, obs)
     assert selected["query"] == generic
     obs.append(fetched(generic, "Das Bundesurlaubsgesetz gewährt bezahlten Urlaub. " * 10))
-    assert choose_leave_explanation_step(GOAL, obs) is None  # No more links from that query
+    # A generic law description is not sufficient. Allow exactly one
+    # different, official-topic search; never convert 24 Werktage to
+    # an unsupported five-day total.
+    narrow = choose_leave_explanation_step(GOAL, obs)
+    assert narrow["action"] == "search_web"
+    assert "Wie verändert sich mein Urlaubsanspruch" in narrow["query"]
+    obs.append(searched(narrow["query"]))
+    assert choose_leave_explanation_step(GOAL, obs) is None
 
 
 def test_fails_closed_for_spoof_and_unrelated_questions():
     q = choose_leave_explanation_step(GOAL, [fetched(LAW)])["query"]
     fake = "https://www.bmas.de.evil.example/help/urlaub"
     obs = [fetched(LAW), searched(q, {"url": fake, "title": "Urlaub"})]
+    followup = choose_leave_explanation_step(GOAL, obs)
+    # A spoofed publisher cannot be opened; at most a distinct legitimate
+    # official query may be attempted before failing closed.
+    assert followup["action"] == "search_web"
+    assert fake not in followup["query"]
+    obs.append(searched(followup["query"], {"url": fake, "title": "Spoofed FAQ"}))
     assert choose_leave_explanation_step(GOAL, obs) is None
     assert choose_leave_explanation_step("Was sagt das BUrlG?", obs) is None
 
