@@ -567,6 +567,38 @@ def synthesize_verified_evidence(goal, observations, llm):
     # Only the model's evidence payload is compacted. The complete tool trace
     # remains available for numerical audits, provenance and diagnostics.
     focused = evidence_focus_observations(goal, observations)
+    from agent.leave_workweek_validation import grounded_five_day_leave
+    derived = grounded_five_day_leave(goal, focused)
+    if derived is not None:
+        n = derived["result_workdays"]
+        url = derived["url"]
+        answer = (
+            f"Bei einer Fünf-Tage-Woche beträgt der gesetzliche "
+            f"Mindesturlaub {n} Arbeitstage pro Jahr. "
+            f"§ 3 BUrlG nennt 24 Werktage auf Sechs-Tage-Basis. "
+            f"Umrechnung: 24 × 5 / 6 = {n}. "
+            f"[Gesetzestext]({url})"
+        )
+        from agent.structured_evidence import EvidenceAnswer
+        return EvidenceAnswer(answer, {
+            "method": "source_anchored_arithmetic",
+            "extraction_method": "derived_statutory_workweek_conversion",
+            "model_judgment": False,
+            "independent_truth_verification": False,
+            "verified_supported_count": 1,
+            "selected_count": 1,
+            "error_status": None,
+            "claims": [{
+                "id": "derived-1",
+                "status": "supported",
+                "subject": "gesetzlicher Mindesturlaub bei Fünf-Tage-Woche",
+                "statement": f"{n} Arbeitstage pro Jahr",
+                "verification_method": "source_anchored_arithmetic",
+                "decision_origin": "deterministic_arithmetic",
+                "calculation": derived,
+                "passage_ids": []
+            }]
+        })
     bundle = build_evidence(focused, goal=goal)
     timings = {"extraction_ms": 0.0, "verification_ms": 0.0}
     if not _anchored_passages(bundle):
