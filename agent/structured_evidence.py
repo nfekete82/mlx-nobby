@@ -360,8 +360,19 @@ def build_evidence(observations, *, now=None, goal=""):
         catalog_spans = {(start, end) for start, end, _ in catalog_windows}
         support_spans = {(start, end) for start, end, _ in support_windows}
         quantitative_spans = {(start, end) for start, end, _ in quantitative_windows}
-        passages = (support_windows + catalog_windows + quantitative_windows
-                    + temporal_windows + list(_passages(text)))
+        # Special windows can coincide byte-for-byte with a complete source
+        # passage (especially short pages answering a 'when' question).
+        # Duplicate offsets would create duplicate passage IDs and the
+        # independent verifier correctly rejects every ambiguous anchor.
+        # Keep the first, more specific window for each exact source span.
+        passages = []
+        seen_passage_spans = set()
+        for passage in (support_windows + catalog_windows + quantitative_windows
+                        + temporal_windows + list(_passages(text))):
+            span = (passage[0], passage[1])
+            if span not in seen_passage_spans:
+                seen_passage_spans.add(span)
+                passages.append(passage)
         # Retrieval ranking never implies entailment. Catalog headings and
         # short model cards need their original contiguous context; generic
         # marketing blurbs must not exhaust the evidence budget before them.
