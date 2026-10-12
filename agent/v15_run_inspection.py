@@ -120,6 +120,13 @@ def inspect_case(row):
         hint = "deterministic_source_anchored_calculation"
     elif not claims:
         hint = "no_extracted_claims_or_valid_abstention"
+    elif (result["verified_supported_count"] == 0
+          and any(isinstance(c, dict)
+                  and c.get("decision_origin") == "invalid_response"
+                  for c in claims)):
+        # A model-format/protocol failure is not the same as contradictory
+        # source evidence. Keep the original fail-closed result unchanged.
+        hint = "verifier_invalid_response"
     elif result["verified_supported_count"] == 0:
         hint = "candidate_verification_or_abstention"
     else:
