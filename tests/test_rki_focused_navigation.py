@@ -112,3 +112,34 @@ def test_initial_clinical_search_uses_disease_and_faq_without_url_guessing():
     assert "Krankheitsbild der influenza" in query
     assert "rki.de" in query
     assert "http" not in query
+
+
+
+def test_second_clinical_search_prioritizes_actual_faq_title():
+    first = choose_official_publisher_step(GOAL, [])
+    previous = {
+        "action": "search_web", "status": "completed",
+        "query": first["query"],
+        "result": {"provider": "SearXNG", "results": [
+            {"url": "https://unrelated.example/health", "title": "Unrelated"},
+        ]},
+    }
+    next_step = choose_official_publisher_step(GOAL, [previous])
+    assert next_step["action"] == "search_web"
+    assert "krankheitsbild der influenza" in next_step["query"].casefold()
+    assert "rki.de" in next_step["query"]
+
+
+def test_outdated_rki_infaz_hit_skipped_not_used_as_symptom_evidence():
+    old = "https://www.rki.de/DE/Content/InfAZ/I/Influenza/Influenza_node.html"
+    official = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
+    observations = [{
+        "action": "search_web", "status": "completed", "query": "influenza RKI",
+        "result": {"results": [
+            {"url": old, "title": "Influenza Symptome Übersicht"},
+            {"url": official, "title": "Wie ist das Krankheitsbild der Influenza?"},
+        ]},
+    }]
+    decision = choose_official_publisher_step(GOAL, observations)
+    assert decision["action"] == "fetch_url"
+    assert decision["query"] == official
