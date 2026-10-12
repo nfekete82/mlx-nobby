@@ -374,7 +374,7 @@ def choose_official_publisher_step(goal, observations):
             clinical_topics = [w for w in terms if w not in {
                 "symptome", "symptom", "symptoms", "krankheitsbild",
             }]
-            query = f"{host} {' '.join(clinical_topics[:3])} Krankheitsbild FAQ Symptome"
+            query = f"!go site:{host} {' '.join(clinical_topics[:2])} Krankheitsbild FAQ Symptome"
         return {
             "action": "search_web",
             "query": query,
