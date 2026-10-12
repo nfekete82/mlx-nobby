@@ -122,3 +122,27 @@ def test_per_call_telemetry_is_numeric_only_and_does_not_disclose_prompt():
         "purpose": "agent.verify",
     }]
     assert "DO_NOT_ECHO_SENSITIVE_PROMPT" not in str(calls)
+
+
+
+def test_fetch_diagnostic_shows_content_type_and_links_without_raw_html():
+    record = row()
+    evidence = record["response"]["steps"][1]["result"]
+    evidence.update({
+        "content_type": "text/html; charset=UTF-8",
+        "text": "Active Python releases. DO_NOT_DUMP_RAW_WEB_SOURCE " * 8,
+        "page_links": [{
+            "url": "https://www.python.org/downloads/release/python-3150/?token=secret",
+            "title": "Python 3.15.0",
+        }],
+        "truncated": False, "total_characters": 2145,
+    })
+    step = inspect_case(record)["steps"][1]
+    assert step["content_type"].startswith("text/html")
+    assert step["has_release_heading"] is True
+    assert step["link_count"] == 1
+    assert step["total_characters"] == 2145
+    assert step["truncated"] is False
+    serialized = json.dumps(step)
+    assert "DO_NOT_DUMP_RAW_WEB_SOURCE" not in serialized
+    assert "token=secret" not in serialized
