@@ -6,8 +6,12 @@ import re
 
 _ENGINES = {"bpb": "!bpb", "google": "!go", "bing": "!bi"}
 _PUBLISHER = re.compile(
-    r"(?i)(?<![\w.-])(?:site:bpb\.de|bpb\.de|bpb|"
-    r"bundeszentrale\s+f(?:ü|ue)r\s+politische\s+bildung)(?![\w.-])"
+    # Host aliases must never match bpb.de.evil.example. A single terminal
+    # sentence period, however, is punctuation rather than part of the host.
+    r"(?i)(?<![\w.-])(?:site:bpb\.de|bpb\.de|bpb)(?![\w-]|\.(?!\s|$))"
+    # Full publisher names are natural-language phrases; the final period
+    # must not make a valid institutional mention invisible to routing.
+    r"|(?<![\w.-])bundeszentrale\s+f(?:ü|ue)r\s+politische\s+bildung(?![\w-])"
 )
 _STOP = frozenset(
     "an am bei bitte das dem den der des die einer ein eine einen für im "
