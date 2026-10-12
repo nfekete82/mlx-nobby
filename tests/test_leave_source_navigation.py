@@ -235,6 +235,14 @@ def test_bmas_homepage_only_results_follow_real_workweek_faq_links():
         {"url": "https://www.bmas.de.evil.example/DE/Startseite/start.html",
          "title": "Fake BMAS"},
     ))
+    # The exact official FAQ heading is searched before any generic
+    # homepage crawl; provider misses can then fall back to real links.
+    targeted = choose_leave_explanation_step(GOAL, obs)
+    assert targeted["action"] == "search_web"
+    assert "Wie verändert sich mein Urlaubsanspruch" in targeted["query"]
+    obs.append(searched(targeted["query"],
+        {"url": home, "title": "BMAS Startseite"},
+    ))
     chosen = choose_leave_explanation_step(GOAL, obs)
     assert chosen == {
         "action": "fetch_url", "query": home,
@@ -280,3 +288,24 @@ def test_bmas_employment_link_is_kept_in_oversized_source_nav():
     links = same_site_html_links(html, home)
     assert len(links) == _MAX_LINKS
     assert any("faq-brueckenteilzeit.html" in item["url"] for item in links)
+
+
+
+def test_exact_bmas_annual_leave_heading_search_finds_source_not_guess():
+    from agent.leave_source_navigation import choose_leave_explanation_step
+
+    obs = [fetched(LAW, "§ 3: Der Urlaub beträgt mindestens 24 Werktage. " * 10)]
+    generic = choose_leave_explanation_step(GOAL, obs)
+    obs.append(searched(generic["query"], {
+        "url": "https://www.bmas.de/DE/Startseite/start.html",
+        "title": "BMAS",
+    }))
+    narrow = choose_leave_explanation_step(GOAL, obs)
+    assert narrow["action"] == "search_web"
+    assert "Wie verändert sich mein Urlaubsanspruch" in narrow["query"]
+    obs.append(searched(narrow["query"], {
+        "url": BMAS, "title": "Fragen und Antworten zur Brückenteilzeit",
+    }))
+    chosen = choose_leave_explanation_step(GOAL, obs)
+    assert chosen["action"] == "fetch_url"
+    assert chosen["query"] == BMAS
