@@ -191,3 +191,64 @@ def test_latest_release_fetch_failure_must_not_fall_back_to_older_link():
     assert python_source_linked_release_step(
         GOAL, [original, failed_focus, failed_article],
     ) is None
+
+
+
+def test_failed_focus_discovery_uses_only_observed_official_release_index():
+    from agent.software_release_navigation import (
+        python_release_search_step, needs_python_release_search
+    )
+    first = page(text="General Python downloads archive. " * 30)
+    failed_focus = {
+        "action": "fetch_url", "status": "completed",
+        "query": URL, "instruction": "focus=Active Python releases",
+        "result": {"ok": False, "url": URL, "error": "focus_not_found"},
+    }
+    assert python_release_search_step(GOAL, [first]) is None
+    query = python_release_search_step(GOAL, [first, failed_focus])
+    assert query["action"] == "search_web"
+    assert "python.org" in query["query"]
+    assert needs_python_release_search(GOAL, [first, failed_focus])
+    macos = "https://www.python.org/downloads/macos/"
+    results = {
+        "action": "search_web", "status": "completed",
+        "query": query["query"],
+        "result": {"results": [
+            {"url": "https://www.python.org.evil.example/downloads/macos/",
+             "title": "Python releases"},
+            {"url": macos, "title": "Python Releases for macOS"},
+            {"url": "https://www.python.org/downloads/",
+             "title": "Python download front page"},
+        ]},
+    }
+    step = python_release_search_step(GOAL, [first, failed_focus, results])
+    assert step["action"] == "fetch_url"
+    assert step["query"] == macos
+    index = {
+        "action": "fetch_url", "status": "completed",
+        "query": macos, "result": {
+            "ok": True, "url": macos, "text":
+                "Latest Python 3 Release - Python 3.15.0. Stable Releases: "
+                "Python 3.15.0 - Oct. 9, 2026. " * 6,
+        },
+    }
+    assert not needs_python_release_search(GOAL, [first, failed_focus, results, index])
+
+
+def test_python_release_search_no_invented_url_no_stale_fallback():
+    from agent.software_release_navigation import python_release_search_step
+    first = page()
+    failed_focus = {
+        "action": "fetch_url", "status": "completed",
+        "query": URL, "instruction": "focus=Active Python releases",
+        "result": {"ok": False, "url": URL, "error": "focus_not_found"},
+    }
+    query = python_release_search_step(GOAL, [first, failed_focus])
+    done_search = {
+        "action": "search_web", "status": "completed", "query": query["query"],
+        "result": {"results": [{
+            "url": "https://untrusted.example/downloads/macos/",
+            "title": "Python releases"
+        }]},
+    }
+    assert python_release_search_step(GOAL, [first, failed_focus, done_search]) is None
