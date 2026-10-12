@@ -515,6 +515,7 @@ class AgentRuntime:
                 from agent.plan_fastpath import insufficient_catalog_sources
                 from agent.software_release_navigation import (
                     needs_python_release_focus, needs_python_release_article,
+                    needs_python_release_search,
                 )
                 from agent.leave_source_navigation import needs_leave_explanation
                 from agent.research_followup import need_support_policy_source
@@ -528,6 +529,7 @@ class AgentRuntime:
                         and not missing_clinical_article(goal, observations)
                         and not needs_python_release_focus(goal, observations)
                         and not needs_python_release_article(goal, observations)
+                        and not needs_python_release_search(goal, observations)
                         and not needs_leave_explanation(goal, observations)
                         and not missing_official_answer_document(goal, observations)
                         and not has_discovered_deeper_primary_link(goal, observations)
@@ -736,6 +738,14 @@ class AgentRuntime:
                         "duration_ms": 0.0,
                     })
             if decision is None and mode in {"diagnostic", "research"}:
+                from agent.leave_source_navigation import choose_leave_official_discovery_step
+                decision = choose_leave_official_discovery_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath", "action": "statutory_leave_discovery",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
                 from agent.leave_source_navigation import choose_leave_explanation_step
                 decision = choose_leave_explanation_step(goal, observations)
                 if decision is not None:
@@ -751,6 +761,15 @@ class AgentRuntime:
                     self._profile_events.append({
                         "phase": "planning_fastpath",
                         "action": "source_linked_python_release",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.software_release_navigation import python_release_search_step
+                decision = python_release_search_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "alternate_source_linked_python_release",
                         "duration_ms": 0.0,
                     })
             if decision is None and mode in {"diagnostic", "research"}:
