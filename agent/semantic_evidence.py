@@ -541,7 +541,11 @@ def _final_validation(claims, decisions, observations, *, goal="", bundle=None):
 
 def synthesize_verified_evidence(goal, observations, llm):
     """Extract and separately verify bounded atomic claims, then render them."""
-    bundle = build_evidence(observations, goal=goal)
+    from agent.research_evidence_focus import evidence_focus_observations
+    # Only the model's evidence payload is compacted. The complete tool trace
+    # remains available for numerical audits, provenance and diagnostics.
+    focused = evidence_focus_observations(goal, observations)
+    bundle = build_evidence(focused, goal=goal)
     timings = {"extraction_ms": 0.0, "verification_ms": 0.0}
     if not _anchored_passages(bundle):
         return _render(bundle, [], [], timings, "no_usable_evidence")
