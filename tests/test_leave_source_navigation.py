@@ -218,3 +218,65 @@ def test_bmas_full_fact_avoids_unneeded_focus():
         fetched(BMAS, "Bei einer 5-Tage-Woche sind 20 Arbeitstage Mindesturlaub. " * 12),
     ]
     assert choose_leave_explanation_step(GOAL, observations) is None
+
+
+
+def test_bmas_homepage_only_results_follow_real_workweek_faq_links():
+    from agent.leave_source_navigation import choose_leave_explanation_step
+
+    home = "https://www.bmas.de/DE/Startseite/start.html"
+    work = "https://www.bmas.de/DE/Arbeit/Arbeitsrecht/arbeitsrecht.html"
+    obs = [fetched(LAW, "§ 3: Mindestens 24 Werktage. " * 12)]
+    initial = choose_leave_explanation_step(GOAL, obs)
+    assert initial["action"] == "search_web"
+
+    obs.append(searched(initial["query"],
+        {"url": home, "title": "BMAS Startseite"},
+        {"url": "https://www.bmas.de.evil.example/DE/Startseite/start.html",
+         "title": "Fake BMAS"},
+    ))
+    chosen = choose_leave_explanation_step(GOAL, obs)
+    assert chosen == {
+        "action": "fetch_url", "query": home,
+        "reason": "Gefundene amtliche BMAS-Startseite als Navigationsquelle öffnen",
+    }
+    homepage = fetched(home, "Bundesministerium für Arbeit und Soziales. " * 10)
+    homepage["result"]["page_links"] = [
+        {"url": "https://www.bmas.de.evil.example/DE/Arbeit/Arbeitsrecht/arbeitsrecht.html",
+         "title": "Spoof"},
+        {"url": work, "title": "Arbeitsrecht"},
+    ]
+    obs.append(homepage)
+    decision = choose_leave_explanation_step(GOAL, obs)
+    assert decision["action"] == "fetch_url"
+    assert decision["query"] == work
+
+    arbeitsrecht = fetched(work, "Amtliche Arbeitsrechtübersicht. " * 16)
+    arbeitsrecht["result"]["page_links"] = [
+        {"url": BMAS, "title": "Fragen zur Brückenteilzeit"},
+    ]
+    obs.append(arbeitsrecht)
+    chosen = choose_leave_explanation_step(GOAL, obs)
+    assert chosen["action"] == "fetch_url"
+    assert chosen["query"] == BMAS
+    obs.append(fetched(BMAS,
+        "Der gesetzliche Mindesturlaub beträgt bei einer 5-Tage-Woche "
+        "20 Arbeitstage. " * 8))
+    assert choose_leave_explanation_step(GOAL, obs) is None
+
+
+def test_bmas_employment_link_is_kept_in_oversized_source_nav():
+    from agent.page_navigation import same_site_html_links, _MAX_LINKS
+    home = "https://www.bmas.de/DE/Startseite/start.html"
+    html = (
+        "<main>" + "".join(
+            f'<a href="/DE/Archiv/presse/{i}.html">Archivmitteilung {i}</a>'
+            for i in range(175)
+        )
+        + '<a href="/DE/Arbeit/Arbeitsrecht/Teilzeit-flexible-Arbeitszeit/Teilzeit/'
+        'Fragen-und-Antworten-Brueckenteilzeit/faq-brueckenteilzeit.html">'
+        'Fragen und Antworten zur Brückenteilzeit</a></main>'
+    )
+    links = same_site_html_links(html, home)
+    assert len(links) == _MAX_LINKS
+    assert any("faq-brueckenteilzeit.html" in item["url"] for item in links)
