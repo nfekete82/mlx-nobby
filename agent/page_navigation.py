@@ -134,8 +134,19 @@ def same_site_html_links(page, base_url):
                 r"(?i)/downloads/release/python-3\d{2,4}/?", path
             ))
         )
+        # Keep actual ministry employment-law/leave navigation links in the
+        # capped source-link pool; the agent never derives facts from these
+        # links before fetching the referenced official pages.
+        bmas_leave = (
+            parts.hostname in {"bmas.de", "www.bmas.de"}
+            and bool(re.search(
+                r"(?i)/(?:arbeit/)?arbeitsrecht/|teilzeit|"
+                r"fragen-und-antworten-brueckenteilzeit|faq-brueckenteilzeit",
+                path,
+            ))
+        )
         return (int(mission_index or numbered_mission or mission_chronology
-                    or python_release),
+                    or python_release or bmas_leave),
                 min(len(segments), 8), document)
 
     selected = set(sorted(
