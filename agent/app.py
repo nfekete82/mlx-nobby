@@ -6871,6 +6871,21 @@ def source_focus_offset(readable, phrase, *, chunk_size=6000):
     if not 3 <= len(phrase) <= 100 or not readable:
         return None
     candidates = list(re.finditer(re.escape(phrase), readable, re.IGNORECASE))
+    if not candidates and phrase.casefold() == "active python releases":
+        # Python.org publishes several templates and localized download views.
+        # If the generic section header is absent, find another ACTUAL release
+        # heading in the fetched text instead of failing a source-exact reread.
+        # A heading is only a focus location; the model must still read and
+        # verify the original version and release status from the source.
+        for heading in (
+            r"latest\s+python\s+3\s+release",
+            r"python\s+releases\s+by\s+version\s+number",
+            r"\bstable\s+releases\b",
+            r"\bpython\s+3\.\d{1,2}\.\d{1,2}\b",
+        ):
+            candidates = list(re.finditer(heading, readable, re.IGNORECASE))
+            if candidates:
+                break
     if not candidates:
         return None
     scored = []
