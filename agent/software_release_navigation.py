@@ -183,6 +183,26 @@ def python_release_search_step(goal, observations):
         for step in observations or ()
         if isinstance(step, dict) and step.get("action") == "fetch_url"
     }
+    # Stop after an actual alternate official release index has been read.
+    # Its table still has to pass the normal evidence verifier.
+    for step in observations or ():
+        if not isinstance(step, dict) or step.get("action") != "fetch_url":
+            continue
+        result = step.get("result")
+        if (step.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True):
+            continue
+        try:
+            loaded = urlsplit(result.get("final_url") or result.get("url"))
+        except (TypeError, ValueError):
+            continue
+        if (loaded.scheme == "https" and loaded.hostname in
+                {"python.org", "www.python.org"} and
+                (loaded.path.rstrip("/") in
+                 {"/downloads/macos", "/downloads/windows", "/downloads/source"}
+                 or loaded.path.startswith("/downloads/release/python-3"))):
+            return None
+
     found = []
     for step in observations or ():
         if (not isinstance(step, dict) or step.get("action") != "search_web"
@@ -200,7 +220,7 @@ def python_release_search_step(goal, observations):
             if (parsed.scheme != "https" or parsed.hostname not in
                     {"www.python.org", "python.org"} or
                     parsed.username is not None or parsed.password is not None
-                    or parsed.port not in {None, 443} or url in already):
+                    or parsed.port not in {None, 443}):
                 continue
             path = parsed.path.casefold().rstrip("/")
             title = str(result.get("title") or "").casefold()
@@ -221,6 +241,8 @@ def python_release_search_step(goal, observations):
                 found.append((priority, url))
     if found:
         _, url = max(found, key=lambda hit: hit[0])
+        if url in already:
+            return None  # An older release is not newly "latest".
         return {
             "action": "fetch_url", "query": url,
             "reason": "Offizielle Python-Releaseübersicht aus echtem Suchtreffer laden",
