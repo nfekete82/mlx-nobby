@@ -650,21 +650,28 @@ def choose_official_publisher_step(goal, observations):
     # bibliography was present, request a more precise search ONCE. No
     # invented URL or medical facts are created by this research fallback.
     if loaded and missing_clinical_article(goal, observations):
-        suffix = "krankheitsbild FAQ"
+        topics = [w for w in terms if w not in {
+            "symptome", "symptoms", "symptom", "krankheitsbild",
+            "typische", "typischen", "faq",
+        }]
+        if host == "rki.de" and topics:
+            # The generic RKI homepage is not medical evidence. Look for a
+            # specific clinic FAQ by its subject, using an alternative actual
+            # SearXNG engine. The resulting URL still has to be observed,
+            # fetched and independently verified; no article path is guessed.
+            refined = f'!go "Krankheitsbild der {topics[0]}" RKI'
+        else:
+            refined = f"{host} {' '.join(topics[:3])} krankheitsbild FAQ symptomatik"
         attempted = any(
             isinstance(item, dict) and item.get("action") == "search_web"
-            and suffix in str(item.get("query") or "").casefold()
-            and "symptomatik" in str(item.get("query") or "").casefold()
+            and " ".join(str(item.get("query") or "").casefold().split())
+                == " ".join(refined.casefold().split())
             for item in observations
         )
         if not attempted:
-            topics = [w for w in terms if w not in {
-                "symptome", "symptoms", "symptom", "krankheitsbild",
-            }]
             return {
-                "action": "search_web",
-                "query": f"{host} {' '.join(topics[:3])} {suffix} symptomatik",
-                "reason": "Geladene Übersichtsseite enthält keine klinische Beschreibung",
+                "action": "search_web", "query": refined,
+                "reason": "Gezielt nach amtlicher klinischer Fachseite statt Institutionen-Homepage suchen",
             }
     searches = [o for o in observations if isinstance(o, dict)
                 and o.get("action") == "search_web"
