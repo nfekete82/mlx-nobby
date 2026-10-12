@@ -153,3 +153,90 @@ def python_source_linked_release_step(goal, observations):
 
 def needs_python_release_article(goal, observations):
     return python_source_linked_release_step(goal, observations) is not None
+
+
+
+_PYTHON_SEARCH_QUERY = 'python.org "Latest Python 3 Release" stable releases'
+
+
+def python_release_search_step(goal, observations):
+    """Fallback to discovered official download/individual release after focus fails.
+
+    A searched release URL is never synthesized from a version string.
+    Search result text alone never establishes the current version.
+    """
+    if not python_latest_version_question(goal):
+        return None
+    failed_focus = any(
+        isinstance(step, dict) and step.get("action") == "fetch_url"
+        and step.get("status") == "completed"
+        and isinstance(step.get("result"), dict)
+        and step["result"].get("ok") is False
+        and "focus=Active Python releases" in str(step.get("instruction") or "")
+        for step in observations or ()
+    )
+    if not failed_focus:
+        return None
+
+    already = {
+        str(step.get("query") or "")
+        for step in observations or ()
+        if isinstance(step, dict) and step.get("action") == "fetch_url"
+    }
+    found = []
+    for step in observations or ():
+        if (not isinstance(step, dict) or step.get("action") != "search_web"
+                or step.get("status") != "completed"
+                or not isinstance(step.get("result"), dict)):
+            continue
+        for result in step["result"].get("results") or ():
+            if not isinstance(result, dict):
+                continue
+            url = result.get("url")
+            try:
+                parsed = urlsplit(url)
+            except (TypeError, ValueError):
+                continue
+            if (parsed.scheme != "https" or parsed.hostname not in
+                    {"www.python.org", "python.org"} or
+                    parsed.username is not None or parsed.password is not None
+                    or parsed.port not in {None, 443} or url in already):
+                continue
+            path = parsed.path.casefold().rstrip("/")
+            title = str(result.get("title") or "").casefold()
+            # An official OS-specific releases directory exposes the
+            # stable/pre-release separation and an explicit current heading.
+            release_index = path in {
+                "/downloads/windows", "/downloads/macos", "/downloads/source",
+            }
+            # A versioned article needs a source-backed title; whether it
+            # is stable/latest must still pass the evidence verifier.
+            version_article = (bool(re.fullmatch(
+                r"/downloads/release/python-3\d{2,4}", path
+            )) and "python 3." in title and
+                not re.search(r"(?i)alpha|beta|pre-?release|rc\d|a\d|b\d", title))
+            if release_index or version_article:
+                priority = 30 if release_index else 15
+                priority += 5 if "latest" in title else 0
+                found.append((priority, url))
+    if found:
+        _, url = max(found, key=lambda hit: hit[0])
+        return {
+            "action": "fetch_url", "query": url,
+            "reason": "Offizielle Python-Releaseübersicht aus echtem Suchtreffer laden",
+        }
+    attempted_queries = {
+        " ".join(str(step.get("query") or "").casefold().split())
+        for step in observations or ()
+        if isinstance(step, dict) and step.get("action") == "search_web"
+    }
+    if " ".join(_PYTHON_SEARCH_QUERY.casefold().split()) not in attempted_queries:
+        return {
+            "action": "search_web", "query": _PYTHON_SEARCH_QUERY,
+            "reason": "Alternative offizielle Releaseübersicht nach erfolglosem Textfokus finden",
+        }
+    return None
+
+
+def needs_python_release_search(goal, observations):
+    return python_release_search_step(goal, observations) is not None
