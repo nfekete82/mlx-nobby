@@ -70,6 +70,11 @@ def _topic_terms(goal):
         words.extend(("deposit", "facility", "rate", "effective"))
     if any(w.startswith(("adress", "ipv")) for w in words):
         words.extend(("address", "bits"))
+    # German compound nouns may name the same event as separate query words:
+    # "Berliner Mauer" -> "Mauerfall". This only affects discovery ranking;
+    # it never supplies an answer or constructs a URL.
+    if "mauer" in words:
+        words.append("mauerfall")
     # "RFC" on its own labels thousands of unrelated index entries;
     # a document is relevant only through its actual topic or RFC number
     # explicitly given in the question.
