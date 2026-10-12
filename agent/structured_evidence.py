@@ -354,11 +354,14 @@ def build_evidence(observations, *, now=None, goal=""):
         from agent.research_followup import support_policy_windows
         catalog_windows = catalog_source_windows(goal, text)
         support_windows = support_policy_windows(goal, text)
+        from agent.software_release_windows import python_latest_release_windows
+        release_windows = python_latest_release_windows(goal, text)
         quantitative_windows = _quantitative_windows(goal, text)
         temporal_windows = _temporal_windows(goal, text)
         temporal_spans = {(start, end) for start, end, _ in temporal_windows}
         catalog_spans = {(start, end) for start, end, _ in catalog_windows}
         support_spans = {(start, end) for start, end, _ in support_windows}
+        release_spans = {(start, end) for start, end, _ in release_windows}
         quantitative_spans = {(start, end) for start, end, _ in quantitative_windows}
         # Special windows can coincide byte-for-byte with a complete source
         # passage (especially short pages answering a 'when' question).
@@ -367,8 +370,8 @@ def build_evidence(observations, *, now=None, goal=""):
         # Keep the first, more specific window for each exact source span.
         passages = []
         seen_passage_spans = set()
-        for passage in (support_windows + catalog_windows + quantitative_windows
-                        + temporal_windows + list(_passages(text))):
+        for passage in (support_windows + catalog_windows + release_windows
+                        + quantitative_windows + temporal_windows + list(_passages(text))):
             span = (passage[0], passage[1])
             if span not in seen_passage_spans:
                 seen_passage_spans.add(span)
@@ -378,6 +381,7 @@ def build_evidence(observations, *, now=None, goal=""):
         # marketing blurbs must not exhaust the evidence budget before them.
         passages.sort(key=lambda p: (
             (p[0], p[1]) in catalog_spans or (p[0], p[1]) in support_spans or
+            (p[0], p[1]) in release_spans or
             (p[0], p[1]) in quantitative_spans or (p[0], p[1]) in temporal_spans,
             bool(_DATE.search(p[2]) and _EVENT.search(p[2])),
             topic_overlap(p[2]),
@@ -392,6 +396,7 @@ def build_evidence(observations, *, now=None, goal=""):
                 break
             prefix = ("-catalog-" if (start, end) in catalog_spans
                       else "-support-" if (start, end) in support_spans
+                      else "-release-" if (start, end) in release_spans
                       else "-quant-" if (start, end) in quantitative_spans
                       else "-date-" if (start, end) in temporal_spans else "-")
             fid = sid + prefix + str(start)
