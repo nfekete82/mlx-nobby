@@ -74,7 +74,8 @@ def test_fails_closed_for_spoof_and_unrelated_questions():
 
 def test_bmas_fallback_search_is_not_locked_to_site_operator():
     q = choose_leave_explanation_step(GOAL, [fetched(LAW)])["query"]
-    assert q.startswith("!go ")
+    assert not q.startswith("!go ")
+    assert q.startswith("bmas.de ")
     assert "site:" not in q
     assert "bmas.de" in q
     assert "Urlaubsanspruch" in q
@@ -142,3 +143,41 @@ def test_official_law_discovery_accepts_observed_ministry_article():
     next_step = choose_leave_official_discovery_step(GOAL, observations)
     assert next_step["action"] == "fetch_url"
     assert next_step["query"] == BMAS
+
+
+
+def test_directory_is_navigation_not_standalone_legal_proof():
+    from agent.leave_source_navigation import (
+        _official_law_source_loaded, choose_leave_official_discovery_step,
+    )
+    directory = "https://www.gesetze-im-internet.de/burlg/"
+    full = "https://www.gesetze-im-internet.de/burlg/BJNR000020963.html"
+    index = fetched(directory, "Mindesturlaubsgesetz: Inhaltsverzeichnis §3. " * 8)
+    index["result"]["page_links"] = [
+        {"url": "https://www.gesetze-im-internet.de.evil.example/burlg/BJNR000020963.html",
+         "title": "Fälschung"},
+        {"url": full, "title": "Gesamtausgabe der Norm HTML"},
+    ]
+    assert not _official_law_source_loaded([index])
+    selected = choose_leave_official_discovery_step(GOAL, [index])
+    assert selected["action"] == "fetch_url"
+    assert selected["query"] == full
+    with_law = [index, fetched(full,
+        "§ 3 Dauer des Urlaubs Der Urlaub beträgt jährlich mindestens 24 Werktage. " * 5)]
+    assert _official_law_source_loaded(with_law)
+    assert choose_leave_official_discovery_step(GOAL, with_law) is None
+
+
+def test_full_statute_outranks_dir_and_too_short_paragraph():
+    from agent.leave_source_navigation import choose_leave_official_discovery_step
+    directory = "https://www.gesetze-im-internet.de/burlg/"
+    section = "https://www.gesetze-im-internet.de/burlg/__3.html"
+    full = "https://www.gesetze-im-internet.de/burlg/BJNR000020963.html"
+    initial = choose_leave_official_discovery_step(GOAL, [])["query"]
+    found = searched(initial, {
+        "url": full, "title": "Bundesurlaubsgesetz Gesamtausgabe",
+    }, {"url": directory, "title": "BUrlG Index"}, {
+        "url": section, "title": "§ 3 Dauer des Urlaubs",
+    })
+    chosen = choose_leave_official_discovery_step(GOAL, [found])
+    assert chosen["query"] == full
