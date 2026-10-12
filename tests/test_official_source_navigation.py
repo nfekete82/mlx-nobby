@@ -78,6 +78,100 @@ def test_bpb_genuine_mauerfall_result_matches_berliner_mauer_question():
     assert selected["query"] == source
 
 
+def test_nasa_and_bpb_homepages_require_exact_discovered_deeper_documents():
+    from agent.official_source_navigation import missing_official_answer_document
+
+    cases = (
+        (
+            "Wann landete Apollo 11 nach Angaben der NASA auf dem Mond, "
+            "und wer betrat die Oberfläche zuerst?",
+            "https://www.nasa.gov/",
+            "https://www.nasa.gov/missions/apollo-11/landing/",
+        ),
+        (
+            "An welchem Datum wurde die Berliner Mauer geöffnet? "
+            "Bitte nenne eine Quelle der Bundeszentrale für politische Bildung.",
+            "https://www.bpb.de/",
+            "https://www.bpb.de/themen/deutschlandarchiv/mauerfall/",
+        ),
+    )
+    for goal, homepage, document in cases:
+        first = search((homepage, "Startseite"))
+        first["query"] = "first official query"
+        root = fetched(homepage)
+        observations = [first, root]
+        assert missing_official_answer_document(goal, observations)
+        deeper = choose_official_publisher_step(goal, observations)
+        assert deeper["action"] == "search_web"
+        assert "https://" not in deeper["query"]
+        # A second search finds the exact document: only that URL may be read.
+        second = search(
+            ("https://evil.example/spoof", "Official article"),
+            (document, "Apollo Mond landing" if "nasa.gov" in homepage else "Mauerfall"),
+        )
+        second["query"] = deeper["query"]
+        chosen = choose_official_publisher_step(goal, observations + [second])
+        assert chosen["action"] == "fetch_url"
+        assert chosen["query"] == document
+        assert not missing_official_answer_document(
+            goal, observations + [second, fetched(document)],
+        )
+        # One further search cannot loop forever on the homepage.
+        no_links = search(("https://unrelated.example/", "Unrelated"))
+        no_links["query"] = deeper["query"]
+        assert choose_official_publisher_step(
+            goal, observations + [no_links],
+        ) is None
+
+
+def test_research_runtime_does_not_extract_from_nasa_homepage():
+    from dataclasses import replace
+    from test_agent_runtime import AgentRuntimeTests
+
+    goal = (
+        "Wann landete Apollo 11 nach Angaben der NASA auf dem Mond, "
+        "und wer betrat die Oberfläche zuerst?"
+    )
+    home = "https://www.nasa.gov/"
+    article = "https://www.nasa.gov/missions/apollo-11/landing/"
+    harness = AgentRuntimeTests()
+    harness.setUp()
+    calls = []
+    source_text = (
+        "NASA's Apollo 11 mission chronology covers the landing and first "
+        "steps on the lunar surface. "
+    ) * 10
+
+    def do_search(**kwargs):
+        calls.append(("search", kwargs["query"]))
+        results = (
+            [{"url": home, "title": "NASA Home"}]
+            if sum(c[0] == "search" for c in calls) == 1
+            else [{"url": article, "title": "Apollo moon landing mission article"}]
+        )
+        return {"provider": "SearXNG", "results": results}
+
+    def do_fetch(**kwargs):
+        calls.append(("fetch", kwargs["query"]))
+        assert kwargs["query"] in {home, article}
+        return {"ok": True, "url": kwargs["query"], "text": source_text}
+
+    def evidence_answer(_goal, observations):
+        assert any(o.get("action") == "fetch_url" and o.get("query") == article
+                   for o in observations)
+        return "Source document opened; claim verification is still required"
+
+    harness.add_tool("search_web", do_search)
+    harness.add_tool("fetch_url", do_fetch)
+    harness.hooks = replace(harness.hooks, agent_evidence_answer=evidence_answer)
+    result = harness.runtime([]).run(goal, mode="diagnostic")
+    assert result["status"] == "completed"
+    assert [step["action"] for step in result["steps"]] == [
+        "search_web", "fetch_url", "search_web", "fetch_url",
+    ]
+    assert not harness.provider.calls
+
+
 def test_publisher_rejects_spoof_and_prefers_specific_rki_faq():
     faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
     found = search(

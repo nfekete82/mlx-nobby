@@ -195,7 +195,11 @@ def missing_official_answer_document(goal, observations):
     deposit = host == "ecb.europa.eu" and (
         "einlagezins" in q or "deposit facility" in q
     )
-    if not (paired or deposit):
+    # Publisher homepages are discovery pages, not the requested NASA/bpb
+    # historical article. This is a document-completeness check only; values
+    # and even the existence of a qualifying article remain unverified.
+    publisher_home = host in {"nasa.gov", "bpb.de"}
+    if not (paired or deposit or publisher_home):
         return False
     loaded = []
     for item in observations or ():
@@ -210,6 +214,10 @@ def missing_official_answer_document(goal, observations):
             loaded.append((parsed.path.casefold(), str(result.get("text") or "").casefold()))
     if not loaded:
         return False
+    if publisher_home:
+        # Do not synthesize from a general institutional homepage. As soon as
+        # a genuine deeper document is fetched, the verifier gets its turn.
+        return all(path in {"", "/"} for path, _ in loaded)
     if paired:
         # A document that covers IPv4 alone is not a complete source set
         # for a paired IPv4+IPv6 request. Its 32-bit statement must not
@@ -606,6 +614,25 @@ def choose_official_publisher_step(goal, observations):
             }
     # One bounded source-discovery retry, never guessed factual values or URLs.
     if loaded and missing_official_answer_document(goal, observations):
+        if host in {"nasa.gov", "bpb.de"}:
+            # No guessed article path or historical facts: refine search only
+            # after a genuine official homepage failed to yield a topical link.
+            question_words = {"wann", "wer", "wurde", "angaben", "nenne", "quelle"}
+            keywords = [term for term in terms if term not in question_words]
+            if host == "nasa.gov" and any(term.startswith("mond") for term in keywords):
+                keywords.extend(("moon", "landing"))
+            refinement = f"{host} {' '.join(dict.fromkeys(keywords))} article history"
+            attempted = any(
+                isinstance(item, dict) and item.get("action") == "search_web"
+                and str(item.get("query") or "").casefold() == refinement.casefold()
+                for item in observations
+            )
+            if not attempted:
+                return {
+                    "action": "search_web", "query": refinement,
+                    "reason": "Nach amtlichem Fachartikel statt allgemeiner Startseite suchen",
+                }
+            return None
         names = re.findall(
             r"(?i)(?<!\w)[a-z]{2,12}\d{1,3}(?!\w)", str(goal)
         )
