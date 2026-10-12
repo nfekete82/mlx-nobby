@@ -162,3 +162,32 @@ def test_python_release_followup_never_guesses_unseen_url():
               "query": URL, "instruction": "focus=Active Python releases",
               "result": {"ok": False, "url": URL, "error": "focus_not_found"}}
     assert python_source_linked_release_step(GOAL, [original, failed]) is None
+
+
+
+def test_latest_release_fetch_failure_must_not_fall_back_to_older_link():
+    from agent.software_release_navigation import python_source_linked_release_step
+
+    original = page()
+    latest = "https://www.python.org/downloads/release/python-3150/"
+    older = "https://www.python.org/downloads/release/python-3148/"
+    original["result"]["page_links"] = [
+        {"url": older, "title": "Python 3.14.8"},
+        {"url": latest, "title": "Python 3.15.0"},
+    ]
+    failed_focus = {
+        "action": "fetch_url", "status": "completed", "query": URL,
+        "instruction": "focus=Active Python releases",
+        "result": {"ok": False, "url": URL, "error": "focus_not_found"},
+    }
+    first = python_source_linked_release_step(GOAL, [original, failed_focus])
+    assert first["query"] == latest
+    # The newest *observed* release may have become unreachable. This does
+    # not make the next older download the "latest" stable Python version.
+    failed_article = {
+        "action": "fetch_url", "status": "completed", "query": latest,
+        "result": {"ok": False, "url": latest, "error": "HTTP 503"},
+    }
+    assert python_source_linked_release_step(
+        GOAL, [original, failed_focus, failed_article],
+    ) is None
