@@ -13,8 +13,7 @@ _FIVE_DAY = re.compile(
 _LEAVE = re.compile(r"(?i)mindesturlaub|urlaubstage|urlaubsanspruch|gesetzlich.{0,30}urlaub")
 _NOMINAL = re.compile(r"(?i)\b24\s+werktage\b")
 _24_DAYS = re.compile(
-    r"(?i)\b24\s*(?:gesetzliche\s+)?(?:urlaubs|arbeits|werk)?tage\b|"
-    r"\b24\s+(?:werktage|arbeitstage|urlaubstage)\b"
+    r"(?i)\b24\s*(?:gesetzliche\s+)?(?:urlaubs|arbeits|werk)?tage(?:n)?\b"
 )
 _STATUTE = re.compile(
     r"(?i)(?:urlaub\s+beträgt\s+jährlich\s+mindestens\s+24\s+werktage|"
