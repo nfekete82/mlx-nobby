@@ -553,6 +553,12 @@ def choose_official_publisher_step(goal, observations):
                 continue
             if _irrelevant_clinical_variant(goal, url, link.get("title")):
                 continue
+            # The RKI's old /DE/Content/InfAZ/... addresses have been
+            # observed to return 404 after its site migration. When answering
+            # a clinical symptoms question, prioritize live FAQ articles.
+            if (host == "rki.de" and clinical_presentation_question(goal)
+                    and "/de/content/infaz/" in parsed.path.casefold()):
+                continue
             name = " ".join((parsed.path.lower(),
                             str(link.get("title") or "").casefold(),
                             str(link.get("snippet") or "").casefold()))
@@ -759,14 +765,23 @@ def choose_official_publisher_step(goal, observations):
                 and o.get("action") == "search_web"
                 and o.get("status") == "completed"]
     if len(searches) == 1 and not loaded:
-        # A second query drops quoted/site-scoped domains. The search engine
-        # may ignore or overconstrain those tokens; use topical synonyms.
-        alternates = [term for term in terms
-                      if term not in {"bit", "bits", "address", "adressen", "symptoms"}]
+        # A second search must be genuinely different and focused on a
+        # disease article rather than yet another institution homepage.
+        if host == "rki.de" and clinical_presentation_question(goal):
+            subject = next((w for w in terms
+                if w not in {"symptome", "symptom", "symptoms",
+                             "krankheitsbild", "typische", "typischen"}), "")
+            if subject:
+                query = f'rki.de "Wie ist das Krankheitsbild der {subject}" FAQ'
+            else:
+                query = 'rki.de Krankheitsbild FAQ Symptome'
+        else:
+            alternates = [term for term in terms
+                          if term not in {"bit", "bits", "address", "adressen", "symptoms"}]
+            query = " ".join((alternates or terms)[:5]) + " " + host
         return {
-            "action": "search_web",
-            "query": " ".join((alternates or terms)[:5]) + " " + host,
-            "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
+            "action": "search_web", "query": query,
+            "reason": "Zweite gezielte Suche nach tatsächlich publiziertem amtlichen Fachartikel",
         }
     if not loaded and official_home_fallback_host(goal, observations):
         # Search pollution may justify ONE root-only discovery after two
