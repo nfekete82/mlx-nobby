@@ -89,6 +89,17 @@ def _topic_terms(goal):
     return (names + [w for w in terms if w not in names])[:9]
 
 
+def _nasa_numbered_mission(goal):
+    """Find a requested numbered mission without inferring an article URL."""
+    if _publisher(goal) != "nasa.gov":
+        return None
+    match = re.search(
+        r"(?i)\b(?:apollo|artemis|gemini|mercury)\s+\d{1,3}\b",
+        str(goal or ""),
+    )
+    return " ".join(match.group(0).casefold().split()) if match else None
+
+
 def clinical_presentation_question(goal):
     """Clinical features, not vaccination effects or outbreak statistics."""
     return bool(
@@ -215,8 +226,14 @@ def missing_official_answer_document(goal, observations):
     if not loaded:
         return False
     if publisher_home:
-        # Do not synthesize from a general institutional homepage. As soon as
-        # a genuine deeper document is fetched, the verifier gets its turn.
+        # General homepages and mission directories are discovery surfaces,
+        # not factual articles. A genuinely fetched document is needed.
+        if host == "nasa.gov" and _nasa_numbered_mission(goal):
+            return all(
+                path in {"", "/"} or
+                bool(re.search(r"/(?:a-to-z-of-nasa-missions|nasa-missions|missions)/?$", path))
+                for path, _ in loaded
+            )
         return all(path in {"", "/"} for path, _ in loaded)
     if paired:
         # A document that covers IPv4 alone is not a complete source set
@@ -452,6 +469,16 @@ def choose_official_publisher_step(goal, observations):
                             str(link.get("snippet") or "").casefold()))
             word_hits = sum(bool(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", name))
                             for w in terms)
+            mission = _nasa_numbered_mission(goal)
+            # A mission name without its requested number is not a match.
+            # Scores choose among *discovered* links, never guessed URLs.
+            normalized_name = re.sub(r"[^a-z0-9]+", " ", name)
+            exact_mission = bool(mission and re.search(
+                r"(?<!\w)" + re.escape(mission) + r"(?!\w)",
+                normalized_name,
+            ))
+            if mission and word_hits and not exact_mission:
+                continue
             # If the first requested identifier is already documented, do
             # not repeatedly crawl pages explicitly limited to that same
             # identifier while the other requested identifier is absent.
@@ -503,6 +530,8 @@ def choose_official_publisher_step(goal, observations):
             is_home = bool(re.search(r"/home/(?:html/)?index\.", parsed.path, re.I))
             score = (base_score + 8 * word_hits + 4 * bool(parsed.path not in {"", "/"})
                      + 8 * is_home + 24 * bool(missing_hits))
+            if exact_mission:
+                score += 100
             if deposit_question:
                 if re.search(r"(?i)deposit.facility|key.ecb.interest.rates|"
                              r"key.interest.rates|einlagefazilit|standing.facilit", name):
@@ -539,6 +568,24 @@ def choose_official_publisher_step(goal, observations):
         ):
             return {"action": "fetch_url", "query": url,
                     "reason": "Tatsächlich gefundene Primärquelle öffnen"}
+    mission = _nasa_numbered_mission(goal)
+    if mission and loaded:
+        # After irrelevant external search results, navigate the publisher's
+        # real A-to-Z directory link. Neither the path nor the facts are guessed.
+        for item in reversed(loaded):
+            for link in item["result"].get("page_links") or []:
+                if not isinstance(link, dict):
+                    continue
+                url = link.get("url")
+                label = str(link.get("title") or "")
+                if (url not in fetched
+                        and _safe_official_url(url, "nasa.gov") is not None
+                        and re.search(r"(?i)a\s*(?:to|-|–)\s*z.*missions?",
+                                      label + " " + url)):
+                    return {
+                        "action": "fetch_url", "query": url,
+                        "reason": "Verlinktes NASA-Missionsverzeichnis öffnen",
+                    }
     # If an official article was fetched but only general navigation or
     # bibliography was present, request a more precise search ONCE. No
     # invented URL or medical facts are created by this research fallback.
@@ -737,6 +784,15 @@ def has_discovered_deeper_primary_link(goal, observations):
         if isinstance(link, dict)
     ]
     discovered = [link for link in links if link.get("url") == target]
+    mission = _nasa_numbered_mission(goal)
+    if len(fetched_ok) == 2 and mission and any(
+        re.search(r"(?<!\w)" + re.escape(mission) + r"(?!\w)",
+                  re.sub(r"[^a-z0-9]+", " ",
+                         str(link.get("title") or "").casefold() + " " +
+                         str(link.get("url") or "").casefold()))
+        for link in discovered
+    ):
+        return True
     if len(fetched_ok) == 2 and not any(re.search(
         r"(?i)faq|antwort|ratgeber|krankheitsbild|symptom|"
         r"clinical|/article/|/guide/|/report/",
