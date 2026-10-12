@@ -121,7 +121,20 @@ def same_site_html_links(page, base_url):
             r"(?i)/(?:apollo|artemis|gemini|mercury)[-_]?\d{1,3}[-_](?:mission-)?overview/?$",
             path,
         ))
-        return (int(mission_index or numbered_mission or mission_chronology),
+        # Release rows on python.org are often preceded by many navigation
+        # links. Preserve authentic final-release links when the 96-link
+        # source discovery pool would otherwise omit the current release.
+        python_release = (
+            parts.hostname in {"www.python.org", "python.org"}
+            and bool(re.fullmatch(
+                r"(?i)/downloads/release/python-3\d{2,4}/?", path
+            ))
+            and bool(re.fullmatch(
+                r"(?i)Python\s+3\.\d{1,2}\.\d{1,2}", title
+            ))
+        )
+        return (int(mission_index or numbered_mission or mission_chronology
+                    or python_release),
                 min(len(segments), 8), document)
 
     selected = set(sorted(
