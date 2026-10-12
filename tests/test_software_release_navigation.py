@@ -110,3 +110,55 @@ def test_focused_fetch_refuses_to_fabricate_release_section():
     ) is None
     assert source_focus_offset("An unrelated clinical page. " * 30,
                                "Some other absent heading") is None
+
+
+
+def test_failed_download_focus_follows_observed_stable_release_link():
+    from agent.software_release_navigation import (
+        python_source_linked_release_step, needs_python_release_article,
+    )
+
+    original = page()
+    original["result"]["page_links"] = [
+        {"url": "https://www.python.org/downloads/release/python-3148/",
+         "title": "Python 3.14.8"},
+        {"url": "https://www.python.org/downloads/release/python-3150/",
+         "title": "Python 3.15.0"},
+        {"url": "https://www.python.org.evil.example/downloads/release/python-9999/",
+         "title": "Python 3.99.9"},
+        {"url": "https://www.python.org/downloads/release/python-3160a1/",
+         "title": "Python 3.16.0a1"},
+    ]
+    failed = {
+        "action": "fetch_url", "status": "completed",
+        "query": URL, "instruction": "focus=Active Python releases",
+        "result": {"ok": False, "url": URL, "error": "focus_not_found"},
+    }
+    assert python_source_linked_release_step(GOAL, [original]) is None
+    chosen = python_source_linked_release_step(GOAL, [original, failed])
+    assert chosen["action"] == "fetch_url"
+    assert chosen["query"] == (
+        "https://www.python.org/downloads/release/python-3150/"
+    )
+    assert needs_python_release_article(GOAL, [original, failed])
+    completed = {
+        "action": "fetch_url", "status": "completed",
+        "query": chosen["query"],
+        "result": {"ok": True, "url": chosen["query"],
+                   "text": "This is an original official publisher article. " * 10},
+    }
+    assert not needs_python_release_article(GOAL, [original, failed, completed])
+
+
+def test_python_release_followup_never_guesses_unseen_url():
+    from agent.software_release_navigation import python_source_linked_release_step
+
+    original = page()
+    original["result"]["page_links"] = [
+        {"url": "https://other.example/downloads/release/python-3150/",
+         "title": "Python 3.15.0"},
+    ]
+    failed = {"action": "fetch_url", "status": "completed",
+              "query": URL, "instruction": "focus=Active Python releases",
+              "result": {"ok": False, "url": URL, "error": "focus_not_found"}}
+    assert python_source_linked_release_step(GOAL, [original, failed]) is None
