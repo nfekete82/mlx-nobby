@@ -87,7 +87,9 @@ def choose_leave_explanation_step(goal, observations):
         except (TypeError, ValueError):
             continue
         if (parsed.scheme != "https" or
-                parsed.hostname not in {"www.bmas.de", "bmas.de"}):
+                parsed.hostname not in {"www.bmas.de", "bmas.de"} or
+                not re.search(r"(?i)(?:fragen-und-antworten|/faq[-/]|teilzeit)",
+                              parsed.path)):
             continue
         if not any(
             isinstance(attempt, dict) and attempt.get("action") == "fetch_url"
