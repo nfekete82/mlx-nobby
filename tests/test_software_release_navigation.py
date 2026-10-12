@@ -382,3 +382,44 @@ def test_generic_download_label_is_valid_source_observed_release_navigation():
     assert chosen["action"] == "fetch_url"
     assert chosen["query"] == latest
     assert not any("Python 3.15.0" in item["title"] for item in links)
+
+
+
+def test_official_docs_result_refines_release_search_without_asserting_fact():
+    from agent.software_release_navigation import python_release_search_step
+
+    loaded = page(text="Python download index with no release heading. " * 14)
+    unavailable = {
+        "action": "fetch_url", "status": "completed",
+        "query": URL, "instruction": "focus=Active Python releases",
+        "result": {"ok": False, "url": URL, "error": "focus_not_found"},
+    }
+    search = {
+        "action": "search_web", "status": "completed",
+        "query": "python.org latest stable Python 3 release 2026",
+        "result": {"results": [
+            {"url": "https://docs.python.org/3.15/",
+             "title": "Python 3.15.0 documentation"},
+            {"url": "https://docs.python.org.evil.example/",
+             "title": "Python 3.99.0 documentation"},
+            {"url": "https://www.example.org/fake",
+             "title": "Python 3.99.1 documentation"},
+        ]},
+    }
+    obs = [search, loaded, unavailable]
+    refined = python_release_search_step(GOAL, obs)
+    assert refined["action"] == "search_web"
+    assert refined["query"] == 'python.org "Python 3.15.0" stable release date'
+    assert "http" not in refined["query"]
+    obs.append({
+        "action": "search_web", "status": "completed",
+        "query": refined["query"], "result": {"results": []},
+    })
+    fallback = python_release_search_step(GOAL, obs)
+    assert fallback["action"] == "search_web"
+    assert fallback["query"] != refined["query"]
+    obs.append({
+        "action": "search_web", "status": "completed",
+        "query": fallback["query"], "result": {"results": []},
+    })
+    assert python_release_search_step(GOAL, obs) is None
