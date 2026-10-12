@@ -513,7 +513,9 @@ class AgentRuntime:
             if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
                 from agent.structured_evidence import build_evidence
                 from agent.plan_fastpath import insufficient_catalog_sources
-                from agent.software_release_navigation import needs_python_release_focus
+                from agent.software_release_navigation import (
+                    needs_python_release_focus, needs_python_release_article,
+                )
                 from agent.leave_source_navigation import needs_leave_explanation
                 from agent.research_followup import need_support_policy_source
                 from agent.official_source_navigation import (
@@ -525,6 +527,7 @@ class AgentRuntime:
                         and not missing_requested_identifiers(goal, observations)
                         and not missing_clinical_article(goal, observations)
                         and not needs_python_release_focus(goal, observations)
+                        and not needs_python_release_article(goal, observations)
                         and not needs_leave_explanation(goal, observations)
                         and not missing_official_answer_document(goal, observations)
                         and not has_discovered_deeper_primary_link(goal, observations)
@@ -739,6 +742,15 @@ class AgentRuntime:
                     self._profile_events.append({
                         "phase": "planning_fastpath",
                         "action": "official_leave_explanation",
+                        "duration_ms": 0.0,
+                    })
+            if decision is None and mode in {"diagnostic", "research"}:
+                from agent.software_release_navigation import python_source_linked_release_step
+                decision = python_source_linked_release_step(goal, observations)
+                if decision is not None:
+                    self._profile_events.append({
+                        "phase": "planning_fastpath",
+                        "action": "source_linked_python_release",
                         "duration_ms": 0.0,
                     })
             if decision is None and mode in {"diagnostic", "research"}:
