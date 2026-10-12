@@ -8,6 +8,7 @@ Run: python -m agent.v15_run_inspection --run-dir artifacts/performance/...
 """
 import argparse
 import json
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -80,6 +81,18 @@ def inspect_case(row):
                                           or step.get("query")),
                 "ok": observed.get("ok"),
                 "text_chars": len(body) if isinstance(body, str) else 0,
+                "content_type": _short(observed.get("content_type"), 75),
+                "link_count": len(observed.get("page_links") or [])
+                    if isinstance(observed.get("page_links"), list) else 0,
+                "total_characters": observed.get("total_characters"),
+                "truncated": observed.get("truncated"),
+                "has_release_heading": bool(
+                    isinstance(body, str) and re.search(
+                        r"(?i)active python releases|latest python 3 release|"
+                        r"python releases by version number|stable releases",
+                        body,
+                    )
+                ),
                 "retrieval_status": observed.get("retrieval_status"),
                 "error": _short(observed.get("error"), 170),
             })
