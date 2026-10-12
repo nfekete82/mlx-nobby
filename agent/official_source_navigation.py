@@ -100,6 +100,61 @@ def _nasa_numbered_mission(goal):
     return " ".join(match.group(0).casefold().split()) if match else None
 
 
+def _nasa_landing_chronology_step(goal, observations):
+    """Follow a discovered mission chronology when a landing *day* is asked.
+
+    A mission profile may state launch, splashdown and moonwalk dates without
+    explicitly anchoring the date of touchdown. Following a genuine NASA
+    mission overview provides the verifier with more precise event context;
+    this step never supplies a date or invents a URL.
+    """
+    mission = _nasa_numbered_mission(goal)
+    question = str(goal or "").casefold()
+    if not mission or not re.search(r"\b(?:wann|when)\b", question) or not re.search(
+        r"\b(?:landete|landed|landung|landing|touchdown)\b", question
+    ):
+        return None
+    name, number = mission.split()
+    expected = re.compile(
+        r"(?i)(?:^|/)" + re.escape(name) + r"[-_]" + re.escape(number) +
+        r"[-_]mission[-_]overview/?$"
+    )
+    profile_path = "/" + "mission/" + name + "-" + number
+    fetched_urls = {
+        str(item.get("query") or "")
+        for item in observations if isinstance(item, dict)
+        and item.get("action") == "fetch_url"
+    }
+    profiles = []
+    for item in observations:
+        if (not isinstance(item, dict) or item.get("action") != "fetch_url"
+                or item.get("status") != "completed"):
+            continue
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        parsed = _safe_official_url(
+            result.get("final_url") or result.get("url"), "nasa.gov"
+        )
+        if parsed and parsed.path.rstrip("/").casefold() == profile_path:
+            profiles.append(result)
+    # Only one follow-up per exact mission profile and only a real link
+    # in that fetched profile. Never repeat after the chronology is loaded.
+    for profile in profiles[:1]:
+        for link in profile.get("page_links") or []:
+            if not isinstance(link, dict):
+                continue
+            url = link.get("url")
+            parsed = _safe_official_url(url, "nasa.gov")
+            if (parsed and url not in fetched_urls
+                    and expected.search(parsed.path)):
+                return {
+                    "action": "fetch_url", "query": url,
+                    "reason": "Verlinkte NASA-Missionschronologie für genaues Landedatum lesen",
+                }
+    return None
+
+
 def clinical_presentation_question(goal):
     """Clinical features, not vaccination effects or outbreak statistics."""
     return bool(
@@ -310,6 +365,11 @@ def choose_official_publisher_step(goal, observations):
               and o.get("status") == "completed"
               and isinstance(o.get("result"), dict)
               and o["result"].get("ok") is True]
+    # A source-discovered chronology resolves the difference between a
+    # mission's launch day, touchdown day and return day before synthesis.
+    chronology = _nasa_landing_chronology_step(goal, observations)
+    if chronology is not None:
+        return chronology
     covered_identifiers, missing_identifiers = (), ()
     if loaded and missing_requested_identifiers(goal, observations):
         # After the first official document, pursue an explicitly requested
@@ -768,9 +828,16 @@ def has_discovered_deeper_primary_link(goal, observations):
         and isinstance(item.get("result"), dict)
         and item["result"].get("ok") is True
     ]
-    if not 1 <= len(fetched_ok) <= 2:
+    if not 1 <= len(fetched_ok) <= 3:
         return False
-    choice = choose_official_publisher_step(goal, observations)
+    # After NASA's homepage, mission index and mission profile, allow one
+    # *genuinely linked* chronology to resolve an explicitly requested day.
+    # Ordinary research retains its existing two-page bound.
+    chronology = (_nasa_landing_chronology_step(goal, observations)
+                  if len(fetched_ok) == 3 else None)
+    if len(fetched_ok) == 3 and chronology is None:
+        return False
+    choice = chronology or choose_official_publisher_step(goal, observations)
     if choice is None or choice.get("action") != "fetch_url":
         return False
     target = choice.get("query")
@@ -785,6 +852,8 @@ def has_discovered_deeper_primary_link(goal, observations):
     ]
     discovered = [link for link in links if link.get("url") == target]
     mission = _nasa_numbered_mission(goal)
+    if chronology is not None:
+        return bool(discovered)
     if len(fetched_ok) == 2 and mission and any(
         re.search(r"(?<!\w)" + re.escape(mission) + r"(?!\w)",
                   re.sub(r"[^a-z0-9]+", " ",
