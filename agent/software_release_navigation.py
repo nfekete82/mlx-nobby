@@ -146,12 +146,16 @@ def python_source_linked_release_step(goal, observations):
                 continue
             # Only source-observed titles count; preview/beta/dev links are
             # excluded, but no release status is asserted by this selector.
-            title = str(link.get("title") or "")
+            title = str(link.get("title") or "").strip()
             sem = re.fullmatch(r"Python\s+3\.(\d{1,2})\.(\d{1,2})", title, re.I)
-            if not sem:
-                continue
-            major, minor = int(sem.group(1)), int(sem.group(2))
-            if int(matched.group(2)) != major or int(matched.group(3)) != minor:
+            major, minor = int(matched.group(2)), int(matched.group(3))
+            if sem:
+                # An explicit title must agree with the *observed* URL.
+                if (int(sem.group(1)), int(sem.group(2))) != (major, minor):
+                    continue
+            elif not re.fullmatch(r"(?i)download(?:\s+python)?", title):
+                # "Download" labels are normal for release tables; other
+                # unexplained/contradictory labels are not treated as releases.
                 continue
             links.append(((major, minor), destination))
     if not links:
