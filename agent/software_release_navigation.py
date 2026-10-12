@@ -275,6 +275,41 @@ def python_release_search_step(goal, observations):
         for step in observations or ()
         if isinstance(step, dict) and step.get("action") == "search_web"
     }
+    # When the official download index yields no links, an observed
+    # docs.python.org search result may identify an exact release *candidate*.
+    # It is only a search term, never proof of newest/stable status.
+    versions = set()
+    for step in observations or ():
+        if (not isinstance(step, dict) or step.get("action") != "search_web"
+                or step.get("status") != "completed"
+                or not isinstance(step.get("result"), dict)):
+            continue
+        for hit in step["result"].get("results") or ():
+            if not isinstance(hit, dict):
+                continue
+            try:
+                source = urlsplit(hit.get("url"))
+            except (ValueError, TypeError):
+                continue
+            if (source.scheme != "https"
+                    or source.hostname != "docs.python.org"):
+                continue
+            match = re.fullmatch(
+                r"(?i)Python\s+(3\.\d{1,2}\.\d{1,2})\s+documentation",
+                str(hit.get("title") or "").strip(),
+            )
+            if match:
+                versions.add(match.group(1))
+    if versions:
+        def version_tuple(value):
+            return tuple(map(int, value.split(".")))
+        observed = max(versions, key=version_tuple)
+        query = f'python.org "Python {observed}" stable release date'
+        if query.casefold() not in attempted_queries:
+            return {
+                "action": "search_web", "query": query,
+                "reason": "Auf offiziellen Dokumentationstreffer gestützte Release-Suche ohne Behauptung der Aktualität",
+            }
     if " ".join(_PYTHON_SEARCH_QUERY.casefold().split()) not in attempted_queries:
         return {
             "action": "search_web", "query": _PYTHON_SEARCH_QUERY,
