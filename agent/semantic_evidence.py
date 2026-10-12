@@ -510,6 +510,24 @@ def _final_validation(claims, decisions, observations, *, goal="", bundle=None):
                 )
                 checked.append(result)
                 continue
+            # Statutory Werktage count (normally a six-day basis) cannot
+            # substantiate the same nominal number of days for a five-day
+            # workweek. Only downgrade mismatched claims, never supply a
+            # replacement number without separately verified source evidence.
+            from agent.leave_workweek_validation import incompatible_leave_workweek
+            cited_text = [
+                passage_by_id[pid].evidence_excerpt
+                for pid in result.get("passage_ids", [])
+                if pid in passage_by_id
+            ]
+            if incompatible_leave_workweek(goal, claim.statement, cited_text):
+                result.update(
+                    status="insufficient_evidence",
+                    decision_origin="leave_unit_validation",
+                    reason="24 Werktage des Gesetzes belegen keinen Mindesturlaub von 24 Arbeitstagen bei einer Fünf-Tage-Woche.",
+                )
+                checked.append(result)
+                continue
             from agent.effective_date_validation import effective_date_conflict
             anchor_sources = {
                 passage_by_id[pid].source_id for pid in result.get("passage_ids", [])
