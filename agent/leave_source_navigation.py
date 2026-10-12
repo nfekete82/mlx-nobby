@@ -384,32 +384,4 @@ def choose_leave_official_discovery_step(goal, observations):
                 "reason": "Amtliche Rechtsquelle zur angefragten Fünf-Tage-Woche suchen",
             }
 
-    # Search engines sometimes return only the official publisher homepage.
-    # Follow only an actually observed HTTPS link; never invent the §3 URL.
-    for step in observations or ():
-        if (not isinstance(step, dict) or step.get("action") != "search_web"
-                or step.get("status") != "completed"
-                or not isinstance(step.get("result"), dict)):
-            continue
-        for hit in step["result"].get("results") or ():
-            if not isinstance(hit, dict):
-                continue
-            candidate = hit.get("url")
-            if not isinstance(candidate, str) or candidate in fetched:
-                continue
-            try:
-                parts = urlsplit(candidate)
-                valid = (parts.scheme == "https"
-                         and parts.hostname in {"www.gesetze-im-internet.de", "gesetze-im-internet.de"}
-                         and parts.path in {"", "/"}
-                         and not parts.username and not parts.password
-                         and parts.port in {None, 443}
-                         and not parts.query and not parts.fragment)
-            except ValueError:
-                continue
-            if valid:
-                return {
-                    "action": "fetch_url", "query": candidate,
-                    "reason": "Gefundene amtliche Gesetzes-Startseite für echte Dokumentlinks öffnen",
-                }
     return None
