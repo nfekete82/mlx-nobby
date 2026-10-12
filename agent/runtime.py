@@ -512,6 +512,21 @@ class AgentRuntime:
             loop_max_steps + 1,
         ):
             self._check_cancelled()
+            # Stop redundant discovery only after an exact official document
+            # already supplies every operand for a bounded deterministic
+            # answer. Other research topics retain their existing checks.
+            if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
+                from agent.leave_workweek_validation import grounded_five_day_leave
+                if grounded_five_day_leave(goal, observations) is not None:
+                    answer = self._model_hook(
+                        self.hooks.agent_evidence_answer, goal, observations
+                    )
+                    result = {
+                        "status": "completed", "goal": goal,
+                        "steps": observations, "answer": answer,
+                    }
+                    publish("completed")
+                    return result
             if mode in {"diagnostic", "research"} and not deep_research and self.hooks.agent_evidence_answer:
                 from agent.structured_evidence import build_evidence
                 from agent.plan_fastpath import insufficient_catalog_sources
