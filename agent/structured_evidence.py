@@ -181,61 +181,96 @@ def _quantitative_windows(goal, text, *, max_windows=3):
 
 
 def _temporal_windows(goal, text, *, max_windows=3):
-    """Source-exact date windows for questions asking WHEN a value applies.
+    """Bounded source-exact date spans for temporal research questions.
 
-    Short dates on separate HTML lines can be under _passages' 20-character
-    minimum. Include neighboring topic/value context without joining,
-    interpreting or inventing facts. The semantic verifier still decides
-    whether a date is actually an effective date, not a nearby news date.
+    Recognize both European and US date order. Dates are *not* answers on
+    their own: a date must still be assigned to the requested event by the
+    extractor and verified against its original passage.
     """
     request = str(goal or "").casefold()
-    if (not isinstance(text, str) or not re.search(
+    if not isinstance(text, str) or not re.search(
         r"(?i)\b(?:seit|datum|wirksam|gültig|effective|effect from|"
-        r"valid from|as of|ab wann|starting)\b", request
-    )):
+        r"valid from|as of|ab wann|starting|wann|when|landete|landed|"
+        r"geschah|happened|occurred)\b", request,
+    ):
         return []
-    # Both ISO dates and day-month-year source text, without assuming that
-    # any matched date is necessarily a valid-from date.
-    date_regex = re.compile(
-        r"(?i)\b(?:19|20)\d{2}-\d{2}-\d{2}\b|"
-        r"\b\d{1,2}\s+(?:january|february|march|april|may|june|july|"
-        r"august|september|october|november|december|"
-        r"januar|februar|märz|mai|juni|juli|oktober|dezember)"
-        r"\s+(?:19|20)\d{2}\b"
+
+    months = (
+        r"january|february|march|april|may|june|july|august|september|"
+        r"october|november|december|januar|februar|märz|mai|juni|juli|"
+        r"oktober|dezember"
     )
-    date_matches = list(date_regex.finditer(text))
-    windows = []
+    date_regex = re.compile(
+        rf"(?i)\b(?:19|20)\d{{2}}-\d{{2}}-\d{{2}}\b|"
+        rf"\b\d{{1,2}}\.?\s+(?:{months})\s+(?:19|20)\d{{2}}\b|"
+        rf"\b(?:{months})\s+\d{{1,2}},?\s+(?:19|20)\d{{2}}\b"
+    )
+    matches = list(date_regex.finditer(text))[:100]
+    if not matches:
+        return []
+
     finance_question = bool(re.search(
-        r"(?i)einlagezins|deposit facility|leitzins|interest rates?", request
+        r"(?i)einlagezins|deposit facility|leitzins|interest rates?", request,
     ))
-    for found in date_matches[:100]:
-        # The preceding interest-rate rows plus the date must be visible
-        # together to the extraction and verification models.
+    historical_question = bool(re.search(
+        r"(?i)\b(?:wann|when|landete|landed|geschah|happened|occurred)\b",
+        request,
+    ))
+    landing_question = bool(re.search(
+        r"(?i)\b(?:landete|landed|landung|landing|moonwalk|mondlandung)\b",
+        request,
+    ))
+    topic_words = {
+        token for token in re.findall(r"\w{4,}", request)
+        if token not in {"wann", "when", "wurde", "welche", "nennen", "datum"}
+    }
+
+    ranked = []
+    for found in matches:
+        # Preserve the original source's line and nearby context, including
+        # a date-only heading followed by its original descriptive line.
         start = max(0, found.start() - 450)
         if start:
             newline = text.find("\n", start, found.start())
             if newline >= 0:
                 start = newline + 1
-        end = min(len(text), found.end() + 90)
+        end = min(len(text), found.end() + (230 if historical_question else 90))
         nextline = text.find("\n", found.end(), end)
         if nextline >= 0:
-            end = nextline
+            # A date-only heading should retain its *next* descriptive line.
+            line = text[text.rfind("\n", start, found.start()) + 1:nextline]
+            if len(line.strip()) >= 30:
+                end = nextline
         excerpt = text[start:end]
         if not 25 <= len(excerpt) <= 900:
             continue
         if finance_question and not (
-            re.search(r"(?i)\bdeposit facility\b|einlagezins|"
-                      r"leitzins|interest rates?", excerpt)
+            re.search(r"(?i)\bdeposit facility\b|einlagezins|leitzins|interest rates?", excerpt)
             and re.search(r"\d{1,3}(?:[.,]\d{1,4})?\s*%", excerpt)
         ):
             continue
+        context = excerpt.casefold()
+        score = len(topic_words.intersection(set(re.findall(r"\w{4,}", context))))
+        if landing_question:
+            if re.search(r"(?i)\b(?:lunar landing|moon landing|landing|landed|"
+                         r"touchdown|landete|mondlandung|first steps?|"
+                         r"giant leap|moonwalk)\b", context):
+                score += 12
+            if re.search(r"(?i)\b(?:launch|liftoff|splashdown|return to earth)\b", context):
+                score -= 8
+        ranked.append((score, found.start(), start, end, excerpt))
+
+    if historical_question:
+        ranked.sort(key=lambda row: (-row[0], row[1]))
+
+    windows = []
+    for _score, _date_at, start, end, excerpt in ranked:
         if any(abs(start - previous[0]) < 200 for previous in windows):
             continue
         windows.append((start, end, excerpt))
         if len(windows) >= max_windows:
             break
     return windows
-
 
 def build_evidence(observations, *, now=None, goal=""):
     timestamp = now or datetime.now(timezone.utc).isoformat()
