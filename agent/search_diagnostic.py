@@ -36,8 +36,10 @@ def summarize(primary_url, query):
     # should not be evaluated through an artificially forced German locale.
     from agent.app import web_search_language_for_query
     from agent.search_relevance import required_site
+    from agent.publisher_search import provider_query
     language = web_search_language_for_query(query)
-    params = urlencode({"q": query, "format": "json", "language": language, "safesearch": 0})
+    submitted_query = provider_query(query)
+    params = urlencode({"q": submitted_query, "format": "json", "language": language, "safesearch": 0})
     payload, attempts = request_searxng(primary_url, params)
     results = payload.get("results", []) if isinstance(payload, dict) else []
     engines = payload.get("unresponsive_engines", []) if isinstance(payload, dict) else []
@@ -68,6 +70,7 @@ def summarize(primary_url, query):
                 official_matches += 1
     return {
         "configured_primary_endpoint": primary_url,
+        "query_submitted": submitted_query,
         "search_language": language,
         "requested_primary_host": official_domain,
         "primary_host_hit_count": official_matches if official_domain else None,
