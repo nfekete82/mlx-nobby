@@ -85,6 +85,48 @@ def exhausted_official_search(goal, observations):
     return len(searches) >= 2
 
 
+def exhausted_unmatched_item_search(goal, observations):
+    """Abstain early for a precise model code with no remotely matching hits.
+
+    Two genuinely distinct completed search queries must both have results,
+    but none may mention the exact model code. No fetched document can exist.
+    This does NOT prove the item does not exist; it just stops futile searches.
+    """
+    import re
+
+    request = str(goal or "")
+    if not re.search(r"(?i)\b(?:offiziell|official|erhältlich|available)\b", request):
+        return False
+    identifiers = set(re.findall(r"(?i)\b[A-Z]{1,5}-\d{4,}\b", request))
+    if len(identifiers) != 1:
+        return False
+    if loaded_articles(observations):
+        return False
+    code = next(iter(identifiers)).casefold()
+    searches = []
+    for item in observations or []:
+        if not isinstance(item, dict) or item.get("action") not in {"search_web", "web_search"}:
+            continue
+        if item.get("status") != "completed":
+            return False
+        result = item.get("result")
+        if not isinstance(result, dict):
+            return False
+        hits = result.get("results")
+        if not isinstance(hits, list) or not hits:
+            return False
+        for hit in hits:
+            if not isinstance(hit, dict):
+                return False
+            summary = " ".join(str(hit.get(k) or "") for k in ("title", "url", "snippet"))
+            if code in summary.casefold():
+                return False
+        query = item.get("query")
+        if isinstance(query, str) and query.strip():
+            searches.append(" ".join(query.casefold().split()))
+    return len(set(searches)) >= 2
+
+
 UNAVAILABLE_ANSWER = (
     "Die offizielle Recherche konnte derzeit keine verwertbaren "
     "Suchtreffer oder geladenen Artikel liefern. Deshalb bestätige ich "
