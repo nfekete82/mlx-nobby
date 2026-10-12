@@ -74,3 +74,41 @@ def test_explicit_zoonotic_question_allows_its_source_urls():
     assert not _irrelevant_clinical_variant(
         "Welche typischen Symptome einer zoonotischen Influenza nennt das RKI?", url,
     )
+
+
+
+def test_stale_official_rki_url_triggers_exactly_one_faq_search():
+    old = (
+        "https://www.rki.de/DE/Content/InfAZ/I/Influenza/"
+        "Influenza_node.html"
+    )
+    observations = [
+        {"action": "search_web", "status": "completed", "query": "RKI Influenza",
+         "result": {"provider": "SearXNG", "results": [
+             {"url": old, "title": "Influenza Krankheit"},
+         ]}},
+        {"action": "fetch_url", "status": "completed", "query": old,
+         "result": {"ok": False, "url": old, "error": "HTTP 404"}},
+    ]
+    step = choose_official_publisher_step(GOAL, observations)
+    assert step["action"] == "search_web"
+    assert "Häufig gestellte Fragen" in step["query"]
+    assert "influenza" in step["query"].lower()
+    assert "rki.de" in step["query"]
+    assert old not in step["query"]
+    assert "fieber" not in step["query"].lower()
+
+    observations.append({
+        "action": "search_web", "status": "completed", "query": step["query"],
+        "result": {"provider": "SearXNG", "results": []},
+    })
+    retry = choose_official_publisher_step(GOAL, observations)
+    assert retry is None or retry.get("query") != step["query"]
+
+
+def test_initial_clinical_search_uses_disease_and_faq_without_url_guessing():
+    query = choose_official_publisher_step(GOAL, [])["query"]
+    assert "site:" not in query
+    assert "Krankheitsbild der influenza" in query
+    assert "rki.de" in query
+    assert "http" not in query
