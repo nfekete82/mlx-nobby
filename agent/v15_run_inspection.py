@@ -93,6 +93,10 @@ def inspect_case(row):
         hint = "transport_or_agent_error"
     elif evidence is None:
         hint = "no_evidence_audit"
+    elif error_status == "no_usable_evidence":
+        # No fetched source passages is a *valid abstention*, not a model
+        # serialization/crash error. Preserve the underlying reason verbatim.
+        hint = "no_usable_source_evidence"
     elif error_status:
         hint = "evidence_processing_error"
     elif not fetched:
