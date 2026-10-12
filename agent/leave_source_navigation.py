@@ -133,3 +133,74 @@ def choose_leave_explanation_step(goal, observations):
 
 def needs_leave_explanation(goal, observations):
     return choose_leave_explanation_step(goal, observations) is not None
+
+
+
+# Two bounded publisher-discovery queries; neither constructs an article path.
+_LAW_DISCOVERY_QUERY = "gesetze-im-internet.de Bundesurlaubsgesetz § 3 Mindesturlaub"
+_LAW_REFINEMENT_QUERY = "bmas.de Mindesturlaub Fünf-Tage-Woche Urlaubsanspruch"
+
+
+def choose_leave_official_discovery_step(goal, observations):
+    """Get an observed official law/FAQ URL before model-led broad searching.
+
+    Only applies to the explicitly asked five-day statutory minimum. Search
+    results are navigation hints, NEVER a basis for asserting a leave count.
+    """
+    if not _five_day_leave_question(goal):
+        return None
+    if _official_law_source_loaded(observations) or _explanatory_source_loaded(observations):
+        return None
+
+    fetched = {
+        str(step.get("query") or "")
+        for step in observations or ()
+        if isinstance(step, dict) and step.get("action") == "fetch_url"
+    }
+    discovered = []
+    for step in observations or ():
+        if (not isinstance(step, dict) or step.get("action") != "search_web"
+                or step.get("status") != "completed"
+                or not isinstance(step.get("result"), dict)):
+            continue
+        for hit in step["result"].get("results") or ():
+            if not isinstance(hit, dict):
+                continue
+            url = hit.get("url")
+            try:
+                parts = urlsplit(url)
+            except (TypeError, ValueError):
+                continue
+            if (parts.scheme != "https" or parts.username is not None
+                    or parts.password is not None or
+                    parts.port not in {None, 443} or url in fetched):
+                continue
+            host, path = parts.hostname, parts.path.casefold()
+            law = host in {"gesetze-im-internet.de", "www.gesetze-im-internet.de"} and (
+                path.startswith("/burlg/")
+            )
+            faq = host in {"bmas.de", "www.bmas.de"} and (
+                ("urlaub" in path or "teilzeit" in path or
+                 "urlaub" in str(hit.get("title") or "").casefold())
+            )
+            if law or faq:
+                discovered.append((2 if law else 1, url))
+    if discovered:
+        _, selected = max(discovered, key=lambda entry: entry[0])
+        return {
+            "action": "fetch_url", "query": selected,
+            "reason": "Tatsächlich gefundenen amtlichen Gesetzestext oder Ministeriumsartikel laden",
+        }
+
+    tried = {
+        " ".join(str(step.get("query") or "").casefold().split())
+        for step in observations or ()
+        if isinstance(step, dict) and step.get("action") == "search_web"
+    }
+    for query in (_LAW_DISCOVERY_QUERY, _LAW_REFINEMENT_QUERY):
+        if " ".join(query.casefold().split()) not in tried:
+            return {
+                "action": "search_web", "query": query,
+                "reason": "Amtliche Rechtsquelle zur angefragten Fünf-Tage-Woche suchen",
+            }
+    return None
