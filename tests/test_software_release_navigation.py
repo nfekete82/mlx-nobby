@@ -75,3 +75,38 @@ def test_focused_original_passage_used_without_mutating_trace():
 def test_non_release_questions_leave_sources_untouched():
     observations = [page(), page(focus="Active Python releases")]
     assert evidence_focus_observations("Was ist Python?", observations) is observations
+
+
+
+def test_focused_fetch_falls_back_to_real_version_heading_not_a_guess():
+    from agent.app import source_focus_offset
+
+    text = (
+        "Python downloads and installable releases. " * 40
+        + "\nLatest Python 3 Release - Python 3.21.4\n"
+        + "This is a publisher-verified stable version of the language. " * 5
+    )
+    offset = source_focus_offset(text, "Active Python releases")
+    assert offset is not None
+    assert "Latest Python 3 Release - Python 3.21.4" in text[offset:offset+6000]
+
+    text2 = (
+        "Python downloads intro. " * 60
+        + "\nPython releases by version number:\n"
+        + "Python 3.99.3 - Oct. 12, 2035 - Download\n"
+        + "Previous older versions follow. " * 20
+    )
+    offset = source_focus_offset(text2, "Active Python releases")
+    assert offset is not None
+    assert "Python 3.99.3" in text2[offset:offset+6000]
+
+
+def test_focused_fetch_refuses_to_fabricate_release_section():
+    from agent.app import source_focus_offset
+
+    assert source_focus_offset(
+        "Navigation and policies, no versions or release headings. " * 40,
+        "Active Python releases",
+    ) is None
+    assert source_focus_offset("An unrelated clinical page. " * 30,
+                               "Some other absent heading") is None
