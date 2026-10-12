@@ -64,11 +64,23 @@ def evidence_focus_observations(goal, observations):
                     or result.get("ok") is not True):
                 continue
             parsed = urlsplit(str(result.get("final_url") or result.get("url") or ""))
-            if (parsed.scheme == "https" and parsed.hostname in
-                    {"www.python.org", "python.org"} and
-                    parsed.path.rstrip("/") in {
-                        "/downloads/macos", "/downloads/windows", "/downloads/source",
-                    } and re.search(r"(?i)\bpython\s+3\.\d", str(result.get("text") or ""))):
+            if (parsed.scheme != "https" or
+                    parsed.hostname not in {"www.python.org", "python.org"}):
+                continue
+            content = str(result.get("text") or "")
+            index = parsed.path.rstrip("/") in {
+                "/downloads/macos", "/downloads/windows", "/downloads/source",
+            } and re.search(r"(?i)\bpython\s+3\.\d", content)
+            # A fetched official final release article with an explicit
+            # stable/newest assertion is stronger than the generic catalog
+            # for verifying the current stable Python version.
+            article = (
+                re.fullmatch(r"/downloads/release/python-3\d{2,4}/?",
+                             parsed.path)
+                and re.search(r"(?i)\bpython\s+3\.\d{1,2}\.\d{1,2}\b", content)
+                and re.search(r"(?i)\b(?:newest|latest|stable)\b", content)
+            )
+            if index or article:
                 alternate_release_loaded = True
         if alternate_release_loaded:
             return [
