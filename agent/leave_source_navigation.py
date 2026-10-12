@@ -88,7 +88,7 @@ def choose_leave_explanation_step(goal, observations):
             continue
         if (parsed.scheme != "https" or
                 parsed.hostname not in {"www.bmas.de", "bmas.de"} or
-                not re.search(r"(?i)(?:fragen-und-antworten|/faq[-/]|teilzeit)",
+                not re.search(r"(?i)(?:fragen-und-antworten|/faq[-/])",
                               parsed.path)):
             continue
         if not any(
