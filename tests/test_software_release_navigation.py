@@ -311,3 +311,23 @@ def test_real_official_release_article_suppresses_redundant_text_focus():
     }
     assert python_release_focus_step(GOAL, [original, done]) is None
     assert python_source_linked_release_step(GOAL, [original, done]) is None
+
+
+
+def test_current_python_release_link_survives_oversized_navigation_menu():
+    from agent.page_navigation import same_site_html_links, _MAX_LINKS
+    source = (
+        "<main>" + "".join(
+            f'<a href="/news/old-release/{i}/">Older announcement {i}</a>'
+            for i in range(175)
+        ) +
+        '<a href="/downloads/release/python-3150/">Python 3.15.0</a>' +
+        '<a href="https://www.python.org.evil.example/downloads/release/python-9999/">Python 9.99.9</a>' +
+        "</main>"
+    )
+    links = same_site_html_links(source, URL)
+    assert len(links) == _MAX_LINKS
+    assert any(link["url"] ==
+               "https://www.python.org/downloads/release/python-3150/"
+               for link in links)
+    assert all("evil.example" not in link["url"] for link in links)
