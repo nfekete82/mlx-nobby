@@ -353,3 +353,32 @@ def test_fetched_stable_release_article_beats_generic_download_text_for_evidence
     assert focused == [article]
     assert any("Python 3.15.0" in f.evidence_excerpt
                for f in build_evidence(focused, goal=GOAL).facts)
+
+
+
+def test_generic_download_label_is_valid_source_observed_release_navigation():
+    from agent.page_navigation import same_site_html_links, _MAX_LINKS
+    from agent.software_release_navigation import python_source_linked_release_step
+
+    older = "https://www.python.org/downloads/release/python-3148/"
+    latest = "https://www.python.org/downloads/release/python-3150/"
+    html = (
+        "<main>" + "".join(
+            f'<a href="/other/press/{i}/news/">Old news story {i}</a>'
+            for i in range(190)
+        ) +
+        '<a href="/downloads/release/python-3148/">Download</a>'
+        '<a href="/downloads/release/python-3150/">Download</a>'
+        '<a href="https://www.python.org.evil.example/downloads/release/python-9999/">Download</a>'
+        "</main>"
+    )
+    links = same_site_html_links(html, URL)
+    assert len(links) == _MAX_LINKS
+    assert {older, latest}.issubset({item["url"] for item in links})
+    assert all("evil.example" not in item["url"] for item in links)
+    original = page()
+    original["result"]["page_links"] = links
+    chosen = python_source_linked_release_step(GOAL, [original])
+    assert chosen["action"] == "fetch_url"
+    assert chosen["query"] == latest
+    assert not any("Python 3.15.0" in item["title"] for item in links)
