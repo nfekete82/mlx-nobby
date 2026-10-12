@@ -528,10 +528,11 @@ class AgentRuntime:
             if mode in {"diagnostic", "research"}:
                 from agent.search_failure_fastpath import (
                     exhausted_official_search, exhausted_unmatched_item_search,
-                    UNAVAILABLE_ANSWER,
+                    exhausted_unreadable_catalog, UNAVAILABLE_ANSWER,
                 )
                 if (exhausted_official_search(goal, observations)
-                        or exhausted_unmatched_item_search(goal, observations)):
+                        or exhausted_unmatched_item_search(goal, observations)
+                        or exhausted_unreadable_catalog(goal, observations)):
                     self._profile_events.append({
                         "phase": "planning_fastpath",
                         "action": "official_search_exhausted",
