@@ -59,6 +59,25 @@ def test_named_nasa_and_bpb_require_actual_primary_search_urls():
         assert selected["query"] == official
 
 
+def test_bpb_genuine_mauerfall_result_matches_berliner_mauer_question():
+    goal = (
+        "An welchem Datum wurde die Berliner Mauer geöffnet? "
+        "Bitte nenne eine Quelle der Bundeszentrale für politische Bildung."
+    )
+    source = "https://www.bpb.de/themen/deutschlandarchiv/mauerfall/"
+    first = choose_official_publisher_step(goal, [])
+    assert first["action"] == "search_web"
+    assert "bpb.de" in first["query"]
+    found = search(
+        ("https://www.bpb.de.evil.example/themen/mauerfall/", "Mauerfall"),
+        ("https://www.bpb.de/lexikon/politik/", "Politik: Lexikon"),
+        (source, "Mauerfall"),
+    )
+    selected = choose_official_publisher_step(goal, [found])
+    assert selected["action"] == "fetch_url"
+    assert selected["query"] == source
+
+
 def test_publisher_rejects_spoof_and_prefers_specific_rki_faq():
     faq = "https://www.rki.de/SharedDocs/FAQs/DE/Influenza/FAQ_Liste.html"
     found = search(
