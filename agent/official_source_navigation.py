@@ -166,6 +166,28 @@ def clinical_presentation_question(goal):
     )
 
 
+def _irrelevant_clinical_variant(goal, url, title=""):
+    """A veterinary/zoonotic influenza article is not a seasonal flu answer."""
+    if not clinical_presentation_question(goal):
+        return False
+    question = str(goal).casefold()
+    if re.search(r"(?i)\b(?:zoonot\w*|vogelgrippe|aviär\w*|avian|schweinegrippe)\b",
+                 question):
+        return False
+    try:
+        path = urlsplit(str(url or "")).path
+    except (ValueError, TypeError):
+        return False
+    # Source labels matter: mixed directory pages can mention both families.
+    marker = path + " " + str(title or "")
+    return bool(re.search(
+        r"(?i)zoonotische[-_/ ]*influenza|zoonotisch|"
+        r"vogelgrippe|avi[aä]r(?:e|en|es)?[-_ ]*influenza|"
+        r"animal[-_ ]*influenza",
+        marker,
+    ))
+
+
 def missing_clinical_article(goal, observations):
     """Navigation hint: loaded article text lacks an explanatory clinical passage.
 
@@ -189,6 +211,8 @@ def missing_clinical_article(goal, observations):
             continue
         seen_official = True
         source_url = result.get("final_url") or result.get("url") or ""
+        if _irrelevant_clinical_variant(goal, source_url):
+            continue
         # A vaccine side-effects page is not evidence about presentation of
         # the infection, even if both pages mention similar symptoms.
         if re.search(r"(?i)(?:^|/)(?:impfen|impfungen)(?:/|$)", urlsplit(source_url).path):
@@ -524,6 +548,8 @@ def choose_official_publisher_step(goal, observations):
             parsed = _safe_official_url(url, host)
             if parsed is None or url in fetched:
                 continue
+            if _irrelevant_clinical_variant(goal, url, link.get("title")):
+                continue
             name = " ".join((parsed.path.lower(),
                             str(link.get("title") or "").casefold(),
                             str(link.get("snippet") or "").casefold()))
@@ -659,7 +685,7 @@ def choose_official_publisher_step(goal, observations):
             # specific clinic FAQ by its subject, using an alternative actual
             # SearXNG engine. The resulting URL still has to be observed,
             # fetched and independently verified; no article path is guessed.
-            refined = f'!go "Krankheitsbild der {topics[0]}" RKI'
+            refined = f'!go "Krankheitsbild der {topics[0]}" RKI symptomatik'
         else:
             refined = f"{host} {' '.join(topics[:3])} krankheitsbild FAQ symptomatik"
         attempted = any(
