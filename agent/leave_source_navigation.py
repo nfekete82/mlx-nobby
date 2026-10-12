@@ -71,6 +71,36 @@ def choose_leave_explanation_step(goal, observations):
     if _explanatory_source_loaded(observations):
         return None
 
+    # The BMAS FAQ is long; the five-day annual-leave paragraph often lies
+    # beyond the first 18k-character HTML excerpt. Reread the SAME actual
+    # fetched URL once at its authentic topic heading, not a new source.
+    for item in reversed(observations or ()):
+        if not isinstance(item, dict) or item.get("action") != "fetch_url":
+            continue
+        result = item.get("result")
+        if (item.get("status") != "completed" or not isinstance(result, dict)
+                or result.get("ok") is not True):
+            continue
+        url = result.get("final_url") or result.get("url")
+        try:
+            parsed = urlsplit(url)
+        except (TypeError, ValueError):
+            continue
+        if (parsed.scheme != "https" or
+                parsed.hostname not in {"www.bmas.de", "bmas.de"}):
+            continue
+        if not any(
+            isinstance(attempt, dict) and attempt.get("action") == "fetch_url"
+            and attempt.get("query") == url
+            and "focus=" in str(attempt.get("instruction") or "")
+            for attempt in observations
+        ):
+            return {
+                "action": "fetch_url", "query": url,
+                "instruction": "focus=Wie verändert sich mein Urlaubsanspruch",
+                "reason": "Originalen Urlaubsanspruch-Abschnitt derselben amtlichen FAQ lesen",
+            }
+
     matches = []
     for item in observations or []:
         if not isinstance(item, dict) or item.get("action") != "search_web":
