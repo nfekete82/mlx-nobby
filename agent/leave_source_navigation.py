@@ -103,6 +103,63 @@ def choose_leave_explanation_step(goal, observations):
                 "reason": "Originalen Urlaubsanspruch-Abschnitt derselben amtlichen FAQ lesen",
             }
 
+    # If the search provider indexes only the ministry homepage, navigate
+    # its REAL same-host links towards employment law, part-time and FAQs.
+    # Stop after four different official BMAS pages to bound exploration.
+    fetched_urls = {
+        str(item.get("query") or "")
+        for item in observations or ()
+        if isinstance(item, dict) and item.get("action") == "fetch_url"
+    }
+    bmas_fetches = []
+    for item in observations or ():
+        if (not isinstance(item, dict) or item.get("action") != "fetch_url"
+                or item.get("status") != "completed"
+                or not isinstance(item.get("result"), dict)
+                or item["result"].get("ok") is not True):
+            continue
+        result = item["result"]
+        try:
+            source = urlsplit(result.get("final_url") or result.get("url"))
+        except (TypeError, ValueError):
+            continue
+        if source.scheme != "https" or source.hostname not in {"bmas.de", "www.bmas.de"}:
+            continue
+        bmas_fetches.append(result)
+    if bmas_fetches and len(bmas_fetches) < 4:
+        links = []
+        for page in bmas_fetches:
+            origin = urlsplit(page.get("final_url") or page.get("url"))
+            for link in page.get("page_links") or ():
+                if not isinstance(link, dict):
+                    continue
+                url = link.get("url")
+                try:
+                    target = urlsplit(url)
+                except (TypeError, ValueError):
+                    continue
+                if (target.scheme != "https" or target.hostname != origin.hostname
+                        or target.username or target.password
+                        or target.port not in {None, 443}
+                        or url in fetched_urls):
+                    continue
+                path, title = target.path.casefold(), str(link.get("title") or "").casefold()
+                hint = path + " " + title
+                if not re.search(r"urlaub|arbeitsrecht|teilzeit|brueckenteilzeit|brückenteilzeit", hint):
+                    continue
+                score = (100 * bool("faq-brueckenteilzeit" in path)
+                         + 60 * bool("fragen-und-antworten" in path)
+                         + 40 * bool("teilzeit" in path)
+                         + 20 * bool("arbeitsrecht" in path)
+                         + 5 * bool("urlaub" in hint))
+                links.append((score, url))
+        if links:
+            _, selected = max(links, key=lambda item: item[0])
+            return {
+                "action": "fetch_url", "query": selected,
+                "reason": "Auf echter BMAS-Seite verlinkte Arbeitsrechts-/Urlaubs-FAQ prüfen",
+            }
+
     matches = []
     for item in observations or []:
         if not isinstance(item, dict) or item.get("action") != "search_web":
@@ -162,6 +219,31 @@ def choose_leave_explanation_step(goal, observations):
             "action": "search_web", "query": _QUERY,
             "reason": "Amtliche Erklärung zu fünf Arbeitstagen statt sechs Werktagen suchen",
         }
+    # The publisher itself was found, but the search index omitted deep FAQs.
+    # Enter its observed homepage and follow real links; never synthesize the
+    # ministerial FAQ path. Do not open the homepage more than once.
+    for item in observations or ():
+        if (not isinstance(item, dict) or item.get("action") != "search_web"
+                or item.get("status") != "completed"
+                or not isinstance(item.get("result"), dict)):
+            continue
+        for hit in item["result"].get("results") or ():
+            if not isinstance(hit, dict):
+                continue
+            url = hit.get("url")
+            try:
+                parsed = urlsplit(url)
+            except (TypeError, ValueError):
+                continue
+            if (parsed.scheme == "https"
+                    and parsed.hostname in {"bmas.de", "www.bmas.de"}
+                    and parsed.path.casefold() in {
+                        "/de/startseite/start.html", "/en/home/home.html",
+                    } and url not in fetched_urls):
+                return {
+                    "action": "fetch_url", "query": url,
+                    "reason": "Gefundene amtliche BMAS-Startseite als Navigationsquelle öffnen",
+                }
     return None
 
 
