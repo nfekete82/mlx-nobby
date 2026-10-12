@@ -1370,6 +1370,35 @@ class AgentRuntime:
 
             # -------------------------------------------------
             # Research search-loop guard
+            # Duplicate searches cannot improve evidence: the exact same
+            # provider query already returned its known result. This guard
+            # applies to diagnostic research too, including deterministic
+            # publisher follow-ups that bypass the orchestrator's guard.
+            if (mode in {"diagnostic", "research"}
+                    and action in {"search_web", "web_search"} and query
+                    and any(
+                        isinstance(previous, dict)
+                        and previous.get("action") in {"search_web", "web_search"}
+                        and previous.get("status") == "completed"
+                        and " ".join(str(previous.get("query") or "").split()).casefold()
+                            == " ".join(query.split()).casefold()
+                        for previous in observations
+                    )):
+                observations.append({
+                    "step": step, "action": "research_duplicate_search_guard",
+                    "status": "rejected", "blocked_query": query,
+                    "reason": "Diese identische Recherche wurde bereits ausgeführt; keine erneute Suche.",
+                })
+                if self.hooks.agent_evidence_answer:
+                    answer = self._model_hook(
+                        self.hooks.agent_evidence_answer, goal, observations,
+                    )
+                    publish("completed")
+                    return {"status": "completed", "goal": goal,
+                            "steps": observations, "answer": answer}
+                publish("running", observations[-1])
+                continue
+
             # -------------------------------------------------
             # Research should not consume its entire step budget on new search
             # variations when concrete results already exist. After three web
