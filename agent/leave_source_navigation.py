@@ -61,6 +61,7 @@ def _explanatory_source_loaded(observations):
 
 
 _QUERY = 'bmas.de Brückenteilzeit Urlaubsanspruch Mindesturlaub Fünf-Tage-Woche'
+_FAQ_HEADING_QUERY = 'bmas.de "Wie verändert sich mein Urlaubsanspruch" Brückenteilzeit'
 
 
 def choose_leave_explanation_step(goal, observations):
@@ -102,6 +103,23 @@ def choose_leave_explanation_step(goal, observations):
                 "instruction": "focus=Wie verändert sich mein Urlaubsanspruch",
                 "reason": "Originalen Urlaubsanspruch-Abschnitt derselben amtlichen FAQ lesen",
             }
+
+    # A search provider can return only BMAS homepages for the generic
+    # workweek query. Ask for an exact publisher FAQ heading once before
+    # visiting further generic navigation pages. The title is a navigation
+    # hint; only the fetched official article can establish the actual days.
+    search_queries = {
+        " ".join(str(item.get("query") or "").casefold().split())
+        for item in observations or ()
+        if isinstance(item, dict) and item.get("action") == "search_web"
+        and item.get("status") == "completed"
+    }
+    if (_QUERY.casefold() in search_queries
+            and _FAQ_HEADING_QUERY.casefold() not in search_queries):
+        return {
+            "action": "search_web", "query": _FAQ_HEADING_QUERY,
+            "reason": "Amtliche FAQ anhand der tatsächlich veröffentlichten Abschnittsüberschrift suchen",
+        }
 
     # If the search provider indexes only the ministry homepage, navigate
     # its REAL same-host links towards employment law, part-time and FAQs.
