@@ -181,3 +181,34 @@ def test_full_statute_outranks_dir_and_too_short_paragraph():
     })
     chosen = choose_leave_official_discovery_step(GOAL, [found])
     assert chosen["query"] == full
+
+
+
+def test_bmas_faq_uses_one_source_exact_leave_heading_focus():
+    from agent.leave_source_navigation import choose_leave_explanation_step
+    observations = [
+        fetched(LAW, "§ 3 BUrlG: Der Urlaub beträgt 24 Werktage. " * 12),
+        fetched(BMAS, "Teilzeit: generelle Hinweise und Anspruchsvoraussetzungen. " * 40),
+    ]
+    action = choose_leave_explanation_step(GOAL, observations)
+    assert action == {
+        "action": "fetch_url", "query": BMAS,
+        "instruction": "focus=Wie verändert sich mein Urlaubsanspruch",
+        "reason": "Originalen Urlaubsanspruch-Abschnitt derselben amtlichen FAQ lesen",
+    }
+    # A real failed focused fetch does not cause an identical retry.
+    observations.append({
+        "action": "fetch_url", "status": "completed", "query": BMAS,
+        "instruction": action["instruction"],
+        "result": {"ok": False, "url": BMAS, "error": "focus_not_found"},
+    })
+    next_step = choose_leave_explanation_step(GOAL, observations)
+    assert next_step is None
+
+
+def test_bmas_full_fact_avoids_unneeded_focus():
+    observations = [
+        fetched(LAW),
+        fetched(BMAS, "Bei einer 5-Tage-Woche sind 20 Arbeitstage Mindesturlaub. " * 12),
+    ]
+    assert choose_leave_explanation_step(GOAL, observations) is None
