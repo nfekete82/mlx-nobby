@@ -49,7 +49,12 @@ def _explanatory_source_loaded(observations):
             continue
         if (parsed.scheme == "https" and parsed.hostname in
                 {"www.bmas.de", "bmas.de"}):
-            return True  # Let the normal verifier judge its actual contents.
+            text = str(result.get("text") or "")
+            # Completeness hint, not independent proof. The model must still
+            # link the statement to these exact source passage IDs.
+            if (_FIVE_DAY.search(text) and
+                    re.search(r"(?i)\b20\s+arbeitstagen?\b", text)):
+                return True
     return False
 
 
