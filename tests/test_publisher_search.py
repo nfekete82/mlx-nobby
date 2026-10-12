@@ -24,6 +24,24 @@ def test_bpb_query_uses_specialized_engine_and_strips_question_boilerplate():
     assert provider_query("Mauerfall Berliner Mauer") == "Mauerfall Berliner Mauer"
 
 
+def test_publisher_alias_punctuation_and_spoofed_domains():
+    assert provider_query("Wann war der Mauerfall? Laut bpb.de.") == (
+        "!bpb Mauerfall"
+    )
+    assert provider_query("Mauerfall: Bundeszentrale für politische Bildung.") == (
+        "!bpb Mauerfall"
+    )
+    assert provider_query("Mauerfall (Bundeszentrale fuer politische Bildung).") == (
+        "!bpb Mauerfall"
+    )
+    for spoof in ("bpb.de.evil.example", "site:bpb.de.evil.example"):
+        question = f"Mauerfall {spoof}"
+        assert provider_query(question) == question
+    assert provider_query("Suche auf theaterbpb.de nach Mauerfall") == (
+        "Suche auf theaterbpb.de nach Mauerfall"
+    )
+
+
 def test_manual_engine_selection_keeps_source_terms():
     assert provider_query("site:nasa.gov Apollo 11", engine="google") == (
         "!go site:nasa.gov Apollo 11"
