@@ -29,7 +29,9 @@ def _official_law_source_loaded(observations):
             continue
         if (parsed.scheme == "https" and parsed.hostname in
                 {"www.gesetze-im-internet.de", "gesetze-im-internet.de"}
-                and parsed.path.startswith("/burlg/")):
+                and parsed.path.startswith("/burlg/")
+                and re.search(r"(?i)\b24\s+werktagen?\b",
+                              str(result.get("text") or ""))):
             return True
     return False
 
@@ -58,7 +60,7 @@ def _explanatory_source_loaded(observations):
     return False
 
 
-_QUERY = '!go bmas.de Brückenteilzeit Urlaubsanspruch FAQ Mindesturlaub'
+_QUERY = 'bmas.de Brückenteilzeit Urlaubsanspruch Mindesturlaub Fünf-Tage-Woche'
 
 
 def choose_leave_explanation_step(goal, observations):
@@ -157,6 +159,41 @@ def choose_leave_official_discovery_step(goal, observations):
         for step in observations or ()
         if isinstance(step, dict) and step.get("action") == "fetch_url"
     }
+    # A publisher table of contents is NOT the law text. Follow its
+    # authentic link to the complete HTML statute before trying a
+    # different search engine. Never synthesize a law document URL.
+    for step in observations or ():
+        if (not isinstance(step, dict) or step.get("action") != "fetch_url"
+                or step.get("status") != "completed"
+                or not isinstance(step.get("result"), dict)
+                or step["result"].get("ok") is not True):
+            continue
+        page = step["result"]
+        try:
+            origin = urlsplit(page.get("final_url") or page.get("url"))
+        except (ValueError, TypeError):
+            continue
+        if (origin.scheme != "https" or origin.hostname not in
+                {"www.gesetze-im-internet.de", "gesetze-im-internet.de"}
+                or origin.path.rstrip("/") != "/burlg"):
+            continue
+        for link in page.get("page_links") or ():
+            if not isinstance(link, dict):
+                continue
+            destination = link.get("url")
+            try:
+                target = urlsplit(destination)
+            except (ValueError, TypeError):
+                continue
+            if (target.scheme != "https" or target.hostname != origin.hostname
+                    or target.username or target.password
+                    or target.port not in {None, 443} or destination in fetched):
+                continue
+            if re.fullmatch(r"(?i)/burlg/BJNR\d+\.html", target.path):
+                return {
+                    "action": "fetch_url", "query": destination,
+                    "reason": "Aus verifiziertem Gesetzes-Inhaltsverzeichnis verlinkte Gesamtausgabe öffnen",
+                }
     discovered = []
     for step in observations or ():
         if (not isinstance(step, dict) or step.get("action") != "search_web"
@@ -184,7 +221,18 @@ def choose_leave_official_discovery_step(goal, observations):
                  "urlaub" in str(hit.get("title") or "").casefold())
             )
             if law or faq:
-                discovered.append((2 if law else 1, url))
+                if law:
+                    # The full HTML statute carries the actual paragraphs.
+                    # A directory or a tiny §3 fragment is weaker evidence.
+                    if re.fullmatch(r"(?i)/burlg/BJNR\d+\.html", path):
+                        score = 100
+                    elif re.fullmatch(r"(?i)/burlg/__\d+\.html", path):
+                        score = 20
+                    else:
+                        score = 10
+                else:
+                    score = 5
+                discovered.append((score, url))
     if discovered:
         _, selected = max(discovered, key=lambda entry: entry[0])
         return {
