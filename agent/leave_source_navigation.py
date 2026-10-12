@@ -58,7 +58,7 @@ def _explanatory_source_loaded(observations):
     return False
 
 
-_QUERY = '!go site:bmas.de "5-Tage-Woche" "Mindesturlaub" Arbeitstage'
+_QUERY = '!go bmas.de Brückenteilzeit Urlaubsanspruch FAQ Mindesturlaub'
 
 
 def choose_leave_explanation_step(goal, observations):
@@ -108,6 +108,7 @@ def choose_leave_explanation_step(goal, observations):
             score = 10 * bool(re.search(r"urlaub|urlaubsanspruch", topic))
             score += 25 * bool("teilzeit" in topic)
             score += 15 * bool("fragen-und-antworten" in path or "/faq-" in path)
+            score += 15 * bool("brückenteilzeit" in topic or "brueckenteilzeit" in topic)
             matches.append((score, url))
 
     if matches:
