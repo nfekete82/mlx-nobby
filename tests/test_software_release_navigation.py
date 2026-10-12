@@ -252,3 +252,38 @@ def test_python_release_search_no_invented_url_no_stale_fallback():
         }]},
     }
     assert python_release_search_step(GOAL, [first, failed_focus, done_search]) is None
+
+
+
+def test_alternative_official_python_index_replaces_generic_page_in_model_evidence():
+    old = page(text="Generic downloads and ancient archived releases. " * 30)
+    macos = "https://www.python.org/downloads/macos/"
+    official = {
+        "action": "fetch_url", "status": "completed",
+        "query": macos, "result": {
+            "ok": True, "url": macos,
+            "text": ("Latest Python 3 Release - Python 3.21.4\n"
+                     "Stable Releases\n"
+                     "Python 3.21.4 - Oct. 12, 2035\n") * 5,
+        },
+    }
+    originals = [old, official]
+    selected = evidence_focus_observations(GOAL, originals)
+    assert selected == [official]
+    assert originals == [old, official]
+    facts = build_evidence(selected, goal=GOAL).facts
+    assert facts
+    assert any("Python 3.21.4" in f.evidence_excerpt for f in facts)
+
+
+def test_unrelated_or_spoofed_alternate_index_never_suppresses_original_source():
+    old = page()
+    bogus = {
+        "action": "fetch_url", "status": "completed",
+        "query": "https://www.python.org.evil.test/downloads/macos/",
+        "result": {
+            "ok": True, "url": "https://www.python.org.evil.test/downloads/macos/",
+            "text": "Python 3.99.9 " * 10,
+        },
+    }
+    assert evidence_focus_observations(GOAL, [old, bogus]) == [old, bogus]
