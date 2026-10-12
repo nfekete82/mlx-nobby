@@ -702,19 +702,6 @@ def choose_official_publisher_step(goal, observations):
                 "action": "search_web", "query": refined,
                 "reason": "Gezielt nach amtlicher klinischer Fachseite statt Institutionen-Homepage suchen",
             }
-    searches = [o for o in observations if isinstance(o, dict)
-                and o.get("action") == "search_web"
-                and o.get("status") == "completed"]
-    if len(searches) == 1 and not loaded:
-        # A second query drops quoted/site-scoped domains. The search engine
-        # may ignore or overconstrain those tokens; use topical synonyms.
-        alternates = [term for term in terms
-                      if term not in {"bit", "bits", "address", "adressen", "symptoms"}]
-        return {
-            "action": "search_web",
-            "query": " ".join((alternates or terms)[:5]) + " " + host,
-            "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
-        }
     # After an official source URL fails (e.g. HTTP 404), refine the
     # publisher-specific topic once instead of trusting dead search hits.
     # The refinement is ONLY a search query; fetched URLs must still be
@@ -768,6 +755,19 @@ def choose_official_publisher_step(goal, observations):
                     "reason": "Nach veralteter amtlicher 404-Seite neue RKI-FAQ suchen",
                 }
 
+    searches = [o for o in observations if isinstance(o, dict)
+                and o.get("action") == "search_web"
+                and o.get("status") == "completed"]
+    if len(searches) == 1 and not loaded:
+        # A second query drops quoted/site-scoped domains. The search engine
+        # may ignore or overconstrain those tokens; use topical synonyms.
+        alternates = [term for term in terms
+                      if term not in {"bit", "bits", "address", "adressen", "symptoms"}]
+        return {
+            "action": "search_web",
+            "query": " ".join((alternates or terms)[:5]) + " " + host,
+            "reason": "Einmalige breitere Primärquellensuche mit Fachbegriffen",
+        }
     if not loaded and official_home_fallback_host(goal, observations):
         # Search pollution may justify ONE root-only discovery after two
         # genuinely distinct searches. Replayed identical observations do
