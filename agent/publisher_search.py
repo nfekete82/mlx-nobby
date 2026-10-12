@@ -16,7 +16,7 @@ _PUBLISHER = re.compile(
 _STOP = frozenset(
     "an am bei bitte das dem den der des die einer ein eine einen für im "
     "ist laut mit nach nenne nennen quelle quellen und von wann was welche "
-    "welchen welcher welchem welches wer wie wird wurde wurden zum zur datum"
+    "welchen welcher welchem welches wer wie wird wurde wurden war zum zur datum"
     .split()
 )
 
