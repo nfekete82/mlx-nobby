@@ -119,8 +119,7 @@ def python_source_linked_release_step(goal, observations):
                 continue
             if (parsed.scheme != "https" or parsed.hostname != origin.hostname or
                     parsed.username is not None or parsed.password is not None or
-                    parsed.port not in {None, 443} or
-                    destination in attempted_urls):
+                    parsed.port not in {None, 443}):
                 continue
             matched = re.fullmatch(
                 r"/downloads/release/python-(3)(\d{1,2})(\d{1,2})/?",
@@ -140,7 +139,12 @@ def python_source_linked_release_step(goal, observations):
             links.append(((major, minor), destination))
     if not links:
         return None
+    # Choose the newest *observed* release first, including already attempted
+    # links. If that link was fetched (successfully OR unsuccessfully), stop.
+    # Do not fall back to an older release and mislabel it the latest.
     _version, selected = max(links, key=lambda p: p[0])
+    if selected in attempted_urls:
+        return None
     return {
         "action": "fetch_url", "query": selected,
         "reason": "Tatsächlich verlinkten offiziellen Python-Releaseartikel nach unlesbarer Übersicht prüfen",
