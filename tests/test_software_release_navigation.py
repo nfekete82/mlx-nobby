@@ -423,3 +423,33 @@ def test_official_docs_result_refines_release_search_without_asserting_fact():
         "query": fallback["query"], "result": {"results": []},
     })
     assert python_release_search_step(GOAL, obs) is None
+
+
+
+def test_python_identity_mismatch_researches_real_official_release_candidates():
+    from agent.software_release_navigation import python_release_search_step
+
+    observed_docs = {
+        "action": "search_web", "status": "completed",
+        "query": "python.org latest stable Python 3 release 2026",
+        "result": {"results": [
+            {"url": "https://docs.python.org/3.15/",
+             "title": "Python 3.15.0 documentation"},
+        ]},
+    }
+    wrong_body = {
+        "action": "fetch_url", "status": "completed", "query": URL,
+        "result": {
+            "ok": False, "url": URL,
+            "retrieval_status": "publisher_identity_mismatch",
+            "error": "Python-Downloadseite ohne erkennbaren Publisher-Inhalt",
+        },
+    }
+    step = python_release_search_step(GOAL, [observed_docs, wrong_body])
+    assert step["action"] == "search_web"
+    assert "Python 3.15.0" in step["query"]
+    assert "https" not in step["query"]
+
+    # The wrong host cannot trigger this publisher-specific recovery.
+    wrong_body["result"]["url"] = "https://www.python.org.evil.example/downloads/"
+    assert python_release_search_step(GOAL, [observed_docs, wrong_body]) is None
