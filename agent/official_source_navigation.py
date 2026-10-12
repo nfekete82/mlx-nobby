@@ -374,7 +374,10 @@ def choose_official_publisher_step(goal, observations):
             clinical_topics = [w for w in terms if w not in {
                 "symptome", "symptom", "symptoms", "krankheitsbild",
             }]
-            query = f"!go site:{host} {' '.join(clinical_topics[:2])} Krankheitsbild FAQ Symptome"
+            # The explicit site: operator overconstrains providers and can
+            # be ignored or degrade results; the publisher hostname remains
+            # a search hint. Source URLs are independently host-validated.
+            query = f"!go {host} {' '.join(clinical_topics[:2])} Krankheitsbild FAQ Symptome"
         return {
             "action": "search_web",
             "query": query,
