@@ -42,6 +42,16 @@ def request_searxng(primary_url, params):
     Endpoints are trusted process configuration, never supplied by web content.
     Up to two explicit secondary instances may follow the primary instance.
     """
+    # Use the dedicated official publisher engine when the query explicitly
+    # names that publisher. SearXNG ignores the unofficial engines= parameter;
+    # its documented !engine syntax is part of q instead.
+    from agent.publisher_search import provider_query
+    pairs = urllib.parse.parse_qsl(params, keep_blank_values=True)
+    rewritten = []
+    for key, value in pairs:
+        rewritten.append((key, provider_query(value) if key == "q" else value))
+    params = urllib.parse.urlencode(rewritten)
+
     endpoints = [primary_url]
     endpoints.extend(os.environ.get("SEARXNG_FALLBACK_URLS", "").split(","))
     attempts, last_payload, seen = [], None, set()
