@@ -175,6 +175,23 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
     clauses = re.split(r'[;.!?\n]+|\b(?:und|and)\b', text)
     media_context = "image" if has_image else None
     text_intent = None
+    # Image attachments never authorize editing by themselves. Explicit
+    # composition instructions do; comparisons/questions stay vision/chat.
+    composition = bool(
+        has_image
+        and re.search(
+            r"\\b(?:setze|setz|setzen|platziere|platzier|kombiniere|kombinier|"
+            r"füge|fuege|vereine|vereinige|stelle|stell|bring|"
+            r"combine|compose|merge|place|put|join)\\b",
+            text,
+        )
+        and re.search(
+            r"\\b(?:beide|zusammen|gemeinsam|nebeneinander|personen|"
+            r"bilder|fotos|bild|foto|szene|parkbank|"
+            r"both|together|people|images|photos|picture|scene)\\b",
+            text,
+        )
+    )
     topics = set(OBJECTS) | TEXT_OBJECTS | {"ltx", "porträtfotografie", "portraitfotografie", "photography"}
     mode = reference_mode(text)
     execution = None
@@ -236,6 +253,8 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
                     execution = "video_animate"
             elif has_image and set(words[command + 1:]) & MODIFIERS:
                 execution = "image_edit"
+    if composition and not negated and not text_intent and execution is None:
+        execution = "image_edit"
     if execution and not negated:
         return RoutingDecision(execution, TARGETS[execution], True, media_context,
                                1.0, "Explicit command bound to media output",
