@@ -160,7 +160,7 @@ class RoutingDecision:
         }
 
 
-def decide_media_intent(prompt, *, has_image=False, action=None, reference_context=None):
+def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, reference_context=None):
     """Decide from the current instruction, never from conversation history.
 
     Explicit UI actions authorize bare media descriptions. They cannot override
@@ -189,6 +189,19 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
             r"\b(?:beide|zusammen|gemeinsam|nebeneinander|personen|"
             r"bilder|fotos|bild|foto|szene|parkbank|"
             r"both|together|people|images|photos|picture|scene)\b",
+            text,
+        )
+    )
+    # An explicit instruction that refers to both supplied images is an edit,
+    # even when the user starts the sentence with "create a picture".
+    # Attachment count alone must never authorize rendering.
+    compose_supplied_images = bool(
+        has_image
+        and type(image_count) is int
+        and image_count >= 2
+        and re.search(
+            r"\b(?:beide(?:n|r|s)?|both|zusammen|gemeinsam|together|"
+            r"hochgeladenen?\s+(?:bilder|fotos)|supplied\s+(?:images|photos))\b",
             text,
         )
     )
@@ -254,6 +267,8 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
             elif has_image and set(words[command + 1:]) & MODIFIERS:
                 execution = "image_edit"
     if composition and not negated and not text_intent and execution is None:
+        execution = "image_edit"
+    if compose_supplied_images and not negated and not text_intent and execution == "image_generate":
         execution = "image_edit"
     if execution and not negated:
         return RoutingDecision(execution, TARGETS[execution], True, media_context,
