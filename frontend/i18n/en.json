@@ -1017,7 +1017,11 @@
   "attachments.reference_limit": "Up to ten reference images are supported.",
   "attachments.edit_options": "Image editing · advanced options",
   "attachments.edit_model": "Editing model",
-  "attachments.edit_auto": "Automatic · locally available models",
+  "attachments.edit_auto": "Automatic",
+  "attachments.edit_more": "More options",
+  "attachments.edit_unavailable": "unavailable",
+  "attachments.edit_negative_placeholder": "Optional: what should be excluded from the image?",
+  "attachments.edit_mask_short": "Mask (optional)",
   "attachments.edit_seed": "Seed (empty = random)",
   "attachments.edit_steps": "Steps",
   "attachments.edit_guidance": "Guidance (negative prompts need > 1)",
@@ -1029,6 +1033,6 @@
   "attachments.edit_enhance_prompt": "Improve prompt with built-in vision model",
   "attachments.edit_verify": "Verify result with built-in vision model",
   "attachments.edit_mask": "Mask (white = repaint, black = preserve)",
-  "attachments.edit_mask_ready": "Image editing · mask uploaded",
+  "attachments.edit_mask_ready": "Mask uploaded",
   "attachments.edit_hint": "Advanced options require a compatible MFLUX model. Reference order follows the numbered thumbnails. Original images are preserved. Identity preservation is best effort."
 }
