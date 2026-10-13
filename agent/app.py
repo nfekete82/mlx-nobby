@@ -8133,10 +8133,14 @@ IMAGE_OPTION_KEYS = {
         "prompt", "negative_prompt", "model", "width", "height",
         "steps", "guidance", "seed", "auto_size",
     }),
-    "edit": frozenset({"prompt", "model", "steps", "guidance", "seed"}),
+    "edit": frozenset({"prompt", "model", "steps", "guidance", "seed", "negative_prompt",
+        "mask_path", "auto_mask", "strength", "use_kv_cache", "use_step_cache",
+        "step_cache_threshold", "enhance_prompt", "verify"}),
     "reference": frozenset({
         "prompt", "model", "steps", "guidance", "seed",
         "width", "height", "auto_size", "negative_prompt",
+        "mask_path", "auto_mask", "strength", "use_kv_cache", "use_step_cache",
+        "step_cache_threshold", "enhance_prompt", "verify",
     }),
 }
 
@@ -8167,13 +8171,21 @@ def _image_edit_payload(request):
     mode = (reference_mode(request.prompt) or request.reference_mode or context.get("reference_mode")) if is_reference else None
     reference_record = None
     if is_reference:
-        if context.get('image_count', 0) > 1 and not context.get('selected_reference'):
+        if context.get('image_count', 0) > 1 and not context.get('selected_reference') and not context.get('references'):
             raise HTTPException(422, 'Bitte wähle das Referenzbild aus.')
-        if not context.get('stored_path') and context.get('reference_source_job_id'):
+        if not context.get('stored_path') and not context.get('references') and context.get('reference_source_job_id'):
             reference_record = _image_reference_record(request)
-        if not context.get('stored_path') and reference_record is None and not context.get('artifact_id') and not request.active_artifact_id:
+        if not context.get('stored_path') and not context.get('references') and reference_record is None and not context.get('artifact_id') and not request.active_artifact_id:
             raise HTTPException(422, 'Für diese Anfrage wird ein Referenzbild benötigt.')
-    source = _image_source_path(request, reference_record=reference_record)
+    references = context.get('references')
+    if references is not None:
+        if not isinstance(references, list) or not 1 <= len(references) <= 10:
+            raise HTTPException(422, 'Ein bis zehn Referenzbilder erforderlich')
+        if not all(isinstance(item, dict) and isinstance(item.get('stored_path'), str) and item['stored_path'] for item in references):
+            raise HTTPException(422, 'Ungültige Referenzbilder')
+        source = Path(references[0]['stored_path'])
+    else:
+        source = _image_source_path(request, reference_record=reference_record)
 
     options = _validated_image_options(
         request.image_options, "reference" if is_reference else "edit"
@@ -8199,6 +8211,10 @@ def _image_edit_payload(request):
         payload["quality"] = request.quality
 
     payload.update(options)
+    if references:
+        payload['source_paths'] = [item['stored_path'] for item in references]
+    elif reference_record is not None and reference_record['canonical']['params'].get('source_paths'):
+        payload['source_paths'] = reference_record['canonical']['params']['source_paths']
     if is_reference:
         mode = mode or 'same_identity'
         reference_artifact_id = (context.get('reference_artifact_id') or context.get('file_id')
@@ -8210,6 +8226,10 @@ def _image_edit_payload(request):
                        reference_artifact_id=reference_artifact_id,
                        original_prompt=request.prompt)
         payload['prompt'] = reference_instruction(mode, payload['prompt'])
+        if references and len(references) > 1:
+            payload['prompt'] = (f'Use all {len(references)} reference images in the supplied numbered order. '
+                "Preserve each subject's recognizable features and clothing as far as possible unless the instruction asks to change them. "
+                + payload['prompt'])
     return payload
 
 
@@ -8742,7 +8762,7 @@ def _image_artifact(result, action):
     for key in ("original_prompt", "negative_prompt", "resolved_model", "requested_model",
                 "auto_size", "quality_profile", "requested_width", "requested_height",
                 "variant_group_id", "variant_index", "variant_count", "source_generation_job_id", "variants_available",
-                "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id"):
+                "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id", "reference_count"):
         if key in result:
             artifact[key] = result[key]
     if action in {"image_edit", "image_upscale"} and result.get("semantic_operation") != "reference_generate":
@@ -8861,6 +8881,7 @@ def _image_job_tool_result(job):
     public_job = deepcopy(job)
     if (public_job.get("result") or {}).get("semantic_operation") == "reference_generate":
         public_job["result"].pop("source_path", None)
+        public_job["result"].pop("source_paths", None)
     data = {"job": public_job}
     artifacts = []
 
@@ -11393,6 +11414,23 @@ class RuntimeChatRequest(BaseModel):
     stream: bool = True
     trace_id: str | None = None
     context_sources: dict | None = None
+    auto_route: bool = False
+
+
+def _runtime_chat_role(request):
+    from agent.intelligent_routing import select_chat_role
+    if not request.auto_route:
+        return 'chat'
+    roles = load_model_roles()
+    available = set()
+    from agent.model_scout_routes import complete_local_model
+    models = load_models()
+    for role in ('coding', 'agent'):
+        alias = roles.get(role, 'auto')
+        selected = next((model for model in models if model.get('alias') == alias), None)
+        if selected and complete_local_model(selected) is not None:
+            available.add(role)
+    return select_chat_role(request.messages, roles, available, enabled=True)
 
 
 @app.post("/api/runtime/chat")
@@ -11404,11 +11442,12 @@ def runtime_chat(request: RuntimeChatRequest):
     finishes completely.
     """
 
+    selected_role = _runtime_chat_role(request)
     trace_id = observability.ensure_trace_id(request.trace_id)
     call_metrics = observability.ModelCallMetrics(
         trace_id=trace_id,
         purpose="chat.runtime",
-        role="chat",
+        role=selected_role,
         messages=request.messages,
         context_sources=request.context_sources,
     )
@@ -11420,7 +11459,7 @@ def runtime_chat(request: RuntimeChatRequest):
         )
 
         try:
-            runtime = ensure_model_for_role("chat")
+            runtime = ensure_model_for_role(selected_role)
             role = runtime["resolved"]
             model = role.get("repo")
         except Exception as exc:
@@ -11439,7 +11478,7 @@ def runtime_chat(request: RuntimeChatRequest):
 
         call_metrics.set_model(
             model=model,
-            role="chat",
+            role=selected_role,
             alias=role.get("alias"),
             backend=role.get("backend"),
         )
@@ -11564,6 +11603,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
     The HTTP generator itself does not hold a runtime lock.
     """
 
+    selected_role = _runtime_chat_role(request)
     trace_id = observability.ensure_trace_id(request.trace_id)
     event_queue = queue.Queue(maxsize=64)
     sentinel = object()
@@ -11599,7 +11639,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
         call_metrics = observability.ModelCallMetrics(
             trace_id=trace_id,
             purpose="chat.stream",
-            role="chat",
+            role=selected_role,
             messages=request.messages,
             context_sources=request.context_sources,
         )
@@ -11619,7 +11659,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
-                runtime = ensure_model_for_role("chat")
+                runtime = ensure_model_for_role(selected_role)
                 role = runtime["resolved"]
                 model = role.get("repo")
 
@@ -11634,7 +11674,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
 
                 call_metrics.set_model(
                     model=model,
-                    role="chat",
+                    role=selected_role,
                     alias=role.get("alias"),
                     backend=role.get("backend"),
                 )

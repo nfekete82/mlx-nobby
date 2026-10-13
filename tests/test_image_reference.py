@@ -404,3 +404,44 @@ def test_resolver_skips_unavailable_edit_model(runtime, monkeypatch):
     result = client.post('/api/chat/actions', json=request(source)).json()
     assert wait(native, result['data']['job']['id'])['status'] == 'completed'
     assert calls[0][0]['id'] == 'local-edit'
+
+
+@pytest.mark.parametrize('count', [2, 10])
+def test_multi_reference_action_job_and_private_followup(runtime, monkeypatch, count):
+    native, client, source, calls = runtime
+    sources = [source]
+    for index in range(1, count):
+        path = source.parent / f'person-{index}.png'
+        Image.new('RGB', (256,256), (index,0,0)).save(path)
+        sources.append(path)
+    selected = service.registry.load_registry()['models'][1]
+    selected = {**selected, 'model_family':'qwen-image21-edit'}
+    monkeypatch.setattr(service, '_edit_model', lambda *a, **kw: selected)
+    working_paths = []
+    def render(model, params, output, **kw):
+        assert len(params['source_paths']) == count
+        assert all(Path(path).is_file() for path in params['source_paths'])
+        working_paths.extend(params['source_paths'])
+        calls.append(copy.deepcopy(params))
+        Image.new('RGB', (params['width'], params['height']), 'green').save(output)
+    monkeypatch.setattr(service, 'run_provider', render)
+    payload = request(source)
+    payload['file_context'].update(image_count=count, references=[
+        {'kind':'image', 'stored_path':str(path), 'file_id':f'person-{index}'} for index,path in enumerate(sources)])
+    response = client.post('/api/chat/actions', json=payload)
+    assert response.status_code == 200
+    first = wait(native, response.json()['data']['job']['id'])
+    assert first['status'] == 'completed', first.get('error')
+    public = client.get('/api/image/jobs/' + first['id']).json()
+    assert public['artifacts'][0]['reference_count'] == count
+    assert 'source_paths' not in public['data']['job']['result']
+    service._jobs.clear()
+    followup = request(source, prompt='Jetzt draußen im Regen.', file_context={
+        'kind':'image','reference_source_job_id':first['id'],'reference_mode':'same_identity'})
+    result = client.post('/api/chat/actions', json=followup)
+    assert result.status_code == 200
+    second = wait(native, result.json()['data']['job']['id'])
+    assert second['status'] == 'completed'
+    assert second['result']['source_paths'] == [str(path) for path in sources]
+    assert len(calls) == 2
+    assert all(not Path(path).exists() for path in working_paths)

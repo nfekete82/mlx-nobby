@@ -147,6 +147,7 @@ def _public(job):
 
     if (value.get("result") or {}).get("semantic_operation") == "reference_generate":
         value["result"].pop("source_path", None)
+        value["result"].pop("source_paths", None)
 
     # ``dispatching`` is an internal queue hand-off state between the Agent
     # and the native media service. Older clients do not know that state and

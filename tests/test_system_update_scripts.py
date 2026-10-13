@@ -15,15 +15,16 @@ def test_ltx_setup_supports_parallel_q4_q8_on_0160():
     assert "${MODEL_VARIANT^^}" not in source
 
 
-def test_mflux_setup_and_manifest_are_pinned_to_020():
+def test_mflux_setup_and_manifest_are_pinned_to_022():
     source = (ROOT / "scripts/setup-mflux-mlx").read_text(encoding="utf-8")
     manifest = (ROOT / "requirements/mflux.txt").read_text(encoding="utf-8")
 
-    assert 'MFLUX_VERSION="${MFLUX_VERSION:-0.20.0}"' in source
+    assert 'MFLUX_VERSION="${MFLUX_VERSION:-0.22.0}"' in source
     assert 'uv tool install --force "mflux==$MFLUX_VERSION"' in source
     assert "mflux-generate-qwen-2.1" in source
+    assert "mflux-generate-qwen-2.1-edit" in source
     assert "mflux-generate-boogu" in source
     assert "mflux-upscale-seedvr2" in source
     assert "mflux-generate-krea2" not in source
     assert "date -Iseconds" not in source
-    assert "mflux==0.20.0" in manifest
+    assert "mflux==0.22.0" in manifest

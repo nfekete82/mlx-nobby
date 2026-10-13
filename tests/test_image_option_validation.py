@@ -43,7 +43,7 @@ def test_image_option_contract_accepts_supported_fields(operation, valid):
     "operation,field",
     [
         ("generate", "format"),
-        ("edit", "negative_prompt"),
+        ("edit", "unknown_edit_parameter"),
         ("edit", "width"),
         ("edit", "auto_size"),
         ("reference", "format"),
@@ -93,10 +93,10 @@ def test_plain_edit_requires_edit_capable_options_not_session_negative(monkeypat
     assert payload["source_path"] == "/tmp/source.png"
 
     request.image_options["negative_prompt"] = "blurry"
-    with pytest.raises(HTTPException) as exc:
-        agent._image_edit_payload(request)
-    assert "Bildbearbeitung" in exc.value.detail
-    assert "negative_prompt" in exc.value.detail
+    request.image_options["guidance"] = 2
+    payload = agent._image_edit_payload(request)
+    assert payload["negative_prompt"] == "blurry"
+    assert payload["guidance"] == 2
 
 
 def test_reference_generation_accepts_negative_prompt_and_dimensions(monkeypatch):
