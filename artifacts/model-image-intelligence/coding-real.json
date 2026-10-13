@@ -1,0 +1,312 @@
+{
+  "schema": 1,
+  "suite": "mlx-nobby-coding-v1",
+  "real_inference": true,
+  "created_at": "2026-10-13T09:49:04.494290+00:00",
+  "runs": [
+    {
+      "suite": "mlx-nobby-coding-v1",
+      "runtime_model_id": "/Users/norbertfekete/Models/Qwen3.8-27B-Abliterated-MLX-4bit",
+      "performance": {
+        "ttft_seconds": 0.146,
+        "effective_prefill_tps": 321.7,
+        "generation_tps": 30.2,
+        "prompt_tokens": 47,
+        "completion_tokens": 128,
+        "token_count_method": "stream_usage",
+        "runtime_rss_gb": 0.25,
+        "sampled_peak_rss_gb": 0.25,
+        "peak_unified_memory_gb": null,
+        "memory_method": "RSS sampled between requests; not a Metal allocation peak"
+      },
+      "quality": {
+        "passed": 8,
+        "total": 10,
+        "score": 80.0,
+        "categories": {
+          "php": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "javascript": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "python": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "comprehension": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "refactoring": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "bugfix": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "tool_calling": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "agent_workflow": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "structured_output": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "unsupported_claims": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          }
+        }
+      },
+      "quality_tasks": [
+        {
+          "id": "php",
+          "category": "php",
+          "passed": true,
+          "answer": "{\"x\":1,\"y\":3}",
+          "elapsed": 0.491
+        },
+        {
+          "id": "javascript",
+          "category": "javascript",
+          "passed": true,
+          "answer": "{\"result\": [4, 6]}",
+          "elapsed": 0.473
+        },
+        {
+          "id": "python",
+          "category": "python",
+          "passed": false,
+          "answer": "{\"result\": [[0, 1, 0, 1, 0, 1]]}",
+          "elapsed": 0.892
+        },
+        {
+          "id": "comprehension",
+          "category": "comprehension",
+          "passed": true,
+          "answer": "{\"result\": [2, 1, 3]}",
+          "elapsed": 0.581
+        },
+        {
+          "id": "refactoring",
+          "category": "refactoring",
+          "passed": true,
+          "answer": "{\"expression\": \"sum(x*x for x in xs)\"}",
+          "elapsed": 0.606
+        },
+        {
+          "id": "bugfix",
+          "category": "bugfix",
+          "passed": true,
+          "answer": "{\"default\": null, \"initialize_if_none\": true}",
+          "elapsed": 0.571
+        },
+        {
+          "id": "tool_call",
+          "category": "tool_calling",
+          "passed": false,
+          "answer": "```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"src/main.py\"}}\n```",
+          "elapsed": 0.926
+        },
+        {
+          "id": "agent",
+          "category": "agent_workflow",
+          "passed": true,
+          "answer": "{\"steps\": [\"inspect\", \"patch\", \"test\"]}",
+          "elapsed": 0.545
+        },
+        {
+          "id": "structured",
+          "category": "structured_output",
+          "passed": true,
+          "answer": "{\"status\":\"ok\",\"count\":3,\"errors\":[]}",
+          "elapsed": 0.528
+        },
+        {
+          "id": "grounding",
+          "category": "unsupported_claims",
+          "passed": true,
+          "answer": "{\"tests_passed\": null, \"evidence_available\": false}",
+          "elapsed": 0.573
+        }
+      ],
+      "alias": "qwen38_20260927",
+      "run": 1,
+      "handoff_seconds": 0.0
+    },
+    {
+      "suite": "mlx-nobby-coding-v1",
+      "runtime_model_id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+      "performance": {
+        "ttft_seconds": 0.092,
+        "effective_prefill_tps": 524.0,
+        "generation_tps": 113.4,
+        "prompt_tokens": 48,
+        "completion_tokens": 128,
+        "token_count_method": "stream_usage",
+        "runtime_rss_gb": 14.49,
+        "sampled_peak_rss_gb": 14.49,
+        "peak_unified_memory_gb": null,
+        "memory_method": "RSS sampled between requests; not a Metal allocation peak"
+      },
+      "quality": {
+        "passed": 6,
+        "total": 10,
+        "score": 60.0,
+        "categories": {
+          "php": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "javascript": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "python": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "comprehension": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "refactoring": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "bugfix": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "tool_calling": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "agent_workflow": {
+            "passed": 0,
+            "total": 1,
+            "score": 0.0
+          },
+          "structured_output": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          },
+          "unsupported_claims": {
+            "passed": 1,
+            "total": 1,
+            "score": 100.0
+          }
+        }
+      },
+      "quality_tasks": [
+        {
+          "id": "php",
+          "category": "php",
+          "passed": false,
+          "answer": "```json\n{\"x\": 1, \"y\": 3}\n```",
+          "elapsed": 0.314
+        },
+        {
+          "id": "javascript",
+          "category": "javascript",
+          "passed": true,
+          "answer": "{\"result\": [4,6]}",
+          "elapsed": 0.233
+        },
+        {
+          "id": "python",
+          "category": "python",
+          "passed": false,
+          "answer": "```json\n{\"result\": [[0, 1], [0, 1], [0,public]}\n```",
+          "elapsed": 0.36
+        },
+        {
+          "id": "comprehension",
+          "category": "comprehension",
+          "passed": true,
+          "answer": "{\"result\": [2, 1, 3]}",
+          "elapsed": 0.282
+        },
+        {
+          "id": "refactoring",
+          "category": "refactoring",
+          "passed": true,
+          "answer": "{\"expression\": \"sum(x*x for x in xs)\"}",
+          "elapsed": 0.274
+        },
+        {
+          "id": "bugfix",
+          "category": "bugfix",
+          "passed": true,
+          "answer": "{\"default\": null, \"initialize_if_none\": true}",
+          "elapsed": 0.265
+        },
+        {
+          "id": "tool_call",
+          "category": "tool_calling",
+          "passed": false,
+          "answer": "{\"name\": \"read_file\", \"arguments\": {\"import os, sys, json, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re, re,",
+          "elapsed": 0.973
+        },
+        {
+          "id": "agent",
+          "category": "agent_workflow",
+          "passed": false,
+          "answer": "{\"steps\": [\"inspect\", \"test\", \"patch\"]}\n\nThe safe order is to first inspect the system to understand what needs to be addressed, then test the proposed changes in a controlled environment, and finally apply the patches to the production system. This approach minimizes risk and ensures that changes are properly validated before deployment.",
+          "elapsed": 0.691
+        },
+        {
+          "id": "structured",
+          "category": "structured_output",
+          "passed": true,
+          "answer": "{\"status\":\"ok\",\"count\":3,\"errors\":[]}",
+          "elapsed": 0.239
+        },
+        {
+          "id": "grounding",
+          "category": "unsupported_claims",
+          "passed": true,
+          "answer": "{\"tests_passed\": null, \"evidence_available\": false}",
+          "elapsed": 0.272
+        }
+      ],
+      "alias": "qwen3-coder-30b",
+      "run": 1,
+      "handoff_seconds": 4.41
+    }
+  ],
+  "limitations": [
+    "Deterministic micro-suite; does not execute code or real tools.",
+    "RSS samples are not peak unified/Metal memory.",
+    "One cold/warm state per model; repeat runs for variance."
+  ],
+  "baseline_alias": "qwen38_20260927",
+  "error": "chat wurde nicht geladen: RAM-Sicherheitsgrenze von 90% würde erreicht oder überschritten. Prognose mit 18.0 GB Lade-Reserve: 100.5%.",
+  "baseline_restored": true
+}

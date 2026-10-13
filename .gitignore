@@ -196,3 +196,6 @@ FRONTEND_REFACTOR_PLAN.md
 # Private local Talking Photo regression inputs and render diagnostics
 /artifacts/talking-photo-regression/
 /artifacts/performance/runtime-optimization/
+
+# Private runtime configuration backups from opt-in coding benchmarks.
+/artifacts/**/private-config-backup-*/
