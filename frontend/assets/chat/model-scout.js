@@ -225,7 +225,7 @@
     async function startBenchmark(candidate, button, card) {
         button.disabled = true; button.textContent = text('benchmark_starting');
         try {
-            const response = await fetch('/api/mlx/model-scout/benchmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidate_alias: candidate.installed_alias }) });
+            const response = await fetch('/api/mlx/model-scout/benchmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ candidate_alias: candidate.installed_alias, suite: candidate.role === 'coding' ? 'coding' : 'quick' }) });
             const job = await response.json().catch(() => ({})); if (!response.ok) throw new Error(job.detail || 'HTTP ' + response.status); await pollBenchmark(job.id, button, card);
         } catch (error) { console.error('[model-scout] benchmark failed:', error); button.disabled = false; button.textContent = text('benchmark_failed'); button.title = String(error?.message || error); }
     }

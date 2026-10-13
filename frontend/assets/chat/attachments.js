@@ -13,6 +13,8 @@ function attachmentT(key, fallback = '', variables = {}) {
 
 (function () {
     let attachments = [];
+    let editOptions = {};
+    let pendingMaskUpload = Promise.resolve();
 
     function uid() {
         return crypto.randomUUID();
@@ -98,6 +100,93 @@ function attachmentT(key, fallback = '', variables = {}) {
         return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     }
 
+    function renderEditControls(bar) {
+        if (!attachments.some(file => file.kind === 'image')) return;
+        const details = document.createElement('details');
+        details.className = 'image-edit-options';
+        const summary = document.createElement('summary');
+        summary.textContent = attachmentT('attachments.edit_options', 'Image editing · advanced options');
+        details.append(summary);
+        function input(key, label, type, attributes = {}) {
+            const wrapper = document.createElement('label');
+            wrapper.textContent = attachmentT('attachments.edit_' + key, label);
+            const control = document.createElement('input');
+            control.type = type;
+            Object.assign(control, attributes);
+            if (type === 'checkbox') control.checked = key === 'use_kv_cache' ? editOptions[key] !== false : editOptions[key] === true;
+            else control.value = editOptions[key] ?? '';
+            control.addEventListener('change', () => {
+                if (type === 'checkbox') editOptions[key] = control.checked;
+                else if (control.value === '') delete editOptions[key];
+                else editOptions[key] = type === 'number' ? Number(control.value) : control.value;
+            });
+            wrapper.append(control);
+            details.append(wrapper);
+        }
+        const modelLabel = document.createElement('label');
+        modelLabel.textContent = attachmentT('attachments.edit_model', 'Editing model');
+        const select = document.createElement('select');
+        const auto = document.createElement('option');
+        auto.value = 'auto'; auto.textContent = attachmentT('attachments.edit_auto', 'Automatic · locally available models');
+        select.append(auto);
+        select.addEventListener('change', () => { editOptions.model = select.value; });
+        modelLabel.append(select); details.append(modelLabel);
+        let loaded = false;
+        details.addEventListener('toggle', async () => {
+            if (!details.open || loaded) return;
+            loaded = true;
+            try {
+                const response = await fetch('/api/image/models');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                for (const model of data.models || []) {
+                    if (!model.capabilities?.includes('image_edit')) continue;
+                    const option = document.createElement('option');
+                    option.value = model.id; option.textContent = model.name + (model.available ? '' : ' · ' + model.availability_note);
+                    option.disabled = !model.enabled || !model.available;
+                    select.append(option);
+                }
+                if (editOptions.model && ![...select.options].some(option => option.value === editOptions.model)) {
+                    const option = document.createElement('option');
+                    option.value = editOptions.model; option.textContent = editOptions.model; select.append(option);
+                }
+                select.value = editOptions.model || 'auto';
+            } catch (_) { loaded = false; }
+        });
+        input('seed', 'Seed (empty = random)', 'number', {min: 0, max: 4294967295});
+        input('steps', 'Steps', 'number', {min: 1, max: 50});
+        input('guidance', 'Guidance (negative prompts need > 1)', 'number', {min: 1, max: 10, step: 0.1});
+        input('strength', 'Edit strength (0–1)', 'number', {min: 0.01, max: 1, step: 0.05});
+        input('negative_prompt', 'Negative prompt', 'text', {maxLength: 2000});
+        input('auto_mask', 'Auto-mask: object to repaint', 'text', {maxLength: 200});
+        input('use_kv_cache', 'KV cache (on by default)', 'checkbox');
+        input('use_step_cache', 'Step cache (requires KV cache; useful from 10 steps)', 'checkbox');
+        input('enhance_prompt', 'Improve prompt with built-in vision model', 'checkbox');
+        input('verify', 'Verify result with built-in vision model', 'checkbox');
+        const maskLabel = document.createElement('label');
+        maskLabel.textContent = attachmentT('attachments.edit_mask', 'Mask (white = repaint, black = preserve)');
+        const mask = document.createElement('input'); mask.type = 'file'; mask.accept = 'image/png,image/jpeg,image/webp';
+        mask.addEventListener('change', () => {
+            pendingMaskUpload = (async () => {
+            if (!mask.files[0]) { delete editOptions.mask_path; return; }
+            mask.disabled = true;
+            try {
+                const uploaded = await uploadImageAttachments([{file: mask.files[0], name: mask.files[0].name, kind: 'image'}]);
+                if (!uploaded[0]?.upload?.path) throw new Error(attachmentT('generation.image_upload_failed', 'Image could not be uploaded.'));
+                editOptions.mask_path = uploaded[0].upload.path;
+                delete editOptions.auto_mask;
+                summary.textContent = attachmentT('attachments.edit_mask_ready', 'Image editing · mask uploaded');
+            } catch (error) { delete editOptions.mask_path; alert(error.message); }
+            finally { mask.disabled = false; }
+            })();
+        });
+        maskLabel.append(mask); details.append(maskLabel);
+        const hint = document.createElement('p');
+        hint.textContent = attachmentT('attachments.edit_hint', 'Advanced options require a compatible MFLUX model. Reference order follows the numbered thumbnails. Original images are preserved. Identity preservation is best effort.');
+        details.append(hint);
+        bar.append(details);
+    }
+
     function renderAttachments() {
         const bar = document.getElementById('attachmentBar');
 
@@ -113,6 +202,32 @@ function attachmentT(key, fallback = '', variables = {}) {
         attachments.forEach((file, index) => {
             const chip = document.createElement('div');
             chip.className = 'attachment-chip';
+            chip.dataset.attachmentId = file.id;
+            if (file.kind === 'image') {
+                chip.draggable = true;
+                chip.addEventListener('dragstart', event => {
+                    event.dataTransfer.setData('application/x-mlx-reference', file.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                });
+                chip.addEventListener('dragover', event => event.preventDefault());
+                chip.addEventListener('drop', event => {
+                    const id = event.dataTransfer.getData('application/x-mlx-reference');
+                    if (!id) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    moveAttachment(id, file.id);
+                });
+                chip.addEventListener('keydown', event => {
+                    if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                    event.preventDefault();
+                    const images = attachments.filter(item => item.kind === 'image');
+                    const target = images[images.indexOf(file) + (event.key === 'ArrowLeft' ? -1 : 1)];
+                    if (target) moveAttachment(file.id, target.id);
+                    bar.querySelector('[data-attachment-id="' + file.id + '"]')?.focus();
+                });
+                chip.tabIndex = 0;
+                chip.title = attachmentT('attachments.reorder', 'Drag to reorder; Alt + arrow keys also work.');
+            }
 
             if (file.kind === 'image' && file.data_url) {
                 const preview = document.createElement('img');
@@ -171,7 +286,8 @@ function attachmentT(key, fallback = '', variables = {}) {
                     }
                 }
 
-                name.textContent = file.name + suffix;
+                const number = file.kind === 'image' ? attachments.filter(item => item.kind === 'image').indexOf(file) + 1 : null;
+                name.textContent = (number ? number + '. ' : '') + file.name + suffix;
             }
 
             const remove = document.createElement('button');
@@ -200,6 +316,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
             bar.appendChild(chip);
         });
+        renderEditControls(bar);
     }
 
     async function pollDocumentRag(attachmentId) {
@@ -282,7 +399,23 @@ function attachmentT(key, fallback = '', variables = {}) {
     }
 
 
-    async function addFiles(files) {
+    function moveAttachment(id, targetId) {
+        const from = attachments.findIndex(item => item.id === id);
+        const to = attachments.findIndex(item => item.id === targetId);
+        if (from < 0 || to < 0 || from === to) return;
+        const [item] = attachments.splice(from, 1);
+        attachments.splice(to, 0, item);
+        renderAttachments();
+    }
+
+    let addingFiles = Promise.resolve();
+    function addFiles(files) {
+        const list = Array.from(files);
+        addingFiles = addingFiles.catch(() => {}).then(() => addFilesSequential(list));
+        return addingFiles;
+    }
+
+    async function addFilesSequential(files) {
         const list = Array.from(files);
 
         for (const file of list) {
@@ -529,6 +662,10 @@ function attachmentT(key, fallback = '', variables = {}) {
             }
 
             if (isImage) {
+                if (attachments.filter(item => item.kind === 'image').length >= 10) {
+                    alert(attachmentT('attachments.reference_limit', 'Up to ten reference images are supported.'));
+                    continue;
+                }
                 let dataUrl;
 
                 try {
@@ -634,6 +771,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
     function clearAttachments() {
         attachments = [];
+        editOptions = {};
         renderAttachments();
     }
 
@@ -847,6 +985,10 @@ function attachmentT(key, fallback = '', variables = {}) {
 
     window.MLXChatAttachments = {
         init: init,
+        addFiles: addFiles,
+        getEditOptions: () => ({...editOptions}),
+        whenReady: () => Promise.all([addingFiles, pendingMaskUpload]),
+        moveAttachment: moveAttachment,
         buildAttachmentContext:
             buildAttachmentContext,
         getAttachments:

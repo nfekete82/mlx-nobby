@@ -10246,3 +10246,14 @@ body.notes-resizing * {
 .chat-history-menu summary:hover { background: var(--panel); }
 .chat-history-menu button { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); white-space: nowrap; padding: 12px 16px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; box-shadow: 0 4px 16px #0003; }
 .chat-history-menu :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Ordered multi-reference editor, including narrow mobile composers. */
+.image-edit-options { flex-basis:100%; min-width:0; padding:8px; font-size:12px; }
+.image-edit-options summary { cursor:pointer; }
+.image-edit-options[open] { display:flex; flex-wrap:wrap; gap:8px; }
+.image-edit-options summary,.image-edit-options p { width:100%; }
+.image-edit-options label { display:flex; flex-direction:column; gap:4px; width:min(240px,100%); min-width:0; }
+.image-edit-options input,.image-edit-options select { max-width:100%; min-width:0; box-sizing:border-box; }
+.image-edit-options input[type=checkbox] { align-self:flex-start; }
+.image-attachment-chip[draggable] { cursor:grab; }
+.image-attachment-chip:focus-visible { outline:2px solid var(--accent,#6d9cff); }

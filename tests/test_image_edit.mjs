@@ -2082,7 +2082,7 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
     };
     input.value = kind === 'followup' ? 'Jetzt draußen im Regen.' : 'Erstelle ein neues Bild derselben Person.';
     await window.MLXChatGeneration.sendMessage();
-    if (['historical', 'multiple'].includes(kind)) {
+    if (kind === 'historical') {
         assert.equal(referencePayloads.length, 0, kind + ' must not choose an arbitrary source');
     } else {
         assert.equal(referencePayloads.length, 1, kind);
@@ -2091,6 +2091,11 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
         assert.equal(body.resolved_target, 'image_edit');
         assert.equal(body.image_options.auto_size, true);
         if (kind === 'upload') assert.equal(body.file_context.stored_path, '/uploads/stored.png');
+        if (kind === 'multiple') {
+            assert.equal(body.file_context.references.length, 2);
+            assert.equal(body.file_context.references[0].stored_path, '/uploads/stored.png');
+            assert.equal(body.file_context.references[1].stored_path, '/uploads/stored.png');
+        }
         if (kind === 'selected') assert.equal(body.active_artifact_id, imageArtifact.artifact_id);
         if (kind === 'followup') {
             assert.equal(body.file_context.reference_source_job_id, referenceArtifact.generation_job_id);

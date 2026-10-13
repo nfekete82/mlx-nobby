@@ -251,6 +251,14 @@ async function updateImageModelOptions(
     capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
+    const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    function retainMissingChoice() {
+        const option = document.createElement('option');
+        option.value = requested;
+        option.textContent = requested + ' · ' + (window.MLXI18n?.t('ui.status_unavailable', 'Unavailable') || 'Unavailable');
+        option.disabled = true;
+        select.appendChild(option);
+    }
 
     const automatic = document.createElement('option');
     automatic.value = 'auto';
@@ -313,20 +321,13 @@ async function updateImageModelOptions(
             select.appendChild(option);
         }
 
-        const requested = String(
-            preferred || storedImageModel() || 'auto'
-        ).trim() || 'auto';
-        const available = models.some(
-            model =>
-                model.id === requested &&
-                model.available === true
-        );
-
-        select.value = available ? requested : 'auto';
+        if (requested !== 'auto' && !models.some(model => model.id === requested)) retainMissingChoice();
+        select.value = requested;
         return select.value;
     } catch (_) {
-        select.value = 'auto';
-        return 'auto';
+        if (requested !== 'auto') retainMissingChoice();
+        select.value = requested;
+        return requested;
     } finally {
         select.disabled = false;
     }
@@ -337,10 +338,12 @@ const IMAGE_OPTION_KEYS = Object.freeze({
         'prompt', 'negative_prompt', 'model', 'width', 'height',
         'steps', 'guidance', 'seed', 'auto_size'
     ]),
-    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed']),
+    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
     reference: new Set([
         'prompt', 'model', 'steps', 'guidance', 'seed',
-        'width', 'height', 'auto_size', 'negative_prompt'
+        'width', 'height', 'auto_size', 'negative_prompt',
+        'mask_path', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache',
+        'step_cache_threshold', 'enhance_prompt', 'verify'
     ])
 });
 
@@ -368,7 +371,7 @@ function imageOptionsForRequest(
         negativePrompt || ''
     ).trim();
 
-    if (allowed.has('negative_prompt') && normalizedNegativePrompt) {
+    if (operation !== 'edit' && allowed.has('negative_prompt') && normalizedNegativePrompt) {
         merged.negative_prompt = normalizedNegativePrompt;
     } else {
         delete merged.negative_prompt;
@@ -380,6 +383,8 @@ function imageOptionsForRequest(
         ).trim() || 'auto';
         merged.model = normalizedModel;
     }
+
+    if (operation !== 'generate') Object.assign(merged, options?.referenceEdit || {});
 
     if (!allowFormat) {
         return merged;
@@ -2038,6 +2043,9 @@ getAbortController()?.abort();
         return;
     }
 
+    await window.MLXChatAttachments?.whenReady?.();
+    options = {...options, referenceEdit: {...(window.MLXChatAttachments?.getEditOptions?.() || {}), ...(options.referenceEdit || {})}};
+
     const prompt =
         input.value.trim();
 
@@ -2466,6 +2474,7 @@ const imageFiles =
         attachments:
             currentAttachments.map(
                 file => ({
+                    id: file.id,
                     name: file.name,
                     size: file.size,
                     type: file.type,
@@ -2609,6 +2618,23 @@ const imageFiles =
                 };
             }
 
+            // Upload ordered references once, using the existing media lifecycle.
+            if (imageFiles.length > 1) {
+                const references = [];
+                for (const image of imageFiles) {
+                    if (!image.stored_path) {
+                        const uploaded = await MLXChatAttachments.uploadImageAttachments([image]);
+                        if (!uploaded[0]?.upload?.path) throw new Error(gt('image_upload_failed', 'Image could not be uploaded.'));
+                        image.stored_path = uploaded[0].upload.path;
+                        image.file_id = uploaded[0].upload.stored_name;
+                    }
+                    references.push({kind: 'image', stored_path: image.stored_path, file_id: image.file_id});
+                    const saved = (userMessage.attachments || []).find(item => item.id === image.id);
+                    if (saved) Object.assign(saved, {stored_path: image.stored_path, file_id: image.file_id});
+                }
+                currentImageContext = {...references[0], image_count: references.length, references};
+            }
+
             const historicalVideoUpload =
                 preferredVideoSource?.origin === 'chat_upload'
                     ? preferredVideoSource.source
@@ -2698,9 +2724,6 @@ const imageFiles =
                     referenceMode = route.reference_mode || activeWorkspaceImageArtifact?.reference_mode || 'same_identity';
                     // A historical fallback is not an explicitly selected reference.
                     activeArtifactIdForEdit = imageFiles.length ? null : activeWorkspaceImageArtifact?.artifact_id || null;
-                    if (imageFiles.length > 1) {
-                        throw new Error(gt('reference_select_source', 'Please select the reference image.'));
-                    }
                     if (!currentImageContext && !activeArtifactIdForEdit) {
                         throw new Error(gt('reference_source_required', 'A reference image is required for this request.'));
                     }

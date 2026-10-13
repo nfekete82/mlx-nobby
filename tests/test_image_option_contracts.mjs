@@ -71,3 +71,20 @@ assert.deepEqual(compose(stale, 'generate', false, ''), {
 });
 assert.equal(source.includes("referenceMode ? 'reference' : 'edit'"), true);
 console.log('Image mode parameter contracts: generation/edit/reference settings isolated.');
+
+// A selected but temporarily unavailable model must remain explicit.
+const modelStart = source.indexOf('async function updateImageModelOptions(');
+const modelEnd = source.indexOf('\nconst IMAGE_OPTION_KEYS', modelStart);
+const elements = [];
+const modelContext = vm.createContext({
+    document: {createElement() {return {};}},
+    window: {}, storedImageModel: () => 'auto',
+    fetch: async () => ({ok:true, async json() {return {models:[]};}}),
+});
+vm.runInContext(source.slice(modelStart, modelEnd), modelContext);
+const select = {value:'', replaceChildren(...items) {elements.splice(0, elements.length, ...items);},
+    appendChild(item) {elements.push(item);}};
+assert.equal(await modelContext.updateImageModelOptions(select, 'manual-missing'), 'manual-missing');
+assert.equal(elements.at(-1).disabled, true);
+modelContext.fetch = async () => {throw new Error('offline');};
+assert.equal(await modelContext.updateImageModelOptions(select, 'manual-offline'), 'manual-offline');
