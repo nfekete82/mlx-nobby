@@ -2060,7 +2060,7 @@ context.requestAnimationFrame = originalAnimationFrame;
 
 // Reference routing uses the current upload or explicit workspace selection.
 // An old historical image and ambiguous attachments cannot authorize a source.
-for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup']) {
+for (const kind of ['upload', 'selected', 'historical', 'multiple', 'composition', 'followup']) {
     const referenceArtifact = {...imageArtifact, semantic_operation: 'reference_generate',
         reference_mode: 'same_identity', generation_job_id: 'f'.repeat(24),
         source_path: '/uploads/original-reference.png',
@@ -2068,19 +2068,19 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
     session.messages = [{role: 'assistant', tool_result: {tool: 'image_edit', status: 'completed',
         artifacts: [kind === 'followup' ? referenceArtifact : imageArtifact]}}];
     session.workspace = ['selected', 'followup'].includes(kind) ? {active_artifact_id: imageArtifact.artifact_id} : {};
-    selectedAttachments = kind === 'upload' ? [imageAttachment] : kind === 'multiple' ?
+    selectedAttachments = kind === 'upload' ? [imageAttachment] : ['multiple', 'composition'].includes(kind) ?
         [imageAttachment, {...imageAttachment, name: 'second.png'}] : [];
     const referencePayloads = [];
     context.fetch = async (url, options) => {
         if (url === '/api/mlx/chat/actions/route') {
-            return {ok: true, async json() {return {target: 'image_edit', intent: 'image_reference_generate', reference_mode: 'same_identity'};}};
+            return {ok: true, async json() {return {target: 'image_edit', intent: kind === 'composition' ? 'image_edit' : 'image_reference_generate', reference_mode: 'same_identity'};}};
         }
         if (url.startsWith('/api/mlx/images/')) return {ok: true, async blob() {return new Blob(['fixture'], {type: 'image/png'});}};
         assert.equal(url, '/api/mlx/chat/actions');
         referencePayloads.push(JSON.parse(options.body));
         return {ok: true, async json() {return {tool: 'image_edit', status: 'failed', data: {}, artifacts: [], error: 'fixture provider unavailable'};}};
     };
-    input.value = kind === 'followup' ? 'Jetzt draußen im Regen.' : 'Erstelle ein neues Bild derselben Person.';
+    input.value = kind === 'followup' ? 'Jetzt draußen im Regen.' : kind === 'composition' ? 'Erstelle ein gemeinsames fotorealistisches Bild der beiden Frauen aus den Referenzfotos, wie sie zusammen auf einem Bett liegen.' : 'Erstelle ein neues Bild derselben Person.';
     await window.MLXChatGeneration.sendMessage();
     if (kind === 'historical') {
         assert.equal(referencePayloads.length, 0, kind + ' must not choose an arbitrary source');
@@ -2090,8 +2090,9 @@ for (const kind of ['upload', 'selected', 'historical', 'multiple', 'followup'])
         assert.equal(body.reference_mode, 'same_identity');
         assert.equal(body.resolved_target, 'image_edit');
         assert.equal(body.image_options.auto_size, true);
+        if (kind === 'composition') assert.equal(body.image_options.model, 'auto');
         if (kind === 'upload') assert.equal(body.file_context.stored_path, '/uploads/stored.png');
-        if (kind === 'multiple') {
+        if (kind === 'multiple' || kind === 'composition') {
             assert.equal(body.file_context.references.length, 2);
             assert.equal(body.file_context.references[0].stored_path, '/uploads/stored.png');
             assert.equal(body.file_context.references[1].stored_path, '/uploads/stored.png');
@@ -2182,3 +2183,16 @@ const generateManual = buildImageOptions(
     'image', 'square', false, '', 'juggernaut-xl', 'generate'
 );
 assert.equal(generateManual.model, 'juggernaut-xl');
+
+
+// An ordered list of validated image references is a valid edit source,
+// even when there is no redundant top-level stored_path.
+const sourceGuard = window.MLXChatGeneration.__test.hasImageEditSource;
+assert.equal(sourceGuard({references: [
+    {stored_path: '/uploads/julia.png'},
+    {stored_path: '/uploads/laura.png'},
+]}), true);
+assert.equal(sourceGuard({references: [{stored_path: '/uploads/julia.png'}, {}]}), false);
+assert.equal(sourceGuard({image_count: 2}), false);
+assert.equal(sourceGuard(null, null), false);
+assert.equal(sourceGuard({stored_path: '/uploads/single.png'}), true);
