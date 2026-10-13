@@ -201,3 +201,39 @@ def test_reference_payload_accepts_list_without_redundant_first_path(edit_runtim
     assert payload['source_path'] == str(sources[0])
     assert payload['source_paths'] == [str(p) for p in sources[:2]]
     assert 'Use all 2 reference images' in payload['prompt']
+
+
+def test_automatic_edit_prefers_available_osaurus_without_overriding_manual(monkeypatch):
+    from image_registry import OSAURUS_QWEN21_EDIT_ID
+    candidates = [
+        dict(id='mflux-qwen-image-2.1-edit', provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+        dict(id=OSAURUS_QWEN21_EDIT_ID, provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+    ]
+    monkeypatch.setattr(service.registry, 'load_registry',
+                        lambda: {'models': candidates, 'default_model': candidates[0]['id']})
+    monkeypatch.setattr(service, 'availability', lambda model: (True, 'ready'))
+    assert service._edit_model('auto', multi_reference=True)['id'] == OSAURUS_QWEN21_EDIT_ID
+    monkeypatch.setattr(service.registry, 'get_model',
+                        lambda model_id: next(m for m in candidates if m['id'] == model_id))
+    assert service._edit_model(candidates[0]['id'], multi_reference=True)['id'] == candidates[0]['id']
+
+
+def test_auto_edit_skips_unavailable_osaurus(monkeypatch):
+    from image_registry import OSAURUS_QWEN21_EDIT_ID
+    candidates = [
+        dict(id=OSAURUS_QWEN21_EDIT_ID, provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+        dict(id='mflux-qwen-image-2.1-edit', provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+    ]
+    monkeypatch.setattr(service.registry, 'load_registry',
+                        lambda: {'models': candidates, 'default_model': candidates[1]['id']})
+    monkeypatch.setattr(service, 'availability',
+                        lambda model: (model['id'] != OSAURUS_QWEN21_EDIT_ID, 'missing'))
+    assert service._edit_model('auto', multi_reference=True)['id'] == candidates[1]['id']
