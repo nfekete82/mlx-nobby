@@ -2162,3 +2162,23 @@ renderingWindow.MLXChatGeneration.createImageUpscaleMenu = originalActions;
 assert.match(generationSource, /const imageModelSelectable =\s*mediaQualityKind === 'image';/);
 assert.match(generationSource, /resolvedTarget === 'image_edit'\s*\? 'image_edit'\s*:\s*'text_to_image'/);
 assert.match(generationSource, /mediaQualityKind === 'image'\s*\? selectedImageModel\s*:\s*null/);
+
+
+// A saved text-to-image preference must never override the image-edit router.
+const buildImageOptions = window.MLXChatGeneration.__test.imageOptionsForRequest;
+const editAuto = buildImageOptions(
+    { image: { model: 'juggernaut-xl', steps: 40 }, referenceEdit: {} },
+    'image', 'square', false, '', 'juggernaut-xl', 'edit'
+);
+assert.equal(Object.hasOwn(editAuto, 'model'), false);
+const editManual = buildImageOptions(
+    { image: { model: 'juggernaut-xl' },
+      referenceEdit: { model: 'mflux-osaurus-qwen-image-2.1-edit' } },
+    'image', 'square', false, '', 'juggernaut-xl', 'edit'
+);
+assert.equal(editManual.model, 'mflux-osaurus-qwen-image-2.1-edit');
+const generateManual = buildImageOptions(
+    { image: { model: 'juggernaut-xl' } },
+    'image', 'square', false, '', 'juggernaut-xl', 'generate'
+);
+assert.equal(generateManual.model, 'juggernaut-xl');
