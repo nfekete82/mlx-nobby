@@ -4662,6 +4662,21 @@ def _file_context_is_image(file_context):
     return has_image_context(file_context)
 
 
+def _file_context_image_count(file_context):
+    """Count supplied image references without opening or trusting their paths."""
+    if not isinstance(file_context, dict):
+        return 0
+    references = file_context.get("references")
+    if isinstance(references, list):
+        return len(references)
+    count = file_context.get("image_count")
+    if type(count) is int and 1 <= count <= 10:
+        return count
+    return 1 if _file_context_is_image(file_context) else 0
+
+
+
+
 
 def _looks_like_shorts_generation_request(prompt):
     return decide_media_intent(prompt).intent == "shorts_generate"
@@ -4670,7 +4685,8 @@ def _looks_like_shorts_generation_request(prompt):
 def _deterministic_chat_action(prompt, file_context=None, conversation_context=None):
     """Lightweight intent router: never receives a file body."""
     value = str(prompt or "").strip().lower()
-    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context),
+                                image_count=_file_context_image_count(file_context))
     if media.handles_turn:
         return media.chat_routing()["intent"]
     try:
@@ -5498,7 +5514,8 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     requests.  Those candidates are deliberately ignored here so that ordinary
     prose is classified semantically before an agent loop can start.
     """
-    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context),
+                                image_count=_file_context_image_count(file_context))
     if media.handles_turn:
         return media.chat_routing()["intent"]
 
@@ -6279,7 +6296,8 @@ def classify_chat_action_details(
     classifier=None,
     manager_classifier=None,
 ):
-    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context))
+    media = decide_media_intent(prompt, has_image=_file_context_is_image(file_context),
+                                image_count=_file_context_image_count(file_context))
     if media.handles_turn:
         return media.chat_routing()
 
@@ -8166,7 +8184,9 @@ def _validated_image_options(options, operation):
 
 def _image_edit_payload(request):
     context = request.file_context or {}
-    intent = decide_media_intent(request.prompt, has_image=True, reference_context=context.get('reference_mode')).intent
+    intent = decide_media_intent(request.prompt, has_image=True,
+                                 image_count=_file_context_image_count(context),
+                                 reference_context=context.get('reference_mode')).intent
     is_reference = intent == 'image_reference_generate' or request.action == 'image_reference_generate' or request.reference_mode is not None
     mode = (reference_mode(request.prompt) or request.reference_mode or context.get("reference_mode")) if is_reference else None
     reference_record = None
@@ -9573,6 +9593,7 @@ def _resolved_media_action(request, routing_file_context):
     media = decide_media_intent(
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
+        image_count=_file_context_image_count(routing_file_context),
         action=request.action,
         reference_context=(routing_file_context or {}).get("reference_mode"),
     )
@@ -9618,6 +9639,7 @@ def preflight_chat_action(request: ChatActionRequest):
     media = decide_media_intent(
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
+        image_count=_file_context_image_count(routing_file_context),
         action=request.action,
         reference_context=(routing_file_context or {}).get("reference_mode"),
     )
@@ -9637,6 +9659,7 @@ def run_chat_action(request: ChatActionRequest):
     media = decide_media_intent(
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
+        image_count=_file_context_image_count(routing_file_context),
         action=request.action,
         reference_context=(routing_file_context or {}).get("reference_mode"),
     )
