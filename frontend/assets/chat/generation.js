@@ -367,6 +367,11 @@ function imageOptionsForRequest(
     const merged = Object.fromEntries(
         Object.entries(existing || {}).filter(([key]) => allowed.has(key))
     );
+    // A generator preference (e.g. Juggernaut XL) is not an edit-model choice.
+    // Only an explicit edit-model selection may override the edit router.
+    if (operation !== 'generate') {
+        delete merged.model;
+    }
     const normalizedNegativePrompt = String(
         negativePrompt || ''
     ).trim();
@@ -377,7 +382,7 @@ function imageOptionsForRequest(
         delete merged.negative_prompt;
     }
 
-    if (imageModel !== null) {
+    if (operation === 'generate' && imageModel !== null) {
         const normalizedModel = String(
             imageModel || 'auto'
         ).trim() || 'auto';
