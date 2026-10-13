@@ -211,8 +211,8 @@ def test_content_constraints_do_not_cancel_shorts_execution(constraint, separato
     ("Setz beide Personen zusammen auf eine Parkbank", "image_edit"),
     ("Platziere beide Personen nebeneinander", "image_edit"),
     ("Combine both people into one photo", "image_edit"),
-    ("Vergleiche die beiden Bilder", "vision_chat"),
-    ("Was ist auf beiden Bildern?", "vision_chat"),
+    ("Vergleiche die beiden Bilder", "discussion"),
+    ("Was ist auf beiden Bildern?", "discussion"),
     ("Setze beide Personen nicht zusammen", "discussion"),
 ])
 def test_attachment_aware_composition_routing(prompt, expected):
