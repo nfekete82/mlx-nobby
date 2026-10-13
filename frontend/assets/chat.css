@@ -10357,3 +10357,143 @@ body.notes-resizing * {
     .image-edit-advanced-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
+
+
+/* MLX Nobby full-viewport workspace panels + consistent control primitives.
+   Fullscreen: Settings, Systeminfo, Help (in help.js) and Notes.
+   Small confirmation dialogs and quick popovers remain intentionally compact. */
+:root {
+    --nobby-control-height: 42px;
+    --nobby-control-radius: 11px;
+    --nobby-control-bg: #111925;
+    --nobby-control-bg-hover: #192536;
+    --nobby-control-border: #344154;
+    --nobby-control-border-hover: #526781;
+    --nobby-control-fg: #e8edf5;
+    --nobby-control-focus: #4f8cff;
+}
+.settings-organized {
+    --settings-control-height: var(--nobby-control-height);
+    --settings-control-radius: var(--nobby-control-radius);
+    --settings-control-bg: var(--nobby-control-bg);
+    --settings-control-bg-hover: var(--nobby-control-bg-hover);
+    --settings-control-border: var(--nobby-control-border);
+    --settings-control-border-hover: var(--nobby-control-border-hover);
+    --settings-control-focus: var(--nobby-control-focus);
+    --settings-control-text: var(--nobby-control-fg);
+}
+.runtime-modal {
+    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    margin: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+.runtime-modal-header {
+    flex: 0 0 auto;
+    min-height: 64px;
+    padding: 12px clamp(16px, 3vw, 32px);
+    border-bottom: 1px solid var(--border);
+}
+.runtime-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 20px clamp(16px, 3vw, 32px) 34px;
+    overflow: auto;
+    scrollbar-width: thin;
+    overscroll-behavior: contain;
+}
+.runtime-info-content {
+    width: min(100%, 1280px);
+    margin: 0 auto;
+}
+#runtimeModalClose,
+.settings-organized #settingsClose,
+.notes-panel #notesClose {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 1px solid var(--nobby-control-border);
+    border-radius: var(--nobby-control-radius);
+    background: var(--nobby-control-bg);
+    color: var(--nobby-control-fg);
+    font: inherit;
+    font-size: 23px;
+    line-height: 1;
+    cursor: pointer;
+}
+#runtimeModalClose:hover,
+.settings-organized #settingsClose:hover,
+.notes-panel #notesClose:hover {
+    border-color: var(--nobby-control-border-hover);
+    background: var(--nobby-control-bg-hover);
+    color: white;
+}
+#runtimeModalClose:focus-visible,
+.settings-organized #settingsClose:focus-visible,
+.notes-panel #notesClose:focus-visible,
+.settings-organized :is(button, select, input, textarea):focus-visible,
+.notes-panel :is(button, select, input, textarea):focus-visible,
+.runtime-modal :is(button, select, input, textarea):focus-visible {
+    outline: 2px solid var(--nobby-control-focus);
+    outline-offset: 2px;
+}
+.notes-panel,
+#notesPanel {
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+.notes-panel :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea),
+.runtime-modal :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+    min-width: 0;
+    min-height: var(--nobby-control-height);
+    border: 1px solid var(--nobby-control-border);
+    border-radius: var(--nobby-control-radius);
+    background-color: var(--nobby-control-bg);
+    color: var(--nobby-control-fg);
+    font: inherit;
+    font-size: 13px;
+    color-scheme: dark;
+}
+.notes-panel :is(input, select, textarea):hover:not(:disabled),
+.runtime-modal :is(input, select, textarea):hover:not(:disabled) {
+    border-color: var(--nobby-control-border-hover);
+    background-color: var(--nobby-control-bg-hover);
+}
+.notes-panel :is(button, select, input, textarea):disabled,
+.runtime-modal :is(button, select, input, textarea):disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+@media (max-width: 700px) {
+    .runtime-modal-header {
+        padding: 12px 16px;
+    }
+    .runtime-modal-body {
+        padding: 16px;
+    }
+    .notes-panel .notes-browser {
+        min-height: 0;
+    }
+}
