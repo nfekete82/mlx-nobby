@@ -36,15 +36,12 @@ def assert_geometry(page):
                 top: s.top, left: s.left, transform: s.transform, margin: s.margin};
     }""")
     print('Systeminfo computed layout:', json.dumps(geometry))
-    assert geometry['width'] > 0 and geometry['height'] > 0
-    assert geometry['x'] >= 8 and geometry['y'] >= 8, geometry
-    assert geometry['x'] + geometry['width'] <= geometry['viewportWidth'] - 8, geometry
-    assert geometry['y'] + geometry['height'] <= geometry['viewportHeight'] - 8, geometry
-    assert abs(geometry['x'] + geometry['width'] / 2 - geometry['viewportWidth'] / 2) < 2, geometry
-    assert abs(geometry['y'] + geometry['height'] / 2 - geometry['viewportHeight'] / 2) < 2, geometry
+    assert abs(geometry['x']) <= 2 and abs(geometry['y']) <= 2, geometry
+    assert abs(geometry['width'] - geometry['viewportWidth']) <= 2, geometry
+    assert abs(geometry['height'] - geometry['viewportHeight']) <= 2, geometry
     close = page.locator('#runtimeModalClose').bounding_box()
-    assert close and close['y'] >= 8
-    assert close['y'] + close['height'] <= geometry['viewportHeight'] - 8
+    assert close and close['y'] >= 0
+    assert close['y'] + close['height'] <= geometry['viewportHeight']
 
 
 @pytest.mark.parametrize('collapsed', [False, True], ids=['sidebar-open', 'sidebar-collapsed'])
@@ -71,7 +68,7 @@ def test_runtime_modal_viewport_geometry(ui, collapsed, chat_started):
         assert_geometry(page)
 
 
-@pytest.mark.parametrize('dismiss', ['x', 'escape', 'backdrop', 'native-close'])
+@pytest.mark.parametrize('dismiss', ['x', 'escape', 'native-close'])
 def test_runtime_modal_dismiss_and_focus(ui, dismiss):
     page, _agent, _allowed = ui
     launcher = open_systeminfo(page, collapsed=page.viewport_size['width'] > 900)
@@ -96,8 +93,6 @@ def test_runtime_modal_dismiss_and_focus(ui, dismiss):
         close.click()
     elif dismiss == 'escape':
         page.keyboard.press('Escape')
-    elif dismiss == 'backdrop':
-        page.mouse.click(2, 2)
     else:
         modal.evaluate('(node) => node.close()')
     expect(modal).to_be_hidden()
