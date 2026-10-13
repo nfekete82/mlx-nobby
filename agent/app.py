@@ -8184,11 +8184,18 @@ def _validated_image_options(options, operation):
 
 def _image_edit_payload(request):
     context = request.file_context or {}
-    intent = decide_media_intent(request.prompt, has_image=True,
-                                 image_count=_file_context_image_count(context),
-                                 reference_context=context.get('reference_mode')).intent
-    is_reference = intent == 'image_reference_generate' or request.action == 'image_reference_generate' or request.reference_mode is not None
-    mode = (reference_mode(request.prompt) or request.reference_mode or context.get("reference_mode")) if is_reference else None
+    decision = decide_media_intent(request.prompt, has_image=True,
+                                   image_count=_file_context_image_count(context),
+                                   reference_context=context.get('reference_mode'))
+    # Honor two-image composition even when the caller only specifies
+    # resolved_target=image_edit (e.g. an older web UI). The decision never
+    # turns analysis/comparison prompts into rendering commands.
+    is_reference = (decision.intent == 'image_reference_generate'
+                    or request.action == 'image_reference_generate'
+                    or request.reference_mode is not None
+                    or decision.reference_mode is not None)
+    mode = (reference_mode(request.prompt) or request.reference_mode
+            or decision.reference_mode or context.get("reference_mode")) if is_reference else None
     reference_record = None
     if is_reference:
         if context.get('image_count', 0) > 1 and not context.get('selected_reference') and not context.get('references'):
