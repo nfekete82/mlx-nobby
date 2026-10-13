@@ -156,14 +156,14 @@ function attachmentT(key, fallback = '', variables = {}) {
         const panel = document.createElement('section');
         panel.className = 'image-edit-options';
         panel.setAttribute('aria-label',
-            attachmentT('attachments.edit_model', 'Bearbeitungsmodell'));
+            attachmentT('attachments.edit_model', 'Editing model'));
 
         const primary = document.createElement('div');
         primary.className = 'image-edit-primary';
 
         const modelLabel = document.createElement('label');
         modelLabel.className = 'image-edit-model-field';
-        modelLabel.textContent = attachmentT('attachments.edit_model', 'Bearbeitungsmodell');
+        modelLabel.textContent = attachmentT('attachments.edit_model', 'Editing model');
 
         const select = document.createElement('select');
         select.className = 'image-edit-control';
@@ -185,7 +185,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                 const option = document.createElement('option');
                 option.value = model.id;
                 option.textContent = model.name +
-                    (model.available ? '' : ' · ' + (model.availability_note || attachmentT('attachments.edit_unavailable', 'Unavailable')));
+                    (model.available ? '' : ' · ' + (model.availability_note || attachmentT('attachments.edit_unavailable', 'unavailable')));
                 option.disabled = !model.enabled || !model.available;
                 select.append(option);
             }
@@ -218,7 +218,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         fields.className = 'image-edit-advanced-fields';
 
         const negativeLabel = document.createElement('label');
-        negativeLabel.textContent = attachmentT('attachments.edit_negative_prompt', 'Negativ-Prompt');
+        negativeLabel.textContent = attachmentT('attachments.edit_negative_prompt', 'Negative prompt');
         const negative = document.createElement('input');
         negative.type = 'text';
         negative.maxLength = 2000;
@@ -259,7 +259,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                     ]);
                     if (!uploaded[0]?.upload?.path) {
                         throw new Error(attachmentT('generation.image_upload_failed',
-                            'Image upload failed.'));
+                            'Image could not be uploaded.'));
                     }
                     editOptions.mask_path = uploaded[0].upload.path;
                     delete editOptions.auto_mask;

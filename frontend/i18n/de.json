@@ -1023,10 +1023,10 @@
   "attachments.edit_more": "Weitere Optionen",
   "attachments.edit_mask_short": "Maske (optional)",
   "attachments.edit_negative_placeholder": "Optional: Was soll nicht im Bild sein?",
-  "attachments.edit_unavailable": "Nicht verfügbar",
+  "attachments.edit_unavailable": "nicht verfügbar",
   "attachments.edit_options": "Bildbearbeitung · Erweiterte Optionen",
   "attachments.edit_model": "Bearbeitungsmodell",
-  "attachments.edit_auto": "Automatisch · lokal verfügbare Modelle",
+  "attachments.edit_auto": "Automatisch",
   "attachments.edit_seed": "Seed (leer = zufällig)",
   "attachments.edit_steps": "Schritte",
   "attachments.edit_guidance": "Guidance (Negativ-Prompts benötigen > 1)",
@@ -1038,6 +1038,6 @@
   "attachments.edit_enhance_prompt": "Prompt mit integriertem Vision-Modell verbessern",
   "attachments.edit_verify": "Ergebnis mit integriertem Vision-Modell prüfen",
   "attachments.edit_mask": "Maske (weiß = neu zeichnen, schwarz = bewahren)",
-  "attachments.edit_mask_ready": "Bildbearbeitung · Maske hochgeladen",
+  "attachments.edit_mask_ready": "Maske hochgeladen",
   "attachments.edit_hint": "Erweiterte Optionen benötigen ein kompatibles MFLUX-Modell. Die Nummern der Miniaturen bestimmen die Referenzreihenfolge. Originalbilder bleiben erhalten. Identitätserhalt ist technisch nur bestmöglich umsetzbar."
 }

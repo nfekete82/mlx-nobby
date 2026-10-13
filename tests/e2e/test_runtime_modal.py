@@ -36,15 +36,12 @@ def assert_geometry(page):
                 top: s.top, left: s.left, transform: s.transform, margin: s.margin};
     }""")
     print('Systeminfo computed layout:', json.dumps(geometry))
-    assert geometry['width'] > 0 and geometry['height'] > 0
-    assert geometry['x'] >= 8 and geometry['y'] >= 8, geometry
-    assert geometry['x'] + geometry['width'] <= geometry['viewportWidth'] - 8, geometry
-    assert geometry['y'] + geometry['height'] <= geometry['viewportHeight'] - 8, geometry
-    assert abs(geometry['x'] + geometry['width'] / 2 - geometry['viewportWidth'] / 2) < 2, geometry
-    assert abs(geometry['y'] + geometry['height'] / 2 - geometry['viewportHeight'] / 2) < 2, geometry
+    assert abs(geometry['x']) <= 2 and abs(geometry['y']) <= 2, geometry
+    assert abs(geometry['width'] - geometry['viewportWidth']) <= 2, geometry
+    assert abs(geometry['height'] - geometry['viewportHeight']) <= 2, geometry
     close = page.locator('#runtimeModalClose').bounding_box()
-    assert close and close['y'] >= 8
-    assert close['y'] + close['height'] <= geometry['viewportHeight'] - 8
+    assert close and close['y'] >= 0
+    assert close['y'] + close['height'] <= geometry['viewportHeight']
 
 
 @pytest.mark.parametrize('collapsed', [False, True], ids=['sidebar-open', 'sidebar-collapsed'])
@@ -71,7 +68,7 @@ def test_runtime_modal_viewport_geometry(ui, collapsed, chat_started):
         assert_geometry(page)
 
 
-@pytest.mark.parametrize('dismiss', ['x', 'escape', 'backdrop', 'native-close'])
+@pytest.mark.parametrize('dismiss', ['x', 'escape', 'native-close'])
 def test_runtime_modal_dismiss_and_focus(ui, dismiss):
     page, _agent, _allowed = ui
     launcher = open_systeminfo(page, collapsed=page.viewport_size['width'] > 900)
@@ -96,8 +93,6 @@ def test_runtime_modal_dismiss_and_focus(ui, dismiss):
         close.click()
     elif dismiss == 'escape':
         page.keyboard.press('Escape')
-    elif dismiss == 'backdrop':
-        page.mouse.click(2, 2)
     else:
         modal.evaluate('(node) => node.close()')
     expect(modal).to_be_hidden()
@@ -152,3 +147,49 @@ def test_runtime_modal_unavailable_api_stays_usable(ui):
     assert_geometry(page)
     page.keyboard.press('Escape')
     expect(page.locator('#runtimePopover')).to_be_hidden()
+
+
+def test_workspace_panels_fill_viewport_and_close(ui):
+    """Settings and Help keep controls accessible at desktop and mobile sizes."""
+    page, _agent, _allowed = ui
+
+    page.wait_for_function('Boolean(window.MLXChatSettings) && Boolean(window.MLXSettingsLayout)')
+    page.evaluate("window.MLXChatSettings.open('general')")
+    settings = page.locator('#settings')
+    expect(settings).to_be_visible()
+    expect(settings).to_have_class(__import__('re').compile(r'.*settings-organized.*'))
+    for selector in ['#settings', '#settings .settings-organizer-main']:
+        expect(page.locator(selector)).to_be_visible()
+    dimensions = settings.evaluate("""element => {
+        const r = element.getBoundingClientRect();
+        return {x:r.x,y:r.y,w:r.width,h:r.height,
+                vw:innerWidth,vh:innerHeight};
+    }""")
+    assert abs(dimensions['x']) <= 2 and abs(dimensions['y']) <= 2, dimensions
+    assert abs(dimensions['w'] - dimensions['vw']) <= 2, dimensions
+    assert abs(dimensions['h'] - dimensions['vh']) <= 2, dimensions
+    expect(page.locator('#settingsClose')).to_be_in_viewport()
+    page.locator('#settingsClose').click()
+    expect(settings).to_be_hidden()
+
+    page.wait_for_function('Boolean(window.MLXHelp)')
+    page.evaluate('window.MLXHelp.open()')
+    help_panel = page.locator('#mlxHelpPanel')
+    expect(help_panel).to_be_visible()
+    bounds = help_panel.evaluate("""element => {
+        const r = element.getBoundingClientRect();
+        return {x:r.x,y:r.y,w:r.width,h:r.height,
+                vw:innerWidth,vh:innerHeight};
+    }""")
+    assert abs(bounds['x']) <= 2 and abs(bounds['y']) <= 2, bounds
+    assert abs(bounds['w'] - bounds['vw']) <= 2, bounds
+    assert abs(bounds['h'] - bounds['vh']) <= 2, bounds
+    search = page.locator('#mlxHelpSearch')
+    expect(search).to_be_visible()
+    assert search.evaluate('(node) => getComputedStyle(node).height') != '0px'
+    expect(page.locator('#mlxHelpClose')).to_be_in_viewport()
+    # Sidebar and help content must scroll independently without overflowing.
+    assert page.locator('#mlxHelpContent').evaluate(
+        '(node) => ["auto", "scroll"].includes(getComputedStyle(node).overflowY)')
+    page.locator('#mlxHelpClose').click()
+    expect(help_panel).to_be_hidden()

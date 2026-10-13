@@ -344,6 +344,25 @@
             .mlx-help-examples{max-width:720px;margin-top:28px;padding-top:20px;border-top:1px solid rgba(127,140,160,.16)}.mlx-help-examples h3{margin:0 0 12px;font-size:1rem}.mlx-help-example{display:flex;align-items:flex-start;gap:10px;margin:8px 0;padding:12px;border:1px solid rgba(127,140,160,.16);border-radius:12px;background:rgba(127,140,160,.045)}.mlx-help-example code{flex:1;white-space:normal;line-height:1.45;font-family:inherit;font-size:.82rem}.mlx-help-use{flex:0 0 auto;border:1px solid rgba(127,140,160,.2);border-radius:9px;background:rgba(127,140,160,.1);color:inherit;padding:7px 9px;cursor:pointer;font-size:.74rem}.mlx-help-use:hover{background:rgba(127,140,160,.18)}
             .mlx-help-empty{padding:24px 8px;opacity:.6;font-size:.84rem}
             @media(max-width:720px){.mlx-help-panel{top:8px;right:8px;bottom:8px;width:calc(100vw - 16px);grid-template-columns:1fr}.mlx-help-sidebar{max-height:42vh;border-right:0;border-bottom:1px solid rgba(127,140,160,.18)}.mlx-help-main{padding:22px 18px 32px}.mlx-help-topic-summary{display:none}}
+            /* Full-screen help shares the same visual language as Settings. */
+            .mlx-help-panel{inset:0;top:0;left:0;right:0;bottom:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;border:0;border-radius:0;box-shadow:none;grid-template-columns:clamp(240px,20vw,300px) minmax(0,1fr)}
+            .mlx-help-panel[hidden],.mlx-help-backdrop[hidden]{display:none!important}
+            .mlx-help-sidebar{min-height:0;padding:18px 14px}
+            .mlx-help-main{min-height:0;overscroll-behavior:contain;padding:32px clamp(20px,4vw,56px)}
+            .mlx-help-main > *{max-width:1100px}
+            .mlx-help-close{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;padding:0;border:1px solid var(--nobby-control-border,#344154);border-radius:var(--nobby-control-radius,11px);background:var(--nobby-control-bg,#111925);color:var(--nobby-control-fg,#e8edf5);font:inherit;font-size:23px;opacity:1}
+            .mlx-help-search{min-height:var(--nobby-control-height,42px);border:1px solid var(--nobby-control-border,#344154);border-radius:var(--nobby-control-radius,11px);background:var(--nobby-control-bg,#111925);color:var(--nobby-control-fg,#e8edf5);font:inherit;font-size:13px;padding:9px 12px;color-scheme:dark}
+            .mlx-help-use{min-height:var(--nobby-control-height,42px);border:1px solid var(--nobby-control-border,#344154);border-radius:var(--nobby-control-radius,11px);background:var(--nobby-control-bg,#111925);color:var(--nobby-control-fg,#e8edf5);font:inherit;font-size:12px;font-weight:600;padding:8px 12px}
+            .mlx-help-topic{min-height:40px;border:1px solid transparent;border-radius:var(--nobby-control-radius,11px);font:inherit;font-size:13px}
+            .mlx-help-close:hover,.mlx-help-use:hover,.mlx-help-search:hover{border-color:var(--nobby-control-border-hover,#526781);background:var(--nobby-control-bg-hover,#192536)}
+            .mlx-help-panel :is(button,input):focus-visible{outline:2px solid var(--nobby-control-focus,#4f8cff);outline-offset:2px}
+            .mlx-help-panel :is(button,input):disabled{opacity:.5;cursor:not-allowed}
+            @media(max-width:720px){
+                .mlx-help-panel{inset:0;top:0;left:0;right:0;bottom:0;width:100vw;height:100dvh;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,auto) minmax(0,1fr)}
+                .mlx-help-sidebar{max-height:min(34dvh,260px);padding:12px 14px;overflow:hidden;border-right:0;border-bottom:1px solid rgba(127,140,160,.18)}
+                .mlx-help-main{min-height:0;padding:20px 18px 36px}
+                .mlx-help-topic-summary{display:none}
+            }
         `;
         document.head.appendChild(style);
     }
