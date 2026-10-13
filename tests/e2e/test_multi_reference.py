@@ -13,10 +13,18 @@ def test_multiple_references_reorder_remove_and_edit_options(ui):
     expect(page.locator('#attachmentBar .attachment-name').first).to_contain_text('person-1.png')
     page.locator('#attachmentBar .attachment-remove').last.click()
     expect(page.locator('#attachmentBar .image-attachment-chip')).to_have_count(9)
-    page.locator('.image-edit-options summary').click()
-    page.locator('.image-edit-options input[type=number]').first.fill('42')
-    page.locator('.image-edit-options input[type=number]').first.dispatch_event('change')
-    assert page.evaluate('MLXChatAttachments.getEditOptions().seed') == 42
+    # The composer stays compact even with many images; advanced MLX knobs
+    # must not dominate the UI or force the send button below the viewport.
+    expect(page.locator('.image-edit-model-field select')).to_have_value('auto')
+    assert page.locator('.image-edit-options input[type=number]').count() == 0
+    assert page.locator('.image-edit-advanced').evaluate('(el) => el.open') is False
+    assert page.locator('#attachmentBar').evaluate(
+        '(el) => getComputedStyle(el).overflowY') == 'auto'
+    page.locator('.image-edit-advanced summary').click()
+    expect(page.locator('.image-edit-advanced-fields')).to_be_visible()
+    page.locator('.image-edit-advanced input[type=text]').fill('text, watermark')
+    page.locator('.image-edit-advanced input[type=text]').dispatch_event('change')
+    assert page.evaluate('MLXChatAttachments.getEditOptions().negative_prompt') == 'text, watermark'
     assert page.evaluate('MLXChatAttachments.getAttachments().map(x => x.name)')[0] == 'person-1.png'
     assert page.evaluate('MLXChatAttachments.getAttachments().length') == 9
 
