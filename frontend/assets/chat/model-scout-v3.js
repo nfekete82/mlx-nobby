@@ -385,7 +385,7 @@
                 const job = await requestJson('/api/mlx/model-scout/benchmarks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ candidate_alias: eligible[index].installed_alias })
+                    body: JSON.stringify({ candidate_alias: eligible[index].installed_alias, suite: eligible[index].role === 'coding' ? 'coding' : 'quick' })
                 });
                 await pollBenchmark(job.id, progress => {
                     button.textContent = text('batch_running', {

@@ -34,7 +34,9 @@ def probe_mflux_cli(executable):
         return result | {'error': 'MFLUX-CLI konnte nicht geprüft werden'}
     if process.returncode:
         return result | {'error': f'MFLUX-CLI-Prüfung fehlgeschlagen (Exit {process.returncode})'}
-    flags = frozenset(re.findall(r'^\s+(--[a-z][a-z0-9-]*)(?=[\s,=]|$)', process.stdout, re.MULTILINE))
+    flags = frozenset(flag for line in process.stdout.splitlines()
+                      if line.lstrip().startswith('--')
+                      for flag in re.findall(r'--[a-z][a-z0-9-]*', line.strip().split('  ', 1)[0]))
     if not flags:
         return result | {'error': 'MFLUX-CLI liefert keinen erkennbaren Argumentvertrag'}
     return result | {'available': True, 'supported_flags': flags}
@@ -43,7 +45,7 @@ def probe_mflux_cli(executable):
 def required_mflux_flags(model):
     flags = {'--model', '--prompt', '--width', '--height', '--steps', '--seed', '--output'}
     family = model['model_family']
-    if family == 'qwen-image-edit':
+    if family in {'qwen-image-edit', 'qwen-image21-edit'}:
         flags |= {'--image-paths', '--guidance'}
     else:
         flags |= {'--mlx-cache-limit-gb', '--low-ram'}
@@ -51,7 +53,7 @@ def required_mflux_flags(model):
             flags.add('--base-model')
         if family not in {'z-image-turbo', 'boogu'}:
             flags.add('--guidance')
-    if model.get('quantization', 'none') != 'none' and (family != 'qwen-image-edit' or model.get('quantize_on_load')):
+    if model.get('quantization', 'none') != 'none' and (family not in {'qwen-image-edit', 'qwen-image21-edit'} or model.get('quantize_on_load')):
         flags.add('--quantize')
     if any(lora.get('enabled') for lora in model.get('loras', [])):
         flags |= {'--lora-paths', '--lora-scales'}
@@ -95,7 +97,7 @@ def _quantized_text_encoder(signature):
 
 
 def mflux_weight_contract(model, root):
-    if model['model_family'] not in {'qwen-image', 'qwen-image-edit', 'qwen-image21'}:
+    if model['model_family'] not in {'qwen-image', 'qwen-image-edit', 'qwen-image21', 'qwen-image21-edit'}:
         return True, None
     component = Path(root) / 'text_encoder'
     files = sorted(component.glob('*.safetensors'))

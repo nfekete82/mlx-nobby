@@ -10,7 +10,7 @@ The supported standalone runtime is pinned to **MFLUX 0.22.0**. The host helper
 `scripts/setup-mflux-mlx` backs up the previous uv-tool state, installs the pin
 and validates the CLI entry points used by MLX Nobby.
 
-MFLUX 0.22.0 adds the `mflux-generate-qwen-2.1-edit` command for up to ten reference images, and optional `--compute-precision float16` for supported Qwen 2.1 generation/editing paths. The setup helper checks the new edit CLI offline but does not enable it in the image registry or change production defaults. A later integration must wire multi-reference upload paths, local model availability, memory limits, and UI tests before enabling the feature. No automatic model download is performed.
+MFLUX 0.22.0 adds the `mflux-generate-qwen-2.1-edit` command for up to ten reference images, and optional `--compute-precision float16` for supported Qwen 2.1 generation/editing paths. The setup helper checks the new edit CLI offline but does not enable it in the image registry or change production defaults. The opt-in `mflux-qwen-image-2.1-edit` entry now wires ordered multi-reference uploads, validated working copies, local availability, existing memory admission and browser controls; see [the implementation and validation report](MODEL_IMAGE_INTELLIGENCE.md). No automatic model download is performed.
 
 Qwen Image 2.1 uses the dedicated `mflux-generate-qwen-2.1` command. Nobby's
 built-in entry is opt-in, Q8, and uses the upstream 40-step guidance-free
@@ -23,7 +23,7 @@ Krea 2 remains intentionally absent from the Nobby registry. Old persisted Krea
 entries are removed during registry migration and are not restored by the MFLUX
 0.20 update.
 
-Qwen Edit does not use the former `--canvas-policy`; the service resolves
+Legacy Qwen Edit does not use the former `--canvas-policy`; the service resolves
 dimensions from the source image. `--json-events` is optional and is passed only
 when advertised. Otherwise jobs report coarse generation phases. Required
 generation flags, requested quantization and enabled LoRAs are checked before

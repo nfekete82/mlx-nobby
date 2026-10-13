@@ -28,7 +28,7 @@ EDIT = set(
     "bearbeite bearbeiten ändere ändern aendere aendern verändere verändern veraendere veraendern färbe färben "
     "faerbe faerben entferne entfernen lösche löschen loesche loeschen ersetze ersetzen füge fuege "
     "retuschiere korrigiere verbessere verbessern change edit modify recolor remove replace add retouch "
-    "blur "
+    "blur setze setzen platziere platzieren kombiniere kombinieren combine compose place put "
     .split()
 )
 ANIMATE = set(

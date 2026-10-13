@@ -1,0 +1,9 @@
+{
+  "model": "mflux-qwen-image-2.1-edit",
+  "enabled_by_default": false,
+  "available": false,
+  "reason": "Lokale Modellgewichte fehlen; keine automatischen Downloads",
+  "real_inference_performed": false,
+  "inference_skipped_reason": "Lokale Modellgewichte fehlen; keine automatischen Downloads",
+  "compatible_weights_downloaded": false
+}

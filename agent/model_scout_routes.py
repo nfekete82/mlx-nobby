@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 import json
 import math
 import os
@@ -29,6 +29,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from agent import model_evaluations
+from agent.coding_benchmark import CODING_TASKS, SUITE_NAME, score as score_coding
 
 
 HF_API = os.environ.get("MODEL_SCOUT_HF_API", "https://huggingface.co/api/models").rstrip("/")
@@ -50,6 +51,7 @@ _BENCHMARK_JOBS: dict[str, dict] = {}
 
 class BenchmarkRequest(BaseModel):
     candidate_alias: str
+    suite: Literal["quick", "coding"] = "quick"
 
 
 class EvaluationRequest(BaseModel):
@@ -120,6 +122,7 @@ def infer_quantization_bits(model_id: str, tags: list[str] | None = None) -> flo
     for pattern in (
         r"(?:^|[-_ ])(\d+(?:\.\d+)?)bit(?:[-_ ]|$)",
         r"(?:^|[-_ ])q(\d+)(?:[-_ ]|$)",
+        r"(?:^|[-_ ])oq(\d+)e(?:[-_ ]|$)",
     ):
         match = re.search(pattern, text)
         if match:
@@ -148,7 +151,7 @@ def infer_role(model_id: str, tags: list[str] | None = None, pipeline_tag: str |
     text = " ".join([model_id, *(tags or []), pipeline_tag or ""]).lower()
     if any(token in text for token in ("vision", "vlm", "-vl-", "multimodal", "image-text-to-text")):
         return "vision"
-    if any(token in text for token in ("coder", "coding", "code-", "devstral")):
+    if any(token in text for token in ("coder", "coding", "code-", "devstral", "ornith")):
         return "coding"
     return "chat"
 
@@ -230,6 +233,39 @@ def model_reference_available(model: dict) -> bool:
         except OSError:
             return False
     return False
+
+
+def complete_local_model(model: dict) -> Path | None:
+    """Require weights/tokenizer, not just discovery metadata, before inference."""
+    repo = str(model.get('repo') or '')
+    roots = []
+    local = Path(repo).expanduser()
+    if local.is_absolute():
+        roots.append(local)
+    elif re.fullmatch(r'[^/\s]+/[^/\s]+', repo):
+        cache = Path.home() / '.cache/huggingface/hub' / ('models--' + repo.replace('/', '--'))
+        roots.extend(sorted((cache / 'snapshots').glob('*')))
+        root = Path.home() / 'Models' / repo.split('/')[-1]
+        roots.extend([root, *sorted(root.glob('*'))])
+    for root in roots:
+        try:
+            if not (root / 'config.json').is_file() or not (root / 'tokenizer_config.json').is_file():
+                continue
+            if not any((root / name).is_file() for name in ('tokenizer.json', 'tokenizer.model')):
+                continue
+            weights = list(root.glob('*.safetensors'))
+            if not weights or any(path.stat().st_size == 0 for path in weights):
+                continue
+            complete = True
+            for index in root.glob('*.safetensors.index.json'):
+                names = set(json.loads(index.read_text())['weight_map'].values())
+                if not names or any(not (root / name).is_file() or (root / name).stat().st_size == 0 for name in names):
+                    complete = False
+            if complete:
+                return root
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return None
 
 
 def _installed_model(model_id: str, installed) -> dict | None:
@@ -497,6 +533,7 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
         "temperature": 0,
         "max_tokens": max_tokens,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/chat/completions",
@@ -507,6 +544,7 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
     started = time.perf_counter()
     first_token_at = None
     chunks: list[str] = []
+    usage = {}
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
             for raw_line in response:
@@ -518,6 +556,8 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
                     break
                 try:
                     event = json.loads(body)
+                    if isinstance(event.get("usage"), dict):
+                        usage = event["usage"]
                     delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
                 except (json.JSONDecodeError, IndexError, AttributeError):
                     continue
@@ -536,6 +576,7 @@ def _stream_timing(port: int, model_id: str, prompt: str, max_tokens: int = 128)
         "ttft_seconds": round(ttft, 4),
         "total_seconds": round(finished - started, 4),
         "content": "".join(chunks),
+        "usage": usage,
     }
 
 
@@ -555,8 +596,8 @@ def _runtime_rss_gb(pid: int | None) -> float | None:
         return None
 
 
-def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -> dict:
-    model_id = _runtime_model_id(port)
+def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None], *, suite="quick", model_id=None) -> dict:
+    model_id = model_id or _runtime_model_id(port)
     _chat_once(port, model_id, "Antworte nur mit OK.", max_tokens=8)
 
     perf_prompt = (
@@ -565,24 +606,27 @@ def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -
     )
     usage_run = _chat_once(port, model_id, perf_prompt, max_tokens=128)
     timing = _stream_timing(port, model_id, perf_prompt, max_tokens=128)
-    usage = usage_run.get("usage") or {}
+    usage = timing.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or max(1, len(perf_prompt) // 4))
-    completion_tokens = int(usage.get("completion_tokens") or max(1, len(usage_run["content"]) // 4))
+    completion_tokens = int(usage.get("completion_tokens") or max(1, len(timing["content"]) // 4))
     ttft = max(float(timing["ttft_seconds"]), 0.001)
     generation_seconds = max(float(timing["total_seconds"]) - ttft, 0.001)
 
     quality_results = []
-    for task in QUALITY_TASKS:
+    rss_samples = [_runtime_rss_gb(find_server_pid(port))]
+    for task in (CODING_TASKS if suite == "coding" else QUALITY_TASKS):
         result = _chat_once(port, model_id, str(task["prompt"]), max_tokens=96)
+        rss_samples.append(_runtime_rss_gb(find_server_pid(port)))
         quality_results.append({
             "id": task["id"],
             "category": task["category"],
-            "passed": score_quality_answer(task, result["content"]),
+            "passed": score_coding(task, result["content"]) if suite == "coding" else score_quality_answer(task, result["content"]),
             "answer": result["content"][:600],
             "elapsed": round(float(result["elapsed"]), 3),
         })
 
     return {
+        "suite": SUITE_NAME if suite == "coding" else "mlx-nobby-quick-ab-v1",
         "runtime_model_id": model_id,
         "performance": {
             "ttft_seconds": round(ttft, 3),
@@ -590,7 +634,11 @@ def benchmark_runtime(port: int, find_server_pid: Callable[[int], int | None]) -
             "generation_tps": round(completion_tokens / generation_seconds, 1),
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            "token_count_method": "stream_usage" if usage.get("completion_tokens") else "estimated_characters_div_4",
             "runtime_rss_gb": _runtime_rss_gb(find_server_pid(port)),
+            "sampled_peak_rss_gb": max((value for value in rss_samples if value is not None), default=None),
+            "peak_unified_memory_gb": None,
+            "memory_method": "RSS sampled between requests; not a Metal allocation peak",
         },
         "quality": summarize_quality(quality_results),
         "quality_tasks": quality_results,
@@ -691,7 +739,17 @@ def _record_scout_evaluation(candidate_repo: str, baseline_repo: str, comparison
     )
 
 
-def _run_benchmark_job(
+def _run_benchmark_job(*args, **kwargs):
+    # Share the global admission guard and handoff lease with normal chat.
+    import runtime_coordinator
+    try:
+        with runtime_coordinator.chat_runtime():
+            _run_benchmark_job_inner(*args, **kwargs)
+    except Exception as exc:
+        _set_job(args[0], status="failed", phase="failed", error=str(exc))
+
+
+def _run_benchmark_job_inner(
     job_id: str,
     candidate_alias: str,
     model_provider,
@@ -699,6 +757,7 @@ def _run_benchmark_job(
     switch_model,
     runtime_lock,
     find_server_pid,
+    suite="quick",
 ) -> None:
     acquired = False
     baseline_alias = None
@@ -724,7 +783,7 @@ def _run_benchmark_job(
             raise RuntimeError("Aktives Modell ohne Alias.")
         if candidate_alias == baseline_alias:
             raise RuntimeError("Kandidat und aktives Modell sind identisch.")
-        if not model_reference_available(candidate):
+        if complete_local_model(candidate) is None:
             raise RuntimeError("Der Kandidat ist noch nicht lokal verfügbar. Bitte zuerst herunterladen.")
 
         port = int(config.get("PORT") or 8000)
@@ -734,12 +793,15 @@ def _run_benchmark_job(
         except RuntimeError:
             switch_model(baseline_alias)
 
-        baseline_result = benchmark_runtime(port, find_server_pid)
+        baseline_result = benchmark_runtime(port, find_server_pid, suite=suite, model_id=baseline_repo)
         _set_job(job_id, baseline=baseline_result, phase="switching_candidate", progress=48)
-        switch_model(candidate_alias)
         switched = True
+        load_started = time.perf_counter()
+        switch_model(candidate_alias)
+        candidate_load_seconds = time.perf_counter() - load_started
         _set_job(job_id, phase="candidate", progress=56)
-        candidate_result = benchmark_runtime(port, find_server_pid)
+        candidate_result = benchmark_runtime(port, find_server_pid, suite=suite, model_id=candidate["repo"])
+        candidate_result["performance"]["handoff_seconds"] = round(candidate_load_seconds, 3)
         comparison = compare_benchmarks(baseline_result, candidate_result)
 
         _set_job(job_id, phase="restoring", progress=94)
@@ -760,8 +822,8 @@ def _run_benchmark_job(
             "candidate": candidate_result,
             "comparison": comparison,
             "suite": {
-                "name": "mlx-nobby-quick-ab-v1",
-                "tasks": len(QUALITY_TASKS),
+                "name": SUITE_NAME if suite == "coding" else "mlx-nobby-quick-ab-v1",
+                "tasks": len(CODING_TASKS if suite == "coding" else QUALITY_TASKS),
                 "note": "Repeatable local micro-suite; not a general leaderboard score.",
             },
         }
@@ -800,7 +862,10 @@ def start_benchmark(
     switch_model,
     runtime_lock,
     find_server_pid,
+    suite="quick",
 ) -> dict:
+    if suite not in {"quick", "coding"}:
+        raise HTTPException(422, "Ungültige Benchmark-Suite")
     candidate_alias = str(candidate_alias or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._-]+", candidate_alias):
         raise HTTPException(400, "Ungültiger Modellalias")
@@ -823,7 +888,7 @@ def start_benchmark(
 
     threading.Thread(
         target=_run_benchmark_job,
-        args=(job_id, candidate_alias, model_provider, config_provider, switch_model, runtime_lock, find_server_pid),
+        args=(job_id, candidate_alias, model_provider, config_provider, switch_model, runtime_lock, find_server_pid, suite),
         name=f"model-scout-{job_id}",
         daemon=True,
     ).start()
@@ -890,6 +955,7 @@ def install_routes(
         def model_scout_start_benchmark(request: BenchmarkRequest):
             return start_benchmark(
                 request.candidate_alias,
+                suite=request.suite,
                 model_provider=model_provider,
                 config_provider=config_provider,
                 switch_model=switch_model,

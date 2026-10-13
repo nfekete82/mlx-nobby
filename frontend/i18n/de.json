@@ -1012,5 +1012,23 @@
     "no_projects": "Keine Projekte",
     "filter": "Chats filtern",
     "search_chats": "Chats durchsuchen"
-  }
+  },
+  "attachments.reorder": "Zum Umordnen ziehen oder Alt + Pfeiltasten verwenden.",
+  "attachments.reference_limit": "Bis zu zehn Referenzbilder werden unterstützt.",
+  "attachments.edit_options": "Bildbearbeitung · Erweiterte Optionen",
+  "attachments.edit_model": "Bearbeitungsmodell",
+  "attachments.edit_auto": "Automatisch · lokal verfügbare Modelle",
+  "attachments.edit_seed": "Seed (leer = zufällig)",
+  "attachments.edit_steps": "Schritte",
+  "attachments.edit_guidance": "Guidance (Negativ-Prompts benötigen > 1)",
+  "attachments.edit_strength": "Bearbeitungsstärke (0–1)",
+  "attachments.edit_negative_prompt": "Negativ-Prompt",
+  "attachments.edit_auto_mask": "Automatische Maske: zu bearbeitendes Objekt",
+  "attachments.edit_use_kv_cache": "KV-Cache (standardmäßig aktiv)",
+  "attachments.edit_use_step_cache": "Step-Cache (benötigt KV-Cache; sinnvoll ab 10 Schritten)",
+  "attachments.edit_enhance_prompt": "Prompt mit integriertem Vision-Modell verbessern",
+  "attachments.edit_verify": "Ergebnis mit integriertem Vision-Modell prüfen",
+  "attachments.edit_mask": "Maske (weiß = neu zeichnen, schwarz = bewahren)",
+  "attachments.edit_mask_ready": "Bildbearbeitung · Maske hochgeladen",
+  "attachments.edit_hint": "Erweiterte Optionen benötigen ein kompatibles MFLUX-Modell. Die Nummern der Miniaturen bestimmen die Referenzreihenfolge. Originalbilder bleiben erhalten. Identitätserhalt ist technisch nur bestmöglich umsetzbar."
 }

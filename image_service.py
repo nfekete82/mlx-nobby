@@ -67,7 +67,16 @@ class Edit(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     prompt: str = Field(min_length=3, max_length=2000)
-    source_path: str
+    source_path: str | None = None
+    source_paths: list[str] | None = Field(default=None, min_length=1, max_length=10)
+    mask_path: str | None = None
+    auto_mask: str | None = Field(default=None, min_length=1, max_length=200)
+    strength: float | None = Field(default=None, gt=0, le=1)
+    use_kv_cache: bool | None = None
+    use_step_cache: bool | None = None
+    step_cache_threshold: float | None = Field(default=None, gt=0, le=1)
+    enhance_prompt: bool | None = None
+    verify: bool | None = None
     model: str = "auto"
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
@@ -81,10 +90,20 @@ class Edit(BaseModel):
     width: int | None = Field(default=None, ge=256, le=1216)
     height: int | None = Field(default=None, ge=256, le=1216)
     auto_size: bool = False
-    negative_prompt: str | None = None
+    negative_prompt: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode='after')
     def reference_contract(self):
+        if not self.source_path and not self.source_paths:
+            raise ValueError('At least one reference image is required')
+        if self.source_paths:
+            if self.source_path and self.source_path != self.source_paths[0]:
+                raise ValueError('source_path must match the first reference')
+            self.source_path = self.source_paths[0]
+        if self.use_step_cache and self.use_kv_cache is False:
+            raise ValueError('Step cache requires KV cache')
+        if self.mask_path and self.auto_mask:
+            raise ValueError('Choose a mask or auto-mask')
         if self.semantic_operation == 'reference_generate' and self.reference_mode is None:
             raise ValueError('Reference generation requires a reference mode')
         if (self.width is None) != (self.height is None):
@@ -371,6 +390,21 @@ def validate_edit_source(value: str) -> Path:
             "Ungültiges Quellbild",
         )
 
+    from PIL import Image, UnidentifiedImageError
+    import warnings
+    try:
+        if path.stat().st_size > 20 * 1024 * 1024:
+            raise ValueError('Image exceeds 20 MB')
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(path) as image:
+                if image.format not in {'PNG', 'JPEG', 'WEBP'} or image.width * image.height > 25_000_000:
+                    raise ValueError('Unsupported image or pixel budget')
+                image.verify()
+            with Image.open(path) as image:
+                image.load()
+    except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise HTTPException(422, 'Beschädigtes, zu großes oder ungültiges Quellbild') from None
     return path
 
 
@@ -508,7 +542,7 @@ def _generation_model(model_id, prompt):
     return _auto_generation_model(prompt)
 
 
-def _edit_model(model_id):
+def _edit_model(model_id, *, multi_reference=False, modern=False):
     if model_id != "auto":
         return registry_call(registry.get_model, model_id)
     data = registry_call(registry.load_registry)
@@ -516,7 +550,9 @@ def _edit_model(model_id):
         data["models"], key=lambda item: item["id"] != data["default_model"],
     )
     edit_candidates = [model for model in candidates
-                       if "image_edit" in model.get("capabilities", [])]
+                       if "image_edit" in model.get("capabilities", [])
+                       and (not multi_reference or model.get("provider") == "mflux")
+                       and (not modern or model.get("model_family") == "qwen-image21-edit")]
     enabled_candidates = [model for model in edit_candidates if model["enabled"]]
     if not edit_candidates:
         raise HTTPException(503, "Kein Bildbearbeitungsmodell konfiguriert")
@@ -744,7 +780,16 @@ def _prepare_fast_edit_source(source, model):
     return working, working
 
 
-def _edit_result(
+def _edit_result(request, **kwargs):
+    temporary_sources = []
+    try:
+        return _edit_result_inner(request, temporary_sources=temporary_sources, **kwargs)
+    finally:
+        for source in temporary_sources:
+            source.unlink(missing_ok=True)
+
+
+def _edit_result_inner(
     request,
     *,
     provider_options=None,
@@ -752,13 +797,17 @@ def _edit_result(
     saving_callback=None,
     resolved=None,
     resolved_callback=None,
+    temporary_sources=None,
 ):
     global _running
 
     is_reference = request.semantic_operation == 'reference_generate'
     if resolved is None:
         try:
-            model = _edit_model(request.model)
+            model = _edit_model(request.model, multi_reference=len(request.source_paths or []) > 1,
+                                modern=len(request.source_paths or []) > 3 or any(
+                                    getattr(request, key) is not None for key in ('mask_path', 'auto_mask', 'strength',
+                                        'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify')))
         except HTTPException:
             if is_reference:
                 raise HTTPException(503, 'Kein kompatibles lokales Modell für Referenzbilder verfügbar.') from None
@@ -776,20 +825,50 @@ def _edit_result(
             "Das gewählte Image-Modell unterstützt keine Bildbearbeitung",
         )
 
-    source = validate_edit_source(request.source_path)
-    edit_source, temporary_edit_source = _prepare_fast_edit_source(
-        source,
-        model,
-    )
+    sources = [validate_edit_source(value) for value in (request.source_paths or [request.source_path])]
+    source = sources[0]
+    prepared_sources = []
+    from PIL import Image, ImageOps
+    for original in sources:
+        if model.get('model_family') == 'qwen-image21-edit' or len(sources) > 1:
+            OUTPUT.mkdir(parents=True, exist_ok=True)
+            working = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
+            temporary_sources.append(working)
+            with Image.open(original) as image:
+                image = ImageOps.exif_transpose(image).convert('RGBA')
+                edge = (resolve_image_profile(model, request.quality or 'standard').get('long_edge') or 768)
+                image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+                with open(working, 'xb', opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
+                    image.save(stream, 'PNG')
+            working.chmod(0o600)
+        else:
+            working, temporary = _prepare_fast_edit_source(original, model)
+            if temporary:
+                temporary_sources.append(temporary)
+        prepared_sources.append(working)
+    edit_source = prepared_sources[0]
     params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
         'width', 'height', 'auto_size'}))
     params["source_path"] = str(edit_source)
+    if request.source_paths:
+        params['source_paths'] = [str(value) for value in prepared_sources]
+    if request.mask_path:
+        mask = validate_edit_source(request.mask_path)
+        with Image.open(mask) as image, Image.open(source) as original:
+            if image.size != original.size:
+                raise HTTPException(422, 'Die Maske muss zur Größe des ersten Referenzbilds passen')
+            working_mask = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
+            temporary_sources.append(working_mask)
+            with Image.open(edit_source) as working:
+                image.convert('L').resize(working.size, Image.Resampling.NEAREST).save(working_mask)
+            working_mask.chmod(0o600)
+        params['mask_path'] = str(working_mask)
 
     # Qwen must render at the prepared working resolution too. Resizing only
     # the source image is not enough because MFLUX may otherwise select a
     # substantially larger output canvas.
-    if resolved is None and model.get("model_family") == "qwen-image-edit":
+    if resolved is None and model.get("model_family") in {"qwen-image-edit", "qwen-image21-edit"}:
         from PIL import Image
 
         with Image.open(edit_source) as prepared_image:
@@ -803,13 +882,20 @@ def _edit_result(
         if is_reference and request.width is not None:
             # Qwen's advertised width/height flags support a target canvas.
             # Other edit providers retain their existing source-size policy.
-            if model.get('model_family') == 'qwen-image-edit':
+            if model.get('model_family') in {'qwen-image-edit', 'qwen-image21-edit'}:
                 edge = min(1024, (profile or {}).get('long_edge') or 768)
                 params['width'], params['height'] = dimensions_for_long_edge(request.width, request.height, edge)
     elif request.seed is not None:
         params['seed'] = request.seed
+    if model.get('model_family') == 'qwen-image21-edit':
+        params['width'] = max(256, (params['width'] // 32) * 32)
+        params['height'] = max(256, (params['height'] // 32) * 32)
+        if params['guidance'] < 1:
+            raise HTTPException(422, 'Qwen 2.1 Edit benötigt Guidance mindestens 1')
     if is_reference and resolved_callback:
-        canonical = {'model': copy.deepcopy(model), 'params': {**copy.deepcopy(params), 'source_path': str(source)},
+        canonical = {'model': copy.deepcopy(model), 'params': {**copy.deepcopy(params), 'source_path': str(source),
+                     **({'source_paths': [str(value) for value in sources]} if request.source_paths else {}),
+                     **({'mask_path': request.mask_path} if request.mask_path else {})},
                      'request': request.model_dump(), 'operation': 'edit',
                      'quality_profile': resolved.get('quality_profile') if resolved else profile,
                      'requested_model': request.model, 'requested_seed': request.seed}
@@ -827,8 +913,6 @@ def _edit_result(
         run_provider(model, params, path, **(provider_options or {}))
     finally:
         _running = None
-        if temporary_edit_source is not None:
-            temporary_edit_source.unlink(missing_ok=True)
     if saving_callback:
         saving_callback()
 
@@ -845,6 +929,8 @@ def _edit_result(
         "height": height,
         "prompt": request.prompt,
         "source_path": str(source),
+        **({"source_paths": [str(value) for value in sources]} if request.source_paths else {}),
+        "reference_count": len(sources),
         "model": model["id"],
         "provider": model["provider"],
         "model_family": model["model_family"],

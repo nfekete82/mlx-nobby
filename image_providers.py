@@ -567,8 +567,9 @@ def mflux_command(model, params, output):
 
     # Source aspect is already resolved by the service into width/height.
     # Qwen Edit 0.19.1/0.20.0 have no --canvas-policy; quantize only on request.
-    if family == "qwen-image-edit":
-        source_path = params.get("source_path")
+    if family in {"qwen-image-edit", "qwen-image21-edit"}:
+        source_paths = params.get("source_paths") or [params.get("source_path")]
+        source_path = source_paths[0]
 
         if not source_path:
             raise RuntimeError(
@@ -580,7 +581,7 @@ def mflux_command(model, params, output):
             "--model",
             str(model_directory(model)),
             "--image-paths",
-            source_path,
+            *source_paths,
             "--prompt",
             params["prompt"],
             "--width",
@@ -632,6 +633,40 @@ def mflux_command(model, params, output):
                 ]
             )
 
+        if len(source_paths) > 10:
+            raise ProviderFailure("Maximal zehn Referenzbilder erlaubt", provider="mflux", model=model.get("id"))
+        optional_values = {
+            "negative_prompt": "--negative-prompt", "mask_path": "--mask-image",
+            "auto_mask": "--auto-mask", "strength": "--strength",
+            "step_cache_threshold": "--step-cache-threshold",
+        }
+        for key, flag in optional_values.items():
+            if params.get(key) is not None and params[key] != "":
+                if flag not in flags:
+                    raise ProviderFailure(f"Installierte CLI unterstützt {flag} nicht", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
+                command += [flag, str(params[key])]
+        for key, flag in {"use_kv_cache": "--use-kv-cache", "use_step_cache": "--use-step-cache",
+                          "enhance_prompt": "--enhance-prompt", "verify": "--verify"}.items():
+            if params.get(key) is None:
+                continue
+            selected_flag = flag if params[key] else "--no-" + flag[2:]
+            if not params[key] and key in {"enhance_prompt", "verify"}:
+                continue
+            if selected_flag not in flags:
+                raise ProviderFailure(f"Installierte CLI unterstützt {selected_flag} nicht", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
+            command.append(selected_flag)
+        if params.get("negative_prompt") and params["guidance"] <= 1:
+            raise ProviderFailure("Negative Prompts benötigen Guidance größer als 1")
+        if family == "qwen-image21-edit":
+            policy = mflux_memory_policy()
+            if '--output-resolution' in flags:
+                command += ['--output-resolution', str(max(params['width'], params['height']))]
+            if '--vae-tiling' in flags:
+                command.append('--vae-tiling')
+            if '--mlx-cache-limit-gb' in flags:
+                command += ['--mlx-cache-limit-gb', str(policy['cache_gb'])]
+            if policy['low_ram'] and '--low-ram' in flags:
+                command.append('--low-ram')
         return command
 
     memory_policy = mflux_memory_policy()
@@ -1169,6 +1204,10 @@ def run_provider(
     process_callback=None,
     progress_callback=None,
 ):
+    if model["provider"] != "mflux" and (len(params.get("source_paths") or []) > 1 or
+            (params.get("source_path") and bool(params.get("negative_prompt"))) or
+            any(params.get(key) is not None for key in ("mask_path", "auto_mask", "strength", "use_kv_cache", "use_step_cache", "step_cache_threshold", "enhance_prompt", "verify"))):
+        raise ProviderFailure("Diese Bearbeitungsoptionen benötigen ein kompatibles MFLUX-Modell", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
     ready, reason = availability(model)
     if not ready:
         raise ProviderFailure(reason, error_code='IMAGE_PROVIDER_INCOMPATIBLE', provider=model['provider'], model=model['id'])

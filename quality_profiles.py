@@ -5,6 +5,11 @@ request parameters are applied by the services after profile resolution.
 """
 
 IMAGE_PROFILES = {
+    "qwen-image21-edit": {
+        "fast": {"steps": 10, "guidance": 1.0, "long_edge": 512},
+        "standard": {"steps": 20, "guidance": 1.0, "long_edge": 768},
+        "quality": {"steps": 40, "guidance": 1.0, "long_edge": 1024},
+    },
     "juggernaut-xl": {
         "fast": {"steps": 20, "guidance": 4.5, "long_edge": 768},
         "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},

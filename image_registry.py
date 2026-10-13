@@ -77,6 +77,10 @@ FAMILIES = {
         "mflux-generate-boogu",
         ("boogu-image-turbo",),
     ),
+    "qwen-image21-edit": (
+        "mflux-generate-qwen-2.1-edit",
+        ("qwen-image-2.1",),
+    ),
     "qwen-image-edit": (
         "mflux-generate-qwen-edit",
         (
@@ -229,20 +233,13 @@ class ImageModel(BaseModel):
                 "lora",
                 "multi_lora",
             ]
-        elif self.model_family == "qwen-image-edit":
-            self.capabilities = [
-                "image_edit",
-                "multi_image_edit",
-                "masked_edit",
-                "reframe",
-                "outpaint",
-            ]
-
+        elif self.model_family in {"qwen-image-edit", "qwen-image21-edit"}:
+            self.capabilities = ["image_edit"]
             if self.provider == "mflux":
-                self.capabilities += [
-                    "lora",
-                    "multi_lora",
-                ]
+                self.capabilities += ["multi_image_edit", "lora", "multi_lora"]
+                if self.model_family == "qwen-image21-edit":
+                    self.capabilities += ["masked_edit", "auto_mask", "edit_strength", "negative_prompt",
+                                          "kv_cache", "step_cache", "enhance_prompt", "verify"]
         elif (
             self.provider == "mflux"
             and self.model_family in {"qwen-image21", "boogu"}
@@ -360,6 +357,14 @@ def builtin_models():
             ImageModel(**model_kwargs).model_dump()
         )
     models.append(ImageModel(
+        id="mflux-qwen-image-2.1-edit",
+        name="Qwen Image 2.1 Edit · MFLUX · Q4 (Opt-in)",
+        provider="mflux", repository="Qwen/Qwen-Image-2.1",
+        model_family="qwen-image21-edit", base_model="qwen-image-2.1",
+        quantization="q4", quantize_on_load=True, enabled=False,
+        default_steps=20, default_guidance=1.0,
+    ).model_dump())
+    models.append(ImageModel(
         id=MLXSERVE_QWEN_IMAGE21_ID,
         name="Qwen Image 2.1 · MLX-Serve · 4-bit",
         provider="mlxserve",
@@ -426,6 +431,12 @@ def _canonicalize_known_builtin(model, builtin_by_id):
 
 
 def _save(data):
+    # Preserve a recoverable copy before automatic registry migration or edits.
+    if REGISTRY_FILE.is_file():
+        import shutil
+        backup = REGISTRY_FILE.with_suffix('.json.previous')
+        shutil.copy2(REGISTRY_FILE, backup)
+        backup.chmod(0o600)
     REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".image-models-", dir=REGISTRY_FILE.parent)
     try:

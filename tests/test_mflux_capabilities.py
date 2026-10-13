@@ -213,3 +213,15 @@ def test_image_job_preserves_structured_provider_failure(monkeypatch):
     assert result['status'] == 'failed'
     assert {key: result[key] for key in failure.diagnosis} == failure.diagnosis
     assert not lock.locked()
+
+
+def test_boolean_negative_aliases_are_detected(tmp_path):
+    executable = tmp_path / 'mflux-help'
+    executable.write_text(f'''#!{sys.executable}
+print("  --use-kv-cache, --no-use-kv-cache  Reuse prefix")
+print("  --use-step-cache, --no-use-step-cache")
+''')
+    executable.chmod(0o755)
+    capabilities.probe_mflux_cli.cache_clear()
+    flags = capabilities.probe_mflux_cli(str(executable))['supported_flags']
+    assert {'--use-kv-cache', '--no-use-kv-cache', '--use-step-cache', '--no-use-step-cache'} <= flags
