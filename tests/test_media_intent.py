@@ -205,3 +205,21 @@ def test_content_constraints_do_not_cancel_shorts_execution(constraint, separato
     decision = decide_media_intent(prompt, has_image=has_image)
     assert decision.intent == decision.target == "shorts_generate"
     assert decision.execution_requested is True
+
+
+@pytest.mark.parametrize("prompt,expected", [
+    ("Setz beide Personen zusammen auf eine Parkbank", "image_edit"),
+    ("Platziere beide Personen nebeneinander", "image_edit"),
+    ("Combine both people into one photo", "image_edit"),
+    ("Vergleiche die beiden Bilder", "vision_chat"),
+    ("Was ist auf beiden Bildern?", "vision_chat"),
+    ("Setze beide Personen nicht zusammen", "discussion"),
+])
+def test_attachment_aware_composition_routing(prompt, expected):
+    decision = decide_media_intent(prompt, has_image=True)
+    assert decision.intent == expected
+
+
+def test_no_image_does_not_authorize_composition():
+    decision = decide_media_intent("Setz beide Personen auf eine Parkbank", has_image=False)
+    assert not decision.execution_requested
