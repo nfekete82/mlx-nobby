@@ -205,3 +205,58 @@ def test_content_constraints_do_not_cancel_shorts_execution(constraint, separato
     decision = decide_media_intent(prompt, has_image=has_image)
     assert decision.intent == decision.target == "shorts_generate"
     assert decision.execution_requested is True
+
+
+@pytest.mark.parametrize("prompt,expected", [
+    ("Setz beide Personen zusammen auf eine Parkbank", "image_edit"),
+    ("Platziere beide Personen nebeneinander", "image_edit"),
+    ("Combine both people into one photo", "image_edit"),
+    ("Vergleiche die beiden Bilder", "discussion"),
+    ("Was ist auf beiden Bildern?", "discussion"),
+    ("Setze beide Personen nicht zusammen", "discussion"),
+])
+def test_attachment_aware_composition_routing(prompt, expected):
+    decision = decide_media_intent(prompt, has_image=True)
+    assert decision.intent == expected
+
+
+def test_no_image_does_not_authorize_composition():
+    decision = decide_media_intent("Setz beide Personen auf eine Parkbank", has_image=False)
+    assert not decision.execution_requested
+
+
+@pytest.mark.parametrize("prompt", [
+    "erstelle ein bild mit beiden frauen auf einem bett",
+    "Erstelle ein Foto von beiden Personen gemeinsam auf einer Parkbank",
+    "Create an image with both women sitting on a bed",
+    "Generate a photo of both people together on a bench",
+])
+def test_explicit_two_image_creation_uses_edit_route_at_preflight_and_execution(prompt):
+    context = {**IMAGE, "image_count": 2, "references": [
+        {"kind": "image", "stored_path": "/tmp/first.png"},
+        {"kind": "image", "stored_path": "/tmp/second.png"},
+    ]}
+    decision = decide_media_intent(prompt, has_image=True, image_count=2)
+    assert decision.intent == decision.target == "image_edit"
+
+    request = app.ChatActionRequest(prompt=prompt, file_context=context, resolved_target="image_edit")
+    preflight = app.preflight_chat_action(request)
+    assert preflight["target"] == "image_edit"
+    with patch.object(app, "_start_chat_image_job", return_value={"id": "a" * 24, "status": "queued"}) as start:
+        result = app.run_chat_action(request)
+    assert result["tool"] == "image_edit"
+    assert start.call_args.args[0] == "image_edit"
+
+
+@pytest.mark.parametrize("prompt,expected", [
+    ("erstelle ein bild mit beiden frauen auf einem bett", "image_generate"),
+    ("Erstelle ein Bild von zwei Frauen in einem Park", "image_generate"),
+    ("Vergleiche die beiden Fotos", "discussion"),
+    ("Was ist auf den beiden Bildern zu sehen?", "discussion"),
+    ("Erstelle einen Prompt für ein Bild mit beiden Frauen", "prompt_writing"),
+    ("Erstelle kein Bild mit beiden Frauen", "discussion"),
+])
+def test_multi_image_context_does_not_override_other_intents(prompt, expected):
+    count = 1 if prompt == "erstelle ein bild mit beiden frauen auf einem bett" else 2
+    decision = decide_media_intent(prompt, has_image=True, image_count=count)
+    assert decision.intent == expected

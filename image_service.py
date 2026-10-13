@@ -546,8 +546,19 @@ def _edit_model(model_id, *, multi_reference=False, modern=False):
     if model_id != "auto":
         return registry_call(registry.get_model, model_id)
     data = registry_call(registry.load_registry)
+    # Prefer the locally proven Osaurus edit checkpoint for automatic edits.
+    # Disabled, unavailable or manually chosen models are never overridden.
+    preference = (
+        "mflux-osaurus-qwen-image-2.1-edit",
+        "mflux-qwen-image-2.1-edit",
+        "mflux-qwen-image-edit-2511",
+    )
     candidates = sorted(
-        data["models"], key=lambda item: item["id"] != data["default_model"],
+        data["models"],
+        key=lambda item: (
+            preference.index(item["id"]) if item["id"] in preference else len(preference),
+            item["id"] != data["default_model"],
+        ),
     )
     edit_candidates = [model for model in candidates
                        if "image_edit" in model.get("capabilities", [])

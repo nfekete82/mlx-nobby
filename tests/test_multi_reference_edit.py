@@ -201,3 +201,87 @@ def test_reference_payload_accepts_list_without_redundant_first_path(edit_runtim
     assert payload['source_path'] == str(sources[0])
     assert payload['source_paths'] == [str(p) for p in sources[:2]]
     assert 'Use all 2 reference images' in payload['prompt']
+
+
+def test_automatic_edit_prefers_available_osaurus_without_overriding_manual(monkeypatch):
+    from image_registry import OSAURUS_QWEN21_EDIT_ID
+    candidates = [
+        dict(id='mflux-qwen-image-2.1-edit', provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+        dict(id=OSAURUS_QWEN21_EDIT_ID, provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+    ]
+    monkeypatch.setattr(service.registry, 'load_registry',
+                        lambda: {'models': candidates, 'default_model': candidates[0]['id']})
+    monkeypatch.setattr(service, 'availability', lambda model: (True, 'ready'))
+    assert service._edit_model('auto', multi_reference=True)['id'] == OSAURUS_QWEN21_EDIT_ID
+    monkeypatch.setattr(service.registry, 'get_model',
+                        lambda model_id: next(m for m in candidates if m['id'] == model_id))
+    assert service._edit_model(candidates[0]['id'], multi_reference=True)['id'] == candidates[0]['id']
+
+
+def test_auto_edit_skips_unavailable_osaurus(monkeypatch):
+    from image_registry import OSAURUS_QWEN21_EDIT_ID
+    candidates = [
+        dict(id=OSAURUS_QWEN21_EDIT_ID, provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+        dict(id='mflux-qwen-image-2.1-edit', provider='mflux',
+             model_family='qwen-image21-edit', capabilities=['image_edit'],
+             enabled=True),
+    ]
+    monkeypatch.setattr(service.registry, 'load_registry',
+                        lambda: {'models': candidates, 'default_model': candidates[1]['id']})
+    monkeypatch.setattr(service, 'availability',
+                        lambda model: (model['id'] != OSAURUS_QWEN21_EDIT_ID, 'missing'))
+    assert service._edit_model('auto', multi_reference=True)['id'] == candidates[1]['id']
+
+
+
+@pytest.mark.parametrize("prompt", [
+    "Erstelle ein gemeinsames fotorealistisches Bild der beiden Frauen aus den Referenzfotos, wie sie zusammen auf einem Bett liegen.",
+    "Create an image with both people together on a bench",
+    "Setz beide Personen gemeinsam auf eine Parkbank",
+])
+def test_auto_composition_payload_without_redundant_single_source(edit_runtime, prompt):
+    _, sources, _ = edit_runtime
+    context = {
+        "kind": "image",
+        "image_count": 2,
+        "references": [
+            {"kind": "image", "stored_path": str(path)} for path in sources[:2]
+        ],
+    }
+    request = agent.ChatActionRequest(
+        prompt=prompt, file_context=context,
+        resolved_target="image_edit", image_options={"model": "auto"},
+    )
+    route = agent.preflight_chat_action(request)
+    assert route["target"] == "image_edit"
+    assert route["reference_mode"] == "same_identity"
+    payload = agent._image_edit_payload(request)
+    assert payload["semantic_operation"] == "reference_generate"
+    assert payload["reference_mode"] == "same_identity"
+    assert payload["source_path"] == str(sources[0])
+    assert payload["source_paths"] == [str(path) for path in sources[:2]]
+    assert payload["model"] == "auto"
+    assert "Use all 2 reference images" in payload["prompt"]
+    validated = service.Edit(**payload)
+    assert validated.semantic_operation == "reference_generate"
+    assert validated.source_paths == [str(path) for path in sources[:2]]
+
+
+def test_single_edit_still_uses_regular_edit_payload(edit_runtime):
+    _, sources, _ = edit_runtime
+    request = agent.ChatActionRequest(
+        prompt="Bearbeite den Hintergrund",
+        file_context={"kind": "image", "stored_path": str(sources[0])},
+        resolved_target="image_edit",
+    )
+    payload = agent._image_edit_payload(request)
+    assert "semantic_operation" not in payload
+    assert payload["source_path"] == str(sources[0])
+    assert "source_paths" not in payload
+    assert service.Edit(**payload).semantic_operation == "edit"

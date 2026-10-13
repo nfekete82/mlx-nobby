@@ -160,7 +160,7 @@ class RoutingDecision:
         }
 
 
-def decide_media_intent(prompt, *, has_image=False, action=None, reference_context=None):
+def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, reference_context=None):
     """Decide from the current instruction, never from conversation history.
 
     Explicit UI actions authorize bare media descriptions. They cannot override
@@ -175,6 +175,36 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
     clauses = re.split(r'[;.!?\n]+|\b(?:und|and)\b', text)
     media_context = "image" if has_image else None
     text_intent = None
+    # Image attachments never authorize editing by themselves. Explicit
+    # composition instructions do; comparisons/questions stay vision/chat.
+    composition = bool(
+        has_image
+        and re.search(
+            r"\b(?:setze|setz|setzen|platziere|platzier|kombiniere|kombinier|"
+            r"füge|fuege|vereine|vereinige|stelle|stell|bring|"
+            r"combine|compose|merge|place|put|join)\b",
+            text,
+        )
+        and re.search(
+            r"\b(?:beide|zusammen|gemeinsam|nebeneinander|personen|"
+            r"bilder|fotos|bild|foto|szene|parkbank|"
+            r"both|together|people|images|photos|picture|scene)\b",
+            text,
+        )
+    )
+    # An explicit instruction that refers to both supplied images is an edit,
+    # even when the user starts the sentence with "create a picture".
+    # Attachment count alone must never authorize rendering.
+    compose_supplied_images = bool(
+        has_image
+        and type(image_count) is int
+        and image_count >= 2
+        and re.search(
+            r"\b(?:beide(?:n|r|s)?|both|zusammen|gemeinsam|together|"
+            r"hochgeladenen?\s+(?:bilder|fotos)|supplied\s+(?:images|photos))\b",
+            text,
+        )
+    )
     topics = set(OBJECTS) | TEXT_OBJECTS | {"ltx", "porträtfotografie", "portraitfotografie", "photography"}
     mode = reference_mode(text)
     execution = None
@@ -236,10 +266,22 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
                     execution = "video_animate"
             elif has_image and set(words[command + 1:]) & MODIFIERS:
                 execution = "image_edit"
+    if composition and not negated and not text_intent and execution is None:
+        execution = "image_edit"
+    if compose_supplied_images and not negated and not text_intent and execution == "image_generate":
+        execution = "image_edit"
     if execution and not negated:
+        # A composition using multiple supplied images is an edit operation
+        # executed with reference-generation semantics, not a text-to-image job.
+        # Keep the target as image_edit for existing image-job integration.
+        resolved_reference_mode = (
+            mode if execution == "image_reference_generate"
+            else "same_identity" if execution == "image_edit" and compose_supplied_images
+            else None
+        )
         return RoutingDecision(execution, TARGETS[execution], True, media_context,
                                1.0, "Explicit command bound to media output",
-                               reference_mode=mode if execution == "image_reference_generate" else None)
+                               reference_mode=resolved_reference_mode)
     if text_intent or negated:
         intent = text_intent or "discussion"
         return RoutingDecision(intent, "chat", False, media_context, 1.0,

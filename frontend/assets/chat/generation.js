@@ -367,6 +367,12 @@ function imageOptionsForRequest(
     const merged = Object.fromEntries(
         Object.entries(existing || {}).filter(([key]) => allowed.has(key))
     );
+    // A generator preference (e.g. Juggernaut XL) is not an edit-model choice.
+    // Always pass an explicit auto choice unless the user selected an edit
+    // model in referenceEdit; those options are applied below.
+    if (operation !== 'generate') {
+        merged.model = 'auto';
+    }
     const normalizedNegativePrompt = String(
         negativePrompt || ''
     ).trim();
@@ -377,7 +383,7 @@ function imageOptionsForRequest(
         delete merged.negative_prompt;
     }
 
-    if (imageModel !== null) {
+    if (operation === 'generate' && imageModel !== null) {
         const normalizedModel = String(
             imageModel || 'auto'
         ).trim() || 'auto';
@@ -402,6 +408,17 @@ function imageOptionsForRequest(
         // chooses the model/quality-appropriate native render size.
         auto_size: true
     };
+}
+
+function hasImageEditSource(context, activeArtifactId = null) {
+    if (context?.stored_path || activeArtifactId) return true;
+    // Ordered multi-reference uploads do not require a separate target image.
+    return Array.isArray(context?.references) &&
+        context.references.length > 0 &&
+        context.references.every(item =>
+            typeof item?.stored_path === 'string' &&
+            item.stored_path.length > 0
+        );
 }
 
 function isImageEditRequest(prompt, hasImage) {
@@ -2070,6 +2087,15 @@ const imageFiles =
         currentAttachments.filter(
             file => file.kind === 'image'
         );
+    const imageAttachmentMode = imageFiles.length
+        ? (MLXChatAttachments.getImageMode?.() || 'auto')
+        : 'auto';
+    if (imageAttachmentMode === 'edit' && !prompt) {
+        alert(gt('image_edit_prompt_required',
+            'Please describe what should be changed in the image.'));
+        input.focus();
+        return;
+    }
 
     const textFiles =
         currentAttachments.filter(
@@ -2685,6 +2711,7 @@ const imageFiles =
                         },
                         body: JSON.stringify({
                             prompt,
+                            action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                             file_context: fileContext,
                             active_artifact_id:
                                 activeArtifactIdForEdit,
@@ -2719,8 +2746,20 @@ const imageFiles =
                     );
                 }
 
-                resolvedTarget = serverTarget;
-                if (route.intent === 'image_reference_generate') {
+                resolvedTarget = imageAttachmentMode === 'describe'
+                    ? 'chat'
+                    : serverTarget;
+                if (
+                    imageAttachmentMode !== 'describe' &&
+                    route.intent === 'image_reference_generate' ||
+                    (
+                        imageAttachmentMode !== 'describe' &&
+                        route.intent === 'image_edit' &&
+                        route.reference_mode &&
+                        Array.isArray(fileContext?.references) &&
+                        fileContext.references.length > 1
+                    )
+                ) {
                     referenceMode = route.reference_mode || activeWorkspaceImageArtifact?.reference_mode || 'same_identity';
                     // A historical fallback is not an explicitly selected reference.
                     activeArtifactIdForEdit = imageFiles.length ? null : activeWorkspaceImageArtifact?.artifact_id || null;
@@ -2774,8 +2813,7 @@ const imageFiles =
 
             if (
                 resolvedTarget === 'image_edit' &&
-                !fileContext?.stored_path &&
-                !activeArtifactIdForEdit
+                !hasImageEditSource(fileContext, activeArtifactIdForEdit)
             ) {
                 throw new Error(
                     gt(
@@ -3363,6 +3401,7 @@ const imageFiles =
 
             const actionPayload = {
                 prompt: prompt,
+                action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                 reference_mode: referenceMode,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
@@ -4732,7 +4771,9 @@ resetSessionRuntime: resetSessionRuntime,
             isImageComparisonRequest: isImageComparisonRequest,
             sessionImageArtifacts: sessionImageArtifacts,
             activeSessionImageArtifact: activeSessionImageArtifact,
+            hasImageEditSource: hasImageEditSource,
             isImageEditRequest: isImageEditRequest,
+            imageOptionsForRequest: imageOptionsForRequest,
             isImageGenerationRequest: isImageGenerationRequest,
             imageUpscalePresets: imageUpscalePresets,
             isImageJobTool: isImageJobTool,

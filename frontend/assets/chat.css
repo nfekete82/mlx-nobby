@@ -10247,13 +10247,132 @@ body.notes-resizing * {
 .chat-history-menu button { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); white-space: nowrap; padding: 12px 16px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; box-shadow: 0 4px 16px #0003; }
 .chat-history-menu :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-/* Ordered multi-reference editor, including narrow mobile composers. */
-.image-edit-options { flex-basis:100%; min-width:0; padding:8px; font-size:12px; }
-.image-edit-options summary { cursor:pointer; }
-.image-edit-options[open] { display:flex; flex-wrap:wrap; gap:8px; }
-.image-edit-options summary,.image-edit-options p { width:100%; }
-.image-edit-options label { display:flex; flex-direction:column; gap:4px; width:min(240px,100%); min-width:0; }
-.image-edit-options input,.image-edit-options select { max-width:100%; min-width:0; box-sizing:border-box; }
-.image-edit-options input[type=checkbox] { align-self:flex-start; }
-.image-attachment-chip[draggable] { cursor:grab; }
-.image-attachment-chip:focus-visible { outline:2px solid var(--accent,#6d9cff); }
+/* Compact, accessible image composer: no technical inference knobs in the UI. */
+.composer {
+    max-height: calc(100dvh - 20px);
+}
+.composer .attachment-bar.visible {
+    max-height: min(46dvh, 430px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #475569 transparent;
+    align-content: flex-start;
+}
+.composer .attachment-bar .image-attachment-chip {
+    flex: 1 1 220px;
+    max-width: min(100%, 560px);
+    min-width: 0;
+}
+.image-attachment-mode {
+    flex: 1 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 4px 0;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 550;
+}
+.image-attachment-mode-label { flex: 0 0 auto; }
+.image-attachment-mode-select {
+    flex: 0 1 310px;
+    width: min(100%, 310px);
+    min-height: 36px;
+}
+.image-edit-options {
+    flex: 1 0 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 5px 0 8px;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+.image-edit-primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 10px 14px;
+}
+.image-edit-model-field,
+.image-edit-advanced-fields label {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 550;
+}
+.image-edit-control {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid #374355;
+    border-radius: 10px;
+    color: #f1f5f9;
+    background: #161d29;
+    font: inherit;
+    font-size: 13px;
+    color-scheme: dark;
+}
+.image-edit-control:hover { border-color: #53647d; }
+.image-edit-control:focus-visible,
+.image-edit-advanced summary:focus-visible {
+    outline: 2px solid #6d9cff;
+    outline-offset: 2px;
+}
+.image-edit-control::placeholder { color: #8492a6; }
+.image-edit-control:disabled { opacity: .58; cursor: not-allowed; }
+.image-edit-advanced { min-width: 0; }
+.image-edit-advanced summary {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid #374355;
+    border-radius: 10px;
+    color: #b8c8df;
+    background: #1b2533;
+    font-size: 12px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.image-edit-advanced summary::-webkit-details-marker { display: none; }
+.image-edit-advanced summary::before { content: '›'; font-size: 18px; line-height: 12px; }
+.image-edit-advanced[open] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+.image-edit-advanced[open] summary { width: fit-content; }
+.image-edit-advanced[open] summary::before { transform: rotate(90deg); }
+.image-edit-advanced-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 12px 0 4px;
+}
+.image-edit-advanced-fields input[type="file"] {
+    padding: 7px;
+    font-size: 12px;
+}
+.image-edit-mask-status { font-size: 11px; color: #93c5a9; }
+.image-attachment-chip[draggable] { cursor: grab; }
+.image-attachment-chip:focus-visible { outline: 2px solid #6d9cff; outline-offset: 2px; }
+@media (max-width: 620px) {
+    .composer .attachment-bar.visible { max-height: min(45dvh, 360px); }
+    .composer .attachment-bar .image-attachment-chip { flex-basis: 100%; }
+    .image-attachment-mode { flex-wrap: wrap; gap: 6px; }
+    .image-attachment-mode-select { flex-basis: 100%; }
+    .image-edit-primary { grid-template-columns: minmax(0, 1fr); }
+    .image-edit-advanced { grid-column: 1; }
+    .image-edit-advanced[open] { grid-row: auto; }
+    .image-edit-advanced-fields { grid-template-columns: minmax(0, 1fr); }
+}
+

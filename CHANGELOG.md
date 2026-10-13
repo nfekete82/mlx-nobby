@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Restore explicit image upload intent selection (automatic, describe/analyze, edit); only show image-model and advanced editing controls for editing, preserve ordered references, and prevent accidental rendering when analysis is selected.
+- Improve edit-composer internationalization and browser acceptance coverage for desktop/mobile image modes, multi-reference order, and editing controls.
+
 ## v1.11.0
 
 - Add opt-in-by-answer structured offline charts to normal chat: safe validated `nobby-chart` JSON blocks, automatic selection, SVG line/bar/donut and accessible table fallback, switching and CSV export. The model is instructed to include only real numeric data when visualization helps.

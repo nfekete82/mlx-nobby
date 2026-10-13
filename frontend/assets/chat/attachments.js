@@ -14,6 +14,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 (function () {
     let attachments = [];
     let editOptions = {};
+    let imageMode = 'auto';
     let pendingMaskUpload = Promise.resolve();
 
     function uid() {
@@ -100,96 +101,194 @@ function attachmentT(key, fallback = '', variables = {}) {
         return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     }
 
+    // A shared promise prevents one model-list request per image attachment
+    // while keeping model selection immediately available without opening a menu.
+    let editModelsPromise = null;
+
+    function availableEditModels() {
+        if (!editModelsPromise) {
+            editModelsPromise = fetch('/api/image/models', {cache: 'no-store'})
+                .then(response => {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(data => (data.models || []).filter(model =>
+                    model.capabilities?.includes('image_edit')
+                ))
+                .catch(error => {
+                    editModelsPromise = null;
+                    throw error;
+                });
+        }
+        return editModelsPromise;
+    }
+
     function renderEditControls(bar) {
         if (!attachments.some(file => file.kind === 'image')) return;
-        const details = document.createElement('details');
-        details.className = 'image-edit-options';
-        const summary = document.createElement('summary');
-        summary.textContent = attachmentT('attachments.edit_options', 'Image editing · advanced options');
-        details.append(summary);
-        function input(key, label, type, attributes = {}) {
-            const wrapper = document.createElement('label');
-            wrapper.textContent = attachmentT('attachments.edit_' + key, label);
-            const control = document.createElement('input');
-            control.type = type;
-            Object.assign(control, attributes);
-            if (type === 'checkbox') control.checked = key === 'use_kv_cache' ? editOptions[key] !== false : editOptions[key] === true;
-            else control.value = editOptions[key] ?? '';
-            control.addEventListener('change', () => {
-                if (type === 'checkbox') editOptions[key] = control.checked;
-                else if (control.value === '') delete editOptions[key];
-                else editOptions[key] = type === 'number' ? Number(control.value) : control.value;
-            });
-            wrapper.append(control);
-            details.append(wrapper);
+
+        // Display the intent first; edit-only controls stay out of the way.
+        const modeLabel = document.createElement('label');
+        modeLabel.className = 'image-attachment-mode';
+        const modeText = document.createElement('span');
+        modeText.className = 'image-attachment-mode-label';
+        modeText.textContent = attachmentT('attachments.image_mode', 'Use image for');
+        const modeSelect = document.createElement('select');
+        modeSelect.className = 'image-edit-control image-attachment-mode-select';
+        for (const [value, key, fallback] of [
+            ['auto', 'attachments.image_mode_auto', 'Automatic'],
+            ['describe', 'attachments.image_mode_describe', 'Beschreiben / analysieren'],
+            ['edit', 'attachments.image_mode_edit', 'Edit']
+        ]) {
+            const choice = document.createElement('option');
+            choice.value = value;
+            choice.textContent = attachmentT(key, fallback);
+            modeSelect.append(choice);
         }
-        const modelLabel = document.createElement('label');
-        modelLabel.textContent = attachmentT('attachments.edit_model', 'Editing model');
-        const select = document.createElement('select');
-        const auto = document.createElement('option');
-        auto.value = 'auto'; auto.textContent = attachmentT('attachments.edit_auto', 'Automatic · locally available models');
-        select.append(auto);
-        select.addEventListener('change', () => { editOptions.model = select.value; });
-        modelLabel.append(select); details.append(modelLabel);
-        let loaded = false;
-        details.addEventListener('toggle', async () => {
-            if (!details.open || loaded) return;
-            loaded = true;
-            try {
-                const response = await fetch('/api/image/models');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                const data = await response.json();
-                for (const model of data.models || []) {
-                    if (!model.capabilities?.includes('image_edit')) continue;
-                    const option = document.createElement('option');
-                    option.value = model.id; option.textContent = model.name + (model.available ? '' : ' · ' + model.availability_note);
-                    option.disabled = !model.enabled || !model.available;
-                    select.append(option);
-                }
-                if (editOptions.model && ![...select.options].some(option => option.value === editOptions.model)) {
-                    const option = document.createElement('option');
-                    option.value = editOptions.model; option.textContent = editOptions.model; select.append(option);
-                }
-                select.value = editOptions.model || 'auto';
-            } catch (_) { loaded = false; }
+        modeSelect.value = imageMode;
+        modeSelect.addEventListener('change', () => {
+            imageMode = modeSelect.value;
+            renderAttachments();
         });
-        input('seed', 'Seed (empty = random)', 'number', {min: 0, max: 4294967295});
-        input('steps', 'Steps', 'number', {min: 1, max: 50});
-        input('guidance', 'Guidance (negative prompts need > 1)', 'number', {min: 1, max: 10, step: 0.1});
-        input('strength', 'Edit strength (0–1)', 'number', {min: 0.01, max: 1, step: 0.05});
-        input('negative_prompt', 'Negative prompt', 'text', {maxLength: 2000});
-        input('auto_mask', 'Auto-mask: object to repaint', 'text', {maxLength: 200});
-        input('use_kv_cache', 'KV cache (on by default)', 'checkbox');
-        input('use_step_cache', 'Step cache (requires KV cache; useful from 10 steps)', 'checkbox');
-        input('enhance_prompt', 'Improve prompt with built-in vision model', 'checkbox');
-        input('verify', 'Verify result with built-in vision model', 'checkbox');
+        modeLabel.append(modeText, modeSelect);
+        bar.append(modeLabel);
+        if (imageMode !== 'edit') return;
+
+        const panel = document.createElement('section');
+        panel.className = 'image-edit-options';
+        panel.setAttribute('aria-label',
+            attachmentT('attachments.edit_model', 'Bearbeitungsmodell'));
+
+        const primary = document.createElement('div');
+        primary.className = 'image-edit-primary';
+
+        const modelLabel = document.createElement('label');
+        modelLabel.className = 'image-edit-model-field';
+        modelLabel.textContent = attachmentT('attachments.edit_model', 'Bearbeitungsmodell');
+
+        const select = document.createElement('select');
+        select.className = 'image-edit-control';
+        const automatic = document.createElement('option');
+        automatic.value = 'auto';
+        automatic.textContent = attachmentT('attachments.edit_auto', 'Automatic');
+        select.append(automatic);
+        select.value = 'auto';
+        select.addEventListener('change', () => {
+            if (select.value === 'auto') delete editOptions.model;
+            else editOptions.model = select.value;
+        });
+        modelLabel.append(select);
+        primary.append(modelLabel);
+
+        availableEditModels().then(models => {
+            if (!panel.isConnected) return;
+            for (const model of models) {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.name +
+                    (model.available ? '' : ' · ' + (model.availability_note || attachmentT('attachments.edit_unavailable', 'Unavailable')));
+                option.disabled = !model.enabled || !model.available;
+                select.append(option);
+            }
+            if (editOptions.model && !models.some(model => model.id === editOptions.model)) {
+                const unknown = document.createElement('option');
+                unknown.value = editOptions.model;
+                unknown.textContent = editOptions.model;
+                unknown.disabled = true;
+                select.append(unknown);
+            }
+            select.value = editOptions.model || 'auto';
+        }).catch(() => {
+            // Keep automatic routing available even if model discovery is offline.
+            if (editOptions.model) {
+                const previous = document.createElement('option');
+                previous.value = editOptions.model;
+                previous.textContent = editOptions.model;
+                select.append(previous);
+                select.value = editOptions.model;
+            }
+        });
+
+        const advanced = document.createElement('details');
+        advanced.className = 'image-edit-advanced';
+        const summary = document.createElement('summary');
+        summary.textContent = attachmentT('attachments.edit_more', 'More options');
+        advanced.append(summary);
+
+        const fields = document.createElement('div');
+        fields.className = 'image-edit-advanced-fields';
+
+        const negativeLabel = document.createElement('label');
+        negativeLabel.textContent = attachmentT('attachments.edit_negative_prompt', 'Negativ-Prompt');
+        const negative = document.createElement('input');
+        negative.type = 'text';
+        negative.maxLength = 2000;
+        negative.className = 'image-edit-control';
+        negative.value = editOptions.negative_prompt || '';
+        negative.placeholder = attachmentT('attachments.edit_negative_placeholder',
+            'Optional: What should not appear in the image?');
+        negative.addEventListener('change', () => {
+            if (negative.value.trim()) editOptions.negative_prompt = negative.value.trim();
+            else delete editOptions.negative_prompt;
+        });
+        negativeLabel.append(negative);
+        fields.append(negativeLabel);
+
         const maskLabel = document.createElement('label');
-        maskLabel.textContent = attachmentT('attachments.edit_mask', 'Mask (white = repaint, black = preserve)');
-        const mask = document.createElement('input'); mask.type = 'file'; mask.accept = 'image/png,image/jpeg,image/webp';
+        maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Mask (optional)');
+        const mask = document.createElement('input');
+        mask.type = 'file';
+        mask.accept = 'image/png,image/jpeg,image/webp';
+        mask.className = 'image-edit-control';
+        const maskStatus = document.createElement('small');
+        maskStatus.className = 'image-edit-mask-status';
+        maskStatus.textContent = editOptions.mask_path
+            ? attachmentT('attachments.edit_mask_ready', 'Mask uploaded')
+            : '';
         mask.addEventListener('change', () => {
             pendingMaskUpload = (async () => {
-            if (!mask.files[0]) { delete editOptions.mask_path; return; }
-            mask.disabled = true;
-            try {
-                const uploaded = await uploadImageAttachments([{file: mask.files[0], name: mask.files[0].name, kind: 'image'}]);
-                if (!uploaded[0]?.upload?.path) throw new Error(attachmentT('generation.image_upload_failed', 'Image could not be uploaded.'));
-                editOptions.mask_path = uploaded[0].upload.path;
-                delete editOptions.auto_mask;
-                summary.textContent = attachmentT('attachments.edit_mask_ready', 'Image editing · mask uploaded');
-            } catch (error) { delete editOptions.mask_path; alert(error.message); }
-            finally { mask.disabled = false; }
+                if (!mask.files?.[0]) {
+                    delete editOptions.mask_path;
+                    maskStatus.textContent = '';
+                    return;
+                }
+                mask.disabled = true;
+                try {
+                    const file = mask.files[0];
+                    const uploaded = await uploadImageAttachments([
+                        {file, name: file.name, kind: 'image'}
+                    ]);
+                    if (!uploaded[0]?.upload?.path) {
+                        throw new Error(attachmentT('generation.image_upload_failed',
+                            'Image upload failed.'));
+                    }
+                    editOptions.mask_path = uploaded[0].upload.path;
+                    delete editOptions.auto_mask;
+                    maskStatus.textContent = attachmentT(
+                        'attachments.edit_mask_ready', 'Mask uploaded');
+                } catch (error) {
+                    delete editOptions.mask_path;
+                    maskStatus.textContent = '';
+                    alert(error.message);
+                } finally {
+                    mask.disabled = false;
+                }
             })();
         });
-        maskLabel.append(mask); details.append(maskLabel);
-        const hint = document.createElement('p');
-        hint.textContent = attachmentT('attachments.edit_hint', 'Advanced options require a compatible MFLUX model. Reference order follows the numbered thumbnails. Original images are preserved. Identity preservation is best effort.');
-        details.append(hint);
-        bar.append(details);
+        maskLabel.append(mask, maskStatus);
+        fields.append(maskLabel);
+        advanced.append(fields);
+        primary.append(advanced);
+        panel.append(primary);
+        bar.append(panel);
     }
 
     function renderAttachments() {
         const bar = document.getElementById('attachmentBar');
 
+        if (!attachments.some(file => file.kind === 'image')) {
+            imageMode = 'auto';
+            editOptions = {};
+        }
         bar.innerHTML = '';
 
         if (!attachments.length) {
@@ -772,6 +871,7 @@ function attachmentT(key, fallback = '', variables = {}) {
     function clearAttachments() {
         attachments = [];
         editOptions = {};
+        imageMode = 'auto';
         renderAttachments();
     }
 
@@ -986,7 +1086,8 @@ function attachmentT(key, fallback = '', variables = {}) {
     window.MLXChatAttachments = {
         init: init,
         addFiles: addFiles,
-        getEditOptions: () => ({...editOptions}),
+        getEditOptions: () => imageMode === 'edit' ? {...editOptions} : {},
+        getImageMode: () => imageMode,
         whenReady: () => Promise.all([addingFiles, pendingMaskUpload]),
         moveAttachment: moveAttachment,
         buildAttachmentContext:
