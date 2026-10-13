@@ -99,6 +99,15 @@ def _quantized_text_encoder(signature):
 def mflux_weight_contract(model, root):
     if model['model_family'] not in {'qwen-image', 'qwen-image-edit', 'qwen-image21', 'qwen-image21-edit'}:
         return True, None
+    # MFLUX 0.22.0 can load the prequantized Osaurus checkpoint directly.
+    # This exact repository was verified by a real standalone MFLUX image run.
+    # Do not loosen the encoder restriction for arbitrary quantized checkpoints.
+    if (model.get('provider') == 'mflux'
+            and model.get('model_family') == 'qwen-image21-edit'
+            and model.get('id') == 'mflux-osaurus-qwen-image-2.1-edit'
+            and model.get('repository') == 'OsaurusAI/Qwen-Image-2.1-mflux-4bit'
+            and model.get('quantize_on_load') is False):
+        return True, None
     component = Path(root) / 'text_encoder'
     files = sorted(component.glob('*.safetensors'))
     try:

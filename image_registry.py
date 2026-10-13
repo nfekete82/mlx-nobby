@@ -31,6 +31,8 @@ Z_IMAGE_TURBO_ID = "mflux-z-image-turbo"
 Z_IMAGE_TURBO_LEGACY_REPO = "Tongyi-MAI/Z-Image-Turbo"
 Z_IMAGE_TURBO_REPO = "AbstractFramework/z-image-turbo-4bit"
 MFLUX_QWEN_IMAGE21_ID = "mflux-qwen-image-2.1"
+OSAURUS_QWEN21_EDIT_ID = "mflux-osaurus-qwen-image-2.1-edit"
+OSAURUS_QWEN21_EDIT_REPO = "OsaurusAI/Qwen-Image-2.1-mflux-4bit"
 MFLUX_BOOGU_ID = "mflux-boogu-image-turbo"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
@@ -362,6 +364,16 @@ def builtin_models():
         provider="mflux", repository="Qwen/Qwen-Image-2.1",
         model_family="qwen-image21-edit", base_model="qwen-image-2.1",
         quantization="q4", quantize_on_load=True, enabled=False,
+        default_steps=20, default_guidance=1.0,
+    ).model_dump())
+    # Prequantized MFLUX checkpoint: never quantize its weights again.
+    # Remains opt-in even if the Hugging Face snapshot is cached locally.
+    models.append(ImageModel(
+        id=OSAURUS_QWEN21_EDIT_ID,
+        name="Qwen Image 2.1 Edit · Osaurus 4-bit (Opt-in)",
+        provider="mflux", repository=OSAURUS_QWEN21_EDIT_REPO,
+        model_family="qwen-image21-edit", base_model="qwen-image-2.1",
+        quantization="q4", quantize_on_load=False, enabled=False,
         default_steps=20, default_guidance=1.0,
     ).model_dump())
     models.append(ImageModel(

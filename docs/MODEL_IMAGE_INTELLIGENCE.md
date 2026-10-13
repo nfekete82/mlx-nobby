@@ -225,3 +225,38 @@ the installation or final checks above.
 - `docs/MODEL_IMAGE_INTELLIGENCE.md`
 - `artifacts/model-image-intelligence/coding-real.json`
 - `artifacts/model-image-intelligence/image-preflight.json`
+
+
+## Osaurus Qwen Image 2.1 Edit 4-bit (opt-in follow-up)
+
+The separate built-in `mflux-osaurus-qwen-image-2.1-edit` points to
+`OsaurusAI/Qwen-Image-2.1-mflux-4bit`. It is **disabled by default**,
+never adopted as the global image default, and never downloaded by registry
+discovery. The model was successfully loaded through standalone MFLUX 0.22.0
+with a 512px/4-step image; that run reported 5.74 GB peak MLX memory.
+A later real multi-reference CLI run was reported successful, but its
+measurements were not captured as reproducible evidence here.
+
+This checkpoint is already quantized. Its registry entry deliberately sets
+`quantize_on_load=False`; the command uses cached snapshot files directly
+and does not pass `--quantize 4`. The strict quantized-text-encoder safeguard
+remains in force for other repositories; the one specific approved checkpoint
+has an exception due to successful standalone MFLUX loading.
+
+On the target Mac, after pulling this branch and while image services are idle:
+
+```sh
+cd ~/mlx-web
+test-venv/bin/python -m pytest -q tests/test_mflux_capabilities.py tests/test_multi_reference_edit.py
+# Restart the image service through the existing MLX Nobby management command.
+# Then open Settings > Models > Image, select Osaurus Qwen 2.1 Edit, enable it.
+# Keep all global defaults unchanged; select Osaurus explicitly in the composer.
+```
+
+Use two image attachments in the chat to verify real output. The integration
+still uses the application's runtime lease, image queue, private input copies
+and existing RAM admission rules. Compare the in-app real result with the
+successful standalone CLI result before treating the workflow as production
+validated. No memory or timing promises follow from a single 512px test.
+
+Check the checkpoint's model-card license before commercial use.
