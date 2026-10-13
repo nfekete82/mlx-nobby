@@ -410,6 +410,17 @@ function imageOptionsForRequest(
     };
 }
 
+function hasImageEditSource(context, activeArtifactId = null) {
+    if (context?.stored_path || activeArtifactId) return true;
+    // Ordered multi-reference uploads do not require a separate target image.
+    return Array.isArray(context?.references) &&
+        context.references.length > 0 &&
+        context.references.every(item =>
+            typeof item?.stored_path === 'string' &&
+            item.stored_path.length > 0
+        );
+}
+
 function isImageEditRequest(prompt, hasImage) {
     if (!hasImage) {
         return false;
@@ -2786,20 +2797,9 @@ const imageFiles =
                         ? 'image'
                         : null;
 
-            // Ordered multi-reference uploads are valid edit sources even if
-            // the context does not have a separate top-level stored_path.
-            const hasReferenceSources =
-                Array.isArray(fileContext?.references) &&
-                fileContext.references.length > 0 &&
-                fileContext.references.every(item =>
-                    typeof item?.stored_path === 'string' &&
-                    item.stored_path.length > 0
-                );
             if (
                 resolvedTarget === 'image_edit' &&
-                !fileContext?.stored_path &&
-                !hasReferenceSources &&
-                !activeArtifactIdForEdit
+                !hasImageEditSource(fileContext, activeArtifactIdForEdit)
             ) {
                 throw new Error(
                     gt(
@@ -4756,6 +4756,7 @@ resetSessionRuntime: resetSessionRuntime,
             isImageComparisonRequest: isImageComparisonRequest,
             sessionImageArtifacts: sessionImageArtifacts,
             activeSessionImageArtifact: activeSessionImageArtifact,
+            hasImageEditSource: hasImageEditSource,
             isImageEditRequest: isImageEditRequest,
             imageOptionsForRequest: imageOptionsForRequest,
             isImageGenerationRequest: isImageGenerationRequest,
