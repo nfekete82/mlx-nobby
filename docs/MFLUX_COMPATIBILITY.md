@@ -6,9 +6,11 @@ as available or starting its provider. `mflux_capabilities.py` caches offline
 environment. `/models` exposes the version, supported flags and availability
 reason. No model weights are downloaded or modified by these checks.
 
-The supported standalone runtime is pinned to **MFLUX 0.20.0**. The host helper
+The supported standalone runtime is pinned to **MFLUX 0.22.0**. The host helper
 `scripts/setup-mflux-mlx` backs up the previous uv-tool state, installs the pin
 and validates the CLI entry points used by MLX Nobby.
+
+MFLUX 0.22.0 adds the `mflux-generate-qwen-2.1-edit` command for up to ten reference images, and optional `--compute-precision float16` for supported Qwen 2.1 generation/editing paths. The setup helper checks the new edit CLI offline but does not enable it in the image registry or change production defaults. A later integration must wire multi-reference upload paths, local model availability, memory limits, and UI tests before enabling the feature. No automatic model download is performed.
 
 Qwen Image 2.1 uses the dedicated `mflux-generate-qwen-2.1` command. Nobby's
 built-in entry is opt-in, Q8, and uses the upstream 40-step guidance-free
