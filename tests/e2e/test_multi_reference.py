@@ -31,10 +31,16 @@ def test_reference_limit_and_clipboard(ui):
     assert len(alerts) == 1
     page.evaluate('MLXChatAttachments.clearAttachments()')
     page.locator('#input').focus()
+    # Dispatch the paste payload itself: Meta+V is macOS-specific and can
+    # resolve to no clipboard data in headless Linux Chromium CI.
+    # This exercises the real document paste handler without OS clipboard access.
     page.evaluate('''async () => {
-        const canvas = document.createElement('canvas'); canvas.width=32; canvas.height=32;
+        const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32;
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], 'clipboard.png', {type: 'image/png'}));
+        document.getElementById('input').dispatchEvent(new ClipboardEvent('paste', {
+            bubbles: true, cancelable: true, clipboardData: transfer
+        }));
     }''')
-    page.keyboard.press('Meta+V')
     expect(page.locator('#attachmentBar .image-attachment-chip')).to_have_count(1)
