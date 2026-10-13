@@ -225,3 +225,40 @@ print("  --use-step-cache, --no-use-step-cache")
     capabilities.probe_mflux_cli.cache_clear()
     flags = capabilities.probe_mflux_cli(str(executable))['supported_flags']
     assert {'--use-kv-cache', '--no-use-kv-cache', '--use-step-cache', '--no-use-step-cache'} <= flags
+
+
+def test_osaurus_prequantized_builtin_keeps_defaults_and_skips_double_quantization(tmp_path, monkeypatch):
+    import image_registry
+    from image_registry import OSAURUS_QWEN21_EDIT_ID, OSAURUS_QWEN21_EDIT_REPO
+
+    model = next(m for m in image_registry.builtin_models() if m['id'] == OSAURUS_QWEN21_EDIT_ID)
+    assert model['repository'] == OSAURUS_QWEN21_EDIT_REPO
+    assert model['enabled'] is False
+    assert model['quantization'] == 'q4'
+    assert model['quantize_on_load'] is False
+    assert 'multi_image_edit' in model['capabilities']
+    assert capabilities.mflux_weight_contract(model, tmp_path) == (True, None)
+
+    executable = cli(tmp_path, monkeypatch)
+    monkeypatch.setattr(providers, 'model_directory', lambda _: tmp_path / 'model')
+    command = providers.mflux_command(model, {
+        'source_paths': ['one.png', 'two.png'], 'prompt': 'Together',
+        'width': 512, 'height': 512, 'steps': 10, 'guidance': 1, 'seed': 7,
+    }, tmp_path / 'result.png')
+    assert command[command.index('--image-paths') + 1:command.index('--prompt')] == ['one.png', 'two.png']
+    assert '--quantize' not in command
+
+
+def test_osaurus_encoder_exception_does_not_apply_to_other_repositories(tmp_path):
+    import image_registry
+    model = next(m for m in image_registry.builtin_models()
+                 if m['id'] == image_registry.OSAURUS_QWEN21_EDIT_ID)
+    other = dict(model, repository='Different/Model')
+    assert capabilities.mflux_weight_contract(other, tmp_path) == (True, None)
+    # The approved bypass is narrow: an invalid encoder header must still fail
+    # when a different repository is selected.
+    component = tmp_path / 'text_encoder'
+    component.mkdir()
+    import struct
+    (component / 'broken.safetensors').write_bytes(struct.pack('<Q', 3) + b'bad')
+    assert capabilities.mflux_weight_contract(other, tmp_path)[0] is False
