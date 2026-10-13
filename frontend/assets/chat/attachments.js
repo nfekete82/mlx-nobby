@@ -128,20 +128,20 @@ function attachmentT(key, fallback = '', variables = {}) {
         const panel = document.createElement('section');
         panel.className = 'image-edit-options';
         panel.setAttribute('aria-label',
-            attachmentT('attachments.edit_model', 'Bearbeitungsmodell'));
+            attachmentT('attachments.edit_model', 'Editing model'));
 
         const primary = document.createElement('div');
         primary.className = 'image-edit-primary';
 
         const modelLabel = document.createElement('label');
         modelLabel.className = 'image-edit-model-field';
-        modelLabel.textContent = attachmentT('attachments.edit_model', 'Bearbeitungsmodell');
+        modelLabel.textContent = attachmentT('attachments.edit_model', 'Editing model');
 
         const select = document.createElement('select');
         select.className = 'image-edit-control';
         const automatic = document.createElement('option');
         automatic.value = 'auto';
-        automatic.textContent = attachmentT('attachments.edit_auto', 'Automatisch');
+        automatic.textContent = attachmentT('attachments.edit_auto', 'Automatic');
         select.append(automatic);
         select.value = 'auto';
         select.addEventListener('change', () => {
@@ -157,7 +157,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                 const option = document.createElement('option');
                 option.value = model.id;
                 option.textContent = model.name +
-                    (model.available ? '' : ' · ' + (model.availability_note || 'nicht verfügbar'));
+                    (model.available ? '' : ' · ' + (model.availability_note || attachmentT('attachments.edit_unavailable', 'unavailable')));
                 option.disabled = !model.enabled || !model.available;
                 select.append(option);
             }
@@ -183,21 +183,21 @@ function attachmentT(key, fallback = '', variables = {}) {
         const advanced = document.createElement('details');
         advanced.className = 'image-edit-advanced';
         const summary = document.createElement('summary');
-        summary.textContent = attachmentT('attachments.edit_more', 'Weitere Optionen');
+        summary.textContent = attachmentT('attachments.edit_more', 'More options');
         advanced.append(summary);
 
         const fields = document.createElement('div');
         fields.className = 'image-edit-advanced-fields';
 
         const negativeLabel = document.createElement('label');
-        negativeLabel.textContent = attachmentT('attachments.edit_negative_prompt', 'Negativ-Prompt');
+        negativeLabel.textContent = attachmentT('attachments.edit_negative_prompt', 'Negative prompt');
         const negative = document.createElement('input');
         negative.type = 'text';
         negative.maxLength = 2000;
         negative.className = 'image-edit-control';
         negative.value = editOptions.negative_prompt || '';
         negative.placeholder = attachmentT('attachments.edit_negative_placeholder',
-            'Optional: Was soll nicht im Bild sein?');
+            'Optional: what should be excluded from the image?');
         negative.addEventListener('change', () => {
             if (negative.value.trim()) editOptions.negative_prompt = negative.value.trim();
             else delete editOptions.negative_prompt;
@@ -206,7 +206,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         fields.append(negativeLabel);
 
         const maskLabel = document.createElement('label');
-        maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Maske (optional)');
+        maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Mask (optional)');
         const mask = document.createElement('input');
         mask.type = 'file';
         mask.accept = 'image/png,image/jpeg,image/webp';
@@ -214,7 +214,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         const maskStatus = document.createElement('small');
         maskStatus.className = 'image-edit-mask-status';
         maskStatus.textContent = editOptions.mask_path
-            ? attachmentT('attachments.edit_mask_ready', 'Maske hochgeladen')
+            ? attachmentT('attachments.edit_mask_ready', 'Mask uploaded')
             : '';
         mask.addEventListener('change', () => {
             pendingMaskUpload = (async () => {
@@ -231,12 +231,12 @@ function attachmentT(key, fallback = '', variables = {}) {
                     ]);
                     if (!uploaded[0]?.upload?.path) {
                         throw new Error(attachmentT('generation.image_upload_failed',
-                            'Bild konnte nicht hochgeladen werden.'));
+                            'Image could not be uploaded.'));
                     }
                     editOptions.mask_path = uploaded[0].upload.path;
                     delete editOptions.auto_mask;
                     maskStatus.textContent = attachmentT(
-                        'attachments.edit_mask_ready', 'Maske hochgeladen');
+                        'attachments.edit_mask_ready', 'Mask uploaded');
                 } catch (error) {
                     delete editOptions.mask_path;
                     maskStatus.textContent = '';
