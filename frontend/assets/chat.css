@@ -10497,3 +10497,39 @@ body.notes-resizing * {
         min-height: 0;
     }
 }
+
+
+/* The composer, model dialogs and quality selectors use the same controls
+   as the full-screen settings. Compact toolbar dropdowns retain their size. */
+.image-edit-control,
+.model-console-form :is(input:not([type="checkbox"]):not([type="radio"]), select),
+.media-duration-field select,
+.media-negative-prompt-field textarea {
+    min-height: var(--nobby-control-height);
+    border: 1px solid var(--nobby-control-border);
+    border-radius: var(--nobby-control-radius);
+    background-color: var(--nobby-control-bg);
+    color: var(--nobby-control-fg);
+    font: inherit;
+    font-size: 13px;
+    color-scheme: dark;
+}
+.image-edit-advanced summary {
+    min-height: var(--nobby-control-height);
+    border-color: var(--nobby-control-border);
+    border-radius: var(--nobby-control-radius);
+    background-color: var(--nobby-control-bg);
+}
+.image-edit-control:hover:not(:disabled),
+.model-console-form :is(input,select):hover:not(:disabled),
+.media-duration-field select:hover:not(:disabled) {
+    border-color: var(--nobby-control-border-hover);
+    background-color: var(--nobby-control-bg-hover);
+}
+.image-edit-control:focus-visible,
+.image-edit-advanced summary:focus-visible,
+.model-console-form :is(input,select):focus-visible,
+.media-duration-field select:focus-visible {
+    outline: 2px solid var(--nobby-control-focus);
+    outline-offset: 2px;
+}
