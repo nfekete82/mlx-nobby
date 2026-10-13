@@ -10265,6 +10265,23 @@ body.notes-resizing * {
     max-width: min(100%, 560px);
     min-width: 0;
 }
+.image-attachment-mode {
+    flex: 1 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 4px 0;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 550;
+}
+.image-attachment-mode-label { flex: 0 0 auto; }
+.image-attachment-mode-select {
+    flex: 0 1 310px;
+    width: min(100%, 310px);
+    min-height: 36px;
+}
 .image-edit-options {
     flex: 1 0 100%;
     min-width: 0;
@@ -10351,6 +10368,8 @@ body.notes-resizing * {
 @media (max-width: 620px) {
     .composer .attachment-bar.visible { max-height: min(45dvh, 360px); }
     .composer .attachment-bar .image-attachment-chip { flex-basis: 100%; }
+    .image-attachment-mode { flex-wrap: wrap; gap: 6px; }
+    .image-attachment-mode-select { flex-basis: 100%; }
     .image-edit-primary { grid-template-columns: minmax(0, 1fr); }
     .image-edit-advanced { grid-column: 1; }
     .image-edit-advanced[open] { grid-row: auto; }

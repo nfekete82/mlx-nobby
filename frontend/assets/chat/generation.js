@@ -2087,6 +2087,15 @@ const imageFiles =
         currentAttachments.filter(
             file => file.kind === 'image'
         );
+    const imageAttachmentMode = imageFiles.length
+        ? (MLXChatAttachments.getImageMode?.() || 'auto')
+        : 'auto';
+    if (imageAttachmentMode === 'edit' && !prompt) {
+        alert(gt('image_edit_prompt_required',
+            'Please describe what should be changed in the image.'));
+        input.focus();
+        return;
+    }
 
     const textFiles =
         currentAttachments.filter(
@@ -2702,6 +2711,7 @@ const imageFiles =
                         },
                         body: JSON.stringify({
                             prompt,
+                            action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                             file_context: fileContext,
                             active_artifact_id:
                                 activeArtifactIdForEdit,
@@ -2736,10 +2746,14 @@ const imageFiles =
                     );
                 }
 
-                resolvedTarget = serverTarget;
+                resolvedTarget = imageAttachmentMode === 'describe'
+                    ? 'chat'
+                    : serverTarget;
                 if (
+                    imageAttachmentMode !== 'describe' &&
                     route.intent === 'image_reference_generate' ||
                     (
+                        imageAttachmentMode !== 'describe' &&
                         route.intent === 'image_edit' &&
                         route.reference_mode &&
                         Array.isArray(fileContext?.references) &&
@@ -3387,6 +3401,7 @@ const imageFiles =
 
             const actionPayload = {
                 prompt: prompt,
+                action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                 reference_mode: referenceMode,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
