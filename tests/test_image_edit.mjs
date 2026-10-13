@@ -341,6 +341,7 @@ assert.equal(
 let generating = false;
 let visionChecks = 0;
 let selectedAttachments = [imageAttachment];
+let selectedImageMode = 'auto';
 const session = {
     messages: [],
     workspace: {},
@@ -355,6 +356,7 @@ const imageArtifact = {
 context.MLXChatAttachments = {
     ...window.MLXChatAttachments,
     getAttachments: () => selectedAttachments,
+    getImageMode: () => selectedImageMode,
     buildAttachmentContext: () => '',
     clearAttachments() {},
 };
@@ -1981,6 +1983,41 @@ for (const prompt of [
     assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat', prompt);
     assert.equal(routedActionPayloads.at(-1).file_context.kind, 'image', prompt);
 }
+
+// Image-only uploads still dispatch as ordinary vision chat.
+routeTargets.set('', 'chat');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'auto';
+input.value = '';
+const visionModalCount = modalOpenEvents.length;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat');
+assert.equal(modalOpenEvents.length, visionModalCount);
+
+// Manual analysis must never start rendering even when the router suggests an edit.
+const forceDescribePrompt = 'Make the background black';
+routeTargets.set(forceDescribePrompt, 'image_edit');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'describe';
+input.value = forceDescribePrompt;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat');
+assert.equal(routedActionPayloads.at(-1).action, undefined);
+assert.equal(modalOpenEvents.length, visionModalCount);
+
+// Manual edits must carry the explicit action through both requests.
+const forceEditPrompt = 'Slightly warmer colors';
+routeTargets.set(forceEditPrompt, 'image_edit');
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'edit';
+input.value = forceEditPrompt;
+const editRequestStart = requests.length;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(JSON.parse(requests.slice(editRequestStart)
+    .find(item => item.url === '/api/mlx/chat/actions/route').options.body).action, 'image_edit');
+assert.equal(routedActionPayloads.at(-1).action, 'image_edit');
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'image_edit');
+selectedImageMode = 'auto';
 
 // A failed preflight cannot authorize jobs through local regexes or options.
 const workingFetch = context.fetch;

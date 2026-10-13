@@ -14,6 +14,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 (function () {
     let attachments = [];
     let editOptions = {};
+    let imageMode = 'auto';
     let pendingMaskUpload = Promise.resolve();
 
     function uid() {
@@ -125,6 +126,33 @@ function attachmentT(key, fallback = '', variables = {}) {
     function renderEditControls(bar) {
         if (!attachments.some(file => file.kind === 'image')) return;
 
+        // Display the intent first; edit-only controls stay out of the way.
+        const modeLabel = document.createElement('label');
+        modeLabel.className = 'image-attachment-mode';
+        const modeText = document.createElement('span');
+        modeText.className = 'image-attachment-mode-label';
+        modeText.textContent = attachmentT('attachments.image_mode', 'Use image for');
+        const modeSelect = document.createElement('select');
+        modeSelect.className = 'image-edit-control image-attachment-mode-select';
+        for (const [value, key, fallback] of [
+            ['auto', 'attachments.image_mode_auto', 'Automatic'],
+            ['describe', 'attachments.image_mode_describe', 'Beschreiben / analysieren'],
+            ['edit', 'attachments.image_mode_edit', 'Edit']
+        ]) {
+            const choice = document.createElement('option');
+            choice.value = value;
+            choice.textContent = attachmentT(key, fallback);
+            modeSelect.append(choice);
+        }
+        modeSelect.value = imageMode;
+        modeSelect.addEventListener('change', () => {
+            imageMode = modeSelect.value;
+            renderAttachments();
+        });
+        modeLabel.append(modeText, modeSelect);
+        bar.append(modeLabel);
+        if (imageMode !== 'edit') return;
+
         const panel = document.createElement('section');
         panel.className = 'image-edit-options';
         panel.setAttribute('aria-label',
@@ -197,7 +225,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         negative.className = 'image-edit-control';
         negative.value = editOptions.negative_prompt || '';
         negative.placeholder = attachmentT('attachments.edit_negative_placeholder',
-            'Optional: what should be excluded from the image?');
+            'Optional: What should not appear in the image?');
         negative.addEventListener('change', () => {
             if (negative.value.trim()) editOptions.negative_prompt = negative.value.trim();
             else delete editOptions.negative_prompt;
@@ -257,6 +285,10 @@ function attachmentT(key, fallback = '', variables = {}) {
     function renderAttachments() {
         const bar = document.getElementById('attachmentBar');
 
+        if (!attachments.some(file => file.kind === 'image')) {
+            imageMode = 'auto';
+            editOptions = {};
+        }
         bar.innerHTML = '';
 
         if (!attachments.length) {
@@ -839,6 +871,7 @@ function attachmentT(key, fallback = '', variables = {}) {
     function clearAttachments() {
         attachments = [];
         editOptions = {};
+        imageMode = 'auto';
         renderAttachments();
     }
 
@@ -1053,7 +1086,8 @@ function attachmentT(key, fallback = '', variables = {}) {
     window.MLXChatAttachments = {
         init: init,
         addFiles: addFiles,
-        getEditOptions: () => ({...editOptions}),
+        getEditOptions: () => imageMode === 'edit' ? {...editOptions} : {},
+        getImageMode: () => imageMode,
         whenReady: () => Promise.all([addingFiles, pendingMaskUpload]),
         moveAttachment: moveAttachment,
         buildAttachmentContext:

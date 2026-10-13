@@ -169,7 +169,10 @@ def test_read_aloud_cleanup_and_failures(ui, scenario):
         agent.speech_mode = 'invalid'
     initial = page.locator('.mlx-message-speech-button').first if scenario == 'second' else speech(page)
     initial.click()
-    expect(initial).to_have_attribute('data-speech-state', 'generating')
+    # Immediate 503 responses can clear the transient generating state before
+    # Playwright observes it; assert terminal error handling below instead.
+    if scenario != 'http':
+        expect(initial).to_have_attribute('data-speech-state', 'generating')
     if scenario == 'stop':
         speech(page).click()
     elif scenario == 'second':
