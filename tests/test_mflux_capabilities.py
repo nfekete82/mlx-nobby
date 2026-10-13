@@ -240,6 +240,11 @@ def test_osaurus_prequantized_builtin_keeps_defaults_and_skips_double_quantizati
     assert capabilities.mflux_weight_contract(model, tmp_path) == (True, None)
 
     executable = cli(tmp_path, monkeypatch)
+    # The fixture creates the legacy Qwen Edit executable, but this model
+    # requires the Qwen 2.1 Edit CLI. Reuse the test stub under that name.
+    qwen21_executable = executable.with_name('mflux-generate-qwen-2.1-edit')
+    qwen21_executable.write_bytes(executable.read_bytes())
+    qwen21_executable.chmod(0o755)
     monkeypatch.setattr(providers, 'model_directory', lambda _: tmp_path / 'model')
     command = providers.mflux_command(model, {
         'source_paths': ['one.png', 'two.png'], 'prompt': 'Together',
