@@ -2170,7 +2170,7 @@ const editAuto = buildImageOptions(
     { image: { model: 'juggernaut-xl', steps: 40 }, referenceEdit: {} },
     'image', 'square', false, '', 'juggernaut-xl', 'edit'
 );
-assert.equal(Object.hasOwn(editAuto, 'model'), false);
+assert.equal(editAuto.model, 'auto');
 const editManual = buildImageOptions(
     { image: { model: 'juggernaut-xl' },
       referenceEdit: { model: 'mflux-osaurus-qwen-image-2.1-edit' } },
