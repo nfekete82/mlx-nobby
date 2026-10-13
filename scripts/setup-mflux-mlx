@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-MFLUX_VERSION="${MFLUX_VERSION:-0.20.0}"
+MFLUX_VERSION="${MFLUX_VERSION:-0.22.0}"
 BACKUP_ROOT="${MLX_NOBBY_BACKUP_ROOT:-$HOME/.config/mlx-web/backups}"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 BACKUP_FILE="$BACKUP_ROOT/mflux-before-$STAMP.txt"
@@ -33,6 +33,7 @@ mkdir -p "$BACKUP_ROOT"
         mflux-generate \
         mflux-generate-qwen \
         mflux-generate-qwen-2.1 \
+        mflux-generate-qwen-2.1-edit \
         mflux-generate-boogu \
         mflux-upscale-seedvr2
     do
@@ -53,6 +54,7 @@ for name in \
     mflux-generate \
     mflux-generate-qwen \
     mflux-generate-qwen-2.1 \
+    mflux-generate-qwen-2.1-edit \
     mflux-generate-boogu \
     mflux-upscale-seedvr2
 do
@@ -63,4 +65,5 @@ done
 echo
 echo "MFLUX $MFLUX_VERSION ist installiert und die von MLX Nobby verwendeten CLIs antworten."
 echo "Krea 2 bleibt in MLX Nobby bewusst deaktiviert/entfernt."
+echo "Qwen 2.1 Edit CLI validiert; Chat-/Registry-Integration bleibt separat opt-in."
 echo "Backup des vorherigen Tool-Standes: $BACKUP_FILE"
