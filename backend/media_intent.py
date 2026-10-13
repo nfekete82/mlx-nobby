@@ -180,15 +180,15 @@ def decide_media_intent(prompt, *, has_image=False, action=None, reference_conte
     composition = bool(
         has_image
         and re.search(
-            r"\\b(?:setze|setz|setzen|platziere|platzier|kombiniere|kombinier|"
+            r"\b(?:setze|setz|setzen|platziere|platzier|kombiniere|kombinier|"
             r"füge|fuege|vereine|vereinige|stelle|stell|bring|"
-            r"combine|compose|merge|place|put|join)\\b",
+            r"combine|compose|merge|place|put|join)\b",
             text,
         )
         and re.search(
-            r"\\b(?:beide|zusammen|gemeinsam|nebeneinander|personen|"
+            r"\b(?:beide|zusammen|gemeinsam|nebeneinander|personen|"
             r"bilder|fotos|bild|foto|szene|parkbank|"
-            r"both|together|people|images|photos|picture|scene)\\b",
+            r"both|together|people|images|photos|picture|scene)\b",
             text,
         )
     )
