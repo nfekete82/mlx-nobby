@@ -368,9 +368,10 @@ function imageOptionsForRequest(
         Object.entries(existing || {}).filter(([key]) => allowed.has(key))
     );
     // A generator preference (e.g. Juggernaut XL) is not an edit-model choice.
-    // Only an explicit edit-model selection may override the edit router.
+    // Always pass an explicit auto choice unless the user selected an edit
+    // model in referenceEdit; those options are applied below.
     if (operation !== 'generate') {
-        delete merged.model;
+        merged.model = 'auto';
     }
     const normalizedNegativePrompt = String(
         negativePrompt || ''
