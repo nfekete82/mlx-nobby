@@ -2726,7 +2726,15 @@ const imageFiles =
                 }
 
                 resolvedTarget = serverTarget;
-                if (route.intent === 'image_reference_generate') {
+                if (
+                    route.intent === 'image_reference_generate' ||
+                    (
+                        route.intent === 'image_edit' &&
+                        route.reference_mode &&
+                        Array.isArray(fileContext?.references) &&
+                        fileContext.references.length > 1
+                    )
+                ) {
                     referenceMode = route.reference_mode || activeWorkspaceImageArtifact?.reference_mode || 'same_identity';
                     // A historical fallback is not an explicitly selected reference.
                     activeArtifactIdForEdit = imageFiles.length ? null : activeWorkspaceImageArtifact?.artifact_id || null;
@@ -2778,9 +2786,19 @@ const imageFiles =
                         ? 'image'
                         : null;
 
+            // Ordered multi-reference uploads are valid edit sources even if
+            // the context does not have a separate top-level stored_path.
+            const hasReferenceSources =
+                Array.isArray(fileContext?.references) &&
+                fileContext.references.length > 0 &&
+                fileContext.references.every(item =>
+                    typeof item?.stored_path === 'string' &&
+                    item.stored_path.length > 0
+                );
             if (
                 resolvedTarget === 'image_edit' &&
                 !fileContext?.stored_path &&
+                !hasReferenceSources &&
                 !activeArtifactIdForEdit
             ) {
                 throw new Error(
