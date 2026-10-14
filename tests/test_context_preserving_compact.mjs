@@ -69,7 +69,7 @@ test('auto compaction retains full chat, lowers outgoing size, and reuses summar
     let out = env.compact.messagesForInference(session, session.messages);
     assert.equal(out.length, 13);
     assert.equal(out[0].role, 'user');
-    assert.match(out[0].content, /Archivierter Gesprächskontext/);
+    assert.match(out[0].content, /Archived conversation context/);
     assert.ok(env.compact.messageChars(out) < before * .8);
     assert.equal(out.at(-1), session.messages.at(-1));
 
