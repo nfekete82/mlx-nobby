@@ -65,6 +65,40 @@ def original_image_id(path: Path, output: Path) -> str | None:
     return match.group(1) if match and resolved.is_file() else None
 
 
+def comparison_image_id(source: Path, output: Path) -> str | None:
+    """Create a private, EXIF-free local comparison preview for uploaded images.
+
+    Generated images reuse their existing ID. The copy is bounded to 1024px,
+    never uploaded, and only saved after a successful edit. If unsupported,
+    comparison is simply omitted; editing must not fail because of preview UI.
+    """
+    existing = original_image_id(source, output)
+    if existing is not None:
+        return existing
+
+    import os
+    import secrets
+    import time
+    from PIL import Image, ImageOps
+
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+        identifier = f"{int(time.time())}-{secrets.token_hex(6)}"
+        target = output / f"{identifier}.png"
+        # Exclusively created 0600, and never embeds metadata.
+        with Image.open(source) as original:
+            image = ImageOps.exif_transpose(original).convert("RGB")
+            image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+            with open(target, "xb", opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
+                image.save(stream, format="PNG")
+        target.chmod(0o600)
+        return identifier
+    except (OSError, ValueError):
+        if "target" in locals():
+            target.unlink(missing_ok=True)
+        return None
+
+
 def image_change_advisory(source: Path, edited: Path) -> dict | None:
     """Low-cost aggregate visual-change telemetry, not a quality verdict.
 
@@ -77,8 +111,8 @@ def image_change_advisory(source: Path, edited: Path) -> dict | None:
         with Image.open(source) as first, Image.open(edited) as second:
             old = first.convert("RGB")
             new = second.convert("RGB")
-            if old.size != new.size:
-                return {"status": "unverified", "reason": "dimensions_differ"}
+            # The service may legitimately resize the original for its edit canvas.
+            old = old.resize(new.size, Image.Resampling.LANCZOS)
             old.thumbnail((256, 256), Image.Resampling.LANCZOS)
             new = new.resize(old.size, Image.Resampling.LANCZOS)
         diff = ImageChops.difference(old, new)
