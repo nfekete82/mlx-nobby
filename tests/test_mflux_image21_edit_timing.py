@@ -26,20 +26,29 @@ def test_qwen21_edit_reports_content_free_process_timing(tmp_path, low_ram, logs
     class FakeProcess:
         pid = 12345
         returncode = 0
+
+        def __init__(self, log_stream):
+            self.log_stream = log_stream
+            self.polls = 0
+
         def communicate(self, input=None, timeout=None):
+            self.polls += 1
+            if logs and self.polls == 1:
+                raise image_providers.subprocess.TimeoutExpired("mflux", timeout)
+            if logs:
+                self.log_stream.write(b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\\n")
+                self.log_stream.flush()
             output.write_bytes(b"mock png")
+
         def poll(self):
             return 0
 
     def fake_popen(command, **kwargs):
         if logs:
             kwargs["stdout"].write(b"loading model\\n")
-            kwargs["stdout"].write(
-                b"  0%|          | 0/20 [00:00<?, ?it/s]\\r"
-                b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\\n"
-            )
+            kwargs["stdout"].write(b"  0%|          | 0/20 [00:00<?, ?it/s]\\r")
             kwargs["stdout"].flush()
-        return FakeProcess()
+        return FakeProcess(kwargs["stdout"])
 
     with patch.object(image_providers, "availability", return_value=(True, "ok")), \
          patch.object(image_providers, "mflux_command", return_value=command), \
