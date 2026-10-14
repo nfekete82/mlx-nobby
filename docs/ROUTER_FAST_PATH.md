@@ -58,7 +58,7 @@ different Web streaming prompt as if they were identical requests.
 
 This feature targets the release *after* v1.11.0. The product's `VERSION`,
 README release badge and historical changelog sections remain at v1.11.0
-while release PR #208 is pending. Keep this entry in `Unreleased` and bump
-to v1.12.0 only in a separate, tested release-metadata PR once v1.11.0 is
-published. Runtime library pins (MLX-VLM, MLX-LM, MLX-Audio) are not changed
+while v1.12.0 is under development. Keep this entry in `Unreleased` and
+bump to v1.12.0 only in a separate, tested release-metadata PR. The
+v1.11.0 release is already published. Runtime library pins (MLX-VLM, MLX-LM, MLX-Audio) are not changed
 by this routing feature.
