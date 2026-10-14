@@ -4,10 +4,15 @@
 
 - Extend the guarded zero-inference chat fast path to short explanation-only follow-ups when all recent conversation turns are independently allowlisted and no tools, files or workspace context is present. Fail closed on ambiguous history and retain the existing opt-out.
 - Skip the semantic LLM router for a narrow allowlist of short, context-free timeless chat requests. Preserve all file, history, coding-workspace, current-information, and tool routing safeguards; expose an opt-out flag and regression coverage.
-- Restore explicit image upload intent selection (automatic, describe/analyze, edit); only show image-model and advanced editing controls for editing, preserve ordered references, and prevent accidental rendering when analysis is selected.
-- Improve edit-composer internationalization and browser acceptance coverage for desktop/mobile image modes, multi-reference order, and editing controls.
 
 ## v1.11.0
+
+- Restore explicit image upload intent selection (automatic, describe/analyze, edit); only show image-model and advanced editing controls for editing, preserve ordered references, and prevent accidental rendering when analysis is selected.
+- Improve edit-composer internationalization and browser acceptance coverage for desktop/mobile image modes, multi-reference order, and editing controls.
+- Prepare MFLUX 0.22.0 and its Qwen Image 2.1 editing CLI.
+- Support up to ten ordered reference images with opt-in image editing and model selection.
+- Integrate the optional Osaurus Qwen Image 2.1 Edit 4-bit model without changing default models or downloading weights.
+- Introduce full-screen Settings, Systeminfo, Help and Notes with consistent controls.
 
 - Add opt-in-by-answer structured offline charts to normal chat: safe validated `nobby-chart` JSON blocks, automatic selection, SVG line/bar/donut and accessible table fallback, switching and CSV export. The model is instructed to include only real numeric data when visualization helps.
 - Render charts from completed assistant Markdown without replacing Finance Intelligence cards. No external chart CDN, no executable chart payloads.
