@@ -1283,10 +1283,11 @@ def run_provider(
             command.append("--json-events")
         elif progress_callback is not None:
             progress_callback({'phase': 'generating'})
-    # Phase-4 provider telemetry is opt-in to MLX-Gen jobs and contains no prompts.
-    mlxgen_started = None
-    mlxgen_spawn_ms = None
-    mlxgen_first_output_ms = None
+    # Content-free timing for isolated MLX-Gen and Qwen 2.1 MFLUX edit jobs.
+    # Both providers launch a fresh subprocess per edit; preserve all guards.
+    measured_started = None
+    measured_spawn_ms = None
+    measured_first_output_ms = None
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
@@ -1301,18 +1302,23 @@ def run_provider(
         # Do not add clock probes to other providers: their lifecycle and
         # deterministic timeout tests must remain unchanged.
         measure_mlxgen = model["provider"] == "mlxgen"
-        spawn_started = time.perf_counter() if measure_mlxgen else None
+        measure_mflux_qwen_edit = (
+            model["provider"] == "mflux"
+            and model.get("model_family") == "qwen-image21-edit"
+        )
+        measure_subprocess = measure_mlxgen or measure_mflux_qwen_edit
+        spawn_started = time.perf_counter() if measure_subprocess else None
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
-        spawn_finished = time.perf_counter() if measure_mlxgen else None
+        spawn_finished = time.perf_counter() if measure_subprocess else None
         if process_callback is not None:
             process_callback(process)
         # Keep the timeout clock after process_callback, as before.
         provider_started = time.monotonic()
-        if measure_mlxgen:
-            mlxgen_started = provider_started
-            mlxgen_spawn_ms = round((spawn_finished - spawn_started) * 1000, 1)
+        if measure_subprocess:
+            measured_started = provider_started
+            measured_spawn_ms = round((spawn_finished - spawn_started) * 1000, 1)
         deadline = provider_started + GENERATION_TIMEOUT
         progress_remainder = ""
         try:
@@ -1327,12 +1333,12 @@ def run_provider(
                     break
                 except subprocess.TimeoutExpired:
                     worker_input = None
-                if mlxgen_started is not None and mlxgen_first_output_ms is None:
+                if measured_started is not None and measured_first_output_ms is None:
                     # Best-effort first stdout/stderr activity. This is NOT a
                     # measurement of weight loading or the first diffusion step.
                     if has_diagnostic_output():
-                        mlxgen_first_output_ms = round(
-                            (time.monotonic() - mlxgen_started) * 1000, 1
+                        measured_first_output_ms = round(
+                            (time.monotonic() - measured_started) * 1000, 1
                         )
                 if progress_callback is not None:
                     progress_remainder = _read_runtime_events(
@@ -1360,23 +1366,33 @@ def run_provider(
                 progress_callback,
                 params.get("steps"),
             )
-        if mlxgen_started is not None and progress_callback is not None:
-            if mlxgen_first_output_ms is None and has_diagnostic_output():
-                mlxgen_first_output_ms = round(
-                    (time.monotonic() - mlxgen_started) * 1000, 1
+        if measured_started is not None and progress_callback is not None:
+            if measured_first_output_ms is None and has_diagnostic_output():
+                measured_first_output_ms = round(
+                    (time.monotonic() - measured_started) * 1000, 1
                 )
+            mflux_cache_gb = None
+            if measure_mflux_qwen_edit and "--mlx-cache-limit-gb" in command:
+                cache_index = command.index("--mlx-cache-limit-gb") + 1
+                if cache_index < len(command):
+                    try:
+                        mflux_cache_gb = float(command[cache_index])
+                    except (TypeError, ValueError):
+                        pass
             progress_callback({"provider_timing": {
                 "schema": 1,
-                "process_wall_ms": round((time.monotonic() - mlxgen_started) * 1000, 1),
-                "process_spawn_ms": mlxgen_spawn_ms,
-                "first_output_ms": mlxgen_first_output_ms,
+                "provider": "mflux" if measure_mflux_qwen_edit else "mlxgen",
+                "process_wall_ms": round((time.monotonic() - measured_started) * 1000, 1),
+                "process_spawn_ms": measured_spawn_ms,
+                "first_output_ms": measured_first_output_ms,
                 "fresh_process": True,
                 "exit_code": process.returncode,
                 "steps": params.get("steps"),
                 "width": params.get("width"),
                 "height": params.get("height"),
-                "low_ram": True,
-                "note": "First output is observed stdout/stderr activity, not weight load or first GPU step. Each job starts a fresh process.",
+                "low_ram": True if measure_mlxgen else "--low-ram" in command,
+                "mflux_cache_limit_gb": mflux_cache_gb,
+                "note": "First output is observed log activity, not model load or GPU compute; each job launches a new process.",
             }})
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
