@@ -69,12 +69,16 @@ def web(tmp_path_factory):
             web_socket.close()
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
 def browser():
+    # A fresh Chromium process per test isolates renderer/Playwright state.
+    # Context-only isolation previously left a shared browser alive for all 82 cases.
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        yield browser
-        browser.close()
+        instance = playwright.chromium.launch()
+        try:
+            yield instance
+        finally:
+            instance.close()
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -93,9 +97,11 @@ def ui(request, browser, web):
     artifact.mkdir(parents=True, exist_ok=True)
     for file in artifact.iterdir():
         file.unlink()
+    print(f'E2E PHASE {request.node.nodeid}: context.create', flush=True)
     context = browser.new_context(viewport={'width': width, 'height': height},
                                   permissions=['clipboard-read', 'clipboard-write'],
                                   record_video_dir=str(artifact))
+    print(f'E2E PHASE {request.node.nodeid}: tracing.start', flush=True)
     context.tracing.start(screenshots=True, snapshots=True, sources=True)
     page = context.new_page()
     page.set_default_timeout(8000)
@@ -115,13 +121,17 @@ def ui(request, browser, web):
                                                        'failure': req.failure}))
     verified = False
     try:
+        print(f'E2E PHASE {request.node.nodeid}: page.goto', flush=True)
         page.goto(url + '/chat')
         page.locator('#input').wait_for()
+        print(f'E2E PHASE {request.node.nodeid}: test.body', flush=True)
         yield page, agent, allowed
+        print(f'E2E PHASE {request.node.nodeid}: postconditions', flush=True)
         assert not errors, 'Browser errors: ' + '\n'.join(errors)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'Horizontal overflow'
         verified = True
     finally:
+        print(f'E2E PHASE {request.node.nodeid}: cleanup.begin', flush=True)
         failed = not verified or not hasattr(request.node, 'report_call') or request.node.report_call.failed
         cleanup_errors = []
 
@@ -143,9 +153,11 @@ def ui(request, browser, web):
                 cleanup_step('agent', lambda: (artifact / 'agent.json').write_text(
                     json.dumps(agent.calls, indent=2)))
             try:
+                print(f'E2E PHASE {request.node.nodeid}: tracing.stop', flush=True)
                 cleanup_step('tracing.stop', lambda: context.tracing.stop(
                     path=str(artifact / 'trace.zip') if failed else None))
             finally:
+                print(f'E2E PHASE {request.node.nodeid}: context.close', flush=True)
                 cleanup_step('context.close', context.close)
         finally:
             # Gates must be released even if screenshots, tracing, or closing fail.
@@ -159,5 +171,6 @@ def ui(request, browser, web):
                 for file in artifact.iterdir():
                     file.unlink()
                 artifact.rmdir()
+        print(f'E2E PHASE {request.node.nodeid}: cleanup.end', flush=True)
         if cleanup_errors and not failed:
             pytest.fail('E2E browser cleanup failed: ' + json.dumps(cleanup_errors))
