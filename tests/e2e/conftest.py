@@ -123,17 +123,41 @@ def ui(request, browser, web):
         verified = True
     finally:
         failed = not verified or not hasattr(request.node, 'report_call') or request.node.report_call.failed
-        if failed:
-            page.screenshot(path=str(artifact / 'screenshot.png'), full_page=True)
-            (artifact / 'console.json').write_text(json.dumps(console, indent=2))
-            (artifact / 'network.json').write_text(json.dumps(network, indent=2))
-            (artifact / 'agent.json').write_text(json.dumps(agent.calls, indent=2))
-        context.tracing.stop(path=str(artifact / 'trace.zip') if failed else None)
-        context.close()
-        if not failed:
-            for file in artifact.iterdir():
-                file.unlink()
-            artifact.rmdir()
-        agent.speech_gate.set()
-        agent.stream_gate.set()
-        agent.model_system_gate.set()
+        cleanup_errors = []
+
+        def cleanup_step(name, action):
+            # Diagnostics must never prevent the browser from being closed.
+            try:
+                action()
+            except Exception as exc:
+                cleanup_errors.append({'step': name, 'error': repr(exc)})
+
+        try:
+            if failed:
+                cleanup_step('screenshot', lambda: page.screenshot(
+                    path=str(artifact / 'screenshot.png'), full_page=True, timeout=5000))
+                cleanup_step('console', lambda: (artifact / 'console.json').write_text(
+                    json.dumps(console, indent=2)))
+                cleanup_step('network', lambda: (artifact / 'network.json').write_text(
+                    json.dumps(network, indent=2)))
+                cleanup_step('agent', lambda: (artifact / 'agent.json').write_text(
+                    json.dumps(agent.calls, indent=2)))
+            try:
+                cleanup_step('tracing.stop', lambda: context.tracing.stop(
+                    path=str(artifact / 'trace.zip') if failed else None))
+            finally:
+                cleanup_step('context.close', context.close)
+        finally:
+            # Gates must be released even if screenshots, tracing, or closing fail.
+            agent.speech_gate.set()
+            agent.stream_gate.set()
+            agent.model_system_gate.set()
+            if cleanup_errors:
+                (artifact / 'cleanup-errors.json').write_text(
+                    json.dumps(cleanup_errors, indent=2))
+            elif not failed:
+                for file in artifact.iterdir():
+                    file.unlink()
+                artifact.rmdir()
+        if cleanup_errors and not failed:
+            pytest.fail('E2E browser cleanup failed: ' + json.dumps(cleanup_errors))
