@@ -46,6 +46,10 @@ def test_safe_standalone_chat_prompts_are_eligible(prompt):
     "Installiere ein neues MLX-Modell.",
     "Führe die Tests aus.",
     "Nenne mir die neuesten Entwicklungen von heute.",
+    "Nenne die Termine für nächste Woche.",
+    "Schreibe ein kurzes Gedicht und sende es als E-Mail.",
+    "Nenne die aktuellen Spieleangebote.",
+    "Nenne fünf Geschäfte in Göppingen.",
 ])
 def test_nontrivial_current_and_tool_prompts_are_not_fast_pathed(prompt):
     assert not simple_chat_fast_path(prompt)
@@ -134,6 +138,23 @@ def test_missing_workspace_state_must_fail_closed():
             "intent": "normal_chat", "confidence": 0.95,
             "requires_tools": False, "reason": "routed",
         }) as classifier,
+    ):
+        result = app.classify_chat_action_details("Warum ist der Himmel blau?")
+    classifier.assert_called_once()
+    assert result["method"] != "simple_chat_fast_path"
+
+
+def test_fast_path_can_be_disabled_without_changing_routing(monkeypatch):
+    monkeypatch.setenv("MLX_CHAT_FAST_PATH_ENABLED", "off")
+    assert not simple_chat_fast_path("Warum ist der Himmel blau?")
+
+    classifier = mock.Mock(return_value={
+        "intent": "normal_chat", "confidence": 0.95,
+        "requires_tools": False, "reason": "routed",
+    })
+    with (
+        mock.patch.object(app.code_workspaces, "active_workspace", return_value=None),
+        mock.patch.object(app, "semantic_intent_classifier", classifier),
     ):
         result = app.classify_chat_action_details("Warum ist der Himmel blau?")
     classifier.assert_called_once()
