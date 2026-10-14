@@ -35,6 +35,9 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
                  "tqdm_first_ms": 8100, "tqdm_first_step": 0,
                  "tqdm_complete_ms": 59000, "tqdm_window_ms": 50900,
                  "provider": "mflux", "low_ram": True, "mflux_cache_limit_gb": 4.0,
+                 "steps": 20, "width": 1024, "height": 768,
+                 "reference_count": 2, "guidance": 1.0,
+                 "use_step_cache": False, "use_kv_cache": True,
                  "prompt": "secret"},
              "performance_timings": {"execution_ms": 5500, "resource_wait_ms": 50,
                                      "source_path": "/private/source.png"}},
@@ -63,6 +66,13 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
     assert result["samples"][0]["tqdm_window_ms"] == 50900
     assert result["median_ms"]["tqdm_window_ms"] == 50900
     assert result["samples"][0]["mflux_cache_limit_gb"] == 4.0
+    assert result["samples"][0]["steps"] == 20
+    assert result["samples"][0]["width"] == 1024
+    assert result["samples"][0]["height"] == 768
+    assert result["samples"][0]["reference_count"] == 2
+    assert result["samples"][0]["guidance"] == 1.0
+    assert result["samples"][0]["use_step_cache"] is False
+    assert result["samples"][0]["use_kv_cache"] is True
     assert result["samples"][0]["execution_ms"] == 5500
     assert calls == ["http://127.0.0.1:8010/api/performance/observatory?limit=100"]
     assert "private user text" not in str(result)
