@@ -1885,6 +1885,13 @@ function renderImageArtifactCard(message) {
             { percent: Math.round(changed * 100) }
         );
         info.appendChild(advisory);
+        if (artifact.quality_check?.status === 'review') {
+            const review = document.createElement('p');
+            review.className = 'image-edit-advisory';
+            review.textContent = rt('image_edit_review_note',
+                'Very small or extensive changes detected. Please check whether they were intended.');
+            info.appendChild(review);
+        }
     }
 
     card.appendChild(image);
