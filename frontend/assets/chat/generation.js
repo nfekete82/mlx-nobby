@@ -1381,10 +1381,13 @@ try {
         if (turnMessage && !turnMessage.trace_id) {
             turnMessage.trace_id = traceId;
         }
-        const apiMessages =
-            buildApiMessages(
+        const inferenceMessages =
+            MLXChatCompact.messagesForInference(
+                session,
                 session.messages.slice(0, -1)
             );
+        const apiMessages =
+            buildApiMessages(inferenceMessages);
 
         const response = await fetch(
             '/api/chat/stream',
@@ -1415,9 +1418,7 @@ try {
                     trace_id: traceId,
 
                     context_sources:
-                        buildContextSources(
-                            session.messages.slice(0, -1)
-                        )
+                        buildContextSources(inferenceMessages)
                 })
             }
         );
