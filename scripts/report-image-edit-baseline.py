@@ -93,12 +93,13 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
     ][:samples]
     results = []
     for index, candidate in enumerate(candidates, 1):
-        details = getter(origin + "/api/mlx/image-jobs/" + candidate["id"])
-        job = (details.get("data") or {}).get("job") or details.get("job") or {}
-        if job.get("id") != candidate["id"] or job.get("kind") not in (None, "image"):
-            raise ValueError("Job identity changed while reading performance data")
-        provider = job.get("provider_timing") or {}
-        native = job.get("performance_timings") or {}
+        # Observatory already owns queue job identifiers; do not send them to
+        # native image-service endpoints (these use different identifiers).
+        # Read only the Observatory's whitelisted content-free telemetry.
+        provider = candidate.get("provider_timing") or {}
+        provider = provider if isinstance(provider, dict) else {}
+        native = candidate.get("performance_timings") or {}
+        native = native if isinstance(native, dict) else {}
         results.append({
             "sample": index,
             "model": str(candidate.get("model") or "")[:100],
@@ -134,7 +135,7 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "Use three sequential identical image edits for a controlled comparison; this tool does not verify prompts or dimensions.",
             "Missing measurements are null, not zero. Jobs must run with the new instrumentation to include startup timings.",
             "First output is log activity, not model loading or first GPU step.",
-            "Read-only: does not start, cancel, delete or modify any jobs.",
+            "Read-only: a single Observatory GET; does not start, cancel, delete or modify any jobs.",
         ],
     }
 
