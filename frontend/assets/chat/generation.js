@@ -2851,9 +2851,16 @@ const imageFiles =
                 MLXChatRuntime.getSessionNegativePrompt?.() ??
                 ''
             ).trim();
+            // The attachment edit controls already own model selection.
+            // Reuse that selection instead of asking for it a second time.
+            const hasAttachmentEditModelPicker =
+                resolvedTarget === 'image_edit' &&
+                imageAttachmentMode === 'edit' &&
+                imageFiles.length > 0;
             let selectedImageModel = String(
-                options?.image?.model ||
-                storedImageModel() ||
+                (hasAttachmentEditModelPicker
+                    ? (options?.referenceEdit?.model || 'auto')
+                    : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
 
@@ -2920,7 +2927,8 @@ const imageFiles =
                         : [];
 
                 const imageModelSelectable =
-                    mediaQualityKind === 'image';
+                    mediaQualityKind === 'image' &&
+                    !hasAttachmentEditModelPicker;
                 const imageModelCapability =
                     resolvedTarget === 'image_edit'
                         ? 'image_edit'

@@ -2197,7 +2197,7 @@ assert.equal(actionWarnings.length, 2);
 renderingWindow.MLXChatGeneration.createImageUpscaleMenu = originalActions;
 
 
-assert.match(generationSource, /const imageModelSelectable =\s*mediaQualityKind === 'image';/);
+assert.match(generationSource, /const imageModelSelectable =\s*mediaQualityKind === 'image'\s*&&\s*!hasAttachmentEditModelPicker;/);
 assert.match(generationSource, /resolvedTarget === 'image_edit'\s*\? 'image_edit'\s*:\s*'text_to_image'/);
 assert.match(generationSource, /mediaQualityKind === 'image'\s*\? selectedImageModel\s*:\s*null/);
 
