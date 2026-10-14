@@ -89,6 +89,10 @@ def test_qwen21_edit_reports_content_free_process_timing(tmp_path, low_ram, logs
     assert timing["exit_code"] == 0
     assert timing["steps"] == 20
     assert timing["width"] == 512 and timing["height"] == 512
+    assert timing["guidance"] == 1
+    assert timing["reference_count"] == 1
+    assert timing["use_step_cache"] is None
+    assert timing["use_kv_cache"] is None
     assert "prompt" not in str(timing)
     assert "/private" not in str(timing)
     assert "source_path" not in str(timing)
