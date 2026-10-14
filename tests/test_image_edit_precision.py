@@ -91,6 +91,7 @@ def test_edit_service_applies_precision_only_when_allowed(monkeypatch, tmp_path)
     seen = []
     monkeypatch.setattr(service, "OUTPUT", output)
     monkeypatch.setattr(service, "_edit_model", lambda *args, **kwargs: model)
+    monkeypatch.setattr(service, "availability", lambda _: (True, "ok"))
     monkeypatch.setattr(service, "validate_edit_source", lambda _: image_source)
     monkeypatch.setattr(service.runtime_coordinator, "ensure_model_load_allowed", lambda *a: None)
 
