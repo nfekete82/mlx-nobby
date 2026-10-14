@@ -190,7 +190,10 @@ def request(client, model, prompt, max_tokens, timeout):
 
 
 def median(values):
-    values = [v for v in values if positive_number(v) is not None]
+    # Percentage gains may legitimately be negative or zero. Do NOT discard
+    # slower ON samples, or the comparison will be biased in DFlash's favor.
+    values = [float(v) for v in values
+              if type(v) in (int, float) and math.isfinite(float(v))]
     return round(statistics.median(values), 3) if values else None
 
 
