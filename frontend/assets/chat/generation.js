@@ -1381,11 +1381,16 @@ try {
         if (turnMessage && !turnMessage.trace_id) {
             turnMessage.trace_id = traceId;
         }
-        const inferenceMessages =
-            MLXChatCompact.messagesForInference(
-                session,
-                session.messages.slice(0, -1)
-            );
+        const originalInferenceMessages =
+            session.messages.slice(0, -1);
+        // Old/isolated clients may load the generator without the optional
+        // compaction module. Always retain the full-context safe fallback.
+        const inferenceMessages = (
+            typeof MLXChatCompact !== 'undefined' &&
+            typeof MLXChatCompact.messagesForInference === 'function'
+        ) ? MLXChatCompact.messagesForInference(
+            session, originalInferenceMessages
+        ) : originalInferenceMessages;
         const apiMessages =
             buildApiMessages(inferenceMessages);
 
