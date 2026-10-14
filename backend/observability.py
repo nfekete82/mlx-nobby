@@ -393,11 +393,12 @@ class ModelCallMetrics:
                     (finished - self.first_token_at) * 1000,
                     3,
                 )
-            elif self.upstream_connected_at is not None:
-                self.metric["timings_ms"]["generation"] = round(
-                    (finished - self.upstream_connected_at) * 1000,
-                    3,
-                )
+            # For non-streaming requests, urlopen() may return only AFTER
+            # the server finished generating the completion. Time spent
+            # reading the already-buffered JSON response is not generation
+            # time and would produce absurd tokens/second estimates.
+            # Leave generation/TTFT unavailable until first-token timing
+            # is actually observable. Total request time is still tracked.
             self.metric["usage"] = normalize_usage(
                 usage,
                 self.input_estimate,
