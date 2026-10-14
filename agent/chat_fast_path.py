@@ -31,7 +31,7 @@ _INFORMATIONAL_PREFIX = re.compile(
 _CREATIVE_PREFIX = re.compile(
     r"(?:bitte\s+)?(?:"
     r"schreibe|schreib|verfasse|write"
-    r")\s+(?:(?:mir\s+)?(?:ein(?:e|en|em|es)?\s+))?"
+    r")\s+(?:(?:mir\s+)?(?:ein(?:e|en|em|es)?|a|an|the)\s+)?"
     r"(?:(?:kurzes?|kurze|lustiges?|lustige|short|funny)\s+)?"
     r"(?:gedicht|geschichte|poem|story)\b",
     re.IGNORECASE,
