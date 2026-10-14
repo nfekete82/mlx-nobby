@@ -36,6 +36,37 @@ class BenchmarkChatLatencyTests(unittest.TestCase):
         self.assertEqual(module.summarize([0, 10, None, 20])["p50_ms"], 10)
         self.assertEqual(module.summarize([0, 10, None, 20])["p95_ms"], 19)
 
+
+    def test_long_and_coding_profiles_are_bounded_public_workloads(self):
+        self.assertEqual(module.PROFILES["short"][1], 16)
+        self.assertGreaterEqual(module.PROFILES["long"][1], 256)
+        self.assertGreaterEqual(module.PROFILES["coding"][1], 256)
+        for profile, (prompt, max_tokens) in module.PROFILES.items():
+            with self.subTest(profile=profile):
+                self.assertTrue(prompt)
+                self.assertTrue(16 <= max_tokens <= 1024)
+        self.assertEqual(module.generation_tps(256, 8000), 32.0)
+        for tokens, ms in ((None, 100), (0, 100), (3, 0), (5, None), (True, 8)):
+            self.assertIsNone(module.generation_tps(tokens, ms))
+
+    def test_long_profile_sends_fixed_prompt_but_returns_no_content(self):
+        fake = Mock()
+        fake.json.return_value = {
+            "choices": [{"message": {"content": "sensitive completion"}}],
+            "usage": {"prompt_tokens": 42, "completion_tokens": 256},
+            "timings": {"prompt_ms": 120, "predicted_ms": 8000},
+        }
+        client = Mock()
+        client.post.return_value = fake
+        with patch.object(module.time, "monotonic", side_effect=[1., 9.1]):
+            result = module.sample(client, "model-id", 30, *module.PROFILES["long"])
+        payload = client.post.call_args.kwargs["json"]
+        self.assertEqual(payload["max_tokens"], module.PROFILES["long"][1])
+        self.assertEqual(payload["messages"][0]["content"], module.PROFILES["long"][0])
+        self.assertEqual(result["generation_tps"], 32.0)
+        self.assertNotIn("sensitive completion", str(result))
+        self.assertNotIn(module.PROFILES["long"][0], str(result))
+
     def test_sample_records_only_metrics(self):
         fake = Mock()
         fake.json.return_value = {
