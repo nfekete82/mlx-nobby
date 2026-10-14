@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip the semantic LLM router for a narrow allowlist of short, context-free timeless chat requests. Preserve all file, history, coding-workspace, current-information, and tool routing safeguards; expose an opt-out flag and regression coverage.
+
 ## v1.11.0
 
 - Restore explicit image upload intent selection (automatic, describe/analyze, edit); only show image-model and advanced editing controls for editing, preserve ordered references, and prevent accidental rendering when analysis is selected.
