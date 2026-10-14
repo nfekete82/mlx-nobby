@@ -1220,6 +1220,9 @@ async function regenerateLastAnswer() {
         return;
     }
 
+    if (typeof MLXChatCompact !== 'undefined') {
+        MLXChatCompact.cancelScheduledAutoCompact?.(session);
+    }
     session.messages.pop();
 
     MLXChatSessions.saveSessions();
@@ -1331,6 +1334,11 @@ return;
 
     if (!generationIsCurrent()) {
         return;
+    }
+
+    // Starting inference takes priority over optional idle summarization.
+    if (typeof MLXChatCompact !== 'undefined') {
+        MLXChatCompact.cancelScheduledAutoCompact?.(session);
     }
 
     const generationSettings =
@@ -1743,6 +1751,17 @@ try {
         MLXChatRendering.renderAll({
             contentUpdated: true
         });
+
+        if (completed && generationIsCurrent() &&
+            typeof MLXChatCompact !== 'undefined') {
+            MLXChatCompact.scheduleAutoCompact?.(
+                session,
+                () => !getGenerating() &&
+                    generationIsCurrent() &&
+                    MLXChatSessions.currentSession() === session &&
+                    !MLXChatRuntime.isSwitching()
+            );
+        }
     }
 }
 
@@ -2542,9 +2561,9 @@ const imageFiles =
 
     MLXChatSessions.updateTitle(session);
 
-    await MLXChatCompact.autoCompactIfNeeded(
-        session
-    );
+    // Context summaries are prepared only after a completed answer.
+    // Never insert an extra model call before routing or first content.
+    MLXChatCompact.cancelScheduledAutoCompact?.(session);
 
     session.updated =
         Date.now();
@@ -4422,6 +4441,11 @@ function watchImageJob(session, message) {
 async function resetSessionRuntime(session) {
     if (!session) {
         return;
+    }
+
+    // Also cancel optional idle context work during a chat reset.
+    if (typeof MLXChatCompact !== 'undefined') {
+        MLXChatCompact.cancelScheduledAutoCompact?.(session);
     }
 
     // Abort an active text/chat request.

@@ -10,6 +10,8 @@ const source = fs.readFileSync(
 function environment() {
     let enabled = true;
     let requestCount = 0;
+    let timerId = 0;
+    const timers = new Map();
     let fetchHandler = async (_url, body) => ({
         response: { ok: true },
         data: {
@@ -26,6 +28,13 @@ function environment() {
     };
     const context = {
         window,
+        AbortController,
+        setTimeout(callback, delay) {
+            const id = ++timerId;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeout(id) { timers.delete(id); },
         console: { log() {}, warn() {}, error() {} },
         MLXCommon: {
             jsonRequest(_method, payload) { return payload; },
@@ -43,7 +52,13 @@ function environment() {
         compact: window.MLXChatCompact,
         setEnabled(value) { enabled = value; },
         setFetchHandler(handler) { fetchHandler = handler; },
-        get requestCount() { return requestCount; }
+        get requestCount() { return requestCount; },
+        get timers() { return timers; },
+        fireTimers() {
+            const entries = [...timers.values()];
+            timers.clear();
+            for (const item of entries) item.callback();
+        }
     };
 }
 
@@ -186,4 +201,75 @@ test('two concurrent compaction requests coalesce into one model call', async ()
     assert.equal(await first, true);
     assert.equal(await second, true);
     assert.equal(env.requestCount, 1);
+});
+
+
+test('idle compaction does not start inference until after the delayed callback', async () => {
+    const env = environment();
+    const session = { messages: history() };
+    const full = env.compact.messagesForInference(session, session.messages);
+    assert.equal(full.length, 20);
+    assert.equal(env.compact.scheduleAutoCompact(session, () => true), true);
+    assert.equal(env.requestCount, 0);
+    assert.equal(env.timers.size, 1);
+    assert.equal([...env.timers.values()][0].delay, 3000);
+    env.fireTimers();
+    // The fake timer launches an intentionally unawaited async request.
+    // Yield a full event-loop turn so its promise adoption/cache write lands.
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(env.requestCount, 1);
+    assert.equal(env.compact.messagesForInference(session, session.messages).length, 13);
+    assert.equal(session.messages.length, 20);
+});
+
+test('a new user action cancels a scheduled summary before it starts', () => {
+    const env = environment();
+    const session = { messages: history() };
+    assert.equal(env.compact.scheduleAutoCompact(session, () => true), true);
+    env.compact.cancelScheduledAutoCompact(session);
+    assert.equal(env.timers.size, 0);
+    env.fireTimers();
+    assert.equal(env.requestCount, 0);
+    assert.equal(env.compact.messagesForInference(session, session.messages).length, 20);
+});
+
+test('idle compaction rechecks live activity and disabled setting', () => {
+    for (const abort of ['busy', 'disabled']) {
+        const env = environment();
+        const session = { messages: history() };
+        assert.equal(env.compact.scheduleAutoCompact(session,
+            () => abort !== 'busy'), true);
+        if (abort === 'disabled') env.setEnabled(false);
+        env.fireTimers();
+        assert.equal(env.requestCount, 0);
+    }
+});
+
+test('new user action aborts in-flight idle compaction and cannot cache stale summary', async () => {
+    const env = environment();
+    let requestSignal;
+    let reply;
+    env.setFetchHandler((_url, options) => new Promise(resolve => {
+        requestSignal = options.signal;
+        reply = () => resolve({
+            response: { ok: true },
+            data: {
+                compacted: true,
+                messages: [
+                    { role: 'system', content: 'Summary. '.repeat(70) },
+                    ...options.messages.slice(-12)
+                ]
+            }
+        });
+    }));
+    const session = { messages: history() };
+    env.compact.scheduleAutoCompact(session, () => true);
+    env.fireTimers();
+    assert.ok(requestSignal);
+    env.compact.cancelScheduledAutoCompact(session);
+    assert.equal(requestSignal.aborted, true);
+    reply();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(env.compact.messagesForInference(session, session.messages).length, 20);
 });
