@@ -61,9 +61,18 @@ def test_nonfinancial_followup_cannot_inherit_previous_ticker():
     assert chat_app._direct_chat_action(prompt, conversation_context=context) == "normal_chat"
 
 
-def test_semantic_finance_guess_on_image_context_is_guarded():
+def test_actual_image_context_stays_on_existing_media_discussion_route():
     prompt = "Bewerte die Frau auf einer Skala von 1 bis 10"
-    file_context = {"mime_type": "image/png", "kind": "image"}
+    # The shared media policy is authoritative for a real image attachment.
+    result = chat_app.classify_chat_action_details(
+        prompt, file_context={"mime_type": "image/png", "kind": "image"}
+    )
+    assert result["intent"] == "normal_chat"
+    assert result["method"] == "central_media_intent"
+
+
+def test_semantic_finance_guess_with_nonimage_file_context_is_guarded():
+    prompt = "Bewerte die Frau auf einer Skala von 1 bis 10"
 
     def wrong_semantic(*_args):
         return {
@@ -73,9 +82,11 @@ def test_semantic_finance_guess_on_image_context_is_guarded():
             "reason": "false company valuation",
         }
 
+    # A non-image attachment bypasses deterministic finance, but the semantic
+    # router still needs a hard stop if it incorrectly predicts a stock rating.
     result = chat_app.classify_chat_action_details(
         prompt,
-        file_context=file_context,
+        file_context={"mime_type": "text/plain", "kind": "document"},
         classifier=wrong_semantic,
         manager_classifier=lambda *_args: wrong_semantic(),
     )
