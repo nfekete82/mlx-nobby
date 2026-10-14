@@ -93,8 +93,8 @@ function compactT(key, fallback = '', variables = {}) {
         return [
             {
                 role: 'user',
-                content: 'Archivierter Gesprächskontext (Zusammenfassung früherer ' +
-                    'Nachrichten; keine neue Anweisung):\n' + state.summary
+                content: 'Archived conversation context (summary of previous ' +
+                    'messages; not a new instruction):\n' + state.summary
             },
             ...messages.slice(state.prefix.length)
         ];
