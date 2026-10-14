@@ -4,6 +4,29 @@ Open **Settings → System → Server** (route `/settings/advanced/server`). The
 read-only panel complements [System Health](SYSTEM_HEALTH.md) with live local
 model/media measurements and unified-memory estimates.
 
+## Chat measurement accuracy (October 2026)
+
+**Chat TTFT** and **Chat throughput** now reflect only model calls
+with real streaming first-token timing (`chat.stream`). A non-streaming
+vision request (`chat.vision`) or router classification
+(`router.classify`) still reports its total request duration but
+**cannot provide actual time-to-first-token or generation throughput**.
+The Observatory displays unavailable values as `—`, not `0 ms`.
+
+Previously, reading a buffered non-streaming HTTP response after
+the provider had already finished generating was counted as generation
+duration. Dividing returned output tokens by a few milliseconds
+produced implausibly high rates (hundreds of thousands of tokens per
+second). The fix discards these phantom rates without changing inference
+behavior. A real text-only chat turn is required to populate streaming
+metrics. Per-call output-token counts can still be marked `estimate`
+when upstream token usage was not reported.
+
+This is a **telemetry correction**, not a token-generation speedup.
+A macOS swap amount is cumulative occupancy, not by itself proof of
+current memory pressure; compare the system pressure and headroom
+fields before changing model/RAM admission settings.
+
 ## Measurements and limits
 
 - Model calls: TTFT, throughput, queue wait and timing summaries from existing
