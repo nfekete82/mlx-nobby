@@ -67,11 +67,11 @@ function imageT(key, fallback = '', variables = {}) {
         // Shown only for the exact Osaurus checkpoint tested on Apple Silicon.
         const stepCache = model.id === 'mflux-osaurus-qwen-image-2.1-edit'
             ? field(form, imageT('image_settings.step_cache_default',
-                'Step Cache (schnellere Bildbearbeitung)'), model.step_cache_default === true, 'checkbox')
+                'Step Cache (faster image editing)'), model.step_cache_default === true, 'checkbox')
             : null;
         if (stepCache) {
             form.append(node('p', imageT('image_settings.step_cache_hint',
-                'Kann das Bild leicht verändern. Ausschalten für die ursprüngliche Berechnung.'),
+                'May slightly change image details. Turn off for the original computation.'),
                 'settings-hint'));
         }
         card.append(form);
