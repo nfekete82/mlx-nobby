@@ -64,6 +64,16 @@ function imageT(key, fallback = '', variables = {}) {
         steps.min = 1; steps.max = model.provider === 'diffusionkit' ? 8 : 50;
         const guidance = field(form, imageT('image_settings.default_guidance', 'Default guidance'), model.default_guidance, 'number');
         guidance.min = 0; guidance.max = 10; guidance.step = 0.1;
+        // Shown only for the exact Osaurus checkpoint tested on Apple Silicon.
+        const stepCache = model.id === 'mflux-osaurus-qwen-image-2.1-edit'
+            ? field(form, imageT('image_settings.step_cache_default',
+                'Step Cache (schnellere Bildbearbeitung)'), model.step_cache_default === true, 'checkbox')
+            : null;
+        if (stepCache) {
+            form.append(node('p', imageT('image_settings.step_cache_hint',
+                'Kann das Bild leicht verändern. Ausschalten für die ursprüngliche Berechnung.'),
+                'settings-hint'));
+        }
         card.append(form);
         const loraList = node('div', null, 'image-lora-list');
         const loraRows = [];
@@ -96,6 +106,7 @@ function imageT(key, fallback = '', variables = {}) {
                 enabled: enabled.checked, repository: repo.value.trim() || null,
                 local_path: local.value.trim() || null, default_steps: Number(steps.value),
                 default_guidance: Number(guidance.value),
+                ...(stepCache ? { step_cache_default: stepCache.checked } : {}),
                 loras: loraRows.map(row => {
                     const value = row.source.value.trim();
                     return { [value.startsWith('/') || value.startsWith('~/') ? 'path' : 'repository']: value,
