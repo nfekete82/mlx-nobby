@@ -649,6 +649,9 @@ def mflux_command(model, params, output):
         for key, flag in optional_values.items():
             if params.get(key) is not None and params[key] != "":
                 if flag not in flags:
+                    if key == "auto_mask" and params.get("_precision_auto_mask_inferred") is True:
+                        # Optional heuristic must not break valid unmasked edits.
+                        continue
                     raise ProviderFailure(f"Installierte CLI unterstützt {flag} nicht", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
                 command += [flag, str(params[key])]
         # Opt-in per Osaurus model registry; explicit job options always win.

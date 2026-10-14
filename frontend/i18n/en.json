@@ -335,6 +335,13 @@
   "rendering": {
     "image_preview_open": "Open larger image preview",
     "image_preview_title": "Image preview",
+    "image_compare_title": "Before / after",
+    "image_compare_before": "Original image",
+    "image_compare_after": "Edited image",
+    "image_compare_label": "Move the slider to reveal the original image",
+    "image_compare_slider": "Original image visibility",
+    "image_edit_change_advisory": "Changed pixels (approx.): {percent}%. This is not a semantic quality assessment.",
+    "image_edit_review_note": "Very small or extensive changes detected. Please check whether they were intended.",
     "image_preview_close": "Close image preview",
     "cancel": "Cancel",
     "image_editing": "Editing image …",

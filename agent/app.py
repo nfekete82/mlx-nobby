@@ -8814,7 +8814,8 @@ def _image_artifact(result, action):
     for key in ("original_prompt", "negative_prompt", "resolved_model", "requested_model",
                 "auto_size", "quality_profile", "requested_width", "requested_height",
                 "variant_group_id", "variant_index", "variant_count", "source_generation_job_id", "variants_available",
-                "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id", "reference_count"):
+                "semantic_operation", "reference_used", "reference_mode", "reference_relation", "reference_artifact_id", "reference_count",
+                "source_image_id", "quality_check"):
         if key in result:
             artifact[key] = result[key]
     if action in {"image_edit", "image_upscale"} and result.get("semantic_operation") != "reference_generate":

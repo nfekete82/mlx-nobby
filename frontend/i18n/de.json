@@ -335,6 +335,13 @@
   "rendering": {
     "image_preview_open": "Große Bildvorschau öffnen",
     "image_preview_title": "Bildvorschau",
+    "image_compare_title": "Vorher / Nachher",
+    "image_compare_before": "Originalbild",
+    "image_compare_after": "Bearbeitetes Bild",
+    "image_compare_label": "Schieberegler bewegen, um das Original einzublenden",
+    "image_compare_slider": "Sichtbarkeit des Originalbildes",
+    "image_edit_change_advisory": "Veränderte Pixel (ungefähr): {percent} %. Das ist keine inhaltliche Qualitätsprüfung.",
+    "image_edit_review_note": "Sehr geringe oder großflächige Änderungen erkannt. Bitte prüfen, ob das beabsichtigt war.",
     "image_preview_close": "Bildvorschau schließen",
     "cancel": "Abbrechen",
     "image_editing": "Bild wird bearbeitet …",
