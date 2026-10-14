@@ -6744,6 +6744,60 @@ body.mlx-empty-chat .composer {
 .image-preview-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .image-preview-dialog img { display: block; margin: auto; width: auto; height: auto; max-width: 100%; max-height: calc(90vh - 80px); max-height: calc(90dvh - 80px); object-fit: contain; }
 body.image-preview-open { overflow: hidden; }
+
+/* Precision image edit: accessible reveal slider. Original and edited
+   remain on the same local, authenticated image origin. */
+.image-compare-dialog {
+    box-sizing: border-box;
+    width: min(95vw, 920px);
+    max-width: 95vw;
+    max-height: 95dvh;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+}
+.image-compare-dialog::backdrop { background: rgba(0, 0, 0, .8); }
+.image-compare-dialog header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.image-compare-stage {
+    position: relative;
+    max-height: 67dvh;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--background, #161616);
+}
+.image-compare-stage img {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    user-select: none;
+    pointer-events: none;
+}
+.image-compare-before { clip-path: inset(0 50% 0 0); }
+.image-compare-controls {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: .88rem;
+}
+.image-compare-controls input[type="range"] {
+    width: 100%;
+    accent-color: var(--blue);
+    cursor: ew-resize;
+}
+.image-edit-advisory { font-size: .85rem; color: var(--muted); }
+
 .image-job-card .assistant-thinking-dot { margin-right: 10px; }
 
 /* ==========================================================
