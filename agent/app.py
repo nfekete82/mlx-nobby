@@ -5520,6 +5520,12 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if media.handles_turn:
         return media.chat_routing()["intent"]
 
+    # A user asking to rate a person, photograph or outfit wants a chat/vision
+    # response, not a stock quote. Keep the request out of the finance tool
+    # even if it contains multiple words after "bewerte".
+    if not file_context and finance.non_financial_rating_request(prompt):
+        return "normal_chat"
+
     finance_action = finance.finance_intent(prompt, conversation_context) if not file_context else None
     if finance_action:
         return finance_action
@@ -6402,6 +6408,21 @@ def classify_chat_action_details(
         confidence=0.0
     if intent not in SEMANTIC_ROUTER_INTENTS:
         confidence=0.0
+
+    # A semantic router may still misread a score/rating as a company analysis
+    # when a photo attachment bypasses deterministic finance routing. This
+    # guard operates after semantic/manager arbitration and retains file data
+    # for the regular chat/vision path.
+    if intent in finance.TOOLS and finance.non_financial_rating_request(prompt):
+        return {
+            "intent": "normal_chat",
+            "semantic_intent": intent,
+            "confidence": confidence,
+            "requires_tools": False,
+            "reason": "Assessment of a person or visual subject, not finance",
+            "method": "semantic_non_financial_rating_guard",
+        }
+
     if confidence < SEMANTIC_ROUTER_THRESHOLD:
         fallback=semantic_router_fallback(
             prompt,
