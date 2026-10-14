@@ -163,8 +163,16 @@ class ModelRuntimeApiTests(unittest.TestCase):
             snapshot["calls"][1]["parent_request_id"],
             snapshot["calls"][0]["request_id"],
         )
+        # Agent planner/final requests are buffered responses. The HTTP
+        # body read is not a measured generation interval; only the total
+        # round-trip duration is known for these non-streaming calls.
         self.assertTrue(all(
-            call["timings_ms"]["generation"] is not None
+            call["timings_ms"]["total"] is not None
+            for call in snapshot["calls"]
+        ))
+        self.assertTrue(all(
+            call["timings_ms"]["generation"] is None
+            and call["timings_ms"]["ttft"] is None
             for call in snapshot["calls"]
         ))
 
