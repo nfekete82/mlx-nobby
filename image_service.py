@@ -878,6 +878,9 @@ def _edit_result_inner(
         inferred = infer_auto_mask_target(request.prompt)
         if inferred:
             params["auto_mask"] = inferred
+            # An inferred mask is optional. Unsupported CLI versions must
+            # keep the original unmasked edit rather than failing a job.
+            params["_precision_auto_mask_inferred"] = True
     if request.mask_path:
         mask = validate_edit_source(request.mask_path)
         with Image.open(mask) as image, Image.open(source) as original:
