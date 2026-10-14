@@ -243,6 +243,28 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
         # an image runtime that was already cold counted as "released".
         # Only the corrected V2 producer can supply a reliable answer.
         handoff_version = handoff.get("version")
+        provider_timing = raw.get("provider_timing")
+        provider_timing = provider_timing if isinstance(provider_timing, dict) else {}
+        native_timing = raw.get("performance_timings")
+        native_timing = native_timing if isinstance(native_timing, dict) else {}
+        # Only content-free numeric telemetry is allowed into the UI/API.
+        # Never expose the raw provider object: it may contain diagnostics.
+        edit_provider_timing = {
+            key: _rounded(provider_timing.get(key), 2)
+            if _number(provider_timing.get(key)) is not None
+            and _number(provider_timing.get(key)) >= 0 else None
+            for key in ("process_wall_ms", "process_spawn_ms", "first_output_ms")
+        }
+        edit_provider_timing["fresh_process"] = (
+            provider_timing.get("fresh_process")
+            if type(provider_timing.get("fresh_process")) is bool else None
+        )
+        edit_native_timing = {
+            key: _rounded(native_timing.get(key), 2)
+            if _number(native_timing.get(key)) is not None
+            and _number(native_timing.get(key)) >= 0 else None
+            for key in ("resource_wait_ms", "execution_ms")
+        }
         verified_image_release = (
             handoff.get("image_released")
             if type(handoff_version) is int and handoff_version >= 2
@@ -271,6 +293,8 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
                 else None
             ),
             "queue_wait_ms": _duration_ms(created, started),
+            "provider_timing": edit_provider_timing if raw.get("kind") == "image" else {},
+            "performance_timings": edit_native_timing if raw.get("kind") == "image" else {},
             "generation_ms": _duration_ms(started, finished),
             "total_ms": _duration_ms(created, finished),
             "created_at": _rounded(created, 3),
