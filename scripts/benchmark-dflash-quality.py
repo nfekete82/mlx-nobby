@@ -272,11 +272,14 @@ def compare(off: dict, on: dict) -> dict:
     after = on_summary["speed_probe"]["median_generation_tps"]
     speed_gain = round((after / before - 1) * 100, 2) if before and after else None
     regressions = sorted(
-        {"id": case_id, "repeat": repeat}
-        for repeat, case_id in expected_keys
-        if case_id != "long-speed" and off_rows[repeat, case_id]["correct"]
-        and not on_rows[repeat, case_id]["correct"]
-    , key=lambda r: (r["repeat"], r["id"]))
+        [
+            {"id": case_id, "repeat": repeat}
+            for repeat, case_id in expected_keys
+            if case_id != "long-speed" and off_rows[repeat, case_id]["correct"]
+            and not on_rows[repeat, case_id]["correct"]
+        ],
+        key=lambda r: (r["repeat"], r["id"]),
+    )
     # Passing this tiny suite cannot establish model-wide parity.
     quality_ok = on_summary["quality"]["correct"] >= off_summary["quality"]["correct"] and not regressions
     recommendation = (
