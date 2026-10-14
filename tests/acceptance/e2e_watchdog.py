@@ -11,6 +11,23 @@ import sys
 import time
 
 
+def _process_snapshot(pgid):
+    """Collect only members of our E2E process group on macOS/POSIX."""
+    try:
+        result = subprocess.run(
+            ['ps', '-axo', 'pid=,pgid=,ppid=,etime=,%cpu=,stat=,comm='],
+            capture_output=True, text=True, timeout=3, check=True,
+        )
+        lines = []
+        for line in result.stdout.splitlines():
+            fields = line.split(None, 6)
+            if len(fields) == 7 and fields[1].isdigit() and int(fields[1]) == pgid:
+                lines.append(line)
+        return '\n'.join(lines) or '(no process group members found)'
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f'(process snapshot unavailable: {type(exc).__name__})'
+
+
 def run_e2e(command, cwd, idle_timeout=120, log_path=None):
     log_path = Path(log_path or (Path(cwd) / 'test-results' / 'e2e-watchdog.log'))
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,10 +58,12 @@ def run_e2e(command, cwd, idle_timeout=120, log_path=None):
                     # Drain any remaining pipe data on the next iteration.
                     continue
                 if proc.poll() is None and time.monotonic() - last_output > idle_timeout:
+                    snapshot = _process_snapshot(proc.pid)
                     diagnostic = (
                         f'\nE2E WATCHDOG: no test output for {idle_timeout}s; '
                         f'aborting isolated test process group {proc.pid}.\n'
                         f'Last output:\n{recent.decode("utf-8", errors="replace")[-3000:]}\n'
+                        f'E2E process group (pid pgid ppid etime cpu stat command):\n{snapshot}\n'
                     )
                     print(diagnostic, file=sys.stderr, flush=True)
                     log.write(diagnostic.encode())
