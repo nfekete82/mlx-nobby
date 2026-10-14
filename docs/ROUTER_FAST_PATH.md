@@ -54,6 +54,59 @@ TTFT, total duration, selected route, router invocation count and incorrect
 routing. Do not compare the existing 2-token native benchmark to the
 different Web streaming prompt as if they were identical requests.
 
+## Guarded follow-up extension (stacked PR)
+
+The browser passes up to eight previous messages as `{"role":"user"|"assistant","content":"..."}`
+pairs, not authoritative prior routing decisions. For that reason, the
+extension remains intentionally narrow:
+
+- Accept only exact, short **explanatory** follow-ups: for example,
+  "Kannst du das einfacher erklären?" and "Kannst du ein Beispiel dazu geben?".
+- Require a correctly ordered, complete user/assistant transcript with
+  2–8 previous messages. Unknown roles, partial turns, extra metadata and
+  empty assistant replies are rejected.
+- Require the *first* previous user turn to pass the original safe standalone
+  allowlist; every subsequent previous user turn must itself match the narrow
+  explanation-only continuation pattern.
+- Reject conversation replies containing obvious tool/agent markers, fenced
+  code or external links. The assistant's text is not a verified routing
+  certificate, so this is a **conservative heuristic**, never a permission
+  to execute tools.
+- Require **no** file context and **no** active coding workspace; the global
+  `MLX_CHAT_FAST_PATH_ENABLED=0` opt-out still disables the shortcut.
+- Report `method=simple_chat_followup_fast_path` only for admitted turns.
+  Every uncertain follow-up returns to the existing semantic router.
+
+These additional safeguards deliberately make the feature **ineligible** in
+many real histories. This is preferable to incorrectly skipping research,
+files, or agent checks. A future extension would need trusted server-side
+routing provenance and a measured miss/false-positive rate, not simply looser
+regular expressions.
+
+Local unit validation for this extension:
+
+    MLX_TEST_PYTHON="$HOME/mlx-web-release-check/test-venv/bin/python" \
+      ./scripts/mlx test-quick tests/test_chat_safe_followups.py
+
+The original 2026-10-14 five-run A/B test measured **routing only** for the
+standalone prompt "Nenne die zwei Farben Rot und Blau in einem Satz." Its
+median fell from 544.1ms to 0.7ms, saving 543.4ms. A separate five-pair follow-up routing A/B on the user's Mac (2026-10-14)
+used the identical prompt "Kannst du das einfacher erklären?" and identical
+two-message history ("Warum ist der Himmel blau?" / "Sonnenlicht wird in
+der Atmosphäre gestreut."). The test used the running local router for
+the legacy path and `active_workspace=None` mocked **equally for both paths**:
+
+| Route | Five runtimes (ms) | Median |
+| --- | --- | --- |
+| `semantic_llm` | 598.7, 519.5, 514.3, 523.7, 513.3 | 519.5 ms |
+| `simple_chat_followup_fast_path` | 0.7, 0.6, 0.4, 0.4, 0.4 | 0.4 ms |
+
+The measured routing-stage median improvement is approximately **519 ms**
+(~99.9%) for this **eligible** history. All ten runs chose `normal_chat`.
+These are **not** full browser/response-generation latencies. The result
+alone does not establish route accuracy across varied or adversarial histories;
+active coding workspaces intentionally remain ineligible.
+
 ## Version discipline
 
 This feature targets the release *after* v1.11.0. The product's `VERSION`,

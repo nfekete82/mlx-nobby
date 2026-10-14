@@ -25,7 +25,7 @@ import zlib
 from agent import knowledge
 from agent import profile
 from agent import code_workspaces
-from agent.chat_fast_path import simple_chat_fast_path
+from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
 from agent import disk_usage
 from agent import image_api
 from image_variants import VariantBatch, load_record
@@ -6315,27 +6315,29 @@ def classify_chat_action_details(
             "method": "deterministic",
         }
 
-    # Skip the ~0.5-0.8s small-model classifier only for self-contained,
-    # timeless chat requests. Existing specialized routes run first; no
-    # attachments/history/workspace or injected test classifiers are bypassed.
-    if (
-        classifier is None
-        and manager_classifier is None
-        and not file_context
-        and not conversation_context
-    ):
+    # Existing deterministic, media, workspace and tool routes run first.
+    # Never bypass injected classifiers, attached data or an active workspace.
+    if classifier is None and manager_classifier is None and not file_context:
         try:
             workspace_active = code_workspaces.active_workspace(validate=False) is not None
         except (OSError, ValueError):
             workspace_active = True  # Uncertain workspace state: use the router.
-        if simple_chat_fast_path(prompt, workspace_active=workspace_active):
-            return {
-                "intent": "normal_chat",
-                "confidence": 1.0,
-                "requires_tools": False,
-                "reason": "Standalone timeless chat request",
-                "method": "simple_chat_fast_path",
-            }
+        if not workspace_active:
+            method = None
+            if not conversation_context and simple_chat_fast_path(prompt):
+                method = "simple_chat_fast_path"
+            elif safe_followup_chat_fast_path(
+                prompt, conversation_context, workspace_active=workspace_active
+            ):
+                method = "simple_chat_followup_fast_path"
+            if method:
+                return {
+                    "intent": "normal_chat",
+                    "confidence": 1.0,
+                    "requires_tools": False,
+                    "reason": "Verified harmless chat turn",
+                    "method": method,
+                }
 
     classify = classifier or semantic_intent_classifier
     classifier_failed = False
