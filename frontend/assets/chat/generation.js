@@ -1381,10 +1381,18 @@ try {
         if (turnMessage && !turnMessage.trace_id) {
             turnMessage.trace_id = traceId;
         }
+        const originalInferenceMessages =
+            session.messages.slice(0, -1);
+        // Old/isolated clients may load the generator without the optional
+        // compaction module. Always retain the full-context safe fallback.
+        const inferenceMessages = (
+            typeof MLXChatCompact !== 'undefined' &&
+            typeof MLXChatCompact.messagesForInference === 'function'
+        ) ? MLXChatCompact.messagesForInference(
+            session, originalInferenceMessages
+        ) : originalInferenceMessages;
         const apiMessages =
-            buildApiMessages(
-                session.messages.slice(0, -1)
-            );
+            buildApiMessages(inferenceMessages);
 
         const response = await fetch(
             '/api/chat/stream',
@@ -1415,9 +1423,7 @@ try {
                     trace_id: traceId,
 
                     context_sources:
-                        buildContextSources(
-                            session.messages.slice(0, -1)
-                        )
+                        buildContextSources(inferenceMessages)
                 })
             }
         );
