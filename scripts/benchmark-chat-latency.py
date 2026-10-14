@@ -66,16 +66,27 @@ def finite_ms(value):
     return round(float(value), 3) if math.isfinite(value) and value >= 0 else None
 
 
-def summarize(samples):
+def summarize(samples, *, unit="ms"):
     numbers = sorted(x for x in samples if x is not None)
+    if unit not in {"ms", "tokens/s", "tokens"}:
+        raise ValueError("Unknown summary metric unit")
+    median_key = "p50_ms" if unit == "ms" else "p50"
+    p95_key = "p95_ms" if unit == "ms" else "p95"
+    result = {"count": len(numbers), median_key: None, p95_key: None}
+    if unit != "ms":
+        result["unit"] = unit
     if not numbers:
-        return {"count": 0, "p50_ms": None, "p95_ms": None}
+        return result
+
     def percentile(p):
         index = (len(numbers) - 1) * p
         lower = int(index)
         upper = min(lower + 1, len(numbers) - 1)
         return round(numbers[lower] + (numbers[upper] - numbers[lower]) * (index - lower), 3)
-    return {"count": len(numbers), "p50_ms": percentile(.5), "p95_ms": percentile(.95)}
+
+    result[median_key] = percentile(.5)
+    result[p95_key] = percentile(.95)
+    return result
 
 
 def generation_tps(completion_tokens, generation_ms):
@@ -110,6 +121,8 @@ def sample(client, model, timeout, prompt=PROMPT, max_tokens=16):
         "prompt_tokens": body["usage"].get("prompt_tokens"),
         "completion_tokens": body["usage"].get("completion_tokens"),
         "server_timing_available": finite_ms(timing.get("prompt_ms")) is not None,
+        "finish_reason": body["choices"][0].get("finish_reason")
+            if isinstance(body["choices"][0], dict) else None,
     }
 
 
@@ -135,7 +148,9 @@ def main(argv=None):
         "profile": args.profile, "max_tokens": max_tokens,
         "first_request_is_not_guaranteed_cold": True,
         "first": results[0], "subsequent": results[1:],
-        "summary": {field: summarize([r[field] for r in results[1:]])
+        "summary": {field: summarize(
+                        [r[field] for r in results[1:]],
+                        unit={"generation_tps": "tokens/s", "completion_tokens": "tokens"}.get(field, "ms"))
                     for field in ("wall_ms", "prompt_ms", "generation_ms",
                                   "generation_tps", "completion_tokens")},
         "notes": [
@@ -145,7 +160,7 @@ def main(argv=None):
             "No system RAM/swap attribution, model loading or image/video switching is performed.",
             "Generation tokens/s derives from server completion_tokens/predicted_ms; not from first-token timing.",
             "Comparisons require identical profile, max tokens, model sampling settings and similar load.",
-            "A prompt may stop before the requested cap; check completion token counts before comparing.",
+            "A prompt may stop before the requested cap; check completion token counts and finish_reason before comparing.",
 
         ],
     }
