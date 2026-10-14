@@ -1291,6 +1291,13 @@ def run_provider(
         diagnostics.name,
         "rb",
     ) as progress_stream:
+        def has_diagnostic_output():
+            # Diagnostics must never break an otherwise valid image job.
+            try:
+                return os.fstat(diagnostics.fileno()).st_size > 0
+            except (OSError, ValueError):
+                return False
+
         spawn_started = time.monotonic()
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
@@ -1320,7 +1327,7 @@ def run_provider(
                 if mlxgen_started is not None and mlxgen_first_output_ms is None:
                     # Best-effort first stdout/stderr activity. This is NOT a
                     # measurement of weight loading or the first diffusion step.
-                    if os.fstat(diagnostics.fileno()).st_size > 0:
+                    if has_diagnostic_output():
                         mlxgen_first_output_ms = round(
                             (time.monotonic() - mlxgen_started) * 1000, 1
                         )
@@ -1351,7 +1358,7 @@ def run_provider(
                 params.get("steps"),
             )
         if mlxgen_started is not None and progress_callback is not None:
-            if mlxgen_first_output_ms is None and os.fstat(diagnostics.fileno()).st_size > 0:
+            if mlxgen_first_output_ms is None and has_diagnostic_output():
                 mlxgen_first_output_ms = round(
                     (time.monotonic() - mlxgen_started) * 1000, 1
                 )
