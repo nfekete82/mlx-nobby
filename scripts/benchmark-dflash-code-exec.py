@@ -424,7 +424,8 @@ def compare(off, on):
         "regressed": regressions, "new_passes": new_passes,
         "recommendation": (
             "candidate_for_manual_code_review"
-            if not regressions and on_summary["correct"] >= off_summary["correct"]
+            if (not regressions and on_summary["correct"] >= off_summary["correct"]
+                and on_summary["correct"] >= (on_summary["total"] * 7 + 9) // 10)
             else "inconclusive_or_regression"),
         "interpretation": "Narrow executable-code smoke tests; no automatic approval.",
     }
