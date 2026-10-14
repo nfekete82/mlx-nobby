@@ -69,12 +69,16 @@ def web(tmp_path_factory):
             web_socket.close()
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
 def browser():
+    # A fresh Chromium process per test isolates renderer/Playwright state.
+    # Context-only isolation previously left a shared browser alive for all 82 cases.
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        yield browser
-        browser.close()
+        instance = playwright.chromium.launch()
+        try:
+            yield instance
+        finally:
+            instance.close()
 
 
 @pytest.hookimpl(hookwrapper=True)
