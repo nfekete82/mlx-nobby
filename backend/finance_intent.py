@@ -66,6 +66,27 @@ def symbols_from_prompt(prompt):
     return output[:10]
 
 
+# A request to rate a person, picture or outfit is not a valuation of a
+# publicly listed company. Match the *object* of the assessment immediately
+# after the verb, not a loose "bewert" keyword appearing anywhere.
+_NON_FINANCIAL_RATING_OBJECT = re.compile(
+    r'^\s*(?:bitte\s+)?'
+    r'(?:bewert(?:e|en|et|est)?|rate|evaluate|review)\s+'
+    r'(?:(?:mir\s+)?(?:die|der|den|das|diese|diesen|dieses|'
+    r'eine|einen|einem|einer|the|this|that|a|an)\s+)?'
+    r'(?:frau|mann|person|mädchen|junge|woman|man|person|'
+    r'girl|boy|foto|photo|bild|picture|image|porträt|portrait|'
+    r'gesicht|face|aussehen|appearance|outfit|kleidung|kleid|'
+    r'film|movie)\b',
+    re.I,
+)
+
+
+def non_financial_rating_request(prompt):
+    """True only when a person/visual subject is explicitly being assessed."""
+    return bool(_NON_FINANCIAL_RATING_OBJECT.search(str(prompt or '')))
+
+
 def explicit_company_query(prompt):
     """Extract one explicitly named company from a strong single-company request.
 
@@ -73,6 +94,8 @@ def explicit_company_query(prompt):
     still performs the authoritative company-to-listing resolution.
     """
     raw = str(prompt or '').strip()
+    if non_financial_rating_request(raw):
+        return None
     if not raw or len(raw) > 300:
         return None
 
@@ -169,6 +192,9 @@ def user_supplied_dataset(prompt):
 
 def finance_intent(prompt, conversation_context=None):
     value = str(prompt or '').lower()
+
+    if non_financial_rating_request(prompt):
+        return None
 
     if user_supplied_dataset(prompt):
         return None
