@@ -32,7 +32,9 @@ def test_person_or_visual_rating_has_no_finance_action(prompt):
     assert chat_app._direct_chat_action(prompt) == "normal_chat"
     result = chat_app.classify_chat_action_details(prompt)
     assert result["intent"] == "normal_chat"
-    assert result["method"] == "deterministic"
+    # Explicit photo/film discussion is correctly intercepted by the shared
+    # media policy; person-only prompts use the deterministic chat guard.
+    assert result["method"] in {"deterministic", "central_media_intent"}
 
 
 @pytest.mark.parametrize("prompt, expected", [
