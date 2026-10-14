@@ -32,6 +32,8 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
              "provider_timing": {
                  "process_wall_ms": 5000, "process_spawn_ms": 10,
                  "first_output_ms": None, "fresh_process": True,
+                 "tqdm_first_ms": 8100, "tqdm_first_step": 0,
+                 "tqdm_complete_ms": 59000, "tqdm_window_ms": 50900,
                  "provider": "mflux", "low_ram": True, "mflux_cache_limit_gb": 4.0,
                  "prompt": "secret"},
              "performance_timings": {"execution_ms": 5500, "resource_wait_ms": 50,
@@ -55,6 +57,11 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
     assert result["samples"][0]["process_spawn_ms"] == 10
     assert result["samples"][0]["provider"] == "mflux"
     assert result["samples"][0]["low_ram"] is True
+    assert result["samples"][0]["tqdm_first_ms"] == 8100
+    assert result["samples"][0]["tqdm_first_step"] == 0
+    assert result["samples"][0]["tqdm_complete_ms"] == 59000
+    assert result["samples"][0]["tqdm_window_ms"] == 50900
+    assert result["median_ms"]["tqdm_window_ms"] == 50900
     assert result["samples"][0]["mflux_cache_limit_gb"] == 4.0
     assert result["samples"][0]["execution_ms"] == 5500
     assert calls == ["http://127.0.0.1:8010/api/performance/observatory?limit=100"]

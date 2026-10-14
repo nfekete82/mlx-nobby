@@ -295,7 +295,7 @@ class ProviderFailure(RuntimeError):
                           'error_model': model, 'error_detail_safe': detail or message}
 
 
-def _read_runtime_events(stream, remainder, callback, expected_steps):
+def _read_runtime_events(stream, remainder, callback, expected_steps, *, diagnostic_observer=None):
     chunk = stream.read()
 
     if not chunk and not remainder:
@@ -310,6 +310,12 @@ def _read_runtime_events(stream, remainder, callback, expected_steps):
     remainder = lines.pop()
 
     for line in lines:
+        if diagnostic_observer is not None:
+            try:
+                diagnostic_observer(line)
+            except Exception:
+                # Best-effort progress telemetry must never fail an image job.
+                pass
         try:
             event = json.loads(line)
         except (TypeError, ValueError):
@@ -1288,6 +1294,12 @@ def run_provider(
     measured_started = None
     measured_spawn_ms = None
     measured_first_output_ms = None
+    tqdm_first_ms = None
+    tqdm_first_step = None
+    tqdm_complete_ms = None
+    tqdm_first_scan = None
+    tqdm_complete_scan = None
+    tqdm_scan = 0
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
@@ -1321,6 +1333,30 @@ def run_provider(
             measured_spawn_ms = round((spawn_finished - spawn_started) * 1000, 1)
         deadline = provider_started + GENERATION_TIMEOUT
         progress_remainder = ""
+
+        def observe_mflux_progress(line):
+            nonlocal tqdm_first_ms, tqdm_first_step, tqdm_complete_ms
+            nonlocal tqdm_first_scan, tqdm_complete_scan
+            # tqdm emits carriage-return separated, best-effort 0/N ... N/N
+            # frames. Never retain the original line, which may be private.
+            if measured_started is None or "|" not in line:
+                return
+            match = re.search(r"(?<!\d)(\d{1,4})\s*/\s*(\d{1,4})\s*\[", line)
+            if match is None:
+                return
+            step, count = map(int, match.groups())
+            if (count != params.get("steps") or count <= 0 or
+                    not 0 <= step <= count):
+                return
+            observed_ms = round((time.monotonic() - measured_started) * 1000, 1)
+            if tqdm_first_ms is None:
+                tqdm_first_ms = observed_ms
+                tqdm_first_step = step
+                tqdm_first_scan = tqdm_scan
+            if step == count and tqdm_complete_ms is None:
+                tqdm_complete_ms = observed_ms
+                tqdm_complete_scan = tqdm_scan
+
         try:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
@@ -1341,11 +1377,14 @@ def run_provider(
                             (time.monotonic() - measured_started) * 1000, 1
                         )
                 if progress_callback is not None:
+                    if measure_mflux_qwen_edit:
+                        tqdm_scan += 1
                     progress_remainder = _read_runtime_events(
                         progress_stream,
                         progress_remainder,
                         progress_callback,
                         params.get("steps"),
+                        diagnostic_observer=observe_mflux_progress if measure_mflux_qwen_edit else None,
                     )
                 if cancel_event is not None and cancel_event.is_set():
                     raise ProviderCancelled("Image job was cancelled")
@@ -1360,11 +1399,14 @@ def run_provider(
             if process_callback is not None:
                 process_callback(None)
         if progress_callback is not None:
+            if measure_mflux_qwen_edit:
+                tqdm_scan += 1
             _read_runtime_events(
                 progress_stream,
                 progress_remainder + "\n",
                 progress_callback,
                 params.get("steps"),
+                diagnostic_observer=observe_mflux_progress if measure_mflux_qwen_edit else None,
             )
         if measured_started is not None and progress_callback is not None:
             if measured_first_output_ms is None and has_diagnostic_output():
@@ -1385,6 +1427,18 @@ def run_provider(
                 "process_wall_ms": round((time.monotonic() - measured_started) * 1000, 1),
                 "process_spawn_ms": measured_spawn_ms,
                 "first_output_ms": measured_first_output_ms,
+                "tqdm_first_ms": tqdm_first_ms if measure_mflux_qwen_edit else None,
+                "tqdm_first_step": tqdm_first_step if measure_mflux_qwen_edit else None,
+                "tqdm_complete_ms": tqdm_complete_ms if measure_mflux_qwen_edit else None,
+                "tqdm_window_ms": (
+                    round(tqdm_complete_ms - tqdm_first_ms, 1)
+                    if measure_mflux_qwen_edit and tqdm_first_step == 0
+                    and tqdm_first_scan is not None
+                    and tqdm_complete_scan is not None
+                    and tqdm_complete_scan > tqdm_first_scan
+                    and tqdm_complete_ms is not None and tqdm_first_ms is not None
+                    else None
+                ),
                 "fresh_process": True,
                 "exit_code": process.returncode,
                 "steps": params.get("steps"),
@@ -1392,7 +1446,7 @@ def run_provider(
                 "height": params.get("height"),
                 "low_ram": True if measure_mlxgen else "--low-ram" in command,
                 "mflux_cache_limit_gb": mflux_cache_gb,
-                "note": "First output is observed log activity, not model load or GPU compute; each job launches a new process.",
+                "note": "First output is log activity, not model load. tqdm timing is observer-side progress output, not exact GPU execution; all processes are fresh.",
             }})
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")

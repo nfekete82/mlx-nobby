@@ -253,8 +253,17 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             key: _rounded(provider_timing.get(key), 2)
             if _number(provider_timing.get(key)) is not None
             and _number(provider_timing.get(key)) >= 0 else None
-            for key in ("process_wall_ms", "process_spawn_ms", "first_output_ms")
+            for key in (
+                "process_wall_ms", "process_spawn_ms", "first_output_ms",
+                "tqdm_first_ms", "tqdm_complete_ms", "tqdm_window_ms",
+            )
         }
+        edit_provider_timing["tqdm_first_step"] = (
+            provider_timing.get("tqdm_first_step")
+            if type(provider_timing.get("tqdm_first_step")) is int
+            and 0 <= provider_timing["tqdm_first_step"] <= 1000
+            else None
+        )
         edit_provider_timing["fresh_process"] = (
             provider_timing.get("fresh_process")
             if type(provider_timing.get("fresh_process")) is bool else None

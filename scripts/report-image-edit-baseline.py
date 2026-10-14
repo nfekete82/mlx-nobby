@@ -109,6 +109,14 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "process_wall_ms": safe_ms(provider.get("process_wall_ms")),
             "process_spawn_ms": safe_ms(provider.get("process_spawn_ms")),
             "first_output_ms": safe_ms(provider.get("first_output_ms")),
+            "tqdm_first_ms": safe_ms(provider.get("tqdm_first_ms")),
+            "tqdm_complete_ms": safe_ms(provider.get("tqdm_complete_ms")),
+            "tqdm_window_ms": safe_ms(provider.get("tqdm_window_ms")),
+            "tqdm_first_step": (
+                provider.get("tqdm_first_step")
+                if type(provider.get("tqdm_first_step")) is int
+                and 0 <= provider["tqdm_first_step"] <= 1000 else None
+            ),
             "resource_wait_ms": safe_ms(native.get("resource_wait_ms")),
             "execution_ms": safe_ms(native.get("execution_ms")),
             "fresh_process": provider.get("fresh_process")
@@ -119,8 +127,11 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
                        if type(provider.get("low_ram")) is bool else None,
             "mflux_cache_limit_gb": safe_ms(provider.get("mflux_cache_limit_gb")),
         })
-    metrics = ("total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",
-               "process_spawn_ms", "first_output_ms", "resource_wait_ms", "execution_ms")
+    metrics = (
+        "total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",
+        "process_spawn_ms", "first_output_ms", "resource_wait_ms", "execution_ms",
+        "tqdm_first_ms", "tqdm_complete_ms", "tqdm_window_ms",
+    )
     return {
         "schema": 2,
         "requested_samples": samples,
@@ -140,6 +151,8 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "Use three sequential identical image edits for a controlled comparison; this tool does not verify prompts or dimensions.",
             "Missing measurements are null, not zero. Jobs must run with the new instrumentation to include startup timings.",
             "First output is log activity, not model loading or first GPU step.",
+            "tqdm timings are timestamps when progress output was observed, not verified model-load or GPU execution phase boundaries.",
+            "tqdm_window_ms is only populated when a 0/N start and N/N completion are both observed.",
             "Read-only: a single Observatory GET; does not start, cancel, delete or modify any jobs.",
         ],
     }
