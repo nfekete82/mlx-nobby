@@ -90,9 +90,22 @@ Local unit validation for this extension:
 
 The original 2026-10-14 five-run A/B test measured **routing only** for the
 standalone prompt "Nenne die zwei Farben Rot und Blau in einem Satz." Its
-median fell from 544.1ms to 0.7ms, saving 543.4ms. That does not establish
-the impact or route accuracy of this follow-up extension. Run a new matched
-A/B study with the same benign conversational history before merging.
+median fell from 544.1ms to 0.7ms, saving 543.4ms. A separate five-pair follow-up routing A/B on the user's Mac (2026-10-14)
+used the identical prompt "Kannst du das einfacher erklären?" and identical
+two-message history ("Warum ist der Himmel blau?" / "Sonnenlicht wird in
+der Atmosphäre gestreut."). The test used the running local router for
+the legacy path and `active_workspace=None` mocked **equally for both paths**:
+
+| Route | Five runtimes (ms) | Median |
+| --- | --- | --- |
+| `semantic_llm` | 598.7, 519.5, 514.3, 523.7, 513.3 | 519.5 ms |
+| `simple_chat_followup_fast_path` | 0.7, 0.6, 0.4, 0.4, 0.4 | 0.4 ms |
+
+The measured routing-stage median improvement is approximately **519 ms**
+(~99.9%) for this **eligible** history. All ten runs chose `normal_chat`.
+These are **not** full browser/response-generation latencies. The result
+alone does not establish route accuracy across varied or adversarial histories;
+active coding workspaces intentionally remain ineligible.
 
 ## Version discipline
 
