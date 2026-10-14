@@ -105,6 +105,10 @@ class MediaPerformanceTests(unittest.TestCase):
                         "provider": "mflux",
                         "low_ram": True,
                         "mflux_cache_limit_gb": 4.0,
+                        "steps": 20, "width": 1024, "height": 768,
+                        "guidance": 1.0, "reference_count": 2,
+                        "use_step_cache": False, "use_kv_cache": True,
+                        "model_weights_path": "/private/model.safetensors",
                         "prompt": "do-not-expose-secret",
                     },
                     "performance_timings": {
@@ -147,6 +151,14 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertEqual(image["provider_timing"]["provider"], "mflux")
         self.assertIs(image["provider_timing"]["low_ram"], True)
         self.assertEqual(image["provider_timing"]["mflux_cache_limit_gb"], 4.0)
+        self.assertEqual(image["provider_timing"]["steps"], 20)
+        self.assertEqual(image["provider_timing"]["width"], 1024)
+        self.assertEqual(image["provider_timing"]["height"], 768)
+        self.assertEqual(image["provider_timing"]["reference_count"], 2)
+        self.assertEqual(image["provider_timing"]["guidance"], 1.0)
+        self.assertIs(image["provider_timing"]["use_step_cache"], False)
+        self.assertIs(image["provider_timing"]["use_kv_cache"], True)
+        self.assertNotIn("/private/model.safetensors", json.dumps(snapshot))
         self.assertEqual(image["performance_timings"]["execution_ms"], 4890)
         self.assertEqual(image["performance_timings"]["resource_wait_ms"], 110)
         self.assertNotIn("do-not-expose-secret", json.dumps(snapshot))
