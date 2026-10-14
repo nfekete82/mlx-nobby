@@ -169,3 +169,18 @@ def test_direct_image_health_is_not_registered(monkeypatch):
         "GET", "/health", None, 10,
     ) == {"ok": True}
     assert calls == []
+
+
+def test_register_completed_acceptance_video_is_temporary(monkeypatch):
+    calls = []
+    monkeypatch.setattr(media_lifecycle_runtime, "_shorts_references_job", lambda _: False)
+    monkeypatch.setattr(media_lifecycle_runtime.media_lifecycle, "register",
+                        lambda *args, **kwargs: calls.append((args, kwargs)))
+    media_lifecycle_runtime._register_completed(
+        "a" * 24,
+        {"kind": "video", "status": "completed",
+         "chat_id": "acceptance-20261014T114855Z-afb8e859",
+         "result": {"id": "b" * 24, "path": "/tmp/acceptance-video.mp4"}},
+    )
+    assert calls[0][1]["owner"] == "acceptance"
+    assert calls[0][1]["persistent"] is False
