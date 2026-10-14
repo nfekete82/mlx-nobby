@@ -511,6 +511,8 @@
   "image_settings.local_path": "Lokaler Modellpfad (optional)",
   "image_settings.default_steps": "Standard-Steps",
   "image_settings.default_guidance": "Standard-Guidance",
+  "image_settings.step_cache_default": "Step Cache (schnellere Bildbearbeitung)",
+  "image_settings.step_cache_hint": "Kann das Bild leicht verändern. Ausschalten für die ursprüngliche Berechnung.",
   "image_settings.weight": "Gewichtung",
   "image_settings.trigger_word": "Triggerwort (Hinweis)",
   "image_settings.remove": "Entfernen",
