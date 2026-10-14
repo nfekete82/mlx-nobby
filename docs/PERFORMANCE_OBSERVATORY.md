@@ -122,3 +122,48 @@ not currently capture TTFT (non-streaming endpoint), model-load duration,
 RAM or swap, nor does it reproduce image/video handoff. It is a narrow baseline
 to be paired with the existing Observatory's runtime and memory history.
 Do not use the benchmark to justify lifting admission reserves or timeouts.
+
+
+## Realistic output-speed baseline (opt-in, October 2026)
+
+The original chat probe asks for `OK` (two completion tokens in one local
+measurement); its warm ~185 ms wall time is a **short-request latency**, not
+evidence of realistic decode throughput. Use longer fixed, public prompts
+without recording any response text:
+
+```sh
+cd ~/mlx-web
+source "$HOME/.config/mlx-server/config"
+python3 scripts/benchmark-chat-latency.py \
+  --url http://127.0.0.1:8000 --model "$MODEL" \
+  --profile long --max-tokens 384 --samples 5 \
+  --output /tmp/nobby-chat-long-baseline.json
+python3 scripts/benchmark-chat-latency.py \
+  --url http://127.0.0.1:8000 --model "$MODEL" \
+  --profile coding --max-tokens 512 --samples 5 \
+  --output /tmp/nobby-chat-coding-baseline.json
+```
+
+`short` remains the default and is backward compatible. The extended report
+includes `profile`, `max_tokens`, per-run `generation_tps` computed from
+the native server's `completion_tokens / predicted_ms`, and warm p50/p95
+for completion count and indicative throughput. Missing or nonfinite timing
+produces null instead of a fabricated speed. `predicted_ms` may include
+implementation-specific work and is **not TTFT**, nor a direct measure of
+a model's real-world quality. The first sample is separate and is not
+guaranteed to be cold. A candidate that ends early with far fewer tokens
+is not automatically faster; compare similar completion lengths or analyze
+tokens per second.
+
+For Qwen3.8 DFlash2, the published draft checkpoint targets the base
+`Qwen/Qwen3.8-27B` family, with the documented MLX quantized example
+`mlx-community/Qwen3.8-27B-4bit`. The user's locally modified
+`Qwen3.8-27B-Abliterated-MLX-4bit` is **not** a proven compatible pair;
+its output distribution can differ. Do not auto-enable speculative decoding
+solely because the draft is cached. Compare with and without drafting on
+the *exact same target*, including longer prompts, acceptance metrics,
+and response correctness. Source: https://github.com/z-lab/dflash and
+https://huggingface.co/z-lab/Qwen3.8-27B-DFlash2 .
+
+No routine here restarts services, switches models, downloads weights,
+touches the 90% RAM safety gate, or persists user prompts/completions.
