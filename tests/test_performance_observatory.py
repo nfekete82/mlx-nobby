@@ -76,6 +76,67 @@ class ModelPerformanceTests(unittest.TestCase):
         self.assertNotIn("/Users/example", serialized)
 
 
+    def test_buffered_vision_and_router_calls_do_not_create_fake_chat_speed(self):
+        for index, purpose in enumerate(("router.classify", "chat.vision")):
+            call = observability.ModelCallMetrics(
+                trace_id=f"nonstream-{index:08d}",
+                purpose=purpose,
+                model="local-model",
+                messages=[],
+            )
+            call.set_upstream_connect(10000.0)
+            call.finish(
+                usage={"prompt_tokens": 500, "completion_tokens": 100},
+                output_text="buffered response",
+            )
+
+        snapshot = performance.model_performance_snapshot(limit=10)
+        self.assertEqual(snapshot["summary"]["ttft_ms"]["count"], 0)
+        self.assertEqual(snapshot["summary"]["tokens_per_second"]["count"], 0)
+        self.assertEqual(snapshot["summary"]["total_ms"]["count"], 0)
+        self.assertEqual(len(snapshot["recent_calls"]), 2)
+        for call in snapshot["recent_calls"]:
+            self.assertIsNone(call["timings_ms"]["ttft"])
+            self.assertIsNone(call["tokens_per_second"])
+            self.assertIsNotNone(call["timings_ms"]["total"])
+
+    def test_router_stats_do_not_pollute_genuine_streaming_chat(self):
+        router = observability.ModelCallMetrics(
+            trace_id="router-activity-001", purpose="router.classify",
+            messages=[],
+        )
+        router.set_upstream_connect(3000.0)
+        router.finish(usage={"completion_tokens": 300})
+
+        chat = observability.ModelCallMetrics(
+            trace_id="real-chat-stream-001", purpose="chat.stream",
+            messages=[],
+        )
+        chat.finish(usage={"prompt_tokens": 100, "completion_tokens": 40})
+        with observability._TRACE_LOCK:
+            chat.metric["timings_ms"].update({
+                "ttft": 200.0,
+                "generation": 1000.0,
+                "total": 1200.0,
+            })
+        snapshot = performance.model_performance_snapshot(limit=10)
+        self.assertEqual(snapshot["summary"]["ttft_ms"]["count"], 1)
+        self.assertEqual(snapshot["summary"]["ttft_ms"]["p50"], 200.0)
+        self.assertEqual(snapshot["summary"]["tokens_per_second"]["p50"], 40.0)
+
+    def test_stream_without_first_token_does_not_invent_generation(self):
+        chat = observability.ModelCallMetrics(
+            trace_id="stream-no-token-001",
+            purpose="chat.stream", messages=[],
+        )
+        chat.set_upstream_connect(1200.0)
+        chat.finish(usage={"completion_tokens": 60})
+        snapshot = performance.model_performance_snapshot(limit=10)
+        self.assertEqual(snapshot["summary"]["ttft_ms"]["count"], 0)
+        self.assertEqual(snapshot["summary"]["tokens_per_second"]["count"], 0)
+        self.assertIsNone(snapshot["recent_calls"][0]["tokens_per_second"])
+
+
 class MediaPerformanceTests(unittest.TestCase):
     def test_media_snapshot_calculates_queue_generation_and_total_time(self):
         queue_snapshot = {
