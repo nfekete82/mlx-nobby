@@ -1295,12 +1295,14 @@ def run_provider(
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
-        provider_started = time.monotonic()
+        spawn_finished = time.monotonic()
         if process_callback is not None:
             process_callback(process)
+        # Keep the timeout clock after process_callback, as before.
+        provider_started = time.monotonic()
         if model["provider"] == "mlxgen":
             mlxgen_started = provider_started
-            mlxgen_spawn_ms = round((provider_started - spawn_started) * 1000, 1)
+            mlxgen_spawn_ms = round((spawn_finished - spawn_started) * 1000, 1)
         deadline = provider_started + GENERATION_TIMEOUT
         progress_remainder = ""
         try:
