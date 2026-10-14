@@ -93,7 +93,21 @@ api_ready() {
 
 
 get_mlx_pid() {
-    pgrep -f "mlx_lm\.server.*--port[[:space:]]+$PORT" 2>/dev/null | head -1
+    local pid command
+
+    # Both mlx_lm.server and mlx_vlm server can run the primary model.
+    # Find the listener on this configured port instead of matching the router
+    # or another instance using a different port.
+    while IFS= read -r pid; do
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+        command="$(ps -ww -p "$pid" -o command= 2>/dev/null)" || continue
+        case "$command" in
+            *" -m mlx_lm.server "*|*" -m mlx_vlm server "*)
+                printf '%s\n' "$pid"
+                return 0
+                ;;
+        esac
+    done < <(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null)
 }
 
 
