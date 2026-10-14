@@ -131,6 +131,10 @@
     }
 
     function number(value) {
+        // Number(null) === 0, but missing telemetry is unknown, not 0 ms.
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
         const result = Number(value);
         return Number.isFinite(result) ? result : null;
     }
