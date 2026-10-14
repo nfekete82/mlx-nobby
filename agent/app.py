@@ -100,6 +100,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from agent.batch_state import atomic_write_text, atomic_write_with
 from agent import finance
+from backend.finance_intent import non_financial_rating_request
 from agent.finance.api import install_routes as install_finance_routes
 from local_security import LocalRequestGuard
 from agent.service_proxy import install_routes as install_service_routes
@@ -5523,7 +5524,7 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     # A user asking to rate a person, photograph or outfit wants a chat/vision
     # response, not a stock quote. Keep the request out of the finance tool
     # even if it contains multiple words after "bewerte".
-    if not file_context and finance.non_financial_rating_request(prompt):
+    if not file_context and non_financial_rating_request(prompt):
         return "normal_chat"
 
     finance_action = finance.finance_intent(prompt, conversation_context) if not file_context else None
@@ -6413,7 +6414,7 @@ def classify_chat_action_details(
     # when a photo attachment bypasses deterministic finance routing. This
     # guard operates after semantic/manager arbitration and retains file data
     # for the regular chat/vision path.
-    if intent in finance.TOOLS and finance.non_financial_rating_request(prompt):
+    if intent in finance.TOOLS and non_financial_rating_request(prompt):
         return {
             "intent": "normal_chat",
             "semantic_intent": intent,
