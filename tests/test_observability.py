@@ -48,6 +48,25 @@ class ObservabilityTests(unittest.TestCase):
             snapshot["calls"][1]["timings_ms"]["generation"]
         )
 
+    def test_non_streaming_buffered_read_never_claims_generation_time(self):
+        call = observability.ModelCallMetrics(
+            trace_id="trace-buffered-response",
+            purpose="chat.vision",
+            messages=[{"role": "user", "content": "describe image"}],
+        )
+        # In a buffered response, the model has already produced its
+        # answer before HTTP headers arrive. Reading JSON takes ~0ms.
+        call.set_upstream_connect(5000.0)
+        call.finish(
+            usage={"prompt_tokens": 10, "completion_tokens": 100},
+            output_text="output",
+        )
+
+        self.assertIsNone(call.metric["timings_ms"]["ttft"])
+        self.assertIsNone(call.metric["timings_ms"]["generation"])
+        self.assertIsNotNone(call.metric["timings_ms"]["total"])
+        self.assertEqual(call.metric["usage"]["output_tokens"], 100)
+
     def test_upstream_usage_is_preserved(self):
         call = observability.ModelCallMetrics(
             trace_id="trace-usage-001",
