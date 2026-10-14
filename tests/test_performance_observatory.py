@@ -96,6 +96,11 @@ class MediaPerformanceTests(unittest.TestCase):
                         "process_spawn_ms": 12.3,
                         "process_wall_ms": 3450,
                         "first_output_ms": float("inf"),
+                        "tqdm_first_ms": 8100.0,
+                        "tqdm_first_step": 0,
+                        "tqdm_complete_ms": 58400.0,
+                        "tqdm_window_ms": 50300.0,
+                        "debug_prompt": "another secret",
                         "fresh_process": True,
                         "provider": "mflux",
                         "low_ram": True,
@@ -133,6 +138,11 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertEqual(image["provider_timing"]["process_spawn_ms"], 12.3)
         self.assertEqual(image["provider_timing"]["process_wall_ms"], 3450)
         self.assertIsNone(image["provider_timing"]["first_output_ms"])
+        self.assertEqual(image["provider_timing"]["tqdm_first_ms"], 8100.0)
+        self.assertEqual(image["provider_timing"]["tqdm_first_step"], 0)
+        self.assertEqual(image["provider_timing"]["tqdm_complete_ms"], 58400.0)
+        self.assertEqual(image["provider_timing"]["tqdm_window_ms"], 50300.0)
+        self.assertNotIn("another secret", json.dumps(snapshot))
         self.assertIs(image["provider_timing"]["fresh_process"], True)
         self.assertEqual(image["provider_timing"]["provider"], "mflux")
         self.assertIs(image["provider_timing"]["low_ram"], True)
