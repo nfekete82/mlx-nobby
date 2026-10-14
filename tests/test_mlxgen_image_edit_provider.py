@@ -60,6 +60,8 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
             return 0
     def start(command, **kwargs):
         captured["command"] = command
+        kwargs["stdout"].write(b"provider booting\\n")
+        kwargs["stdout"].flush()
         return FakeProcess()
     with patch.object(image_providers, "model_directory", return_value=tmp_path), \
          patch.object(image_providers, "MLXGEN_BIN", runner), \
@@ -71,6 +73,10 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
     timing = next(event["provider_timing"] for event in events if "provider_timing" in event)
     assert timing["schema"] == 1
     assert timing["process_wall_ms"] >= 0
+    assert timing["process_spawn_ms"] >= 0
+    assert timing["first_output_ms"] is not None
+    assert timing["first_output_ms"] >= 0
+    assert timing["fresh_process"] is True
     assert timing["steps"] == 4
     assert timing["width"] == 512 and timing["height"] == 512
     assert timing["low_ram"] is True
