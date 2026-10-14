@@ -123,3 +123,42 @@ def test_edit_service_applies_precision_only_when_allowed(monkeypatch, tmp_path)
         "semantic_operation": "reference_generate", "reference_mode": "resemblance",
     })))
     assert seen[-1].get("auto_mask") is None
+
+
+def test_inferred_mask_cli_fallback_preserves_manual_mask_errors(monkeypatch, tmp_path):
+    import image_providers as providers
+    import image_registry as registry
+
+    model = next(
+        model for model in registry.builtin_models()
+        if model["id"] == registry.OSAURUS_QWEN21_EDIT_ID
+    )
+    flags = {
+        "--model", "--prompt", "--width", "--height", "--steps",
+        "--guidance", "--seed", "--output", "--image-paths",
+        "--use-step-cache", "--use-kv-cache",
+        "--mlx-cache-limit-gb", "--output-resolution",
+    }  # Critically, this installed CLI lacks --auto-mask.
+    monkeypatch.setattr(providers, "mflux_contract", lambda *args: (True, "ok"))
+    monkeypatch.setattr(providers, "model_directory", lambda _: tmp_path)
+    monkeypatch.setattr(providers, "probe_mflux_cli",
+                        lambda _: {"supported_flags": flags})
+    monkeypatch.setattr(providers, "mflux_memory_policy",
+                        lambda: {"low_ram": False, "cache_gb": 8})
+    params = {
+        "prompt": "Make the sweater blue",
+        "source_path": "/tmp/ref.png",
+        "width": 512, "height": 512,
+        "steps": 20, "seed": 42, "guidance": 1.0,
+        "auto_mask": "sweater",
+        "_precision_auto_mask_inferred": True,
+    }
+    argv = providers.mflux_command(model, params, tmp_path / "new.png")
+    assert "--auto-mask" not in argv
+    assert "--use-step-cache" in argv
+    with pytest.raises(providers.ProviderFailure, match="--auto-mask"):
+        providers.mflux_command(
+            model,
+            {**params, "_precision_auto_mask_inferred": False},
+            tmp_path / "manual.png",
+        )
