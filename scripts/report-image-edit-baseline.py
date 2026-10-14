@@ -113,6 +113,11 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "execution_ms": safe_ms(native.get("execution_ms")),
             "fresh_process": provider.get("fresh_process")
                              if type(provider.get("fresh_process")) is bool else None,
+            "provider": provider.get("provider")
+                        if provider.get("provider") in ("mflux", "mlxgen") else None,
+            "low_ram": provider.get("low_ram")
+                       if type(provider.get("low_ram")) is bool else None,
+            "mflux_cache_limit_gb": safe_ms(provider.get("mflux_cache_limit_gb")),
         })
     metrics = ("total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",
                "process_spawn_ms", "first_output_ms", "resource_wait_ms", "execution_ms")
