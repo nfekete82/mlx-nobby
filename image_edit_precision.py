@@ -13,7 +13,7 @@ from pathlib import Path
 # Deliberately small allowlist: adding objects needs test images and evaluation.
 _TARGETS = {
     "sweater": r"pullover|sweater|hoodie",
-    "shirt": r"hemd|t[- ]?shirt|shirt|bluse",
+    "shirt": r"hemd|t[- ]?shirts?|shirts?|bluse",
     "jacket": r"jacke|jacket|coat|mantel",
     "dress": r"kleid|dress",
     "pants": r"hose|hosen|pants|trousers|jeans",
@@ -105,7 +105,7 @@ def image_change_advisory(source: Path, edited: Path) -> dict | None:
     Percent of 256px sampled image pixels with >= 12/255 max-channel change.
     No original image bytes, prompt, segmentation or private paths are returned.
     """
-    from PIL import Image, ImageChops, ImageStat
+    from PIL import Image, ImageChops
 
     try:
         with Image.open(source) as first, Image.open(edited) as second:
@@ -118,7 +118,9 @@ def image_change_advisory(source: Path, edited: Path) -> dict | None:
         diff = ImageChops.difference(old, new)
         # Each pixel counts once, regardless of the number of changed channels.
         changed = sum(
-            max(rgb) >= 12 for rgb in diff.getdata()
+            max(rgb) >= 12 for rgb in (
+                diff.get_flattened_data() if hasattr(diff, "get_flattened_data") else diff.getdata()
+            )
         )
         fraction = round(changed / (old.width * old.height), 4)
         # Purely mechanical smoke tests: cannot assert semantic preservation.
