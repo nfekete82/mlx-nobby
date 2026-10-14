@@ -214,8 +214,9 @@ test('idle compaction does not start inference until after the delayed callback'
     assert.equal(env.timers.size, 1);
     assert.equal([...env.timers.values()][0].delay, 3000);
     env.fireTimers();
-    await Promise.resolve();
-    await Promise.resolve();
+    // The fake timer launches an intentionally unawaited async request.
+    // Yield a full event-loop turn so its promise adoption/cache write lands.
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(env.requestCount, 1);
     assert.equal(env.compact.messagesForInference(session, session.messages).length, 13);
     assert.equal(session.messages.length, 20);
