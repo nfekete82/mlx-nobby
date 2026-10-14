@@ -15,7 +15,7 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ## Recent updates (v1.11.0)
 
-**v1.11.0** introduces validated, offline chat visualizations with automatic chart selection and CSV export. Publication is gated by local acceptance and final-main validation.
+**v1.11.0** introduces offline chat visualizations, multi-reference image editing, explicit image analysis/edit modes and consistent full-screen workspaces.
 
 Highlights include:
 
@@ -43,7 +43,7 @@ Highlights include:
 - **Finance:** EUR-first price display with unchanged source currencies,
   interactive price-history charts and more resilient quote/FX diagnostics.
 
-See [the changelog](CHANGELOG.md) for the complete v1.10.0 changes.
+See [the changelog](CHANGELOG.md) for the complete v1.11.0 changes.
 For new releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
