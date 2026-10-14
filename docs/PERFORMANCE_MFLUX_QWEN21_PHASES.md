@@ -22,7 +22,9 @@ New `provider_timing` fields (all milliseconds, null if not observed):
   0/N frame was actually observed.
 - `tqdm_complete_ms`: timestamp the N/N completion frame was observed.
 - `tqdm_window_ms`: difference between completion and first frame, **only**
-  if the first observed frame was 0/N.
+  if the first observed frame was 0/N **and completion was seen in a later
+  polling pass**. Buffered 0/N .. N/N output arriving together gives null
+  instead of a misleading near-zero duration.
 
 These are best-effort **observer-side output timestamps** (up to the existing
 0.5-second polling delay per event); they are *not* exact CPU/Metal GPU stage
