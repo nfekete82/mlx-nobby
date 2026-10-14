@@ -264,6 +264,29 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             and 0 <= provider_timing["tqdm_first_step"] <= 1000
             else None
         )
+        # Numeric shape/step settings are needed for valid cross-run
+        # comparisons. Only allow bounded primitives; no paths or prompts.
+        for key, lower, upper in (
+            ("steps", 1, 50),
+            ("width", 64, 4096),
+            ("height", 64, 4096),
+            ("reference_count", 1, 10),
+        ):
+            value = provider_timing.get(key)
+            edit_provider_timing[key] = (
+                value if type(value) is int and lower <= value <= upper
+                else None
+            )
+        guidance = _number(provider_timing.get("guidance"))
+        edit_provider_timing["guidance"] = (
+            _rounded(guidance, 3)
+            if guidance is not None and 0 <= guidance <= 10 else None
+        )
+        for key in ("use_step_cache", "use_kv_cache"):
+            value = provider_timing.get(key)
+            edit_provider_timing[key] = (
+                value if type(value) is bool else None
+            )
         edit_provider_timing["fresh_process"] = (
             provider_timing.get("fresh_process")
             if type(provider_timing.get("fresh_process")) is bool else None
