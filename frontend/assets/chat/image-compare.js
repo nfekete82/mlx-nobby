@@ -92,6 +92,8 @@
         const ratio = Number.isFinite(w) && Number.isFinite(h) &&
             w >= 256 && h >= 256 && w <= 4096 && h <= 4096 ? w / h : 1;
         stage.style.aspectRatio = String(ratio);
+        // Keep the entire image visible for portrait and landscape references.
+        stage.style.width = 'min(100%, ' + (67 * ratio).toFixed(2) + 'dvh)';
         before.src = left;
         after.src = right;
         updateRatio(50);
