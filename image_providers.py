@@ -1298,16 +1298,19 @@ def run_provider(
             except (OSError, ValueError):
                 return False
 
-        spawn_started = time.monotonic()
+        # Do not add clock probes to other providers: their lifecycle and
+        # deterministic timeout tests must remain unchanged.
+        measure_mlxgen = model["provider"] == "mlxgen"
+        spawn_started = time.monotonic() if measure_mlxgen else None
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
-        spawn_finished = time.monotonic()
+        spawn_finished = time.monotonic() if measure_mlxgen else None
         if process_callback is not None:
             process_callback(process)
         # Keep the timeout clock after process_callback, as before.
         provider_started = time.monotonic()
-        if model["provider"] == "mlxgen":
+        if measure_mlxgen:
             mlxgen_started = provider_started
             mlxgen_spawn_ms = round((spawn_finished - spawn_started) * 1000, 1)
         deadline = provider_started + GENERATION_TIMEOUT
