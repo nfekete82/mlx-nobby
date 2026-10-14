@@ -341,6 +341,7 @@
     "image_compare_label": "Schieberegler bewegen, um das Original einzublenden",
     "image_compare_slider": "Sichtbarkeit des Originalbildes",
     "image_edit_change_advisory": "Veränderte Pixel (ungefähr): {percent} %. Das ist keine inhaltliche Qualitätsprüfung.",
+    "image_edit_review_note": "Sehr geringe oder großflächige Änderungen erkannt. Bitte prüfen, ob das beabsichtigt war.",
     "image_preview_close": "Bildvorschau schließen",
     "cancel": "Abbrechen",
     "image_editing": "Bild wird bearbeitet …",
