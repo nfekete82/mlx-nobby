@@ -117,6 +117,21 @@ def test_compare_diagnoses_plain_answer_vs_actual_wrong_answer():
     assert out["recommendation"] == "inconclusive_or_regression"
 
 
+def test_negative_speed_gains_are_not_silently_filtered():
+    off, on = synthetic("off"), synthetic("on")
+    for row in on["results"]:
+        if row["id"] == "long-js-code":
+            row["generation_tps"] = 24  # 20% slower than OFF
+        elif row["id"] == "long-php-code":
+            row["generation_tps"] = 30  # zero gain
+    result = bench.compare(off, on)
+    assert result["speed_profiles"]["long-js-code"]["median_gain_pct"] == -20
+    assert result["speed_profiles"]["long-php-code"]["median_gain_pct"] == 0
+    # Median of -20%, 0%, +40% is 0%, not a positive-biased success.
+    assert result["speed_gain_pct"] == 0
+    assert result["recommendation"] == "inconclusive_or_regression"
+
+
 def test_token_length_mismatch_prevents_false_speed_win():
     changed = {(rep, key): 100 for rep in (1, 2)
                for key, _, _ in bench.SPEED_CASES}
