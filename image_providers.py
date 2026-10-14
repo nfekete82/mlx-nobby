@@ -1297,6 +1297,9 @@ def run_provider(
     tqdm_first_ms = None
     tqdm_first_step = None
     tqdm_complete_ms = None
+    tqdm_first_scan = None
+    tqdm_complete_scan = None
+    tqdm_scan = 0
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
@@ -1333,6 +1336,7 @@ def run_provider(
 
         def observe_mflux_progress(line):
             nonlocal tqdm_first_ms, tqdm_first_step, tqdm_complete_ms
+            nonlocal tqdm_first_scan, tqdm_complete_scan
             # tqdm emits carriage-return separated, best-effort 0/N ... N/N
             # frames. Never retain the original line, which may be private.
             if measured_started is None or "|" not in line:
@@ -1348,8 +1352,10 @@ def run_provider(
             if tqdm_first_ms is None:
                 tqdm_first_ms = observed_ms
                 tqdm_first_step = step
+                tqdm_first_scan = tqdm_scan
             if step == count and tqdm_complete_ms is None:
                 tqdm_complete_ms = observed_ms
+                tqdm_complete_scan = tqdm_scan
 
         try:
             while True:
@@ -1371,6 +1377,8 @@ def run_provider(
                             (time.monotonic() - measured_started) * 1000, 1
                         )
                 if progress_callback is not None:
+                    if measure_mflux_qwen_edit:
+                        tqdm_scan += 1
                     progress_remainder = _read_runtime_events(
                         progress_stream,
                         progress_remainder,
@@ -1391,6 +1399,8 @@ def run_provider(
             if process_callback is not None:
                 process_callback(None)
         if progress_callback is not None:
+            if measure_mflux_qwen_edit:
+                tqdm_scan += 1
             _read_runtime_events(
                 progress_stream,
                 progress_remainder + "\n",
@@ -1423,6 +1433,9 @@ def run_provider(
                 "tqdm_window_ms": (
                     round(tqdm_complete_ms - tqdm_first_ms, 1)
                     if measure_mflux_qwen_edit and tqdm_first_step == 0
+                    and tqdm_first_scan is not None
+                    and tqdm_complete_scan is not None
+                    and tqdm_complete_scan > tqdm_first_scan
                     and tqdm_complete_ms is not None and tqdm_first_ms is not None
                     else None
                 ),
