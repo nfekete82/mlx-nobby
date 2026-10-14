@@ -35,6 +35,14 @@ class BenchmarkChatLatencyTests(unittest.TestCase):
         self.assertEqual(module.summarize([None]), {"count": 0, "p50_ms": None, "p95_ms": None})
         self.assertEqual(module.summarize([0, 10, None, 20])["p50_ms"], 10)
         self.assertEqual(module.summarize([0, 10, None, 20])["p95_ms"], 19)
+        self.assertEqual(
+            module.summarize([30.0, 35.0], unit="tokens/s"),
+            {"count": 2, "p50": 32.5, "p95": 34.75, "unit": "tokens/s"},
+        )
+        self.assertEqual(
+            module.summarize([None], unit="tokens"),
+            {"count": 0, "p50": None, "p95": None, "unit": "tokens"},
+        )
 
 
     def test_long_and_coding_profiles_are_bounded_public_workloads(self):
