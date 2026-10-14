@@ -176,6 +176,44 @@ __nobbyCheck(canonicalSku('--x--Y--'), 'X-Y');
 echo "__NOBBY_DFLASH_PASS_8A7C__\n";
 """,
     },
+    {
+        "id": "py-reverse-slice", "language": "python",
+        "prompt": (
+            "Schreibe Python 3.12: def reverse_window(text, start, stop): "
+            "liefert den Teilstring aus text[start:stop] in umgekehrter Reihenfolge, "
+            "mit exakt denselben Python-Slice-Regeln wie start:stop. "
+            "Nur Python-Code ohne Markdown."
+        ),
+        "tests": """
+assert reverse_window('nobby', 1, 4) == 'bbo'
+assert reverse_window('hello', 1, 4) == 'lle'
+assert reverse_window('abc', 0, 3) == 'cba'
+assert reverse_window('abc', 1, 1) == ''
+assert reverse_window('', 0, 5) == ''
+assert reverse_window('abcdef', -4, -1) == 'edc'
+print("__NOBBY_DFLASH_PASS_8A7C__")
+""",
+    },
+    {
+        "id": "py-book-profit", "language": "python",
+        "prompt": (
+            "Schreibe Python 3.12: def calculate_profit(purchased_qty, unit_cost, sales): "
+            "purchased_qty und unit_cost sind nichtnegative Integer. "
+            "sales ist eine Liste von Tupeln (sold_qty, unit_sale_price), "
+            "beide Werte nichtnegative Integer. "
+            "Gewinn = Summe(sold_qty*unit_sale_price) - purchased_qty*unit_cost. "
+            "Auch negative Gewinne als Integer liefern. Nur Python-Code, kein Markdown."
+        ),
+        "tests": """
+assert calculate_profit(24, 7, [(18, 11), (6, 5)]) == 60
+assert calculate_profit(0, 0, []) == 0
+assert calculate_profit(10, 10, [(8, 5)]) == -60
+assert calculate_profit(5, 2, [(2, 4), (3, 4)]) == 10
+assert calculate_profit(1, 99, []) == -99
+assert type(calculate_profit(4, 2, [(4, 2)])) is int
+print("__NOBBY_DFLASH_PASS_8A7C__")
+""",
+    },
 )
 SUITE_HASH = hashlib.sha256(json.dumps(
     (TASKS, IMAGES), ensure_ascii=False, separators=(",", ":")
@@ -275,6 +313,8 @@ def sandbox_run(task, code, timeout):
     except OSError as exc:
         raise RuntimeError("Docker invocation failed") from exc
     elapsed = round((time.perf_counter() - start) * 1000, 3)
+    if p.returncode in (125, 126, 127):
+        raise RuntimeError("Docker could not start or execute the sandbox")
     passed = p.returncode == 0 and p.stdout.strip().endswith(SENTINEL)
     return {"passed": passed, "reason": "pass" if passed else "tests_or_compile_failed",
             "sandbox_ms": elapsed}
