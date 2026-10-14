@@ -1,6 +1,6 @@
 """Qwen Image 2.1 Edit MFLUX subprocess telemetry never records private CLI data."""
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -61,6 +61,7 @@ def test_qwen21_edit_reports_content_free_process_timing(tmp_path, low_ram, logs
          patch.object(image_providers, "mflux_command", return_value=command), \
          patch.object(image_providers, "probe_mflux_cli", return_value={"supported_flags": set()}), \
          patch.object(image_providers.subprocess, "Popen", side_effect=fake_popen), \
+         patch.object(image_providers.subprocess, "run", return_value=Mock(stdout="0")), \
          patch.object(image_providers, "terminate_process_tree"), \
          patch.object(image_providers, "_validate_provider_output"), \
          patch.object(image_providers, "_maybe_quality_upscale"):
