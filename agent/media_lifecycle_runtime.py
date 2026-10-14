@@ -56,10 +56,15 @@ def _register_completed(job_id: str, job: dict) -> None:
         or chat_id.startswith("shorts:")
         or chat_id.startswith("project:")
     )
+    # Real acceptance jobs have unique, reserved chat IDs. Never promote
+    # their generated files to permanent user media.
+    acceptance_owned = chat_id.startswith("acceptance-")
     owner = "project" if project_owned else (
-        "talking-photo-intermediate"
-        if chat_id.startswith("talking-photo:")
-        else "chat"
+        "acceptance" if acceptance_owned else (
+            "talking-photo-intermediate"
+            if chat_id.startswith("talking-photo:")
+            else "chat"
+        )
     )
     media_lifecycle.register(
         kind,
