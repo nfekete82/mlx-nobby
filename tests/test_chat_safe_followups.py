@@ -161,9 +161,17 @@ def test_integration_fails_closed_if_workspace_unavailable():
         "intent": "normal_chat", "confidence": .95,
         "requires_tools": False, "reason": "model selected",
     })
+
+    def workspace_probe(*args, **kwargs):
+        if kwargs.get("validate") is False:
+            raise OSError("fast-path workspace probe unavailable")
+        # The existing semantic-routing fallback uses a separate workspace
+        # lookup. Model only the new fast-path probe failure in this test.
+        return None
+
     with (
         mock.patch.object(app.code_workspaces, "active_workspace",
-                          side_effect=OSError("unavailable")),
+                          side_effect=workspace_probe),
         mock.patch.object(app, "_direct_chat_action", return_value=None),
         mock.patch.object(app, "semantic_intent_classifier", classifier),
     ):
