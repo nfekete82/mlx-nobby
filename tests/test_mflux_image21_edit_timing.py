@@ -39,7 +39,7 @@ def test_qwen21_edit_reports_content_free_process_timing(tmp_path, low_ram, logs
             if logs and not buffered and self.polls == 1:
                 raise image_providers.subprocess.TimeoutExpired("mflux", timeout)
             if logs and not buffered:
-                self.log_stream.write(b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\\n")
+                self.log_stream.write(b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\n")
                 self.log_stream.flush()
             output.write_bytes(b"mock png")
 
@@ -48,11 +48,11 @@ def test_qwen21_edit_reports_content_free_process_timing(tmp_path, low_ram, logs
 
     def fake_popen(command, **kwargs):
         if logs:
-            kwargs["stdout"].write(b"loading model\\n")
-            kwargs["stdout"].write(b"  0%|          | 0/20 [00:00<?, ?it/s]\\r")
+            kwargs["stdout"].write(b"loading model\n")
+            kwargs["stdout"].write(b"  0%|          | 0/20 [00:00<?, ?it/s]\r")
             if buffered:
                 kwargs["stdout"].write(
-                    b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\\n"
+                    b"100%|##########| 20/20 [00:40<00:00, 2.00s/it]\n"
                 )
             kwargs["stdout"].flush()
         return FakeProcess(kwargs["stdout"])
