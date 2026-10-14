@@ -98,7 +98,7 @@ def ui(request, browser, web):
     for file in artifact.iterdir():
         file.unlink()
     print(f'E2E PHASE {request.node.nodeid}: context.create', flush=True)
-    video_enabled = os.environ.get('MLX_E2E_VIDEO', '1') != '0'
+    video_enabled = os.environ.get('MLX_E2E_VIDEO', '0') != '0'
     tracing_enabled = os.environ.get('MLX_E2E_TRACING', '1') != '0'
     print(f'E2E DIAGNOSTICS video={video_enabled} tracing={tracing_enabled}', flush=True)
     context_options = {'viewport': {'width': width, 'height': height},
