@@ -147,7 +147,10 @@ python3 scripts/benchmark-chat-latency.py \
 `short` remains the default and is backward compatible. The extended report
 includes `profile`, `max_tokens`, per-run `generation_tps` computed from
 the native server's `completion_tokens / predicted_ms`, and warm p50/p95
-for completion count and indicative throughput. Missing or nonfinite timing
+for completion count and indicative throughput. Millisecond summaries retain
+`p50_ms`/`p95_ms`, whereas throughput and token summaries use `p50`/`p95`
+plus explicit `unit`. Each sample includes the server's `finish_reason`
+(if available), so hitting a token cap is detectable. Missing or nonfinite timing
 produces null instead of a fabricated speed. `predicted_ms` may include
 implementation-specific work and is **not TTFT**, nor a direct measure of
 a model's real-world quality. The first sample is separate and is not
