@@ -1832,6 +1832,23 @@ function renderImageArtifactCard(message) {
     download.className = 'message-action-btn'; download.textContent = 'Download';
     download.href = '/api/mlx/images/' + encodeURIComponent(artifact.image_id) + '?download=1';
     controls.appendChild(download);
+    // Preview IDs are issued by the local image service; never form URLs
+    // from absolute source paths or from untrusted chat text.
+    if (message.tool_result?.tool === 'image_edit' && artifact.source_image_id) {
+        const compare = document.createElement('button');
+        compare.type = 'button';
+        compare.className = 'message-action-btn';
+        compare.textContent = rt('image_compare_title', 'Before / after');
+        compare.addEventListener('click', () => {
+            window.MLXImageCompare?.open?.({
+                beforeId: artifact.source_image_id,
+                afterId: artifact.image_id,
+                width: artifact.width,
+                height: artifact.height
+            }, compare);
+        });
+        controls.appendChild(compare);
+    }
     // Optional image actions must not abort publication of the image itself.
     // A failing extension previously cleared the chat before this card attached.
     try {
@@ -1857,6 +1874,18 @@ function renderImageArtifactCard(message) {
     promptText.className = 'image-artifact-prompt';
     promptText.textContent = artifact.prompt || '—';
     info.appendChild(promptText);
+    const changed = artifact.quality_check?.changed_fraction;
+    if (typeof changed === 'number' && Number.isFinite(changed) &&
+        changed >= 0 && changed <= 1) {
+        const advisory = document.createElement('p');
+        advisory.className = 'image-edit-advisory';
+        advisory.textContent = rt(
+            'image_edit_change_advisory',
+            'Changed pixels (approx.): {percent}%. This is not a semantic quality assessment.',
+            { percent: Math.round(changed * 100) }
+        );
+        info.appendChild(advisory);
+    }
 
     card.appendChild(image);
     card.appendChild(details);
