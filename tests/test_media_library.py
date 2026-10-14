@@ -84,9 +84,9 @@ def test_library_excludes_acceptance_media_without_deleting_files(tmp_path):
             "video:" + user_id: {"owner": "chat", "persistent": True},
         }
     }
-    with patch.object(media_lifecycle, "_root_for", return_value=video_root), \\
+    with patch.object(media_lifecycle, "_root_for", return_value=video_root), \
          patch.object(media_lifecycle, "_expected_path",
-                      side_effect=lambda kind, asset_id: (video_root / (asset_id + ".mp4")).resolve()), \\
+                      side_effect=lambda kind, asset_id: (video_root / (asset_id + ".mp4")).resolve()), \
          patch.object(media_lifecycle, "_load_locked", return_value=records):
         result = media_library_routes.list_assets("video")
     assert result["total"] == 1
