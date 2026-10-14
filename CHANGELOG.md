@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v1.12.0 - 2026-10-14
+## v1.12.0
 
 - Extend the guarded zero-inference chat fast path to short explanation-only follow-ups when all recent conversation turns are independently allowlisted and no tools, files or workspace context is present. Fail closed on ambiguous history and retain the existing opt-out.
 - Skip the semantic LLM router for a narrow allowlist of short, context-free timeless chat requests. Preserve all file, history, coding-workspace, current-information, and tool routing safeguards; expose an opt-out flag and regression coverage.
