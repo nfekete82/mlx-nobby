@@ -126,6 +126,20 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "low_ram": provider.get("low_ram")
                        if type(provider.get("low_ram")) is bool else None,
             "mflux_cache_limit_gb": safe_ms(provider.get("mflux_cache_limit_gb")),
+            "steps": provider.get("steps") if type(provider.get("steps")) is int
+                     and 1 <= provider["steps"] <= 50 else None,
+            "width": provider.get("width") if type(provider.get("width")) is int
+                     and 64 <= provider["width"] <= 4096 else None,
+            "height": provider.get("height") if type(provider.get("height")) is int
+                      and 64 <= provider["height"] <= 4096 else None,
+            "reference_count": provider.get("reference_count")
+                               if type(provider.get("reference_count")) is int
+                               and 1 <= provider["reference_count"] <= 10 else None,
+            "guidance": safe_ms(provider.get("guidance")),
+            "use_step_cache": provider.get("use_step_cache")
+                              if type(provider.get("use_step_cache")) is bool else None,
+            "use_kv_cache": provider.get("use_kv_cache")
+                            if type(provider.get("use_kv_cache")) is bool else None,
         })
     metrics = (
         "total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",

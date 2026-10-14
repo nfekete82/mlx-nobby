@@ -1444,6 +1444,20 @@ def run_provider(
                 "steps": params.get("steps"),
                 "width": params.get("width"),
                 "height": params.get("height"),
+                "guidance": params.get("guidance") if measure_mflux_qwen_edit else None,
+                "reference_count": (
+                    len(params["source_paths"]) if measure_mflux_qwen_edit
+                    and isinstance(params.get("source_paths"), list)
+                    else (1 if measure_mflux_qwen_edit and params.get("source_path") else None)
+                ),
+                "use_step_cache": (
+                    True if "--use-step-cache" in command
+                    else False if "--no-use-step-cache" in command else None
+                ) if measure_mflux_qwen_edit else None,
+                "use_kv_cache": (
+                    True if "--use-kv-cache" in command
+                    else False if "--no-use-kv-cache" in command else None
+                ) if measure_mflux_qwen_edit else None,
                 "low_ram": True if measure_mlxgen else "--low-ram" in command,
                 "mflux_cache_limit_gb": mflux_cache_gb,
                 "note": "First output is log activity, not model load. tqdm timing is observer-side progress output, not exact GPU execution; all processes are fresh.",

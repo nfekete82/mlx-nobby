@@ -56,7 +56,11 @@ python3 scripts/report-image-edit-baseline.py \
 
 Compare `process_wall_ms`, `first_output_ms`, `tqdm_first_ms`,
 `tqdm_first_step`, `tqdm_complete_ms`, and `tqdm_window_ms` for each
-run. If the progress loop occupies most of wall time, priority should be
+run. A follow-up report extension also shows the content-free numeric
+`steps`, `width`, `height`, `guidance`, `reference_count`, plus
+**explicit** `use_step_cache` and `use_kv_cache` flags for an apples-to-apples
+check. A null cache flag means the flag was omitted, **not** that the model
+necessarily disabled that feature; the installed MFLUX CLI may have defaults. If the progress loop occupies most of wall time, priority should be
 inference efficiency (with output-quality validation), not a persistent
 worker. If measured pre-progress overhead is consistently large, a **separate**
 opt-in warm-worker experiment may be worth evaluating, subject to resident
