@@ -98,11 +98,17 @@ def ui(request, browser, web):
     for file in artifact.iterdir():
         file.unlink()
     print(f'E2E PHASE {request.node.nodeid}: context.create', flush=True)
-    context = browser.new_context(viewport={'width': width, 'height': height},
-                                  permissions=['clipboard-read', 'clipboard-write'],
-                                  record_video_dir=str(artifact))
-    print(f'E2E PHASE {request.node.nodeid}: tracing.start', flush=True)
-    context.tracing.start(screenshots=True, snapshots=True, sources=True)
+    video_enabled = os.environ.get('MLX_E2E_VIDEO', '0') != '0'
+    tracing_enabled = os.environ.get('MLX_E2E_TRACING', '1') != '0'
+    print(f'E2E DIAGNOSTICS video={video_enabled} tracing={tracing_enabled}', flush=True)
+    context_options = {'viewport': {'width': width, 'height': height},
+                       'permissions': ['clipboard-read', 'clipboard-write']}
+    if video_enabled:
+        context_options['record_video_dir'] = str(artifact)
+    context = browser.new_context(**context_options)
+    if tracing_enabled:
+        print(f'E2E PHASE {request.node.nodeid}: tracing.start', flush=True)
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
     page = context.new_page()
     page.set_default_timeout(8000)
     errors, console, network = [], [], []
@@ -153,9 +159,10 @@ def ui(request, browser, web):
                 cleanup_step('agent', lambda: (artifact / 'agent.json').write_text(
                     json.dumps(agent.calls, indent=2)))
             try:
-                print(f'E2E PHASE {request.node.nodeid}: tracing.stop', flush=True)
-                cleanup_step('tracing.stop', lambda: context.tracing.stop(
-                    path=str(artifact / 'trace.zip') if failed else None))
+                if tracing_enabled:
+                    print(f'E2E PHASE {request.node.nodeid}: tracing.stop', flush=True)
+                    cleanup_step('tracing.stop', lambda: context.tracing.stop(
+                        path=str(artifact / 'trace.zip') if failed else None))
             finally:
                 print(f'E2E PHASE {request.node.nodeid}: context.close', flush=True)
                 cleanup_step('context.close', context.close)
