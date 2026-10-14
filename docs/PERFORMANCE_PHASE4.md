@@ -40,3 +40,33 @@ Before proceeding, test with `./scripts/mlx test-release` and a real
 Qwen Image Edit. Reproduce timings with the same step count and resolution.
 Do not compare the existing 512×512 4-step synthetic benchmark directly to
 a higher-resolution real image edit.
+
+## Phase 5: MLX-Gen cold-process diagnosis (no runtime tuning)
+
+Each completed MLX-Gen image-edit job now adds three *content-free* observations
+to the existing `provider_timing` object:
+
+- `process_spawn_ms`: time spent in `subprocess.Popen`; does **not** include
+  subsequent Python imports, model loading, or diffusion.
+- `first_output_ms`: best-effort time from process launch until the first
+  nonempty stdout/stderr output is observed, or `null` when the child is silent.
+  Output may be startup logs and is **not** a weight-load completion marker.
+- `fresh_process: true`: documents that each edit launches a new isolated
+  MLX-Gen process. It does **not** indicate whether model weights were served
+  from the filesystem cache.
+
+All timings exclude prompts, paths, image data and logs. The parent still
+uses isolated process groups, unchanged cancellation/timeout polling, the
+existing **24 GiB process RSS cap**, **90% RAM admission** and model handoff
+policies. No warm worker or extra model residency is introduced.
+
+The experiment is to collect at least three sequential edit jobs of the same
+model, resolution, step count and prompt length (while the system is idle),
+then compare `process_wall_ms`, `process_spawn_ms` and
+`first_output_ms` with the native `performance_timings.execution_ms`
+and queue wait. Identify whether repeated subprocess startup/preparation
+is materially expensive before considering a resident image worker.
+
+Any later warm-worker prototype needs strict single-job serialization,
+finite idle expiry, RAM admission before reuse, cancellation, crash recovery,
+and a clean handoff to video; this PR makes **no such behavior change**.

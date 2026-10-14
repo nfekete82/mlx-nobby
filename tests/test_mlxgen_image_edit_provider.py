@@ -2,6 +2,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import image_registry
 import image_providers
 
@@ -35,7 +36,8 @@ def test_mlxgen_requires_local_weights_and_executable(tmp_path):
         assert ok and "MLX-Gen" in reason
 
 
-def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
+@pytest.mark.parametrize("emits_log", [True, False])
+def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path, emits_log):
     model = next(m for m in image_registry.builtin_models()
                  if m["id"] == image_registry.QWEN_IMAGE_EDIT_ID)
     source = tmp_path / "source.png"
@@ -60,6 +62,9 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
             return 0
     def start(command, **kwargs):
         captured["command"] = command
+        if emits_log:
+            kwargs["stdout"].write(b"provider booting\\n")
+            kwargs["stdout"].flush()
         return FakeProcess()
     with patch.object(image_providers, "model_directory", return_value=tmp_path), \
          patch.object(image_providers, "MLXGEN_BIN", runner), \
@@ -71,6 +76,13 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path):
     timing = next(event["provider_timing"] for event in events if "provider_timing" in event)
     assert timing["schema"] == 1
     assert timing["process_wall_ms"] >= 0
+    assert timing["process_spawn_ms"] >= 0
+    if emits_log:
+        assert timing["first_output_ms"] is not None
+        assert timing["first_output_ms"] >= 0
+    else:
+        assert timing["first_output_ms"] is None
+    assert timing["fresh_process"] is True
     assert timing["steps"] == 4
     assert timing["width"] == 512 and timing["height"] == 512
     assert timing["low_ram"] is True
