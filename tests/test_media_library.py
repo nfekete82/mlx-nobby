@@ -70,3 +70,25 @@ def test_bulk_delete_requires_confirmation_and_limits_to_managed_media(tmp_path)
         assert response.json()["deleted"] == 2
         assert discard.call_count == 2
         scan.assert_called_once_with("all", 1000000)
+
+
+def test_library_excludes_acceptance_media_without_deleting_files(tmp_path):
+    video_root = tmp_path / "videos"
+    video_root.mkdir()
+    acceptance_id, user_id = "a" * 24, "b" * 24
+    for asset_id in (acceptance_id, user_id):
+        (video_root / (asset_id + ".mp4")).write_bytes(b"video")
+    records = {
+        "assets": {
+            "video:" + acceptance_id: {"owner": "acceptance", "persistent": False},
+            "video:" + user_id: {"owner": "chat", "persistent": True},
+        }
+    }
+    with patch.object(media_lifecycle, "_root_for", return_value=video_root), \
+         patch.object(media_lifecycle, "_expected_path",
+                      side_effect=lambda kind, asset_id: (video_root / (asset_id + ".mp4")).resolve()), \
+         patch.object(media_lifecycle, "_load_locked", return_value=records):
+        result = media_library_routes.list_assets("video")
+    assert result["total"] == 1
+    assert result["assets"][0]["id"] == user_id
+    assert (video_root / (acceptance_id + ".mp4")).exists()

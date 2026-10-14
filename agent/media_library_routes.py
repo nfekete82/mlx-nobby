@@ -35,6 +35,11 @@ def list_assets(kind="all", limit=400):
                 stat = path.stat()
                 if stat.st_size == 0:
                     continue
+                record = records.get(media_kind + ":" + asset_id) or {}
+                # Acceptance fixtures are not user media. Existing files stay
+                # untouched and are still managed by their normal TTL.
+                if isinstance(record, dict) and record.get("owner") == "acceptance":
+                    continue
             except (ValueError, OSError):
                 continue
             results.append({
