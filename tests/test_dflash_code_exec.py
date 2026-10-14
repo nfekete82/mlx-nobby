@@ -143,6 +143,15 @@ def test_comparison_reports_improvements_and_regressions():
     assert out["recommendation"] == "inconclusive_or_regression"
 
 
+def test_zero_success_is_not_a_positive_candidate():
+    all_failures = {(rep, task["id"]) for rep in (1, 2) for task in bench.TASKS}
+    result = bench.compare(fake_report("off", failures=all_failures),
+                           fake_report("on", failures=all_failures))
+    assert result["on"]["correct"] == 0
+    assert result["regressed"] == []
+    assert result["recommendation"] == "inconclusive_or_regression"
+
+
 def test_comparison_rejects_duplicate_missing_and_unsafe_reports():
     off, on = fake_report("off"), fake_report("on")
     assert bench.compare(off, on)["recommendation"] == "candidate_for_manual_code_review"
