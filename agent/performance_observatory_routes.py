@@ -259,6 +259,20 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             provider_timing.get("fresh_process")
             if type(provider_timing.get("fresh_process")) is bool else None
         )
+        edit_provider_timing["low_ram"] = (
+            provider_timing.get("low_ram")
+            if type(provider_timing.get("low_ram")) is bool else None
+        )
+        edit_provider_timing["provider"] = (
+            provider_timing.get("provider")
+            if provider_timing.get("provider") in {"mflux", "mlxgen"} else None
+        )
+        edit_provider_timing["mflux_cache_limit_gb"] = (
+            _rounded(provider_timing.get("mflux_cache_limit_gb"), 2)
+            if _number(provider_timing.get("mflux_cache_limit_gb")) is not None
+            and 0 < _number(provider_timing.get("mflux_cache_limit_gb")) <= 32
+            else None
+        )
         edit_native_timing = {
             key: _rounded(native_timing.get(key), 2)
             if _number(native_timing.get(key)) is not None
