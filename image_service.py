@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 import image_registry as registry
 from image_job_timings import ImageJobTimings
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
-from image_edit_precision import infer_auto_mask_target, original_image_id, image_change_advisory
+from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
 import runtime_coordinator
 import subprocess
 from image_providers import (
@@ -949,7 +949,7 @@ def _edit_result_inner(
     # Optional, bounded advisory; never triggers a silent retry or masks out
     # legitimate global edits, and never claims semantic compliance.
     quality_check = image_change_advisory(source, path) if not is_reference else None
-    source_image_id = original_image_id(source, OUTPUT)
+    source_image_id = comparison_image_id(source, OUTPUT) if not is_reference else None
 
     return {
         **({"source_image_id": source_image_id} if source_image_id else {}),
