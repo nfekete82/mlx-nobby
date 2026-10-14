@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 import image_registry as registry
 from image_job_timings import ImageJobTimings
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
+from image_edit_precision import infer_auto_mask_target, original_image_id, image_change_advisory
 import runtime_coordinator
 import subprocess
 from image_providers import (
@@ -71,6 +72,7 @@ class Edit(BaseModel):
     source_paths: list[str] | None = Field(default=None, min_length=1, max_length=10)
     mask_path: str | None = None
     auto_mask: str | None = Field(default=None, min_length=1, max_length=200)
+    precision_edit: bool = True  # Conservatively infer unambiguous Qwen auto-mask targets.
     strength: float | None = Field(default=None, gt=0, le=1)
     use_kv_cache: bool | None = None
     use_step_cache: bool | None = None
@@ -860,10 +862,22 @@ def _edit_result_inner(
     edit_source = prepared_sources[0]
     params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
-        'width', 'height', 'auto_size'}))
+        'width', 'height', 'auto_size', 'precision_edit'}))
     params["source_path"] = str(edit_source)
     if request.source_paths:
         params['source_paths'] = [str(value) for value in prepared_sources]
+    if (
+        request.precision_edit
+        and not is_reference
+        and not request.mask_path
+        and not request.auto_mask
+        and len(sources) == 1
+        and model.get("provider") == "mflux"
+        and model.get("model_family") == "qwen-image21-edit"
+    ):
+        inferred = infer_auto_mask_target(request.prompt)
+        if inferred:
+            params["auto_mask"] = inferred
     if request.mask_path:
         mask = validate_edit_source(request.mask_path)
         with Image.open(mask) as image, Image.open(source) as original:
@@ -932,7 +946,14 @@ def _edit_result_inner(
     with Image.open(path) as image:
         width, height = image.size
 
+    # Optional, bounded advisory; never triggers a silent retry or masks out
+    # legitimate global edits, and never claims semantic compliance.
+    quality_check = image_change_advisory(source, path) if not is_reference else None
+    source_image_id = original_image_id(source, OUTPUT)
+
     return {
+        **({"source_image_id": source_image_id} if source_image_id else {}),
+        **({"quality_check": quality_check} if quality_check else {}),
         "id": image_id,
         "path": str(path),
         "mime_type": "image/png",
