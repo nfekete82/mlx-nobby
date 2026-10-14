@@ -92,6 +92,22 @@ class MediaPerformanceTests(unittest.TestCase):
                     "started_at": 102.0,
                     "finished_at": 107.0,
                     "title": "private image prompt",
+                    "provider_timing": {
+                        "process_spawn_ms": 12.3,
+                        "process_wall_ms": 3450,
+                        "first_output_ms": float("inf"),
+                        "fresh_process": True,
+                        "provider": "mflux",
+                        "low_ram": True,
+                        "mflux_cache_limit_gb": 4.0,
+                        "prompt": "do-not-expose-secret",
+                    },
+                    "performance_timings": {
+                        "execution_ms": 4890,
+                        "resource_wait_ms": 110,
+                        "negative": -5,
+                        "source_path": "/private/image.png",
+                    },
                 },
                 {
                     "id": "b" * 24,
@@ -114,6 +130,18 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertEqual(image["queue_wait_ms"], 2000.0)
         self.assertEqual(image["generation_ms"], 5000.0)
         self.assertEqual(image["total_ms"], 7000.0)
+        self.assertEqual(image["provider_timing"]["process_spawn_ms"], 12.3)
+        self.assertEqual(image["provider_timing"]["process_wall_ms"], 3450)
+        self.assertIsNone(image["provider_timing"]["first_output_ms"])
+        self.assertIs(image["provider_timing"]["fresh_process"], True)
+        self.assertEqual(image["provider_timing"]["provider"], "mflux")
+        self.assertIs(image["provider_timing"]["low_ram"], True)
+        self.assertEqual(image["provider_timing"]["mflux_cache_limit_gb"], 4.0)
+        self.assertEqual(image["performance_timings"]["execution_ms"], 4890)
+        self.assertEqual(image["performance_timings"]["resource_wait_ms"], 110)
+        self.assertNotIn("do-not-expose-secret", json.dumps(snapshot))
+        self.assertNotIn("/private/image.png", json.dumps(snapshot))
+        self.assertNotIn("source_path", json.dumps(snapshot))
         self.assertEqual(
             snapshot["summary"]["video"]["generation_ms"]["average"],
             12000.0,
