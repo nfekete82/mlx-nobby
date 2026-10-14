@@ -1284,19 +1284,23 @@ def run_provider(
         elif progress_callback is not None:
             progress_callback({'phase': 'generating'})
     # Phase-4 provider telemetry is opt-in to MLX-Gen jobs and contains no prompts.
-    mlxgen_started = None  # Reuse the existing deadline clock sample below.
+    mlxgen_started = None
+    mlxgen_spawn_ms = None
+    mlxgen_first_output_ms = None
     with tempfile.NamedTemporaryFile() as diagnostics, open(
         diagnostics.name,
         "rb",
     ) as progress_stream:
+        spawn_started = time.monotonic()
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
+        provider_started = time.monotonic()
         if process_callback is not None:
             process_callback(process)
-        provider_started = time.monotonic()
         if model["provider"] == "mlxgen":
             mlxgen_started = provider_started
+            mlxgen_spawn_ms = round((provider_started - spawn_started) * 1000, 1)
         deadline = provider_started + GENERATION_TIMEOUT
         progress_remainder = ""
         try:
@@ -1311,6 +1315,13 @@ def run_provider(
                     break
                 except subprocess.TimeoutExpired:
                     worker_input = None
+                if mlxgen_started is not None and mlxgen_first_output_ms is None:
+                    # Best-effort first stdout/stderr activity. This is NOT a
+                    # measurement of weight loading or the first diffusion step.
+                    if os.fstat(diagnostics.fileno()).st_size > 0:
+                        mlxgen_first_output_ms = round(
+                            (time.monotonic() - mlxgen_started) * 1000, 1
+                        )
                 if progress_callback is not None:
                     progress_remainder = _read_runtime_events(
                         progress_stream,
@@ -1338,15 +1349,22 @@ def run_provider(
                 params.get("steps"),
             )
         if mlxgen_started is not None and progress_callback is not None:
+            if mlxgen_first_output_ms is None and os.fstat(diagnostics.fileno()).st_size > 0:
+                mlxgen_first_output_ms = round(
+                    (time.monotonic() - mlxgen_started) * 1000, 1
+                )
             progress_callback({"provider_timing": {
                 "schema": 1,
                 "process_wall_ms": round((time.monotonic() - mlxgen_started) * 1000, 1),
+                "process_spawn_ms": mlxgen_spawn_ms,
+                "first_output_ms": mlxgen_first_output_ms,
+                "fresh_process": True,
                 "exit_code": process.returncode,
                 "steps": params.get("steps"),
                 "width": params.get("width"),
                 "height": params.get("height"),
                 "low_ram": True,
-                "note": "Process duration includes MLX-Gen loading and generation; does not isolate weight load or GPU compute.",
+                "note": "First output is observed stdout/stderr activity, not weight load or first GPU step. Each job starts a fresh process.",
             }})
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")
