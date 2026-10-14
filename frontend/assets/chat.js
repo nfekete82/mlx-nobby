@@ -222,9 +222,9 @@ async function saveEditedMessage(index, value) {
         contentUpdated: true
     });
 
-    await MLXChatCompact.autoCompactIfNeeded(
-        session
-    );
+    // Editing a previous user turn invalidates an optional pending summary.
+    // Never block regeneration's first output on a compaction model call.
+    MLXChatCompact.cancelScheduledAutoCompact?.(session);
 
     await MLXChatGeneration.generateAssistant(
         session
