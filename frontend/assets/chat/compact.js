@@ -19,8 +19,53 @@ function compactT(key, fallback = '', variables = {}) {
     // Avoids an extra full-history model call on every subsequent turn.
     const MAX_REUSED_TAIL = KEEP_LAST_MESSAGES * 2;
     const MIN_OLD_CHARS = 20000;
+    const IDLE_DELAY_MS = 3000;
     const cached = new WeakMap();
     const pending = new WeakMap();
+    const scheduled = new WeakMap();
+    const controllers = new WeakMap();
+
+    // Cancel pending idle work when the user starts another turn. This
+    // prevents the browser from sending a summary ahead of fresh chat work.
+    function cancelScheduledAutoCompact(session) {
+        if (!session) return;
+        const handle = scheduled.get(session);
+        if (handle !== undefined) {
+            clearTimeout(handle);
+            scheduled.delete(session);
+        }
+        const controller = controllers.get(session);
+        if (controller) {
+            controller.abort();
+            controllers.delete(session);
+        }
+    }
+
+    function scheduleAutoCompact(session, canRun = () => true) {
+        if (!session || !window.MLXChatRuntime?.isAutoCompactEnabled?.()) {
+            return false;
+        }
+        const messages = session.messages;
+        if (!Array.isArray(messages) ||
+            messages.length <= KEEP_LAST_MESSAGES ||
+            messageChars(messages) < COMPACT_AT_CHARS ||
+            !safeTextHistory(messages)) return false;
+
+        const state = usableCachedSummary(session, messages);
+        if (state || pending.has(session)) return false;
+
+        cancelScheduledAutoCompact(session);
+        const handle = setTimeout(() => {
+            scheduled.delete(session);
+            if (canRun() && window.MLXChatRuntime?.isAutoCompactEnabled?.()) {
+                // Do not hold the completed streaming response or UI render
+                // open for this optional, failure-safe summary operation.
+                void autoCompactIfNeeded(session);
+            }
+        }, IDLE_DELAY_MS);
+        scheduled.set(session, handle);
+        return true;
+    }
 
     function getContextLimits() {
         return {
@@ -165,18 +210,24 @@ function compactT(key, fallback = '', variables = {}) {
         if (messageChars(older) < MIN_OLD_CHARS) return false;
         const original = snapshot(messages);
         const prefix = snapshot(older);
+        // A new generation can cancel this optional client-side request.
+        const controller = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        if (controller) controllers.set(session, controller);
 
         const task = (async () => {
             try {
+                const requestOptions = MLXCommon.jsonRequest('POST', {
+                    // Only role/content text. Never transmit local UI state,
+                    // images, file paths, job metadata or attachments.
+                    messages: messages.map(({ role, content }) => ({ role, content })),
+                    trace_id: [...messages].reverse()
+                        .find(message => message.role === 'user')?.trace_id || null
+                });
+                if (controller) requestOptions.signal = controller.signal;
                 const { response, data } = await MLXCommon.fetchJson(
-                    '/api/chat/compact',
-                    MLXCommon.jsonRequest('POST', {
-                        // Only role/content text. Never transmit local UI state,
-                        // images, file paths, job metadata or attachments.
-                        messages: messages.map(({ role, content }) => ({ role, content })),
-                        trace_id: [...messages].reverse()
-                            .find(message => message.role === 'user')?.trace_id || null
-                    })
+                    '/api/chat/compact', requestOptions
                 );
                 if (!response.ok) throw MLXCommon.fastApiDetailError(data);
 
@@ -197,6 +248,7 @@ function compactT(key, fallback = '', variables = {}) {
                 // Refuse empty, unhelpfully large or structurally mismatched
                 // summaries. No destructive edits, even after a server error.
                 if (!data?.compacted || !unchanged || !validTail ||
+                    controller?.signal.aborted ||
                     typeof summary !== 'string' || summary.trim().length < 80 ||
                     replacementChars >= originalChars * 0.8) {
                     return false;
@@ -207,7 +259,9 @@ function compactT(key, fallback = '', variables = {}) {
                     originalChars, '→', replacementChars);
                 return true;
             } catch (error) {
-                console.warn('Automatic context compaction skipped:', error);
+                if (error?.name !== 'AbortError') {
+                    console.warn('Automatic context compaction skipped:', error);
+                }
                 return false;
             }
         })();
@@ -216,6 +270,9 @@ function compactT(key, fallback = '', variables = {}) {
             return await task;
         } finally {
             if (pending.get(session) === task) pending.delete(session);
+            if (controllers.get(session) === controller) {
+                controllers.delete(session);
+            }
         }
     }
 
@@ -223,6 +280,8 @@ function compactT(key, fallback = '', variables = {}) {
         messageChars,
         compactSession,
         autoCompactIfNeeded,
+        scheduleAutoCompact,
+        cancelScheduledAutoCompact,
         messagesForInference,
         getContextLimits
     };
