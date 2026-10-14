@@ -6,6 +6,7 @@ continue through the existing deterministic/semantic router and safety gates.
 """
 from __future__ import annotations
 
+import os
 import re
 
 
@@ -82,6 +83,8 @@ def simple_chat_fast_path(
     workspace_active: bool = False,
 ) -> bool:
     """Return True only for short, context-free prompts needing no tools."""
+    if os.environ.get("MLX_CHAT_FAST_PATH_ENABLED", "1").strip().lower() in {"0", "false", "off", "no"}:
+        return False
     if has_file or has_history or workspace_active or not isinstance(prompt, str):
         return False
     text = " ".join(prompt.split())
