@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.11.0-informational)
+![Release](https://img.shields.io/badge/release-v1.12.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -13,11 +13,13 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
-## Recent updates (v1.11.0)
+## Recent updates (v1.12.0)
 
-**v1.11.0** introduces offline chat visualizations, multi-reference image editing, explicit image analysis/edit modes and consistent full-screen workspaces.
+**v1.12.0** introduces faster routing for eligible standalone chat questions and safe explanation follow-ups, while preserving semantic fallback for requests requiring tools or additional context.
 
 Highlights include:
+
+- **Faster chat routing:** Conservative zero-model routing for eligible timeless questions and explanation-only follow-ups. Matched local tests saved approximately 500 ms in the routing stage, not necessarily in total response time. See [Router Fast Path](docs/ROUTER_FAST_PATH.md).
 
 - **Chat visualizations:** optional structured line, bar, donut, table and KPI views for supplied numeric data, with CSV export and no external chart dependency.
 
@@ -43,7 +45,7 @@ Highlights include:
 - **Finance:** EUR-first price display with unchanged source currencies,
   interactive price-history charts and more resilient quote/FX diagnostics.
 
-See [the changelog](CHANGELOG.md) for the complete v1.11.0 changes.
+See [the changelog](CHANGELOG.md) for the complete v1.12.0 changes.
 For new releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
