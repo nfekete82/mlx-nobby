@@ -511,6 +511,8 @@
   "image_settings.local_path": "Local model path (optional)",
   "image_settings.default_steps": "Default steps",
   "image_settings.default_guidance": "Default guidance",
+  "image_settings.step_cache_default": "Step Cache (faster image editing)",
+  "image_settings.step_cache_hint": "May slightly change image details. Turn off for the original computation.",
   "image_settings.weight": "Weight",
   "image_settings.trigger_word": "Trigger word (hint)",
   "image_settings.remove": "Remove",

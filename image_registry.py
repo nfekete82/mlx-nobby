@@ -166,11 +166,18 @@ class ImageModel(BaseModel):
     capabilities: list[str] = Field(default_factory=lambda: ["text_to_image", "variation"])
     default_steps: int = Field(default=4, ge=1, le=50)
     default_guidance: float = Field(default=0, ge=0, le=10)
+    step_cache_default: bool = False
     loras: list[LoRA] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def check_model(self):
         validate_id(self.id)
+        if self.step_cache_default and (
+            self.id != OSAURUS_QWEN21_EDIT_ID
+            or self.provider != "mflux"
+            or self.model_family != "qwen-image21-edit"
+        ):
+            raise ValueError("Step Cache als Voreinstellung nur für Osaurus Qwen 2.1 Edit")
         if not self.repository and not self.local_path:
             raise ValueError("Repository oder lokaler Modellpfad fehlt")
         if self.repository and not REPO_PATTERN.fullmatch(self.repository):
@@ -375,6 +382,7 @@ def builtin_models():
         model_family="qwen-image21-edit", base_model="qwen-image-2.1",
         quantization="q4", quantize_on_load=False, enabled=False,
         default_steps=20, default_guidance=1.0,
+        step_cache_default=True,
     ).model_dump())
     models.append(ImageModel(
         id=MLXSERVE_QWEN_IMAGE21_ID,
@@ -434,6 +442,7 @@ def _canonicalize_known_builtin(model, builtin_by_id):
         "enabled",
         "default_steps",
         "default_guidance",
+        "step_cache_default",
         "loras",
     ):
         if key in model:

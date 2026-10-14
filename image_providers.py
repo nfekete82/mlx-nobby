@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 import runtime_coordinator
-from image_registry import FAMILIES, MODEL_ROOTS, validate_path
+from image_registry import FAMILIES, MODEL_ROOTS, OSAURUS_QWEN21_EDIT_ID, validate_path
 from mflux_capabilities import probe_mflux_cli, mflux_contract, mflux_weight_contract
 
 MFLUX_BIN = Path(os.environ.get("MLX_IMAGE_MFLUX_BIN", str(Path.home() / ".local/bin")))
@@ -651,12 +651,26 @@ def mflux_command(model, params, output):
                 if flag not in flags:
                     raise ProviderFailure(f"Installierte CLI unterstützt {flag} nicht", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
                 command += [flag, str(params[key])]
+        # Opt-in per Osaurus model registry; explicit job options always win.
+        # If this MFLUX CLI lacks the required flags, leave upstream defaults
+        # intact rather than breaking otherwise valid image-edit jobs.
+        effective_flags = dict(params)
+        if (
+            family == "qwen-image21-edit"
+            and model.get("id") == OSAURUS_QWEN21_EDIT_ID
+            and model.get("step_cache_default") is True
+            and effective_flags.get("use_step_cache") is None
+            and effective_flags.get("use_kv_cache") is not False
+            and {"--use-step-cache", "--use-kv-cache"} <= flags
+        ):
+            effective_flags["use_step_cache"] = True
+            effective_flags["use_kv_cache"] = True
         for key, flag in {"use_kv_cache": "--use-kv-cache", "use_step_cache": "--use-step-cache",
                           "enhance_prompt": "--enhance-prompt", "verify": "--verify"}.items():
-            if params.get(key) is None:
+            if effective_flags.get(key) is None:
                 continue
-            selected_flag = flag if params[key] else "--no-" + flag[2:]
-            if not params[key] and key in {"enhance_prompt", "verify"}:
+            selected_flag = flag if effective_flags[key] else "--no-" + flag[2:]
+            if not effective_flags[key] and key in {"enhance_prompt", "verify"}:
                 continue
             if selected_flag not in flags:
                 raise ProviderFailure(f"Installierte CLI unterstützt {selected_flag} nicht", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
