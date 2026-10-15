@@ -258,8 +258,8 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261015-weather-forecast/);
-assert.match(chatHtml, /chat\/rendering\.js\?v=20261014-image-edit-precision-v2/);
+assert.match(chatHtml, /chat\/generation\.js\?v=1-13-news-briefing/);
+assert.match(chatHtml, /chat\/rendering\.js\?v=1-13-news-briefing/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
 
