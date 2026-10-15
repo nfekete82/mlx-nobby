@@ -254,11 +254,11 @@ def test_recovery_blocked_returns_specific_reason_without_raw_agent_details(monk
     factory = _StreamFactory([stalled])
     monkeypatch.setattr(web_routes, "_agent_diagnostics", lambda url: {
         "status": "ok", "agent_pid": 3,
-        "lease": {"active_workload": "video"},
+        "lease": {"active_workload": None},
         "runtime": {"online": True},
     })
     monkeypatch.setattr(web_routes, "_request_recovery", lambda *args: {
-        "scheduled": False, "status_code": 409,
+        "scheduled": False, "status_code": 429,
         "detail": "private credentials must not leak",
     })
     request = web_routes.ReliableChatRequest(
@@ -268,7 +268,7 @@ def test_recovery_blocked_returns_specific_reason_without_raw_agent_details(monk
         request, stream_factory=factory, agent_url="http://agent",
     )))
     assert b"recovery_blocked" in body
-    assert b"video" in body
+    assert b"60-Sekunden-Sperrfrist" in body
     assert b"private credentials" not in body
     assert factory.calls == 1
 
