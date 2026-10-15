@@ -84,7 +84,7 @@ class TalkingPhotoLongformTests(unittest.TestCase):
                 self.assertEqual(b"".join(pcm_bytes(s.wav) for s in segments), pcm_bytes(audio))
                 return bytes(4) + b"ftyp" + bytes(50), {"audio_seconds":29.0,"source_audio_sha256":"test","segments":len(segments)}
             changes = []
-            with mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate), \\
+            with mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate), \
                  mock.patch.object(talking_photo_longform, "assemble", side_effect=fake_assemble) as mux:
                 video, diagnostics = talking_photo_quality._generate_longform(
                     "a" * 24, b"portrait", ".png", audio, root,
@@ -108,7 +108,7 @@ class TalkingPhotoLongformTests(unittest.TestCase):
             completed[0] = True
             return bytes(4) + b"ftyp" + bytes(40), {"a2v_mode": "distilled"}
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate) as render, \\
+            with mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate) as render, \
                  mock.patch.object(talking_photo_longform, "assemble") as assemble:
                 with self.assertRaises(talking_photo_ltx.QualityCancelled):
                     talking_photo_quality._generate_longform(
