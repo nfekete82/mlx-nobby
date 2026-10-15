@@ -102,7 +102,7 @@ def test_video_kind_query_includes_talking_photos_without_copy(tmp_path):
     talking = roots["talking_photo"] / ("b" * 24 + ".mp4")
     regular.write_bytes(b"video")
     talking.write_bytes(b"talking video")
-    with patch.object(media_lifecycle, "_root_for", side_effect=lambda kind: roots[kind]), \\
+    with patch.object(media_lifecycle, "_root_for", side_effect=lambda kind: roots[kind]), \
          patch.object(media_lifecycle, "_expected_path",
                       side_effect=lambda kind, asset_id: (roots[kind] / (asset_id + ".mp4")).resolve()):
         response = media_library_routes.list_assets("video")
