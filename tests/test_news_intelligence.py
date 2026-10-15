@@ -156,3 +156,16 @@ def test_real_chat_web_tool_fails_closed_when_only_google_wrapper_exists():
     assert result["count"] == 0
     assert result["news_digest"]["status"] == "no_readable_articles"
     assert result["news_digest"]["items"] == []
+
+
+def test_atom_updated_without_published_is_not_today_news():
+    from agent.news_intelligence import _entries
+    import xml.etree.ElementTree as ET
+    feed = ET.fromstring(
+        '<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+        '<title>Alter Beitrag heute überarbeitet</title>'
+        '<link rel="alternate" href="https://www.heise.de/news/alter-1234.html"/>'
+        '<updated>2026-10-15T08:00:00Z</updated>'
+        '</entry></feed>'
+    )
+    assert list(_entries(feed))[0][2] == ""
