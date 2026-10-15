@@ -32,3 +32,8 @@ test('System & Tools groups footer actions while preserving original buttons',()
  assert.match(code,/button && button.parentElement !== items/);
  assert.match(css,/sidebar-system-tools-items/);
 });
+
+test('collapsed utility rail tolerates Settings anchor moving out of the rail',()=>{
+ assert.match(code,/settings\?\.parentNode === rail \? settings : null/);
+ assert.match(code,/rail\.insertBefore\(button, anchor\)/);
+});
