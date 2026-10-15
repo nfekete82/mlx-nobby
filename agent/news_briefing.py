@@ -116,7 +116,8 @@ def enhance_grounded_news(digest, model_call, *, enabled=None):
             temperature=0.0,
         )
         rewrites = _parse_model_result(raw)
-    except (OSError, ValueError, RuntimeError, TimeoutError, TypeError):
+    except Exception:
+        # A model outage must never break a previously verified news response.
         return digest
 
     changed = 0
@@ -136,6 +137,7 @@ def enhance_grounded_news(digest, model_call, *, enabled=None):
         digest["answer"] = digest["answer"].replace(
             old_markdown, "  " + _safe_md(new_text), 1
         )
+        items[index]["source_excerpt"] = old
         items[index]["summary"] = new_text
         items[index]["summary_method"] = "local_ai_rewrite"
         changed += 1
