@@ -7551,6 +7551,20 @@ def tool_search_web(request):
         request.prompt
     )
 
+    from backend.weather_forecast import forecast_for_question
+    forecast = forecast_for_question(query)
+    if forecast is not None:
+        # Structured weather data bypass search snippets and model inference.
+        # Never cache the forecast through the search observation decorator.
+        return {
+            "query": query,
+            "provider": "Open-Meteo",
+            "provider_status": forecast["status"],
+            "weather_forecast": forecast,
+            "count": 0,
+            "results": [],
+        }
+
     result = searxng_search_results(
         query,
         limit=8,
