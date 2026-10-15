@@ -457,7 +457,11 @@
     "shorts_draft_open": "Open draft in Shorts Studio",
     "shorts_draft_unavailable": "Draft unavailable",
     "weather_source_label": "Source: Open-Meteo",
-    "weather_forecast_open": "Open forecast ↗"
+    "weather_forecast_open": "Open forecast ↗",
+    "news_briefing_heading": "News briefing",
+    "news_briefing_partial": "Only {actual} of {requested} stories had enough verified source text.",
+    "news_briefing_ai_note": "Based on retrieved original articles; some briefs were rewritten by local AI. Not independently fact-checked.",
+    "news_briefing_source_note": "Briefs come from readable original articles. Timestamps are from publisher feeds or search indexes; not independently fact-checked."
   },
   "runtime_ui": {
     "error": "Error:",

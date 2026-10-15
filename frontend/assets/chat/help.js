@@ -39,6 +39,30 @@
                 ]
             },
             {
+                id: 'weather-news',
+                icon: '🌦️',
+                title: t('Wetter und Nachrichten', 'Weather and news'),
+                summary: t('Ortsbezogene Vorhersagen, aktuelle Quellen und kompakte Nachrichtenbriefings.', 'Location-based forecasts, current sources and concise news briefs.'),
+                sections: [
+                    {
+                        title: t('Wetter mit Rückfragen', 'Weather with follow-up questions'),
+                        body: t('Frage zum Beispiel „Wie wird das Wetter morgen?“. Fehlt der Ort, fragt nobby nach Stadt oder Postleitzahl. Antworte direkt mit „Göppingen“ oder „73033“. Folgefragen wie „Und heute?“ oder ein ausdrücklich genannter anderer Ort können den passenden Gesprächskontext übernehmen. Die Vorhersage kommt von Open-Meteo, nicht aus geratenen Modellwerten.', 'Ask, for example, “What will the weather be like tomorrow?”. If the location is missing, nobby asks for a city or postcode. Reply with a place name or postcode. Follow-ups such as “And today?” can use the explicitly confirmed location; naming another city changes the location. Forecasts come from Open-Meteo, not model guesses.')
+                    },
+                    {
+                        title: t('Tagesnachrichten mit Originalquellen', 'Daily news with original sources'),
+                        body: t('Frage nach den wichtigsten Nachrichten von heute und nenne bei Bedarf eine Anzahl. Die Websuche ergänzt Original-Feeds von Nachrichtenanbietern. Nur lesbare, datierte Artikelseiten mit brauchbaren Kurztexten werden berücksichtigt. Titel sind anklickbar; Verlag und Veröffentlichungszeit erscheinen dezent darunter. Wenn weniger geprüfte Nachrichten verfügbar sind, wird die tatsächliche Anzahl gezeigt – keine erfundenen Meldungen.', 'Ask for today’s most important news and optionally specify a number. Web search is supplemented by publisher-owned feeds. Only readable, dated original articles with useful extracts qualify. Headlines link to their sources, with a discreet publisher and publication time. If fewer qualifying stories are found, nobby shows the actual count rather than inventing reports.')
+                    },
+                    {
+                        title: t('Lokale KI-Kurzfassungen und Grenzen', 'Local AI briefs and limitations'),
+                        body: t('Qwen kann belegte Auszüge lokal umformulieren. Neue Zahlen oder deutlich abweichende Aussagen werden möglichst abgefangen; sonst bleibt der Originalauszug erhalten. Das ist keine unabhängige Faktenprüfung. Nachrichtenquellen benötigen Internetzugriff, und nicht jeder Artikel lässt sich technisch auslesen. Technische Details: docs/NEWS_BRIEFING.md und docs/CHAT_DECISION_ENGINE.md.', 'Qwen can rewrite grounded excerpts locally. New numbers and substantial deviations are conservatively rejected; the original excerpt remains if the rewrite is not supported. This is not independent fact-checking. News sources require internet access, and some article pages cannot be extracted. Technical details: docs/NEWS_BRIEFING.md and docs/CHAT_DECISION_ENGINE.md.')
+                    }
+                ],
+                examples: [
+                    t('Wie wird das Wetter morgen? Göppingen. Und heute?', 'What is the weather tomorrow? Berlin. And today?'),
+                    t('Zeige mir die fünf wichtigsten Nachrichten von heute mit kurzen Zusammenfassungen.', 'Show the five most important news stories from today with short summaries.')
+                ]
+            },
+            {
                 id: 'finance',
                 icon: '📈',
                 title: t('Finanzanalyse', 'Finance Intelligence'),
