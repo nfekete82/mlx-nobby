@@ -786,6 +786,103 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(commands, ["stop", "start"])
 
+    def test_image_waits_for_memory_reclamation_after_chat_stop(self):
+        def budget(used):
+            return {
+                "pressure": "normal", "total_gb": 48.0,
+                "used_estimate_gb": used,
+                "free_percent": round((48.0 - used) / 48.0 * 100, 2),
+                "headroom_gb": 48.0 - used - 6.0,
+            }
+
+        samples = iter([budget(35.0), budget(27.36),
+                        budget(24.0), budget(22.0)])
+        commands = []
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False,
+                    "loaded": False, "tts_loaded": False,
+                    "tts_clone_loaded": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with runtime_coordinator.image_runtime(
+                threading.Event(), requester=requester,
+                lock_path=Path(directory) / "runtime.lock",
+                chat_loaded=lambda: True, chat_command=commands.append,
+                memory_snapshot=lambda: next(samples),
+            ) as preflight:
+                self.assertEqual(preflight["memory_settle_attempts"], 1)
+                self.assertEqual(
+                    preflight["memory_admission"]["used_estimate_gb"], 24.0
+                )
+                self.assertFalse(preflight["hard_limit_reached"])
+            sleep.assert_called_once_with(1.0)
+
+        self.assertEqual(commands, ["stop", "start"])
+
+    def test_image_memory_settling_fails_closed_after_three_samples(self):
+        def budget(used):
+            return {
+                "pressure": "normal", "total_gb": 48.0,
+                "used_estimate_gb": used,
+                "free_percent": round((48.0 - used) / 48.0 * 100, 2),
+                "headroom_gb": 48.0 - used - 6.0,
+            }
+
+        samples = iter([budget(35.0), budget(30.0), budget(30.0),
+                        budget(30.0), budget(30.0), budget(30.0)])
+        commands = []
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False,
+                    "loaded": False, "tts_loaded": False,
+                    "tts_clone_loaded": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                with runtime_coordinator.image_runtime(
+                    threading.Event(), requester=requester,
+                    lock_path=Path(directory) / "runtime.lock",
+                    chat_loaded=lambda: True, chat_command=commands.append,
+                    memory_snapshot=lambda: next(samples),
+                ):
+                    self.fail("Persistent unsafe budget must never load image")
+            self.assertEqual(sleep.call_count, 3)
+        self.assertEqual(commands, ["stop", "start"])
+
+    def test_image_memory_settling_does_not_retry_without_released_runtime(self):
+        samples = []
+
+        def memory():
+            samples.append(True)
+            return {
+                "pressure": "normal", "total_gb": 48.0,
+                "used_estimate_gb": 26.0, "free_percent": 45.83,
+                "headroom_gb": 16.0,
+            }
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "active_generation": False,
+                    "loaded": False, "tts_loaded": False,
+                    "tts_clone_loaded": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                with runtime_coordinator.image_runtime(
+                    threading.Event(), requester=requester,
+                    lock_path=Path(directory) / "runtime.lock",
+                    chat_loaded=lambda: False, memory_snapshot=memory,
+                ):
+                    self.fail("Unsafe memory may not bypass admission guard")
+            sleep.assert_not_called()
+        self.assertEqual(len(samples), 1)
+
     def test_image_releases_chat_when_memory_pressure_is_elevated(self):
         commands = []
         memory = iter([
