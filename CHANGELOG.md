@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Talking Photo 2.0 beta: segment up to 60 seconds of a single PCM-WAV at low-energy frame-aligned speech gaps into <=18-second LTX runs, render sequentially and concat the video frames while muxing the original uncut source speech exactly once. Include cancellation, segment progress and render diagnostics; unchanged <=20-second path.
+- Talking Photo 2.0 beta: render up to 60 seconds by sequential short clips while preserving the original source audio as a single continuous track.
+
+- Keep finished Talking Photo videos permanently in Bibliothek → Video by default. Stop auto-discarding on modal close, new generation and pagehide; adopt surviving legacy MP4s at Agent startup without duplication. Preserve explicit Library delete and protect acceptance fixtures.
 
 - Promote LTX 0.16.3 Distilled (8+3) to the default Talking Photo engine after successful M5 Max hands-on testing; remove the audio lead-in experiment and motion selector from the UI, always request natural motion, and retain classic direct LTX, Hybrid and MuseTalk as alternatives.
 

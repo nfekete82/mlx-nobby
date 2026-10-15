@@ -34,7 +34,7 @@ def _completed(job_id):
     }
 
 
-def test_completed_job_is_registered_temporary(monkeypatch, tmp_path):
+def test_completed_job_is_registered_persistent(monkeypatch, tmp_path):
     _storage(monkeypatch, tmp_path)
     job_id = "a" * 24
     talking_photo._write_job(_completed(job_id))
@@ -42,8 +42,8 @@ def test_completed_job_is_registered_temporary(monkeypatch, tmp_path):
 
     job = talking_photo_lifecycle.get_job(job_id)
 
-    assert job["temporary"] is True
-    assert media_lifecycle.status()["temporary"] == 1
+    assert job["temporary"] is False
+    assert media_lifecycle.status()["persistent"] == 1
 
 
 def test_keep_job_promotes_video_and_protects_it(monkeypatch, tmp_path):
@@ -62,7 +62,7 @@ def test_keep_job_promotes_video_and_protects_it(monkeypatch, tmp_path):
     assert talking_photo.get_job(job_id)["saved"] is True
 
 
-def test_discard_completed_job_deletes_even_before_poll_registration(monkeypatch, tmp_path):
+def test_discard_completed_job_does_not_delete_a_saved_library_video(monkeypatch, tmp_path):
     _storage(monkeypatch, tmp_path)
     job_id = "c" * 24
     talking_photo._write_job(_completed(job_id))
@@ -71,11 +71,11 @@ def test_discard_completed_job_deletes_even_before_poll_registration(monkeypatch
 
     result = talking_photo_lifecycle.discard_job(job_id)
 
-    assert result["status"] == "discarded"
-    assert result["deleted"] is True
-    assert not path.exists()
-    assert not talking_photo._job_file(job_id).exists()
-    assert media_lifecycle.status()["tracked"] == 0
+    assert result["status"] == "kept"
+    assert result["persistent"] is True
+    assert path.exists()
+    assert talking_photo._job_file(job_id).exists()
+    assert media_lifecycle.status()["persistent"] == 1
 
 
 def test_discard_active_job_requests_cancellation_and_starts_watcher(monkeypatch, tmp_path):
@@ -110,3 +110,50 @@ def test_discard_active_job_requests_cancellation_and_starts_watcher(monkeypatch
     assert started[0][0] is talking_photo_lifecycle._discard_when_terminal
     assert started[0][1] == (job_id,)
     assert started[0][2] is True
+
+
+def test_completion_registers_video_without_browser_polling(monkeypatch, tmp_path):
+    _storage(monkeypatch, tmp_path)
+    job_id = "f" * 24
+    talking_photo._write_job({
+        "id": job_id, "kind": "talking_photo", "status": "motion",
+        "phase": "quality", "result": None,
+    })
+    path = talking_photo.OUTPUT / f"{job_id}.mp4"
+    path.write_bytes(b"video")
+    talking_photo._update_job(job_id, status="completed", phase="completed",
+                              result={"video_url": f"/api/talking-photo/videos/{job_id}"})
+    assert media_lifecycle.status()["persistent"] == 1
+    assert path.exists()
+    assert talking_photo_lifecycle.get_job(job_id)["temporary"] is False
+
+
+def test_surviving_talking_photos_are_adopted_before_cleanup(monkeypatch, tmp_path):
+    import os
+    from agent import media_library_routes
+    _storage(monkeypatch, tmp_path)
+    survivor = "1" * 24
+    accepted = "2" * 24
+    source_path = talking_photo.OUTPUT / f"{survivor}.mp4"
+    source_path.write_bytes(b"existing original")
+    os.utime(source_path, (1, 1))
+    other = talking_photo.OUTPUT / f"{accepted}.mp4"
+    other.write_bytes(b"fixture")
+    media_lifecycle.register("talking_photo", accepted, other,
+                             owner="acceptance", persistent=False)
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"external")
+    (talking_photo.OUTPUT / ("3" * 24 + ".mp4")).symlink_to(outside)
+    assert media_lifecycle.retain_existing_talking_photos() == 1
+    assert media_lifecycle.retain_existing_talking_photos() == 1  # idempotent
+    assert media_lifecycle.status()["persistent"] == 1
+    media_lifecycle.cleanup_expired(now=10_000_000)
+    assert source_path.read_bytes() == b"existing original"
+    assert outside.read_bytes() == b"external"
+    # Surviving accepted fixture is excluded from the library even while still on disk.
+    assets = media_library_routes.list_assets("video")["assets"]
+    assert len(assets) == 1
+    assert assets[0]["id"] == survivor
+    assert assets[0]["kind"] == "talking_photo"
+    assert assets[0]["persistent"] is True
+    assert assets[0]["url"] == f"/api/talking-photo/videos/{survivor}"

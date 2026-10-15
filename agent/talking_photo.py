@@ -101,7 +101,20 @@ def _update_job(job_id: str, **changes) -> dict:
             return job
         job.update(changes)
         _write_job(job)
-        return job
+
+    if job.get("status") == "completed":
+        # Store completed photos immediately even when no browser is polling.
+        # The actual MP4 stays in its original canonical managed directory.
+        # Index errors must not turn a successful render into a failed job.
+        try:
+            from agent import media_lifecycle
+            media_lifecycle.register(
+                "talking_photo", job_id, OUTPUT / f"{job_id}.mp4",
+                persistent=True, owner="talking-photo",
+            )
+        except (OSError, ValueError):
+            pass
+    return job
 
 
 def recover_jobs() -> None:

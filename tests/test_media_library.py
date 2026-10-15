@@ -84,11 +84,36 @@ def test_library_excludes_acceptance_media_without_deleting_files(tmp_path):
             "video:" + user_id: {"owner": "chat", "persistent": True},
         }
     }
-    with patch.object(media_lifecycle, "_root_for", return_value=video_root), \
+    # Video queries include Talking Photo, but the two kinds have separate
+    # managed roots; keep the fixture's Talking Photo directory absent.
+    talking_photo_root = tmp_path / "talking-photo"
+    with patch.object(media_lifecycle, "_root_for",
+                      side_effect=lambda kind: video_root if kind == "video" else talking_photo_root), \
          patch.object(media_lifecycle, "_expected_path",
-                      side_effect=lambda kind, asset_id: (video_root / (asset_id + ".mp4")).resolve()), \
+                      side_effect=lambda kind, asset_id: (
+                          (video_root if kind == "video" else talking_photo_root) /
+                          (asset_id + ".mp4")
+                      ).resolve()), \
          patch.object(media_lifecycle, "_load_locked", return_value=records):
         result = media_library_routes.list_assets("video")
     assert result["total"] == 1
     assert result["assets"][0]["id"] == user_id
     assert (video_root / (acceptance_id + ".mp4")).exists()
+
+
+def test_video_kind_query_includes_talking_photos_without_copy(tmp_path):
+    roots = {kind: tmp_path / kind for kind in media_library_routes.KINDS}
+    for root in roots.values():
+        root.mkdir()
+    regular = roots["video"] / ("a" * 24 + ".mp4")
+    talking = roots["talking_photo"] / ("b" * 24 + ".mp4")
+    regular.write_bytes(b"video")
+    talking.write_bytes(b"talking video")
+    with patch.object(media_lifecycle, "_root_for", side_effect=lambda kind: roots[kind]), \
+         patch.object(media_lifecycle, "_expected_path",
+                      side_effect=lambda kind, asset_id: (roots[kind] / (asset_id + ".mp4")).resolve()):
+        response = media_library_routes.list_assets("video")
+        assert response["total"] == 2
+        assert {asset["kind"] for asset in response["assets"]} == {"video", "talking_photo"}
+        assert next(asset for asset in response["assets"] if asset["kind"] == "talking_photo")["url"] == "/api/talking-photo/videos/" + "b" * 24
+    assert regular.is_file() and talking.is_file()

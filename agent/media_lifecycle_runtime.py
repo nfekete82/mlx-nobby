@@ -129,6 +129,12 @@ def install_runtime() -> None:
     _installed = True
 
     try:
+        # Old Talking Photo clips could be temporary or unregistered. Adopt
+        # surviving originals before TTL cleanup can remove them.
+        media_lifecycle.retain_existing_talking_photos()
+    except Exception:
+        pass
+    try:
         media_lifecycle.cleanup_expired()
     except Exception:
         pass

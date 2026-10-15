@@ -378,6 +378,40 @@ def cleanup_expired(*, now: float | None = None) -> dict:
     }
 
 
+def retain_existing_talking_photos() -> int:
+    """Adopt surviving legacy MP4s before the expiry sweeper runs.
+
+    This is limited to canonical, non-symlink files in the dedicated Talking
+    Photo output root. It never moves/copies video data, nor does it promote
+    acceptance fixtures that have an explicit lifecycle owner.
+    """
+    if not TALKING_PHOTO_ROOT.is_dir():
+        return 0
+    with _lock:
+        records = _load_locked().get("assets", {})
+    retained = 0
+    for path in TALKING_PHOTO_ROOT.glob("*.mp4"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            asset_id = _validate_id("talking_photo", path.stem)
+            if path.resolve() != _expected_path("talking_photo", asset_id):
+                continue
+            if path.stat().st_size == 0:
+                continue
+            existing = records.get(_key("talking_photo", asset_id)) or {}
+            if isinstance(existing, dict) and existing.get("owner") == "acceptance":
+                continue
+            record = register(
+                "talking_photo", asset_id, path,
+                persistent=True, owner="talking-photo",
+            )
+            retained += bool(record.get("persistent"))
+        except (OSError, ValueError):
+            continue
+    return retained
+
+
 def status() -> dict:
     with _lock:
         state = _load_locked()

@@ -14,7 +14,7 @@ SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
 
 
 def list_assets(kind="all", limit=400):
-    kinds = KINDS if kind == "all" else (kind,)
+    kinds = KINDS if kind == "all" else (("video", "talking_photo") if kind == "video" else (kind,))
     if kind != "all" and kind not in KINDS:
         raise ValueError("Unsupported media kind")
     results = []

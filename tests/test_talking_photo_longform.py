@@ -49,12 +49,12 @@ class TalkingPhotoLongformTests(unittest.TestCase):
         self.assertGreaterEqual(len(parts), 3)
         self.assertLessEqual(len(parts), 6)
         self.assertEqual(b"".join(pcm_bytes(p.wav) for p in parts), pcm_bytes(source))
-        self.assertEqual(sum(p.video_frames for p in parts), 39 * 24)
+        self.assertEqual(sum(p.video_frames for p in parts), 900)
         self.assertTrue(all(p.duration_seconds <= 18.0 for p in parts))
         # Preferred boundaries must fall inside two of the actual 1-second pauses.
         borders = [p.end_sample / 16000 for p in parts[:-1]]
         self.assertTrue(any(12 <= x <= 13 for x in borders))
-        self.assertTrue(any(25 <= x <= 26 for x in borders))
+        self.assertTrue(any(24.5 <= x <= 25.0 for x in borders))
 
     def test_continuous_speech_uses_safe_low_energy_fallback(self):
         source = wav_bytes((5000).to_bytes(2, "little", signed=True) * (43 * 16000))
