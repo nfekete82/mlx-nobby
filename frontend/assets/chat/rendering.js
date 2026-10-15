@@ -2395,6 +2395,9 @@ function renderMessages(options = {}) {
                 const answer =
                     document.createElement('div');
 
+                if (message.news_digest?.status === 'available') {
+                    answer.classList.add('message-news-digest');
+                }
                 answer.innerHTML =
                     markdownHtml(message.content);
 
