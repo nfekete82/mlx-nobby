@@ -205,7 +205,7 @@ def test_slow_healthy_first_token_within_budget_is_not_restarted(monkeypatch):
 
     async def healthy_prefill():
         await asyncio.sleep(0.055)
-        yield b'data: {"type":"content","text":"Finished prefill"}\\n\\n'
+        yield b'data: {"type":"content","text":"Finished prefill"}\n\n'
 
     factory = _StreamFactory([healthy_prefill])
     monkeypatch.setattr(
