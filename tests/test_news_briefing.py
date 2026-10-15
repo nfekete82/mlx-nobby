@@ -96,7 +96,8 @@ def test_does_not_call_model_for_unverified_or_missing_excerpts():
 
 def test_rewrite_many_items_uses_one_call_and_index_restriction():
     batch = digest()
-    batch["items"] = batch["items"] * 8
+    # Use distinct article records; list repetition would alias one mutable dict.
+    batch["items"] = [dict(batch["items"][0]) for _ in range(8)]
     llm = Mock(return_value=json.dumps({"summaries": [
         {"id": 100, "text": REWRITE},
         {"id": 0, "text": REWRITE},
