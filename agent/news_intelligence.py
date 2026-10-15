@@ -173,7 +173,9 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
         seen_titles.append(title_key)
         items.append({
             "title": str(candidate["title"])[:220], "url": url,
-            "publisher": str(candidate.get("engine") or host(url))[:100],
+            "publisher": (str(candidate.get("engine") or host(url))[:100]
+                          if candidate.get("source_type") == "publisher_feed"
+                          else host(url)),
             "published_date": published.isoformat() if published else None,
             "article_loaded": True,
         })
