@@ -112,6 +112,8 @@
     "selected_image_model": "the selected image model",
     "page_read_failed": "Note: Page {page} could not be read from document \"{name}\".",
     "web_search_no_results": "The web search returned no matching results.",
+    "weather_location_required": "Which city or postal code should I check the weather for?",
+    "weather_sources_unavailable": "I could not find a reliable weather forecast for this location.",
     "shorts_draft_created": "Short draft created. Edit it in Shorts Studio, then select Render Short.",
     "shorts_draft_failed": "The Short draft could not be created. Please try again.",
     "reference_used": "Reference image used ✓",
