@@ -46,3 +46,33 @@ model admission limit, reserve or tool permission is changed.
 Regression suites: `test_central_lease_diagnostics.py`,
 `test_provider_central_lease.py`, `test_runtime_lock_order.py`,
 `test_runtime_reliability.py`, `test_runtime_budget.py` and `test_model_provider.py`.
+
+## Bounded image-admission settling after real model release
+
+Image jobs still use the hard 90% projected unified-memory ceiling and their
+existing image load reserve (18 GB by default). When the image handoff has
+**actually** unloaded an idle speech/MuseTalk runtime or stopped the chat
+server, macOS can take a short time to account for reclaimed pages.
+
+Only when that first post-release memory snapshot would block image admission,
+the coordinator waits at most three one-second intervals and takes a **fresh**
+memory sample after each. There are no retries without an actual release, no
+changes to the 90% hard limit or model reserve, and no inference starts until
+the latest snapshot independently clears the original admission check.
+Cancellation remains active; a persistently unsafe reading still rejects
+the job. `preflight.memory_settle_attempts` records the number of resamples.
+
+The same bounded settling applies when handing **image to video**. The video
+coordinator first unloads an idle image model if required, and then frees optional
+speech/MuseTalk or chat weights if needed. Only after a confirmed release, and only
+if a fresh video-reserve projection would still exceed the 90% ceiling, up to
+three one-second fresh samples are allowed. Video's 20 GB default reserve and
+the 90% hard cap are unchanged. `preflight.memory_settle_attempts` captures
+the same field for image and video. A permanently unsafe or cancellation state
+still prevents loading.
+
+This targets transient failures before media model loading after a real
+handoff, not general low-memory failures. Unit regression tests cover both
+directions, permanent rejection, and zero retries without reclamation.
+Apple Silicon real acceptance (`./scripts/mlx test-real`) remains mandatory
+before an official release is tagged.
