@@ -38,6 +38,33 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
         )
         self.assertEqual(beta.engine, "ltx-distilled")
 
+    def test_route_dispatches_distilled_as_direct_ltx_opt_in(self):
+        handlers = {}
+        class App:
+            routes = []
+            def get(self, path, **kwargs):
+                def decorate(handler):
+                    handlers[("GET", path)] = handler
+                    return handler
+                return decorate
+            def post(self, path, **kwargs):
+                def decorate(handler):
+                    handlers[("POST", path)] = handler
+                    return handler
+                return decorate
+        with mock.patch.object(talking_photo_routes.talking_photo, "recover_jobs"):
+            talking_photo_routes.install_routes(App())
+        req = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo", engine="ltx-distilled",
+        )
+        with mock.patch.object(talking_photo_quality, "create_job", return_value={"id": "test"}) as create:
+            result = handlers[("POST", "/api/talking-photo/jobs")](req)
+        self.assertEqual(result["id"], "test")
+        payload = req.model_dump()
+        payload.pop("engine")
+        create.assert_called_once_with(payload, ltx_only=True, distilled=True)
+
     def test_audio_lead_in_is_opt_in_and_strictly_validated(self):
         base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Guten Morgen!"}
         self.assertEqual(talking_photo_routes.TalkingPhotoRequest(**base).lead_in_ms, 0)

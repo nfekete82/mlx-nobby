@@ -31,7 +31,7 @@ def test_distilled_is_explicit_and_does_not_change_classic_defaults():
     assert '"distilled" if distilled else "classic"' in source
     assert '"8" if distilled else "15"' in source
     assert 'if not distilled:' in source
-    assert 'command.extend(["--cfg-scale", "3.0", "--stg-scale", "1.0"])' in source
+    assert 'command.extend(["--negative-prompt", NEGATIVE_PROMPT,' in source
     assert 'runtime_coordinator.video_runtime(' in source
 
 

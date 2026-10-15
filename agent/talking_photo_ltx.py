@@ -267,7 +267,6 @@ def generate(
         "--audio", str(padded_audio),
         "--output", str(output),
         "--prompt", TALKING_PROMPT,
-        "--negative-prompt", NEGATIVE_PROMPT,
         "--width", str(target_width),
         "--height", str(target_height),
         "--frames", str(frames),
@@ -278,12 +277,14 @@ def generate(
         "--diagnostics", str(runner_diagnostics.resolve()),
     ]
     if not distilled:
-        command.extend(["--cfg-scale", "3.0", "--stg-scale", "1.0"])
+        command.extend(["--negative-prompt", NEGATIVE_PROMPT,
+                        "--cfg-scale", "3.0", "--stg-scale", "1.0"])
     details = {
         "provider": "ltx-2.5-mlx-a2v", "seed": seed,
         "a2v_mode": "distilled" if distilled else "classic",
         "seed_source": "environment" if "LTX_TALKING_PHOTO_SEED" in os.environ else "job_id",
-        "prompt": TALKING_PROMPT, "negative_prompt": NEGATIVE_PROMPT,
+        "prompt": TALKING_PROMPT,
+        "negative_prompt": None if distilled else NEGATIVE_PROMPT,
         "frames": frames, "fps": FPS, "duration": clip_seconds,
         "audio_seconds": audio_seconds, "source_audio_stats": source_stats,
         "lead_in_ms": lead_in_ms, "prepad_audio_stats": conditioned_stats,
