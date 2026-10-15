@@ -472,7 +472,20 @@
         }
 
         field.append(label, select);
-        negativePromptField.parentNode?.insertBefore(field, negativePromptField);
+
+        // Keep the two image-specific selectors together, while leaving
+        // video-only format selection in its usual position.
+        const formatField = document.getElementById('mediaFormatField');
+        const parent = formatField?.parentNode;
+        if (parent && typeof parent.insertBefore === 'function') {
+            const row = document.createElement('div');
+            row.className = 'media-image-format-count-row';
+            parent.insertBefore(row, formatField);
+            row.appendChild(formatField);
+            row.appendChild(field);
+        } else {
+            negativePromptField.parentNode?.insertBefore(field, negativePromptField);
+        }
 
         picker = {
             modal,
