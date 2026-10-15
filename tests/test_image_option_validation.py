@@ -113,3 +113,16 @@ def test_reference_generation_accepts_negative_prompt_and_dimensions(monkeypatch
     assert payload["width"] == 768
     assert payload["height"] == 1024
     assert payload["semantic_operation"] == "reference_generate"
+
+
+def test_chat_actions_accept_native_ultra_quality():
+    request = agent.ChatActionRequest(
+        prompt="Generate a detailed mountain landscape",
+        resolved_target="image",
+        quality="ultra",
+        image_options={"auto_size": True, "width": 768, "height": 432},
+    )
+    assert request.quality == "ultra"
+    payload = agent._image_generate_payload(request)
+    assert payload["quality"] == "ultra"
+    assert payload["auto_size"] is True
