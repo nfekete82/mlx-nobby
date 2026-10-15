@@ -20,12 +20,13 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
                 if not ready:
                     self.assertEqual(health["setup_command"], "./scripts/setup-musetalk-mac")
 
-    def test_request_defaults_to_direct_ltx(self):
+    def test_request_defaults_to_distilled_with_natural_motion(self):
         request = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
         )
-        self.assertEqual(request.engine, "ltx")
+        self.assertEqual(request.engine, "ltx-distilled")
+        self.assertEqual(request.motion, "natural")
         direct = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
@@ -38,7 +39,7 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
         )
         self.assertEqual(beta.engine, "ltx-distilled")
 
-    def test_route_dispatches_distilled_as_direct_ltx_opt_in(self):
+    def test_route_dispatches_distilled_as_direct_ltx_default(self):
         handlers = {}
         class App:
             routes = []
@@ -56,7 +57,7 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
             talking_photo_routes.install_routes(App())
         req = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
-            text="Hallo", engine="ltx-distilled",
+            text="Hallo",
         )
         with mock.patch.object(talking_photo_quality, "create_job", return_value={"id": "test"}) as create:
             result = handlers[("POST", "/api/talking-photo/jobs")](req)
@@ -119,7 +120,7 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["provider"], "musetalk-mac")
-        self.assertEqual(status["default_engine"], "ltx")
+        self.assertEqual(status["default_engine"], "ltx-distilled")
         self.assertTrue(status["quality_available"])
         self.assertTrue(status["ltx_available"])
         self.assertEqual(status["providers"]["quality"]["provider"], "ltx-2.5-mlx-a2v")

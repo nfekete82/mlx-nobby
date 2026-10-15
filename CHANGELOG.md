@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Promote LTX 0.16.3 Distilled (8+3) to the default Talking Photo engine after successful M5 Max hands-on testing; remove the audio lead-in experiment and motion selector from the UI, always request natural motion, and retain classic direct LTX, Hybrid and MuseTalk as alternatives.
+
 - Pin the native LTX MLX runtime to upstream 0.16.3 (commit-bound, no local patch) and offer an opt-in `ltx-distilled` Talking Photo engine (8+3 steps, no CFG) alongside the unchanged default direct/Hybrid/MuseTalk modes. Keep original audio/lead-in, frame grid, safety lease and cancellation; record selected mode in render diagnostics, add request/UI and runtime-pin regressions. Requires real Apple Silicon A/B validation before promoting beta.
 
 ## v1.13.0

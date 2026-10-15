@@ -4,7 +4,7 @@
 
 `Text → Speech-Service → TTS-MP3 → ffmpeg PCM-WAV (16 kHz, Mono, 16 Bit) → End-Padding → LTX-2.5 MLX A2V → MuseTalk Lippenkorrektur → MP4`
 
-Standard ist jetzt `LTX direkt`: LTX Q4 mit Runtime 0.16.3 erzeugt Bewegung und Mund gemeinsam aus demselben audio-conditionierten Lauf; kein nachträglicher Lippenrenderer verändert den Mundbereich. Der bisherige Quality-Pfad bleibt als optionaler `Hybrid · LTX + MuseTalk` erhalten. Dabei erhält MuseTalk das native LTX-Video und bytegleich dasselbe gepaddete Conditioning-WAV. Fast bleibt reines MuseTalk. Die zusätzliche `Beta · LTX Distilled (8+3)` ist explizit auswählbar, Standard und Hybrid bleiben beim klassischen A2V.
+Standard ist jetzt `LTX Distilled (8+3)`: Nach dem erfolgreichen M5-Max-Praxistest (unter einer Minute, gute Lippen- und Gesichtsqualität laut Nutzerfeedback) erzeugt LTX Q4 mit Runtime 0.16.3 Bewegung und Mund gemeinsam aus demselben audio-conditionierten Lauf ohne nachträglichen Lippenrenderer. Der klassische direkte LTX-Pfad bleibt als `Qualität · LTX direkt` auswählbar, ebenso der `Hybrid · LTX + MuseTalk` mit anschließendem MuseTalk-Lippenpass. `Fast · MuseTalk` nutzt weiterhin MuseTalk für Lippen und bei natürlicher Bewegung einen vorgeschalteten LTX-Bewegungspass. Das UI sendet immer `motion=natural`, enthält keinen Bewegungsschalter und keinen experimentellen Audiovorlauf mehr.
 
 Standardstimme: Der Request enthält `input` und `language`. ISO-Codes werden ausschließlich im Quality-Pfad auf die von Qwen erwarteten Sprachnamen übersetzt (`de` → `german`, `en` → `english` usw.). Das setzt den richtigen Sprach-Token, ohne Tempo oder Audiosamples zu manipulieren. Wie im ursprünglichen Pfad wird kein `voice`-Override gesetzt. Custom-Voices ergänzen ausschließlich `voice`. Bei `speed=1.0` wird kein Speed-Parameter gesendet. Es gibt keine automatische Anpassung an die Dauer einer anderen Stimme, kein zweites `atempo` und kein Entfernen der Anfangsstille. Eine ausdrücklich über die API angeforderte Geschwindigkeit wird weiterhin einmal an den Speech-Service weitergegeben. Das Talking-Photo-UI sendet `speed=1.0`.
 
@@ -181,9 +181,9 @@ Die erhaltenen Standard-, Julia- und Pervin-WAVs wurden durch lokale ASR als ver
 
 Zwei Standard-Audio-Runs mit Seed 42 waren sowohl im dekodierten Videoinhalt als auch als MP4 bytegleich. Sie zeigen sichtbare Lippen-/Kieferbewegung. Die Qualität anderer Seeds und frischer Custom-Voice-Runs ist im lokalen Abschlussbericht getrennt dokumentiert. Perfekte phonemgenaue Synchronität wird nicht allein aus Kontaktbögen oder Hashes abgeleitet.
 
-## Experiment: LTX 0.16.3 Distilled A2V (opt-in)
+## LTX 0.16.3 Distilled A2V (Standard)
 
-Die vierte Engine `ltx-distilled` nutzt `A2VidDistilledPipeline` aus dem auf
+Die Standard-Engine `ltx-distilled` nutzt `A2VidDistilledPipeline` aus dem auf
 `ae3b7ea9583db775bd4a1dfb506fb789585021e7` gepinnten Upstream. Sie verwendet dieselben WAV-Samples,
 dasselbe 8n+1-Frame-Raster, Referenzbild, FPS und denselben Seed wie der
 klassische Pfad; nur der Renderer wechselt zu **8+3** Schritten ohne CFG/STG
