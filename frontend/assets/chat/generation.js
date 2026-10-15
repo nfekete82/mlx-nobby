@@ -3695,6 +3695,22 @@ const imageFiles =
                     return;
                 }
 
+                // Article-grounded daily news is rendered deterministically.
+                // Never ask the chat model to extrapolate from RSS wrappers or
+                // unverified search snippets after news source filtering.
+                const digest = toolResult.data?.news_digest;
+                if (digest && typeof digest.answer === 'string') {
+                    session.messages.push({
+                        role: 'assistant',
+                        content: digest.answer,
+                        news_digest: digest,
+                        tool_result: toolResult
+                    });
+                    MLXChatSessions.saveSessions();
+                    MLXChatRendering.renderAll({ contentUpdated: true });
+                    return;
+                }
+
                 if (!results.length) {
                     const providerStatus = toolResult.data?.provider_status;
                     const emptyMessage = forecast?.answer
