@@ -9914,7 +9914,7 @@ def run_chat_action(request: ChatActionRequest):
 
     # Describe the final guarded action, never an intent later rejected.
     from agent.chat_decision import decision_for_route
-    routing["decision"] = decision_for_route(routing)
+    routing["decision"] = decision_for_route(routing | {"intent": action})
 
     def routed_result(result):
         result = dict(result)
