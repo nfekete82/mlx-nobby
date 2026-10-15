@@ -175,7 +175,7 @@ def article_short_summary(item, *, max_characters=330):
     candidates = []
     for match in _SUMMARY_SENTENCE.finditer(text):
         sentence = " ".join(unescape(match.group()).split()).strip(" \t-–•\"„“")
-        if not (65 <= len(sentence) <= 340):
+        if not (65 <= len(sentence) <= min(340, max_characters)):
             continue
         if not (9 <= len(sentence.split()) <= 55):
             continue
@@ -267,11 +267,11 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
             ZoneInfo("Europe/Berlin")) if published else None
         time_label = f" · {local.strftime('%H:%M')} Uhr" if local else ""
         lines.append(f"- **[{_safe_md(item['title'])}]({url})** "
-                     f"— {_safe_md(item['publisher'])}{time_label}")
+                     f"— {_safe_md(item['publisher'])}{time_label}  ")
         if item["summary"]:
-            lines.append(f"  \\n  {_safe_md(item['summary'])}")
+            lines.append(f"  {_safe_md(item['summary'])}")
         else:
-            lines.append("  \\n  *Kein verlässlicher Kurztext aus dem Artikel extrahierbar.*")
+            lines.append("  *Kein verlässlicher Kurztext aus dem Artikel extrahierbar.*")
         lines.append("")
     lines.extend(("*Kurzüberblicke sind wörtliche, gekürzte Auszüge aus lesbaren "
                   "Artikeln – keine unabhängige Faktenprüfung. "
