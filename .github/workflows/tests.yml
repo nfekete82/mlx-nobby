@@ -84,3 +84,24 @@ jobs:
           docker compose build \
             --build-arg MLX_NOBBY_BUILD_SHA=ci-test \
             mlx-web
+
+      - name: Smoke test web-only imports in production image
+        run: |
+          docker compose run --rm --no-deps --entrypoint python mlx-web -c "
+          import importlib.util
+          assert importlib.util.find_spec('agent') is None, 'Unexpected agent installed in web image'
+          from backend.web_research import retrieve_web_research, needs_web_research
+          from backend.search_freshness import requires_today_news
+          from backend.weather_search import is_locationless_weather_question
+          assert needs_web_research('Wer ist aktuell Bundeskanzler?')
+          assert requires_today_news('News von heute')
+          assert is_locationless_weather_question('Wie wird das Wetter heute?')
+          assert 'OHNE VERIFIZIERBARE' in retrieve_web_research(
+              'News von heute', opener=lambda req, timeout: type('R', (), {
+                  '__enter__': lambda self: self,
+                  '__exit__': lambda self, *args: False,
+                  'read': lambda self, n: b'<rss><channel/></rss>',
+              })()
+          )
+          print('WEB_PACKAGE_IMPORTS_OK')
+          "
