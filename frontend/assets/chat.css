@@ -347,6 +347,13 @@ button {
 
 .sidebar-action:hover,
 .sidebar-bottom .sidebar-action:hover { background: var(--panel2); color: var(--text); }
+.sidebar-system-tools > summary { list-style: none; user-select: none; }
+.sidebar-system-tools > summary::-webkit-details-marker { display: none; }
+.sidebar-system-tools > summary .sidebar-system-chevron { margin-left: auto; font-size: 18px; transition: transform .15s ease; }
+.sidebar-system-tools[open] > summary .sidebar-system-chevron { transform: rotate(180deg); }
+.sidebar-system-tools-items { padding: 2px 0 4px 14px; }
+.sidebar-system-tools-items .sidebar-action { min-height: 34px; }
+.sidebar-system-tools > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .sidebar-runtime { padding: 9px 10px; color: #626d7c; font-size: 10px; }
 .sidebar-toggle { display:none; }
 .jobs-panel { position:fixed; left:266px; bottom:20px; z-index:2000; width:min(360px,calc(100vw - 32px)); max-height:430px; overflow:auto; padding:14px; border:1px solid var(--border); border-radius:14px; background:var(--panel); box-shadow:0 18px 50px #0008; }
