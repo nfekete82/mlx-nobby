@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p test-results
-          PYTHONUNBUFFERED=1 MLX_TEST_PYTHON=$(command -v python) ./scripts/mlx test-e2e -vv -o faulthandler_timeout=60 2>&1 | tee test-results/pytest.log
+          PYTHONUNBUFFERED=1 MLX_TEST_PYTHON=$(command -v python) ./scripts/mlx test-e2e -vv -x -o faulthandler_timeout=60 2>&1 | tee test-results/pytest.log
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

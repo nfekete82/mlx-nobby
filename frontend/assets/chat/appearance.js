@@ -190,30 +190,23 @@
         ensureShortsSidebarStyles();
         launcher.classList.add('sidebar-action');
 
-        const helpButton =
-            document.getElementById('mlxSidebarHelpButton');
-        const reference = (
-            helpButton &&
-            helpButton.parentElement === sidebarBottom
-        )
-            ? helpButton.nextSibling
-            : settingsButton;
-        const desiredReference =
-            reference === launcher
-                ? launcher.nextSibling
-                : reference;
-
-        if (
-            launcher.parentElement === sidebarBottom &&
-            launcher.nextSibling === desiredReference
-        ) {
+        // System & Tools owns the nested Help/Systeminfo/Settings entries.
+        // Shorts remains a top-level action directly before the group.
+        const group = document.getElementById('sidebarSystemTools');
+        const helpButton = document.getElementById('mlxSidebarHelpButton');
+        const reference = group?.parentElement === sidebarBottom
+            ? group
+            : (helpButton?.parentElement === sidebarBottom
+                ? helpButton.nextSibling
+                : (settingsButton.parentElement === sidebarBottom ? settingsButton : null));
+        const desiredReference = reference === launcher ? launcher.nextSibling : reference;
+        if (launcher.parentElement === sidebarBottom &&
+            launcher.nextSibling === desiredReference) {
             return true;
         }
-
-        sidebarBottom.insertBefore(
-            launcher,
-            desiredReference || settingsButton
-        );
+        // The reference MUST be a direct child of sidebarBottom.
+        sidebarBottom.insertBefore(launcher,
+            desiredReference?.parentElement === sidebarBottom ? desiredReference : null);
 
         return true;
     }

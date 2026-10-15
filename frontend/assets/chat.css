@@ -10762,3 +10762,36 @@ body.notes-resizing * {
     font-style: italic;
     line-height: 1.5;
 }
+
+/* Keep persistent Shorts launcher inside the sidebar after dynamic mounting. */
+.sidebar .sidebar-bottom > .mlx-shorts-history-launcher,
+.sidebar .sidebar-bottom > .mlx-shorts-history-launcher.sidebar-action {
+    position: static !important;
+    inset: auto !important;
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 38px;
+    margin: 0 !important;
+    padding: 10px !important;
+    border: 0 !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+    z-index: auto !important;
+}
+
+/* Center Notes in the viewport rather than anchoring it to the right edge. */
+@media (min-width: 761px) {
+    body #notesPanel.notes-panel {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        right: auto !important;
+        bottom: auto !important;
+        transform: translate(-50%, -50%) !important;
+        width: min(1120px, calc(100vw - 48px)) !important;
+        max-width: calc(100vw - 48px) !important;
+        height: min(780px, calc(100dvh - 48px)) !important;
+        margin: 0 !important;
+    }
+}

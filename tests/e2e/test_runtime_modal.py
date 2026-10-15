@@ -18,9 +18,11 @@ def open_systeminfo(page, collapsed=False):
         page.set_viewport_size(viewport)
     elif page.viewport_size['width'] <= 900:
         page.locator('#sidebarToggle').click()
+        page.locator('#sidebarSystemTools').evaluate('(node) => node.open = true')
         launcher = page.locator('#runtimeInfoButton')
         launcher.locator('svg').click()
     else:
+        page.locator('#sidebarSystemTools').evaluate('(node) => node.open = true')
         launcher = page.locator('#runtimeInfoButton')
         launcher.locator('.sidebar-action-label').click()
     expect(page.locator('#runtimePopover')).to_be_visible()
@@ -142,6 +144,7 @@ def test_runtime_modal_unavailable_api_stays_usable(ui):
         status=200, content_type='application/json', body='invalid json'))
     if page.viewport_size['width'] <= 900:
         page.locator('#sidebarToggle').click()
+    page.locator('#sidebarSystemTools').evaluate('(node) => node.open = true')
     page.locator('#runtimeInfoButton').click()
     expect(page.locator('#runtimeInfoContent')).to_contain_text('unavailable')
     assert_geometry(page)

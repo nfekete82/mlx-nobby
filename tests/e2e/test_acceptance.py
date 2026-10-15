@@ -279,7 +279,8 @@ def test_settings_models_runtime_storage_downloads(ui):
     page, agent, _ = ui
     page.clock.install()
     open_sidebar(page)
-    page.get_by_role('button', name='Settings', exact=True).click()
+    page.locator('#sidebarSystemTools').evaluate('(node) => node.open = true')
+    page.locator('#sidebarSettingsButton').click()
     page.locator('button[data-organizer-section="models"]').click()
     page.locator('[data-organizer-model-tab="runtime"]').click()
     expect(page.locator('#modelConsoleContent')).to_have_attribute('aria-busy', 'false')
