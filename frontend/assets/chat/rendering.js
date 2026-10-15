@@ -20,6 +20,91 @@
         return window.MLXI18n?.t('generation.' + key, fallback) ?? fallback;
     }
 
+    function renderGroundedNewsDigest(container, digest) {
+        const items = Array.isArray(digest.items) ? digest.items : [];
+        const heading = document.createElement('h3');
+        heading.className = 'news-briefing-heading';
+        heading.textContent = rt('news_briefing_heading', 'News briefing') +
+            (digest.report_date ? ' · ' + String(digest.report_date) : '');
+        container.appendChild(heading);
+
+        const desired = Number(digest.requested_count);
+        if (Number.isFinite(desired) && desired > items.length) {
+            const partial = document.createElement('p');
+            partial.className = 'news-briefing-partial';
+            partial.textContent = rt('news_briefing_partial',
+                'Only {actual} of {requested} articles had sufficient verified text.',
+                {actual: items.length, requested: desired});
+            container.appendChild(partial);
+        }
+
+        const entries = document.createElement('div');
+        entries.className = 'news-briefing-items';
+        items.forEach(item => {
+            if (!item || typeof item !== 'object' || !item.summary) {
+                return;
+            }
+            const article = document.createElement('article');
+            article.className = 'news-briefing-item';
+
+            const headline = document.createElement('div');
+            headline.className = 'news-briefing-item-title';
+            const title = String(item.title || '').trim();
+            let safeUrl = null;
+            try {
+                const parsed = new URL(String(item.url || ''));
+                if (parsed.protocol === 'https:' && !parsed.username &&
+                    !parsed.password && parsed.hostname) {
+                    safeUrl = parsed.href;
+                }
+            } catch (_) { /* Don't turn invalid source text into a link. */ }
+            if (safeUrl) {
+                const link = document.createElement('a');
+                link.href = safeUrl;
+                link.rel = 'noopener noreferrer';
+                link.target = '_blank';
+                link.textContent = title;
+                headline.appendChild(link);
+            } else {
+                headline.textContent = title;
+            }
+            article.appendChild(headline);
+
+            const meta = document.createElement('div');
+            meta.className = 'news-briefing-meta';
+            const publisher = String(item.publisher || '').trim();
+            let time = '';
+            if (item.published_date) {
+                const timestamp = new Date(item.published_date);
+                if (Number.isFinite(timestamp.valueOf())) {
+                    time = new Intl.DateTimeFormat('de-DE', {
+                        timeZone: 'Europe/Berlin',
+                        hour: '2-digit', minute: '2-digit'
+                    }).format(timestamp);
+                }
+            }
+            meta.textContent = [publisher, time ? time + ' Uhr' : '']
+                .filter(Boolean).join(' · ');
+            article.appendChild(meta);
+
+            const brief = document.createElement('p');
+            brief.className = 'news-briefing-summary';
+            brief.textContent = String(item.summary);
+            article.appendChild(brief);
+            entries.appendChild(article);
+        });
+        container.appendChild(entries);
+
+        const note = document.createElement('p');
+        note.className = 'news-briefing-note';
+        note.textContent = digest.ai_rewritten_count
+            ? rt('news_briefing_ai_note',
+                'Based on retrieved articles; some summaries were reworded locally by AI. Not independently fact-checked.')
+            : rt('news_briefing_source_note',
+                'Briefs are taken from readable original articles. Publication times come from publishers or search indexes; not independently fact-checked.');
+        container.appendChild(note);
+    }
+
     let state;
     let currentSession;
     let isGenerating;
@@ -2395,8 +2480,13 @@ function renderMessages(options = {}) {
                 const answer =
                     document.createElement('div');
 
-                answer.innerHTML =
-                    markdownHtml(message.content);
+                if (message.news_digest?.status === 'available' &&
+                    Array.isArray(message.news_digest.items)) {
+                    answer.classList.add('message-news-digest');
+                    renderGroundedNewsDigest(answer, message.news_digest);
+                } else {
+                    answer.innerHTML = markdownHtml(message.content);
+                }
                 if (message.weather_source?.url) {
                     const source = document.createElement('div');
                     source.className = 'message-web-sources';
