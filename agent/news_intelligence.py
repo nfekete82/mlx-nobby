@@ -62,7 +62,7 @@ def _entries(root):
             link = next((x.get("href", "") for x in entry
                          if x.tag.rsplit("}", 1)[-1] == "link"
                          and x.get("rel", "alternate") == "alternate"), "")
-            yield _text(entry, {"title"}), link, _text(entry, {"published", "updated"})
+            yield _text(entry, {"title"}), link, _text(entry, {"published"})
     else:
         for item in root.iter():
             if item.tag.rsplit("}", 1)[-1] == "item":
