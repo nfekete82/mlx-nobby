@@ -10,7 +10,7 @@ BROAD_NEWS = re.compile(
     r"(?i)\b(?:news|nachrichten|schlagzeilen|neuigkeiten)\b"
 )
 TOPICS = re.compile(
-    r"(?i)\b(?:nvidia|apple|microsoft|tesla|bitcoin|aktien?|börse|"
+    r"(?i)\b(?:nvidia|apple|microsoft|tesla|bitcoin|aktien?|börsen?|"
     r"sport|fußball|fussball|technik|ki|ai|künstliche intelligenz|"
     r"politik|wirtschaft|wissenschaft|regional|baden.württemberg|"
     r"göppingen|ukraine|usa|europa|deutschland)\b"
