@@ -966,7 +966,10 @@
         button.addEventListener('click', openModal);
 
         const runtimeInfo = document.getElementById('runtimeInfoButton');
-        host.insertBefore(button, runtimeInfo || host.firstChild);
+        // Systeminfo may already be nested inside System & Tools.
+        // Only use a reference node that is a direct child of this host.
+        const anchor = runtimeInfo?.parentElement === host ? runtimeInfo : host.firstChild;
+        host.insertBefore(button, anchor);
         try {
             const remembered = sessionStorage.getItem(JOB_STORAGE_KEY);
             if (remembered && /^[a-f0-9]{24}$/.test(remembered)) {
