@@ -23,12 +23,20 @@ def weather_context_query(prompt, history):
     if "Für welchen Ort möchtest du das Wetter wissen?" in last_answer:
         if not _LOCATION.fullmatch(text) or text.casefold() in {"ja", "nein", "danke", "morgen", "heute"}:
             return None
-        if not any(
-            weather_request(str(m.get("content") or "")) is not None
-            for m in recent[:-1] if m.get("role") == "user"
-        ):
+        previous = next(
+            (weather_request(str(m.get("content") or ""))
+             for m in reversed(recent[:-1]) if m.get("role") == "user"
+             and weather_request(str(m.get("content") or "")) is not None),
+            None,
+        )
+        if not previous or previous.get("status") != "location_required":
             return None
-        return f"Wie wird das Wetter heute in {text}?"
+        weather_prompt = next(
+            (str(m.get("content") or "") for m in reversed(recent[:-1])
+             if m.get("role") == "user"
+             and weather_request(str(m.get("content") or "")) is not None), "")
+        day = "morgen" if re.search(r"(?i)\\bmorgen\\b", weather_prompt) else "heute"
+        return f"Wie wird das Wetter {day} in {text}?"
     match = _DAY.fullmatch(text)
     if not match:
         return None
