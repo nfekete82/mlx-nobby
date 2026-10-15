@@ -7791,9 +7791,28 @@ def tool_web_search(request):
                 candidates.append(feed_hits[index])
             if index < len(search_hits):
                 candidates.append(search_hits[index])
+        # Select complete, non-duplicate summaries, not just readable pages.
+        # Ten bounded fetch attempts allow replacing pages that yield only
+        # headlines, boilerplate, or duplicate stories.
+        from agent.news_intelligence import readable_article
+        requested = re.search(
+            r"(?i)\\b(\\d{1,2}|ein|zwei|drei|vier|fünf|sechs|sieben|acht)\\s+"
+            r"(?:(?:wichtigsten|aktuellsten|neuesten)\\s+)?"
+            r"(?:nachrichten|news|meldungen)\\b", query,
+        )
+        words = {"ein": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5,
+                 "sechs": 6, "sieben": 7, "acht": 8}
+        requested_count = (
+            words.get(requested.group(1).lower(), 5)
+            if requested and not requested.group(1).isdigit()
+            else int(requested.group(1)) if requested else 5
+        )
+        requested_count = max(1, min(requested_count, 8))
+        max_attempts = 12 if requested_count > 5 else 10
         seen = set()
         attempted = []
         readable_count = 0
+        digest = None
         for item in candidates:
             if not isinstance(item, dict) or not publisher_link(item.get("url")):
                 continue
@@ -7801,17 +7820,21 @@ def tool_web_search(request):
             if url in seen:
                 continue
             seen.add(url)
-            # Only fetched pages can be cited as readable article evidence.
-            # fetch_web_page already performs SSRF/DNS/redirect validation.
             candidate = dict(item)
+            # fetch_web_page already validates public DNS, IP, and redirects.
             candidate["fetch"] = fetch_web_page(url)
             attempted.append(candidate)
-            from agent.news_intelligence import readable_article
             if readable_article(candidate):
                 readable_count += 1
-            if len(attempted) >= 7 or readable_count >= 5:
+            digest = grounded_news_digest(
+                query, attempted, now=now, max_items=requested_count
+            )
+            if len(digest["items"]) >= requested_count or len(attempted) >= max_attempts:
                 break
-        digest = grounded_news_digest(query, attempted, now=now)
+        if digest is None:
+            digest = grounded_news_digest(
+                query, [], now=now, max_items=requested_count
+            )
         if digest.get("status") == "available":
             from agent.news_briefing import enhance_grounded_news
             digest = enhance_grounded_news(
@@ -7823,12 +7846,11 @@ def tool_web_search(request):
             )
         result["news_search"] = True
         result["news_digest"] = digest
-        result["provider_status"] = (
-            "available" if digest["status"] == "available"
-            else "no_readable_articles"
-        )
+        result["provider_status"] = digest["status"]
         result["publisher_feed_candidates"] = len(feed_hits)
         result["fetched_count"] = readable_count
+        result["fetch_attempts"] = len(attempted)
+        result["summarizable_count"] = len(digest["items"])
         result["results"] = digest["items"]
         result["count"] = len(digest["items"])
         result["current_date"] = now.astimezone().date().isoformat()
