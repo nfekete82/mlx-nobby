@@ -21,10 +21,8 @@ test('Talking Photo launch uses anchored sidebar and existing modal behavior',()
  assert.doesNotMatch(photo,/querySelector\('\.top-actions'\)/);
 });
 
-test('Systeminfo stays immediately above Einstellungen after dynamic navigation mounts',()=>{
- assert.match(runtime,/new MutationObserver\(alignSystemInfo\)\.observe\(sidebarBottom, \{childList:true\}\)/);
- assert.match(runtime,/runtimeInfoButton\.nextElementSibling !== settings/);
- assert.match(runtime,/sidebarBottom\.insertBefore\(runtimeInfoButton, settings\)/);
- assert.match(runtime,/settings\.parentElement !== sidebarBottom/);
- assert.match(runtime,/runtimeInfoButton\.parentElement !== sidebarBottom/);
+test('Systeminfo remains owned by System & Tools during dynamic mounts',()=>{
+ assert.doesNotMatch(runtime,/new MutationObserver\(alignSystemInfo\)/);
+ assert.doesNotMatch(runtime,/sidebarBottom\.insertBefore\(runtimeInfoButton, settings\)/);
+ assert.match(runtime,/runtimeInfoButton\.addEventListener\('click'/);
 });
