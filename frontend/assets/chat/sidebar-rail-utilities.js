@@ -73,7 +73,10 @@
         } else {
           button.textContent = label.charAt(0);
         }
-        rail.insertBefore(button, settings || null);
+        // Other layout scripts may move railSettings after this module starts.
+        // insertBefore requires the reference to be a current direct child.
+        const anchor = settings?.parentNode === rail ? settings : null;
+        rail.insertBefore(button, anchor);
       }
     }
     sync();
