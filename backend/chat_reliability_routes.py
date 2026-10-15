@@ -16,16 +16,19 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 
+# A measured local 27B model TTFT of ~29s can be entirely healthy prefill.
+# Keep an absolute deadline, but do not confuse a slow first token with a
+# dead runtime at the former 30s default. Deployments can still override.
 FIRST_BYTE_TIMEOUT = max(
     10.0,
-    float(os.environ.get("MLX_CHAT_FIRST_BYTE_TIMEOUT", "30")),
+    float(os.environ.get("MLX_CHAT_FIRST_BYTE_TIMEOUT", "60")),
 )
 VISION_FIRST_BYTE_TIMEOUT = max(
     FIRST_BYTE_TIMEOUT,
     float(os.environ.get("MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT", "60")),
 )
 # Current-information queries perform routing and bounded public research before
-# the model starts streaming. The generic 30s budget is too short for this path.
+# the model starts streaming. Research keeps a separate, longer deadline.
 RESEARCH_FIRST_BYTE_TIMEOUT = max(
     FIRST_BYTE_TIMEOUT,
     float(os.environ.get("MLX_CHAT_RESEARCH_FIRST_BYTE_TIMEOUT", "90")),
@@ -142,6 +145,38 @@ def _agent_ready_with_new_pid(agent_url: str, previous_pid, timeout: float) -> b
         time.sleep(0.35)
 
     return False
+
+
+def _recovery_blocked_message(recovery: dict, snapshot: dict) -> str:
+    """Explain an unavailable guarded restart without leaking raw agent errors."""
+    code = recovery.get("status_code")
+    if code == 429:
+        return (
+            "Die Chat-Runtime antwortet noch nicht. Ein automatischer Neustart "
+            "ist wegen der 60-Sekunden-Sperrfrist vorübergehend gesperrt. "
+            "Bitte etwas später erneut versuchen."
+        )
+    if code == 409:
+        lease = snapshot.get("lease") or {}
+        workload = lease.get("active_workload")
+        allowed = {
+            "chat", "agent", "coding", "image", "video", "embedding",
+            "speech-stt", "speech-tts", "speech-tts-clone",
+            "router", "vision-classifier", "image-upscale",
+        }
+        hint = (
+            f" (aktive Aufgabe: {workload})"
+            if workload in allowed else ""
+        )
+        return (
+            "Die Chat-Runtime antwortet noch nicht. Ein automatischer Neustart "
+            "wurde zum Schutz einer laufenden Aufgabe blockiert"
+            + hint + ". Bitte nach deren Abschluss erneut versuchen."
+        )
+    return (
+        "Die Chat-Runtime antwortet noch nicht. Der automatische Neustart "
+        "konnte nicht durchgeführt werden. Bitte den Runtime-Status prüfen."
+    )
 
 
 def _sse_error(message: str, code: str, *, retryable: bool) -> bytes:
@@ -382,7 +417,7 @@ async def _reliable_stream(
 
                 if not recovery.get("scheduled"):
                     yield _sse_error(
-                        "Die Chat-Runtime reagiert nicht und konnte nicht automatisch neu gestartet werden.",
+                        _recovery_blocked_message(recovery, snapshot),
                         "recovery_blocked",
                         retryable=True,
                     )
