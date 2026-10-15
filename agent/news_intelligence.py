@@ -148,6 +148,73 @@ def _safe_md(value):
     return value
 
 
+_SUMMARY_SENTENCE = re.compile(r"[^.!?\n]+[.!?](?=\s|$)", re.UNICODE)
+_SUMMARY_JUNK = re.compile(
+    r"(?i)\b(?:cookies?|datenschutz|newsletter|abonnieren|"
+    r"werbung|weiterlesen|mehr zum thema|alle meldungen|"
+    r"teilen sie|social media|javascript|kontakt|impressum|"
+    r"registrieren|anmelden|zum inhalt)\b"
+)
+
+
+def article_short_summary(item, *, max_characters=330):
+    """Select 1-2 short *verbatim* source sentences, never generate facts.
+
+    Pick a substantive statement matching the headline's topic and, when
+    useful, the immediately following sentence. A page without such evidence
+    gets no summary rather than a plausible-sounding fabrication.
+    """
+    if not readable_article(item):
+        return ""
+    title = str(item.get("title") or "").strip()
+    title_words = title_tokens(title)
+    text = str(item["fetch"].get("text") or "")[:10000]
+    if len(title_words) < 2:
+        return ""
+
+    candidates = []
+    for match in _SUMMARY_SENTENCE.finditer(text):
+        sentence = " ".join(unescape(match.group()).split()).strip(" \t-–•\"„“")
+        if not (65 <= len(sentence) <= 340):
+            continue
+        if not (9 <= len(sentence.split()) <= 55):
+            continue
+        if _SUMMARY_JUNK.search(sentence):
+            continue
+        tokens = title_tokens(sentence)
+        overlap = len(title_words & tokens)
+        # The bare headline is not a useful summary.
+        title_normalized = re.sub(r"\W+", " ", title.casefold()).strip()
+        text_normalized = re.sub(r"\W+", " ", sentence.casefold()).strip()
+        if text_normalized == title_normalized or (
+            text_normalized.startswith(title_normalized) and
+            len(text_normalized) - len(title_normalized) < 35
+        ):
+            continue
+        candidates.append((match.start(), sentence, overlap))
+
+    suitable = [item for item in candidates if item[2] >= min(2, len(title_words))]
+    if not suitable:
+        return ""
+
+    # A high headline overlap is evidence of topic relevance; position breaks
+    # ties so boilerplate/related-article text near the end cannot dominate.
+    first = max(suitable, key=lambda row: (min(row[2], 5), -row[0]))
+    selected = [first[1]]
+    remaining = max_characters - len(first[1])
+    if remaining >= 85:
+        for offset, sentence, overlap in candidates:
+            if offset <= first[0] or offset - first[0] > 480:
+                continue
+            if sentence == first[1] or len(sentence) + 1 > remaining:
+                continue
+            # Adjacent article prose may use pronouns instead of title terms.
+            if overlap >= 1 or offset - first[0] <= len(first[1]) + 12:
+                selected.append(sentence)
+                break
+    return " ".join(selected)[:max_characters]
+
+
 def grounded_news_digest(query, results, *, now=None, max_items=6):
     """An extractive headline overview: no generated details or invented events."""
     now = now or datetime.now(timezone.utc)
@@ -178,6 +245,7 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                           else host(url)),
             "published_date": published.isoformat() if published else None,
             "article_loaded": True,
+            "summary": article_short_summary(candidate),
         })
         if len(items) >= max_items:
             break
@@ -198,11 +266,16 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
         local = datetime.fromisoformat(published).astimezone(
             ZoneInfo("Europe/Berlin")) if published else None
         time_label = f" · {local.strftime('%H:%M')} Uhr" if local else ""
-        lines.append(f"- [{_safe_md(item['title'])}]({url}) "
+        lines.append(f"- **[{_safe_md(item['title'])}]({url})** "
                      f"— {_safe_md(item['publisher'])}{time_label}")
-    lines.extend(("", "*Nur Überschriften aus tatsächlich lesbaren Artikelseiten. "
-                  "Zeitangaben stammen aus Publisher-Feeds bzw. dem Suchindex; "
-                  "keine unabhängige Faktenprüfung.*"))
+        if item["summary"]:
+            lines.append(f"  \\n  {_safe_md(item['summary'])}")
+        else:
+            lines.append("  \\n  *Kein verlässlicher Kurztext aus dem Artikel extrahierbar.*")
+        lines.append("")
+    lines.extend(("*Kurzüberblicke sind wörtliche, gekürzte Auszüge aus lesbaren "
+                  "Artikeln – keine unabhängige Faktenprüfung. "
+                  "Veröffentlichungszeiten stammen aus Publisher-Feeds oder Suchindex.*",))
     return {
         "status": "available", "answer": "\n".join(lines), "items": items,
         "evidence_level": "article_text_loaded_headline_matched",
