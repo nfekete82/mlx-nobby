@@ -602,8 +602,10 @@
             button.id = 'mlxSidebarHelpButton';
             button.type = 'button';
             button.addEventListener('click', () => openHelp());
+            const groupItems = sidebarBottom.querySelector('.sidebar-system-tools-items');
+            const target = groupItems || sidebarBottom;
             const before = document.getElementById('sidebarSettingsButton');
-            sidebarBottom.insertBefore(button, before || null);
+            target.insertBefore(button, before?.parentElement === target ? before : null);
         }
         refreshCopy();
     }
