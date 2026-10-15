@@ -863,8 +863,8 @@ def mlx_chat_stream(request: ChatRequest):
                 "type": "content",
                 "text": "Für welchen Ort möchtest du das Wetter wissen? "
                         "Nenne mir bitte eine Stadt oder Postleitzahl.",
-            }, ensure_ascii=False) + "\\n\\n"
-            yield "event: done\\ndata: {}\\n\\n"
+            }, ensure_ascii=False) + "\n\n"
+            yield "event: done\ndata: {}\n\n"
 
         return StreamingResponse(
             ask_weather_location(),
