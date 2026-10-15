@@ -9777,6 +9777,21 @@ def _public_sources_route():
     }
 
 
+def _chat_decision_for_request(request, routing_file_context):
+    """Preflight and execution use the same stateless slot decision.
+
+    Explicit media actions, attachments and bound artifacts retain their
+    established dispatch paths. The small semantic router handles everything
+    without a trustworthy deterministic decision.
+    """
+    if (request.action is not None or routing_file_context
+            or request.active_artifact_id
+            or request.resolved_target not in (None, "chat")):
+        return None
+    from agent.chat_decision import plan_chat_decision
+    return plan_chat_decision(request.prompt, request.conversation_context)
+
+
 @app.post("/api/chat/actions/route")
 @observability.observed_turn
 def preflight_chat_action(request: ChatActionRequest):
@@ -9791,8 +9806,13 @@ def preflight_chat_action(request: ChatActionRequest):
     )
     if media.handles_turn or request.resolved_target:
         return media.payload()
+    decision = _chat_decision_for_request(request, routing_file_context)
+    if decision is not None:
+        return media.payload() | decision.routing() | {"target": "chat"}
     routing = (_public_sources_route() if _requires_public_source_research(request.prompt, routing_file_context)
                else classify_chat_action_details(request.prompt, routing_file_context, request.conversation_context))
+    from agent.chat_decision import decision_for_route
+    routing["decision"] = decision_for_route(routing)
     return media.payload() | routing | {"target": _chat_preflight_target(routing["intent"])}
 
 
@@ -9801,7 +9821,6 @@ def preflight_chat_action(request: ChatActionRequest):
 def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
-
     media = decide_media_intent(
         request.prompt,
         has_image=_file_context_is_image(routing_file_context),
@@ -9809,6 +9828,31 @@ def run_chat_action(request: ChatActionRequest):
         action=request.action,
         reference_context=(routing_file_context or {}).get("reference_mode"),
     )
+
+    # Decision preflight and execution share one slot plan. Do not ask the
+    # semantic router to infer location or dispatch twice after clarification.
+    decision = (None if media.handles_turn or media.execution_requested else
+                _chat_decision_for_request(request, routing_file_context))
+    if decision is not None:
+        route = decision.routing() | {"target": "chat"}
+        if decision.kind == "clarify":
+            return chat_tool_result("web_search", "completed", {
+                "query": request.prompt, "provider": "Open-Meteo",
+                "provider_status": "location_required", "count": 0,
+                "results": [], "routing": route,
+                "weather_forecast": {
+                    "status": "location_required",
+                    "answer": decision.clarification,
+                },
+            })
+        weather = _weather_search_result(decision.query)
+        if weather is not None:
+            data = dict(weather)
+            data["routing"] = route
+            if decision.reason == "weather_context_resolved":
+                data["context_resolution"] = "explicit_weather_followup"
+            return chat_tool_result("web_search", "completed", data)
+
     if request.resolved_target == "chat" and media.execution_requested:
         routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
         routing["guard"] = "preflight_chat_fallback"
@@ -9869,6 +9913,10 @@ def run_chat_action(request: ChatActionRequest):
     if action in MEDIA_ACTIONS and not routing.get("execution_requested"):
         routing = media.chat_routing() | {"original_intent": action, "guard": "execution_required"}
         action = "normal_chat"
+
+    # Describe the final guarded action, never an intent later rejected.
+    from agent.chat_decision import decision_for_route
+    routing["decision"] = decision_for_route(routing | {"intent": action})
 
     def routed_result(result):
         result = dict(result)

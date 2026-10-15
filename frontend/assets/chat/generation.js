@@ -1792,9 +1792,16 @@ function buildAgentConversationContext(
                     String(message.agent_run.goal).slice(0, 1000);
             }
 
+            const forecast = message.role === 'assistant'
+                ? message.tool_result?.data?.weather_forecast
+                : null;
+            const weatherLocation = forecast?.status === 'available'
+                ? String(forecast.location || '').trim().slice(0, 80)
+                : '';
             return {
                 role: message.role,
-                content: content
+                content: content,
+                ...(weatherLocation ? { weather_location: weatherLocation } : {})
             };
         })
         .filter(message => message.content.trim());
