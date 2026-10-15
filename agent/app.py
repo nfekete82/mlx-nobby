@@ -7791,6 +7791,24 @@ def tool_web_search(request):
                 candidates.append(feed_hits[index])
             if index < len(search_hits):
                 candidates.append(search_hits[index])
+        # Select complete, non-duplicate summaries, not just readable pages.
+        # Ten bounded fetch attempts allow replacing pages that yield only
+        # headlines, boilerplate, or duplicate stories.
+        from agent.news_intelligence import readable_article
+        requested = re.search(
+            r"(?i)\b(\d{1,2}|ein|zwei|drei|vier|fünf|sechs|sieben|acht)\s+"
+            r"(?:(?:wichtigsten|aktuellsten|neuesten)\s+)?"
+            r"(?:nachrichten|news|meldungen)\b", query,
+        )
+        words = {"ein": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5,
+                 "sechs": 6, "sieben": 7, "acht": 8}
+        requested_count = (
+            words.get(requested.group(1).lower(), 5)
+            if requested and not requested.group(1).isdigit()
+            else int(requested.group(1)) if requested else 5
+        )
+        requested_count = max(1, min(requested_count, 8))
+        max_attempts = 12 if requested_count > 5 else 10
         seen = set()
         attempted = []
         readable_count = 0
