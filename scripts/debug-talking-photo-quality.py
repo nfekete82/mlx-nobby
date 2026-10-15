@@ -30,6 +30,7 @@ def parser():
     p.add_argument('--voice')
     p.add_argument('--language', default='de')
     p.add_argument('--ltx-only', action='store_true', help='Native LTX, no MuseTalk lip pass')
+    p.add_argument('--distilled', action='store_true', help='Opt-in LTX 0.16.3 distilled 8+3 A2V (requires --ltx-only)')
     p.add_argument('--lead-in-ms', type=int, choices=(0, 500), default=0,
                    help='Opt-in silence before TTS audio; default 0 for baseline')
     p.add_argument('--seeds', default='42,1234,1337,2026,858797624')
@@ -68,6 +69,8 @@ def verify_output(path, frames, fps):
 
 def main():
     args = parser().parse_args()
+    if args.distilled and not args.ltx_only:
+        raise SystemExit('--distilled requires --ltx-only (no MuseTalk hybrid)')
     seeds = [int(s.strip()) for s in args.seeds.split(',')]
     if args.repeat < 1 or len(set(seeds)) != len(seeds) or any(s < 0 or s > 0x7fffffff for s in seeds):
         raise SystemExit('Seeds must be 0..2147483647 and repeat must be positive')
@@ -76,7 +79,9 @@ def main():
     manifest_path = root / 'inputs.json'
     if args.resume:
         manifest = json.loads(manifest_path.read_text())
-        if manifest.get('lead_in_ms', 0) != args.lead_in_ms or bool(manifest.get('ltx_only', False)) != args.ltx_only:
+        if (manifest.get('lead_in_ms', 0) != args.lead_in_ms
+                or bool(manifest.get('ltx_only', False)) != args.ltx_only
+                or bool(manifest.get('distilled', False)) != args.distilled):
             raise SystemExit('Resume settings differ: lead-in and engine must match frozen experiment')
         image_path = root / manifest['image_file']
         wav_path = root / 'frozen.wav'
@@ -105,6 +110,7 @@ def main():
         manifest = {'tts_request': payload if args.text else None,
                     'voice': args.voice, 'language': args.language,
                     'lead_in_ms': args.lead_in_ms, 'ltx_only': args.ltx_only,
+                    'distilled': args.distilled,
                     'audio_source': str(Path(args.audio).expanduser().resolve()) if args.audio else 'TTS once',
                     'image_file': image_path.name,
                     'image_sha256': hashlib.sha256(image).hexdigest(),
@@ -132,7 +138,8 @@ def main():
                 video, details = talking_photo_quality.generate(
                     label, image, image_path.suffix, wav, stats['frames'] / 16000,
                     work, cancelled=lambda: False, debug_dir=bundle,
-                    apply_lipsync=not args.ltx_only, lead_in_ms=args.lead_in_ms)
+                    apply_lipsync=not args.ltx_only, lead_in_ms=args.lead_in_ms,
+                    distilled=args.distilled)
                 streams = verify_output(bundle / 'output.mp4', details['frames'], details['fps'])
                 # Decode pixels for reproducibility: MP4 container hashes alone
                 # can differ without any visible difference.
@@ -141,7 +148,8 @@ def main():
                                      capture_output=True, text=True, check=True).stdout
                 (bundle / 'frames.md5').write_text(md5)
                 results.append({'run': label, 'seed': seed,
-                                'engine': 'ltx' if args.ltx_only else 'quality',
+                                'engine': ('ltx-distilled' if args.distilled else
+                                           'ltx' if args.ltx_only else 'quality'),
                                 'lead_in_ms': args.lead_in_ms,
                                 'conditioning_audio_sha256': details['conditioning_audio_sha256'],
                                 'decoded_frames_sha256': hashlib.sha256(md5.encode()).hexdigest(),

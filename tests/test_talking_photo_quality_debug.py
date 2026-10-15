@@ -67,3 +67,18 @@ def test_debug_freezes_tts_once_and_resume_checks_input_hashes():
         (output / 'frozen.wav').write_bytes(b'changed')
         with mock.patch('sys.argv', argv + ['--resume']), pytest.raises(SystemExit, match='Frozen input was changed'):
             debug.main()
+
+
+def test_debug_distilled_requires_direct_ltx_and_parses_beta_option(tmp_path):
+    args = debug.parser().parse_args([
+        '--image', str(tmp_path / 'portrait.png'), '--audio', str(tmp_path / 'speech.wav'),
+        '--ltx-only', '--distilled', '--output', str(tmp_path / 'beta'),
+    ])
+    assert args.ltx_only and args.distilled
+    import sys
+    with mock.patch.object(sys, 'argv', [
+        'debug', '--image', 'portrait.png', '--audio', 'speech.wav',
+        '--distilled', '--output', str(tmp_path / 'invalid'),
+    ]), pytest.raises(SystemExit, match='requires --ltx-only'):
+        debug.main()
+    assert not (tmp_path / 'invalid').exists()

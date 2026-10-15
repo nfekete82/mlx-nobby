@@ -202,3 +202,28 @@ und verifiziert den dazugehörigen leeren Patch-Satz; danach
 `./scripts/mlx agent restart`. Dieses Upgrade erfordert den Mac für echte
 GPU-/Audio-Qualitätstests. Bei Fehlern bleibt der klassische Engine-Modus im UI
 anwählbar, allerdings ebenfalls mit der aktualisierten MLX-Laufzeit.
+
+### Fairer A/B-Benchmark mit identischem WAV
+
+Bereits vorhandene WAV und dasselbe Porträt verwenden (einmal die TTS generieren
+und als WAV speichern, nicht zwischen den Läufen neu synthetisieren):
+
+```bash
+cd ~/mlx-web
+# Klassischer Two-Stage-Modus
+./test-venv/bin/python scripts/debug-talking-photo-quality.py \\
+  --image /pfad/portrait.png --audio /pfad/frozen.wav \\
+  --ltx-only --seeds 42 --repeat 1 \\
+  --output artifacts/ltx-ab/classic
+
+# Neuer Distilled-Modus mit exakt denselben Eingaben
+./test-venv/bin/python scripts/debug-talking-photo-quality.py \\
+  --image /pfad/portrait.png --audio /pfad/frozen.wav \\
+  --ltx-only --distilled --seeds 42 --repeat 1 \\
+  --output artifacts/ltx-ab/distilled
+```
+
+Beide Bundles speichern die tatsächlichen Eingabe-/Conditioning-Hashes,
+Frame-MD5, Laufzeit und MP4-Streams. Die MP4-Inhalte sind nicht automatisch
+qualitativ gleichwertig; deshalb Mund, Beginn des ersten Wortes, Gesichtsdrift,
+RAM/Swap und Bildqualität visuell prüfen.
