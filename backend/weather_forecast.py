@@ -17,6 +17,12 @@ from backend.weather_search import is_weather_query
 
 _GEO = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST = "https://api.open-meteo.com/v1/forecast"
+_SIMPLE_WEATHER = re.compile(
+    r"(?i)^\\s*(?:wetter(?:vorhersage|prognose|bericht)?|"
+    r"das\\s+wetter|aktuelles\\s+wetter|weather|"
+    r"wie\\s+(?:wird|ist|sieht|schaut)|"
+    r"was\\s+(?:ist|wird)|wird\\s+es)\\b"
+)
 _PLACE = re.compile(r"(?i)\b(?:in|f[uü]r|bei)\s+([^?!.;,]{2,65})")
 _BARE = re.compile(
     r"(?i)^\s*(?:das\s+)?wetter(?:vorhersage|prognose|bericht)?"
@@ -53,7 +59,7 @@ def _fold(text: str) -> str:
 def weather_request(prompt: str):
     """Return (city, day-offset) for simple current/tomorrow weather questions."""
     text = str(prompt or "").strip()
-    if len(text) > 180 or not is_weather_query(text):
+    if len(text) > 180 or not is_weather_query(text) or not _SIMPLE_WEATHER.search(text):
         return None
     if re.search(r"(?i)\b(?:übermorgen|nächste\s+woche|gestern)\b", text):
         return None
@@ -118,7 +124,12 @@ def forecast_for_question(prompt: str, *, opener=None, now=None):
         matches = [
             entry for entry in options
             if isinstance(entry, dict)
-            and _fold(str(entry.get("name") or "")) == _fold(city)
+            and (
+                _fold(str(entry.get("name") or "")) == _fold(city)
+                or (city.isdigit() and city in [
+                    str(code) for code in (entry.get("postcodes") or [])
+                ])
+            )
             and _number(entry.get("latitude")) is not None
             and _number(entry.get("longitude")) is not None
         ]
