@@ -43,8 +43,9 @@ The test command never downloads models or browsers; installation is explicit.
 For each browser case, the harness confirms navigation on the local server's
 HTTP response (`wait_until=commit`) instead of waiting for a full page `load`
 event that can include unrelated external resource timing. It then **requires**
-the real chat composer and functional `marked`, `DOMPurify` and `highlight.js`
-libraries before running any test. Missing libraries, a stalled HTML parser or
+the real chat composer, functional `marked`, `DOMPurify` and `highlight.js`
+libraries, and initialized Chat Sessions/Rendering/Generation controllers before
+running any test. Missing libraries, a stalled HTML parser or
 a broken chat page remain test **FAIL** conditions with bounded diagnostics;
 no browser test is skipped, and the 120-second outer watchdog remains active.
 This is a navigation reliability improvement, **not** an offline dependency
