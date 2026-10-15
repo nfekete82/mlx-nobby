@@ -18,10 +18,10 @@ from backend.weather_search import is_weather_query
 _GEO = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST = "https://api.open-meteo.com/v1/forecast"
 _SIMPLE_WEATHER = re.compile(
-    r"(?i)^\\s*(?:wetter(?:vorhersage|prognose|bericht)?|"
-    r"das\\s+wetter|aktuelles\\s+wetter|weather|"
-    r"wie\\s+(?:wird|ist|sieht|schaut)|"
-    r"was\\s+(?:ist|wird)|wird\\s+es)\\b"
+    r"(?i)^\s*(?:wetter(?:vorhersage|prognose|bericht)?|"
+    r"das\s+wetter|aktuelles\s+wetter|weather|"
+    r"wie\s+(?:wird|ist|sieht|schaut)|"
+    r"was\s+(?:ist|wird)|wird\s+es)\b"
 )
 _PLACE = re.compile(r"(?i)\b(?:in|f[uü]r|bei)\s+([^?!.;,]{2,65})")
 _BARE = re.compile(
