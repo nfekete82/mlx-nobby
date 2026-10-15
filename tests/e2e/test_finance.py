@@ -48,6 +48,7 @@ def test_finance_quote_and_searchable_help(ui, language, prompt):
     assert agent.count('/api/finance/history', 'POST') == 1
 
     open_sidebar(page)
+    page.locator('#sidebarSystemTools').evaluate('(node) => node.open = true')
     page.locator('#mlxSidebarHelpButton').click()
     page.locator('#mlxHelpSearch').fill('Finance')
     expect(page.locator('#mlxHelpPanel')).to_contain_text('Finanzanalyse' if language == 'de' else 'Finance Intelligence')
