@@ -7354,6 +7354,19 @@ def searxng_search_results(query, limit=8):
             detail="Suchbegriff fehlt",
         )
 
+    from backend.weather_search import (
+        is_weather_query, is_locationless_weather_question,
+        relevant_forecast_result,
+    )
+    if is_locationless_weather_question(query):
+        return {
+            "query": query, "provider": "none",
+            "provider_status": "location_required", "count": 0,
+            "results": [], "search_degraded": False,
+            "unresponsive_engines": [], "provider_attempts": [],
+        }
+    weather_query = is_weather_query(query)
+
     searxng_url = (
         os.environ.get(
             "SEARXNG_URL",
@@ -7373,6 +7386,14 @@ def searxng_search_results(query, limit=8):
     })
 
     payload, provider_attempts = request_searxng(searxng_url, params)
+    if payload is None and weather_query:
+        return {
+            "query": query, "provider": "SearXNG",
+            "provider_status": "weather_provider_unavailable",
+            "provider_attempts": provider_attempts,
+            "unresponsive_engines": [], "search_degraded": True,
+            "count": 0, "results": [],
+        }
     if payload is None:
         fallback = _fallback_public_search(query, limit=limit)
         fallback["provider_attempts"] = provider_attempts + [{
@@ -7462,6 +7483,11 @@ def searxng_search_results(query, limit=8):
 
     if same_day_news:
         normalized = filter_today_news(normalized)
+    if weather_query:
+        normalized = [
+            item for item in normalized
+            if relevant_forecast_result(item["title"], item["url"])
+        ]
     normalized = normalized[:max(1, min(int(limit), 20))]
 
     # Some upstream engines ignore the site: operator entirely. Never
@@ -7480,6 +7506,15 @@ def searxng_search_results(query, limit=8):
             "count": 0, "results": [],
         }
 
+    if not normalized and weather_query:
+        return {
+            "query": query, "provider": "SearXNG",
+            "provider_status": "no_relevant_weather_sources",
+            "provider_attempts": provider_attempts,
+            "unresponsive_engines": unresponsive_engines,
+            "search_degraded": bool(unresponsive_engines),
+            "count": 0, "results": [],
+        }
     if not normalized:
         fallback = _fallback_public_search(query, limit=limit)
         fallback["unresponsive_engines"] = unresponsive_engines
