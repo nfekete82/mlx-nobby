@@ -122,3 +122,71 @@ def test_first_weather_question_requests_city_without_agent_model_or_search():
     assert "event: done" in response.text
     assert 'data: {"type": "content"' in response.text
     assert "\\n\\n" not in response.text  # actual SSE line endings, not escaped literals
+
+
+def test_native_searxng_skips_search_when_weather_place_is_missing():
+    from agent.app import searxng_search_results
+    with patch("agent.app.request_searxng", side_effect=AssertionError("No location")):
+        data = searxng_search_results("Wie wird das Wetter heute?")
+    assert data["provider_status"] == "location_required"
+    assert data["count"] == 0
+    assert data["results"] == []
+
+
+def test_native_searxng_keeps_real_forecast_but_rejects_political_results():
+    from agent.app import searxng_search_results
+    response = {
+        "results": [
+            {
+                "title": "Deutsche Geschichte und DDR",
+                "url": "https://www.bpb.de/politik/ddr",
+                "content": "No weather information",
+            },
+            {
+                "title": "Wetter Stuttgart: heutige Vorhersage",
+                "url": "https://www.dwd.de/wetter/stuttgart",
+                "content": "Meteorological conditions",
+            },
+        ],
+        "unresponsive_engines": [],
+    }
+    with patch("agent.app.request_searxng",
+               return_value=(response, [{"status": "available"}])), \
+         patch("agent.app.web_url_is_safe", return_value=True), \
+         patch("agent.app._fallback_public_search",
+               side_effect=AssertionError("RSS fallback must not be used")):
+        found = searxng_search_results("Wetter Stuttgart heute")
+    assert found["provider_status"] == "available"
+    assert [x["title"] for x in found["results"]] == [
+        "Wetter Stuttgart: heutige Vorhersage"
+    ]
+
+
+def test_native_search_no_meteorological_source_fails_closed_without_news_rss():
+    from agent.app import searxng_search_results
+    response = {
+        "results": [
+            {"title": "Politik und die DDR",
+             "url": "https://www.bpb.de/politik/ddr"},
+        ],
+        "unresponsive_engines": [],
+    }
+    with patch("agent.app.request_searxng",
+               return_value=(response, [{"status": "available"}])), \
+         patch("agent.app.web_url_is_safe", return_value=True), \
+         patch("agent.app._fallback_public_search",
+               side_effect=AssertionError("RSS fallback must not be used")):
+        found = searxng_search_results("Wetter Göppingen")
+    assert found["count"] == 0
+    assert found["provider_status"] == "no_relevant_weather_sources"
+
+
+def test_native_search_unavailable_weather_does_not_fall_back_to_news_rss():
+    from agent.app import searxng_search_results
+    with patch("agent.app.request_searxng",
+               return_value=(None, [{"status": "unavailable"}])), \
+         patch("agent.app._fallback_public_search",
+               side_effect=AssertionError("RSS fallback must not be used")):
+        found = searxng_search_results("Wetter Göppingen heute")
+    assert found["provider_status"] == "weather_provider_unavailable"
+    assert found["count"] == 0
