@@ -10,7 +10,8 @@
     const IMAGE_QUALITIES = new Set([
         'fast',
         'standard',
-        'quality'
+        'quality',
+        'ultra'
     ]);
     const IMAGE_SIZES_BY_FORMAT = Object.freeze({
         landscape: Object.freeze({ width: 768, height: 432 }),
