@@ -109,8 +109,12 @@ with runtime_lease(lock_path=root/'lock', state_dir=root/'state', workload='vide
             releaser.join(3)
     finally:
         if child.poll() is None:
-            child.stdin.write("done\n")
-            child.stdin.flush()
+            try:
+                child.stdin.write("done\n")
+                child.stdin.flush()
+            except BrokenPipeError:
+                # The worker may exit between poll() and the cleanup write.
+                pass
         child.wait(timeout=3)
         child.stdin.close()
         child.stdout.close()
