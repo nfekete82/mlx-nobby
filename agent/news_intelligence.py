@@ -287,6 +287,6 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                   "Veröffentlichungszeiten stammen aus Publisher-Feeds oder Suchindex.*",))
     return {
         "status": "available", "answer": "\n".join(lines), "items": items,
-        "requested_count": max_items,
+        "requested_count": max_items, "report_date": day,
         "evidence_level": "article_text_loaded_with_grounded_summary",
     }
