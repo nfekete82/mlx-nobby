@@ -7284,7 +7284,8 @@ def _fallback_public_search(query, limit=8):
     same_day_news = requires_today_news(query)
     # Google's News RSS search supports a bounded last-day search. The
     # actual timestamps are still validated after retrieval.
-    feed_query = query + (" when:1d" if same_day_news else "")
+    from backend.news_query import normalized_news_query
+    feed_query = normalized_news_query(query) + (" when:1d" if same_day_news else "")
     url = ("https://news.google.com/rss/search?q=" +
            urllib.parse.quote_plus(feed_query) + "&hl=de&gl=DE&ceid=DE:de")
     req = urllib.request.Request(url, headers={"User-Agent": "MLX-Nobby/2.0"})
@@ -7375,10 +7376,11 @@ def searxng_search_results(query, limit=8):
         .rstrip("/")
     )
 
+    from backend.news_query import normalized_news_query
     from agent.search_freshness import requires_today_news, filter_today_news
     same_day_news = requires_today_news(query)
     params = urllib.parse.urlencode({
-        "q": query,
+        "q": normalized_news_query(query),
         "format": "json",
         "language": web_search_language_for_query(query),
         "safesearch": 0,
