@@ -84,9 +84,16 @@ def test_library_excludes_acceptance_media_without_deleting_files(tmp_path):
             "video:" + user_id: {"owner": "chat", "persistent": True},
         }
     }
-    with patch.object(media_lifecycle, "_root_for", return_value=video_root), \
+    # Video queries include Talking Photo, but the two kinds have separate
+    # managed roots; keep the fixture's Talking Photo directory absent.
+    talking_photo_root = tmp_path / "talking-photo"
+    with patch.object(media_lifecycle, "_root_for",
+                      side_effect=lambda kind: video_root if kind == "video" else talking_photo_root), \
          patch.object(media_lifecycle, "_expected_path",
-                      side_effect=lambda kind, asset_id: (video_root / (asset_id + ".mp4")).resolve()), \
+                      side_effect=lambda kind, asset_id: (
+                          (video_root if kind == "video" else talking_photo_root) /
+                          (asset_id + ".mp4")
+                      ).resolve()), \
          patch.object(media_lifecycle, "_load_locked", return_value=records):
         result = media_library_routes.list_assets("video")
     assert result["total"] == 1
