@@ -36,7 +36,11 @@ def needs_web_research(prompt: str) -> bool:
     if is_locationless_weather_question(text):
         # No location -> do not search the entire web or supply unrelated hits.
         return False
-    return bool(8 <= len(text) <= 260 and TIME_SENSITIVE.search(text) and not PRIVATE.search(text))
+    return bool(
+        8 <= len(text) <= 260
+        and (TIME_SENSITIVE.search(text) or is_weather_query(text))
+        and not PRIVATE.search(text)
+    )
 
 
 class _ResultParser(HTMLParser):
