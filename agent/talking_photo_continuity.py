@@ -33,8 +33,9 @@ def extract_tail_frame(
 ) -> bytes:
     """Return the last *un-padded* 24-fps frame as PNG reference for the next render.
 
-    ffmpeg's decoded frame number is zero-based. Select frame N-1 when a clip
-    contributes N frames, regardless of the trailing 8n+1 LTX padding.
+    Normalize to the same 24-fps timeline used by the final MP4 assembler,
+    then select zero-based frame N-1. This works for clips with a different
+    source FPS and excludes trailing 8n+1 LTX padding.
     """
     if cancelled():
         raise QualityCancelled()
@@ -48,7 +49,7 @@ def extract_tail_frame(
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.unlink(missing_ok=True)
 
-    filter_arg = f"select=eq(n\\,{content_frames - 1})"
+    filter_arg = f"fps=24,select=eq(n\\,{content_frames - 1})"
     command = [
         ffmpeg, "-nostdin", "-y", "-v", "error", "-i", str(video),
         "-an", "-vf", filter_arg, "-fps_mode", "vfr",
