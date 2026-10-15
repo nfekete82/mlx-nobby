@@ -10,7 +10,9 @@ from agent.news_intelligence import (
 
 NOW = datetime(2026, 10, 15, 8, 10, tzinfo=timezone.utc)
 TITLE = "Bundestag diskutiert Vorschläge zur Energieversorgung"
-BODY = ("Bundestag diskutiert Vorschläge zur Energieversorgung in Berlin. "
+BODY = ("Der Bundestag diskutiert Vorschläge zur Energieversorgung und prüft "
+        "gemeinsam mit verschiedenen Abgeordneten Änderungen an bisherigen "
+        "Regelungen für betroffene Kommunen. "
         "Die Diskussion wird von verschiedenen Abgeordneten geführt. " * 14)
 
 
