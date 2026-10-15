@@ -33,6 +33,7 @@ def fake_provider(*, no_results=False, bad_forecast=False):
         "longitude": 9.6521,
         "timezone": "Europe/Berlin",
         "population": 58000,
+        "postcodes": ["73033", "73035"],
     }]}
     forecast = {
         "daily": {
@@ -68,6 +69,8 @@ def test_parses_german_weather_questions_but_not_unrelated_prompts():
     assert weather_request("Wetter Göppingen morgen")["offset"] == 1
     assert weather_request("Wie wird das Wetter heute?")["status"] == "location_required"
     assert weather_request("Was ist 50 x 50?") is None
+    assert weather_request("Schreibe Python-Code für Wetter in Göppingen") is None
+    assert weather_request("Wetter 73033 morgen")["city"] == "73033"
 
 
 def test_forecast_today_grounded_correct_date_and_values():
@@ -156,3 +159,11 @@ def test_direct_chat_weather_response_skips_chat_model():
     assert "12 °C von Open-Meteo" in body
     assert "event: done" in body
     assert "\\n\\n" not in body
+
+
+def test_postcode_uses_geocoder_postcode_even_when_result_has_city_name():
+    opener, urls = fake_provider()
+    result = forecast_for_question("Wetter 73033", opener=opener, now=NOW)
+    assert result["status"] == "available"
+    assert "Göppingen" in result["answer"]
+    assert parse_qs(urlparse(urls[0]).query)["name"] == ["73033"]
