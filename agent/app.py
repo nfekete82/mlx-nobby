@@ -9775,6 +9775,21 @@ def _public_sources_route():
     }
 
 
+def _chat_decision_for_request(request, routing_file_context):
+    """Preflight and execution use the same stateless slot decision.
+
+    Explicit media actions, attachments and bound artifacts retain their
+    established dispatch paths. The small semantic router handles everything
+    without a trustworthy deterministic decision.
+    """
+    if (request.action is not None or routing_file_context
+            or request.active_artifact_id
+            or request.resolved_target not in (None, "chat")):
+        return None
+    from agent.chat_decision import plan_chat_decision
+    return plan_chat_decision(request.prompt, request.conversation_context)
+
+
 @app.post("/api/chat/actions/route")
 @observability.observed_turn
 def preflight_chat_action(request: ChatActionRequest):
@@ -9789,8 +9804,13 @@ def preflight_chat_action(request: ChatActionRequest):
     )
     if media.handles_turn or request.resolved_target:
         return media.payload()
+    decision = _chat_decision_for_request(request, routing_file_context)
+    if decision is not None:
+        return media.payload() | decision.routing() | {"target": "chat"}
     routing = (_public_sources_route() if _requires_public_source_research(request.prompt, routing_file_context)
                else classify_chat_action_details(request.prompt, routing_file_context, request.conversation_context))
+    from agent.chat_decision import decision_for_route
+    routing["decision"] = decision_for_route(routing)
     return media.payload() | routing | {"target": _chat_preflight_target(routing["intent"])}
 
 
@@ -9798,23 +9818,30 @@ def preflight_chat_action(request: ChatActionRequest):
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
 
-    # Explicit follow-up slots: reuse only confirmed weather context from this
-    # chat, without invoking the large model or guessing the user's location.
-    # Keep attachments, manually selected actions and workspace routes untouched.
-    if (
-        not request.action
-        and not request.file_context
-        and not request.resolved_target
-    ):
-        from backend.weather_context import weather_context_query
-        followup = weather_context_query(request.prompt, request.conversation_context)
-        if followup:
-            weather = _weather_search_result(followup)
-            if weather is not None:
-                weather["context_resolution"] = "explicit_weather_followup"
-                return chat_tool_result("web_search", "completed", weather)
-
     routing_file_context = _image_source_routing_context(request)
+
+    # Decision preflight and execution share one slot plan. Do not ask the
+    # semantic router to infer location or dispatch twice after clarification.
+    decision = _chat_decision_for_request(request, routing_file_context)
+    if decision is not None:
+        route = decision.routing() | {"target": "chat"}
+        if decision.kind == "clarify":
+            return chat_tool_result("web_search", "completed", {
+                "query": request.prompt, "provider": "Open-Meteo",
+                "provider_status": "location_required", "count": 0,
+                "results": [], "routing": route,
+                "weather_forecast": {
+                    "status": "location_required",
+                    "answer": decision.clarification,
+                },
+            })
+        weather = _weather_search_result(decision.query)
+        if weather is not None:
+            data = dict(weather)
+            data["routing"] = route
+            if decision.reason == "weather_context_resolved":
+                data["context_resolution"] = "explicit_weather_followup"
+            return chat_tool_result("web_search", "completed", data)
 
     media = decide_media_intent(
         request.prompt,
@@ -9860,6 +9887,8 @@ def run_chat_action(request: ChatActionRequest):
     action = routing["intent"]
     routing = dict(routing)
     routing["target"] = _chat_preflight_target(action)
+    from agent.chat_decision import decision_for_route
+    routing["decision"] = decision_for_route(routing)
     routing.setdefault("execution_requested", False)
 
     if (
