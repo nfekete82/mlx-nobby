@@ -169,3 +169,68 @@ def test_atom_updated_without_published_is_not_today_news():
         '</entry></feed>'
     )
     assert list(_entries(feed))[0][2] == ""
+
+
+
+def test_every_readable_article_gets_a_source_based_preview_under_heading():
+    from agent.news_intelligence import article_short_summary
+    title = "Slowakei erneuert Militärkontakte mit Russland"
+    first = (
+        "Die Slowakei hat neue Militärkontakte mit Russland angekündigt, "
+        "nachdem beide Seiten mehrere Monate lang Gespräche vorbereitet hatten."
+    )
+    second = (
+        "Die zuständigen Ministerien sollen nun prüfen, wann die nächsten "
+        "Gespräche stattfinden und welche Delegationen teilnehmen."
+    )
+    body = (
+        "Startseite Nachrichten Aktuelle Meldungen.\n"
+        + first + " " + second + "\n"
+        + "Hintergrund: " + ("Zahlreiche weitere Hintergrundinformationen " * 22)
+    )
+    candidate = article(
+        title=title,
+        fetch={"ok": True,
+               "url": "https://www.tagesschau.de/inland/energie-100.html",
+               "text": body},
+    )
+    summary = article_short_summary(candidate)
+    assert first in summary
+    assert second in summary
+    assert len(summary) <= 330
+    digest = grounded_news_digest("News von heute", [candidate], now=NOW)
+    assert digest["items"][0]["summary"] == summary
+    assert "  \n  " in digest["answer"]
+    assert digest["answer"].index(first) > digest["answer"].index(title)
+    assert digest["answer"].index(first) < digest["answer"].index(
+        "keine unabhängige Faktenprüfung"
+    ) if "keine unabhängige Faktenprüfung" in digest["answer"] else True
+
+
+def test_short_preview_excludes_cookie_notices_and_source_unrelated_text():
+    from agent.news_intelligence import article_short_summary
+    body = (
+        "Cookie-Einstellungen: Klicken Sie auf Zustimmen, um weitere "
+        "Nachrichten zu sehen. "
+        "Bundestag diskutiert Vorschläge zur Energieversorgung in Berlin, "
+        "während die beteiligten Fraktionen ihre jeweiligen Positionen erläutern. "
+        + ("Diese Seite bietet zahlreiche zusätzliche Hintergrundinformationen. " * 15)
+    )
+    candidate = article(fetch={
+        "ok": True, "url": "https://www.tagesschau.de/inland/energie-100.html",
+        "text": body,
+    })
+    summary = article_short_summary(candidate)
+    assert "Cookie" not in summary
+    assert "Bundestag diskutiert" in summary
+    assert summary in body
+
+
+def test_missing_relevant_summary_never_fabricates_news_facts():
+    from agent.news_intelligence import article_short_summary
+    candidate = article()
+    assert article_short_summary(candidate) == ""
+    digest = grounded_news_digest("News von heute", [candidate], now=NOW)
+    assert len(digest["items"]) == 1
+    assert digest["items"][0]["summary"] == ""
+    assert "Kein verlässlicher Kurztext" in digest["answer"]
