@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / 'scripts/apply-runtime-patches.py'
 SETUP = ROOT / 'scripts/setup-ltx-video-mlx'
 PATCH_PIN = '1724ca673d59f023a8a95efee06e5d36d61c2765'
-SETUP_PIN = '90f76c20864ea612071afbb4e714ceea99e38e34'
+SETUP_PIN = 'ae3b7ea9583db775bd4a1dfb506fb789585021e7'
 PIN = PATCH_PIN
 
 
@@ -75,9 +75,9 @@ class RuntimePatchTests(unittest.TestCase):
                 offset += 1
         return files
 
-    def test_setup_pins_ltx_0160_without_local_patch(self):
+    def test_setup_pins_ltx_0163_without_local_patch(self):
         source = SETUP.read_text()
-        self.assertIn('UPSTREAM_VERSION="0.16.0"', source)
+        self.assertIn('UPSTREAM_VERSION="0.16.3"', source)
         self.assertIn(f'UPSTREAM_COMMIT="{SETUP_PIN}"', source)
         self.assertNotIn('${MODEL_VARIANT^^}', source)
         self.assertIn('MODEL_VARIANT_LABEL=', source)

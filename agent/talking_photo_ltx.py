@@ -208,6 +208,7 @@ def generate(
     update=None,
     debug_dir: Path | None = None,
     lead_in_ms: int = 0,
+    distilled: bool = False,
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
     health = provider_health()
@@ -261,6 +262,7 @@ def generate(
     command = [
         str(RUNTIME_PYTHON), str(RUNNER),
         "--model", str(MODEL_DIR),
+        "--mode", "distilled" if distilled else "classic",
         "--image", str(source_image),
         "--audio", str(padded_audio),
         "--output", str(output),
@@ -271,14 +273,15 @@ def generate(
         "--frames", str(frames),
         "--fps", str(FPS),
         "--seed", str(seed),
-        "--stage1-steps", "15",
+        "--stage1-steps", "8" if distilled else "15",
         "--stage2-steps", "3",
-        "--cfg-scale", "3.0",
-        "--stg-scale", "1.0",
         "--diagnostics", str(runner_diagnostics.resolve()),
     ]
+    if not distilled:
+        command.extend(["--cfg-scale", "3.0", "--stg-scale", "1.0"])
     details = {
         "provider": "ltx-2.5-mlx-a2v", "seed": seed,
+        "a2v_mode": "distilled" if distilled else "classic",
         "seed_source": "environment" if "LTX_TALKING_PHOTO_SEED" in os.environ else "job_id",
         "prompt": TALKING_PROMPT, "negative_prompt": NEGATIVE_PROMPT,
         "frames": frames, "fps": FPS, "duration": clip_seconds,
@@ -290,7 +293,9 @@ def generate(
         "conditioning_audio_sha256": hashlib.sha256(padded_audio.read_bytes()).hexdigest(),
         "image_sha256": hashlib.sha256(image).hexdigest(),
         "width": target_width, "height": target_height,
-        "stage_1_steps": 15, "stage_2_steps": 3, "cfg_scale": 3.0, "stg_scale": 1.0,
+        "stage_1_steps": 8 if distilled else 15, "stage_2_steps": 3,
+        "cfg_scale": None if distilled else 3.0,
+        "stg_scale": None if distilled else 1.0,
         "low_ram": True, "low_memory": True, "command": command,
         "audio_path": str(padded_audio),
         "debug_dir": str(debug_dir.resolve()) if debug_dir is not None else None,

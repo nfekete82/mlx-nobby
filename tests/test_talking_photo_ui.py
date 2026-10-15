@@ -26,6 +26,7 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "talkingPhotoEngine" in source
     assert "Hybrid · LTX + MuseTalk" in source
     assert "Standard · LTX direkt" in source
+    assert "Beta · LTX Distilled (8+3)" in source
     assert "Fast · MuseTalk" in source
     assert "engine," in source
     assert "engineSelect.value = 'ltx'" in source

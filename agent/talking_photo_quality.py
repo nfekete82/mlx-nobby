@@ -150,7 +150,8 @@ def _persist_audio_diagnostics(
 
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
     ltx_only = bool(request_payload.pop("_ltx_only", False))
-    engine = "ltx" if ltx_only else "quality"
+    distilled = bool(request_payload.pop("_distilled", False))
+    engine = "ltx-distilled" if distilled else ("ltx" if ltx_only else "quality")
     work = talking_photo.ROOT / "work" / job_id
     output = talking_photo.OUTPUT / f"{job_id}.mp4"
     work.mkdir(parents=True, exist_ok=True)
@@ -229,6 +230,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     update=lambda **changes: talking_photo._update_job(job_id, **changes),
                     apply_lipsync=not ltx_only,
                     lead_in_ms=request_payload.get("lead_in_ms", 0),
+                    distilled=distilled,
                 )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
@@ -251,6 +253,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "provider": "ltx-2.5-mlx-a2v",
                     "lipsync_provider": None if ltx_only else "musetalk-mac",
                     "engine": engine,
+                    "a2v_mode": "distilled" if distilled else "classic",
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
@@ -285,7 +288,9 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
         shutil.rmtree(work, ignore_errors=True)
 
 
-def create_job(payload: dict, *, ltx_only: bool = False) -> dict:
+def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False) -> dict:
+    if distilled and not ltx_only:
+        raise ValueError("Distilled ist derzeit nur mit LTX direkt verfügbar")
     health = direct_provider_health() if ltx_only else provider_health()
     if not health["ready"]:
         raise HTTPException(
@@ -305,7 +310,8 @@ def create_job(payload: dict, *, ltx_only: bool = False) -> dict:
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
-        "engine": "ltx" if ltx_only else "quality",
+        "engine": "ltx-distilled" if distilled else ("ltx" if ltx_only else "quality"),
+        "a2v_mode": "distilled" if distilled else "classic",
         "lead_in_ms": payload.get("lead_in_ms", 0),
         "text_characters": len(payload["text"]),
         "provider": "ltx-2.5-mlx-a2v",
@@ -320,6 +326,7 @@ def create_job(payload: dict, *, ltx_only: bool = False) -> dict:
         talking_photo._write_job(job)
     request_payload = dict(payload)
     request_payload["_ltx_only"] = ltx_only
+    request_payload["_distilled"] = distilled
     thread = threading.Thread(
         target=_run_quality_job,
         args=(job_id, image, extension, request_payload),

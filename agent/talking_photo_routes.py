@@ -24,7 +24,7 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "none"
-    engine: Literal["fast", "quality", "ltx"] = "ltx"
+    engine: Literal["fast", "quality", "ltx", "ltx-distilled"] = "ltx"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
 
 
@@ -42,10 +42,12 @@ def provider_status() -> dict:
         "default_engine": "ltx",
         "quality_available": bool(quality.get("ready")),
         "ltx_available": bool(ltx.get("ready")),
+        "ltx_distilled_available": bool(ltx.get("ready")),
         "providers": {
             "fast": fast,
             "quality": quality,
             "ltx": ltx,
+            "ltx-distilled": ltx,
         },
     }
 
@@ -74,6 +76,8 @@ def install_routes(app):
                 return talking_photo_quality.create_job(payload)
             if engine == "ltx":
                 return talking_photo_quality.create_job(payload, ltx_only=True)
+            if engine == "ltx-distilled":
+                return talking_photo_quality.create_job(payload, ltx_only=True, distilled=True)
             return talking_photo.create_job(payload)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:

@@ -370,6 +370,7 @@
         engineSelect.id = 'talkingPhotoEngine';
         [
             ['ltx', localText('Standard · LTX direkt', 'Default · Direct LTX')],
+            ['ltx-distilled', localText('Beta · LTX Distilled (8+3)', 'Beta · LTX Distilled (8+3)')],
             ['quality', localText('Hybrid · LTX + MuseTalk', 'Hybrid · LTX + MuseTalk')],
             ['fast', localText('Fast · MuseTalk', 'Fast · MuseTalk')],
         ].forEach(([value, label]) => {
@@ -384,8 +385,8 @@
             'div',
             'mlx-talking-photo-hint',
             localText(
-                'LTX direkt ist der Standard und erhält den natürlich generierten Mund. Hybrid ergänzt bei Bedarf einen MuseTalk-Lippenpass.',
-                'Direct LTX is the default and keeps the naturally generated mouth. Hybrid adds a MuseTalk lip pass when needed.',
+                'LTX direkt bleibt Standard. Distilled (Beta) rendert mit 8+3 Schritten ohne CFG; Hybrid ergänzt bei Bedarf einen MuseTalk-Lippenpass.',
+                'Direct LTX remains the default. Distilled (beta) uses 8+3 steps without CFG; Hybrid optionally adds a MuseTalk lip pass.',
             ),
         ));
         right.append(engineLabel);
@@ -680,6 +681,7 @@
             const labels = {
                 quality: 'Hybrid · LTX + MuseTalk',
                 ltx: 'Standard · LTX direkt',
+                'ltx-distilled': 'Beta · LTX Distilled (8+3)',
                 fast: 'MuseTalk',
             };
             const label = labels[engine] || engine;

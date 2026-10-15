@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pin the native LTX MLX runtime to upstream 0.16.3 (commit-bound, no local patch) and offer an opt-in `ltx-distilled` Talking Photo engine (8+3 steps, no CFG) alongside the unchanged default direct/Hybrid/MuseTalk modes. Keep original audio/lead-in, frame grid, safety lease and cancellation; record selected mode in render diagnostics, add request/UI and runtime-pin regressions. Requires real Apple Silicon A/B validation before promoting beta.
+
 ## v1.13.0
 
 - Integrate Open-Meteo forecasts into the normal chat web-search action with compact source citations, clear city/postcode clarifications and local-context weather follow-ups.

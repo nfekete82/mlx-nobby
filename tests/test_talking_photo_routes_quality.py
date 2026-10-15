@@ -32,6 +32,11 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
             engine="ltx",
         )
         self.assertEqual(direct.engine, "ltx")
+        beta = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo", engine="ltx-distilled",
+        )
+        self.assertEqual(beta.engine, "ltx-distilled")
 
     def test_audio_lead_in_is_opt_in_and_strictly_validated(self):
         base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Guten Morgen!"}
@@ -92,6 +97,8 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
         self.assertTrue(status["ltx_available"])
         self.assertEqual(status["providers"]["quality"]["provider"], "ltx-2.5-mlx-a2v")
         self.assertEqual(status["providers"]["ltx"]["provider"], "ltx-2.5-mlx-a2v")
+        self.assertEqual(status["providers"]["ltx-distilled"]["provider"], "ltx-2.5-mlx-a2v")
+        self.assertTrue(status["ltx_distilled_available"])
 
 
 if __name__ == "__main__":

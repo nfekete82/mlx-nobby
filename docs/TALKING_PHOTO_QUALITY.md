@@ -4,7 +4,7 @@
 
 `Text → Speech-Service → TTS-MP3 → ffmpeg PCM-WAV (16 kHz, Mono, 16 Bit) → End-Padding → LTX-2.5 MLX A2V → MuseTalk Lippenkorrektur → MP4`
 
-Standard ist jetzt `LTX direkt`: LTX Q4 mit Runtime 0.16.0 erzeugt Bewegung und Mund gemeinsam aus demselben audio-conditionierten Lauf; kein nachträglicher Lippenrenderer verändert den Mundbereich. Der bisherige Quality-Pfad bleibt als optionaler `Hybrid · LTX + MuseTalk` erhalten. Dabei erhält MuseTalk das native LTX-Video und bytegleich dasselbe gepaddete Conditioning-WAV. Fast bleibt reines MuseTalk.
+Standard ist jetzt `LTX direkt`: LTX Q4 mit Runtime 0.16.3 erzeugt Bewegung und Mund gemeinsam aus demselben audio-conditionierten Lauf; kein nachträglicher Lippenrenderer verändert den Mundbereich. Der bisherige Quality-Pfad bleibt als optionaler `Hybrid · LTX + MuseTalk` erhalten. Dabei erhält MuseTalk das native LTX-Video und bytegleich dasselbe gepaddete Conditioning-WAV. Fast bleibt reines MuseTalk. Die zusätzliche `Beta · LTX Distilled (8+3)` ist explizit auswählbar, Standard und Hybrid bleiben beim klassischen A2V.
 
 Standardstimme: Der Request enthält `input` und `language`. ISO-Codes werden ausschließlich im Quality-Pfad auf die von Qwen erwarteten Sprachnamen übersetzt (`de` → `german`, `en` → `english` usw.). Das setzt den richtigen Sprach-Token, ohne Tempo oder Audiosamples zu manipulieren. Wie im ursprünglichen Pfad wird kein `voice`-Override gesetzt. Custom-Voices ergänzen ausschließlich `voice`. Bei `speed=1.0` wird kein Speed-Parameter gesendet. Es gibt keine automatische Anpassung an die Dauer einer anderen Stimme, kein zweites `atempo` und kein Entfernen der Anfangsstille. Eine ausdrücklich über die API angeforderte Geschwindigkeit wird weiterhin einmal an den Speech-Service weitergegeben. Das Talking-Photo-UI sendet `speed=1.0`.
 
@@ -180,3 +180,25 @@ Nachgewiesene Altlasten: Pervin wurde im Speech-Service mit 0.8 und anschließen
 Die erhaltenen Standard-, Julia- und Pervin-WAVs wurden durch lokale ASR als verständliche Sprache desselben Satzes bestätigt. Der einzige noch gespeicherte abgeschlossene LTX-Job zeigt einen nahezu unverändert geöffneten Mund. Die anderen erhaltenen Talking-Photo-Videos sind MuseTalk-Ausgaben, kein Beleg für einen früher guten LTX-Lauf. Das Originalreferenzbild dieses LTX-Jobs war nicht gespeichert; für die neuen Vergleiche wurde sein erster Frame als festes Testbild extrahiert. Der Vergleich zu diesem historischen Video ist daher kein exakt rekonstruierter A/B-Test.
 
 Zwei Standard-Audio-Runs mit Seed 42 waren sowohl im dekodierten Videoinhalt als auch als MP4 bytegleich. Sie zeigen sichtbare Lippen-/Kieferbewegung. Die Qualität anderer Seeds und frischer Custom-Voice-Runs ist im lokalen Abschlussbericht getrennt dokumentiert. Perfekte phonemgenaue Synchronität wird nicht allein aus Kontaktbögen oder Hashes abgeleitet.
+
+## Experiment: LTX 0.16.3 Distilled A2V (opt-in)
+
+Die vierte Engine `ltx-distilled` nutzt `A2VidDistilledPipeline` aus dem auf
+`ae3b7ea9583db775bd4a1dfb506fb789585021e7` gepinnten Upstream. Sie verwendet dieselben WAV-Samples,
+dasselbe 8n+1-Frame-Raster, Referenzbild, FPS und denselben Seed wie der
+klassische Pfad; nur der Renderer wechselt zu **8+3** Schritten ohne CFG/STG
+oder negativen Prompt. Es gibt **keinen automatischen Fallback** auf die
+klassische Pipeline, damit die Beta-Ergebnisse nachvollziehbar bleiben.
+
+Benchmark auf dem Mac: `LTX_TALKING_PHOTO_SEED=42` setzen, denselben kurzen
+Text mit demselben gespeicherten Quell-WAV und Porträt in beiden Modi rendern
+(das TTS kann sonst neu sampeln). `render.json` und `runner.json` enthalten
+Modus, Laufzeit, Eingabe-Hash und die effektiven Renderparameter. Lippenbewegung,
+Gesichtsstabilität, Unified Memory, Swap und Zeit manuell vergleichen.
+Die 20-s-Beta-Grenze bleibt bestehen, ist aber **keine** Leistungszusage.
+
+Upgrade: `./scripts/setup-ltx-video-mlx` installiert den exakten 0.16.3-Commit
+und verifiziert den dazugehörigen leeren Patch-Satz; danach
+`./scripts/mlx agent restart`. Dieses Upgrade erfordert den Mac für echte
+GPU-/Audio-Qualitätstests. Bei Fehlern bleibt der klassische Engine-Modus im UI
+anwählbar, allerdings ebenfalls mit der aktualisierten MLX-Laufzeit.
