@@ -7796,9 +7796,9 @@ def tool_web_search(request):
         # headlines, boilerplate, or duplicate stories.
         from agent.news_intelligence import readable_article
         requested = re.search(
-            r"(?i)\\b(\\d{1,2}|ein|zwei|drei|vier|fünf|sechs|sieben|acht)\\s+"
-            r"(?:(?:wichtigsten|aktuellsten|neuesten)\\s+)?"
-            r"(?:nachrichten|news|meldungen)\\b", query,
+            r"(?i)\b(\d{1,2}|ein|zwei|drei|vier|fünf|sechs|sieben|acht)\s+"
+            r"(?:(?:wichtigsten|aktuellsten|neuesten)\s+)?"
+            r"(?:nachrichten|news|meldungen)\b", query,
         )
         words = {"ein": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5,
                  "sechs": 6, "sieben": 7, "acht": 8}
