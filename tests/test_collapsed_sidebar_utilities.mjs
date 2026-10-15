@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const html=fs.readFileSync('frontend/chat.html','utf8');
 const code=fs.readFileSync('frontend/assets/chat/sidebar-rail-utilities.js','utf8');
 const css=fs.readFileSync('frontend/assets/chat.css','utf8');
+const talkingPhoto=fs.readFileSync('frontend/assets/chat/talking-photo.js','utf8');
 
 test('collapsed rail loads a single utility mirror and keeps existing shortcut controls',()=>{
  assert.match(html,/sidebar-rail-utilities\.js\?v=1-13-system-tools/);
@@ -36,4 +37,9 @@ test('System & Tools groups footer actions while preserving original buttons',()
 test('collapsed utility rail tolerates Settings anchor moving out of the rail',()=>{
  assert.match(code,/settings\?\.parentNode === rail \? settings : null/);
  assert.match(code,/rail\.insertBefore\(button, anchor\)/);
+});
+
+test('Talking Photo can mount after Systeminfo moves into the group',()=>{
+ assert.match(talkingPhoto,/runtimeInfo\?\.parentElement === host \? runtimeInfo : host\.firstChild/);
+ assert.match(talkingPhoto,/host\.insertBefore\(button, anchor\)/);
 });
