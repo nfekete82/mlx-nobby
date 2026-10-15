@@ -1160,8 +1160,30 @@ def image_runtime(
             chat_command("stop")
 
         admission = memory_snapshot() if restore_chat else after_musetalk
+        # macOS may account for recently unloaded unified-memory pages with a
+        # short delay. Only after a real model/chat release, re-sample a few
+        # times if the projected hard limit still blocks admission. Every
+        # sample must independently satisfy the unchanged 90% guard; a
+        # persistent shortage still fails closed.
+        memory_settle_attempts = 0
+        released_runtime = (
+            restore_chat
+            or bool(speech_health.get("released"))
+            or bool(musetalk_health.get("released"))
+        )
+        if released_runtime:
+            for _ in range(3):
+                if not projected_memory_hard_limit_reached(
+                    admission, image_reserve_gb
+                ):
+                    break
+                _check_cancelled(cancel_event)
+                time.sleep(1.0)
+                admission = memory_snapshot()
+                memory_settle_attempts += 1
         preflight = {
             "workload": "image",
+            "memory_settle_attempts": memory_settle_attempts,
             "memory_before": before,
             "memory_after_speech_release": after_speech,
             "memory_after_musetalk_release": after_musetalk,
