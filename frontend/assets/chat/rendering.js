@@ -2401,10 +2401,10 @@ function renderMessages(options = {}) {
                     const source = document.createElement('div');
                     source.className = 'message-web-sources';
                     const label = document.createElement('span');
-                    label.textContent = 'Quelle: Open-Meteo';
+                    label.textContent = rt('weather_source_label', 'Source: Open-Meteo');
                     const link = document.createElement('a');
                     link.href = message.weather_source.url;
-                    link.textContent = 'Vorhersage öffnen ↗';
+                    link.textContent = rt('weather_forecast_open', 'Open forecast ↗');
                     link.target = '_blank';
                     link.rel = 'noopener noreferrer';
                     source.append(label, link);
