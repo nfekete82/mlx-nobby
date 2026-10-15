@@ -22,7 +22,7 @@ def _register_completed(job_id: str, job: dict | None = None) -> dict:
             "talking_photo",
             job_id,
             path,
-            persistent=bool(job.get("saved")),
+            persistent=True,
             owner="talking-photo",
         )
         job = dict(job)

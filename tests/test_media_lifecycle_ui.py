@@ -22,11 +22,9 @@ def test_browser_cleanup_tracks_downloads_pagehide_and_talking_photo():
     assert "navigator.sendBeacon" in source
     assert "MutationObserver" in source
     assert "/api/talking-photo/jobs/${encodeURIComponent(ref.id)}/keep" in source
-    assert "/api/talking-photo/jobs/${encodeURIComponent(ref.id)}/discard" in source
-    assert "Nicht gespeicherte Ergebnisse werden beim Schließen automatisch gelöscht." in source
-    assert "discardTalkingPhoto({preserveActive: true})" in source
-    assert "if (preserveActive) return;" in source
-    assert "discardTalkingPhoto({beacon: true})" in source
+    assert "Talking-Photo-Videos erscheinen automatisch dauerhaft" in source
+    assert "/api/talking-photo/jobs/${encodeURIComponent(ref.id)}/discard" not in source
+    assert "discardTalkingPhoto" not in source
     assert "item.kind !== 'talking_photo'" in source
 
 

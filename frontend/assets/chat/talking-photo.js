@@ -259,8 +259,7 @@
     }
 
     function closeModal() {
-        // The media-lifecycle listener discards a finished, unsaved result
-        // on closing. Keep only genuinely active jobs in the background.
+        // Finished videos persist in the Library; active jobs continue in the background.
         if (lastJob && TERMINAL_STATES.has(lastJob.status)) {
             clearPolling();
             stopElapsedTicker();
