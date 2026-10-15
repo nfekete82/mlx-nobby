@@ -80,7 +80,7 @@ def test_routing_contract_covers_normal_answer_and_tools():
 
 
 def test_preflight_and_execution_share_clarification_contract():
-    client = TestClient(app.app)
+    client = TestClient(app.app, base_url="http://localhost")
     payload = {"prompt": "Wie wird das Wetter heute?", "conversation_context": []}
     route = client.post("/api/chat/actions/route", json=payload)
     action = client.post("/api/chat/actions", json=payload | {"resolved_target": "chat"})
@@ -94,7 +94,7 @@ def test_preflight_and_execution_share_clarification_contract():
 
 
 def test_preflight_and_execution_share_confirmed_weather_followup():
-    client = TestClient(app.app)
+    client = TestClient(app.app, base_url="http://localhost")
     history = pending_weather("morgen")
     with mock.patch.object(app, "_weather_search_result", return_value={
         "provider": "Open-Meteo",
@@ -129,7 +129,7 @@ def test_news_stays_with_existing_semantic_router():
 
 
 def test_next_day_api_uses_verified_city_without_running_semantic_model():
-    client = TestClient(app.app)
+    client = TestClient(app.app, base_url="http://localhost")
     history = grounded_weather()
     with mock.patch.object(app, "_weather_search_result", return_value={
         "provider": "Open-Meteo",
