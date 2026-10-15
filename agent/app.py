@@ -4154,7 +4154,7 @@ class ChatActionRequest(BaseModel):
     active_artifact_id: str | None = None
     image_options: dict | None = None
     video_options: dict | None = None
-    quality: Literal["preview", "fast", "standard", "quality"] | None = None
+    quality: Literal["preview", "fast", "standard", "quality", "ultra"] | None = None
     resolved_target: Literal[
         "chat", "image", "image_edit", "video", "shorts_generate",
     ] | None = None
