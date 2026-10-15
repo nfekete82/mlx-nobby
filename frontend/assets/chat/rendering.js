@@ -699,7 +699,7 @@ function renderToolCard(message) {
     header.className = 'tool-card-header';
 
     const toolNames = {
-        web_search: rt('web_search', 'Web search'),
+        web_search: result.data?.weather_forecast ? 'Wetter · Open-Meteo' : (result.data?.news_search ? 'Nachrichten' : rt('web_search', 'Web search')),
         model_list: rt('models', 'Models'),
         model_switch: rt('model_switch', 'Model switch'),
         model_restart: rt('mlx_restart', 'Restart MLX'),
@@ -2397,6 +2397,19 @@ function renderMessages(options = {}) {
 
                 answer.innerHTML =
                     markdownHtml(message.content);
+                if (message.weather_source?.url) {
+                    const source = document.createElement('div');
+                    source.className = 'message-web-sources';
+                    const label = document.createElement('span');
+                    label.textContent = 'Quelle: Open-Meteo';
+                    const link = document.createElement('a');
+                    link.href = message.weather_source.url;
+                    link.textContent = 'Vorhersage öffnen ↗';
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    source.append(label, link);
+                    answer.appendChild(source);
+                }
 
                 content.appendChild(answer);
                 window.MLXCharts?.enhance(answer);
