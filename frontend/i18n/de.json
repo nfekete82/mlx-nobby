@@ -125,7 +125,8 @@
     "image_variants_unavailable": "Für dieses Bild sind keine Varianten verfügbar. Bitte zuerst ein neues Bild erzeugen.",
     "image_variants_display_failed": "Der Bild-Batch wurde gestartet, aber die Anzeige konnte nicht aktualisiert werden. Lade den Chat neu, um ihn wiederherzustellen.",
     "image_variants_failed": "Die Varianten konnten nicht gestartet werden. Bitte erneut versuchen.",
-    "video_uncensored_unavailable": "Uncensored — nicht eingerichtet"
+    "video_uncensored_unavailable": "Uncensored — nicht eingerichtet",
+    "news_no_verified_today": "Für heute konnte ich keine verifizierten Nachrichten abrufen. Versuche es später erneut oder frage nach einem konkreten Thema."
   },
   "models": {
     "unnamed": "Unbenanntes Modell",
@@ -454,7 +455,9 @@
     "minutes": "Minuten",
     "records_suffix": " Datensätze",
     "shorts_draft_open": "Entwurf im Shorts Studio öffnen",
-    "shorts_draft_unavailable": "Entwurf nicht verfügbar"
+    "shorts_draft_unavailable": "Entwurf nicht verfügbar",
+    "weather_source_label": "Quelle: Open-Meteo",
+    "weather_forecast_open": "Vorhersage öffnen ↗"
   },
   "runtime_ui": {
     "error": "Fehler:",
