@@ -199,6 +199,80 @@ def test_reliable_stream_passes_through_fast_response(monkeypatch):
     assert factory.calls == 1
 
 
+def test_slow_healthy_first_token_within_budget_is_not_restarted(monkeypatch):
+    # Scaled-down regression for a 27B cold/prefill TTFT near the old limit.
+    monkeypatch.setattr(web_routes, "FIRST_BYTE_TIMEOUT", 0.10)
+
+    async def healthy_prefill():
+        await asyncio.sleep(0.055)
+        yield b'data: {"type":"content","text":"Finished prefill"}\\n\\n'
+
+    factory = _StreamFactory([healthy_prefill])
+    monkeypatch.setattr(
+        web_routes, "_request_recovery",
+        lambda *args: pytest.fail("healthy slow prefill must not restart agent"),
+    )
+    request = web_routes.ReliableChatRequest(
+        messages=[{"role": "user", "content": "Hi"}]
+    )
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        request, stream_factory=factory, agent_url="http://agent",
+    )))
+    assert b"Finished prefill" in body
+    assert b"event: error" not in body
+    assert factory.calls == 1
+
+
+@pytest.mark.parametrize("status_code,active_workload,expected", [
+    (429, None, "60-Sekunden-Sperrfrist"),
+    (409, "video", "aktive Aufgabe: video"),
+    (409, "coding", "aktive Aufgabe: coding"),
+    (409, None, "laufenden Aufgabe"),
+    (None, None, "Runtime-Status"),
+])
+def test_blocked_recovery_message_is_actionable_and_safe(
+    status_code, active_workload, expected
+):
+    data = {
+        "status_code": status_code,
+        "detail": "SECRET_TOKEN_NEVER_EXPOSE",
+        "scheduled": False,
+    }
+    snapshot = {"lease": {"active_workload": active_workload}}
+    message = web_routes._recovery_blocked_message(data, snapshot)
+    assert expected in message
+    assert "SECRET_TOKEN_NEVER_EXPOSE" not in message
+
+
+def test_recovery_blocked_returns_specific_reason_without_raw_agent_details(monkeypatch):
+    monkeypatch.setattr(web_routes, "FIRST_BYTE_TIMEOUT", 0.015)
+
+    async def stalled():
+        await asyncio.sleep(1)
+        yield b"never"
+
+    factory = _StreamFactory([stalled])
+    monkeypatch.setattr(web_routes, "_agent_diagnostics", lambda url: {
+        "status": "ok", "agent_pid": 3,
+        "lease": {"active_workload": "video"},
+        "runtime": {"online": True},
+    })
+    monkeypatch.setattr(web_routes, "_request_recovery", lambda *args: {
+        "scheduled": False, "status_code": 409,
+        "detail": "private credentials must not leak",
+    })
+    request = web_routes.ReliableChatRequest(
+        messages=[{"role": "user", "content": "Hallo"}]
+    )
+    body = asyncio.run(_collect(web_routes._reliable_stream(
+        request, stream_factory=factory, agent_url="http://agent",
+    )))
+    assert b"recovery_blocked" in body
+    assert b"video" in body
+    assert b"private credentials" not in body
+    assert factory.calls == 1
+
+
 def test_zero_byte_stall_recovers_and_retries_once(monkeypatch):
     monkeypatch.setattr(web_routes, "FIRST_BYTE_TIMEOUT", 0.01)
     monkeypatch.setattr(web_routes, "RECOVERY_READY_TIMEOUT", 0.01)
