@@ -848,26 +848,25 @@ def mlx_chat_stream(request: ChatRequest):
     trace_id = observability.ensure_trace_id(request.trace_id)
     messages = list(request.messages)
 
-    # Standalone weather requests cannot be answered without a location.
-    # Asking for a place here avoids irrelevant public-search snippets and
-    # a full ~10k-token inference for a missing required input. A follow-up
-    # conversation continues through normal routing, preserving its context.
-    from backend.weather_search import is_locationless_weather_question
-    if (len(messages) == 1
-            and isinstance(messages[0], dict)
-            and messages[0].get("role") == "user"
-            and isinstance(messages[0].get("content"), str)
-            and is_locationless_weather_question(messages[0]["content"])):
-        def ask_weather_location():
+    # For a direct, explicitly located weather question use the actual
+    # forecast API rather than an ungrounded LLM/search-snippet answer.
+    # Never infer a city from other conversation turns or private profile.
+    from backend.weather_forecast import forecast_for_question
+    weather_prompt = ""
+    if messages and isinstance(messages[-1], dict):
+        latest = messages[-1]
+        if latest.get("role") == "user" and isinstance(latest.get("content"), str):
+            weather_prompt = latest["content"]
+    forecast = forecast_for_question(weather_prompt) if weather_prompt else None
+    if forecast and (forecast["status"] != "location_required" or len(messages) == 1):
+        def stream_weather():
             yield "data: " + json.dumps({
-                "type": "content",
-                "text": "Für welchen Ort möchtest du das Wetter wissen? "
-                        "Nenne mir bitte eine Stadt oder Postleitzahl.",
+                "type": "content", "text": forecast["answer"],
             }, ensure_ascii=False) + "\n\n"
             yield "event: done\ndata: {}\n\n"
 
         return StreamingResponse(
-            ask_weather_location(),
+            stream_weather(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
