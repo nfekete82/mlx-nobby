@@ -149,7 +149,7 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
     page.route(f"**/api/talking-photo/videos/{job_id}",
                lambda route: route.fulfill(
                    status=200, content_type="video/mp4",
-                   body=b"\\x00\\x00\\x00\\x18ftypisom" + bytes(64),
+                   body=bytes((0, 0, 0, 24)) + b"ftypisom" + bytes(64),
                ))
     page.route("**/api/library/assets?limit=1000",
                lambda route: json_response(route, {
