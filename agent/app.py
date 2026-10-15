@@ -7812,6 +7812,15 @@ def tool_web_search(request):
             if len(attempted) >= 7 or readable_count >= 5:
                 break
         digest = grounded_news_digest(query, attempted, now=now)
+        if digest.get("status") == "available":
+            from agent.news_briefing import enhance_grounded_news
+            digest = enhance_grounded_news(
+                digest,
+                lambda messages, max_tokens, temperature: observed_agent_llm(
+                    "news.briefing", messages,
+                    max_tokens=max_tokens, temperature=temperature,
+                ),
+            )
         result["news_search"] = True
         result["news_digest"] = digest
         result["provider_status"] = (
