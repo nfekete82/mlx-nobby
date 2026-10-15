@@ -16,7 +16,7 @@ test('system info is in anchored sidebar not topbar',()=>{
 });
 test('Talking Photo launch uses anchored sidebar and existing modal behavior',()=>{
  assert.match(photo, /querySelector\('\.sidebar-bottom'\)/);
- assert.match(photo, /host.insertBefore\(button, runtimeInfo/);
+ assert.match(photo, /host.insertBefore\(button, anchor\)/);
  assert.match(photo,/button.addEventListener\('click', openModal\)/);
  assert.doesNotMatch(photo,/querySelector\('\.top-actions'\)/);
 });
@@ -25,4 +25,6 @@ test('Systeminfo stays immediately above Einstellungen after dynamic navigation 
  assert.match(runtime,/new MutationObserver\(alignSystemInfo\)\.observe\(sidebarBottom, \{childList:true\}\)/);
  assert.match(runtime,/runtimeInfoButton\.nextElementSibling !== settings/);
  assert.match(runtime,/sidebarBottom\.insertBefore\(runtimeInfoButton, settings\)/);
+ assert.match(runtime,/settings\.parentElement !== sidebarBottom/);
+ assert.match(runtime,/runtimeInfoButton\.parentElement !== sidebarBottom/);
 });
