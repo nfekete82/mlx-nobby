@@ -8,6 +8,11 @@ import re
 from urllib.parse import quote_plus, urlparse, parse_qs, unquote
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+from backend.weather_search import (
+    is_locationless_weather_question,
+    is_weather_query,
+    relevant_forecast_result,
+)
 
 # Conservative on purpose: local/private prompts never reach a search provider.
 PRIVATE = re.compile(
@@ -28,7 +33,14 @@ NEWS = re.compile(r"(?i)\b(?:nachrichten|news|heute passiert|schlagzeilen|meldun
 
 def needs_web_research(prompt: str) -> bool:
     text = (prompt or "").strip()
-    return bool(8 <= len(text) <= 260 and TIME_SENSITIVE.search(text) and not PRIVATE.search(text))
+    if is_locationless_weather_question(text):
+        # No location -> do not search the entire web or supply unrelated hits.
+        return False
+    return bool(
+        8 <= len(text) <= 260
+        and (TIME_SENSITIVE.search(text) or is_weather_query(text))
+        and not PRIVATE.search(text)
+    )
 
 
 class _ResultParser(HTMLParser):
@@ -74,7 +86,8 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
     opener = opener or urlopen
     now = now or datetime.now(timezone.utc)
     query = prompt.strip()
-    from agent.search_freshness import requires_today_news, filter_today_news
+    weather_question = is_weather_query(query)
+    from backend.search_freshness import requires_today_news, filter_today_news
     same_day_news = requires_today_news(query)
     # Restrict provider input to the current, bounded user question.
     sources = []
@@ -98,7 +111,8 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
             sources.extend((title, link, "") for title, link in parser.results[:5])
             # DuckDuckGo Lite can return a CAPTCHA or markup without result-link
             # anchors. Try a second, independent public search feed.
-            if not sources:
+            if not sources and not weather_question:
+                # General-news RSS is not a source of local forecasts.
                 news_url = "https://news.google.com/rss/search?q=" + quote_plus(query) + "&hl=de&gl=DE&ceid=DE:de"
                 news_root = ET.fromstring(_get(news_url, opener))
                 for item in news_root.findall("./channel/item")[:5]:
@@ -112,6 +126,14 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
             "WEBRECHERCHE NICHT VERFÜGBAR. Keine vermeintlich aktuellen Fakten erfinden. "
             f"Suche fehlgeschlagen ({type(exc).__name__}); Datenstand unbestätigt."
         )
+
+    if weather_question:
+        # DuckDuckGo Lite may return history/politics even for weather.
+        # Unknown third-party headlines and Google News RSS are not forecasts.
+        sources = [
+            (title, link, published) for title, link, published in sources
+            if relevant_forecast_result(title, link)
+        ]
 
     if same_day_news:
         verified = filter_today_news(

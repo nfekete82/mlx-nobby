@@ -847,6 +847,31 @@ def mlx_chat_stream(request: ChatRequest):
 
     trace_id = observability.ensure_trace_id(request.trace_id)
     messages = list(request.messages)
+
+    # Standalone weather requests cannot be answered without a location.
+    # Asking for a place here avoids irrelevant public-search snippets and
+    # a full ~10k-token inference for a missing required input. A follow-up
+    # conversation continues through normal routing, preserving its context.
+    from backend.weather_search import is_locationless_weather_question
+    if (len(messages) == 1
+            and isinstance(messages[0], dict)
+            and messages[0].get("role") == "user"
+            and isinstance(messages[0].get("content"), str)
+            and is_locationless_weather_question(messages[0]["content"])):
+        def ask_weather_location():
+            yield "data: " + json.dumps({
+                "type": "content",
+                "text": "Für welchen Ort möchtest du das Wetter wissen? "
+                        "Nenne mir bitte eine Stadt oder Postleitzahl.",
+            }, ensure_ascii=False) + "\n\n"
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(
+            ask_weather_location(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     supplied_context = (
         request.context_sources
         if isinstance(request.context_sources, dict)

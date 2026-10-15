@@ -3675,12 +3675,24 @@ const imageFiles =
                     toolResult.data?.results || [];
 
                 if (!results.length) {
+                    const providerStatus = toolResult.data?.provider_status;
+                    const emptyMessage = providerStatus === 'location_required'
+                        ? gt(
+                            'weather_location_required',
+                            'Which city or postal code should I check the weather for?'
+                        )
+                        : ['no_relevant_weather_sources', 'weather_provider_unavailable'].includes(providerStatus)
+                            ? gt(
+                                'weather_sources_unavailable',
+                                'I could not find a reliable weather forecast for this location.'
+                            )
+                            : gt(
+                                'web_search_no_results',
+                                'The web search returned no matching results.'
+                            );
                     session.messages.push({
                         role: 'assistant',
-                        content: gt(
-                            'web_search_no_results',
-                            'The web search returned no matching results.'
-                        ),
+                        content: emptyMessage,
                         tool_result: toolResult
                     });
 

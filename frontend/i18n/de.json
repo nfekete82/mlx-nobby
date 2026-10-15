@@ -112,6 +112,8 @@
     "selected_image_model": "dem ausgewählten Bildmodell",
     "page_read_failed": "Hinweis: Seite {page} konnte im Dokument \"{name}\" nicht gelesen werden.",
     "web_search_no_results": "Die Websuche hat keine passenden Ergebnisse gefunden.",
+    "weather_location_required": "Für welchen Ort möchtest du das Wetter wissen? Nenne mir bitte eine Stadt oder Postleitzahl.",
+    "weather_sources_unavailable": "Ich konnte für diesen Ort keine verlässliche Wettervorhersage finden.",
     "shorts_draft_created": "Short-Entwurf erstellt. Im Shorts Studio bearbeiten und mit „Short rendern“ starten.",
     "shorts_draft_failed": "Der Short-Entwurf konnte nicht erstellt werden. Bitte erneut versuchen.",
     "reference_used": "Referenzbild verwendet ✓",
