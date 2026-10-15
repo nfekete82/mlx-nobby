@@ -233,6 +233,128 @@ class RuntimeCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(requests, ["GET", "POST", "GET"])
 
+    def test_video_settles_memory_after_image_unload_before_admission(self):
+        def budget(used):
+            return {
+                "pressure": "normal", "total_gb": 48.0,
+                "used_estimate_gb": used,
+                "free_percent": round((48.0 - used) / 48.0 * 100, 2),
+                "headroom_gb": 48.0 - used - 6.0,
+            }
+
+        # Reclaim is confirmed, but macOS reports the old pages for one
+        # further sample. The final fresh sample alone permits generation.
+        snapshots = [budget(35.0), budget(27.0), budget(23.0)]
+        image_loaded = True
+        calls = []
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal image_loaded
+            calls.append((method, url))
+            if url == runtime_coordinator.IMAGE_URL + "/unload":
+                image_loaded = False
+                return {"ok": True}
+            if url == runtime_coordinator.IMAGE_URL + "/health":
+                return {"status": "ready", "loaded": image_loaded,
+                        "active_generation": False}
+            return {"status": "ready", "loaded": False,
+                    "tts_loaded": False, "tts_clone_loaded": False,
+                    "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=snapshots,
+        ) as memory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with runtime_coordinator.video_runtime(
+                threading.Event(), requester=requester,
+                chat_loaded=lambda: False,
+                chat_command=mock.Mock(),
+                lock_path=Path(directory) / "runtime.lock",
+            ) as preflight:
+                self.assertTrue(preflight["image_released"])
+                self.assertEqual(preflight["memory_settle_attempts"], 1)
+                self.assertEqual(preflight["memory_admission"], snapshots[-1])
+                self.assertFalse(preflight["hard_limit_reached"])
+                self.assertEqual(preflight["load_reserve_gb"], 20.0)
+            self.assertEqual(memory.call_count, 3)
+            sleep.assert_called_once_with(1.0)
+
+        self.assertIn(
+            ("POST", runtime_coordinator.IMAGE_URL + "/unload"), calls
+        )
+
+    def test_video_settling_still_blocks_persistently_unsafe_ram(self):
+        def budget(used):
+            return {
+                "pressure": "normal", "total_gb": 48.0,
+                "used_estimate_gb": used,
+                "free_percent": round((48.0 - used) / 48.0 * 100, 2),
+                "headroom_gb": 48.0 - used - 6.0,
+            }
+
+        snapshots = [budget(35.0)] + [budget(27.0)] * 4
+        image_loaded = True
+
+        def requester(method, url, payload=None, timeout=10):
+            nonlocal image_loaded
+            if url == runtime_coordinator.IMAGE_URL + "/unload":
+                image_loaded = False
+                return {"ok": True}
+            if url == runtime_coordinator.IMAGE_URL + "/health":
+                return {"status": "ready", "loaded": image_loaded,
+                        "active_generation": False}
+            return {"status": "ready", "loaded": False,
+                    "tts_loaded": False, "tts_clone_loaded": False,
+                    "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            side_effect=snapshots,
+        ) as memory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                with runtime_coordinator.video_runtime(
+                    threading.Event(), requester=requester,
+                    chat_loaded=lambda: False,
+                    chat_command=mock.Mock(),
+                    lock_path=Path(directory) / "runtime.lock",
+                ):
+                    self.fail("Unsafe video model must never be loaded")
+            self.assertEqual(memory.call_count, 5)
+            self.assertEqual(sleep.call_count, 3)
+
+    def test_video_does_not_retry_without_releasing_a_runtime(self):
+        budget = {
+            "pressure": "normal", "total_gb": 48.0,
+            "used_estimate_gb": 27.0,
+            "free_percent": 43.75, "headroom_gb": 15.0,
+        }
+
+        def requester(method, url, payload=None, timeout=10):
+            return {"status": "ready", "loaded": False,
+                    "tts_loaded": False, "tts_clone_loaded": False,
+                    "active_generation": False}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            runtime_coordinator, "memory_budget_snapshot",
+            return_value=budget,
+        ) as memory, mock.patch.object(
+            runtime_coordinator.time, "sleep"
+        ) as sleep:
+            with self.assertRaisesRegex(RuntimeError, "90%"):
+                with runtime_coordinator.video_runtime(
+                    threading.Event(), requester=requester,
+                    chat_loaded=lambda: False,
+                    chat_command=mock.Mock(),
+                    lock_path=Path(directory) / "runtime.lock",
+                ):
+                    self.fail("No release must not weaken hard admission")
+            self.assertEqual(memory.call_count, 1)
+            sleep.assert_not_called()
+
     def test_video_rechecks_retention_and_unloads_if_memory_worsens(self):
         healthy = {
             "pressure": "normal", "total_gb": 48.0,
