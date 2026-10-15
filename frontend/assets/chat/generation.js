@@ -3673,10 +3673,23 @@ const imageFiles =
             ) {
                 const results =
                     toolResult.data?.results || [];
+                const forecast = toolResult.data?.weather_forecast;
+                if (forecast?.status === 'available' && forecast?.answer) {
+                    session.messages.push({
+                        role: 'assistant',
+                        content: forecast.answer,
+                        tool_result: toolResult
+                    });
+                    MLXChatSessions.saveSessions();
+                    MLXChatRendering.renderAll({ contentUpdated: true });
+                    return;
+                }
 
                 if (!results.length) {
                     const providerStatus = toolResult.data?.provider_status;
-                    const emptyMessage = providerStatus === 'location_required'
+                    const emptyMessage = forecast?.answer
+                        ? forecast.answer
+                        : providerStatus === 'location_required'
                         ? gt(
                             'weather_location_required',
                             'Which city or postal code should I check the weather for?'
