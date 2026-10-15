@@ -6,7 +6,7 @@ const code=fs.readFileSync('frontend/assets/chat/sidebar-rail-utilities.js','utf
 const css=fs.readFileSync('frontend/assets/chat.css','utf8');
 
 test('collapsed rail loads a single utility mirror and keeps existing shortcut controls',()=>{
- assert.match(html,/sidebar-rail-utilities\.js\?v=1-11-0/);
+ assert.match(html,/sidebar-rail-utilities\.js\?v=1-13-system-tools/);
  for(const id of ['railNewChat','railChats','railLibrary','railJobs','railSettings']) {
    assert.match(html,new RegExp('id="'+id+'"'));
  }
@@ -22,7 +22,7 @@ test('all bottom utilities use existing SVGs, tools and accessible titles',()=>{
  assert.match(code,/target\.click\(\)/);
  assert.match(code,/setAttribute\('aria-label', label\)/);
  assert.match(code,/button\.title = label/);
- assert.match(code,/observer\.observe\(bottom, \{childList:true\}\)/);
+ assert.match(code,/observer\.observe\(bottom, \{childList:true, subtree:true\}\)/);
  assert.match(css,/\.app\.sidebar-collapsed[\s\S]*?\.sidebar-rail/);
 });
 
