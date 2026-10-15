@@ -10242,6 +10242,35 @@ body.notes-resizing * {
     margin: 16px 0 8px;
 }
 
+/* Format and image count share one row; stack on narrow screens. */
+.media-image-format-count-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: end;
+    margin: 16px 0 8px;
+}
+.media-image-format-count-row > .media-duration-field {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 8px;
+    margin: 0;
+}
+.media-image-format-count-row > .media-duration-field[hidden] {
+    display: none;
+}
+.media-image-format-count-row > .media-duration-field:only-child,
+.media-image-format-count-row > .media-duration-field:not([hidden]):has(+ .media-duration-field[hidden]) {
+    grid-column: 1 / -1;
+}
+@media (max-width: 520px) {
+    .media-image-format-count-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+}
 .media-duration-field select {
     width: 100%;
 }
