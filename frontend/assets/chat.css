@@ -10250,6 +10250,9 @@ body.notes-resizing * {
     align-items: end;
     margin: 16px 0 8px;
 }
+.media-image-format-count-row:not(:has(> .media-duration-field:not([hidden]))) {
+    display: none;
+}
 .media-image-format-count-row > .media-duration-field {
     min-width: 0;
     display: grid;
