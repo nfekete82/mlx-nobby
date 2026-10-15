@@ -121,6 +121,53 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     assert requests["create"] == 1
 
 
+def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
+    page, _agent, allowed = ui
+    allowed.append("Failed to load resource: the server responded with a status of 404")
+    job_id = "c" * 24
+    url = f"/api/talking-photo/videos/{job_id}"
+    completed = {
+        "id": job_id, "kind": "talking_photo", "status": "completed",
+        "phase": "completed", "progress": 1.0, "created_at": time.time() - 20,
+        "finished_at": time.time(), "result": {"video_url": url},
+    }
+    discards = []
+    def json_response(route, data):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(data))
+
+    page.route("**/api/talking-photo/status",
+               lambda route: json_response(route, {"providers": {"ltx-distilled": {"ready": True}}}))
+    page.route("**/api/mlx/audio/voices/manage",
+               lambda route: json_response(route, {"voices": []}))
+    page.route(f"**/api/talking-photo/jobs/{job_id}",
+               lambda route: json_response(route, completed))
+    page.route(f"**/api/talking-photo/jobs/{job_id}/discard",
+               lambda route: (discards.append(route.request.method), json_response(route, {"deleted": True})))
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: json_response(route, {
+                   "assets": [{
+                       "kind": "talking_photo", "id": job_id, "url": url,
+                       "created_at": time.time(), "size_bytes": 160,
+                       "persistent": True, "expires_at": None,
+                   }], "total": 1, "limit": 1000,
+               }))
+    page.evaluate("(id) => sessionStorage.setItem('mlxTalkingPhotoCurrentJob', id)", job_id)
+    page.reload()
+
+    open_talking_photo(page)
+    expect(page.locator("#talkingPhotoResult")).to_be_visible()
+    page.locator(".mlx-talking-photo-close").click()
+    expect(page.locator("#talkingPhotoModal")).to_be_hidden()
+    assert discards == [], "closing a completed result must never delete the MP4"
+
+    page.locator("#sidebarLibraryButton").click()
+    expect(page.locator("#nobbyLibrary")).to_be_visible()
+    page.locator('[data-library-kind="video"]').click()
+    expect(page.locator(".nobby-library-card")).to_have_count(1)
+    expect(page.locator(".nobby-library-card")).to_contain_text("Talking Photo")
+    assert discards == []
+
+
 def test_talking_photo_stale_session_recovers(ui):
     page, _agent, allowed = ui
     allowed.append("Failed to load resource: the server responded with a status of 404")
