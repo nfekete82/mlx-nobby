@@ -8,6 +8,30 @@ but the chat still answered that no trustworthy forecast could be found.
 An HTML snippet is not an actual meteorological observation/forecast;
 strict relevance filtering rightfully rejects unrelated articles.
 
+## Fix: regular chat action vs. agent search tool (October 15)
+
+The Chat page dispatches `/api/chat/actions` with the action
+`web_search`. Its implementation is `tool_web_search`, which searches
+SearXNG and fetches the top three pages.
+
+The initial weather integration intercepted only the separate
+`search_web` action (`tool_search_web`). Consequently the direct
+Open-Meteo adapter worked from Docker, but the browser still displayed
+`Ich konnte für diesen Ort keine verlässliche Wettervorhersage finden`
+with the Websuche badge. Rebuilding and restarting cannot fix an action
+dispatch mismatch.
+
+Both tool entrypoints now share one `_weather_search_result` helper. An
+explicit weather question returns the **same structured provider payload**
+through either action before any SearXNG query or webpage fetch.
+A provider error is displayed as an error, not disguised with unrelated
+search sources. Non-weather searches are unaffected.
+
+A regression test calls the exact browser route
+`POST /api/chat/actions`, asserts `tool=web_search`, and verifies the
+Open-Meteo payload. Other tests assert that neither SearXNG nor HTML
+scraping is invoked for recognized forecasts.
+
 ## New flow
 
 - For simple questions explicitly naming a location (e.g. `Wie wird das

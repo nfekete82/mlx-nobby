@@ -7542,6 +7542,28 @@ def searxng_search_results(query, limit=8):
     }
 
 
+def _weather_search_result(query):
+    """Share the forecast dispatch between both public search actions.
+
+    Chat uses `web_search` (tool_web_search); autonomous agents use
+    `search_web` (tool_search_web). Never let the public-chat route fall
+    through to SearXNG after an authoritative weather response.
+    """
+    from backend.weather_forecast import forecast_for_question
+
+    forecast = forecast_for_question(query)
+    if forecast is None:
+        return None
+    return {
+        "query": query,
+        "provider": "Open-Meteo",
+        "provider_status": forecast["status"],
+        "weather_forecast": forecast,
+        "count": 0,
+        "results": [],
+    }
+
+
 def tool_search_web(request):
     """
     Granular agent tool:
@@ -7551,19 +7573,9 @@ def tool_search_web(request):
         request.prompt
     )
 
-    from backend.weather_forecast import forecast_for_question
-    forecast = forecast_for_question(query)
-    if forecast is not None:
-        # Structured weather data bypass search snippets and model inference.
-        # Never cache the forecast through the search observation decorator.
-        return {
-            "query": query,
-            "provider": "Open-Meteo",
-            "provider_status": forecast["status"],
-            "weather_forecast": forecast,
-            "count": 0,
-            "results": [],
-        }
+    weather = _weather_search_result(query)
+    if weather is not None:
+        return weather
 
     result = searxng_search_results(
         query,
@@ -7740,6 +7752,13 @@ def tool_web_search(request):
     query = web_search_query_from_prompt(
         request.prompt
     )
+
+    # The regular chat UI dispatches the `web_search` action. Keep it
+    # consistent with the `search_web` agent tool: weather data takes
+    # precedence over snippets and must not enter the HTML-fetch loop.
+    weather = _weather_search_result(query)
+    if weather is not None:
+        return weather
 
     result = searxng_search_results(
         query,

@@ -167,3 +167,98 @@ def test_postcode_uses_geocoder_postcode_even_when_result_has_city_name():
     assert result["status"] == "available"
     assert "Göppingen" in result["answer"]
     assert parse_qs(urlparse(urls[0]).query)["name"] == ["73033"]
+
+
+
+def test_regular_chat_web_search_action_prefers_forecast_over_searxng():
+    """Regression: UI action 'web_search' is NOT the agent 'search_web' tool."""
+    from agent.app import tool_web_search
+    from types import SimpleNamespace
+
+    forecast = {
+        "status": "available",
+        "answer": "Wetter für Göppingen heute: 12 °C. Quelle: Open-Meteo",
+    }
+    with patch("backend.weather_forecast.forecast_for_question",
+               return_value=forecast) as meteo, \
+         patch("agent.app.searxng_search_results",
+               side_effect=AssertionError("Must not use SearXNG")), \
+         patch("agent.app.fetch_web_page",
+               side_effect=AssertionError("Must not scrape websites")):
+        result = tool_web_search(SimpleNamespace(
+            prompt="Wie wird das Wetter heute in Göppingen?"
+        ))
+
+    meteo.assert_called_once_with("Wie wird das Wetter heute in Göppingen?")
+    assert result["provider"] == "Open-Meteo"
+    assert result["provider_status"] == "available"
+    assert result["weather_forecast"] == forecast
+    assert result["count"] == 0
+    assert result["results"] == []
+
+
+def test_real_chat_actions_endpoint_returns_weather_forecast_payload():
+    """Follow the exact endpoint used by the browser, not only agent tools."""
+    from fastapi.testclient import TestClient
+    from agent import app as agent_app
+
+    forecast = {
+        "status": "available",
+        "answer": "Open-Meteo: Heute in Göppingen 12 °C",
+    }
+    with patch("backend.weather_forecast.forecast_for_question",
+               return_value=forecast), \
+         patch("agent.app.searxng_search_results",
+               side_effect=AssertionError("Must not use SearXNG")), \
+         patch("agent.app.fetch_web_page",
+               side_effect=AssertionError("Must not scrape websites")):
+        response = TestClient(agent_app.app, base_url="http://localhost").post(
+            "/api/chat/actions",
+            json={
+                "prompt": "Wie wird das Wetter heute in Göppingen?",
+                "conversation_context": [],
+            },
+        )
+
+    assert response.status_code == 200
+    value = response.json()
+    assert value["type"] == "tool_result"
+    assert value["tool"] == "web_search"
+    assert value["status"] == "completed"
+    assert value["data"]["provider"] == "Open-Meteo"
+    assert value["data"]["weather_forecast"] == forecast
+
+
+def test_regular_chat_weather_failure_still_never_falls_through_to_rss():
+    from agent.app import tool_web_search
+    from types import SimpleNamespace
+
+    for forecast in (
+        {"status": "unavailable", "answer": "Provider momentan nicht erreichbar"},
+        {"status": "location_required", "answer": "Bitte nenne einen Ort"},
+    ):
+        with patch("backend.weather_forecast.forecast_for_question",
+                   return_value=forecast), \
+             patch("agent.app.searxng_search_results",
+                   side_effect=AssertionError("No generic fallback")), \
+             patch("agent.app.fetch_web_page",
+                   side_effect=AssertionError("No page scraping")):
+            value = tool_web_search(SimpleNamespace(prompt="Wetter Göppingen"))
+        assert value["weather_forecast"] == forecast
+        assert value["results"] == []
+
+
+def test_non_weather_chat_search_remains_unchanged():
+    from agent.app import tool_web_search
+    from types import SimpleNamespace
+    with patch("backend.weather_forecast.forecast_for_question",
+               return_value=None), \
+         patch("agent.app.searxng_search_results",
+               return_value={
+                   "results": [], "count": 0, "provider": "SearXNG"
+               }) as searx:
+        value = tool_web_search(SimpleNamespace(
+            prompt="Was ist das neue iPhone?"
+        ))
+    searx.assert_called_once()
+    assert value["provider"] == "SearXNG"
