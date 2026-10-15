@@ -3677,7 +3677,10 @@ const imageFiles =
                 if (forecast?.status === 'available' && forecast?.answer) {
                     session.messages.push({
                         role: 'assistant',
-                        content: forecast.answer,
+                        content: String(forecast.answer).replace(/\\n?Quelle:\\s*Open-Meteo[^\\n]*?(?:https?:\\/\\/\\S+)?\\s*$/i, '').trim(),
+                        weather_source: {
+                            url: String(forecast.source_url || toolResult.data?.source_url || (String(forecast.answer).match(/https?:\\/\\/[^\\s)]+/) || [])[0] || '')
+                        },
                         tool_result: toolResult
                     });
                     MLXChatSessions.saveSessions();
@@ -3699,10 +3702,12 @@ const imageFiles =
                                 'weather_sources_unavailable',
                                 'I could not find a reliable weather forecast for this location.'
                             )
-                            : gt(
-                                'web_search_no_results',
-                                'The web search returned no matching results.'
-                            );
+                            : /\\b(news|nachrichten|schlagzeilen|neuigkeiten)\\b/i.test(prompt)
+                                ? 'Für heute konnte ich keine verifizierten Nachrichten abrufen. Bitte versuche es später erneut oder frage nach einem bestimmten Thema. Ich möchte keine unbestätigten Meldungen als aktuelle Nachrichten ausgeben.'
+                                : gt(
+                                    'web_search_no_results',
+                                    'The web search returned no matching results.'
+                                );
                     session.messages.push({
                         role: 'assistant',
                         content: emptyMessage,
