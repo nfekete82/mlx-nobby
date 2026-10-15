@@ -1029,9 +1029,30 @@ def video_runtime(
             )
 
         admission = memory_budget_snapshot() if restore_chat else after_musetalk
+        # Reclaiming image/speech/MuseTalk/chat weights can take a moment to
+        # appear in macOS unified-memory estimates. Retry only after actual
+        # release, and never relax the projected 90% admission ceiling.
+        memory_settle_attempts = 0
+        released_runtime = (
+            bool(image_health.get("released"))
+            or bool(speech_health.get("released"))
+            or bool(musetalk_health.get("released"))
+            or restore_chat
+        )
+        if released_runtime:
+            for _ in range(3):
+                if not projected_memory_hard_limit_reached(
+                    admission, video_reserve_gb
+                ):
+                    break
+                _check_cancelled(cancel_event)
+                time.sleep(1.0)
+                admission = memory_budget_snapshot()
+                memory_settle_attempts += 1
         timings_ms["total"] = round((time.monotonic() - lease_started) * 1000, 2)
         preflight = {
             "workload": "video",
+            "memory_settle_attempts": memory_settle_attempts,
             "handoff_timings_ms": timings_ms,
             "memory_before": before,
             "memory_after_speech_release": after_speech,
