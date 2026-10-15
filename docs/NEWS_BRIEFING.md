@@ -40,3 +40,19 @@ node --check frontend/assets/chat/rendering.js
 
 Es werden keine Artikel in ein externes Modell übertragen. Die Kurztexte
 gehen ausschließlich an die bereits konfigurierte lokale Modellpipeline.
+
+## Qualitätsauswahl (Ausbaustufe)
+
+- Der Abruf betrachtet bis zu zehn direkte Originalartikel (bis zu zwölf
+  bei mehr als fünf angefragten Meldungen) und stoppt sobald die gewünschte
+  Zahl **verschiedener Nachrichten mit brauchbaren Quellenauszügen** erreicht ist.
+  Eine nur lesbare Überschrift ohne passenden Kurztext zählt nicht.
+- Die angeforderte Anzahl („fünf“, „5“ usw.) wird auf höchstens acht begrenzt.
+  Falls nicht genug geprüfte Meldungen vorliegen, werden weniger angezeigt
+  und die tatsächliche Zahl kenntlich gemacht.
+- Das Frontend verwendet den strukturierten `news_digest.items`-Datensatz:
+  Titel/Link, dezente Quelle+Uhrzeit und darunter die Kurzfassung.
+  Texte und Links werden ausschließlich mit DOM-Textknoten beziehungsweise
+  validierten HTTPS-URLs ausgegeben; keine ungereinigten HTML-Fragmente.
+- Die ursprüngliche Artikelprüfung, Datumsverifikation, Duplikatprüfung und
+  konservative Qwen-Umformulierung bleiben unverändert vorgeschaltet.
