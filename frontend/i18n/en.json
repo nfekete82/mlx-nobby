@@ -125,7 +125,8 @@
     "image_variants_unavailable": "Variants are unavailable for this image. Generate a new image first.",
     "image_variants_display_failed": "The image batch has started, but its display could not be updated. Reload the chat to recover it.",
     "image_variants_failed": "The variants could not be started. Please try again.",
-    "video_uncensored_unavailable": "Uncensored — not configured"
+    "video_uncensored_unavailable": "Uncensored — not configured",
+    "news_no_verified_today": "No verified news could be retrieved for today. Try again later or ask about a specific topic."
   },
   "models": {
     "unnamed": "Unnamed model",
@@ -454,7 +455,9 @@
     "minutes": "minutes",
     "records_suffix": " records",
     "shorts_draft_open": "Open draft in Shorts Studio",
-    "shorts_draft_unavailable": "Draft unavailable"
+    "shorts_draft_unavailable": "Draft unavailable",
+    "weather_source_label": "Source: Open-Meteo",
+    "weather_forecast_open": "Open forecast ↗"
   },
   "runtime_ui": {
     "error": "Error:",
