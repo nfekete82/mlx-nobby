@@ -111,6 +111,14 @@ def image_profile_key(model):
 
 def resolve_image_profile(model, quality):
     profiles = IMAGE_PROFILES.get(image_profile_key(model))
+    if quality == "ultra":
+        # Native generation; reuse model-specific Quality guidance and steps.
+        base = dict(profiles["quality"]) if profiles and "quality" in profiles else {
+            "steps": int(model["default_steps"]),
+            "guidance": float(model["default_guidance"]),
+        }
+        base["long_edge"] = 1536
+        return base
     if profiles and quality in profiles:
         return dict(profiles[quality])
     return {

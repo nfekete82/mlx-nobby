@@ -3102,8 +3102,8 @@ const imageFiles =
                                 button.dataset.mediaQuality === 'preview';
 
                             button.hidden =
-                                isPreview &&
-                                !previewAvailable;
+                                (isPreview && !previewAvailable) ||
+                                (button.dataset.mediaQuality === 'ultra' && mediaQualityKind !== 'image');
 
                             const active =
                                 !button.hidden &&
