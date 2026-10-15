@@ -74,7 +74,7 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
     opener = opener or urlopen
     now = now or datetime.now(timezone.utc)
     query = prompt.strip()
-    from agent.search_freshness import requires_today_news, filter_today_news
+    from backend.search_freshness import requires_today_news, filter_today_news
     same_day_news = requires_today_news(query)
     # Restrict provider input to the current, bounded user question.
     sources = []
