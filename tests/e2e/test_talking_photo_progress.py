@@ -143,6 +143,14 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
                lambda route: json_response(route, completed))
     page.route(f"**/api/talking-photo/jobs/{job_id}/discard",
                lambda route: (discards.append(route.request.method), json_response(route, {"deleted": True})))
+    # Both the modal and the gallery load video metadata. The fixture Agent
+    # intentionally returns HTTP 501 for unhandled URLs, so serve an MP4
+    # fixture instead of falsely failing the browser console-error guard.
+    page.route(f"**/api/talking-photo/videos/{job_id}",
+               lambda route: route.fulfill(
+                   status=200, content_type="video/mp4",
+                   body=b"\\x00\\x00\\x00\\x18ftypisom" + bytes(64),
+               ))
     page.route("**/api/library/assets?limit=1000",
                lambda route: json_response(route, {
                    "assets": [{
