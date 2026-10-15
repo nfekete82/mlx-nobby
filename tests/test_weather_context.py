@@ -42,7 +42,7 @@ def test_chat_actions_weather_followup_dispatches_directly():
         "weather_forecast": {"status": "available", "answer": "Test"},
         "results": [], "provider": "Open-Meteo",
     }) as weather:
-        response = TestClient(app.app).post("/api/chat/actions", json={
+        response = TestClient(app.app, base_url="http://localhost").post("/api/chat/actions", json={
             "prompt": "Göppingen", "conversation_context": history,
         })
     assert response.status_code == 200
