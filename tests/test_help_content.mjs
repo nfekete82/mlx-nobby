@@ -14,7 +14,7 @@ function topics(locale) {
     return window.testTopics();
 }
 
-const required = ['getting-started', 'images', 'video', 'shorts', 'voice', 'agent',
+const required = ['getting-started', 'weather-news', 'images', 'video', 'shorts', 'voice', 'agent',
     'knowledge', 'finance', 'models', 'memory', 'automations', 'diagnostics', 'api-integrations',
     'troubleshooting'];
 
@@ -96,4 +96,16 @@ test('finance help explains verified sources, confidence, markets and tracking i
     const de = topics('de').find(t => t.id === 'finance');
     for (const prompt of ['Wie steht AMD gerade?', 'Analysiere AMD fundamental und technisch.',
         'Vergleiche AMD und NVIDIA.', 'Welche Risiken siehst du bei AMD?']) assert.ok(de.examples.includes(prompt));
+});
+
+test('weather and news help covers location clarification, verified news, and limitation in both languages', () => {
+    for (const locale of ['de', 'en']) {
+        const copy = JSON.stringify(topics(locale).find(topic => topic.id === 'weather-news'));
+        assert.match(copy, /Open-Meteo/);
+        assert.match(copy, /Qwen/);
+        assert.match(copy, /NEWS_BRIEFING\.md/);
+        assert.match(copy, /CHAT_DECISION_ENGINE\.md/);
+        assert.match(copy, locale === 'de' ? /Postleitzahl/ : /postcode/);
+        assert.match(copy, locale === 'de' ? /keine unabhängige Faktenprüfung/ : /not independent fact-checking/);
+    }
 });
