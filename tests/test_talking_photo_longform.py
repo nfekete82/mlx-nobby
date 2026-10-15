@@ -119,6 +119,113 @@ class TalkingPhotoLongformTests(unittest.TestCase):
                 self.assertEqual(render.call_count, 1)
                 assemble.assert_not_called()
 
+
+    def test_next_segment_conditions_on_previous_visible_frame(self):
+        from agent import talking_photo_continuity
+        import os
+        audio = wav_bytes((3000).to_bytes(2, "little", signed=True) * (30 * 16000))
+        images = []
+        continuation_png = talking_photo_continuity.PNG_HEADER + bytes(200)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def fake_generate(job, image, suffix, segment_wav, duration, work, **kwargs):
+                images.append((image, suffix))
+                return bytes(4) + b"ftyp" + bytes(40), {
+                    "seed": 42, "elapsed_seconds": 0.1, "a2v_mode": "distilled",
+                }
+            def fake_assemble(original, segments, parts, work, **kwargs):
+                return bytes(4) + b"ftyp" + bytes(40), {
+                    "audio_seconds": 30.0,
+                    "source_audio_sha256": "test",
+                    "segments": len(segments),
+                }
+            with mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_LONGFORM_CONTINUITY": "1"}), \
+                 mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate), \
+                 mock.patch.object(talking_photo_continuity, "extract_tail_frame",
+                                   return_value=continuation_png) as extract, \
+                 mock.patch.object(talking_photo_longform, "assemble",
+                                   side_effect=fake_assemble):
+                _video, details = talking_photo_quality._generate_longform(
+                    "c" * 24, b"original portrait", ".jpg", audio, root,
+                    debug_dir=None, cancelled=lambda: False, update=lambda **_: None,
+                    apply_lipsync=False, distilled=True,
+                )
+            self.assertGreaterEqual(len(images), 2)
+            self.assertEqual(images[0], (b"original portrait", ".jpg"))
+            self.assertTrue(all(pair == (continuation_png, ".png") for pair in images[1:]))
+            self.assertEqual(extract.call_count, len(images) - 1)
+            self.assertEqual(details["continuity"]["applied"], len(images) - 1)
+            self.assertEqual(details["continuity"]["fallbacks"], 0)
+            self.assertEqual(details["chunks"][1]["reference"]["source"], "previous-content-frame")
+
+    def test_failed_continuation_extraction_preserves_original_fallback(self):
+        from agent import talking_photo_continuity
+        import os
+        audio = wav_bytes((2500).to_bytes(2, "little", signed=True) * (29 * 16000))
+        images = []
+        with tempfile.TemporaryDirectory() as directory:
+            def fake_generate(job, image, suffix, *args, **kwargs):
+                images.append((image, suffix))
+                return bytes(4) + b"ftyp" + bytes(40), {"a2v_mode": "distilled"}
+            with mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_LONGFORM_CONTINUITY": "1"}), \
+                 mock.patch.object(talking_photo_quality, "generate", side_effect=fake_generate), \
+                 mock.patch.object(talking_photo_continuity, "extract_tail_frame",
+                                   side_effect=RuntimeError("ffmpeg decoding error")), \
+                 mock.patch.object(talking_photo_longform, "assemble", return_value=(
+                     b"video", {"audio_seconds": 29.0, "source_audio_sha256": "test"}
+                 )):
+                _, details = talking_photo_quality._generate_longform(
+                    "d" * 24, b"source", ".png", audio, Path(directory),
+                    debug_dir=None, cancelled=lambda: False, update=lambda **_: None,
+                    apply_lipsync=False, distilled=True,
+                )
+            self.assertTrue(all(pair == (b"source", ".png") for pair in images))
+            self.assertEqual(details["continuity"]["applied"], 0)
+            self.assertEqual(details["continuity"]["fallbacks"], len(images) - 1)
+
+    def test_continuity_is_disableable_without_touching_standard_pipeline(self):
+        from agent import talking_photo_continuity
+        import os
+        with mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_LONGFORM_CONTINUITY": "0"}):
+            self.assertFalse(talking_photo_continuity.enabled())
+        with mock.patch.dict(os.environ, {"LTX_TALKING_PHOTO_LONGFORM_CONTINUITY": "1"}):
+            self.assertTrue(talking_photo_continuity.enabled())
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
+    def test_continuation_frame_extracts_exact_content_end_not_padding(self):
+        from agent import talking_photo_continuity
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "two-colors.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "color=c=red:s=64x64:r=24:d=1",
+                "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=24:d=0.333333",
+                "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[vid]",
+                "-map", "[vid]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(video),
+            ], check=True, capture_output=True)
+            data = talking_photo_continuity.extract_tail_frame(
+                video, 24, root / "last-visible.png", cancelled=lambda: False,
+            )
+            with Image.open(io.BytesIO(data)) as frame:
+                r, g, b = frame.convert("RGB").getpixel((32, 32))
+            self.assertGreater(r, 160)
+            self.assertLess(b, 90)
+            self.assertLess(g, 90)
+
+    def test_continuation_honors_cancellation(self):
+        from agent import talking_photo_continuity
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / "source.mp4"
+            video.write_bytes(b"fake video")
+            with self.assertRaises(talking_photo_ltx.QualityCancelled):
+                talking_photo_continuity.extract_tail_frame(
+                    video, 24, root / "reference.png", cancelled=lambda: True,
+                )
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "requires ffmpeg/ffprobe")
     def test_stitch_has_expected_frames_and_single_full_audio_track(self):
         samples = (4200).to_bytes(2, "little", signed=True) * 32000
