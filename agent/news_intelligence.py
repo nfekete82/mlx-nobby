@@ -177,9 +177,9 @@ def article_short_summary(item, *, max_characters=330):
     candidates = []
     for match in _SUMMARY_SENTENCE.finditer(text):
         sentence = " ".join(unescape(match.group()).split()).strip(" \t-–•\"„“")
-        if not (65 <= len(sentence) <= min(340, max_characters)):
+        if not (50 <= len(sentence) <= min(340, max_characters)):
             continue
-        if not (9 <= len(sentence.split()) <= 55):
+        if not (7 <= len(sentence.split()) <= 55):
             continue
         if _SUMMARY_JUNK.search(sentence):
             continue
@@ -238,6 +238,11 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
         published = publication_time(candidate.get("published_date"))
         if same_day and published is None:
             continue
+        summary = article_short_summary(candidate)
+        if not summary:
+            # A readable webpage is insufficient: prefer another *grounded*
+            # article rather than showing a headline without a useful brief.
+            continue
         seen_urls.add(key)
         seen_titles.append(title_key)
         items.append({
@@ -247,21 +252,26 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                           else host(url)),
             "published_date": published.isoformat() if published else None,
             "article_loaded": True,
-            "summary": article_short_summary(candidate),
+            "summary": summary,
         })
         if len(items) >= max_items:
             break
     day = now.astimezone(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y")
     if not items:
         return {
-            "status": "no_readable_articles",
-            "answer": ("Für heute konnte ich keine ausreichend belegte Nachrichtenübersicht "
-                       "erstellen. Die Suchtreffer hatten keinen lesbaren Artikeltext oder "
-                       "kein eindeutiges Veröffentlichungsdatum. Ungeprüfte Meldungen "
-                       "stelle ich nicht als aktuelle Nachrichten dar."),
-            "items": [], "evidence_level": "no_loaded_articles",
+            "status": "no_summarizable_articles",
+            "answer": ("Für heute konnte ich keine ausreichend belegten Kurzmeldungen "
+                       "zusammenstellen. Es fehlten lesbare, eindeutig datierte "
+                       "Originalartikel mit genügend verwertbarem Text. "
+                       "Ich ersetze fehlende Informationen nicht durch erfundene Zusammenfassungen."),
+            "items": [], "evidence_level": "no_grounded_summaries",
         }
     lines = [f"**Nachrichtenüberblick vom {day}**", ""]
+    if len(items) < max_items:
+        lines.extend((
+            f"*{len(items)} von {max_items} angefragten Nachrichten hatten "
+            "ausreichend belegte Kurztexte.*", ""
+        ))
     for item in items:
         url = item["url"].replace("(", "%28").replace(")", "%29")
         published = item["published_date"]
@@ -270,15 +280,13 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
         time_label = f" · {local.strftime('%H:%M')} Uhr" if local else ""
         lines.append(f"- **[{_safe_md(item['title'])}]({url})** "
                      f"— {_safe_md(item['publisher'])}{time_label}  ")
-        if item["summary"]:
-            lines.append(f"  {_safe_md(item['summary'])}")
-        else:
-            lines.append("  *Kein verlässlicher Kurztext aus dem Artikel extrahierbar.*")
+        lines.append(f"  {_safe_md(item['summary'])}")
         lines.append("")
     lines.extend(("*Kurzüberblicke sind wörtliche, gekürzte Auszüge aus lesbaren "
                   "Artikeln – keine unabhängige Faktenprüfung. "
                   "Veröffentlichungszeiten stammen aus Publisher-Feeds oder Suchindex.*",))
     return {
         "status": "available", "answer": "\n".join(lines), "items": items,
-        "evidence_level": "article_text_loaded_headline_matched",
+        "requested_count": max_items,
+        "evidence_level": "article_text_loaded_with_grounded_summary",
     }
