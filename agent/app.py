@@ -7767,6 +7767,65 @@ def tool_web_search(request):
         limit=8,
     )
 
+    # Same-day news is special: do not send unread Google News RSS wrappers,
+    # generic search snippets or invented model details into the chat. Prefer
+    # a compact, deterministic digest of actual publisher article pages.
+    from backend.search_freshness import requires_today_news
+    if requires_today_news(query):
+        from agent.news_intelligence import (
+            grounded_news_digest, publisher_link, publisher_news_candidates,
+        )
+        from backend.news_query import normalized_news_query
+        from datetime import datetime as _news_datetime
+
+        now = _news_datetime.now(timezone.utc)
+        search_hits = list(result.get("results") or [])
+        # Official publisher feeds supplement broad news discovery; a specific
+        # topical news query must not be polluted by unrelated headlines.
+        feed_hits = (publisher_news_candidates(query, now=now)
+                     if normalized_news_query(query) != query else [])
+        # Balance search sources and publisher-owned feeds before page fetches.
+        candidates = []
+        for index in range(max(len(search_hits), len(feed_hits))):
+            if index < len(feed_hits):
+                candidates.append(feed_hits[index])
+            if index < len(search_hits):
+                candidates.append(search_hits[index])
+        seen = set()
+        attempted = []
+        readable_count = 0
+        for item in candidates:
+            if not isinstance(item, dict) or not publisher_link(item.get("url")):
+                continue
+            url = str(item["url"])
+            if url in seen:
+                continue
+            seen.add(url)
+            # Only fetched pages can be cited as readable article evidence.
+            # fetch_web_page already performs SSRF/DNS/redirect validation.
+            candidate = dict(item)
+            candidate["fetch"] = fetch_web_page(url)
+            attempted.append(candidate)
+            from agent.news_intelligence import readable_article
+            if readable_article(candidate):
+                readable_count += 1
+            if len(attempted) >= 7 or readable_count >= 5:
+                break
+        digest = grounded_news_digest(query, attempted, now=now)
+        result["news_search"] = True
+        result["news_digest"] = digest
+        result["provider_status"] = (
+            "available" if digest["status"] == "available"
+            else "no_readable_articles"
+        )
+        result["publisher_feed_candidates"] = len(feed_hits)
+        result["fetched_count"] = readable_count
+        result["results"] = digest["items"]
+        result["count"] = len(digest["items"])
+        result["current_date"] = now.astimezone().date().isoformat()
+        result["current_time"] = now.astimezone().isoformat(timespec="seconds")
+        return result
+
     results = result.get("results")
 
     if isinstance(results, list):
