@@ -91,6 +91,10 @@ Die echten Ausgaben müssen visuell/gehörmäßig verglichen werden: Mund beweg
 sich beim ersten Wort, später kein Versatz, keine Identitätsdrift. CI prüft
 nur die PCM- und Schnittstellenverträge – **keine echte Mac-Renderqualität**.
 
+## Talking Photo 2.0: längere Videos (Beta)
+
+Bis zu **60 Sekunden generiertes Sprach-Audio** werden bei allen LTX-Engines automatisch in maximal 18 Sekunden lange Abschnitte zerlegt. Zuerst wird die Stimme **einmal** synthetisiert. Die Abschnittsgrenzen liegen auf dem gemeinsamen 24-FPS-Raster, bevorzugt mitten in ruhigen Sprechpausen; bei ununterbrochener Sprache wird der leiseste mögliche Schnittpunkt benutzt. LTX generiert jeden Abschnitt sequentiell mit demselben Ursprungsfoto und Seed. Der MP4-Assembler schneidet das LTX-Endpadding framegenau ab und fügt ausschließlich die Videospuren zusammen. Die originale, ungeschnittene WAV-Datei wird **einmal** als Audio gemuxt. So bleiben Wortfolge, Tempo und Stimmfarbe erhalten; durch die Render-Neustarts können an Segmentgrenzen jedoch sichtbare Mimikwechsel auftreten. Keine garantierten nahtlosen Gesichtstransitionen. Maximal 60 Sekunden und maximal sechs Teile; längere Sprache wird mit einer klaren Fehlermeldung abgewiesen. Keine parallelen LTX-Renders und keine zusätzliche RAM-Belegung über die normale laufende Pipeline hinaus. Kurzvideos bis 20 Sekunden verwenden unverändert die vorhandene Einzel-Render-Strecke. Für die reale Apple-Silicon-End-to-End-Abnahme sind längere Clips noch zu prüfen.
+
 ## Audio und LTX
 
 **Beta ab PR #174:** Der direkte LTX-A2V-Pfad akzeptiert Quellaudio bis 20 Sekunden. Die 10-Sekunden-Grenze war in `main` aktiv, während die Erweiterung in dem ungemergten Experiment PR #160 lag. Dies ist eine bewusste Beta-Freigabe für lokale Tests, **kein auf echter Hardware bestätigter Qualitäts- oder RAM-Benchmark**: 15-s- und 20-s-Clips müssen auf Renderdauer, Unified Memory, Identitätsstabilität und Lippensynchronität verglichen werden. Quellaudio über 20 Sekunden wird weiterhin vor dem teuren Video-Rendern abgelehnt; das Audio wird nicht abgeschnitten oder schneller abgespielt.

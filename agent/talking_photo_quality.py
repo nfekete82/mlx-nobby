@@ -14,7 +14,7 @@ import time
 
 from fastapi import HTTPException
 
-from agent import talking_photo, talking_photo_ltx, talking_photo_motion
+from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform
 from agent.talking_photo_audio import _analyze_wav
 
 
@@ -47,7 +47,7 @@ def generate(
     video, details = talking_photo_ltx.generate(job_id, *args, **kwargs)
     if not apply_lipsync:
         details["lipsync"] = None
-        details["engine"] = "ltx"
+        details["engine"] = "ltx-distilled" if details.get("a2v_mode") == "distilled" else "ltx"
         return video, details
 
     bundle = Path(details["debug_dir"]) if details.get("debug_dir") else None
@@ -148,6 +148,91 @@ def _persist_audio_diagnostics(
     }
 
 
+def _generate_longform(
+    job_id: str,
+    image: bytes,
+    image_suffix: str,
+    wav: bytes,
+    work: Path,
+    *,
+    debug_dir: Path | None,
+    cancelled,
+    update,
+    apply_lipsync: bool,
+    distilled: bool,
+) -> tuple[bytes, dict]:
+    """Render <=18-second speech pieces sequentially and mux the uncut source.
+
+    A separate working directory isolates each LTX runner. No chunk's padded
+    audio is ever used in the assembled MP4. The short-clip path is untouched.
+    """
+    segments = talking_photo_longform.split_at_pauses(wav)
+    if len(segments) < 2:
+        raise RuntimeError("Longform erwartet mindestens zwei Abschnitte")
+    rendered_files: list[Path] = []
+    rendered_details: list[dict] = []
+    began = time.monotonic()
+    for index, segment in enumerate(segments):
+        if cancelled():
+            raise talking_photo_ltx.QualityCancelled()
+        part_work = work / f"part-{index+1:02d}"
+        part_debug = debug_dir / f"part-{index+1:02d}" if debug_dir else None
+        def part_update(*, phase="quality", progress=0.25, **kwargs):
+            # Coarse progress: account for completed parts, never claim completion
+            # while a later MLX render or the final mux remains.
+            fraction = min(1.0, max(0.0, (progress - 0.25) / 0.65))
+            update(phase=phase, progress=min(0.91, 0.20 + 0.69 * (index + fraction) / len(segments)))
+        video, details = generate(
+            job_id, image, image_suffix, segment.wav, segment.duration_seconds,
+            part_work, debug_dir=part_debug, cancelled=cancelled,
+            update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
+        )
+        if cancelled():
+            raise talking_photo_ltx.QualityCancelled()
+        part_work.mkdir(parents=True, exist_ok=True)
+        output_path = part_work / "rendered.mp4"
+        output_path.write_bytes(video)
+        rendered_files.append(output_path)
+        rendered_details.append({
+            "segment": segment.index,
+            "audio_seconds": round(segment.duration_seconds, 4),
+            "audio_start_seconds": round(segment.start_sample / 16000, 4),
+            "video_frames": segment.video_frames,
+            "seed": details.get("seed"),
+            "elapsed_seconds": details.get("elapsed_seconds"),
+            "mode": details.get("a2v_mode"),
+        })
+        update(phase="quality", progress=0.20 + 0.69 * len(rendered_files) / len(segments))
+
+    if cancelled():
+        raise talking_photo_ltx.QualityCancelled()
+    update(phase="quality", progress=0.92)
+    result, assembly = talking_photo_longform.assemble(
+        wav, segments, rendered_files, work / "assembly", cancelled=cancelled,
+    )
+    if cancelled():
+        raise talking_photo_ltx.QualityCancelled()
+    summary = {
+        "provider": "ltx-2.5-mlx-a2v",
+        "engine": "ltx-distilled" if distilled else ("ltx" if not apply_lipsync else "quality"),
+        "a2v_mode": "distilled" if distilled else "classic",
+        "longform": True,
+        "chunks": rendered_details,
+        "assembly": assembly,
+        "audio_seconds": assembly["audio_seconds"],
+        "elapsed_seconds": round(time.monotonic() - began, 3),
+        "source_audio_sha256": assembly["source_audio_sha256"],
+        "lipsync": "musetalk-mac" if apply_lipsync else None,
+    }
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / "longform.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        )
+        (debug_dir / "output.mp4").write_bytes(result)
+    return result, summary
+
+
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
     ltx_only = bool(request_payload.pop("_ltx_only", False))
     distilled = bool(request_payload.pop("_distilled", False))
@@ -218,20 +303,36 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                                ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
                 )
             try:
-                video, details = generate(
-                    job_id,
-                    image,
-                    image_suffix,
-                    wav,
-                    audio_seconds,
-                    work,
-                    debug_dir=debug_dir,
-                    cancelled=lambda: talking_photo._cancelled(job_id),
-                    update=lambda **changes: talking_photo._update_job(job_id, **changes),
-                    apply_lipsync=not ltx_only,
-                    lead_in_ms=request_payload.get("lead_in_ms", 0),
-                    distilled=distilled,
-                )
+                if audio_seconds > talking_photo_longform.MAX_LONGFORM_SECONDS:
+                    raise RuntimeError(
+                        f"Talking Photo 2.0 unterstützt maximal {talking_photo_longform.MAX_LONGFORM_SECONDS:g} Sekunden Audio."
+                    )
+                if audio_seconds > talking_photo_ltx.MAX_AUDIO_SECONDS:
+                    if request_payload.get("lead_in_ms", 0):
+                        raise RuntimeError("Audiovorlauf ist für Longform nicht verfügbar")
+                    video, details = _generate_longform(
+                        job_id, image, image_suffix, wav, work,
+                        debug_dir=debug_dir,
+                        cancelled=lambda: talking_photo._cancelled(job_id),
+                        update=lambda **changes: talking_photo._update_job(job_id, **changes),
+                        apply_lipsync=not ltx_only,
+                        distilled=distilled,
+                    )
+                else:
+                    video, details = generate(
+                        job_id,
+                        image,
+                        image_suffix,
+                        wav,
+                        audio_seconds,
+                        work,
+                        debug_dir=debug_dir,
+                        cancelled=lambda: talking_photo._cancelled(job_id),
+                        update=lambda **changes: talking_photo._update_job(job_id, **changes),
+                        apply_lipsync=not ltx_only,
+                        lead_in_ms=request_payload.get("lead_in_ms", 0),
+                        distilled=distilled,
+                    )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
 
@@ -259,6 +360,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "audio_diagnostics": audio_diagnostics,
                     "lead_in_ms": request_payload.get("lead_in_ms", 0),
                     "timing": details,
+                    "longform": bool(details.get("longform", False)),
+                    "segments": len(details.get("chunks", [])) or 1,
                     "video_url": f"/api/talking-photo/videos/{job_id}",
                 },
                 finished_at=time.time(),

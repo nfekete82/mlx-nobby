@@ -385,8 +385,8 @@
             'div',
             'mlx-talking-photo-hint',
             localText(
-                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. LTX direkt und Hybrid bleiben als Alternativen.',
-                'Distilled is the default: natural motion in 8+3 steps. Direct LTX and Hybrid remain available.',
+                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. Längere Texte werden bis 60 Sekunden Sprache automatisch aufgeteilt.',
+                'Distilled is the default: natural motion in 8+3 steps. Longer texts are split automatically up to 60 seconds of speech.',
             ),
         ));
         right.append(engineLabel);
