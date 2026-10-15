@@ -198,8 +198,11 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             wav.writeframes((5000).to_bytes(2, "little", signed=True) * 6400)
         native_video = bytes(4) + b"ftyp" + bytes(48)
         commands = []
+        real_popen = subprocess.Popen
 
         def fake_popen(command, **kwargs):
+            if "--output" not in command:
+                return real_popen(command, **kwargs)
             commands.append(command)
             Path(command[command.index("--output") + 1]).write_bytes(native_video)
             process = mock.Mock(returncode=0)
