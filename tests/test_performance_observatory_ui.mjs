@@ -73,6 +73,13 @@ vm.runInNewContext(source, context, {
 const test = window.MLXPerformanceObservatory.__test;
 const localNumber = (value, options) => value.toLocaleString(undefined, options);
 
+assert.equal(test.formatDuration(null), '—');
+assert.equal(test.formatDuration(undefined), '—');
+assert.equal(test.formatDuration(''), '—');
+assert.equal(test.formatDuration(0), '0 ms');
+assert.equal(test.formatRate(null), '—');
+assert.equal(test.formatRate(undefined), '—');
+assert.equal(test.formatGb(null), '—');
 assert.equal(test.formatDuration(250), '250 ms');
 assert.equal(
     test.formatDuration(1500),

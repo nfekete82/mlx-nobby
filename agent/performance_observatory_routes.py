@@ -116,9 +116,16 @@ def _model_calls(limit=DEFAULT_LIMIT):
             model = model if isinstance(model, dict) else {}
 
             generation_ms = _number(timings.get("generation"))
+            ttft_ms = _number(timings.get("ttft"))
             output_tokens = _number(usage.get("output_tokens"))
             tokens_per_second = None
-            if generation_ms and generation_ms > 0 and output_tokens is not None:
+            # Count output throughput only for genuine streamed calls whose
+            # first token was observed. Non-streamed vision and router calls
+            # have no defensible generation interval, even with usage data.
+            if (str(raw.get("purpose") or "") == "chat.stream"
+                    and ttft_ms is not None
+                    and generation_ms is not None and generation_ms > 0
+                    and output_tokens is not None and output_tokens > 0):
                 tokens_per_second = output_tokens / (generation_ms / 1000.0)
 
             calls.append({
@@ -159,18 +166,12 @@ def model_performance_snapshot(limit=DEFAULT_LIMIT):
     calls = _model_calls(limit)
     chronological = list(reversed(calls))
     completed = [call for call in chronological if call["status"] == "completed"]
-    chat_calls = [
+    # Chat performance must not silently fall back to router.classify,
+    # chat.vision or other buffered/non-streaming model calls. Otherwise the
+    # top-level "Chat TTFT" / throughput cards become misleading.
+    measured = [
         call for call in completed
-        if call["purpose"].startswith("chat.")
-        and (
-            call["timings_ms"].get("ttft") is not None
-            or call.get("tokens_per_second") is not None
-        )
-    ]
-    measured = chat_calls or [
-        call for call in completed
-        if call["timings_ms"].get("ttft") is not None
-        or call.get("tokens_per_second") is not None
+        if call["purpose"] == "chat.stream"
     ]
 
     return {
