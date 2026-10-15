@@ -7280,8 +7280,13 @@ def _fallback_public_search(query, limit=8):
         return {"query": query, "provider": "Google News RSS (fallback)",
                 "search_degraded": True, "provider_status": "disabled",
                 "unresponsive_engines": [], "count": 0, "results": []}
+    from agent.search_freshness import requires_today_news, filter_today_news
+    same_day_news = requires_today_news(query)
+    # Google's News RSS search supports a bounded last-day search. The
+    # actual timestamps are still validated after retrieval.
+    feed_query = query + (" when:1d" if same_day_news else "")
     url = ("https://news.google.com/rss/search?q=" +
-           urllib.parse.quote_plus(query) + "&hl=de&gl=DE&ceid=DE:de")
+           urllib.parse.quote_plus(feed_query) + "&hl=de&gl=DE&ceid=DE:de")
     req = urllib.request.Request(url, headers={"User-Agent": "MLX-Nobby/2.0"})
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
@@ -7306,11 +7311,16 @@ def _fallback_public_search(query, limit=8):
                             "source_type": "rss_search_entry",
                             "article_loaded": False,
                             "published_date": item.findtext("pubDate")})
-        if len(results) >= max(1, min(int(limit), 20)):
+        if not same_day_news and len(results) >= max(1, min(int(limit), 20)):
             break
+    if same_day_news:
+        results = filter_today_news(results)
+    results = results[:max(1, min(int(limit), 20))]
     return {"query": query, "provider": "Google News RSS (fallback)",
-            "provider_status": "available" if results else "empty",
+            "provider_status": ("available" if results else
+                                "no_verified_today_news" if same_day_news else "empty"),
             "search_degraded": True, "unresponsive_engines": [],
+            "freshness_status": "verified_today_only" if same_day_news else "not_requested",
             "count": len(results), "results": results}
 
 
@@ -7352,11 +7362,14 @@ def searxng_search_results(query, limit=8):
         .rstrip("/")
     )
 
+    from agent.search_freshness import requires_today_news, filter_today_news
+    same_day_news = requires_today_news(query)
     params = urllib.parse.urlencode({
         "q": query,
         "format": "json",
         "language": web_search_language_for_query(query),
         "safesearch": 0,
+        **({"time_range": "day"} if same_day_news else {}),
     })
 
     payload, provider_attempts = request_searxng(searxng_url, params)
@@ -7444,8 +7457,12 @@ def searxng_search_results(query, limit=8):
                 item.get("score"),
         })
 
-        if len(normalized) >= max(1, min(int(limit), 20)):
+        if not same_day_news and len(normalized) >= max(1, min(int(limit), 20)):
             break
+
+    if same_day_news:
+        normalized = filter_today_news(normalized)
+    normalized = normalized[:max(1, min(int(limit), 20))]
 
     # Some upstream engines ignore the site: operator entirely. Never
     # present matches from unrelated hosts as site-restricted evidence.
@@ -7479,6 +7496,7 @@ def searxng_search_results(query, limit=8):
         "provider_attempts": provider_attempts,
         "unresponsive_engines": unresponsive_engines,
         "search_degraded": bool(unresponsive_engines),
+        "freshness_status": "verified_today_only" if same_day_news else "not_requested",
         "search_relevance_status": "site_scope_filtered" if mismatched_site_results else "not_scoped",
         "site_scope_mismatch_count": mismatched_site_results,
         "count": len(normalized),
