@@ -9888,8 +9888,6 @@ def run_chat_action(request: ChatActionRequest):
     action = routing["intent"]
     routing = dict(routing)
     routing["target"] = _chat_preflight_target(action)
-    from agent.chat_decision import decision_for_route
-    routing["decision"] = decision_for_route(routing)
     routing.setdefault("execution_requested", False)
 
     if (
@@ -9913,6 +9911,10 @@ def run_chat_action(request: ChatActionRequest):
     if action in MEDIA_ACTIONS and not routing.get("execution_requested"):
         routing = media.chat_routing() | {"original_intent": action, "guard": "execution_required"}
         action = "normal_chat"
+
+    # Describe the final guarded action, never an intent later rejected.
+    from agent.chat_decision import decision_for_route
+    routing["decision"] = decision_for_route(routing)
 
     def routed_result(result):
         result = dict(result)
