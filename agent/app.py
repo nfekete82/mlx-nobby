@@ -9798,6 +9798,22 @@ def preflight_chat_action(request: ChatActionRequest):
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
 
+    # Explicit follow-up slots: reuse only confirmed weather context from this
+    # chat, without invoking the large model or guessing the user's location.
+    # Keep attachments, manually selected actions and workspace routes untouched.
+    if (
+        not request.action
+        and not request.file_context
+        and not request.resolved_target
+    ):
+        from backend.weather_context import weather_context_query
+        followup = weather_context_query(request.prompt, request.conversation_context)
+        if followup:
+            weather = _weather_search_result(followup)
+            if weather is not None:
+                weather["context_resolution"] = "explicit_weather_followup"
+                return chat_tool_result("web_search", "completed", weather)
+
     routing_file_context = _image_source_routing_context(request)
 
     media = decide_media_intent(
