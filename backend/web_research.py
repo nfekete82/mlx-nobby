@@ -74,13 +74,16 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
     opener = opener or urlopen
     now = now or datetime.now(timezone.utc)
     query = prompt.strip()
+    from agent.search_freshness import requires_today_news, filter_today_news
+    same_day_news = requires_today_news(query)
     # Restrict provider input to the current, bounded user question.
     sources = []
     try:
         if NEWS.search(query):
-            url = "https://news.google.com/rss/search?q=" + quote_plus(query) + "&hl=de&gl=DE&ceid=DE:de"
+            feed_query = query + (" when:1d" if same_day_news else "")
+            url = "https://news.google.com/rss/search?q=" + quote_plus(feed_query) + "&hl=de&gl=DE&ceid=DE:de"
             root = ET.fromstring(_get(url, opener))
-            for item in root.findall("./channel/item")[:5]:
+            for item in root.findall("./channel/item")[:40 if same_day_news else 5]:
                 title = (item.findtext("title") or "").strip()
                 link = (item.findtext("link") or "").strip()
                 published = (item.findtext("pubDate") or "").strip()
@@ -109,6 +112,14 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
             "WEBRECHERCHE NICHT VERFÜGBAR. Keine vermeintlich aktuellen Fakten erfinden. "
             f"Suche fehlgeschlagen ({type(exc).__name__}); Datenstand unbestätigt."
         )
+
+    if same_day_news:
+        verified = filter_today_news(
+            [{"title": title, "url": link, "published_date": published}
+             for title, link, published in sources],
+            now=now,
+        )
+        sources = [(item["title"], item["url"], item["published_date"]) for item in verified]
 
     valid = []
     for title, link, published in sources:
