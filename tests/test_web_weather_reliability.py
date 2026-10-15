@@ -1,13 +1,11 @@
 """Offline checks: Docker-package imports and weather source relevance."""
 import asyncio
 from unittest.mock import patch
-from fastapi.testclient import TestClient
 
 from backend.weather_search import (
     is_weather_query, is_locationless_weather_question, relevant_forecast_result,
 )
 from backend.web_research import needs_web_research, retrieve_web_research
-from backend.app import app
 
 
 class FakeResponse:
@@ -113,15 +111,23 @@ def test_weather_research_does_not_replace_failed_forecast_with_google_news():
 def test_first_weather_question_requests_city_without_agent_model_or_search():
     def cannot_run(*_args, **_kwargs):
         raise AssertionError("The weather-location query must not call agent or web")
+    from backend.app import ChatRequest, mlx_chat_stream
+
+    async def collect_stream(response):
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+        return "".join(chunks)
+
     with patch("backend.app.agent_json_request", side_effect=cannot_run):
-        response = TestClient(app).post("/api/chat/stream", json={
-            "messages": [{"role": "user", "content": "Wie wird das Wetter heute?"}]
-        })
-    assert response.status_code == 200
-    assert "Nenne mir bitte eine Stadt oder Postleitzahl" in response.text
-    assert "event: done" in response.text
-    assert 'data: {"type": "content"' in response.text
-    assert "\\n\\n" not in response.text  # actual SSE line endings, not escaped literals
+        response = mlx_chat_stream(ChatRequest(
+            messages=[{"role": "user", "content": "Wie wird das Wetter heute?"}]
+        ))
+        body = asyncio.run(collect_stream(response))
+    assert "Nenne mir bitte eine Stadt oder Postleitzahl" in body
+    assert "event: done" in body
+    assert 'data: {"type": "content"' in body
+    assert "\\n\\n" not in body  # actual SSE line endings, not escaped literals
 
 
 def test_native_searxng_skips_search_when_weather_place_is_missing():
