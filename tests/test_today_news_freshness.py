@@ -11,7 +11,18 @@ from agent.search_freshness import (
     requires_today_news,
 )
 from backend.web_research import retrieve_web_research
-from tests.test_web_research import FakeResponse
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, amount):
+        return self.payload[:amount]
 
 
 class TodayNewsTest(TestCase):
