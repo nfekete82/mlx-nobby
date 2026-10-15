@@ -1299,6 +1299,9 @@ function initRuntimeInfoPopover() {
     const settings = document.getElementById('sidebarSettingsButton');
     if (sidebarBottom && settings) {
         const alignSystemInfo = () => {
+            // System & Tools nests these buttons; never move them back out.
+            if (settings.parentElement !== sidebarBottom ||
+                runtimeInfoButton.parentElement !== sidebarBottom) return;
             if (runtimeInfoButton.nextElementSibling !== settings) {
                 sidebarBottom.insertBefore(runtimeInfoButton, settings);
             }
