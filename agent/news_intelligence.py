@@ -6,7 +6,7 @@ RSS, SearXNG or Google News. No arbitrary user-controlled feed URLs.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from html import unescape
+from html import escape, unescape
 import re
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -143,6 +143,8 @@ def _title_key(title):
 
 def _safe_md(value):
     value = re.sub(r"[\r\n\t]+", " ", str(value or "")).strip()
+    # News prose is untrusted HTML/Markdown content; do not emit tags.
+    value = escape(value, quote=False)
     for char in ("\\", "[", "]", "(", ")", "*", "_"):
         value = value.replace(char, "\\" + char)
     return value
