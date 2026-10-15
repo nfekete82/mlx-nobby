@@ -125,3 +125,22 @@ def test_explicit_media_action_not_hijacked_by_weather():
 
 def test_news_stays_with_existing_semantic_router():
     assert plan_chat_decision("Zeige mir die wichtigsten News von heute") is None
+
+
+
+def test_next_day_api_uses_verified_city_without_running_semantic_model():
+    client = TestClient(app.app)
+    history = grounded_weather()
+    with mock.patch.object(app, "_weather_search_result", return_value={
+        "provider": "Open-Meteo",
+        "weather_forecast": {"status": "available", "answer": "Tomorrow"},
+        "count": 0, "results": [],
+    }) as weather:
+        response = client.post("/api/chat/actions", json={
+            "prompt": "Und morgen?", "conversation_context": history,
+            "resolved_target": "chat",
+        })
+    assert response.status_code == 200
+    assert response.json()["tool"] == "web_search"
+    assert response.json()["data"]["context_resolution"] == "explicit_weather_followup"
+    weather.assert_called_once_with("Wie wird das Wetter morgen in Göppingen?")
