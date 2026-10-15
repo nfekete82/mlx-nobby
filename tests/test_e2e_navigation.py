@@ -21,7 +21,10 @@ def test_navigate_chat_requires_real_input_and_production_libraries():
 
     script = page.wait_for_function.call_args.args[0]
     for symbol in ("window.marked?.parse", "window.DOMPurify?.sanitize",
-                   "window.hljs?.highlightElement"):
+                   "window.hljs?.highlightElement",
+                   "window.MLXChatSessions?.currentSession",
+                   "window.MLXChatRendering?.renderMessages",
+                   "window.MLXChatGeneration?.sendMessage"):
         assert symbol in script
     assert page.wait_for_function.call_args.kwargs == {"timeout": 10000}
 
