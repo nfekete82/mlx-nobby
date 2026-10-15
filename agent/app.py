@@ -9819,10 +9819,18 @@ def preflight_chat_action(request: ChatActionRequest):
 def run_chat_action(request: ChatActionRequest):
 
     routing_file_context = _image_source_routing_context(request)
+    media = decide_media_intent(
+        request.prompt,
+        has_image=_file_context_is_image(routing_file_context),
+        image_count=_file_context_image_count(routing_file_context),
+        action=request.action,
+        reference_context=(routing_file_context or {}).get("reference_mode"),
+    )
 
     # Decision preflight and execution share one slot plan. Do not ask the
     # semantic router to infer location or dispatch twice after clarification.
-    decision = _chat_decision_for_request(request, routing_file_context)
+    decision = (None if media.handles_turn or media.execution_requested else
+                _chat_decision_for_request(request, routing_file_context))
     if decision is not None:
         route = decision.routing() | {"target": "chat"}
         if decision.kind == "clarify":
@@ -9843,13 +9851,6 @@ def run_chat_action(request: ChatActionRequest):
                 data["context_resolution"] = "explicit_weather_followup"
             return chat_tool_result("web_search", "completed", data)
 
-    media = decide_media_intent(
-        request.prompt,
-        has_image=_file_context_is_image(routing_file_context),
-        image_count=_file_context_image_count(routing_file_context),
-        action=request.action,
-        reference_context=(routing_file_context or {}).get("reference_mode"),
-    )
     if request.resolved_target == "chat" and media.execution_requested:
         routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
         routing["guard"] = "preflight_chat_fallback"
