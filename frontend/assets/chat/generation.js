@@ -3703,7 +3703,7 @@ const imageFiles =
                                 'I could not find a reliable weather forecast for this location.'
                             )
                             : /\b(news|nachrichten|schlagzeilen|neuigkeiten)\b/i.test(prompt)
-                                ? 'Für heute konnte ich keine verifizierten Nachrichten abrufen. Bitte versuche es später erneut oder frage nach einem bestimmten Thema. Ich möchte keine unbestätigten Meldungen als aktuelle Nachrichten ausgeben.'
+                                ? gt('news_no_verified_today', 'No verified news could be retrieved for today. Try again later or ask about a specific topic; I will not present unverified reports as current news.')
                                 : gt(
                                     'web_search_no_results',
                                     'The web search returned no matching results.'
