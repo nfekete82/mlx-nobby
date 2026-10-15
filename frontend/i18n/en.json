@@ -962,7 +962,7 @@
   "generation.vision_describe_images_prompt": "Describe all attached images in order. Answer in English.",
   "ui.chat_parameters_description": "Parameters for the current chat. Changes are automatically saved as defaults for new chats.",
   "image_upscale_photo_2x": "Upscale 2×",
-  "image_upscale_photo_4x": "Upscale 4×",
+  "image_upscale_photo_4x": "Super resolution 4× (photo)",
   "image_upscale_illustration_4x": "Upscale illustration 4×",
   "image_edit_action": "Edit image …",
   "image_edit_title": "Edit image",
