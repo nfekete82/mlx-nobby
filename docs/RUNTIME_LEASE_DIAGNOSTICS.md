@@ -62,8 +62,17 @@ the latest snapshot independently clears the original admission check.
 Cancellation remains active; a persistently unsafe reading still rejects
 the job. `preflight.memory_settle_attempts` records the number of resamples.
 
-This specifically targets transient failures before model loading after a
-speech/chat-to-image handoff, not general low-memory failures. Unit regression
-tests cover successful settling, permanent rejection and zero retries without
-reclamation. Mac real acceptance (`./scripts/mlx test-real`) remains required
+The same bounded settling applies when handing **image to video**. The video
+coordinator first unloads an idle image model if required, and then frees optional
+speech/MuseTalk or chat weights if needed. Only after a confirmed release, and only
+if a fresh video-reserve projection would still exceed the 90% ceiling, up to
+three one-second fresh samples are allowed. Video's 20 GB default reserve and
+the 90% hard cap are unchanged. `preflight.memory_settle_attempts` captures
+the same field for image and video. A permanently unsafe or cancellation state
+still prevents loading.
+
+This targets transient failures before media model loading after a real
+handoff, not general low-memory failures. Unit regression tests cover both
+directions, permanent rejection, and zero retries without reclamation.
+Apple Silicon real acceptance (`./scripts/mlx test-real`) remains mandatory
 before an official release is tagged.
