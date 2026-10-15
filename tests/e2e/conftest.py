@@ -88,6 +88,29 @@ def pytest_runtest_makereport(item, call):
     setattr(item, 'report_' + report.when, report)
 
 
+def navigate_chat_page(page, url):
+    """Require the genuine composer and CDN libraries after bounded navigation.
+
+    The local navigation commit is not browser 'load'; every functional
+    prerequisite remains mandatory, and exceptions must fail the E2E test.
+    """
+    # The production HTML contains third-party parser-blocking CDN
+    # scripts. Waiting for the full browser "load" event can leave the
+    # local E2E fixture dependent on unrelated CDN activity. Commit is
+    # sufficient to confirm navigation; then require the real composer
+    # and all three production libraries before executing any assertion.
+    # This never skips missing dependencies or test failures.
+    page.goto(url + '/chat', wait_until='commit', timeout=15000)
+    page.locator('#input').wait_for(timeout=10000)
+    page.wait_for_function(
+        """() => (
+            typeof window.marked?.parse === 'function' &&
+            typeof window.DOMPurify?.sanitize === 'function' &&
+            typeof window.hljs?.highlightElement === 'function'
+        )""",
+        timeout=10000,
+    )
+
 @pytest.fixture(params=[(1440, 1000), (390, 844)], ids=['desktop', 'mobile'])
 def ui(request, browser, web):
     url, agent = web
@@ -128,22 +151,7 @@ def ui(request, browser, web):
     verified = False
     try:
         print(f'E2E PHASE {request.node.nodeid}: page.goto', flush=True)
-        # The production HTML contains third-party parser-blocking CDN
-        # scripts. Waiting for the full browser "load" event can leave the
-        # local E2E fixture dependent on unrelated CDN activity. Commit is
-        # sufficient to confirm navigation; then require the real composer
-        # and all three production libraries before executing any assertion.
-        # This never skips missing dependencies or test failures.
-        page.goto(url + '/chat', wait_until='commit', timeout=15000)
-        page.locator('#input').wait_for(timeout=10000)
-        page.wait_for_function(
-            """() => (
-                typeof window.marked?.parse === 'function' &&
-                typeof window.DOMPurify?.sanitize === 'function' &&
-                typeof window.hljs?.highlightElement === 'function'
-            )""",
-            timeout=10000,
-        )
+        navigate_chat_page(page, url)
         print(f'E2E PHASE {request.node.nodeid}: test.body', flush=True)
         yield page, agent, allowed
         print(f'E2E PHASE {request.node.nodeid}: postconditions', flush=True)
