@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v1.13.0
+
+- Integrate Open-Meteo forecasts into the normal chat web-search action with compact source citations, clear city/postcode clarifications and local-context weather follow-ups.
+- Add a shared, conservative `answer` / `clarify` / `execute_tool` decision contract without replacing the semantic intent router. Keep attachments and manual media/tool routes isolated.
+- Normalize broad current-news searches while preserving topic-specific queries; use dated publisher-owned RSS/Atom feeds as discovery and only display news backed by fetched original-article text and a direct publisher URL.
+- Build compact, source-grounded daily news briefings with verified publication time, duplicate elimination, bounded article selection, and a clear partial-result status when fewer than the requested number of fully summarized stories are available.
+- Support optional single-batch local Qwen rewrites of grounded extracts, rejecting unsupported content and falling back to original source text; disclose that this is not independent fact-checking.
+- Improve news reading with distinct article blocks, subtle publisher/time metadata and clickable source titles; retain the weather-source UI when both features are deployed.
+- Extend in-app bilingual DE/EN Help for weather, news, sources and limitations; refresh chat asset cache revisions and regression coverage.
+
+- Add privacy-preserving, model-filtered image-edit and MLX-Gen performance timing reports, Qwen MFLUX phase diagnostics, matched-workload metadata and guarded Step Cache A/B benchmarks. Keep production timeouts and source-file privacy protections intact.
+- Enable a measured default Step Cache for the supported Osaurus Qwen Image 2.1 Edit provider only; offer persisted settings and explicit per-job opt-out, with bilingual explanatory copy and regression tests.
+- Improve targeted image editing with conservative optional auto-mask inference, source-versus-result comparison, local comparison IDs, keyboard-accessible before/after slider and advisory notices that do not claim semantic correctness.
+- Improve chat latency diagnostics with reproducible long/coding profiles, DFlash2 quality/coding comparisons, source-based TTFT reporting, conservative reusable inference-only context summaries and idle-time optional compaction.
+- Harden real-acceptance media isolation, avoid permanently indexing acceptance-generated media, improve chat prefill watchdog tolerances and restore Docker-based web research while rejecting unrelated weather search results.
+- Make image and video model handoffs robust to delayed macOS unified-memory reclamation: after actually unloading an idle model or stopping chat, at most three fresh one-second memory measurements may admit a safe workload. Preserve the strict 90% maximum and image/video load reserves; permanently unsafe loads still fail closed. Cover both handoff directions with regression tests and runtime documentation.
+
 ## v1.12.0
 
 - Extend the guarded zero-inference chat fast path to short explanation-only follow-ups when all recent conversation turns are independently allowlisted and no tools, files or workspace context is present. Fail closed on ambiguous history and retain the existing opt-out.

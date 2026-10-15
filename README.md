@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.12.0-informational)
+![Release](https://img.shields.io/badge/release-v1.13.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -13,40 +13,23 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
-## Recent updates (v1.12.0)
+## Recent updates (v1.13.0)
 
-**v1.12.0** introduces faster routing for eligible standalone chat questions and safe explanation follow-ups, while preserving semantic fallback for requests requiring tools or additional context.
+**v1.13.0** improves everyday factual assistance with source-grounded weather and news, context-aware follow-ups, and a clearer news-reading experience. It builds on the existing local semantic router instead of adding a competing model.
 
 Highlights include:
 
-- **Faster chat routing:** Conservative zero-model routing for eligible timeless questions and explanation-only follow-ups. Matched local tests saved approximately 500 ms in the routing stage, not necessarily in total response time. See [Router Fast Path](docs/ROUTER_FAST_PATH.md).
+- **Weather:** Structured Open-Meteo forecasts in normal chat, compact source links, and targeted city/postcode clarification. Follow-up questions reuse only explicitly confirmed weather context; location is never guessed from profile or IP. See [Weather integration](docs/WEATHER_FORECAST_INTEGRATION.md) and [Chat Decision Engine](docs/CHAT_DECISION_ENGINE.md).
+- **Intelligent chat decisions:** A common `answer` / `clarify` / `execute_tool` contract for preflight and execution, with weather slot resolution and the existing semantic router retained for other capabilities.
+- **Source-grounded daily news:** Publisher feeds and search discovery with dated direct articles; unread snippets and aggregator redirects are not treated as article evidence. Duplicate/unsummarizable items are skipped, and bounded follow-up fetching aims for the requested number of complete briefs.
+- **Readable news briefings:** Clickable headlines, subdued publisher/time labels, concise extracts and optional **local Qwen** rewriting guarded by conservative source consistency checks. Unverifiable rewrites fall back to original excerpts. No independent fact-check is implied. See [News Briefing](docs/NEWS_BRIEFING.md).
+- **Bilingual guidance and UI:** Weather/news help in German and English, consistent source rendering and fresh frontend asset revisions.
+- **Reliable image/video handoffs:** Preserve the strict 90% unified-memory guard and existing 18 GB image / 20 GB video load reserves. After an actual idle-model release, allow only bounded fresh RAM rechecks to accommodate delayed macOS reclamation; persistent shortages still block workloads. See [Runtime lease diagnostics](docs/RUNTIME_LEASE_DIAGNOSTICS.md).
+- **Better image editing:** Accessible local before/after comparison, optional object-target auto-mask and explicit change advisory. Osaurus Qwen Image 2.1 Edit adds a measured, model-specific Step Cache default with a per-job opt-out. See [Image editing V2](docs/IMAGE_EDITING_V2.md) and [Step Cache defaults](docs/PERFORMANCE_MFLUX_QWEN21_STEP_CACHE_DEFAULT.md).
+- **Runtime and performance diagnostics:** More transparent image/MLX-Gen and Qwen edit performance observations, long-chat/DFlash2 experiment harnesses, and guarded context-compaction and prefill watchdog improvements. Performance numbers depend on the local model, job and Mac; no universal speedup is claimed. See [Performance Observatory](docs/PERFORMANCE_OBSERVATORY.md).
 
-- **Chat visualizations:** optional structured line, bar, donut, table and KPI views for supplied numeric data, with CSV export and no external chart dependency.
-
-- **Media library:** Browse existing generated images, videos and Talking Photo clips in a responsive gallery, with search, filtering, previews, download, explicit deletion, and keep-permanently controls. Newly completed normal-chat images and videos are preserved by default. See [Media Library](docs/MEDIA_LIBRARY_1_10.md).
-
-- **Talking Photo:** direct LTX audio-to-video is the default, with an optional
-  LTX + MuseTalk hybrid. The LTX paths now accept up to **20 seconds of
-  source audio (beta)** instead of 10 seconds. Longer generated TTS audio
-  is rejected before rendering rather than silently shortened. A 15–20-second
-  clip has not yet been validated for identity drift, lip-sync quality,
-  peak unified-memory use or render time on all Apple Silicon machines.
-  See [Talking Photo quality and real-device testing](docs/TALKING_PHOTO_QUALITY.md).
-- **Media queue:** image and video jobs survive reloads and recover after
-  service failures. Native dispatch now backs off on HTTP 409/503 without
-  blocking runnable work of another kind; order is preserved within each
-  kind, and only one active native media job is dispatched at a time.
-- **Runtime performance:** LTX can preserve idle image weights when fresh,
-  complete memory measurements satisfy the existing hard limit and video
-  reserve. The Performance Observatory shows per-stage video handoff
-  latencies and actual model-release/preservation counts. Read-only memory
-  probes and video progress disk writes are coalesced; admission checks are
-  still fresh. See [Performance Observatory](docs/PERFORMANCE_OBSERVATORY.md).
-- **Finance:** EUR-first price display with unchanged source currencies,
-  interactive price-history charts and more resilient quote/FX diagnostics.
-
-See [the changelog](CHANGELOG.md) for the complete v1.12.0 changes.
-For new releases follow [the release procedure](docs/RELEASING.md) and
+See [the changelog](CHANGELOG.md) for the complete v1.13.0 changes.
+For releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
 
