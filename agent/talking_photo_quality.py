@@ -14,7 +14,7 @@ import time
 
 from fastapi import HTTPException
 
-from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform
+from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform, talking_photo_continuity
 from agent.talking_photo_audio import _analyze_wav
 
 
@@ -171,19 +171,46 @@ def _generate_longform(
         raise RuntimeError("Longform erwartet mindestens zwei Abschnitte")
     rendered_files: list[Path] = []
     rendered_details: list[dict] = []
+    continuity_enabled = talking_photo_continuity.enabled()
     began = time.monotonic()
     for index, segment in enumerate(segments):
         if cancelled():
             raise talking_photo_ltx.QualityCancelled()
         part_work = work / f"part-{index+1:02d}"
         part_debug = debug_dir / f"part-{index+1:02d}" if debug_dir else None
+        segment_image, segment_suffix = image, image_suffix
+        reference = {"source": "original", "enabled": continuity_enabled}
+        if index > 0 and continuity_enabled:
+            # Recondition the next LTX render on the last *visible* frame of
+            # the previous one, not the original portrait or its padded tail.
+            # If video decoding fails, keep the existing stable fallback.
+            try:
+                segment_image = talking_photo_continuity.extract_tail_frame(
+                    rendered_files[-1], segments[index - 1].video_frames,
+                    work / f"continuation-{index+1:02d}.png",
+                    cancelled=cancelled,
+                )
+                segment_suffix = ".png"
+                reference = {
+                    "source": "previous-content-frame",
+                    "enabled": True,
+                    "after_segment": index,
+                    "sha256": hashlib.sha256(segment_image).hexdigest(),
+                }
+            except talking_photo_ltx.QualityCancelled:
+                raise
+            except (RuntimeError, OSError, ValueError) as exc:
+                reference = {
+                    "source": "original-fallback", "enabled": True,
+                    "reason": f"{type(exc).__name__}: {str(exc)[:200]}",
+                }
         def part_update(*, phase="quality", progress=0.25, **kwargs):
             # Coarse progress: account for completed parts, never claim completion
             # while a later MLX render or the final mux remains.
             fraction = min(1.0, max(0.0, (progress - 0.25) / 0.65))
             update(phase=phase, progress=min(0.91, 0.20 + 0.69 * (index + fraction) / len(segments)))
         video, details = generate(
-            job_id, image, image_suffix, segment.wav, segment.duration_seconds,
+            job_id, segment_image, segment_suffix, segment.wav, segment.duration_seconds,
             part_work, debug_dir=part_debug, cancelled=cancelled,
             update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
         )
@@ -201,6 +228,7 @@ def _generate_longform(
             "seed": details.get("seed"),
             "elapsed_seconds": details.get("elapsed_seconds"),
             "mode": details.get("a2v_mode"),
+            "reference": reference,
         })
         update(phase="quality", progress=0.20 + 0.69 * len(rendered_files) / len(segments))
 
@@ -217,6 +245,18 @@ def _generate_longform(
         "engine": "ltx-distilled" if distilled else ("ltx" if not apply_lipsync else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
         "longform": True,
+        "continuity": {
+            "enabled": continuity_enabled,
+            "method": "previous last visible frame as next reference",
+            "applied": sum(
+                item["reference"]["source"] == "previous-content-frame"
+                for item in rendered_details
+            ),
+            "fallbacks": sum(
+                item["reference"]["source"] == "original-fallback"
+                for item in rendered_details
+            ),
+        },
         "chunks": rendered_details,
         "assembly": assembly,
         "audio_seconds": assembly["audio_seconds"],
