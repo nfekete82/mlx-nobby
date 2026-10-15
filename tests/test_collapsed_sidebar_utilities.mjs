@@ -25,3 +25,10 @@ test('all bottom utilities use existing SVGs, tools and accessible titles',()=>{
  assert.match(code,/observer\.observe\(bottom, \{childList:true\}\)/);
  assert.match(css,/\.app\.sidebar-collapsed[\s\S]*?\.sidebar-rail/);
 });
+
+test('System & Tools groups footer actions while preserving original buttons',()=>{
+ assert.match(code,/sidebarSystemTools/);
+ assert.match(code,/mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton'/);
+ assert.match(code,/button && button.parentElement !== items/);
+ assert.match(css,/sidebar-system-tools-items/);
+});
