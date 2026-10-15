@@ -7478,7 +7478,10 @@ def searxng_search_results(query, limit=8):
                 item.get("score"),
         })
 
-        if not same_day_news and len(normalized) >= max(1, min(int(limit), 20)):
+        # Inspect a bounded set beyond top-ranked generic hits for
+        # a real forecast; providers sometimes rank unrelated articles first.
+        bound = 40 if weather_query else max(1, min(int(limit), 20))
+        if not same_day_news and len(normalized) >= bound:
             break
 
     if same_day_news:
