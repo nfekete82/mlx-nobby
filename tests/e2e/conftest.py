@@ -1,3 +1,4 @@
+import re
 """Real production web process, isolated Agent transport and strict browser diagnostics."""
 import json
 import os
@@ -119,7 +120,7 @@ def ui(request, browser, web):
     url, agent = web
     agent.reset()
     width, height = request.param
-    artifact = ROOT / 'test-results' / request.node.name
+    artifact = ROOT / 'test-results' / re.sub(r'[^A-Za-z0-9_.-]+', '_', request.node.name)
     artifact.mkdir(parents=True, exist_ok=True)
     for file in artifact.iterdir():
         file.unlink()
