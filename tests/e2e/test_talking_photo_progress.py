@@ -35,8 +35,10 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
     def create(route):
         requests["create"] += 1
         body = route.request.post_data_json
-        assert body["engine"] == "ltx"
-        assert body["lead_in_ms"] == 500
+        assert body["engine"] == "ltx-distilled"
+        assert body["motion"] == "natural"
+        assert "lead_in_ms" not in body
+        assert body["speed"] == 1.0
         respond(route, dict(job), 202)
 
     def poll(route):
@@ -53,7 +55,7 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         respond(route, dict(job))
 
     page.route("**/api/talking-photo/status",
-               lambda route: respond(route, {"providers": {"ltx": {"ready": True, "device": "mlx/metal"}}}))
+               lambda route: respond(route, {"providers": {"ltx-distilled": {"ready": True, "device": "mlx/metal"}}}))
     page.route("**/api/mlx/audio/voices/manage",
                lambda route: respond(route, {"voices": []}))
     page.route("**/api/talking-photo/jobs", create)
@@ -69,12 +71,9 @@ def test_talking_photo_progress_reopen_and_cancel(ui):
         {"name": "portrait.png", "mimeType": "image/png", "buffer": png.getvalue()}
     )
     page.locator("#talkingPhotoText").fill("Hello, this is a progress test.")
-    expect(page.locator("#talkingPhotoLeadIn")).to_have_value("0")
-    page.locator("#talkingPhotoEngine").select_option("fast")
-    expect(page.locator("#talkingPhotoLeadInField")).to_be_hidden()
-    page.locator("#talkingPhotoEngine").select_option("ltx")
-    expect(page.locator("#talkingPhotoLeadInField")).to_be_visible()
-    page.locator("#talkingPhotoLeadIn").select_option("500")
+    expect(page.locator("#talkingPhotoEngine")).to_have_value("ltx-distilled")
+    expect(page.locator("#talkingPhotoLeadIn")).to_have_count(0)
+    expect(page.locator("#talkingPhotoMotion")).to_have_count(0)
     expect(page.locator("#talkingPhotoCreate")).to_be_enabled()
     page.locator("#talkingPhotoCreate").click()
 
@@ -131,7 +130,7 @@ def test_talking_photo_stale_session_recovers(ui):
                                            body=json.dumps({"detail": "Job not found"})))
     page.route("**/api/talking-photo/status",
                lambda route: route.fulfill(status=200, content_type="application/json",
-                                           body=json.dumps({"providers": {"ltx": {"ready": True}}})))
+                                           body=json.dumps({"providers": {"ltx-distilled": {"ready": True}}})))
     page.route("**/api/mlx/audio/voices/manage",
                lambda route: route.fulfill(status=200, content_type="application/json",
                                            body=json.dumps({"voices": []})))
@@ -150,7 +149,7 @@ def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
     # Agent harness's intentionally unimplemented (501) endpoints.
     page.route("**/api/talking-photo/status", lambda route: route.fulfill(
         status=200, content_type="application/json",
-        body=json.dumps({"providers": {"ltx": {"ready": True, "device": "mlx/metal"}}}),
+        body=json.dumps({"providers": {"ltx-distilled": {"ready": True, "device": "mlx/metal"}}}),
     ))
     page.route("**/api/mlx/audio/voices/manage", lambda route: route.fulfill(
         status=200, content_type="application/json", body=json.dumps({"voices": []}),

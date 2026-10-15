@@ -22,6 +22,7 @@ DEFAULT_NEGATIVE_PROMPT = (
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser()
     value.add_argument("--model", required=True)
+    value.add_argument("--mode", choices=("classic", "distilled"), default="classic")
     value.add_argument("--image", required=True)
     value.add_argument("--audio", required=True)
     value.add_argument("--output", required=True)
@@ -58,12 +59,20 @@ def main() -> None:
     import numpy as np
     import ltx_pipelines_mlx.a2vid_two_stage as pipeline_module
     from ltx_pipelines_mlx.a2vid_two_stage import A2VidPipelineTwoStage
+    if args.mode == "distilled":
+        import ltx_pipelines_mlx.a2vid_distilled as selected_pipeline_module
+        from ltx_pipelines_mlx.a2vid_distilled import A2VidDistilledPipeline
+        pipeline_type = A2VidDistilledPipeline
+    else:
+        selected_pipeline_module = pipeline_module
+        pipeline_type = A2VidPipelineTwoStage
 
     diagnostics = {
         "conditioning_audio_sha256": hashlib.sha256(audio.read_bytes()).hexdigest(),
         "conditioning_audio_stats": validate_wav(audio.read_bytes()),
         "audio_loads": [],
-        "pipeline_source_sha256": hashlib.sha256(Path(pipeline_module.__file__).read_bytes()).hexdigest(),
+        "pipeline_source_sha256": hashlib.sha256(Path(selected_pipeline_module.__file__).read_bytes()).hexdigest(),
+        "mode": args.mode,
         "constructor": {"model_dir": str(model), "gemma_model_id": str(model),
                         "low_memory": True, "low_ram_streaming": True},
     }
@@ -99,7 +108,7 @@ def main() -> None:
         return loaded
     pipeline_module.load_audio = audited_load_audio
 
-    pipe = A2VidPipelineTwoStage(
+    pipe = pipeline_type(
         model_dir=str(model),
         gemma_model_id=str(model),
         low_memory=True,
@@ -108,7 +117,6 @@ def main() -> None:
     pipe.verbose = False
     parameters = dict(
         prompt=args.prompt,
-        negative_prompt=args.negative_prompt,
         output_path=str(output),
         audio_path=str(audio),
         image=str(image),
@@ -119,11 +127,20 @@ def main() -> None:
         seed=args.seed,
         stage1_steps=args.stage1_steps,
         stage2_steps=args.stage2_steps,
-        cfg_scale=args.cfg_scale,
-        stg_scale=args.stg_scale,
         audio_start_time=0.0,
-        audio_max_duration=args.frames / args.fps,
     )
+    if args.mode == "classic":
+        parameters.update(
+            negative_prompt=args.negative_prompt,
+            cfg_scale=args.cfg_scale,
+            stg_scale=args.stg_scale,
+            audio_max_duration=args.frames / args.fps,
+        )
+    else:
+        # Distilled has no CFG/STG or negative prompt; reject misconfiguration
+        # instead of silently pretending these settings affected the video.
+        if args.stage1_steps < 1 or args.stage1_steps > 8 or args.stage2_steps < 1 or args.stage2_steps > 3:
+            raise SystemExit("Distilled unterstützt maximal 8+3 Schritte")
     bound = inspect.signature(pipe.generate_and_save).bind(**parameters)
     bound.apply_defaults()
     diagnostics["parameters"] = dict(bound.arguments)

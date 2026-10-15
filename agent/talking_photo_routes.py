@@ -23,8 +23,8 @@ class TalkingPhotoRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=80)
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
-    motion: Literal["none", "natural"] = "none"
-    engine: Literal["fast", "quality", "ltx"] = "ltx"
+    motion: Literal["none", "natural"] = "natural"
+    engine: Literal["fast", "quality", "ltx", "ltx-distilled"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
 
 
@@ -39,13 +39,15 @@ def provider_status() -> dict:
         "device": fast.get("device"),
         "setup_command": fast.get("setup_command"),
         "detail": fast.get("detail"),
-        "default_engine": "ltx",
+        "default_engine": "ltx-distilled",
         "quality_available": bool(quality.get("ready")),
         "ltx_available": bool(ltx.get("ready")),
+        "ltx_distilled_available": bool(ltx.get("ready")),
         "providers": {
             "fast": fast,
             "quality": quality,
             "ltx": ltx,
+            "ltx-distilled": ltx,
         },
     }
 
@@ -67,13 +69,15 @@ def install_routes(app):
         @app.post("/api/talking-photo/jobs", status_code=202)
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
-            engine = payload.pop("engine", "ltx")
+            engine = payload.pop("engine", "ltx-distilled")
             if engine == "fast" and payload["lead_in_ms"] != 0:
                 raise HTTPException(422, "Audiovorlauf ist nur für LTX direkt oder Hybrid verfügbar")
             if engine == "quality":
                 return talking_photo_quality.create_job(payload)
             if engine == "ltx":
                 return talking_photo_quality.create_job(payload, ltx_only=True)
+            if engine == "ltx-distilled":
+                return talking_photo_quality.create_job(payload, ltx_only=True, distilled=True)
             return talking_photo.create_job(payload)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:

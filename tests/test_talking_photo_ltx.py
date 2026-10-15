@@ -188,6 +188,50 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                     )
             popen.assert_not_called()
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "requires ffmpeg")
+    def test_distilled_is_opt_in_and_uses_8_plus_3_without_cfg(self):
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes((5000).to_bytes(2, "little", signed=True) * 6400)
+        native_video = bytes(4) + b"ftyp" + bytes(48)
+        commands = []
+        real_popen = subprocess.Popen
+
+        def fake_popen(command, **kwargs):
+            if "--output" not in command:
+                return real_popen(command, **kwargs)
+            commands.append(command)
+            Path(command[command.index("--output") + 1]).write_bytes(native_video)
+            process = mock.Mock(returncode=0)
+            process.communicate.return_value = ("ok", None)
+            return process
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
+                mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
+                mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
+                mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+            ):
+                video, details = talking_photo_ltx.generate(
+                    "b" * 24, b"portrait", ".png", buffer.getvalue(), 0.4,
+                    Path(directory), cancelled=lambda: False, distilled=True,
+                )
+        command = commands[0]
+        self.assertEqual(video, native_video)
+        self.assertEqual(command[command.index("--mode") + 1], "distilled")
+        self.assertEqual(command[command.index("--stage1-steps") + 1], "8")
+        self.assertEqual(command[command.index("--stage2-steps") + 1], "3")
+        self.assertNotIn("--cfg-scale", command)
+        self.assertNotIn("--stg-scale", command)
+        self.assertNotIn("--negative-prompt", command)
+        self.assertEqual(details["a2v_mode"], "distilled")
+        self.assertIsNone(details["cfg_scale"])
+        self.assertIsNone(details["negative_prompt"])
+
     def test_quality_frames_cover_audio_on_ltx_grid(self):
         frames, duration = talking_photo_ltx.quality_frames(3.0)
         self.assertEqual(frames, 73)

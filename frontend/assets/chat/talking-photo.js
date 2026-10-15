@@ -369,7 +369,8 @@
         const engineSelect = document.createElement('select');
         engineSelect.id = 'talkingPhotoEngine';
         [
-            ['ltx', localText('Standard · LTX direkt', 'Default · Direct LTX')],
+            ['ltx-distilled', localText('Standard · LTX Distilled (8+3)', 'Default · LTX Distilled (8+3)')],
+            ['ltx', localText('Qualität · LTX direkt', 'Quality · Direct LTX')],
             ['quality', localText('Hybrid · LTX + MuseTalk', 'Hybrid · LTX + MuseTalk')],
             ['fast', localText('Fast · MuseTalk', 'Fast · MuseTalk')],
         ].forEach(([value, label]) => {
@@ -378,44 +379,17 @@
             option.textContent = label;
             engineSelect.append(option);
         });
-        engineSelect.value = 'ltx';
+        engineSelect.value = 'ltx-distilled';
         engineLabel.append(engineSelect);
         engineLabel.append(node(
             'div',
             'mlx-talking-photo-hint',
             localText(
-                'LTX direkt ist der Standard und erhält den natürlich generierten Mund. Hybrid ergänzt bei Bedarf einen MuseTalk-Lippenpass.',
-                'Direct LTX is the default and keeps the naturally generated mouth. Hybrid adds a MuseTalk lip pass when needed.',
+                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. LTX direkt und Hybrid bleiben als Alternativen.',
+                'Distilled is the default: natural motion in 8+3 steps. Direct LTX and Hybrid remain available.',
             ),
         ));
         right.append(engineLabel);
-
-        const leadInLabel = node('label', 'mlx-talking-photo-field');
-        leadInLabel.id = 'talkingPhotoLeadInField';
-        leadInLabel.append(node('span', '', localText(
-            'Audiovorlauf · Testoption', 'Audio lead-in · experiment',
-        )));
-        const leadInSelect = document.createElement('select');
-        leadInSelect.id = 'talkingPhotoLeadIn';
-        [
-            ['0', localText('Aus · bisheriges Verhalten', 'Off · existing behavior')],
-            ['500', localText('0,5 Sekunden Stille vor der Sprache', '0.5 seconds of silence before speech')],
-        ].forEach(([value, label]) => {
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = label;
-            leadInSelect.append(option);
-        });
-        leadInSelect.value = '0';
-        leadInLabel.append(leadInSelect);
-        leadInLabel.append(node(
-            'div', 'mlx-talking-photo-hint',
-            localText(
-                'Experiment gegen verschluckte Lippenbewegungen am Satzanfang. Ton und LTX-Video erhalten denselben Vorlauf; das Audio darf zusammen maximal 20 Sekunden lang sein.',
-                'Experiment for missed lip movements at the start. Audio and LTX video share the same lead-in; combined audio may be at most 20 seconds.',
-            ),
-        ));
-        right.append(leadInLabel);
 
         const voiceLabel = node('label', 'mlx-talking-photo-field');
         voiceLabel.append(node('span', '', localText('Stimme', 'Voice')));
@@ -527,11 +501,7 @@
             preview.hidden = false;
         });
 
-        engineSelect.addEventListener('change', () => {
-            leadInLabel.hidden = engineSelect.value === 'fast';
-            if (leadInLabel.hidden) leadInSelect.value = '0';
-            refreshProviderStatus();
-        });
+        engineSelect.addEventListener('change', refreshProviderStatus);
         create.addEventListener('click', startJob);
         cancel.addEventListener('click', cancelCurrentJob);
         document.body.append(modal);
@@ -669,7 +639,7 @@
     async function refreshProviderStatus() {
         if (jobIsBusy()) return;
         const create = document.getElementById('talkingPhotoCreate');
-        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx';
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx-distilled';
         if (create) create.disabled = true;
         try {
             const status = await requestJson('/api/talking-photo/status');
@@ -679,7 +649,8 @@
             );
             const labels = {
                 quality: 'Hybrid · LTX + MuseTalk',
-                ltx: 'Standard · LTX direkt',
+                ltx: 'Qualität · LTX direkt',
+                'ltx-distilled': 'Standard · LTX Distilled (8+3)',
                 fast: 'MuseTalk',
             };
             const label = labels[engine] || engine;
@@ -739,7 +710,7 @@
         const text = document.getElementById('talkingPhotoText')?.value?.trim() || '';
         const voice = document.getElementById('talkingPhotoVoice')?.value || null;
         const selectedLanguage = document.getElementById('talkingPhotoLanguage')?.value || 'de';
-        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx';
+        const engine = document.getElementById('talkingPhotoEngine')?.value || 'ltx-distilled';
         const create = document.getElementById('talkingPhotoCreate');
         const cancel = document.getElementById('talkingPhotoCancel');
         const result = document.getElementById('talkingPhotoResult');
@@ -795,7 +766,7 @@
                     voice,
                     language: selectedLanguage,
                     engine,
-                    lead_in_ms: Number(document.getElementById('talkingPhotoLeadIn')?.value || 0),
+                    motion: 'natural',
                     speed: 1.0,
                 }),
             });

@@ -4,11 +4,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_ltx_setup_supports_parallel_q4_q8_on_0160():
+def test_ltx_setup_supports_parallel_q4_q8_on_0163():
     source = (ROOT / "scripts/setup-ltx-video-mlx").read_text(encoding="utf-8")
 
-    assert 'UPSTREAM_VERSION="0.16.0"' in source
-    assert 'UPSTREAM_COMMIT="90f76c20864ea612071afbb4e714ceea99e38e34"' in source
+    assert 'UPSTREAM_VERSION="0.16.3"' in source
+    assert 'UPSTREAM_COMMIT="ae3b7ea9583db775bd4a1dfb506fb789585021e7"' in source
     assert "LTX_MLX_MODEL_VARIANT" in source
     assert "q4|q8" in source
     assert 'dgrauet/ltx-2.5-mlx-$MODEL_VARIANT' in source

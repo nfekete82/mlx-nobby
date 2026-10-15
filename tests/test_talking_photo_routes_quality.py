@@ -20,18 +20,51 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
                 if not ready:
                     self.assertEqual(health["setup_command"], "./scripts/setup-musetalk-mac")
 
-    def test_request_defaults_to_direct_ltx(self):
+    def test_request_defaults_to_distilled_with_natural_motion(self):
         request = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
         )
-        self.assertEqual(request.engine, "ltx")
+        self.assertEqual(request.engine, "ltx-distilled")
+        self.assertEqual(request.motion, "natural")
         direct = talking_photo_routes.TalkingPhotoRequest(
             image_data_url="data:image/png;base64," + "A" * 32,
             text="Hallo",
             engine="ltx",
         )
         self.assertEqual(direct.engine, "ltx")
+        beta = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo", engine="ltx-distilled",
+        )
+        self.assertEqual(beta.engine, "ltx-distilled")
+
+    def test_route_dispatches_distilled_as_direct_ltx_default(self):
+        handlers = {}
+        class App:
+            routes = []
+            def get(self, path, **kwargs):
+                def decorate(handler):
+                    handlers[("GET", path)] = handler
+                    return handler
+                return decorate
+            def post(self, path, **kwargs):
+                def decorate(handler):
+                    handlers[("POST", path)] = handler
+                    return handler
+                return decorate
+        with mock.patch.object(talking_photo_routes.talking_photo, "recover_jobs"):
+            talking_photo_routes.install_routes(App())
+        req = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo",
+        )
+        with mock.patch.object(talking_photo_quality, "create_job", return_value={"id": "test"}) as create:
+            result = handlers[("POST", "/api/talking-photo/jobs")](req)
+        self.assertEqual(result["id"], "test")
+        payload = req.model_dump()
+        payload.pop("engine")
+        create.assert_called_once_with(payload, ltx_only=True, distilled=True)
 
     def test_audio_lead_in_is_opt_in_and_strictly_validated(self):
         base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Guten Morgen!"}
@@ -87,11 +120,13 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
 
         self.assertTrue(status["ready"])
         self.assertEqual(status["provider"], "musetalk-mac")
-        self.assertEqual(status["default_engine"], "ltx")
+        self.assertEqual(status["default_engine"], "ltx-distilled")
         self.assertTrue(status["quality_available"])
         self.assertTrue(status["ltx_available"])
         self.assertEqual(status["providers"]["quality"]["provider"], "ltx-2.5-mlx-a2v")
         self.assertEqual(status["providers"]["ltx"]["provider"], "ltx-2.5-mlx-a2v")
+        self.assertEqual(status["providers"]["ltx-distilled"]["provider"], "ltx-2.5-mlx-a2v")
+        self.assertTrue(status["ltx_distilled_available"])
 
 
 if __name__ == "__main__":

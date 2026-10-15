@@ -8,10 +8,8 @@ def test_talking_photo_ui_injects_scripts_once():
     patched = patch_chat_html(source)
     assert b"/assets/chat/talking-photo.js" in patched
     assert b"/assets/chat/talking-photo-clipboard.js" in patched
-    assert b"/assets/chat/talking-photo-motion.js" in patched
     assert patched.count(b"/assets/chat/talking-photo.js") == 1
     assert patched.count(b"/assets/chat/talking-photo-clipboard.js") == 1
-    assert patched.count(b"/assets/chat/talking-photo-motion.js") == 1
     assert patch_chat_html(patched) == patched
 
 
@@ -25,14 +23,15 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "video_url" in source
     assert "talkingPhotoEngine" in source
     assert "Hybrid · LTX + MuseTalk" in source
-    assert "Standard · LTX direkt" in source
+    assert "Qualität · LTX direkt" in source
+    assert "Standard · LTX Distilled (8+3)" in source
     assert "Fast · MuseTalk" in source
     assert "engine," in source
-    assert "engineSelect.value = 'ltx'" in source
-    assert "talkingPhotoLeadIn" in source
-    assert "lead_in_ms:" in source
-    assert "leadInSelect.value = '0'" in source
-    assert "leadInLabel.hidden = engineSelect.value === 'fast'" in source
+    assert "engineSelect.value = 'ltx-distilled'" in source
+    assert "talkingPhotoLeadIn" not in source
+    assert "lead_in_ms:" not in source
+    assert "motion: 'natural'" in source
+    assert "speed: 1.0" in source
     assert "talkingPhotoOutput" in source
     assert "talkingPhotoResultFrame" in source
     assert "talkingPhotoResultPlaceholder" in source
@@ -62,11 +61,10 @@ def test_talking_photo_clipboard_module_supports_button_and_paste_shortcut():
     assert "image/jpeg" in source
 
 
-def test_talking_photo_motion_module_adds_natural_mode_to_job_payload():
-    source = Path("frontend/assets/chat/talking-photo-motion.js").read_text(encoding="utf-8")
-    assert "talkingPhotoMotion" in source
-    assert "Natürlich · Kopf, Augen & Oberkörper" in source
-    assert "Nur Lippen · schneller" in source
-    assert "payload.motion" in source
-    assert "LTX 2.5" in source
-    assert "Natürliche Bewegung wird" in source
+def test_talking_photo_ui_has_no_motion_selector_or_audio_lead_in():
+    source = Path("frontend/assets/chat/talking-photo.js").read_text(encoding="utf-8")
+    loader = Path("backend/talking_photo_ui.py").read_text(encoding="utf-8")
+    assert "talkingPhotoMotion" not in source
+    assert "talkingPhotoLeadIn" not in source
+    assert "talking-photo-motion.js" not in loader
+    assert "motion: 'natural'" in source
