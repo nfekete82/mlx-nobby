@@ -160,6 +160,10 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
     expect(page.locator("#talkingPhotoModal")).to_be_hidden()
     assert discards == [], "closing a completed result must never delete the MP4"
 
+    if page.viewport_size["width"] <= 900 and not page.locator(".sidebar").evaluate(
+        "node => node.classList.contains('mobile-open')"
+    ):
+        page.locator("#sidebarToggle").click()
     page.locator("#sidebarLibraryButton").click()
     expect(page.locator("#nobbyLibrary")).to_be_visible()
     page.locator('[data-library-kind="video"]').click()
