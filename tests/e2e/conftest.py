@@ -98,7 +98,7 @@ def navigate_chat_page(page, url):
     # scripts. Waiting for the full browser "load" event can leave the
     # local E2E fixture dependent on unrelated CDN activity. Commit is
     # sufficient to confirm navigation; then require the real composer
-    # and all three production libraries before executing any assertion.
+    # and the loaded app controllers before executing any assertion.
     # This never skips missing dependencies or test failures.
     page.goto(url + '/chat', wait_until='commit', timeout=15000)
     page.locator('#input').wait_for(timeout=10000)
@@ -106,7 +106,10 @@ def navigate_chat_page(page, url):
         """() => (
             typeof window.marked?.parse === 'function' &&
             typeof window.DOMPurify?.sanitize === 'function' &&
-            typeof window.hljs?.highlightElement === 'function'
+            typeof window.hljs?.highlightElement === 'function' &&
+            typeof window.MLXChatSessions?.currentSession === 'function' &&
+            typeof window.MLXChatRendering?.renderMessages === 'function' &&
+            typeof window.MLXChatGeneration?.sendMessage === 'function'
         )""",
         timeout=10000,
     )
