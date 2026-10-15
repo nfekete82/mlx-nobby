@@ -454,7 +454,11 @@
     "minutes": "Minuten",
     "records_suffix": " Datensätze",
     "shorts_draft_open": "Entwurf im Shorts Studio öffnen",
-    "shorts_draft_unavailable": "Entwurf nicht verfügbar"
+    "shorts_draft_unavailable": "Entwurf nicht verfügbar",
+    "news_briefing_heading": "Nachrichtenüberblick",
+    "news_briefing_partial": "Nur {actual} von {requested} Meldungen hatten ausreichend belegte Kurztexte.",
+    "news_briefing_ai_note": "Grundlage sind abgerufene Originalartikel; einige Kurztexte wurden lokal von der KI umformuliert. Keine unabhängige Faktenprüfung.",
+    "news_briefing_source_note": "Kurztexte stammen aus lesbaren Originalartikeln. Veröffentlichungszeiten aus Anbieter-Feeds oder Suchindex; keine unabhängige Faktenprüfung."
   },
   "runtime_ui": {
     "error": "Fehler:",
