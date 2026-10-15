@@ -59,7 +59,7 @@ class Generate(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
-    quality: Literal["fast", "standard", "quality"] | None = None
+    quality: Literal["fast", "standard", "quality", "ultra"] | None = None
     auto_size: bool = False
     original_prompt: str | None = None
 
@@ -83,7 +83,7 @@ class Edit(BaseModel):
     steps: int | None = Field(default=None, ge=1, le=50)
     guidance: float | None = Field(default=None, ge=0, le=10)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
-    quality: Literal["fast", "standard", "quality"] | None = None
+    quality: Literal["fast", "standard", "quality", "ultra"] | None = None
 
     semantic_operation: Literal['edit', 'reference_generate'] = 'edit'
     reference_mode: Literal['same_identity', 'resemblance'] | None = None
