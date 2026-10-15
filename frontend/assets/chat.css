@@ -10606,3 +10606,39 @@ body.notes-resizing * {
     outline: 2px solid var(--nobby-control-focus);
     outline-offset: 2px;
 }
+
+/* Source-grounded news briefs: clear separation without heavy cards. */
+.message-news-digest > ul {
+    list-style: none;
+    margin: 14px 0 12px;
+    padding: 0;
+}
+.message-news-digest > ul > li {
+    margin: 0;
+    padding: 15px 0 17px;
+    border-bottom: 1px solid rgba(190, 207, 233, 0.13);
+    line-height: 1.55;
+}
+.message-news-digest > ul > li:first-child {
+    padding-top: 3px;
+}
+.message-news-digest > ul > li:last-child {
+    border-bottom: 0;
+}
+.message-news-digest > ul > li br {
+    display: block;
+    margin-top: 5px;
+    content: "";
+}
+.message-news-digest > ul > li a {
+    font-weight: 650;
+    text-underline-offset: 3px;
+}
+.message-news-digest > ul > li p {
+    margin: 5px 0 0;
+}
+.message-news-digest > ul + p {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted, #a3afbf);
+}
