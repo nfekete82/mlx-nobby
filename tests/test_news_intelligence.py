@@ -58,7 +58,7 @@ def test_google_news_wrapper_and_unfetched_snippets_are_never_cited():
     assert not publisher_link("https://news.google.com/rss/articles/CBAQ")
     assert all(not readable_article(x) for x in wrappers)
     digest = grounded_news_digest("Wichtige Nachrichten von heute", wrappers, now=NOW)
-    assert digest["status"] == "no_readable_articles"
+    assert digest["status"] == "no_summarizable_articles"
     assert digest["items"] == []
 
 
@@ -68,7 +68,7 @@ def test_missing_old_future_or_naive_publication_date_are_rejected():
     undated = article(published_date=None)
     naive = article(published_date="2026-10-15T07:00:00")
     result = grounded_news_digest("News von heute", [old, future, undated, naive], now=NOW)
-    assert result["status"] == "no_readable_articles"
+    assert result["status"] == "no_summarizable_articles"
 
 
 def test_identical_urls_and_similar_headlines_are_deduplicated():
@@ -155,7 +155,7 @@ def test_real_chat_web_tool_fails_closed_when_only_google_wrapper_exists():
          patch.object(app, "fetch_web_page", side_effect=AssertionError("do not fetch wrappers")):
         result = app.tool_web_search(SimpleNamespace(prompt="News von heute"))
     assert result["count"] == 0
-    assert result["news_digest"]["status"] == "no_readable_articles"
+    assert result["news_digest"]["status"] == "no_summarizable_articles"
     assert result["news_digest"]["items"] == []
 
 
@@ -227,12 +227,18 @@ def test_short_preview_excludes_cookie_notices_and_source_unrelated_text():
 
 def test_missing_relevant_summary_never_fabricates_news_facts():
     from agent.news_intelligence import article_short_summary
-    candidate = article()
+    # The page mentions title tokens but contains no usable factual sentence.
+    candidate = article(fetch={
+        "ok": True,
+        "url": "https://www.tagesschau.de/inland/energie-100.html",
+        "text": "Bundestag Vorschläge Energieversorgung. " * 20,
+    })
+    assert readable_article(candidate)
     assert article_short_summary(candidate) == ""
     digest = grounded_news_digest("News von heute", [candidate], now=NOW)
-    assert len(digest["items"]) == 1
-    assert digest["items"][0]["summary"] == ""
-    assert "Kein verlässlicher Kurztext" in digest["answer"]
+    assert digest["items"] == []
+    assert digest["status"] == "no_summarizable_articles"
+    assert "keine ausreichend belegten Kurzmeldungen" in digest["answer"]
 
 
 
@@ -252,3 +258,85 @@ def test_untrusted_article_markup_is_escaped_in_overview():
     assert value["items"][0]["summary"]
     assert "<script>" not in value["answer"]
     assert "&lt;script&gt;" in value["answer"]
+
+
+
+def test_non_summarizable_headline_is_replaced_by_next_grounded_article():
+    from agent.news_intelligence import article_short_summary
+    shallow = article(fetch={
+        "ok": True,
+        "url": "https://www.tagesschau.de/inland/energie-100.html",
+        "text": "Bundestag Vorschläge Energieversorgung. " * 20,
+    })
+    replacement = article(
+        url="https://www.tagesschau.de/inland/energie-200.html",
+        title="Ministerium erläutert Vorschläge zur Energieversorgung",
+        fetch={
+            "ok": True,
+            "url": "https://www.tagesschau.de/inland/energie-200.html",
+            "text": (
+                "Das Ministerium erläutert neue Vorschläge zur Energieversorgung "
+                "und kündigt für die kommenden Tage weitere Gespräche an. "
+                + ("Hintergründe und zusätzliche öffentliche Informationen. " * 14)
+            ),
+        },
+    )
+    assert article_short_summary(shallow) == ""
+    assert article_short_summary(replacement)
+    digest = grounded_news_digest("News von heute", [shallow, replacement],
+                                  now=NOW, max_items=2)
+    assert len(digest["items"]) == 1
+    assert digest["items"][0]["url"].endswith("energie-200.html")
+    assert digest["items"][0]["summary"]
+    assert "1 von 2 angefragten" in digest["answer"]
+    assert "Kein verlässlicher Kurztext" not in digest["answer"]
+
+
+def test_actual_news_web_tool_fetches_additional_articles_until_five_summaries():
+    from agent import app
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+    now = format_datetime(datetime.now(timezone.utc))
+    url_root = "https://www.tagesschau.de/inland/topic-"
+    titles = [
+        "Bundestag bespricht Gesetzesänderung für Energieversorgung",
+        "Ministerium informiert über Pläne zur Steuerreform",
+        "Bundesregierung kündigt weitere Gespräche zur Gesundheitsreform an",
+        "Parteien einigen sich auf Änderungen beim Nahverkehr",
+        "Forschungsteam berichtet über neue Ergebnisse der Klimastudie",
+        "Parlament diskutiert die geplanten Änderungen der Bildungspolitik",
+        "EU-Kommission verhandelt über neue europäische Regeln",
+    ]
+    search_results = [
+        {"title": title, "url": f"{url_root}{i}.html",
+         "published_date": now, "engine": "SearXNG"}
+        for i, title in enumerate(titles)
+    ]
+    urls = []
+    def fake_fetch(url):
+        urls.append(url)
+        i = int(url.rsplit("-", 1)[-1].split(".")[0])
+        if i < 2:
+            text = " ".join(titles[i].split()[:3]) + ". "
+            text = text * 30
+        else:
+            text = (
+                titles[i] + ": Die zuständige Behörde hat sich "
+                "zu dem Vorhaben geäußert und weitere Schritte erläutert. "
+                + ("Mehr unabhängige Hintergrundinformationen aus dem Bericht. " * 13)
+            )
+        return {"ok": True, "url": url, "text": text}
+    with patch.object(app, "searxng_search_results", return_value={
+        "query": "Die fünf wichtigsten Nachrichten von heute",
+        "provider": "SearXNG", "results": search_results,
+    }), patch("agent.news_intelligence.publisher_news_candidates", return_value=[]), \
+         patch.object(app, "fetch_web_page", side_effect=fake_fetch), \
+         patch.object(app, "observed_agent_llm", return_value='{"summaries": []}'):
+        data = app.tool_web_search(SimpleNamespace(
+            prompt="Die fünf wichtigsten Nachrichten von heute"
+        ))
+    assert data["count"] == 5
+    assert len(urls) == 7
+    assert data["fetch_attempts"] == 7
+    assert all(item["summary"] for item in data["news_digest"]["items"])
+    assert data["news_digest"]["requested_count"] == 5
