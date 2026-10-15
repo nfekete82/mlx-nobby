@@ -14,6 +14,29 @@
     if (spacer && jobs) spacer.after(jobs);
     if (settings) rail.appendChild(settings);
 
+    // Collect Help, System Info, and Settings into one expandable group.
+    // Help is inserted asynchronously; move its existing button instead of
+    // cloning it, so all original click handlers remain attached.
+    const group = document.createElement('details');
+    group.className = 'sidebar-system-tools';
+    group.id = 'sidebarSystemTools';
+    const summary = document.createElement('summary');
+    summary.className = 'sidebar-action';
+    summary.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span class="sidebar-action-label">System &amp; Tools</span><span class="sidebar-system-chevron" aria-hidden="true">⌄</span>';
+    const items = document.createElement('div');
+    items.className = 'sidebar-system-tools-items';
+    group.append(summary, items);
+    const runtimeLabel = bottom.querySelector('.sidebar-runtime');
+    bottom.insertBefore(group, runtimeLabel || null);
+
+    function syncSystemTools() {
+      for (const id of ['mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton']) {
+        const button = document.getElementById(id);
+        if (button && button.parentElement !== items) items.appendChild(button);
+      }
+    }
+    syncSystemTools();
+
     const utilities = [
       ['talkingPhotoButton', 'railTalkingPhoto', 'Talking Photo'],
       ['mlxSidebarHelpButton', 'railHelp', 'Hilfe'],
@@ -55,8 +78,11 @@
     }
     sync();
     // Help, Shorts and Talking Photo insert controls after initial page load.
-    const observer = new MutationObserver(sync);
-    observer.observe(bottom, {childList:true});
+    const observer = new MutationObserver(() => {
+      syncSystemTools();
+      sync();
+    });
+    observer.observe(bottom, {childList:true, subtree:true});
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', install, {once:true});
