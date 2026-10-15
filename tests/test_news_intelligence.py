@@ -202,9 +202,7 @@ def test_every_readable_article_gets_a_source_based_preview_under_heading():
     assert digest["items"][0]["summary"] == summary
     assert "  \n  " in digest["answer"]
     assert digest["answer"].index(first) > digest["answer"].index(title)
-    assert digest["answer"].index(first) < digest["answer"].index(
-        "keine unabhängige Faktenprüfung"
-    ) if "keine unabhängige Faktenprüfung" in digest["answer"] else True
+    assert "Kurzüberblicke sind wörtliche" in digest["answer"]
 
 
 def test_short_preview_excludes_cookie_notices_and_source_unrelated_text():
@@ -234,3 +232,22 @@ def test_missing_relevant_summary_never_fabricates_news_facts():
     assert len(digest["items"]) == 1
     assert digest["items"][0]["summary"] == ""
     assert "Kein verlässlicher Kurztext" in digest["answer"]
+
+
+
+def test_untrusted_article_markup_is_escaped_in_overview():
+    malicious = (
+        "Bundestag diskutiert neue Vorschläge zur Energieversorgung in Berlin "
+        "und erläutert dabei <script>alert('unsafe')</script> die aktuellen Planungen "
+        "mit Vertretern verschiedener Fraktionen. "
+        + "Unabhängige Angaben und weitere öffentliche Diskussionen. " * 14
+    )
+    candidate = article(fetch={
+        "ok": True,
+        "url": "https://www.tagesschau.de/inland/energie-100.html",
+        "text": malicious,
+    })
+    value = grounded_news_digest("News von heute", [candidate], now=NOW)
+    assert value["items"][0]["summary"]
+    assert "<script>" not in value["answer"]
+    assert "&lt;script&gt;" in value["answer"]
