@@ -337,6 +337,7 @@
   },
   "rendering": {
     "image_preview_open": "Open larger image preview",
+    "region_editor_button": "Edit region",
     "image_preview_title": "Image preview",
     "image_compare_title": "Before / after",
     "image_compare_before": "Original image",

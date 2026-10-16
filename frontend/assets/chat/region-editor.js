@@ -4,7 +4,7 @@
   if (window.MLXRegionEditor) return;
 
   const ID = /^\d{10}-[a-f0-9]{12}$/i;
-  const text = (de, en) =>
+  const localText = (de, en) =>
     String(window.MLXI18n?.getLanguage?.() || document.documentElement.lang || 'de')
       .startsWith('de') ? de : en;
   const node = (tag, cls, value) => {
@@ -40,55 +40,55 @@
 
   async function open(source) {
     const id = String(source?.image_id || source?.id || '').trim();
-    if (!ID.test(id)) throw new Error(text('Ungültige Bild-ID', 'Invalid image ID'));
+    if (!ID.test(id)) throw new Error(localText('Ungültige Bild-ID', 'Invalid image ID'));
     if (active) active.close();
     const opener = document.activeElement;
     const overlay = node('div', 'nobby-region-editor');
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-label', text('Bereich bearbeiten', 'Edit selected region'));
+    overlay.setAttribute('aria-label', localText('Bereich bearbeiten', 'Edit selected region'));
     const frame = node('div', 'nobby-region-editor-frame');
     const header = node('header', 'nobby-region-editor-header');
-    const heading = node('h2', '', text('Bereich bearbeiten', 'Edit selected region'));
+    const heading = node('h2', '', localText('Bereich bearbeiten', 'Edit selected region'));
     const dismiss = node('button', 'message-action-btn', '×');
     dismiss.type = 'button';
-    dismiss.setAttribute('aria-label', text('Schließen', 'Close'));
+    dismiss.setAttribute('aria-label', localText('Schließen', 'Close'));
     header.append(heading, dismiss);
     const help = node('p', 'nobby-region-editor-help',
-      text('Male über den Bereich, den die KI verändern soll. Rot markiert die Auswahl.',
+      localText('Male über den Bereich, den die KI verändern soll. Rot markiert die Auswahl.',
            'Brush over the area to change. Red indicates the selection.'));
     const imageWrap = node('div', 'nobby-region-editor-image');
     const image = node('img');
-    image.alt = text('Originalbild', 'Original image');
+    image.alt = localText('Originalbild', 'Original image');
     const display = node('canvas', 'nobby-region-editor-overlay');
-    display.setAttribute('aria-label', text('Bereich mit Maus oder Touch markieren', 'Mark region with mouse or touch'));
+    display.setAttribute('aria-label', localText('Bereich mit Maus oder Touch markieren', 'Mark region with mouse or touch'));
     imageWrap.append(image, display);
     const toolbar = node('div', 'nobby-region-editor-toolbar');
     const sizeLabel = node('label', '');
-    sizeLabel.textContent = text('Pinselgröße', 'Brush size');
+    sizeLabel.textContent = localText('Pinselgröße', 'Brush size');
     const size = node('input');
     size.type = 'range';
     size.min = '4'; size.max = '128'; size.step = '2'; size.value = '32';
     sizeLabel.append(size);
-    const brush = node('button', 'message-action-btn is-active', text('Pinsel', 'Brush'));
-    const erase = node('button', 'message-action-btn', text('Radierer', 'Eraser'));
-    const undo = node('button', 'message-action-btn', text('Rückgängig', 'Undo'));
-    const clear = node('button', 'message-action-btn', text('Zurücksetzen', 'Reset'));
+    const brush = node('button', 'message-action-btn is-active', localText('Pinsel', 'Brush'));
+    const erase = node('button', 'message-action-btn', localText('Radierer', 'Eraser'));
+    const undo = node('button', 'message-action-btn', localText('Rückgängig', 'Undo'));
+    const clear = node('button', 'message-action-btn', localText('Zurücksetzen', 'Reset'));
     for (const b of [brush, erase, undo, clear]) b.type = 'button';
     toolbar.append(sizeLabel, brush, erase, undo, clear);
     const promptLabel = node('label', 'nobby-region-editor-prompt');
-    promptLabel.textContent = text('Was soll sich im markierten Bereich ändern?', 'What should change in the selected area?');
+    promptLabel.textContent = localText('Was soll sich im markierten Bereich ändern?', 'What should change in the selected area?');
     const prompt = node('textarea');
     prompt.rows = 3; prompt.maxLength = 2000;
-    prompt.placeholder = text('z. B. natürlichere Augen und Hauttextur, alles andere beibehalten',
+    prompt.placeholder = localText('z. B. natürlichere Augen und Hauttextur, alles andere beibehalten',
       'e.g. more realistic eyes and skin texture, preserve everything else');
     promptLabel.append(prompt);
     const status = node('p', 'nobby-region-editor-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     const buttons = node('div', 'nobby-region-editor-actions');
-    const cancel = node('button', 'message-action-btn', text('Abbrechen', 'Cancel'));
-    const send = node('button', 'message-action-btn nobby-region-editor-submit', text('Bereich überarbeiten', 'Edit selected region'));
+    const cancel = node('button', 'message-action-btn', localText('Abbrechen', 'Cancel'));
+    const send = node('button', 'message-action-btn nobby-region-editor-submit', localText('Bereich überarbeiten', 'Edit selected region'));
     cancel.type = 'button'; send.type = 'button';
     send.disabled = true;
     buttons.append(cancel, send);
@@ -180,7 +180,7 @@
       if (closed) return;
       if (image.naturalWidth < 64 || image.naturalHeight < 64 ||
           image.naturalWidth * image.naturalHeight > 16_000_000) {
-        status.textContent = text('Bildgröße nicht unterstützt', 'Unsupported image size');
+        status.textContent = localText('Bildgröße nicht unterstützt', 'Unsupported image size');
         return;
       }
       mask.width = display.width = image.naturalWidth;
@@ -189,33 +189,33 @@
       redraw();
     }, {once: true});
     image.addEventListener('error', () => {
-      status.textContent = text('Originalbild nicht verfügbar', 'Source image unavailable');
+      status.textContent = localText('Originalbild nicht verfügbar', 'Source image unavailable');
     }, {once: true});
     image.src = '/api/mlx/images/' + encodeURIComponent(id);
 
     send.addEventListener('click', async () => {
       if (busy || !ready || !maskHasSelection(strokes) || !prompt.value.trim()) return;
       busy = true; update();
-      status.textContent = text('Maske wird übertragen …', 'Uploading mask …');
+      status.textContent = localText('Maske wird übertragen …', 'Uploading mask …');
       try {
         const blob = await new Promise((resolve, reject) =>
           mask.toBlob(value => value ? resolve(value) : reject(new Error('PNG export failed')), 'image/png'));
         if (closed || !blob.size || blob.size > 16 * 1024 * 1024)
-          throw new Error(text('Maske konnte nicht gespeichert werden', 'Mask could not be saved'));
+          throw new Error(localText('Maske konnte nicht gespeichert werden', 'Mask could not be saved'));
         const file = new File([blob], 'nobby-region-mask.png', {type: 'image/png'});
         const result = await window.MLXChatAttachments?.uploadImageAttachments?.([
           {file, name: file.name, kind: 'image'}
         ]);
         const path = result?.[0]?.upload?.path;
-        if (!path) throw new Error(text('Masken-Upload fehlgeschlagen', 'Mask upload failed'));
-        status.textContent = text('KI-Bearbeitung wird gestartet …', 'Starting local image edit …');
+        if (!path) throw new Error(localText('Masken-Upload fehlgeschlagen', 'Mask upload failed'));
+        status.textContent = localText('KI-Bearbeitung wird gestartet …', 'Starting local image edit …');
         const accepted = await window.MLXChatGeneration?.startRegionImageEdit?.({
           image_id: id,
           artifact_id: 'image-' + id,
           mask_path: path,
           prompt: prompt.value.trim()
         });
-        if (!accepted) throw new Error(text('Bearbeitung konnte nicht gestartet werden', 'Edit could not be started'));
+        if (!accepted) throw new Error(localText('Bearbeitung konnte nicht gestartet werden', 'Edit could not be started'));
         busy = false; finish();
       } catch (error) {
         busy = false;

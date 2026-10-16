@@ -1920,7 +1920,7 @@ function renderImageArtifactCard(message) {
     const regionEdit = document.createElement('button');
     regionEdit.type = 'button';
     regionEdit.className = 'message-action-btn';
-    regionEdit.textContent = rt('region_editor_button', 'Bereich bearbeiten');
+    regionEdit.textContent = rt('region_editor_button', 'Edit region');
     regionEdit.addEventListener('click', () => {
         window.MLXRegionEditor?.open?.(artifact).catch(error =>
             window.alert(String(error?.message || error))
