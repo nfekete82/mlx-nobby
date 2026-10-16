@@ -38,6 +38,7 @@
     let pollInFlight = false;
     let elapsedTicker = null;
     let previewUrl = null;
+    let personFocus = null; // normalized click coordinates; reset when the source changes.
     let currentJobId = null;
     let lastJob = null;
     let preparing = false;
@@ -380,6 +381,40 @@
         preview.alt = localText('Vorschau des Fotos', 'Photo preview');
         preview.hidden = true;
         left.append(preview);
+        const focusHint = node('div', 'mlx-talking-photo-hint', localText(
+            'Bei mehreren Personen: Tippe auf das gewünschte Gesicht. Der Bildausschnitt wird auf diese Person fokussiert. Erneut tippen, um die Auswahl zu ändern.',
+            'For multiple people: click the intended face. The image will be cropped to focus on that person. Click again to change.',
+        ));
+        focusHint.id = 'talkingPhotoPersonFocusHint';
+        focusHint.hidden = true;
+        left.append(focusHint);
+        const focusReset = node('button', 'mlx-talking-photo-focus-reset', localText('Ganzes Foto verwenden', 'Use full photo'));
+        focusReset.id = 'talkingPhotoPersonFocusReset';
+        focusReset.type = 'button';
+        focusReset.hidden = true;
+        focusReset.addEventListener('click', () => {
+            personFocus = null;
+            focusReset.hidden = true;
+            preview.style.outline = '';
+            focusHint.textContent = localText('Tippe auf die sprechende Person.', 'Click the speaking person.');
+        });
+        left.append(focusReset);
+        preview.style.cursor = 'crosshair';
+        preview.addEventListener('click', event => {
+            if (preview.hidden || !preview.naturalWidth) return;
+            const rect = preview.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            // object-fit may letterbox; map the click into actual image pixels.
+            const scale = Math.min(rect.width / preview.naturalWidth, rect.height / preview.naturalHeight);
+            const dw = preview.naturalWidth * scale, dh = preview.naturalHeight * scale;
+            const x = (event.clientX - rect.left - (rect.width - dw) / 2) / dw;
+            const y = (event.clientY - rect.top - (rect.height - dh) / 2) / dh;
+            if (x < 0 || x > 1 || y < 0 || y > 1) return;
+            personFocus = {x, y};
+            focusReset.hidden = false;
+            preview.style.outline = '2px solid #4f8cff';
+            focusHint.textContent = localText('Person ausgewählt – Ausschnitt wird bei Erstellung zugeschnitten.', 'Person selected – the picture will be cropped when generating.');
+        });
         left.append(node(
             'div',
             'mlx-talking-photo-hint',
@@ -512,6 +547,11 @@
         resultFrame.append(result);
 
         imageInput.addEventListener('change', () => {
+            personFocus = null;
+            focusReset.hidden = true;
+            focusHint.hidden = !imageInput.files?.[0];
+            preview.style.outline = '';
+            focusHint.textContent = localText('Tippe auf die sprechende Person.', 'Click the speaking person.');
             selectedLibrarySource = null; // A manually chosen file breaks the previous ancestry.
             const file = imageInput.files?.[0];
             if (previewUrl) {
@@ -732,6 +772,26 @@
         await voices;
     }
 
+    async function focusedImageDataUrl(file, focus) {
+        if (!focus) return fileToDataUrl(file);
+        const src = await createImageBitmap(file);
+        try {
+            // Keep the original aspect ratio while restricting the region to 55%.
+            // This is a focus crop, not face tracking or multi-speaker lip sync.
+            const width = Math.max(1, Math.round(src.width * 0.55));
+            const height = Math.max(1, Math.round(src.height * 0.55));
+            const sx = Math.max(0, Math.min(src.width - width, Math.round(focus.x * src.width - width / 2)));
+            const sy = Math.max(0, Math.min(src.height - height, Math.round(focus.y * src.height - height / 2)));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(src, sx, sy, width, height, 0, 0, width, height);
+            return canvas.toDataURL('image/jpeg', 0.92);
+        } finally {
+            src.close();
+        }
+    }
+
     async function startJob() {
         const imageInput = document.getElementById('talkingPhotoImage');
         const text = document.getElementById('talkingPhotoText')?.value?.trim() || '';
@@ -784,7 +844,10 @@
 
         try {
             setStatus(localText('Bild wird vorbereitet …', 'Preparing image …'));
-            const imageDataUrl = await fileToDataUrl(file);
+            const imageDataUrl = await focusedImageDataUrl(file, personFocus);
+            if (imageDataUrl.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 100) {
+                throw new Error(localText('Der Bildausschnitt ist zu groß.', 'The cropped image is too large.'));
+            }
             const job = await requestJson('/api/talking-photo/jobs', {
                 method: 'POST',
                 body: JSON.stringify({
