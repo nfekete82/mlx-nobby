@@ -906,6 +906,23 @@
         }
     }
 
+    async function openWithImage(file) {
+        if (!(file instanceof File) || !['image/png', 'image/jpeg'].includes(file.type) ||
+            !file.size || file.size > MAX_IMAGE_BYTES) {
+            throw new Error(localText('Ungültiges Foto aus der Bibliothek.', 'Invalid library photo.'));
+        }
+        await openModal();
+        const input = document.getElementById('talkingPhotoImage');
+        if (!input) throw new Error('Talking Photo image input unavailable');
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+        input.focus();
+    }
+
+    window.MLXTalkingPhoto = Object.freeze({ openWithImage });
+
     function mountButton() {
         if (document.getElementById(BUTTON_ID)) return;
         const host = document.querySelector('.sidebar-bottom');
