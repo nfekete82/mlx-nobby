@@ -26,6 +26,7 @@ class TalkingPhotoRequest(BaseModel):
     motion: Literal["none", "natural"] = "natural"
     engine: Literal["fast", "quality", "ltx", "ltx-distilled"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
+    person_focus: dict[str, float] | None = None  # Normalized selected position (fast engine only)
 
 
 def provider_status() -> dict:
@@ -71,6 +72,8 @@ def install_routes(app):
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
             engine = payload.pop("engine", "ltx-distilled")
+            if payload.get("person_focus") is not None and engine != "fast":
+                raise HTTPException(422, "Personenauswahl wird derzeit nur mit Fast · MuseTalk unterstützt")
             if engine == "fast" and payload["lead_in_ms"] != 0:
                 raise HTTPException(422, "Audiovorlauf ist nur für LTX direkt oder Hybrid verfügbar")
             if engine == "quality":
