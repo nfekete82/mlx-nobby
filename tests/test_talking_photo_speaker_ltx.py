@@ -116,3 +116,34 @@ def test_ltx_runner_uses_selected_prompt_and_unchanged_full_image(distilled):
         assert metadata["person_focus"] == {"x": 0.23, "y": 0.4}
         assert metadata["speaker_selection"] == "prompt-guided"
         assert metadata["prompt"] == cmd[cmd.index("--prompt") + 1]
+
+
+def test_http_api_dispatches_selected_speaker_to_standard_ltx():
+    """The selected point must reach the LTX job; it must not silently switch to Fast."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from agent import talking_photo_routes
+    app = FastAPI()
+    payload = {
+        "image_data_url": "data:image/png;base64,AAAA",
+        "text": "Hallo",
+        "engine": "ltx-distilled",
+        "person_focus": {"x": .18, "y": .45},
+    }
+    with (
+        mock.patch.object(talking_photo_routes.talking_photo, "recover_jobs"),
+        mock.patch.object(talking_photo_routes.talking_photo_quality, "create_job",
+                          return_value={"id": "test", "status": "queued"}) as create,
+        mock.patch.object(talking_photo_routes.talking_photo, "create_job") as fast,
+    ):
+        talking_photo_routes.install_routes(app)
+        with TestClient(app) as client:
+            response = client.post("/api/talking-photo/jobs", json=payload)
+            assert response.status_code == 202, response.text
+            payload_sent = create.call_args.args[0]
+            assert payload_sent["person_focus"] == payload["person_focus"]
+            assert create.call_args.kwargs == {"ltx_only": True, "distilled": True}
+            fast.assert_not_called()
+            response = client.post("/api/talking-photo/jobs", json={**payload, "engine": "quality"})
+            assert response.status_code == 422
+            assert create.call_count == 1
