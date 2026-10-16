@@ -65,7 +65,7 @@ def test_bad_positions_are_rejected(value):
 
 
 def test_api_schema_accepts_ltx_focus_and_rejects_out_of_range():
-    common = {"image_data_url": "data:image/png;base64,AAAA", "text": "Hallo"}
+    common = {"image_data_url": "data:image/png;base64," + ("A" * 48), "text": "Hallo"}
     request = TalkingPhotoRequest.model_validate({
         **common,
         "engine": "ltx-distilled",
@@ -125,7 +125,7 @@ def test_http_api_dispatches_selected_speaker_to_standard_ltx():
     from agent import talking_photo_routes
     app = FastAPI()
     payload = {
-        "image_data_url": "data:image/png;base64,AAAA",
+        "image_data_url": "data:image/png;base64," + ("A" * 48),
         "text": "Hallo",
         "engine": "ltx-distilled",
         "person_focus": {"x": .18, "y": .45},
