@@ -61,6 +61,10 @@ test('images expose same editor from chat and library; existing compare kept', (
 test('masked edits use the standard chat action queue and image artifact identifiers', () => {
   assert.match(gen, /async function startRegionImageEdit/);
   assert.match(gen, /action: 'image_edit'/);
+  // Regression: one escaped digit token matches actual artifact IDs; \\d
+  // escaped twice would match the literal characters instead.
+  assert.ok(gen.includes(String.raw`/^\\d{10}-[a-f0-9]{12}$/i.test`));
+
   assert.match(gen, /resolved_target: 'image_edit'/);
   assert.match(gen, /mask_path: mask_path/);
   assert.match(gen, /active_artifact_id: artifact_id/);
