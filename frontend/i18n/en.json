@@ -1057,5 +1057,19 @@
   "attachments.edit_verify": "Verify result with built-in vision model",
   "attachments.edit_mask": "Mask (white = repaint, black = preserve)",
   "attachments.edit_mask_ready": "Mask uploaded",
-  "attachments.edit_hint": "Advanced options require a compatible MFLUX model. Reference order follows the numbered thumbnails. Original images are preserved. Identity preservation is best effort."
+  "attachments.edit_hint": "Advanced options require a compatible MFLUX model. Reference order follows the numbered thumbnails. Original images are preserved. Identity preservation is best effort.",
+  "library3.collection": "Collection",
+  "library3.all_media": "All media",
+  "library3.favorites": "★ Favorites",
+  "library3.new_collection": "+ Collection",
+  "library3.delete_collection": "Delete collection",
+  "library3.select_visible": "Select visible",
+  "library3.zero_selected": "0 selected",
+  "library3.clear_selection": "Clear selection",
+  "library3.mark_favorite": "★ Favorite",
+  "library3.target_collection": "Target collection",
+  "library3.select_target": "Select target collection",
+  "library3.add": "Add",
+  "library3.remove": "Remove",
+  "library3.delete_selected": "Delete selection"
 }
