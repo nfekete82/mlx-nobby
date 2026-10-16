@@ -15,7 +15,7 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ## Recent updates (v1.17.0)
 
-**v1.17.0** connects Library images to the existing Talking Photo and local image-to-video generation workflows. Finished results record their canonical source image as local provenance metadata for convenient navigation. All previous Media Library 3.0 features remain available.
+**v1.17.0** adds fast, offline date-range filters and sorting by file size or creation date in the Media Library. These controls combine with existing favorites, collections, engine and media-type filters, without loading another AI model. The Talking Photo and local image-to-video workflows from v1.16.0 remain available.
 
 Highlights include:
 
