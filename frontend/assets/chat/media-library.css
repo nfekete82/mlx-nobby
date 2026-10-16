@@ -394,3 +394,39 @@
     }
   }
 }
+
+
+/* Media Library 4.0: details are on demand, no auto network request on previews. */
+.nobby-library-preview-body:has(.nobby-library-preview-info){
+  flex-direction:column;
+  justify-content:flex-start;
+  gap:12px;
+}
+.nobby-library-preview-info{flex:none;padding:9px 15px;font-size:13px}
+.nobby-library-detail-panel[hidden]{display:none!important}
+.nobby-library-detail-panel{
+  width:min(100%,700px);
+  box-sizing:border-box;
+  display:grid;
+  gap:0;
+  padding:15px;
+  border:1px solid #34455e;
+  border-radius:12px;
+  background:#141e2e;
+  color:#e8effb;
+  text-align:left;
+  font-size:13px;
+}
+.nobby-library-detail-panel>strong{padding:3px 4px 12px;font-size:15px}
+.nobby-library-detail-row{
+  display:grid;
+  grid-template-columns:minmax(92px,150px) minmax(0,1fr);
+  gap:12px;
+  padding:9px 4px;
+  border-top:1px solid #2b384d;
+}
+.nobby-library-detail-row span:first-child{color:#9eb0c8}
+.nobby-library-detail-row span:last-child{overflow-wrap:anywhere;white-space:pre-wrap}
+@media(max-width:560px){
+  .nobby-library-detail-row{grid-template-columns:1fr;gap:4px}
+}
