@@ -67,6 +67,7 @@ test('masked edits use the standard chat action queue and image artifact identif
 
   assert.match(gen, /resolved_target: 'image_edit'/);
   assert.match(gen, /mask_path: mask_path/);
+  assert.match(gen, /region_edit: true/);
   assert.match(gen, /active_artifact_id: artifact_id/);
   assert.match(gen, /updateImageJobMessage/);
   assert.match(gen, /watchImageJob/);
