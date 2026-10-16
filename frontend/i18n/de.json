@@ -1057,5 +1057,19 @@
   "attachments.edit_verify": "Ergebnis mit integriertem Vision-Modell prüfen",
   "attachments.edit_mask": "Maske (weiß = neu zeichnen, schwarz = bewahren)",
   "attachments.edit_mask_ready": "Maske hochgeladen",
-  "attachments.edit_hint": "Erweiterte Optionen benötigen ein kompatibles MFLUX-Modell. Die Nummern der Miniaturen bestimmen die Referenzreihenfolge. Originalbilder bleiben erhalten. Identitätserhalt ist technisch nur bestmöglich umsetzbar."
+  "attachments.edit_hint": "Erweiterte Optionen benötigen ein kompatibles MFLUX-Modell. Die Nummern der Miniaturen bestimmen die Referenzreihenfolge. Originalbilder bleiben erhalten. Identitätserhalt ist technisch nur bestmöglich umsetzbar.",
+  "library3.collection": "Sammlung",
+  "library3.all_media": "Alle Medien",
+  "library3.favorites": "★ Favoriten",
+  "library3.new_collection": "+ Sammlung",
+  "library3.delete_collection": "Sammlung löschen",
+  "library3.select_visible": "Sichtbare auswählen",
+  "library3.zero_selected": "0 ausgewählt",
+  "library3.clear_selection": "Auswahl aufheben",
+  "library3.mark_favorite": "★ Favorisieren",
+  "library3.target_collection": "Zielsammlung",
+  "library3.select_target": "Zielsammlung auswählen",
+  "library3.add": "Hinzufügen",
+  "library3.remove": "Entfernen",
+  "library3.delete_selected": "Auswahl löschen"
 }

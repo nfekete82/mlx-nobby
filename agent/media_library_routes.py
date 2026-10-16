@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-from agent import media_lifecycle, media_library_previews
+from agent import media_lifecycle, media_library_previews, media_library_organize
 
 KINDS = ("image", "video", "talking_photo")
 SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
@@ -67,6 +67,34 @@ def install_routes(app: FastAPI):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    @app.get("/api/library/organize")
+    def library_organization():
+        return media_library_organize.snapshot()
+
+    @app.post("/api/library/organize/collections")
+    def library_create_collection(payload: dict):
+        try:
+            return media_library_organize.create_collection(payload.get("name"))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.delete("/api/library/organize/collections/{collection_id}")
+    def library_remove_collection(collection_id: str):
+        try:
+            return media_library_organize.delete_collection(collection_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/library/organize/batch")
+    def library_organize_batch(payload: dict):
+        try:
+            return media_library_organize.update_many(
+                payload.get("items"), payload.get("operation"),
+                payload.get("collection_id"),
+            )
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+
     @app.get("/api/library/assets/{kind}/{asset_id}/metadata")
     def library_metadata(kind: str, asset_id: str):
         try:
@@ -111,6 +139,7 @@ def install_routes(app: FastAPI):
                 deleted += int(result["deleted"])
                 if result["deleted"]:
                     media_library_previews.purge_cached(asset["kind"], asset["id"])
+                    media_library_organize.forget(asset["kind"], asset["id"])
             except (ValueError, OSError):
                 errors += 1
         return {"deleted": deleted, "errors": errors, "selected": len(candidates)}
@@ -123,4 +152,5 @@ def install_routes(app: FastAPI):
             raise HTTPException(422, "Ungültiges Medium") from exc
         if result["deleted"]:
             media_library_previews.purge_cached(kind, asset_id)
+            media_library_organize.forget(kind, asset_id)
         return {"deleted": result["deleted"], "kind": kind, "id": asset_id}

@@ -162,6 +162,8 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
                    "kind": "talking_photo", "id": job_id,
                    "engine": "ltx-distilled", "duration_seconds": 30.0,
                }))
+    page.route("**/api/library/organize",
+               lambda route: json_response(route, {"version": 1, "favorites": [], "collections": []}))
     page.route("**/api/library/assets?limit=1000",
                lambda route: json_response(route, {
                    "assets": [{

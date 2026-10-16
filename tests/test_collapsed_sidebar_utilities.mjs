@@ -7,7 +7,7 @@ const css=fs.readFileSync('frontend/assets/chat.css','utf8');
 const talkingPhoto=fs.readFileSync('frontend/assets/chat/talking-photo.js','utf8');
 
 test('collapsed rail loads a single utility mirror and keeps existing shortcut controls',()=>{
- assert.match(html,/sidebar-rail-utilities\.js\?v=1-13-system-tools/);
+ assert.match(html,/sidebar-rail-utilities\.js\?v=1-15-jobs-group/);
  for(const id of ['railNewChat','railChats','railLibrary','railJobs','railSettings']) {
    assert.match(html,new RegExp('id="'+id+'"'));
  }
