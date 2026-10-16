@@ -14,13 +14,19 @@ import subprocess
 from PIL import Image, ImageDraw, ImageFilter
 
 
-def focus_rect(image: bytes, focus: dict) -> tuple[int, int, int, int]:
-    if not isinstance(focus, dict):
-        raise ValueError("Invalid person focus")
-    x, y = focus.get("x"), focus.get("y")
+def validate_focus(focus: dict) -> tuple[float, float]:
+    """Validate the same normalized click coordinates for MuseTalk and LTX."""
+    if not isinstance(focus, dict) or set(focus) != {"x", "y"}:
+        raise ValueError("Person focus requires x and y")
+    x, y = focus["x"], focus["y"]
     if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
                and math.isfinite(v) and 0 <= v <= 1 for v in (x, y)):
-        raise ValueError("Person focus must be normalized coordinates")
+        raise ValueError("Person focus must be finite normalized coordinates")
+    return float(x), float(y)
+
+
+def focus_rect(image: bytes, focus: dict) -> tuple[int, int, int, int]:
+    x, y = validate_focus(focus)
     with Image.open(io.BytesIO(image)) as img:
         w, h = img.size
     if min(w, h) < 64:
