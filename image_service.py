@@ -77,6 +77,7 @@ class Edit(BaseModel):
     auto_mask: str | None = Field(default=None, min_length=1, max_length=200)
     precision_edit: bool = True  # Conservatively infer unambiguous Qwen auto-mask targets.
     region_edit: bool = False  # Opt-in cropped, composited, RAM-sparing brush edits.
+    region_feather_px: int = Field(default=0, ge=0, le=12)  # Softens only inside the painted mask.
     strength: float | None = Field(default=None, gt=0, le=1)
     use_kv_cache: bool | None = None
     use_step_cache: bool | None = None
@@ -115,6 +116,8 @@ class Edit(BaseModel):
             or self.semantic_operation != 'edit'
         ):
             raise ValueError('Region edit requires one source and a manual mask')
+        if self.region_feather_px and not self.region_edit:
+            raise ValueError('Mask feather requires region edit')
         if self.semantic_operation == 'reference_generate' and self.reference_mode is None:
             raise ValueError('Reference generation requires a reference mode')
         if (self.width is None) != (self.height is None):
@@ -891,7 +894,7 @@ def _edit_result_inner(
     edit_source = prepared_sources[0]
     params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
-        'width', 'height', 'auto_size', 'precision_edit', 'region_edit'}))
+        'width', 'height', 'auto_size', 'precision_edit', 'region_edit', 'region_feather_px'}))
     params["source_path"] = str(edit_source)
     if request.source_paths:
         params['source_paths'] = [str(value) for value in prepared_sources]
@@ -982,7 +985,8 @@ def _edit_result_inner(
         run_provider(model, params, path, **(provider_options or {}))
         if request.region_edit:
             composite_region(source, validate_edit_source(request.mask_path),
-                             path, region_crop, path)
+                             path, region_crop, path,
+                             feather_px=request.region_feather_px)
     finally:
         _running = None
     if saving_callback:
@@ -1388,8 +1392,17 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
         selected = resolved.get("model") if isinstance(resolved, dict) else None
         sdxl_job = bool(operation == "generate"
                         and selected and selected.get("provider") == "sdxl")
+        # The 48-GB unified-memory image editor can load a large Qwen Edit
+        # model even for 512x512 crops.  A resident chat model competes for
+        # the same RAM and can cause abrupt swap spikes after image admission.
+        # Release chat exclusively for opt-in masked region edits, just as
+        # for SDXL.  The existing image_runtime safety checks still govern
+        # admission and conditional restoration of chat after completion.
+        region_qwen_job = bool(
+            operation == "edit" and getattr(request, "region_edit", False)
+        )
         with runtime_coordinator.image_runtime(
-            cancel_event, force_chat_unload=sdxl_job
+            cancel_event, force_chat_unload=(sdxl_job or region_qwen_job)
         ) as preflight:
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")

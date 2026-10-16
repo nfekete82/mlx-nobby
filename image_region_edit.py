@@ -10,7 +10,7 @@ from pathlib import Path
 import secrets
 
 from fastapi import HTTPException
-from PIL import Image
+from PIL import Image, ImageFilter, ImageChops
 
 REGION_EDGE = 512
 MIN_REGION_EDGE = 256
@@ -72,7 +72,8 @@ def prepare_region(source: Path, mask_source: Path, output: Path):
 
 
 def composite_region(source: Path, mask_source: Path, result: Path,
-                     crop: tuple[int, int, int, int], output: Path) -> None:
+                     crop: tuple[int, int, int, int], output: Path,
+                     *, feather_px: int = 0) -> None:
     """Restore full canvas, leaving all unselected pixels *exactly* unchanged.
 
     The model only sees a crop; even an imperfect model cannot recolor
@@ -87,6 +88,13 @@ def composite_region(source: Path, mask_source: Path, result: Path,
             if edited.size != region.size:
                 edited = edited.resize(region.size, Image.Resampling.LANCZOS)
             selection = mask.convert("L").crop(crop)
+            if not isinstance(feather_px, int) or not 0 <= feather_px <= 12:
+                raise ValueError("Ungültige Maskenweichheit (0–12 Pixel)")
+            if feather_px:
+                # Feather inward only: do not alter a single unselected pixel.
+                # A blurred mask alone would extend changes outside selection.
+                softened = selection.filter(ImageFilter.GaussianBlur(feather_px))
+                selection = ImageChops.darker(selection, softened)
             canvas.paste(Image.composite(edited, region, selection), (crop[0], crop[1]))
             temp = _private_png(canvas, output.parent)
         os.replace(temp, output)
