@@ -94,7 +94,7 @@ assert.match(html, /<details class="nobby-library-more">[\s\S]*?<button id="nobb
 assert.ok(html.indexOf('id="nobbyLibrarySearch"') < html.indexOf('id="nobbyLibraryDateFilter"'));
 assert.ok(html.indexOf('id="nobbyLibrarySort"') < html.indexOf('id="nobbyLibrarySelectVisible"'));
 assert.ok(html.indexOf('id="nobbyLibrarySelectVisible"') < html.indexOf('id="nobbyLibraryDeleteAll"'));
-assert.match(html, /media-library\.css\?v=1-18-search/);
+assert.match(html, /media-library\.css\?v=1-18-shared-pickers/);
 assert.match(css, /\.nobby-library-secondary-row\{/);
 assert.match(css, /@media\(max-width:560px\)/);
 assert.match(css, /\.nobby-library-more-menu \[hidden\]\{display:none!important\}/);
@@ -117,3 +117,7 @@ assert.match(js, /\/details"/);
 assert.match(css, /\.nobby-library-detail-row\{/);
 assert.doesNotMatch(js, /innerHTML\s*=/);
 console.log("Library 4.0 metadata search and on-demand details UI contracts passed.");
+
+assert.match(css, /:is\(\.nobby-library-panel :is\(\.nobby-library-secondary-row,\.nobby-library-bulk\), \.mlx-talking-photo-field\) select/);
+assert.match(css, /\.mlx-talking-photo-dialog \.mlx-talking-photo-field select\{/);
+console.log("Library and Talking Photo share dark dropdown style.");
