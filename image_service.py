@@ -1332,7 +1332,25 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             job_id, status="queued", phase="waiting_for_resources",
             progress=0.0, started_at=time.time(),
         )
-        with runtime_coordinator.image_runtime(cancel_event):
+        # Resolve image provider before allocating heavy runtime resources.
+        # SDXL always gets an exclusive chat handoff, even if the current
+        # estimated free percentage still looks healthy.
+        selected = (resolved or {}).get("model") if isinstance(resolved, dict) else None
+        if operation == "generate" and selected is None:
+            try:
+                selected = _generation_model(request.model, request.prompt)
+            except Exception:
+                selected = None  # The normal execution path reports this error.
+        sdxl_job = bool(
+            operation == "generate"
+            and (
+                (selected and selected.get("provider") == "sdxl")
+                or request.model in {"juggernaut-xl", "lustify-endgame-sdxl"}
+            )
+        )
+        with runtime_coordinator.image_runtime(
+            cancel_event, force_chat_unload=sdxl_job
+        ):
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
             if operation == "edit":
@@ -1343,15 +1361,21 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 execute = _generate_result
 
             timings.mark("execution_started")
-            result = execute(
-                request,
-                provider_options=provider_options,
-                prepared_callback=prepared,
-                saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
-                **({"resolved": resolved} if resolved is not None else {}),
-                **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                   if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
-            )
+            try:
+                result = execute(
+                    request,
+                    provider_options=provider_options,
+                    prepared_callback=prepared,
+                    saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+                    **({"resolved": resolved} if resolved is not None else {}),
+                    **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                       if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
+                )
+            finally:
+                # Do not restart chat on top of a still-resident SDXL pipeline.
+                # This runs before the image_runtime context restores chat.
+                if sdxl_job:
+                    shutdown_sdxl_worker()
         timings.mark("execution_finished")
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")

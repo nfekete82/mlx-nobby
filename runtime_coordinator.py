@@ -96,6 +96,16 @@ HARD_MEMORY_USED_PERCENT = min(
     max(50.0, _float_env("MLX_RUNTIME_HARD_USED_PERCENT", 90.0)),
 )
 
+# Active jobs must stop before the admission-time 90% ceiling is reached.
+# Keep the runtime tripwire conservative even if configured permissively.
+ACTIVE_MIN_FREE_PERCENT = max(
+    20.0, min(40.0, _float_env("MLX_RUNTIME_ACTIVE_MIN_FREE_PERCENT", 20.0))
+)
+ACTIVE_MAX_SWAP_GROWTH_GB = min(
+    1.0, _float_env("MLX_RUNTIME_ACTIVE_MAX_SWAP_GROWTH_GB", 0.5)
+)
+
+
 MODEL_LOAD_RESERVE_GB = {
     "chat": _float_env("MLX_RUNTIME_CHAT_LOAD_RESERVE_GB", 18.0),
     "router": _float_env("MLX_RUNTIME_ROUTER_LOAD_RESERVE_GB", 4.0),
@@ -428,6 +438,38 @@ def ensure_model_load_allowed(
             + suffix
         )
 
+    return snapshot
+
+
+def ensure_active_memory_safe(snapshot, *, baseline_swap_gb=None):
+    """Fail closed while a heavy model is loading or generating.
+
+    A full-system pressure probe is required: process RSS alone misses Metal
+    allocations on Apple unified memory. Existing swap is not an error by
+    itself; *new* swap growth during this job is a warning of thrashing.
+    """
+    if not isinstance(snapshot, dict):
+        raise RuntimeError("RAM-Schutz: Speicherdaten nicht verfügbar; Modell gestoppt")
+    free = snapshot.get("free_percent")
+    if not isinstance(free, (int, float)) or isinstance(free, bool) or not math.isfinite(free):
+        raise RuntimeError("RAM-Schutz: Speicherbelegung unbekannt; Modell gestoppt")
+    if snapshot.get("pressure") == "critical" or free <= ACTIVE_MIN_FREE_PERCENT:
+        raise RuntimeError(
+            f"RAM-Schutz: nur noch {free:.1f}% Systemspeicher verfügbar; "
+            "Modell-Worker wird zum Schutz von macOS beendet"
+        )
+    swap = snapshot.get("swap_used_gb")
+    if (
+        isinstance(baseline_swap_gb, (int, float))
+        and math.isfinite(baseline_swap_gb)
+        and isinstance(swap, (int, float))
+        and math.isfinite(swap)
+        and swap - baseline_swap_gb >= ACTIVE_MAX_SWAP_GROWTH_GB
+    ):
+        raise RuntimeError(
+            f"RAM-Schutz: Swap während des Modellauftrags um "
+            f"{swap - baseline_swap_gb:.2f} GB gestiegen; Worker wird beendet"
+        )
     return snapshot
 
 
@@ -1119,8 +1161,13 @@ def image_runtime(
     chat_command=None,
     restore_error=None,
     memory_snapshot=None,
+    force_chat_unload=False,
 ):
-    """Run image work with pressure-aware chat-runtime memory handoff."""
+    """Run image work with pressure-aware chat-runtime memory handoff.
+
+    SDXL can opt into unconditional chat release to avoid overlapping MPS
+    checkpoint loading with a resident large language model.
+    """
     chat_loaded = chat_loaded or _default_chat_loaded
     chat_command = chat_command or _default_chat_command
     memory_snapshot = memory_snapshot or memory_budget_snapshot
@@ -1176,7 +1223,7 @@ def image_runtime(
                     )
                 )
 
-        restore_chat = bool(relief_needed and chat_loaded())
+        restore_chat = bool((relief_needed or force_chat_unload) and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
