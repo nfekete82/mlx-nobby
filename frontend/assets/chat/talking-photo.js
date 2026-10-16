@@ -512,6 +512,7 @@
         resultFrame.append(result);
 
         imageInput.addEventListener('change', () => {
+            selectedLibrarySource = null; // A manually chosen file breaks the previous ancestry.
             const file = imageInput.files?.[0];
             if (previewUrl) {
                 URL.revokeObjectURL(previewUrl);
@@ -944,16 +945,15 @@
             throw new Error(localText('Ungültiges Foto aus der Bibliothek.', 'Invalid library photo.'));
         }
         await openModal();
-        // A manually selected replacement image must not retain old lineage.
-        selectedLibrarySource = options.sourceAsset?.kind === 'image' &&
-            /^\\d{10}-[a-f0-9]{12}$/.test(options.sourceAsset?.id || '')
-            ? {kind: 'image', id: options.sourceAsset.id} : null;
         const input = document.getElementById('talkingPhotoImage');
         if (!input) throw new Error('Talking Photo image input unavailable');
         const transfer = new DataTransfer();
         transfer.items.add(file);
         input.files = transfer.files;
         input.dispatchEvent(new Event('change', {bubbles: true}));
+        selectedLibrarySource = options.sourceAsset?.kind === 'image' &&
+            /^\\d{10}-[a-f0-9]{12}$/.test(options.sourceAsset?.id || '')
+            ? {kind: 'image', id: options.sourceAsset.id} : null;
         input.focus();
     }
 
