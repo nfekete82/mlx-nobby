@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
-from agent import media_lifecycle
+from fastapi.responses import FileResponse
+from agent import media_lifecycle, media_library_previews
 
 KINDS = ("image", "video", "talking_photo")
 SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
@@ -63,6 +64,26 @@ def install_routes(app: FastAPI):
             return list_assets(kind, limit)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/library/assets/{kind}/{asset_id}/metadata")
+    def library_metadata(kind: str, asset_id: str):
+        try:
+            return media_library_previews.metadata(kind, asset_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, "Videodaten nicht gefunden") from exc
+
+    @app.get("/api/library/assets/{kind}/{asset_id}/thumbnail")
+    def library_thumbnail(kind: str, asset_id: str):
+        try:
+            path = media_library_previews.thumbnail(kind, asset_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, "Videovorschau nicht gefunden") from exc
+        except (RuntimeError, OSError) as exc:
+            raise HTTPException(503, "Videovorschau nicht verfügbar") from exc
+        return FileResponse(path, media_type="image/jpeg", headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        })
 
     @app.post("/api/library/assets/{kind}/{asset_id}/save")
     def library_save(kind: str, asset_id: str):
