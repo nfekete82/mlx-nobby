@@ -5,7 +5,14 @@
   const toggle = document.getElementById("sidebarLibraryButton");
   const close = document.getElementById("nobbyLibraryClose");
   if (!panel || !grid || !toggle) return;
-  const state = { kind: "all", engine: "all", query: "", assets: [], loaded: false, generation: 0 };
+  const state = { kind: "all", engine: "all", query: "", collection: "all",
+    assets: [], organization: {favorites: [], collections: []}, selected: new Set(),
+    loaded: false, generation: 0 };
+  const assetKey = asset => asset.kind + ":" + asset.id;
+  const collectionFilter = document.getElementById("nobbyLibraryCollectionFilter");
+  const collectionTarget = document.getElementById("nobbyLibraryCollectionTarget");
+  const bulk = document.getElementById("nobbyLibraryBulk");
+
   const metadataCache = new Map();
   let mediaObserver = null;
   const de = () => String(window.MLXI18n?.getLanguage?.() || document.documentElement.lang || "de").startsWith("de");
@@ -222,6 +229,35 @@
       media.appendChild(elt("span", "nobby-library-play-icon", "▶"));
     }
 
+    const select = elt("label", "nobby-library-select");
+    const checkbox = elt("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.selected.has(assetKey(asset));
+    checkbox.setAttribute("aria-label", t("Medium auswählen", "Select media") + ": " + label(asset.kind));
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.selected.add(assetKey(asset));
+      else state.selected.delete(assetKey(asset));
+      syncBulk();
+    });
+    select.append(checkbox);
+    media.appendChild(select);
+    const star = elt("button", "nobby-library-star",
+      state.organization.favorites.includes(assetKey(asset)) ? "★" : "☆");
+    star.type = "button";
+    star.title = t("Favorit umschalten", "Toggle favorite");
+    star.setAttribute("aria-label", star.title);
+    star.setAttribute("aria-pressed", String(state.organization.favorites.includes(assetKey(asset))));
+    star.addEventListener("click", async () => {
+      star.disabled = true;
+      try {
+        const result = await organizeBatch(
+          [asset], state.organization.favorites.includes(assetKey(asset)) ? "unfavorite" : "favorite"
+        );
+        state.organization = result.organization;
+        render();
+      } catch (error) { window.alert(error.message); star.disabled = false; }
+    });
+    media.appendChild(star);
     const zoom = elt("button", "nobby-library-zoom");
     zoom.type = "button";
     zoom.title = t("Vorschau öffnen", "Open preview");
@@ -274,19 +310,72 @@
     box.appendChild(text);
     return box;
   }
-  function render() {
-    mediaObserver?.disconnect();
+  function selectedAssets() {
+    return state.assets.filter(asset => state.selected.has(assetKey(asset)));
+  }
+  function syncBulk() {
+    const count = selectedAssets().length;
+    if (bulk) bulk.hidden = count === 0;
+    const status = document.getElementById("nobbyLibrarySelectedCount");
+    if (status) status.textContent = t(`${count} ausgewählt`, `${count} selected`);
+    for (const id of ["nobbyLibraryAddSelected", "nobbyLibraryRemoveSelected"]) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !count || !collectionTarget?.value;
+    }
+  }
+  function renderCollections() {
+    if (!collectionFilter || !collectionTarget) return;
+    collectionFilter.replaceChildren();
+    for (const [id, name] of [["all", t("Alle Medien", "All media")],
+                              ["favorites", t("★ Favoriten", "★ Favorites")],
+                              ...state.organization.collections.map(c => [c.id, c.name])]) {
+      const option = elt("option", "", name);
+      option.value = id;
+      collectionFilter.appendChild(option);
+    }
+    if (!Array.from(collectionFilter.options).some(o => o.value === state.collection)) state.collection = "all";
+    collectionFilter.value = state.collection;
+    const currentTarget = collectionTarget.value;
+    collectionTarget.replaceChildren();
+    for (const item of state.organization.collections) {
+      const option = elt("option", "", item.name);
+      option.value = item.id;
+      collectionTarget.appendChild(option);
+    }
+    if (Array.from(collectionTarget.options).some(o => o.value === currentTarget)) collectionTarget.value = currentTarget;
+    const remove = document.getElementById("nobbyLibraryDeleteCollection");
+    if (remove) remove.hidden = !state.organization.collections.some(c => c.id === state.collection);
+    syncBulk();
+  }
+  async function organizeBatch(assets, operation, collectionId) {
+    const response = await fetch("/api/library/organize/batch", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items: assets.map(({kind, id}) => ({kind, id})),
+        operation, collection_id: collectionId || null})
+    });
+    if (!response.ok) throw new Error(t("Organisation fehlgeschlagen", "Organization failed") + " (HTTP " + response.status + ")");
+    return response.json();
+  }
+  function visibleAssets() {
     const filter = state.query.trim().toLowerCase();
-    const filtered = state.assets.filter(item =>
+    const collection = state.organization.collections.find(c => c.id === state.collection);
+    return state.assets.filter(item =>
       (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
       (state.engine === "all" ||
         (state.engine === "talking_photo" && item.kind === "talking_photo") ||
         (state.engine === "standard" && item.kind === "video") ||
         item.engine === state.engine) &&
+      (state.collection === "all" ||
+        (state.collection === "favorites" && state.organization.favorites.includes(assetKey(item))) ||
+        (collection && collection.items.includes(assetKey(item)))) &&
       (!filter || [label(item.kind), item.id, formatDate(item.created_at),
-        engineLabel(item), formatDuration(metadataCache.get(item.kind + ":" + item.id)?.duration_seconds)]
+        engineLabel(item), formatDuration(metadataCache.get(assetKey(item))?.duration_seconds)]
         .some(value => String(value).toLowerCase().includes(filter)))
     );
+  }
+  function render() {
+    mediaObserver?.disconnect();
+    const filtered = visibleAssets();
     const count = document.getElementById("nobbyLibraryCount");
     if (count) count.textContent = t(filtered.length + " Medien", filtered.length + " items");
     const fragment = document.createDocumentFragment();
@@ -294,16 +383,24 @@
       t("Keine gespeicherten Medien gefunden.", "No stored media found.")));
     for (const asset of filtered) fragment.appendChild(card(asset));
     grid.replaceChildren(fragment);
+    syncBulk();
   }
   async function refresh() {
     const generation = ++state.generation;
     grid.replaceChildren(elt("p", "nobby-library-empty", t("Bibliothek wird geladen …", "Loading library …")));
     try {
-      const response = await fetch("/api/library/assets?limit=1000", { cache: "no-store" });
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
+      const [response, organized] = await Promise.all([
+        fetch("/api/library/assets?limit=1000", {cache: "no-store"}),
+        fetch("/api/library/organize", {cache: "no-store"})
+      ]);
+      if (!response.ok || !organized.ok) throw new Error("HTTP " + (!response.ok ? response.status : organized.status));
+      const [data, organizedData] = await Promise.all([response.json(), organized.json()]);
       if (generation !== state.generation || panel.hidden) return;
       state.assets = Array.isArray(data.assets) ? data.assets : [];
+      state.organization = organizedData;
+      const keys = new Set(state.assets.map(assetKey));
+      for (const key of state.selected) if (!keys.has(key)) state.selected.delete(key);
+      renderCollections();
       render();
     } catch (error) {
       if (generation === state.generation && !panel.hidden) {
@@ -311,6 +408,84 @@
       }
     }
   }
+  collectionFilter?.addEventListener("change", () => {
+    state.collection = collectionFilter.value;
+    renderCollections();
+    render();
+  });
+  document.getElementById("nobbyLibraryNewCollection")?.addEventListener("click", async () => {
+    const name = window.prompt(t("Name der neuen Sammlung:", "New collection name:"));
+    if (name === null) return;
+    try {
+      const response = await fetch("/api/library/organize/collections", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name})
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const created = await response.json();
+      state.organization.collections.push(created);
+      state.collection = created.id;
+      renderCollections();
+      render();
+    } catch (error) { window.alert(error.message); }
+  });
+  document.getElementById("nobbyLibraryDeleteCollection")?.addEventListener("click", async () => {
+    const item = state.organization.collections.find(c => c.id === state.collection);
+    if (!item) return;
+    if (!window.confirm(t(`Sammlung „${item.name}“ entfernen? Medien bleiben gespeichert.`,
+                          `Remove collection "${item.name}"? Media files stay saved.`))) return;
+    try {
+      const response = await fetch("/api/library/organize/collections/" + encodeURIComponent(item.id), {method:"DELETE"});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      state.organization.collections = state.organization.collections.filter(c => c.id !== item.id);
+      state.collection = "all";
+      renderCollections(); render();
+    } catch (error) { window.alert(error.message); }
+  });
+  document.getElementById("nobbyLibrarySelectVisible")?.addEventListener("click", () => {
+    for (const asset of visibleAssets()) state.selected.add(assetKey(asset));
+    render();
+  });
+  document.getElementById("nobbyLibraryClearSelection")?.addEventListener("click", () => {
+    state.selected.clear(); render();
+  });
+  async function bulkOrganize(operation) {
+    const selected = selectedAssets();
+    if (!selected.length) return;
+    const collectionId = operation.endsWith("_collection") ? collectionTarget?.value : null;
+    if (operation.endsWith("_collection") && !collectionId) return;
+    try {
+      let result;
+      for (let i = 0; i < selected.length; i += 100) {
+        result = await organizeBatch(selected.slice(i, i + 100), operation, collectionId);
+      }
+      if (result) state.organization = result.organization;
+      if (operation === "favorite" || operation === "add_collection") {
+        for (const asset of selected) asset.persistent = true;
+      }
+      renderCollections(); render();
+    } catch (error) { window.alert(error.message); await refresh(); }
+  }
+  document.getElementById("nobbyLibraryFavoriteSelected")?.addEventListener("click", () => void bulkOrganize("favorite"));
+  document.getElementById("nobbyLibraryAddSelected")?.addEventListener("click", () => void bulkOrganize("add_collection"));
+  document.getElementById("nobbyLibraryRemoveSelected")?.addEventListener("click", () => void bulkOrganize("remove_collection"));
+  document.getElementById("nobbyLibraryDeleteSelected")?.addEventListener("click", async () => {
+    const selected = selectedAssets();
+    if (!selected.length) return;
+    const message = t(`${selected.length} ausgewählte Medien dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.`,
+                      `Permanently delete ${selected.length} selected media files? This cannot be undone.`);
+    const approved = window.MLXConfirm ? await window.MLXConfirm({
+      title: t("Auswahl endgültig löschen", "Delete selection permanently"), message,
+      confirmLabel: t("Endgültig löschen", "Delete permanently"), cancelLabel: t("Abbrechen", "Cancel")
+    }) : window.confirm(message);
+    if (!approved) return;
+    let failures = 0;
+    for (const asset of selected) {
+      try { await action("DELETE", asset); state.selected.delete(assetKey(asset)); }
+      catch (_error) { failures++; }
+    }
+    await refresh();
+    if (failures) window.alert(t(`${failures} Medien konnten nicht gelöscht werden.`, `${failures} items could not be deleted.`));
+  });
   toggle.addEventListener("click", () => setVisible(true));
   document.getElementById("railLibrary")?.addEventListener("click", () => setVisible(true));
   close?.addEventListener("click", () => setVisible(false));
