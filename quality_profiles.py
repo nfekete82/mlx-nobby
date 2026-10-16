@@ -15,6 +15,11 @@ IMAGE_PROFILES = {
         "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
         "quality": {"steps": 30, "guidance": 5.0, "long_edge": 1216},
     },
+    "lustify-endgame-sdxl": {
+        "fast": {"steps": 20, "guidance": 3.5, "long_edge": 768},
+        "standard": {"steps": 30, "guidance": 3.5, "long_edge": 1024},
+        "quality": {"steps": 30, "guidance": 3.5, "long_edge": 1216},
+    },
     "qwen-image21": {
         "fast": {"steps": 20, "guidance": 0.0, "long_edge": 768},
         "standard": {"steps": 30, "guidance": 0.0, "long_edge": 768},
@@ -96,8 +101,8 @@ VIDEO_PROFILES = {
 
 def image_profile_key(model):
     model_id = str(model.get("id") or "")
-    if model_id == "juggernaut-xl":
-        return "juggernaut-xl"
+    if model_id in {"juggernaut-xl", "lustify-endgame-sdxl"}:
+        return model_id
     if model_id == "mflux-qwen-image-2.1":
         return "qwen-image21-mflux"
     family = str(model.get("model_family") or "")
