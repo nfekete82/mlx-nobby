@@ -161,3 +161,23 @@
 .nobby-library-preview-shell:fullscreen .nobby-library-preview-body{height:calc(100vh - 50px);max-height:none}
 .nobby-library-preview-shell:fullscreen .nobby-library-preview-body img,
 .nobby-library-preview-shell:fullscreen .nobby-library-preview-body video{max-height:calc(100vh - 60px)}
+
+
+/* Media Library 3.0: collections, starred media and accessible bulk actions. */
+.nobby-library-organize-field{display:flex;align-items:center;gap:7px;color:#aab9cb;font-size:12px}
+.nobby-library-organize-field select,.nobby-library-bulk select{min-height:38px;min-width:135px;background:#141b28;color:#f0f4ff;border:1px solid #344052;border-radius:9px;padding:7px 10px;font:inherit;font-size:12px}
+.nobby-library-bulk[hidden]{display:none!important}
+.nobby-library-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:12px 16px;margin:0 0 14px;background:#18283c;border:1px solid #39516f;border-radius:12px;font-size:12px;color:#dce9fb}
+.nobby-library-bulk #nobbyLibrarySelectedCount{font-weight:650;min-width:90px}
+.nobby-library-select{position:absolute;z-index:5;left:9px;top:9px;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;background:rgba(8,15,28,.85);cursor:pointer}
+.nobby-library-select input{appearance:auto;width:18px;height:18px;accent-color:#72a5ff;cursor:pointer}
+.nobby-library-star{position:absolute;z-index:5;right:9px;top:9px;width:32px;height:32px;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(8,15,28,.85);color:#ffcf61;font-size:23px;line-height:1;cursor:pointer}
+.nobby-library-star:hover,.nobby-library-star:focus-visible{background:#31415a;outline:2px solid #72a5ff}
+.nobby-library-zoom{z-index:2}
+.nobby-library-select:focus-within{outline:2px solid #72a5ff}
+.nobby-library-bulk select:focus-visible,.nobby-library-organize-field select:focus-visible{outline:2px solid #72a5ff;outline-offset:2px}
+@media(max-width:780px){
+  .nobby-library-organize-field{flex:1 1 170px}
+  .nobby-library-organize-field select{flex:1;min-width:0}
+  .nobby-library-bulk{gap:7px}
+}
