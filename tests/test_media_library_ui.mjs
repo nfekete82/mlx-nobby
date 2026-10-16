@@ -94,7 +94,7 @@ assert.match(html, /<details class="nobby-library-more">[\s\S]*?<button id="nobb
 assert.ok(html.indexOf('id="nobbyLibrarySearch"') < html.indexOf('id="nobbyLibraryDateFilter"'));
 assert.ok(html.indexOf('id="nobbyLibrarySort"') < html.indexOf('id="nobbyLibrarySelectVisible"'));
 assert.ok(html.indexOf('id="nobbyLibrarySelectVisible"') < html.indexOf('id="nobbyLibraryDeleteAll"'));
-assert.match(html, /media-library\.css\?v=1-17-dropdown-polish/);
+assert.match(html, /media-library\.css\?v=1-17-shared-pickers/);
 assert.match(css, /\.nobby-library-secondary-row\{/);
 assert.match(css, /@media\(max-width:560px\)/);
 assert.match(css, /\.nobby-library-more-menu \[hidden\]\{display:none!important\}/);
@@ -110,3 +110,8 @@ for (const id of ["nobbyLibraryCollectionFilter","nobbyLibraryEngine","nobbyLibr
   assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
 }
 console.log("Library select popups share a dark browser-native dropdown style.");
+
+assert.match(css, /:is\(\.nobby-library-panel :is\(\.nobby-library-secondary-row,\.nobby-library-bulk\), \.mlx-talking-photo-field\) select/);
+assert.match(css, /\.mlx-talking-photo-dialog \.mlx-talking-photo-field select\{/);
+assert.match(css, /::picker\(select\)\{/);
+console.log("Library and Talking Photo dropdown theme contract passed.");
