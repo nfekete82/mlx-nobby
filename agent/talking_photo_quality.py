@@ -14,7 +14,7 @@ import time
 
 from fastapi import HTTPException
 
-from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform, talking_photo_continuity
+from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform, talking_photo_continuity, talking_photo_person_focus
 from agent.talking_photo_audio import _analyze_wav
 
 
@@ -160,6 +160,7 @@ def _generate_longform(
     update,
     apply_lipsync: bool,
     distilled: bool,
+    person_focus: dict | None = None,
 ) -> tuple[bytes, dict]:
     """Render <=18-second speech pieces sequentially and mux the uncut source.
 
@@ -213,6 +214,7 @@ def _generate_longform(
             job_id, segment_image, segment_suffix, segment.wav, segment.duration_seconds,
             part_work, debug_dir=part_debug, cancelled=cancelled,
             update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
+            person_focus=person_focus,
         )
         if cancelled():
             raise talking_photo_ltx.QualityCancelled()
@@ -357,6 +359,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         update=lambda **changes: talking_photo._update_job(job_id, **changes),
                         apply_lipsync=not ltx_only,
                         distilled=distilled,
+                        person_focus=request_payload.get("person_focus"),
                     )
                 else:
                     video, details = generate(
@@ -372,6 +375,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         apply_lipsync=not ltx_only,
                         lead_in_ms=request_payload.get("lead_in_ms", 0),
                         distilled=distilled,
+                        person_focus=request_payload.get("person_focus"),
                     )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
@@ -394,6 +398,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "provider": "ltx-2.5-mlx-a2v",
                     "lipsync_provider": None if ltx_only else "musetalk-mac",
                     "engine": engine,
+                    "person_focus": request_payload.get("person_focus"),
+                    "speaker_selection": "prompt-guided" if request_payload.get("person_focus") else None,
                     "a2v_mode": "distilled" if distilled else "classic",
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
@@ -441,6 +447,11 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
             health.get("detail") or "LTX Quality ist nicht bereit. ./scripts/setup-ltx-video-mlx ausführen.",
         )
     image, extension = talking_photo.decode_image_data_url(payload["image_data_url"])
+    if payload.get("person_focus") is not None:
+        try:
+            talking_photo_person_focus.validate_focus(payload["person_focus"])
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     job_id = secrets.token_hex(12)
     now = time.time()
     job = {
@@ -455,6 +466,8 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
         "motion": "audio-conditioned",
         "engine": "ltx-distilled" if distilled else ("ltx" if ltx_only else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
+        "person_focus": payload.get("person_focus"),
+        "speaker_selection": "prompt-guided" if payload.get("person_focus") else None,
         "lead_in_ms": payload.get("lead_in_ms", 0),
         "text_characters": len(payload["text"]),
         "provider": "ltx-2.5-mlx-a2v",
