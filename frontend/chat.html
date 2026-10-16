@@ -1474,29 +1474,29 @@
         </select>
       </label>
       <label class="nobby-library-organize-field" for="nobbyLibraryCollectionFilter">
-        <span>Sammlung</span>
+        <span data-i18n="library3.collection">Sammlung</span>
         <select id="nobbyLibraryCollectionFilter" aria-label="Sammlung filtern">
-          <option value="all">Alle Medien</option>
-          <option value="favorites">★ Favoriten</option>
+          <option value="all" data-i18n="library3.all_media">Alle Medien</option>
+          <option value="favorites" data-i18n="library3.favorites">★ Favoriten</option>
         </select>
       </label>
-      <button id="nobbyLibraryNewCollection" class="nobby-library-refresh" type="button">+ Sammlung</button>
-      <button id="nobbyLibraryDeleteCollection" class="nobby-library-refresh nobby-library-danger" type="button" hidden>Sammlung löschen</button>
-      <button id="nobbyLibrarySelectVisible" class="nobby-library-refresh" type="button">Sichtbare auswählen</button>
+      <button id="nobbyLibraryNewCollection" class="nobby-library-refresh" type="button" data-i18n="library3.new_collection">+ Sammlung</button>
+      <button id="nobbyLibraryDeleteCollection" class="nobby-library-refresh nobby-library-danger" type="button" hidden data-i18n="library3.delete_collection">Sammlung löschen</button>
+      <button id="nobbyLibrarySelectVisible" class="nobby-library-refresh" type="button" data-i18n="library3.select_visible">Sichtbare auswählen</button>
       <button id="nobbyLibrarySaveAll" class="nobby-library-refresh" type="button" data-i18n="library.keep_all">Alle dauerhaft behalten</button>
       <button id="nobbyLibraryDeleteAll" class="nobby-library-refresh nobby-library-danger" type="button" data-i18n="library.delete_all">Alle dauerhaft löschen</button>
       <button id="nobbyLibraryRefresh" class="nobby-library-refresh" type="button"><span aria-hidden="true">↻</span> <span data-i18n="library.refresh">Aktualisieren</span></button>
       <span id="nobbyLibraryCount" class="nobby-library-subtitle"></span>
     </div>
     <div id="nobbyLibraryBulk" class="nobby-library-bulk" hidden>
-      <span id="nobbyLibrarySelectedCount" role="status">0 ausgewählt</span>
-      <button id="nobbyLibraryClearSelection" class="nobby-library-action" type="button">Auswahl aufheben</button>
-      <button id="nobbyLibraryFavoriteSelected" class="nobby-library-action" type="button">★ Favorisieren</button>
-      <label for="nobbyLibraryCollectionTarget">Zielsammlung</label>
-      <select id="nobbyLibraryCollectionTarget" aria-label="Zielsammlung auswählen"></select>
-      <button id="nobbyLibraryAddSelected" class="nobby-library-action" type="button">Hinzufügen</button>
-      <button id="nobbyLibraryRemoveSelected" class="nobby-library-action" type="button">Entfernen</button>
-      <button id="nobbyLibraryDeleteSelected" class="nobby-library-action danger" type="button">Auswahl löschen</button>
+      <span id="nobbyLibrarySelectedCount" role="status" data-i18n="library3.zero_selected">0 ausgewählt</span>
+      <button id="nobbyLibraryClearSelection" class="nobby-library-action" type="button" data-i18n="library3.clear_selection">Auswahl aufheben</button>
+      <button id="nobbyLibraryFavoriteSelected" class="nobby-library-action" type="button" data-i18n="library3.mark_favorite">★ Favorisieren</button>
+      <label for="nobbyLibraryCollectionTarget" data-i18n="library3.target_collection">Zielsammlung</label>
+      <select id="nobbyLibraryCollectionTarget" aria-label="Zielsammlung auswählen" data-i18n-aria-label="library3.select_target"></select>
+      <button id="nobbyLibraryAddSelected" class="nobby-library-action" type="button" data-i18n="library3.add">Hinzufügen</button>
+      <button id="nobbyLibraryRemoveSelected" class="nobby-library-action" type="button" data-i18n="library3.remove">Entfernen</button>
+      <button id="nobbyLibraryDeleteSelected" class="nobby-library-action danger" type="button" data-i18n="library3.delete_selected">Auswahl löschen</button>
     </div>
     <div id="nobbyLibraryGrid" class="nobby-library-grid" aria-live="polite"></div>
   </div>
