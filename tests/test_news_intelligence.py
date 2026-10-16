@@ -147,7 +147,7 @@ def test_real_chat_web_tool_uses_verified_digest_not_google_news_snippets():
          patch("agent.news_intelligence.publisher_news_candidates", return_value=[]), \
          patch.object(app, "fetch_web_page", return_value=source["fetch"]) as fetch, \
          patch.object(app, "observed_agent_llm", return_value='{"summaries": []}'), \
-         patch("agent.news_intelligence.datetime", FrozenNewsDateTime):
+         patch("datetime.datetime", FrozenNewsDateTime):
         value = app.tool_web_search(SimpleNamespace(prompt="Alle wichtigen News von heute"))
     assert value["news_search"] is True
     assert value["news_digest"]["status"] == "available"
