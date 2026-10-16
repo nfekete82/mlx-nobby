@@ -183,6 +183,7 @@
                 min-height: 200px; max-height: min(57vh, 610px);
                 object-fit: contain; border-radius: 12px; background: #09111d;
                 border: 1px solid rgba(148,163,184,.18);
+                user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
             }
             .mlx-talking-photo-preview[hidden] { display: none; }
             .mlx-talking-photo-preview-wrap { position: relative; width: 100%; }
@@ -389,6 +390,7 @@
         preview.className = 'mlx-talking-photo-preview';
         preview.alt = localText('Vorschau des Fotos', 'Photo preview');
         preview.hidden = true;
+        preview.draggable = false;
         preview.tabIndex = 0;
         const previewWrap = node('div', 'mlx-talking-photo-preview-wrap');
         previewWrap.append(preview);
