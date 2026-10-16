@@ -382,8 +382,8 @@
         preview.hidden = true;
         left.append(preview);
         const focusHint = node('div', 'mlx-talking-photo-hint', localText(
-            'Bei mehreren Personen: Tippe auf das gewünschte Gesicht. Der Bildausschnitt wird auf diese Person fokussiert. Erneut tippen, um die Auswahl zu ändern.',
-            'For multiple people: click the intended face. The image will be cropped to focus on that person. Click again to change.',
+            'Bei mehreren Personen: Tippe auf das gewünschte Gesicht. Nur der Bereich dieser Person wird animiert; das vollständige Foto bleibt sichtbar. Erneut tippen, um die Auswahl zu ändern.',
+            'For multiple people: click the intended face. Only that person's region is animated; the full image remains visible. Click again to change.',
         ));
         focusHint.id = 'talkingPhotoPersonFocusHint';
         focusHint.hidden = true;
@@ -411,9 +411,10 @@
             const y = (event.clientY - rect.top - (rect.height - dh) / 2) / dh;
             if (x < 0 || x > 1 || y < 0 || y > 1) return;
             personFocus = {x, y};
+            engineSelect.value = 'fast';
             focusReset.hidden = false;
             preview.style.outline = '2px solid #4f8cff';
-            focusHint.textContent = localText('Person ausgewählt – Ausschnitt wird bei Erstellung zugeschnitten.', 'Person selected – the picture will be cropped when generating.');
+            focusHint.textContent = localText('Person ausgewählt – MuseTalk animiert diesen Bereich im vollständigen Bild.', 'Person selected – MuseTalk will animate this region in the full image.');
         });
         left.append(node(
             'div',
@@ -844,7 +845,7 @@
 
         try {
             setStatus(localText('Bild wird vorbereitet …', 'Preparing image …'));
-            const imageDataUrl = await focusedImageDataUrl(file, personFocus);
+            const imageDataUrl = await fileToDataUrl(file);
             if (imageDataUrl.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 100) {
                 throw new Error(localText('Der Bildausschnitt ist zu groß.', 'The cropped image is too large.'));
             }
@@ -855,8 +856,9 @@
                     text,
                     voice,
                     language: selectedLanguage,
-                    engine,
-                    motion: 'natural',
+                    engine: personFocus ? 'fast' : engine,
+                    person_focus: personFocus,
+                    motion: personFocus ? 'none' : 'natural',
                     speed: 1.0,
                 }),
             });
