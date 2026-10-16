@@ -12,5 +12,7 @@ assert.match(js, /async function focusedImageDataUrl\(file, focus\)/);
 assert.match(js, /Math\.min\(src\.width - width/);
 assert.match(js, /Math\.min\(src\.height - height/);
 assert.match(js, /drawImage\(src, sx, sy, width, height, 0, 0, width, height\)/);
-assert.match(js, /await focusedImageDataUrl\(file, personFocus\)/);
+assert.match(js, /const imageDataUrl = await fileToDataUrl\(file\)/);
+assert.match(js, /person_focus: personFocus/);
+assert.match(js, /engine: personFocus \? 'fast' : engine/);
 console.log('Talking Photo person focus selection and crop contract passed.');
