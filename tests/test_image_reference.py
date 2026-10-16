@@ -69,7 +69,8 @@ def runtime(tmp_path, monkeypatch, mflux_cli_contract):
     monkeypatch.setattr(service, 'OUTPUT', tmp_path)
     monkeypatch.setattr(image_providers, 'model_directory', lambda _: tmp_path)
     monkeypatch.setattr(agent, 'IMAGE_DIRECTORY', tmp_path)
-    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', lambda *_: nullcontext())
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime',
+                        lambda *_args, **_kwargs: nullcontext())
     monkeypatch.setattr(agent, 'validate_chat_id', lambda _: None)
     monkeypatch.setattr(agent, 'read_chat', lambda _: {'revision': 0})
     monkeypatch.setattr(agent, 'translate_media_prompt_to_english', lambda prompt: prompt)

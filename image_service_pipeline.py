@@ -240,6 +240,11 @@ def _prewarm_sdxl(model):
         TOKENIZERS_PARALLELISM="false",
     )
 
+    memory_guard = (
+        image_providers.ImageProcessMemoryGuard()
+        if image_providers.sys.platform == "darwin"
+        else None
+    )
     with manager._lock:
         manager._cancel_idle_timer_locked()
         process = manager._start_locked(environment)
@@ -265,6 +270,8 @@ def _prewarm_sdxl(model):
                         raise RuntimeError("SDXL prewarm timed out")
                     if process.poll() is not None:
                         raise RuntimeError(manager._failure_message_locked(process))
+                    if memory_guard is not None:
+                        memory_guard.check(process)
                     events = selector.select(0.25)
                     if not events:
                         continue
@@ -347,6 +354,18 @@ def prewarm(request: PrewarmRequest):
             "model": model["id"],
             "route": route,
             "reason": "provider-does-not-use-persistent-worker",
+        }
+
+    # A warm SDXL pipeline occupies substantial unified RAM for minutes.
+    # Disable speculative loading by default; explicit opt-in remains guarded.
+    if os.environ.get("MLX_IMAGE_SDXL_PREWARM", "0") != "1":
+        return {
+            "ok": True,
+            "started": False,
+            "warm": False,
+            "model": model["id"],
+            "route": route,
+            "reason": "sdxl-prewarm-disabled-for-memory-safety",
         }
 
     if image_providers.sdxl_worker_running():

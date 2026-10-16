@@ -1199,7 +1199,24 @@ def upscale(request: Upscale):
 def generate(request: Generate):
     with exclusive():
         try:
-            return _generate_result(request)
+            # Resolve once; do not reroute between the memory handoff and the job.
+            resolved = _resolve_generation(request)
+            sdxl_job = resolved["model"].get("provider") == "sdxl"
+            with runtime_coordinator.image_runtime(
+                None, force_chat_unload=sdxl_job
+            ) as preflight:
+                try:
+                    return _generate_result(request, resolved=resolved)
+                finally:
+                    if sdxl_job:
+                        try:
+                            shutdown_sdxl_worker()
+                        except Exception:
+                            # Never restore a chat model on top of SDXL if
+                            # the image worker could not be terminated.
+                            if preflight is not None:
+                                preflight["suppress_chat_restore"] = True
+                            raise
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -1319,7 +1336,17 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             job_id, status="queued", phase="waiting_for_resources",
             progress=0.0, started_at=time.time(),
         )
-        with runtime_coordinator.image_runtime(cancel_event):
+        # Resolve image provider before allocating heavy runtime resources.
+        # SDXL always gets an exclusive chat handoff, even if the current
+        # estimated free percentage still looks healthy.
+        if operation == "generate" and resolved is None:
+            resolved = _resolve_generation(request)
+        selected = resolved.get("model") if isinstance(resolved, dict) else None
+        sdxl_job = bool(operation == "generate"
+                        and selected and selected.get("provider") == "sdxl")
+        with runtime_coordinator.image_runtime(
+            cancel_event, force_chat_unload=sdxl_job
+        ) as preflight:
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
             if operation == "edit":
@@ -1330,15 +1357,26 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 execute = _generate_result
 
             timings.mark("execution_started")
-            result = execute(
-                request,
-                provider_options=provider_options,
-                prepared_callback=prepared,
-                saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
-                **({"resolved": resolved} if resolved is not None else {}),
-                **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                   if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
-            )
+            try:
+                result = execute(
+                    request,
+                    provider_options=provider_options,
+                    prepared_callback=prepared,
+                    saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+                    **({"resolved": resolved} if resolved is not None else {}),
+                    **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                       if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
+                )
+            finally:
+                # Do not restart chat on top of a still-resident SDXL pipeline.
+                # This runs before the image_runtime context restores chat.
+                if sdxl_job:
+                    try:
+                        shutdown_sdxl_worker()
+                    except Exception:
+                        if preflight is not None:
+                            preflight["suppress_chat_restore"] = True
+                        raise
         timings.mark("execution_finished")
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")

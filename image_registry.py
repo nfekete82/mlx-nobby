@@ -40,6 +40,8 @@ JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
 JUGGERNAUT_RAGNAROK_MODEL_VERSION = "1759168"
 JUGGERNAUT_RAGNAROK_CHECKPOINT = "juggernautXL_ragnarok.safetensors"
 JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
+# No longer offer the retired experimental SDXL model in persisted registries.
+RETIRED_MODEL_IDS = {"lustify-endgame-sdxl"}
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
 BUILTIN_DEFAULTS_REVISION = 8
@@ -508,6 +510,27 @@ def load_registry():
         if not isinstance(raw_models, list):
             raise ValueError("Ungültige Image-Registry: Modelle fehlen")
 
+        retired_models = [
+            item for item in raw_models
+            if isinstance(item, dict)
+            and item.get("id") in RETIRED_MODEL_IDS
+        ]
+        if retired_models:
+            raw_models = [
+                item for item in raw_models if item not in retired_models
+            ]
+            data["models"] = raw_models
+            if data.get("default_model") in RETIRED_MODEL_IDS:
+                juggernaut_enabled = any(
+                    isinstance(item, dict)
+                    and item.get("id") == JUGGERNAUT_XL_ID
+                    and item.get("enabled") is True
+                    for item in raw_models
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID if juggernaut_enabled else LEGACY_ID
+                )
+
         removed_krea = [
             model
             for model in raw_models
@@ -642,6 +665,7 @@ def load_registry():
             added
             or defaults_changed
             or removed_krea
+            or retired_models
             or builtin_migrated
             or invalid_models
         ):
@@ -682,6 +706,8 @@ def update_model(model_id, patch):
 def add_model(payload):
     with _mutex:
         model = ImageModel(**payload).model_dump()
+        if model["id"] in RETIRED_MODEL_IDS:
+            raise ValueError("Dieses Bildmodell wurde entfernt")
         data = load_registry()
         if any(item["id"] == model["id"] for item in data["models"]):
             raise ValueError("Modell-ID bereits registriert")

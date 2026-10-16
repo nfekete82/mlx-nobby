@@ -281,7 +281,43 @@ GENERATION_TIMEOUT = 840
 MAX_PROCESS_RSS_GB = 24
 PROCESS_TERMINATION_TIMEOUT = 5
 PROVIDER_POLL_INTERVAL = 0.5
-DEFAULT_SDXL_IDLE_TIMEOUT = 600.0
+DEFAULT_SDXL_IDLE_TIMEOUT = 60.0
+
+# Cap PyTorch Metal allocations well below physical unified RAM. macOS, CPU
+# checkpoint conversion and other services need RAM outside this MPS budget.
+SDXL_MPS_HIGH_RATIO = max(
+    0.3, min(0.55, _float_env("MLX_IMAGE_SDXL_MPS_HIGH_RATIO", 0.55))
+)
+SDXL_MPS_LOW_RATIO = max(0.2, min(0.45, SDXL_MPS_HIGH_RATIO - 0.1))
+
+
+class ImageProcessMemoryGuard:
+    """Watch process RSS AND global unified RAM/swap while models execute."""
+
+    def __init__(self):
+        snapshot = runtime_coordinator.memory_budget_snapshot()
+        runtime_coordinator.ensure_active_memory_safe(snapshot)
+        self.baseline_swap_gb = snapshot.get("swap_used_gb")
+        self._last_system_probe = time.monotonic()
+
+    def check(self, process):
+        if sys.platform != "darwin":
+            return
+        usage = subprocess.run(
+            ["/bin/ps", "-o", "rss=", "-p", str(process.pid)],
+            capture_output=True, text=True, timeout=3,
+        )
+        if usage.stdout.strip().isdigit() and int(usage.stdout) > MAX_PROCESS_RSS_GB * 1024**2:
+            raise RuntimeError(
+                "RAM-Schutz: Image-Worker über 24 GB RSS; Worker wird beendet"
+            )
+        now = time.monotonic()
+        if now - self._last_system_probe >= 1.0:
+            self._last_system_probe = now
+            snapshot = runtime_coordinator.memory_budget_snapshot()
+            runtime_coordinator.ensure_active_memory_safe(
+                snapshot, baseline_swap_gb=self.baseline_swap_gb
+            )
 
 
 class ProviderCancelled(RuntimeError):
@@ -873,6 +909,11 @@ class SDXLWorkerManager:
         if self._process is not None and self._process.poll() is None:
             return self._process
         self._stop_locked()
+        # Overrides unsafe inherited values (including a disabled high
+        # watermark). PyTorch reads these before the worker imports torch.
+        environment = dict(environment)
+        environment["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = str(SDXL_MPS_HIGH_RATIO)
+        environment["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = str(SDXL_MPS_LOW_RATIO)
         diagnostics = tempfile.TemporaryFile()
         try:
             process = subprocess.Popen(
@@ -932,7 +973,19 @@ class SDXLWorkerManager:
         with self._lock:
             self._cancel_idle_timer_locked()
             if cancel_event is not None and cancel_event.is_set():
+                self._stop_locked()
                 raise ProviderCancelled("Image job was cancelled")
+            try:
+                memory_guard = (
+                    ImageProcessMemoryGuard()
+                    if self.monitor_rss and sys.platform == "darwin"
+                    else None
+                )
+            except Exception:
+                # An admission failure must not leave a previously warm worker
+                # resident after its idle-shutdown timer was cancelled.
+                self._stop_locked()
+                raise
             process = self._start_locked(environment)
             request_id = secrets.token_hex(16)
             request = {
@@ -963,15 +1016,8 @@ class SDXLWorkerManager:
                             raise RuntimeError("Image-Auftrag hat das Zeitlimit überschritten; Modellprozess wurde beendet")
                         if process.poll() is not None:
                             raise RuntimeError(self._failure_message_locked(process))
-                        if self.monitor_rss and sys.platform == "darwin":
-                            usage = subprocess.run(
-                                ["/bin/ps", "-o", "rss=", "-p", str(process.pid)],
-                                capture_output=True,
-                                text=True,
-                                timeout=3,
-                            )
-                            if usage.stdout.strip().isdigit() and int(usage.stdout) > MAX_PROCESS_RSS_GB * 1024**2:
-                                raise RuntimeError("Image-Modell überschreitet das 24-GB-Prozessbudget. Ein kleineres oder vorquantisiertes Modell verwenden.")
+                        if memory_guard is not None:
+                            memory_guard.check(process)
                         events = selector.select(PROVIDER_POLL_INTERVAL)
                         if not events:
                             continue
@@ -1337,6 +1383,7 @@ def run_provider(
         )
         measure_subprocess = measure_mlxgen or measure_mflux_qwen_edit
         spawn_started = time.perf_counter() if measure_subprocess else None
+        memory_guard = ImageProcessMemoryGuard() if sys.platform == "darwin" else None
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
@@ -1407,10 +1454,8 @@ def run_provider(
                     raise ProviderCancelled("Image job was cancelled")
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Image-Auftrag hat das Zeitlimit überschritten; Modellprozess wurde beendet")
-                if sys.platform == "darwin":
-                    usage = subprocess.run(["/bin/ps", "-o", "rss=", "-p", str(process.pid)], capture_output=True, text=True, timeout=3)
-                    if usage.stdout.strip().isdigit() and int(usage.stdout) > MAX_PROCESS_RSS_GB * 1024**2:
-                        raise RuntimeError("Image-Modell überschreitet das 24-GB-Prozessbudget. Ein kleineres oder vorquantisiertes Modell verwenden.")
+                if memory_guard is not None:
+                    memory_guard.check(process)
         finally:
             terminate_process_tree(process)
             if process_callback is not None:
