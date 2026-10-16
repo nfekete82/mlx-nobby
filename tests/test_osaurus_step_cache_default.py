@@ -113,3 +113,20 @@ def test_missing_step_cache_cli_flag_falls_back_without_failing(qwen_cli):
     # Explicit ON is never silently ignored.
     with pytest.raises(providers.ProviderFailure):
         command(model, use_step_cache=True)
+
+
+def test_region_edit_forces_low_ram_and_limits_mlx_cache(qwen_cli):
+    model = next(m for m in registry.builtin_models()
+                 if m["id"] == registry.OSAURUS_QWEN21_EDIT_ID)
+    argv = command(
+        {**model, "step_cache_default": False},
+        _region_low_ram=True,
+        width=512, height=512,
+    )
+    assert "--low-ram" in argv
+    assert "--mlx-cache-limit-gb" in argv
+    assert argv[argv.index("--mlx-cache-limit-gb") + 1] == "2"
+    assert "--use-step-cache" not in argv
+    assert "--use-kv-cache" not in argv
+    assert argv[argv.index("--width") + 1] == "512"
+    assert argv[argv.index("--height") + 1] == "512"

@@ -370,7 +370,7 @@ const IMAGE_OPTION_KEYS = Object.freeze({
         'prompt', 'negative_prompt', 'model', 'width', 'height',
         'steps', 'guidance', 'seed', 'auto_size'
     ]),
-    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
+    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'region_edit', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
     reference: new Set([
         'prompt', 'model', 'steps', 'guidance', 'seed',
         'width', 'height', 'auto_size', 'negative_prompt',
@@ -964,6 +964,122 @@ async function startImageUpscale(source, preset = 'photo-2x') {
     }
 }
 
+
+
+/** Submit a bounded user-painted mask through the established image-edit queue.
+ *  Only an authenticated, server-managed image artifact can be selected.
+ */
+async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt}) {
+    if (MLXChatRuntime.isSwitching() || getGenerating()) {
+        throw new Error(gt('image_job_busy', 'Another operation is running.'));
+    }
+    if (!/^\d{10}-[a-f0-9]{12}$/i.test(String(image_id || '')) ||
+        artifact_id !== 'image-' + image_id ||
+        typeof mask_path !== 'string' || !mask_path ||
+        typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
+        throw new Error(gt('image_edit_source_required', 'Invalid masked edit request.'));
+    }
+    const session = MLXChatSessions.currentSession();
+    if (!session) throw new Error(gt('image_edit_source_required', 'No active chat session.'));
+    if (session.messages.some(item =>
+        ACTIVE_IMAGE_JOB_STATUSES.has(item?.image_job?.status)
+    )) {
+        throw new Error(gt('image_job_busy', 'An image job is already running.'));
+    }
+
+    const instruction = prompt.trim();
+    const userMessage = {
+        role: 'user',
+        trace_id: newTraceId(),
+        content: instruction,
+        display_content: instruction
+    };
+    const pendingMessage = {
+        role: 'assistant',
+        content: gt('image_editing', 'Editing selected region …'),
+        image_generation_pending: true,
+        image_parent_artifact_id: artifact_id
+    };
+    session.messages.push(userMessage, pendingMessage);
+    MLXChatSessions.updateTitle(session);
+    session.updated = Date.now();
+    MLXChatSessions.saveSessions();
+    MLXChatRendering.renderAll({contentUpdated: true});
+    try {
+        const response = await fetch('/api/mlx/chat/actions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                action: 'image_edit',
+                resolved_target: 'image_edit',
+                prompt: instruction,
+                active_artifact_id: artifact_id,
+                image_options: {
+                    model: 'auto',
+                    mask_path: mask_path,
+                    region_edit: true
+                },
+                conversation_context: buildAgentConversationContext(session, userMessage),
+                trace_id: userMessage.trace_id,
+                chat_id: session.id,
+                chat_revision: persistentChatRevision(session)
+            })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        if (
+            MLXChatSessions.currentSession() !== session ||
+            !session.messages.includes(pendingMessage)
+        ) {
+            const job = result?.data?.job;
+            if (job?.id && IMAGE_JOB_ID_PATTERN.test(String(job.id)) &&
+                ACTIVE_IMAGE_JOB_STATUSES.has(job.status)) {
+                fetch('/api/mlx/image-jobs/' + encodeURIComponent(job.id) + '/cancel',
+                    {method: 'POST'}).catch(() => {});
+            }
+            return true;
+        }
+        if (result.tool !== 'image_edit' || result.status === 'failed') {
+            throw new Error(result.error || gt('action_failed', 'Image edit was rejected.'));
+        }
+        if (result.data?.job?.id) {
+            const terminal = updateImageJobMessage(session, pendingMessage, result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({contentUpdated: true});
+            if (!terminal) watchImageJob(session, pendingMessage);
+            return true;
+        }
+        pendingMessage.tool_result = result;
+        pendingMessage.image_generation_pending = false;
+        if (result.status === 'completed' && result.artifacts?.[0]?.artifact_id) {
+            session.workspace = {
+                ...(session.workspace || {}),
+                active_artifact_id: result.artifacts[0].artifact_id
+            };
+            pendingMessage.content = toolSummary(result);
+        } else {
+            pendingMessage.content = toolFailureSummary(result);
+        }
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({contentUpdated: true});
+        return result.status === 'completed';
+    } catch (error) {
+        if (session.messages.includes(pendingMessage)) {
+            pendingMessage.image_generation_pending = false;
+            pendingMessage.tool_result = {
+                tool: 'image_edit',
+                status: 'failed',
+                error: String(error.message || error),
+                data: {},
+                artifacts: []
+            };
+            pendingMessage.content = toolFailureSummary(pendingMessage.tool_result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({contentUpdated: true});
+        }
+        throw error;
+    }
+}
 
 function activeSessionImageArtifact(session) {
 
@@ -5022,6 +5138,7 @@ function watchBatchJob(session, jobId) {
         generateAssistant: generateAssistant,
         sendMessage: sendMessage,
         startImageUpscale: startImageUpscale,
+        startRegionImageEdit: startRegionImageEdit,
         createImageUpscaleMenu: createImageUpscaleMenu,
         approveAgentAction: approveAgentAction,
         updateImageJobMessage: updateImageJobMessage,

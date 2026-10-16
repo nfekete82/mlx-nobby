@@ -18,6 +18,7 @@ import image_registry as registry
 from image_job_timings import ImageJobTimings
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
+from image_region_edit import prepare_region, composite_region
 import runtime_coordinator
 import subprocess
 from image_providers import (
@@ -75,6 +76,7 @@ class Edit(BaseModel):
     mask_path: str | None = None
     auto_mask: str | None = Field(default=None, min_length=1, max_length=200)
     precision_edit: bool = True  # Conservatively infer unambiguous Qwen auto-mask targets.
+    region_edit: bool = False  # Opt-in cropped, composited, RAM-sparing brush edits.
     strength: float | None = Field(default=None, gt=0, le=1)
     use_kv_cache: bool | None = None
     use_step_cache: bool | None = None
@@ -108,6 +110,11 @@ class Edit(BaseModel):
             raise ValueError('Step cache requires KV cache')
         if self.mask_path and self.auto_mask:
             raise ValueError('Choose a mask or auto-mask')
+        if self.region_edit and (
+            not self.mask_path or self.auto_mask or self.source_paths
+            or self.semantic_operation != 'edit'
+        ):
+            raise ValueError('Region edit requires one source and a manual mask')
         if self.semantic_operation == 'reference_generate' and self.reference_mode is None:
             raise ValueError('Reference generation requires a reference mode')
         if (self.width is None) != (self.height is None):
@@ -850,9 +857,21 @@ def _edit_result_inner(
 
     sources = [validate_edit_source(value) for value in (request.source_paths or [request.source_path])]
     source = sources[0]
+    if request.region_edit and (model.get('provider') != 'mflux'
+                                or model.get('model_family') != 'qwen-image21-edit'):
+        raise HTTPException(422, 'Bereichsbearbeitung benötigt ein MFLUX Qwen 2.1 Edit-Modell')
     prepared_sources = []
+    region_crop = None
+    region_mask = None
     from PIL import Image, ImageOps
-    for original in sources:
+    if request.region_edit:
+        # Never resize the whole image into the model. Crop the selected
+        # region before any provider load, preserving the untouched original.
+        safe_mask = validate_edit_source(request.mask_path)
+        region_source, region_mask, region_crop = prepare_region(source, safe_mask, OUTPUT)
+        temporary_sources.extend((region_source, region_mask))
+        prepared_sources.append(region_source)
+    for original in ([] if request.region_edit else sources):
         if model.get('model_family') == 'qwen-image21-edit' or len(sources) > 1:
             OUTPUT.mkdir(parents=True, exist_ok=True)
             working = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
@@ -872,7 +891,7 @@ def _edit_result_inner(
     edit_source = prepared_sources[0]
     params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
-        'width', 'height', 'auto_size', 'precision_edit'}))
+        'width', 'height', 'auto_size', 'precision_edit', 'region_edit'}))
     params["source_path"] = str(edit_source)
     if request.source_paths:
         params['source_paths'] = [str(value) for value in prepared_sources]
@@ -891,15 +910,22 @@ def _edit_result_inner(
             # An inferred mask is optional. Unsupported CLI versions must
             # keep the original unmasked edit rather than failing a job.
             params["_precision_auto_mask_inferred"] = True
-    if request.mask_path:
+    if request.mask_path and request.region_edit:
+        params['mask_path'] = str(region_mask)
+    elif request.mask_path:
         mask = validate_edit_source(request.mask_path)
         with Image.open(mask) as image, Image.open(source) as original:
             if image.size != original.size:
                 raise HTTPException(422, 'Die Maske muss zur Größe des ersten Referenzbilds passen')
+            mask_pixels = image.convert('L')
+            # A completely black mask means no area was selected; do not
+            # consume RAM/model time or silently edit the entire image.
+            if mask_pixels.getbbox() is None:
+                raise HTTPException(422, 'Maske enthält keinen markierten Bereich')
             working_mask = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
             temporary_sources.append(working_mask)
             with Image.open(edit_source) as working:
-                image.convert('L').resize(working.size, Image.Resampling.NEAREST).save(working_mask)
+                mask_pixels.resize(working.size, Image.Resampling.NEAREST).save(working_mask)
             working_mask.chmod(0o600)
         params['mask_path'] = str(working_mask)
 
@@ -925,6 +951,11 @@ def _edit_result_inner(
                 params['width'], params['height'] = dimensions_for_long_edge(request.width, request.height, edge)
     elif request.seed is not None:
         params['seed'] = request.seed
+    if request.region_edit:
+        # Keep the existing 18 GB preflight and active watchdog intact.
+        # Disable optional model default step caches for this edit only.
+        model = {**model, 'step_cache_default': False}
+        params['_region_low_ram'] = True
     if model.get('model_family') == 'qwen-image21-edit':
         params['width'] = max(256, (params['width'] // 32) * 32)
         params['height'] = max(256, (params['height'] // 32) * 32)
@@ -949,6 +980,9 @@ def _edit_result_inner(
             "image",
         )
         run_provider(model, params, path, **(provider_options or {}))
+        if request.region_edit:
+            composite_region(source, validate_edit_source(request.mask_path),
+                             path, region_crop, path)
     finally:
         _running = None
     if saving_callback:

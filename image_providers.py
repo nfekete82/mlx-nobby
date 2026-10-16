@@ -718,6 +718,12 @@ def mflux_command(model, params, output):
             raise ProviderFailure("Negative Prompts benötigen Guidance größer als 1")
         if family == "qwen-image21-edit":
             policy = mflux_memory_policy()
+            if params.get('_region_low_ram') is True:
+                # A region-specific request can never inherit performance-
+                # sized MLX caches, regardless of global automatic mode.
+                # The active system RAM/swap watchdog remains unchanged.
+                policy = {**policy, 'mode': 'low-ram', 'low_ram': True,
+                          'cache_gb': min(int(policy['cache_gb']), 2)}
             if '--output-resolution' in flags:
                 command += ['--output-resolution', str(max(params['width'], params['height']))]
             if '--vae-tiling' in flags:
