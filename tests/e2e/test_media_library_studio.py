@@ -312,3 +312,45 @@ def test_library_dropdowns_use_consistent_dark_picker(ui):
         picker: parseFloat(getComputedStyle(node, '::picker(select)').width)
     })""")
     assert abs(widths["control"] - widths["picker"]) < 2
+
+
+def test_library_searches_prompt_and_shows_real_asset_details(ui):
+    """A recorded prompt is searchable, and details display server metadata only."""
+    page, _agent, _allowed = ui
+    image = _png()
+    assets = [
+        {"kind": "image", "id": IMAGE_ID, "url": "/api/mlx/images/" + IMAGE_ID,
+         "created_at": time.time(), "persistent": True, "size_bytes": 2500,
+         "prompt": "Jungle robot walking", "model": "Juggernaut-XI"},
+        {"kind": "talking_photo", "id": PHOTO_ID,
+         "url": "/api/talking-photo/videos/" + PHOTO_ID,
+         "created_at": time.time() - 100, "persistent": True, "size_bytes": 9000},
+    ]
+
+    def send(route, data):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(data))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: send(route, {"assets": assets, "total": 2}))
+    page.route("**/api/library/organize",
+               lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
+    page.route("**/api/mlx/images/" + IMAGE_ID,
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/talking_photo/" + PHOTO_ID + "/thumbnail",
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/talking_photo/" + PHOTO_ID + "/metadata",
+               lambda route: send(route, {"kind": "talking_photo", "id": PHOTO_ID}))
+    page.route("**/api/library/assets/image/" + IMAGE_ID + "/details",
+               lambda route: send(route, {**assets[0], "width": 1024, "height": 768,
+                                           "original_prompt": "Jungle robot walking"}))
+
+    _open_library(page)
+    page.locator("#nobbyLibrarySearch").fill("jungle robot")
+    expect(page.locator(".nobby-library-card")).to_have_count(1)
+    page.locator(".nobby-library-card-actions button").filter(has_text="Details").click()
+    expect(page.locator(".nobby-library-detail-panel")).to_be_visible()
+    expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Jungle robot walking")
+    expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Juggernaut-XI")
+    expect(page.locator(".nobby-library-detail-panel")).to_contain_text("1024 × 768")
