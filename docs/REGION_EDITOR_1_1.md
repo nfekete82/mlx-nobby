@@ -17,11 +17,17 @@ optional, deterministic final composite step.
   the 512px-or-smaller AI edit crop. Uses a blurred selection clipped *inside*
   the original painted mask; hence absolutely no pixel outside the user's
   selection can change. 0px reproduces the old crisp-mask behavior.
+- **Memory handoff:** low-RAM masked Qwen region jobs now request the
+  same exclusive chat-model unload as SDXL. Chat is restored only when the
+  existing coordinator judges memory safe. This avoids overlapping a large
+  resident chat model with a fresh Qwen Edit process. Ordinary unmasked edits
+  keep their original pressure-aware handoff.
 - **Safety:** no model install, new image dimensions, changed model cache,
-  memory guard, concurrency logic, or additional generation passes. Original
-  image retained. The new `region_feather_px` option is restricted to the
-  image-edit request contract and validated by Pydantic (0–12). It cannot be
-  used with a generic image edit or reference generation.
+  active swap watchdog (still **0.5 GB delta**), concurrency logic, or
+  additional generation passes. The editor still crops to <=512x512 pixels.
+  Original image retained. The new `region_feather_px` option is restricted
+  to the image-edit request contract and validated by Pydantic (0–12). It
+  cannot be used with a generic image edit or reference generation.
 
 Notes: feathering may soften detail *inside* the selection. For extremely
 small iris edits, test 0–2px rather than 3px. Mask softness is *not* the
@@ -31,7 +37,7 @@ Testing:
 ```bash
 ./test-venv/bin/python -m pytest -q \
   tests/test_region_ux_polish.py tests/test_region_memory.py \
-  tests/test_image_option_validation.py
+  tests/test_region_chat_handoff.py tests/test_image_option_validation.py
 node --test tests/test_region_ux_polish.mjs tests/test_region_mask_editor.mjs
 ```
 
