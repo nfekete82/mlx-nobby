@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/chat.css?v=1-13-news-briefing">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-17-search">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-17-shared-pickers">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -1455,56 +1455,67 @@
       <button id="nobbyLibraryClose" class="nobby-library-close" type="button" aria-label="Bibliothek schließen" data-i18n-aria-label="library.close_label"><span aria-hidden="true">✕</span> <span data-i18n="library.close">Schließen</span></button>
     </header>
     <div class="nobby-library-controls">
-      <input id="nobbyLibrarySearch" type="search" placeholder="Medien suchen …" aria-label="Medien suchen" data-i18n-placeholder="library.search" data-i18n-aria-label="library.search">
-      <div class="nobby-library-filters" role="group" aria-label="Medientyp">
-        <button data-library-kind="all" type="button" class="active" aria-pressed="true" data-i18n="library.all">Alle</button>
-        <button data-library-kind="image" type="button" aria-pressed="false" data-i18n="library.images">Bilder</button>
-        <button data-library-kind="video" type="button" aria-pressed="false" data-i18n="library.videos">Videos</button>
+      <div class="nobby-library-primary-row">
+        <input id="nobbyLibrarySearch" type="search" placeholder="Medien suchen …" aria-label="Medien suchen" data-i18n-placeholder="library.search" data-i18n-aria-label="library.search">
+        <div class="nobby-library-filters" role="group" aria-label="Medientyp">
+          <button data-library-kind="all" type="button" class="active" aria-pressed="true" data-i18n="library.all">Alle</button>
+          <button data-library-kind="image" type="button" aria-pressed="false" data-i18n="library.images">Bilder</button>
+          <button data-library-kind="video" type="button" aria-pressed="false" data-i18n="library.videos">Videos</button>
+        </div>
+        <span id="nobbyLibraryCount" class="nobby-library-subtitle" role="status"></span>
       </div>
-      <label class="nobby-library-engine-field" for="nobbyLibraryEngine">
-        <span>Engine</span>
-        <select id="nobbyLibraryEngine" aria-label="Nach Engine filtern">
-          <option value="all">Alle Engines</option>
-          <option value="talking_photo">Talking Photo</option>
-          <option value="ltx-distilled">LTX Distilled</option>
-          <option value="ltx">LTX direkt</option>
-          <option value="quality">LTX + MuseTalk</option>
-          <option value="fast">MuseTalk</option>
-          <option value="standard">Andere Videos</option>
-        </select>
-      </label>
-      <label class="nobby-library-organize-field" for="nobbyLibraryCollectionFilter">
-        <span data-i18n="library3.collection">Sammlung</span>
-        <select id="nobbyLibraryCollectionFilter" aria-label="Sammlung filtern">
-          <option value="all" data-i18n="library3.all_media">Alle Medien</option>
-          <option value="favorites" data-i18n="library3.favorites">★ Favoriten</option>
-        </select>
-      </label>
-      <label class="nobby-library-organize-field" for="nobbyLibraryDateFilter">
-        <span data-i18n="library17.period">Zeitraum</span>
-        <select id="nobbyLibraryDateFilter" aria-label="Zeitraum filtern" data-i18n-aria-label="library17.period_aria">
-          <option value="all" data-i18n="library17.any_time">Alle Zeiten</option>
-          <option value="today" data-i18n="library17.today">Heute</option>
-          <option value="week" data-i18n="library17.week">7 Tage</option>
-          <option value="month" data-i18n="library17.month">30 Tage</option>
-        </select>
-      </label>
-      <label class="nobby-library-organize-field" for="nobbyLibrarySort">
-        <span data-i18n="library17.sort">Sortierung</span>
-        <select id="nobbyLibrarySort" aria-label="Medien sortieren" data-i18n-aria-label="library17.sort_aria">
-          <option value="newest" data-i18n="library17.newest">Neueste zuerst</option>
-          <option value="oldest" data-i18n="library17.oldest">Älteste zuerst</option>
-          <option value="largest" data-i18n="library17.largest">Größte zuerst</option>
-          <option value="smallest" data-i18n="library17.smallest">Kleinste zuerst</option>
-        </select>
-      </label>
-      <button id="nobbyLibraryNewCollection" class="nobby-library-refresh" type="button" data-i18n="library3.new_collection">+ Sammlung</button>
-      <button id="nobbyLibraryDeleteCollection" class="nobby-library-refresh nobby-library-danger" type="button" hidden data-i18n="library3.delete_collection">Sammlung löschen</button>
-      <button id="nobbyLibrarySelectVisible" class="nobby-library-refresh" type="button" data-i18n="library3.select_visible">Sichtbare auswählen</button>
-      <button id="nobbyLibrarySaveAll" class="nobby-library-refresh" type="button" data-i18n="library.keep_all">Alle dauerhaft behalten</button>
-      <button id="nobbyLibraryDeleteAll" class="nobby-library-refresh nobby-library-danger" type="button" data-i18n="library.delete_all">Alle dauerhaft löschen</button>
-      <button id="nobbyLibraryRefresh" class="nobby-library-refresh" type="button"><span aria-hidden="true">↻</span> <span data-i18n="library.refresh">Aktualisieren</span></button>
-      <span id="nobbyLibraryCount" class="nobby-library-subtitle"></span>
+      <div class="nobby-library-secondary-row">
+        <label class="nobby-library-organize-field" for="nobbyLibraryCollectionFilter">
+          <span data-i18n="library3.collection">Sammlung</span>
+          <select id="nobbyLibraryCollectionFilter" aria-label="Sammlung filtern">
+            <option value="all" data-i18n="library3.all_media">Alle Medien</option>
+            <option value="favorites" data-i18n="library3.favorites">★ Favoriten</option>
+          </select>
+        </label>
+        <label class="nobby-library-engine-field" for="nobbyLibraryEngine">
+          <span>Engine</span>
+          <select id="nobbyLibraryEngine" aria-label="Nach Engine filtern">
+            <option value="all">Alle Engines</option>
+            <option value="talking_photo">Talking Photo</option>
+            <option value="ltx-distilled">LTX Distilled</option>
+            <option value="ltx">LTX direkt</option>
+            <option value="quality">LTX + MuseTalk</option>
+            <option value="fast">MuseTalk</option>
+            <option value="standard">Andere Videos</option>
+          </select>
+        </label>
+        <label class="nobby-library-organize-field" for="nobbyLibraryDateFilter">
+          <span data-i18n="library17.period">Zeitraum</span>
+          <select id="nobbyLibraryDateFilter" aria-label="Zeitraum filtern" data-i18n-aria-label="library17.period_aria">
+            <option value="all" data-i18n="library17.any_time">Alle Zeiten</option>
+            <option value="today" data-i18n="library17.today">Heute</option>
+            <option value="week" data-i18n="library17.week">7 Tage</option>
+            <option value="month" data-i18n="library17.month">30 Tage</option>
+          </select>
+        </label>
+        <label class="nobby-library-organize-field" for="nobbyLibrarySort">
+          <span data-i18n="library17.sort">Sortierung</span>
+          <select id="nobbyLibrarySort" aria-label="Medien sortieren" data-i18n-aria-label="library17.sort_aria">
+            <option value="newest" data-i18n="library17.newest">Neueste zuerst</option>
+            <option value="oldest" data-i18n="library17.oldest">Älteste zuerst</option>
+            <option value="largest" data-i18n="library17.largest">Größte zuerst</option>
+            <option value="smallest" data-i18n="library17.smallest">Kleinste zuerst</option>
+          </select>
+        </label>
+        <button id="nobbyLibraryNewCollection" class="nobby-library-refresh nobby-library-new-collection" type="button" data-i18n="library3.new_collection">+ Sammlung</button>
+      </div>
+      <div class="nobby-library-action-row">
+        <button id="nobbyLibrarySelectVisible" class="nobby-library-refresh" type="button" data-i18n="library3.select_visible">Sichtbare auswählen</button>
+        <button id="nobbyLibrarySaveAll" class="nobby-library-refresh" type="button" data-i18n="library.keep_all">Alle dauerhaft behalten</button>
+        <button id="nobbyLibraryRefresh" class="nobby-library-refresh" type="button"><span aria-hidden="true">↻</span> <span data-i18n="library.refresh">Aktualisieren</span></button>
+        <details class="nobby-library-more">
+          <summary data-i18n="library.more_actions">Weitere Aktionen</summary>
+          <div class="nobby-library-more-menu">
+            <button id="nobbyLibraryDeleteCollection" class="nobby-library-refresh nobby-library-danger" type="button" hidden data-i18n="library3.delete_collection">Sammlung löschen</button>
+            <button id="nobbyLibraryDeleteAll" class="nobby-library-refresh nobby-library-danger" type="button" data-i18n="library.delete_all">Alle dauerhaft löschen</button>
+          </div>
+        </details>
+      </div>
     </div>
     <div id="nobbyLibraryBulk" class="nobby-library-bulk" hidden>
       <span id="nobbyLibrarySelectedCount" role="status" data-i18n="library3.zero_selected">0 ausgewählt</span>

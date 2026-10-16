@@ -68,3 +68,10 @@ def test_talking_photo_ui_has_no_motion_selector_or_audio_lead_in():
     assert "talkingPhotoLeadIn" not in source
     assert "talking-photo-motion.js" not in loader
     assert "motion: 'natural'" in source
+
+def test_talking_photo_dropdown_styles_share_the_library_theme():
+    css = Path("frontend/assets/chat/media-library.css").read_text(encoding="utf-8")
+    assert ".mlx-talking-photo-field" in css
+    assert ":is(.nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk)," in css
+    assert "::picker(select)" in css
+    assert "color-scheme:dark" in css

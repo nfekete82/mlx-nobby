@@ -81,3 +81,37 @@ assert.match(html,/id="nobbyLibrarySort"/);
 assert.match(js,/state\.dateFilter === "today"/);
 assert.match(js,/state\.sort === "largest"/);
 console.log("Library 1.17 date and size sorting controls passed.");
+
+const de = JSON.parse(fs.readFileSync(new URL('../frontend/i18n/de.json', import.meta.url), 'utf8'));
+const en = JSON.parse(fs.readFileSync(new URL('../frontend/i18n/en.json', import.meta.url), 'utf8'));
+assert.equal(de["library.more_actions"], "Weitere Aktionen");
+assert.equal(en["library.more_actions"], "More actions");
+assert.match(html, /nobby-library-primary-row/);
+assert.match(html, /nobby-library-secondary-row/);
+assert.match(html, /nobby-library-action-row/);
+assert.match(html, /nobby-library-more-menu/);
+assert.match(html, /<details class="nobby-library-more">[\s\S]*?<button id="nobbyLibraryDeleteAll"/);
+assert.ok(html.indexOf('id="nobbyLibrarySearch"') < html.indexOf('id="nobbyLibraryDateFilter"'));
+assert.ok(html.indexOf('id="nobbyLibrarySort"') < html.indexOf('id="nobbyLibrarySelectVisible"'));
+assert.ok(html.indexOf('id="nobbyLibrarySelectVisible"') < html.indexOf('id="nobbyLibraryDeleteAll"'));
+assert.match(html, /media-library\.css\?v=1-17-shared-pickers/);
+assert.match(css, /\.nobby-library-secondary-row\{/);
+assert.match(css, /@media\(max-width:560px\)/);
+assert.match(css, /\.nobby-library-more-menu \[hidden\]\{display:none!important\}/);
+console.log("Library toolbar grouping, responsive filters, and protected actions contract passed.");
+
+
+assert.match(css, /@supports \(appearance:base-select\) and selector\(::picker\(select\)\)/);
+assert.match(css, /select::picker\(select\)/);
+assert.match(css, /width:anchor-size\(width\)/);
+assert.match(css, /select option:checked/);
+assert.match(css, /color-scheme:dark/);
+for (const id of ["nobbyLibraryCollectionFilter","nobbyLibraryEngine","nobbyLibraryDateFilter","nobbyLibrarySort"]) {
+  assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
+}
+console.log("Library select popups share a dark browser-native dropdown style.");
+
+assert.match(css, /:is\(\.nobby-library-panel :is\(\.nobby-library-secondary-row,\.nobby-library-bulk\), \.mlx-talking-photo-field\) select/);
+assert.match(css, /\.mlx-talking-photo-dialog \.mlx-talking-photo-field select\{/);
+assert.match(css, /::picker\(select\)\{/);
+console.log("Library and Talking Photo dropdown theme contract passed.");
