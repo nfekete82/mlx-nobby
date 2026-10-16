@@ -46,7 +46,7 @@ assert.match(js, /state\.engine === "all"/);
 assert.match(js, /thumbnailUrl\(asset\)/);
 assert.match(js, /metadataUrl\(asset\)/);
 assert.match(js, /IntersectionObserver/);
-assert.match(js, /window\.MLXTalkingPhoto\.openWithImage\(file\)/);
+assert.match(js, /window\.MLXTalkingPhoto\.openWithImage\(file,/);
 assert.match(css, /nobby-library-engine-field/);
 assert.match(css, /nobby-library-media-details/);
 assert.doesNotMatch(js, /innerHTML\s*=/, "Do not interpolate filenames or engine names into HTML");
