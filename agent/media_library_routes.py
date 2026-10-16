@@ -109,6 +109,8 @@ def install_routes(app: FastAPI):
             try:
                 result = media_lifecycle.discard(asset["kind"], asset["id"], force=True)
                 deleted += int(result["deleted"])
+                if result["deleted"]:
+                    media_library_previews.purge_cached(asset["kind"], asset["id"])
             except (ValueError, OSError):
                 errors += 1
         return {"deleted": deleted, "errors": errors, "selected": len(candidates)}
@@ -119,4 +121,6 @@ def install_routes(app: FastAPI):
             result = media_lifecycle.discard(kind, asset_id, force=True)
         except ValueError as exc:
             raise HTTPException(422, "Ungültiges Medium") from exc
+        if result["deleted"]:
+            media_library_previews.purge_cached(kind, asset_id)
         return {"deleted": result["deleted"], "kind": kind, "id": asset_id}
