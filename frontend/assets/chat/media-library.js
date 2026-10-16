@@ -269,8 +269,7 @@
         }
       } catch (_error) {
         if (!preview.hidden && detailsPanel.isConnected)
-          detailsPanel.replaceChildren(elt("p", "", t(
-            "Details sind momentan nicht verfügbar.", "Details are currently unavailable.")));
+          detailsPanel.replaceChildren(elt("p", "", t("Details sind momentan nicht verfügbar.", "Details are currently unavailable.")));
       } finally { detailsButton.disabled = false; }
     });
     previewBody.append(detailsButton, detailsPanel);
