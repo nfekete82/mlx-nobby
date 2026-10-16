@@ -45,6 +45,8 @@ def list_assets(kind="all", limit=400):
                 continue
             results.append({
                 "kind": media_kind, "id": asset_id,
+                "engine": (media_library_previews._engine(media_kind, asset_id)
+                           if media_kind == "talking_photo" else None),
                 "created_at": round(stat.st_mtime, 3),
                 "size_bytes": stat.st_size,
                 "persistent": bool((records.get(media_kind + ":" + asset_id) or {}).get("persistent")),
