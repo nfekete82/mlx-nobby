@@ -151,6 +151,17 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
                    status=200, content_type="video/mp4",
                    body=bytes((0, 0, 0, 24)) + b"ftypisom" + bytes(64),
                ))
+    page.route(f"**/api/library/assets/talking_photo/{job_id}/thumbnail",
+               lambda route: route.fulfill(status=200, content_type="image/png",
+                   body=bytes.fromhex(
+                       "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                       "0000000b49444154789c636000020000050001a5f645400000000049454e44ae426082"
+                   )))
+    page.route(f"**/api/library/assets/talking_photo/{job_id}/metadata",
+               lambda route: json_response(route, {
+                   "kind": "talking_photo", "id": job_id,
+                   "engine": "ltx-distilled", "duration_seconds": 30.0,
+               }))
     page.route("**/api/library/assets?limit=1000",
                lambda route: json_response(route, {
                    "assets": [{
