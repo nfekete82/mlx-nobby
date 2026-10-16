@@ -356,3 +356,42 @@ def test_library_searches_prompt_and_shows_real_asset_details(ui):
     expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Jungle robot walking")
     expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Juggernaut-XI")
     expect(page.locator(".nobby-library-detail-panel")).to_contain_text("1024 × 768")
+
+
+def test_library_server_search_finds_media_outside_initial_gallery(ui):
+    """Server search must extend the first-page local filter, not just restyle it."""
+    page, _agent, _allowed = ui
+    image_bytes = _png()
+    older = {"kind": "image", "id": IMAGE_ID,
+             "url": "/api/mlx/images/" + IMAGE_ID,
+             "created_at": time.time() - 36000,
+             "persistent": True, "size_bytes": 2500,
+             "prompt": "Rare violet fox in snow"}
+    current = {"kind": "video", "id": PHOTO_ID,
+               "url": "/api/mlx/videos/" + PHOTO_ID,
+               "created_at": time.time(),
+               "persistent": True, "size_bytes": 5000}
+
+    def send(route, payload):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: send(route, {"assets": [current], "total": 1001}))
+    page.route("**/api/library/search?*",
+               lambda route: send(route, {"assets": [older], "total": 1}))
+    page.route("**/api/library/organize",
+               lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
+    page.route("**/api/library/assets/video/" + PHOTO_ID + "/thumbnail",
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image_bytes))
+    page.route("**/api/library/assets/video/" + PHOTO_ID + "/metadata",
+               lambda route: send(route, {"id": PHOTO_ID, "kind": "video"}))
+    page.route("**/api/mlx/images/" + IMAGE_ID,
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image_bytes))
+
+    _open_library(page)
+    page.locator("#nobbyLibrarySearch").fill("rare violet fox")
+    expect(page.locator(".nobby-library-card")).to_have_count(1)
+    expect(page.locator(".nobby-library-card img").first).to_have_attribute(
+        "src", "/api/mlx/images/" + IMAGE_ID)
