@@ -370,7 +370,7 @@ const IMAGE_OPTION_KEYS = Object.freeze({
         'prompt', 'negative_prompt', 'model', 'width', 'height',
         'steps', 'guidance', 'seed', 'auto_size'
     ]),
-    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'region_edit', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
+    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'region_edit', 'region_feather_px', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
     reference: new Set([
         'prompt', 'model', 'steps', 'guidance', 'seed',
         'width', 'height', 'auto_size', 'negative_prompt',
@@ -969,14 +969,16 @@ async function startImageUpscale(source, preset = 'photo-2x') {
 /** Submit a bounded user-painted mask through the established image-edit queue.
  *  Only an authenticated, server-managed image artifact can be selected.
  */
-async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt}) {
+async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt, region_feather_px = 0}) {
     if (MLXChatRuntime.isSwitching() || getGenerating()) {
         throw new Error(gt('image_job_busy', 'Another operation is running.'));
     }
     if (!/^\d{10}-[a-f0-9]{12}$/i.test(String(image_id || '')) ||
         artifact_id !== 'image-' + image_id ||
         typeof mask_path !== 'string' || !mask_path ||
-        typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
+        typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000 ||
+        !Number.isInteger(region_feather_px) || region_feather_px < 0 ||
+        region_feather_px > 12) {
         throw new Error(gt('image_edit_source_required', 'Invalid masked edit request.'));
     }
     const session = MLXChatSessions.currentSession();
@@ -1017,7 +1019,8 @@ async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt}) 
                 image_options: {
                     model: 'auto',
                     mask_path: mask_path,
-                    region_edit: true
+                    region_edit: true,
+                    region_feather_px: region_feather_px
                 },
                 conversation_context: buildAgentConversationContext(session, userMessage),
                 trace_id: userMessage.trace_id,

@@ -62,13 +62,25 @@
     image.alt = localText('Originalbild', 'Original image');
     const display = node('canvas', 'nobby-region-editor-overlay');
     display.setAttribute('aria-label', localText('Bereich mit Maus oder Touch markieren', 'Mark region with mouse or touch'));
-    imageWrap.append(image, display);
+    // Keep the image and its overlaid canvas in one zoomed pixel coordinate system.
+    const imageStage = node('div', 'nobby-region-editor-stage');
+    imageStage.append(image, display);
+    imageWrap.append(imageStage);
     const toolbar = node('div', 'nobby-region-editor-toolbar');
     const sizeLabel = node('label', '');
     sizeLabel.textContent = localText('Pinselgröße', 'Brush size');
     const size = node('input');
     size.type = 'range';
     size.min = '4'; size.max = '128'; size.step = '2'; size.value = '32';
+    try {
+      const remembered = Number(window.localStorage?.getItem('nobby-region-brush-size'));
+      if (remembered >= 4 && remembered <= 128 && Number.isInteger(remembered))
+        size.value = String(remembered);
+    } catch (_) { /* Private browsing or blocked storage: use the safe default. */ }
+    size.addEventListener('input', () => {
+      try { window.localStorage?.setItem('nobby-region-brush-size', size.value); }
+      catch (_) { /* Brush size still works for this session. */ }
+    });
     sizeLabel.append(size);
     const brush = node('button', 'message-action-btn is-active', localText('Pinsel', 'Brush'));
     const erase = node('button', 'message-action-btn', localText('Radierer', 'Eraser'));
@@ -76,6 +88,43 @@
     const clear = node('button', 'message-action-btn', localText('Zurücksetzen', 'Reset'));
     for (const b of [brush, erase, undo, clear]) b.type = 'button';
     toolbar.append(sizeLabel, brush, erase, undo, clear);
+
+    const featherLabel = node('label', 'nobby-region-editor-slider-label');
+    featherLabel.textContent = localText('Weiche Kante', 'Soft edge');
+    const feather = node('input');
+    feather.type = 'range'; feather.min = '0'; feather.max = '12';
+    feather.step = '1'; feather.value = '3';
+    const featherValue = node('output', 'nobby-region-editor-feather-value', '3 px');
+    feather.addEventListener('input', () => {
+      featherValue.textContent = feather.value + ' px';
+    });
+    featherLabel.append(feather, featherValue);
+    toolbar.append(featherLabel);
+
+    const zoomToolbar = node('div', 'nobby-region-editor-zoom');
+    const zoomLabel = node('span', '', localText('Ansicht', 'View'));
+    const zoomOut = node('button', 'message-action-btn', '−');
+    const zoomFit = node('button', 'message-action-btn', localText('Einpassen', 'Fit'));
+    const zoomIn = node('button', 'message-action-btn', '+');
+    const zoomValue = node('output', 'nobby-region-editor-zoom-value', '100 %');
+    for (const button of [zoomOut, zoomFit, zoomIn]) button.type = 'button';
+    zoomOut.setAttribute('aria-label', localText('Verkleinern', 'Zoom out'));
+    zoomIn.setAttribute('aria-label', localText('Vergrößern', 'Zoom in'));
+    zoomToolbar.append(zoomLabel, zoomOut, zoomFit, zoomIn, zoomValue);
+
+    const presetRow = node('div', 'nobby-region-editor-presets');
+    const presetLabel = node('span', '', localText('Schnellvorlagen', 'Quick prompts'));
+    presetRow.append(presetLabel);
+    const presetValues = [
+      [localText('Augenfarbe', 'Eye color'),
+       'Change only the selected eye color to natural blue, preserving realistic reflections and everything else.'],
+      [localText('Hautdetails', 'Skin details'),
+       'Refine only the selected skin texture with natural pores and subtle realistic details. Preserve identity and lighting.'],
+      [localText('Objekt entfernen', 'Remove object'),
+       'Remove only the selected object and realistically reconstruct the background. Keep everything else unchanged.'],
+      [localText('Kleidung ändern', 'Change clothing'),
+       'Change only the selected clothing to dark blue fabric, maintaining realistic folds, pose and lighting.']
+    ];
     const promptLabel = node('label', 'nobby-region-editor-prompt');
     promptLabel.textContent = localText('Was soll sich im markierten Bereich ändern?', 'What should change in the selected area?');
     const prompt = node('textarea');
@@ -83,6 +132,17 @@
     prompt.placeholder = localText('z. B. natürlichere Augen und Hauttextur, alles andere beibehalten',
       'e.g. more realistic eyes and skin texture, preserve everything else');
     promptLabel.append(prompt);
+    for (const [label, instruction] of presetValues) {
+      const button = node('button', 'message-action-btn', label);
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        if (busy) return;
+        prompt.value = instruction;
+        update();
+        prompt.focus();
+      });
+      presetRow.append(button);
+    }
     const status = node('p', 'nobby-region-editor-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
@@ -92,12 +152,38 @@
     cancel.type = 'button'; send.type = 'button';
     send.disabled = true;
     buttons.append(cancel, send);
-    frame.append(header, help, imageWrap, toolbar, promptLabel, status, buttons);
+    frame.append(header, help, imageWrap, zoomToolbar, toolbar,
+      presetRow, promptLabel, status, buttons);
     overlay.append(frame);
     document.body.append(overlay);
 
     let closed = false, busy = false, ready = false, eraseMode = false, drawing = null;
+    let fitWidth = 1, fitHeight = 1, zoom = 1;
     const strokes = [];
+
+    function setZoom(next) {
+      if (!ready || busy) return;
+      const value = Math.min(3, Math.max(1, next));
+      const oldWidth = imageStage.getBoundingClientRect().width || fitWidth;
+      const oldHeight = imageStage.getBoundingClientRect().height || fitHeight;
+      const centerX = (imageWrap.scrollLeft + imageWrap.clientWidth / 2) / oldWidth;
+      const centerY = (imageWrap.scrollTop + imageWrap.clientHeight / 2) / oldHeight;
+      zoom = value;
+      imageStage.style.width = Math.round(fitWidth * zoom) + 'px';
+      imageStage.style.height = Math.round(fitHeight * zoom) + 'px';
+      zoomValue.textContent = Math.round(zoom * 100) + ' %';
+      zoomOut.disabled = zoom <= 1;
+      zoomIn.disabled = zoom >= 3;
+      requestAnimationFrame(() => {
+        if (closed) return;
+        imageWrap.scrollLeft = centerX * imageStage.clientWidth - imageWrap.clientWidth / 2;
+        imageWrap.scrollTop = centerY * imageStage.clientHeight - imageWrap.clientHeight / 2;
+      });
+    }
+
+    zoomOut.addEventListener('click', () => setZoom(zoom - 0.5));
+    zoomIn.addEventListener('click', () => setZoom(zoom + 0.5));
+    zoomFit.addEventListener('click', () => setZoom(1));
     const mask = document.createElement('canvas');
     const finish = () => {
       if (closed || busy) return;
@@ -108,7 +194,20 @@
       if (active?.overlay === overlay) active = null;
     };
     const onKey = event => {
-      if (event.key === 'Escape' && !busy) { event.preventDefault(); finish(); }
+      if (event.key === 'Escape' && !busy) { event.preventDefault(); finish(); return; }
+      if (busy || !ready) return;
+      const editing = event.target?.matches?.('input, textarea, select, [contenteditable="true"]');
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !editing) {
+        event.preventDefault();
+        if (strokes.length) { strokes.pop(); redraw(); }
+        return;
+      }
+      if (editing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key.toLowerCase() === 'b') { eraseMode = false; update(); }
+      if (event.key.toLowerCase() === 'e') { eraseMode = true; update(); }
+      if (event.key === '+' || event.key === '=') setZoom(zoom + 0.5);
+      if (event.key === '-') setZoom(zoom - 0.5);
+      if (event.key === '0') setZoom(1);
     };
     active = {overlay, close: finish};
     document.addEventListener('keydown', onKey);
@@ -185,7 +284,15 @@
       }
       mask.width = display.width = image.naturalWidth;
       mask.height = display.height = image.naturalHeight;
+      const maxWidth = Math.max(200, imageWrap.clientWidth);
+      const maxHeight = Math.max(200, Math.min(window.innerHeight * 0.55, 620));
+      const scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+      fitWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+      fitHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+      imageStage.style.width = fitWidth + 'px';
+      imageStage.style.height = fitHeight + 'px';
       ready = true;
+      setZoom(1);
       redraw();
     }, {once: true});
     image.addEventListener('error', () => {
@@ -213,6 +320,7 @@
           image_id: id,
           artifact_id: 'image-' + id,
           mask_path: path,
+          region_feather_px: Number(feather.value),
           prompt: prompt.value.trim()
         });
         if (!accepted) throw new Error(localText('Bearbeitung konnte nicht gestartet werden', 'Edit could not be started'));

@@ -77,6 +77,7 @@ class Edit(BaseModel):
     auto_mask: str | None = Field(default=None, min_length=1, max_length=200)
     precision_edit: bool = True  # Conservatively infer unambiguous Qwen auto-mask targets.
     region_edit: bool = False  # Opt-in cropped, composited, RAM-sparing brush edits.
+    region_feather_px: int = Field(default=0, ge=0, le=12)  # Softens only inside the painted mask.
     strength: float | None = Field(default=None, gt=0, le=1)
     use_kv_cache: bool | None = None
     use_step_cache: bool | None = None
@@ -115,6 +116,8 @@ class Edit(BaseModel):
             or self.semantic_operation != 'edit'
         ):
             raise ValueError('Region edit requires one source and a manual mask')
+        if self.region_feather_px and not self.region_edit:
+            raise ValueError('Mask feather requires region edit')
         if self.semantic_operation == 'reference_generate' and self.reference_mode is None:
             raise ValueError('Reference generation requires a reference mode')
         if (self.width is None) != (self.height is None):
@@ -891,7 +894,7 @@ def _edit_result_inner(
     edit_source = prepared_sources[0]
     params = (copy.deepcopy(resolved['params']) if resolved else request.model_dump(exclude={
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
-        'width', 'height', 'auto_size', 'precision_edit', 'region_edit'}))
+        'width', 'height', 'auto_size', 'precision_edit', 'region_edit', 'region_feather_px'}))
     params["source_path"] = str(edit_source)
     if request.source_paths:
         params['source_paths'] = [str(value) for value in prepared_sources]
@@ -982,7 +985,8 @@ def _edit_result_inner(
         run_provider(model, params, path, **(provider_options or {}))
         if request.region_edit:
             composite_region(source, validate_edit_source(request.mask_path),
-                             path, region_crop, path)
+                             path, region_crop, path,
+                             feather_px=request.region_feather_px)
     finally:
         _running = None
     if saving_callback:

@@ -32,22 +32,29 @@
 .nobby-region-editor-help { color: var(--text-muted, #afb7c4); font-size: 13px; }
 .nobby-region-editor-image {
   position: relative;
-  width: fit-content;
-  max-width: 100%;
-  max-height: min(55dvh, 620px);
+  width: 100%;
+  height: min(55dvh, 620px);
   margin: 12px auto;
   line-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
   border-radius: 10px;
   background: #0e1118;
 }
+.nobby-region-editor-stage {
+  position: relative;
+  width: fit-content;
+  height: fit-content;
+  margin: auto;
+}
 .nobby-region-editor-image img {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: min(55dvh, 620px);
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  pointer-events: none;
 }
 .nobby-region-editor-overlay {
   position: absolute;
@@ -58,6 +65,21 @@
   touch-action: none;
 }
 .nobby-region-editor-toolbar { margin: 12px 0 14px; }
+.nobby-region-editor-zoom,
+.nobby-region-editor-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.nobby-region-editor-zoom span,
+.nobby-region-editor-presets span { font-size: 12px; opacity: .78; margin-right: 6px; }
+.nobby-region-editor-zoom-value { font-variant-numeric: tabular-nums; min-width: 3.3em; font-size: 13px; }
+.nobby-region-editor-slider-label { display: inline-flex; align-items: center; gap: 8px; }
+.nobby-region-editor-feather-value { font-size: 12px; min-width: 3.3em; font-variant-numeric: tabular-nums; }
+.nobby-region-editor-presets .message-action-btn { font-size: 12px; }
+
 .nobby-region-editor-toolbar label {
   display: inline-flex;
   gap: 10px;

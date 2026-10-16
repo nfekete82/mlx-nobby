@@ -8380,7 +8380,7 @@ IMAGE_OPTION_KEYS = {
         "steps", "guidance", "seed", "auto_size",
     }),
     "edit": frozenset({"prompt", "model", "steps", "guidance", "seed", "negative_prompt",
-        "mask_path", "region_edit", "auto_mask", "strength", "use_kv_cache", "use_step_cache",
+        "mask_path", "region_edit", "region_feather_px", "auto_mask", "strength", "use_kv_cache", "use_step_cache",
         "step_cache_threshold", "enhance_prompt", "verify"}),
     "reference": frozenset({
         "prompt", "model", "steps", "guidance", "seed",
