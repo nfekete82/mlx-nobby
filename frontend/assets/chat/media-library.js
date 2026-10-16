@@ -5,7 +5,9 @@
   const toggle = document.getElementById("sidebarLibraryButton");
   const close = document.getElementById("nobbyLibraryClose");
   if (!panel || !grid || !toggle) return;
-  const state = { kind: "all", query: "", assets: [], loaded: false, generation: 0 };
+  const state = { kind: "all", engine: "all", query: "", assets: [], loaded: false, generation: 0 };
+  const metadataCache = new Map();
+  let mediaObserver = null;
   const de = () => String(window.MLXI18n?.getLanguage?.() || document.documentElement.lang || "de").startsWith("de");
   const t = (g, e) => de() ? g : e;
   function elt(tag, className, label) {
@@ -41,18 +43,101 @@
   const previewClose = elt("button", "nobby-library-preview-close", "×");
   previewClose.type = "button";
   previewClose.setAttribute("aria-label", t("Vorschau schließen", "Close preview"));
+  const previewFull = elt("button", "nobby-library-preview-fullscreen", t("Vollbild", "Fullscreen"));
+  previewFull.type = "button";
+  previewFull.setAttribute("aria-label", t("Vollbild umschalten", "Toggle fullscreen"));
+  previewFull.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement === shell) await document.exitFullscreen();
+      else if (shell.requestFullscreen) await shell.requestFullscreen();
+    } catch (_error) { /* Fullscreen permission can be denied. */ }
+  });
   const previewBody = elt("div", "nobby-library-preview-body");
-  shell.append(previewClose, previewBody);
+  shell.append(previewClose, previewFull, previewBody);
   preview.append(backdrop, shell);
   document.body.appendChild(preview);
   let previousFocus = null;
   function closePreview() {
     if (preview.hidden) return;
     preview.hidden = true;
+    if (document.fullscreenElement === shell) document.exitFullscreen?.().catch(() => {});
     previewBody.querySelector("video")?.pause();
     previewBody.replaceChildren();
     if (previousFocus?.isConnected) previousFocus.focus();
     previousFocus = null;
+  }
+  async function createFromImage(asset) {
+    if (asset.kind !== "image" || !window.MLXTalkingPhoto?.openWithImage) {
+      window.alert(t("Talking Photo ist noch nicht bereit.", "Talking Photo is not ready."));
+      return;
+    }
+    try {
+      const response = await fetch(asset.url, {cache: "no-store"});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error(t("Foto ist zu groß.", "Photo is too large."));
+      const file = new File([blob], "nobby-library-" + asset.id + ".png", {type: "image/png"});
+      setVisible(false);
+      await window.MLXTalkingPhoto.openWithImage(file);
+    } catch (error) {
+      window.alert(t("Bild konnte nicht geladen werden: ", "Could not load image: ") + error.message);
+    }
+  }
+  function thumbnailUrl(asset) {
+    return "/api/library/assets/" + encodeURIComponent(asset.kind) + "/" +
+      encodeURIComponent(asset.id) + "/thumbnail";
+  }
+  function metadataUrl(asset) {
+    return "/api/library/assets/" + encodeURIComponent(asset.kind) + "/" +
+      encodeURIComponent(asset.id) + "/metadata";
+  }
+  const formatDuration = seconds => {
+    const value = Number(seconds);
+    if (!(value > 0 && Number.isFinite(value))) return "";
+    return Math.floor(value / 60) + ":" + String(Math.floor(value % 60)).padStart(2, "0") + " min";
+  };
+  function engineLabel(asset) {
+    const engine = asset.engine || metadataCache.get(asset.kind + ":" + asset.id)?.engine;
+    return ({
+      "ltx-distilled": "LTX Distilled",
+      "ltx": "LTX direkt",
+      "quality": "LTX + MuseTalk",
+      "fast": "MuseTalk",
+    })[engine] || (asset.kind === "talking_photo" ? "Talking Photo" : "Video");
+  }
+  function observeMetadata(asset, target) {
+    if (asset.kind === "image") return;
+    const key = asset.kind + ":" + asset.id;
+    const show = info => {
+      if (!target.isConnected) return;
+      target.textContent = [engineLabel({...asset, engine: info?.engine || asset.engine}),
+        formatDuration(info?.duration_seconds)].filter(Boolean).join(" · ");
+    };
+    if (metadataCache.has(key)) { show(metadataCache.get(key)); return; }
+    target.dataset.metadataUrl = metadataUrl(asset);
+    const load = async () => {
+      if (target.dataset.requested) return;
+      target.dataset.requested = "1";
+      try {
+        const response = await fetch(metadataUrl(asset), {cache: "no-store"});
+        if (!response.ok) return;
+        const info = await response.json();
+        if (typeof info !== "object" || !info || info.id !== asset.id || info.kind !== asset.kind) return;
+        metadataCache.set(key, info);
+        show(info);
+      } catch (_error) { /* Media metadata is noncritical. */ }
+    };
+    if (typeof IntersectionObserver === "function") {
+      if (!mediaObserver) mediaObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          mediaObserver.unobserve(entry.target);
+          entry.target._loadLibraryMetadata?.();
+        }
+      }, {rootMargin: "160px"});
+      target._loadLibraryMetadata = load;
+      mediaObserver.observe(target);
+    } else { load(); }
   }
   function showPreview(asset) {
     closePreview();
@@ -68,6 +153,12 @@
       media.setAttribute("aria-label", label(asset.kind));
     }
     previewBody.replaceChildren(media);
+    if (asset.kind === "image") {
+      const reuse = elt("button", "nobby-library-action nobby-library-preview-use", t("Als Talking Photo verwenden", "Use for Talking Photo"));
+      reuse.type = "button";
+      reuse.addEventListener("click", () => { closePreview(); void createFromImage(asset); });
+      previewBody.appendChild(reuse);
+    }
     preview.hidden = false;
     previewClose.focus();
   }
@@ -79,7 +170,7 @@
       event.preventDefault();
       closePreview();
     } else if (event.key === "Tab") {
-      const focusable = [previewClose, ...previewBody.querySelectorAll("button, a[href]")];
+      const focusable = [previewClose, previewFull, ...previewBody.querySelectorAll("button, a[href]")];
       if (event.shiftKey && document.activeElement === focusable[0]) {
         event.preventDefault();
         focusable[focusable.length - 1].focus();
@@ -119,13 +210,16 @@
       image.alt = t("Generiertes Bild", "Generated image");
       media.appendChild(image);
     } else {
-      const video = elt("video");
-      video.src = asset.url;
-      video.preload = "metadata";
-      video.controls = false;
-      video.playsInline = true;
-      video.setAttribute("aria-label", label(asset.kind));
-      media.appendChild(video);
+      const image = elt("img");
+      image.src = thumbnailUrl(asset);
+      image.loading = "lazy";
+      image.alt = t("Videovorschaubild", "Video thumbnail");
+      image.addEventListener("error", () => {
+        image.hidden = true;
+        media.classList.add("nobby-library-no-thumbnail");
+      }, {once: true});
+      media.appendChild(image);
+      media.appendChild(elt("span", "nobby-library-play-icon", "▶"));
     }
 
     const zoom = elt("button", "nobby-library-zoom");
@@ -149,8 +243,19 @@
     const text = elt("div", "nobby-library-card-body");
     text.appendChild(elt("strong", "", label(asset.kind)));
     text.appendChild(elt("span", "nobby-library-date", formatDate(asset.created_at) + " · " + (asset.persistent ? t("Dauerhaft", "Permanent") : t("Temporär", "Temporary"))));
+    if (asset.kind !== "image") {
+      const details = elt("span", "nobby-library-media-details", engineLabel(asset));
+      text.appendChild(details);
+      observeMetadata(asset, details);
+    }
     const buttons = elt("div", "nobby-library-card-actions");
     buttons.append(link(asset.url, t("Download", "Download"), true));
+    if (asset.kind === "image") {
+      const use = elt("button", "nobby-library-action", t("Talking Photo", "Talking Photo"));
+      use.type = "button";
+      use.addEventListener("click", () => void createFromImage(asset));
+      buttons.append(use);
+    }
     const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
     remove.type = "button";
     remove.addEventListener("click", async () => {
@@ -170,10 +275,17 @@
     return box;
   }
   function render() {
+    mediaObserver?.disconnect();
     const filter = state.query.trim().toLowerCase();
     const filtered = state.assets.filter(item =>
       (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
-      (!filter || label(item.kind).toLowerCase().includes(filter) || item.id.includes(filter) || formatDate(item.created_at).includes(filter))
+      (state.engine === "all" ||
+        (state.engine === "talking_photo" && item.kind === "talking_photo") ||
+        (state.engine === "standard" && item.kind === "video") ||
+        item.engine === state.engine) &&
+      (!filter || [label(item.kind), item.id, formatDate(item.created_at),
+        engineLabel(item), formatDuration(metadataCache.get(item.kind + ":" + item.id)?.duration_seconds)]
+        .some(value => String(value).toLowerCase().includes(filter)))
     );
     const count = document.getElementById("nobbyLibraryCount");
     if (count) count.textContent = t(filtered.length + " Medien", filtered.length + " items");
@@ -257,9 +369,17 @@
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
     state.query = event.target.value; render();
   });
+  document.getElementById("nobbyLibraryEngine")?.addEventListener("change", event => {
+    state.engine = event.target.value; render();
+  });
   for (const button of panel.querySelectorAll("[data-library-kind]")) {
     button.addEventListener("click", () => {
       state.kind = button.dataset.libraryKind;
+      if (state.kind === "image" && state.engine !== "all") {
+        state.engine = "all";
+        const engineControl = document.getElementById("nobbyLibraryEngine");
+        if (engineControl) engineControl.value = "all";
+      }
       for (const item of panel.querySelectorAll("[data-library-kind]")) {
         item.classList.toggle("active", item === button);
         item.setAttribute("aria-pressed", String(item === button));

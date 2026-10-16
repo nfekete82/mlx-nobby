@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
-from agent import media_lifecycle
+from fastapi.responses import FileResponse
+from agent import media_lifecycle, media_library_previews
 
 KINDS = ("image", "video", "talking_photo")
 SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
@@ -44,6 +45,8 @@ def list_assets(kind="all", limit=400):
                 continue
             results.append({
                 "kind": media_kind, "id": asset_id,
+                "engine": (media_library_previews._engine(media_kind, asset_id)
+                           if media_kind == "talking_photo" else None),
                 "created_at": round(stat.st_mtime, 3),
                 "size_bytes": stat.st_size,
                 "persistent": bool((records.get(media_kind + ":" + asset_id) or {}).get("persistent")),
@@ -63,6 +66,26 @@ def install_routes(app: FastAPI):
             return list_assets(kind, limit)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/library/assets/{kind}/{asset_id}/metadata")
+    def library_metadata(kind: str, asset_id: str):
+        try:
+            return media_library_previews.metadata(kind, asset_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, "Videodaten nicht gefunden") from exc
+
+    @app.get("/api/library/assets/{kind}/{asset_id}/thumbnail")
+    def library_thumbnail(kind: str, asset_id: str):
+        try:
+            path = media_library_previews.thumbnail(kind, asset_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(404, "Videovorschau nicht gefunden") from exc
+        except (RuntimeError, OSError) as exc:
+            raise HTTPException(503, "Videovorschau nicht verfügbar") from exc
+        return FileResponse(path, media_type="image/jpeg", headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        })
 
     @app.post("/api/library/assets/{kind}/{asset_id}/save")
     def library_save(kind: str, asset_id: str):
@@ -86,6 +109,8 @@ def install_routes(app: FastAPI):
             try:
                 result = media_lifecycle.discard(asset["kind"], asset["id"], force=True)
                 deleted += int(result["deleted"])
+                if result["deleted"]:
+                    media_library_previews.purge_cached(asset["kind"], asset["id"])
             except (ValueError, OSError):
                 errors += 1
         return {"deleted": deleted, "errors": errors, "selected": len(candidates)}
@@ -96,4 +121,6 @@ def install_routes(app: FastAPI):
             result = media_lifecycle.discard(kind, asset_id, force=True)
         except ValueError as exc:
             raise HTTPException(422, "Ungültiges Medium") from exc
+        if result["deleted"]:
+            media_library_previews.purge_cached(kind, asset_id)
         return {"deleted": result["deleted"], "kind": kind, "id": asset_id}

@@ -280,6 +280,35 @@ def library_assets(kind: str = 'all', limit: int = 400):
     )
 
 
+@app.get('/api/library/assets/{kind}/{asset_id}/metadata')
+def library_asset_metadata(kind: str, asset_id: str):
+    return agent_json_request(
+        'GET', '/api/library/assets/' + urllib.parse.quote(kind, safe='') +
+        '/' + urllib.parse.quote(asset_id, safe='') + '/metadata',
+        timeout=20,
+    )
+
+
+@app.get('/api/library/assets/{kind}/{asset_id}/thumbnail')
+def library_asset_thumbnail(kind: str, asset_id: str):
+    path = '/api/library/assets/' + urllib.parse.quote(kind, safe='') + '/' + urllib.parse.quote(asset_id, safe='') + '/thumbnail'
+    try:
+        with urllib.request.urlopen(AGENT_URL + path, timeout=50) as response:
+            data = response.read(1_500_001)
+            if len(data) > 1_500_000:
+                raise HTTPException(502, 'Bildvorschau zu groß')
+            if response.headers.get('Content-Type', '').split(';')[0] != 'image/jpeg':
+                raise HTTPException(502, 'Ungültige Bildvorschau')
+            return Response(
+                data, media_type='image/jpeg',
+                headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'},
+            )
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(exc.code, 'Bildvorschau nicht verfügbar') from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(503, 'Medien-Agent nicht erreichbar') from exc
+
+
 @app.post('/api/library/assets/{kind}/{asset_id}/save')
 def library_save(kind: str, asset_id: str):
     return agent_json_request(

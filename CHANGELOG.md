@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Media Library 2.0: lazy, cached on-device video thumbnail JPEGs; bounded ffprobe duration/dimensions; engine filters for Talking Photo; one-click reuse of existing library PNGs in Talking Photo. Canonical paths only, no original-media copies, explicit delete purges derived thumbnails. Desktop/mobile browser and security regressions included.
+
+
 - Talking Photo longform continuity beta: condition each follow-up LTX clip on the exact last visible frame of the preceding clip (excluding 8n+1 padding). Keep source speech and frame timing unchanged, fall back safely to the original portrait on extraction errors, and expose a headless opt-out (`LTX_TALKING_PHOTO_LONGFORM_CONTINUITY=0`).
 
 - Talking Photo 2.0 beta: render up to 60 seconds by sequential short clips while preserving the original source audio as a single continuous track.
