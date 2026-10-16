@@ -70,7 +70,23 @@ def main():
                     use_safetensors=True,
                 )
                 scheduler_base_config = pipeline.scheduler.config
-                pipeline = pipeline.to("mps")
+                # Keep pipeline components on CPU until needed. Copying all
+                # SDXL weights to MPS at once can exceed the safe allocator
+                # cap on 48 GiB unified-memory Macs even at 512x512.
+                #
+                # Diffusers/Accelerate loads one component at a time; do not
+                # combine this with enable_attention_slicing() on MPS, which
+                # can produce black SDXL images in some versions.
+                try:
+                    pipeline.enable_model_cpu_offload(device="mps")
+                except (AttributeError, ImportError, RuntimeError) as exc:
+                    raise RuntimeError(
+                        "Sicherer SDXL-Modus erfordert Diffusers mit "
+                        "Accelerate CPU-Offloading auf MPS; "
+                        "kein unsicherer Fallback auf pipeline.to('mps')"
+                    ) from exc
+                pipeline.enable_vae_tiling()
+                pipeline.enable_vae_slicing()
                 loaded_model = model_key
                 loaded_scheduler = None
 
@@ -129,6 +145,14 @@ def main():
             }), flush=True)
         except Exception as exc:
             message = str(exc).replace("\n", " ").replace("\r", " ").strip()
+            # PyTorch's stock MPS OOM suggestion is to disable the hard
+            # watermark. Never recommend doing so in a safety-focused UI.
+            if "MPS backend out of memory" in message:
+                message = (
+                    "Sicheres MPS-Speicherlimit erreicht; Bildauftrag beendet. "
+                    "Watermark nicht deaktivieren. " +
+                    message.split("Use PYTORCH_MPS_HIGH_WATERMARK_RATIO")[0].strip()
+                )
             if len(message) > 1500:
                 message = message[:1500] + "..."
 

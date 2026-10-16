@@ -59,3 +59,36 @@ This is a best-effort fail-closed safeguard with a separate MPS allocator
 ceiling. Benchmark scripts spawning their own SDXL worker are not covered by
 the image-service coordinator. For a machine with 48 GB of unified memory,
 do the first validation at 512×512, with no other heavy models running.
+
+## Memory-optimized SDXL execution (post-512x512 real-world OOM)
+
+A Mac with 48 GiB unified RAM exhausted the **existing** safe MPS cap during
+Lustify loading: PyTorch reported 10.10 GiB MPS allocations, 11.62 GiB
+other allocations and 20.59 GiB allowed total. This is a **safe workload
+failure** rather than a reason to raise or disable the allocator cap.
+
+Both SDXL checkpoints now run with `enable_model_cpu_offload(device="mps")`
+rather than eager `.to("mps")` weight transfer. Offloading serializes
+the UNet, text encoders and VAE across CPU/MPS phases. This trades some speed
+for fewer simultaneous MPS-resident components while retaining original
+checkpoint weights, quality and generation settings.
+
+The worker additionally enables VAE tiling/slicing. Attention slicing is
+**not** enabled alongside offload, as that combination has generated black
+SDXL images in certain Diffusers/PyTorch MPS versions. Missing Accelerate
+support is a hard, actionable error: never fall back to loading all components
+to MPS or disabling the watermark.
+
+The image service has pinned `diffusers==0.40.0` and
+`accelerate==1.15.0` in `requirements/images.txt`.
+
+After updating:
+```bash
+cd ~/mlx-web
+./image-venv/bin/python -c 'import diffusers, accelerate; print(diffusers.__version__, accelerate.__version__)'
+./test-venv/bin/python -m pytest -q tests/test_sdxl_memory_safety.py tests/test_image_runtime.py -k 'sdxl or memory'
+launchctl kickstart -k "gui/$(id -u)/de.nobby.mlx-images"
+```
+First test with a single 512x512 image; compare memory and reject solid
+black output. CPU component offloading is experimental on some MPS
+combinations: a physical Mac smoke run is required before merging.

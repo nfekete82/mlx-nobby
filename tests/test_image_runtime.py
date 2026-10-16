@@ -583,6 +583,8 @@ class ImageRuntimeTests(unittest.TestCase):
         loads = []
         calls = []
         scheduler_loads = []
+        offloads = []
+        vae_modes = []
 
         class FakeGenerator:
             def __init__(self, device):
@@ -607,8 +609,16 @@ class ImageRuntimeTests(unittest.TestCase):
                 return cls()
 
             def to(self, device):
-                self.device = device
-                return self
+                raise AssertionError("Unsafe eager MPS load must never run")
+
+            def enable_model_cpu_offload(self, *, device):
+                offloads.append(device)
+
+            def enable_vae_tiling(self):
+                vae_modes.append("tiling")
+
+            def enable_vae_slicing(self):
+                vae_modes.append("slicing")
 
             def __call__(self, **options):
                 calls.append(options)
@@ -681,6 +691,8 @@ class ImageRuntimeTests(unittest.TestCase):
             sdxl_worker.main()
 
         self.assertEqual(len(loads), 1)
+        self.assertEqual(offloads, ["mps"])
+        self.assertEqual(vae_modes, ["tiling", "slicing"])
         self.assertEqual(len(scheduler_loads), 1)
         self.assertEqual(scheduler_loads[0][0], {"name": "original"})
         self.assertEqual(scheduler_loads[0][1], {

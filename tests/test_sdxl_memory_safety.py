@@ -109,3 +109,92 @@ def test_process_guard_detects_swap_spike_even_with_high_free_ram():
         guard._last_system_probe = 0.0
         with pytest.raises(RuntimeError, match="Swap"):
             guard.check(process)
+
+
+def test_sdxl_worker_does_not_fallback_to_eager_mps_if_offload_unavailable():
+    """Missing Accelerate is a hard failure, not permission to bypass the cap."""
+    import io
+    import json
+    import sys
+    import types
+    import sdxl_worker
+
+    class Pipeline:
+        def __init__(self):
+            self.scheduler = types.SimpleNamespace(config={})
+        @classmethod
+        def from_single_file(cls, *args, **kwargs):
+            return cls()
+        def to(self, *args, **kwargs):
+            raise AssertionError("Unsafe eager MPS fallback")
+        def enable_model_cpu_offload(self, **kwargs):
+            raise ImportError("accelerate missing")
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.float16 = "float16"
+    fake_torch.backends = types.SimpleNamespace(
+        mps=types.SimpleNamespace(is_available=lambda: True)
+    )
+    fake_torch.mps = types.SimpleNamespace(empty_cache=lambda: None)
+    fake_diffusers = types.ModuleType("diffusers")
+    fake_diffusers.StableDiffusionXLPipeline = Pipeline
+    fake_diffusers.DPMSolverMultistepScheduler = mock.Mock()
+    request = {
+        "request_id": "guard-check",
+        "checkpoint": "/local/checkpoint.safetensors",
+        "config": "/local/config",
+        "params": {"scheduler": "dpmpp-2m-karras"},
+    }
+    output = io.StringIO()
+    with mock.patch.dict(sys.modules, {
+        "torch": fake_torch, "diffusers": fake_diffusers
+    }), mock.patch.object(sdxl_worker.sys, "stdin", io.StringIO(json.dumps(request) + "\n")), \
+         mock.patch.object(sdxl_worker.sys, "stdout", output):
+        sdxl_worker.main()
+    event = json.loads(output.getvalue().strip())
+    assert event["type"] == "error"
+    assert "kein unsicherer Fallback" in event["message"]
+
+
+def test_sdxl_oom_message_never_suggests_disabling_safety_limit():
+    import io
+    import json
+    import sys
+    import types
+    import sdxl_worker
+
+    class Pipeline:
+        def __init__(self):
+            self.scheduler = types.SimpleNamespace(config={})
+        @classmethod
+        def from_single_file(cls, *args, **kwargs):
+            raise RuntimeError(
+                "MPS backend out of memory (MPS allocated: 10.10 GiB). "
+                "Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit"
+            )
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.float16 = "float16"
+    fake_torch.backends = types.SimpleNamespace(
+        mps=types.SimpleNamespace(is_available=lambda: True)
+    )
+    fake_torch.mps = types.SimpleNamespace(empty_cache=lambda: None)
+    fake_diffusers = types.ModuleType("diffusers")
+    fake_diffusers.StableDiffusionXLPipeline = Pipeline
+    fake_diffusers.DPMSolverMultistepScheduler = mock.Mock()
+    request = {
+        "request_id": "oom-message",
+        "checkpoint": "/local/checkpoint.safetensors",
+        "config": "/local/config",
+        "params": {"scheduler": "dpmpp-2m-karras"},
+    }
+    output = io.StringIO()
+    with mock.patch.dict(sys.modules, {
+        "torch": fake_torch, "diffusers": fake_diffusers
+    }), mock.patch.object(sdxl_worker.sys, "stdin", io.StringIO(json.dumps(request) + "\n")), \
+         mock.patch.object(sdxl_worker.sys, "stdout", output):
+        sdxl_worker.main()
+    event = json.loads(output.getvalue().strip())
+    assert event["type"] == "error"
+    assert "Sicheres MPS-Speicherlimit" in event["message"]
+    assert "WATERMARK_RATIO=0.0" not in event["message"]
