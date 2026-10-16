@@ -332,6 +332,8 @@ def test_library_searches_prompt_and_shows_real_asset_details(ui):
 
     page.route("**/api/library/assets?limit=1000",
                lambda route: send(route, {"assets": assets, "total": 2}))
+    page.route("**/api/library/search?*",
+               lambda route: send(route, {"assets": [assets[0]], "total": 1}))
     page.route("**/api/library/organize",
                lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
     page.route("**/api/library/workflows",
