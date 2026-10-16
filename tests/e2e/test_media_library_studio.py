@@ -217,3 +217,47 @@ def test_media_studio_image_to_video_prefill_and_source_navigation(ui):
         const file = window.MLXChatAttachments.getAttachments().find(f => f.kind === "image");
         return file?.library_source?.id;
     }""") == IMAGE_ID
+
+
+def test_library_local_date_and_size_sorting(ui):
+    """Filters must combine with existing media kind without an ML or network search."""
+    page, _agent, _allowed = ui
+    now = time.time()
+    old_image = "1791579990-aaaaaaaaaaaa"
+    recent_image = IMAGE_ID
+    video_id = PHOTO_ID
+    items = [
+        {"kind": "image", "id": old_image, "url": "/api/mlx/images/" + old_image,
+         "created_at": now - 40 * 86400, "persistent": True, "size_bytes": 500},
+        {"kind": "image", "id": recent_image, "url": "/api/mlx/images/" + recent_image,
+         "created_at": now - 120, "persistent": True, "size_bytes": 100},
+        {"kind": "video", "id": video_id, "url": "/api/mlx/videos/" + video_id,
+         "created_at": now - 3 * 86400, "persistent": True, "size_bytes": 1000},
+    ]
+
+    def send(route, data):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(data))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: send(route, {"assets": items, "total": len(items)}))
+    page.route("**/api/library/organize",
+               lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
+    _open_library(page)
+    expect(page.locator(".nobby-library-card")).to_have_count(3)
+    page.locator("#nobbyLibrarySort").select_option("largest")
+    assert page.locator(".nobby-library-card").evaluate_all(
+        "nodes => nodes.map(n => n.textContent.includes('Video'))"
+    )[0]
+    page.locator("#nobbyLibraryDateFilter").select_option("month")
+    expect(page.locator(".nobby-library-card")).to_have_count(2)
+    page.locator("#nobbyLibraryDateFilter").select_option("week")
+    expect(page.locator(".nobby-library-card")).to_have_count(2)
+    page.locator("#nobbyLibraryDateFilter").select_option("today")
+    expect(page.locator(".nobby-library-card")).to_have_count(1)
+    page.locator("#nobbyLibraryDateFilter").select_option("all")
+    page.locator('[data-library-kind="image"]').click()
+    expect(page.locator(".nobby-library-card")).to_have_count(2)
+    page.locator("#nobbyLibrarySort").select_option("smallest")
+    assert page.locator(".nobby-library-card").first.inner_text().find(recent_image) >= 0
