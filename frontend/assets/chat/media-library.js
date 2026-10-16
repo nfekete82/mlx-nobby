@@ -485,6 +485,7 @@
   }
   function visibleAssets() {
     const filter = state.query.trim().toLowerCase();
+    const terms = filter.split(/\s+/).filter(Boolean);
     const now = Date.now() / 1000;
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
@@ -502,9 +503,9 @@
       (state.collection === "all" ||
         (state.collection === "favorites" && state.organization.favorites.includes(assetKey(item))) ||
         (collection && collection.items.includes(assetKey(item)))) &&
-      (!filter || [label(item.kind), item.id, item.prompt, item.original_prompt, item.model, item.provider, item.operation, formatDate(item.created_at),
+      (!filter || terms.every(term => [label(item.kind), item.id, item.prompt, item.original_prompt, item.model, item.provider, item.operation, formatDate(item.created_at),
         engineLabel(item), formatDuration(metadataCache.get(assetKey(item))?.duration_seconds)]
-        .some(value => String(value).toLowerCase().includes(filter)))
+        .some(value => String(value).toLowerCase().includes(term))))
     ).sort((a, b) => {
       const first = state.sort === "largest" || state.sort === "smallest"
         ? Number(a.size_bytes || 0) - Number(b.size_bytes || 0)
