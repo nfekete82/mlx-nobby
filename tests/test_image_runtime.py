@@ -2030,7 +2030,8 @@ class ImageRuntimeTests(unittest.TestCase):
 
     def test_legacy_prompt_png_metadata_and_seed(self):
         seen = []
-        def generate(model, params, path):
+        def generate(model, params, path, **_kwargs):
+            # Pipeline V2 always forwards an observed progress callback.
             seen.append(params.copy())
             Image.new("RGB", (params["width"], params["height"]), "red").save(path)
         prompt = 'adult portrait; $(never-run) --model example'
