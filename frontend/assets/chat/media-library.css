@@ -304,3 +304,93 @@
   .nobby-library-more{width:100%;margin-left:0}
   .nobby-library-more-menu{position:static;width:100%;max-width:none;box-shadow:none;margin-top:5px;box-sizing:border-box}
 }
+
+
+/* Consistent native-accessible custom pickers in browsers that support them.
+ * Keep real select/option elements and their existing change listeners.
+ * Unsupported browsers retain the system picker with a dark color scheme.
+ */
+.nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select{
+  color-scheme:dark;
+}
+@supports (appearance:base-select) and selector(::picker(select)){
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select,
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select::picker(select){
+    appearance:base-select;
+    box-sizing:border-box;
+    font-family:inherit;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    background:#141b28;
+    color:#edf3fc;
+    border:1px solid #344052;
+    border-radius:9px;
+    padding:8px 11px;
+    cursor:pointer;
+    font-size:13px;
+    line-height:1.3;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select:open{
+    border-color:#82b4ff;
+    background:#182437;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select::picker-icon{
+    color:#b3c4db;
+    flex-shrink:0;
+    transition:transform .16s ease;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select:open::picker-icon{
+    transform:rotate(180deg);
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select::picker(select){
+    width:anchor-size(width);
+    min-width:anchor-size(width);
+    max-width:min(360px,calc(100vw - 30px));
+    max-height:min(320px,50vh);
+    overflow-y:auto;
+    padding:6px;
+    margin-top:5px;
+    border:1px solid #394b66;
+    border-radius:11px;
+    background:#172234;
+    color:#ecf2fb;
+    box-shadow:0 16px 36px #0009;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select option{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    min-height:36px;
+    padding:9px 10px;
+    border-radius:7px;
+    background:transparent;
+    color:#e4edfa;
+    font-size:13px;
+    line-height:1.35;
+    white-space:normal;
+    cursor:pointer;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select option:hover,
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select option:focus{
+    background:#2d3c52;
+    color:#fff;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select option:checked{
+    background:#243d5c;
+    color:#f6faff;
+    font-weight:600;
+  }
+  .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select option::checkmark{
+    color:#84b9ff;
+  }
+  @media(prefers-reduced-motion:reduce){
+    .nobby-library-panel :is(.nobby-library-secondary-row,.nobby-library-bulk) select::picker-icon{
+      transition:none;
+    }
+  }
+}
