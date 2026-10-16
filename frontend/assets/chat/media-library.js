@@ -431,8 +431,7 @@
   document.getElementById("nobbyLibraryDeleteCollection")?.addEventListener("click", async () => {
     const item = state.organization.collections.find(c => c.id === state.collection);
     if (!item) return;
-    if (!window.confirm(t(`Sammlung „${item.name}“ entfernen? Medien bleiben gespeichert.`,
-                          `Remove collection "${item.name}"? Media files stay saved.`))) return;
+    if (!window.confirm(t(`Sammlung „${item.name}“ entfernen? Medien bleiben gespeichert.`, `Remove collection "${item.name}"? Media files stay saved.`))) return;
     try {
       const response = await fetch("/api/library/organize/collections/" + encodeURIComponent(item.id), {method:"DELETE"});
       if (!response.ok) throw new Error("HTTP " + response.status);
@@ -471,8 +470,7 @@
   document.getElementById("nobbyLibraryDeleteSelected")?.addEventListener("click", async () => {
     const selected = selectedAssets();
     if (!selected.length) return;
-    const message = t(`${selected.length} ausgewählte Medien dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.`,
-                      `Permanently delete ${selected.length} selected media files? This cannot be undone.`);
+    const message = t(`${selected.length} ausgewählte Medien dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.`, `Permanently delete ${selected.length} selected media files? This cannot be undone.`);
     const approved = window.MLXConfirm ? await window.MLXConfirm({
       title: t("Auswahl endgültig löschen", "Delete selection permanently"), message,
       confirmLabel: t("Endgültig löschen", "Delete permanently"), cancelLabel: t("Abbrechen", "Cancel")
