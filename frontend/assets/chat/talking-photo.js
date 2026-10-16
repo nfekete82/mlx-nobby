@@ -6,6 +6,33 @@
     const STYLE_ID = 'talkingPhotoStyles';
     const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
     const JOB_STORAGE_KEY = 'mlxTalkingPhotoCurrentJob';
+    const LINK_STORAGE_PREFIX = 'mlxTalkingPhotoMediaSource:';
+    let selectedLibrarySource = null;
+    const HEX24 = /^[a-f0-9]{24}$/;
+    // Keep the association through a tab reload while an existing job runs.
+    async function linkCompletedSource(job) {
+        if (!HEX24.test(String(job?.id || '')) || job.status !== 'completed') return;
+        let source = selectedLibrarySource;
+        try {
+            const stored = sessionStorage.getItem(LINK_STORAGE_PREFIX + job.id);
+            if (stored) source = JSON.parse(stored);
+        } catch (_error) { /* Storage is optional. */ }
+        if (source?.kind !== 'image' ||
+            !/^\\d{10}-[a-f0-9]{12}$/.test(String(source.id || ''))) return;
+        try {
+            const response = await fetch('/api/library/workflows/links', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    source_kind: 'image', source_id: source.id,
+                    output_kind: 'talking_photo', output_id: job.id,
+                }),
+            });
+            if (!response.ok) return;
+            try { sessionStorage.removeItem(LINK_STORAGE_PREFIX + job.id); } catch (_error) {}
+            selectedLibrarySource = null;
+        } catch (_error) { /* Playback is never gated on optional lineage. */ }
+    }
+
     const TERMINAL_STATES = new Set(['completed', 'cancelled', 'failed']);
     let pollTimer = null;
     let pollInFlight = false;
@@ -485,6 +512,7 @@
         resultFrame.append(result);
 
         imageInput.addEventListener('change', () => {
+            selectedLibrarySource = null; // A manually chosen file breaks the previous ancestry.
             const file = imageInput.files?.[0];
             if (previewUrl) {
                 URL.revokeObjectURL(previewUrl);
@@ -774,6 +802,10 @@
             }
             preparing = false;
             rememberJob(job.id);
+            if (selectedLibrarySource) {
+                try { sessionStorage.setItem(LINK_STORAGE_PREFIX + job.id, JSON.stringify(selectedLibrarySource)); }
+                catch (_error) { /* Optional, in-memory source is still available. */ }
+            }
             lastJob = job;
             if (cancel) {
                 cancel.dataset.jobId = job.id;
@@ -852,6 +884,7 @@
         if (terminal) {
             clearPolling();
             if (job.status === 'completed' && job.result?.video_url) {
+                void linkCompletedSource(job);
                 if (result) {
                     if (result.getAttribute('src') !== job.result.video_url) {
                         result.src = job.result.video_url;
@@ -906,7 +939,7 @@
         }
     }
 
-    async function openWithImage(file) {
+    async function openWithImage(file, options = {}) {
         if (!(file instanceof File) || !['image/png', 'image/jpeg'].includes(file.type) ||
             !file.size || file.size > MAX_IMAGE_BYTES) {
             throw new Error(localText('Ungültiges Foto aus der Bibliothek.', 'Invalid library photo.'));
@@ -918,6 +951,9 @@
         transfer.items.add(file);
         input.files = transfer.files;
         input.dispatchEvent(new Event('change', {bubbles: true}));
+        selectedLibrarySource = options.sourceAsset?.kind === 'image' &&
+            /^\\d{10}-[a-f0-9]{12}$/.test(options.sourceAsset?.id || '')
+            ? {kind: 'image', id: options.sourceAsset.id} : null;
         input.focus();
     }
 

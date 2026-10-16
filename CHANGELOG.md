@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v1.16.0
+
+- Media Studio: animate any existing Library image into a video using the existing chat image-to-video pipeline or open it directly in Talking Photo. No new model or background inference service is introduced.
+- Store verified source-image → finished-video links in atomic, local metadata; display each video's source image and derived-video counts. Preserve output videos and originals independently, and clean up references after explicit deletion.
+- Add backend validation, Docker proxy, UI and browser regression tests; align release metadata and cache revisions.
+
 ## v1.15.0
 
 - Move Dateien & Jobs into the expanded System & Tools sidebar group without breaking its existing action or the collapsed-rail shortcut.

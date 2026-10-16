@@ -45,6 +45,8 @@ def test_library_studio_engine_filter_and_reuse_photo(ui):
                lambda route: respond(route, {"assets": assets, "total": len(assets)}))
     page.route("**/api/library/organize",
                lambda route: respond(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: respond(route, {"version": 1, "links": {}}))
     page.route(f"**/api/mlx/images/{IMAGE_ID}",
                lambda route: route.fulfill(status=200, content_type="image/png", body=image))
     page.route(f"**/api/library/assets/talking_photo/{PHOTO_ID}/thumbnail",
@@ -120,6 +122,8 @@ def test_library_collections_favorites_multiselect_and_jobs_in_system_group(ui):
                lambda route: send(route, {"assets": images, "total": 2}))
     page.route("**/api/library/organize",
                lambda route: send(route, record))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
     page.route("**/api/library/organize/collections",
                post_collection)
     page.route("**/api/library/organize/batch", post_batch)
@@ -161,3 +165,55 @@ def test_library_collections_favorites_multiselect_and_jobs_in_system_group(ui):
     assert page.locator("#sidebarJobsButton").evaluate(
         "node => Boolean(node.closest('#sidebarSystemTools'))"
     )
+
+
+def test_media_studio_image_to_video_prefill_and_source_navigation(ui):
+    """Only prepares the existing video composer; never starts a render automatically."""
+    page, _agent, _allowed = ui
+    image = _png()
+    now = time.time()
+    video_id = "c" * 24
+    assets = [
+        {"kind": "image", "id": IMAGE_ID, "url": "/api/mlx/images/" + IMAGE_ID,
+         "created_at": now, "persistent": True, "size_bytes": len(image)},
+        {"kind": "video", "id": video_id, "url": "/api/mlx/videos/" + video_id,
+         "created_at": now - 20, "persistent": True, "size_bytes": 400},
+    ]
+
+    def send(route, data):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(data))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: send(route, {"assets": assets, "total": 2}))
+    page.route("**/api/library/organize",
+               lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {
+                   "video:" + video_id: "image:" + IMAGE_ID,
+               }}))
+    page.route("**/api/mlx/images/" + IMAGE_ID,
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/video/" + video_id + "/thumbnail",
+               lambda route: route.fulfill(status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/video/" + video_id + "/metadata",
+               lambda route: send(route, {
+                   "kind": "video", "id": video_id, "duration_seconds": 5.0,
+               }))
+
+    _open_library(page)
+    expect(page.locator(".nobby-library-card")).to_have_count(2)
+    expect(page.locator(".nobby-library-parent-link")).to_have_count(1)
+    page.locator(".nobby-library-parent-link").click()
+    expect(page.locator(".nobby-library-preview-body img")).to_be_visible()
+    page.locator(".nobby-library-preview-close").click()
+
+    page.locator(".nobby-library-card").filter(has=page.locator(".nobby-library-lineage-count")).locator(
+        ".nobby-library-card-actions button"
+    ).filter(has_text="Video").click()
+    expect(page.locator("#nobbyLibrary")).to_be_hidden()
+    expect(page.locator("#attachmentBar .image-attachment-chip")).to_have_count(1)
+    assert "video" in page.locator("#input").input_value().lower()
+    assert page.evaluate("""() => {
+        const file = window.MLXChatAttachments.getAttachments().find(f => f.kind === "image");
+        return file?.library_source?.id;
+    }""") == IMAGE_ID

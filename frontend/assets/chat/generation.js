@@ -2538,6 +2538,7 @@ const imageFiles =
                     type: file.type,
                     extension: file.extension,
                     kind: file.kind || 'text',
+                    library_source: file.kind === 'image' ? file.library_source || null : null,
                     document_type: file.document_type,
                     document_id: file.document_id,
                     pages: file.pages,
@@ -2549,6 +2550,9 @@ const imageFiles =
                             : undefined
                 })
             ),
+        library_source: currentAttachments.find(file =>
+            file.kind === 'image' && file.library_source?.kind === 'image'
+        )?.library_source || null,
         _context_sources: {
             attachments: {
                 characters: attachmentTextContext.length,
@@ -3534,7 +3538,8 @@ const imageFiles =
                 const pendingVideoMessage = {
                     role: 'assistant', content: '',
                     video_job: toolResult.data.job,
-                    tool_result: toolResult
+                    tool_result: toolResult,
+                    library_source: userMessage.library_source || null
                 };
                 session.messages.push(pendingVideoMessage);
                 MLXChatSessions.saveSessions();
@@ -4600,6 +4605,33 @@ function resumeImageJobsForSession(session) {
     return started;
 }
 
+// Preserve ancestry across session reloads; only completed canonical outputs
+// can be linked. A failed optional metadata POST never blocks video playback.
+const videoLineageRequests = new Set();
+async function linkVideoSource(message) {
+    const source = message?.library_source;
+    const outputId = String(message?.video_job?.result?.id ||
+        message?.tool_result?.artifacts?.[0]?.video_id || '');
+    if (message?.library_source_linked ||
+        source?.kind !== 'image' ||
+        !/^\\d{10}-[a-f0-9]{12}$/.test(String(source.id || '')) ||
+        !/^[a-f0-9]{24}$/.test(outputId) ||
+        videoLineageRequests.has(outputId)) return;
+    videoLineageRequests.add(outputId);
+    try {
+        const response = await fetch('/api/library/workflows/links', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({source_kind: 'image', source_id: source.id,
+                output_kind: 'video', output_id: outputId}),
+        });
+        if (response.ok) {
+            message.library_source_linked = true;
+            MLXChatSessions.saveSessions();
+        }
+    } catch (_error) { /* Metadata failure must not affect generated video. */ }
+    finally { videoLineageRequests.delete(outputId); }
+}
+
 function updateVideoJobMessage(session, message, toolResult, nowSeconds = Date.now() / 1000) {
     const job = toolResult?.data?.job;
     if (!job?.id) return true;
@@ -4618,6 +4650,7 @@ function updateVideoJobMessage(session, message, toolResult, nowSeconds = Date.n
     message.tool_result = toolResult;
     if (toolResult.status === 'completed') {
         message.content = '';
+        void linkVideoSource(message);
     } else if (toolResult.status === 'cancelled') {
         message.content = gt('video_job_cancelled', 'Video job cancelled.');
     } else if (toolResult.status === 'failed') {
@@ -4675,6 +4708,8 @@ function resumeVideoJobsForSession(session) {
     let started = 0;
     for (const message of session.messages) {
         if (ACTIVE_VIDEO_JOB_STATUSES.has(message?.video_job?.status) && watchVideoJob(session, message)) started += 1;
+        if (message?.video_job?.status === 'completed' && message.library_source && !message.library_source_linked)
+            void linkVideoSource(message);
     }
     return started;
 }
