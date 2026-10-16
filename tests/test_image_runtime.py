@@ -602,6 +602,10 @@ class ImageRuntimeTests(unittest.TestCase):
         class FakePipeline:
             def __init__(self):
                 self.scheduler = types.SimpleNamespace(config={"name": "original"})
+                self.vae = types.SimpleNamespace(
+                    enable_tiling=lambda: vae_modes.append("tiling"),
+                    enable_slicing=lambda: vae_modes.append("slicing"),
+                )
 
             @classmethod
             def from_single_file(cls, checkpoint, **options):
@@ -613,12 +617,6 @@ class ImageRuntimeTests(unittest.TestCase):
 
             def enable_model_cpu_offload(self, *, device):
                 offloads.append(device)
-
-            def enable_vae_tiling(self):
-                vae_modes.append("tiling")
-
-            def enable_vae_slicing(self):
-                vae_modes.append("slicing")
 
             def __call__(self, **options):
                 calls.append(options)

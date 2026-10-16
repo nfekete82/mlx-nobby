@@ -92,3 +92,13 @@ launchctl kickstart -k "gui/$(id -u)/de.nobby.mlx-images"
 First test with a single 512x512 image; compare memory and reject solid
 black output. CPU component offloading is experimental on some MPS
 combinations: a physical Mac smoke run is required before merging.
+
+## SDXL VAE API compatibility correction
+
+The physical Mac test exposed an `AttributeError` for
+`StableDiffusionXLPipeline.enable_vae_tiling`. These legacy helper methods
+are not guaranteed on the pipeline. The worker now calls
+`pipeline.vae.enable_tiling()` and `pipeline.vae.enable_slicing()` when
+available, matching the AutoencoderKL API. Missing optional VAE optimization
+methods are skipped without disabling the required CPU offload or MPS hard
+watermark. Regression tests exercise a pipeline with no legacy VAE helpers.

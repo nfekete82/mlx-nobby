@@ -198,3 +198,27 @@ def test_sdxl_oom_message_never_suggests_disabling_safety_limit():
     assert event["type"] == "error"
     assert "Sicheres MPS-Speicherlimit" in event["message"]
     assert "WATERMARK_RATIO=0.0" not in event["message"]
+
+
+def test_vae_saving_uses_autoencoder_methods_not_pipeline_legacy_apis():
+    import types
+    import sdxl_worker
+
+    actions = []
+    vae = types.SimpleNamespace(
+        enable_tiling=lambda: actions.append("tiling"),
+        enable_slicing=lambda: actions.append("slicing"),
+    )
+    pipeline = types.SimpleNamespace(vae=vae)
+    sdxl_worker.configure_vae_memory_saving(pipeline)
+    assert actions == ["tiling", "slicing"]
+
+
+def test_vae_saving_missing_optional_methods_is_compatible():
+    import types
+    import sdxl_worker
+
+    # Older or custom Diffusers wrappers need not implement both methods.
+    # The safe CPU-offloading path must remain available either way.
+    sdxl_worker.configure_vae_memory_saving(types.SimpleNamespace(vae=object()))
+    sdxl_worker.configure_vae_memory_saving(types.SimpleNamespace())

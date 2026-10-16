@@ -37,6 +37,20 @@ def scheduler_settings(value=None):
     return scheduler, dict(SCHEDULER_PRESETS[scheduler])
 
 
+def configure_vae_memory_saving(pipeline):
+    """Enable VAE memory optimizations on AutoencoderKL, not on the pipeline.
+
+    Diffusers does not guarantee that legacy enable_vae_* methods exist on
+    StableDiffusionXLPipeline. Optional optimizations must never stop a safe
+    CPU-offloaded generation merely because an API wrapper is absent.
+    """
+    vae = getattr(pipeline, "vae", None)
+    for method_name in ("enable_tiling", "enable_slicing"):
+        enable = getattr(vae, method_name, None)
+        if callable(enable):
+            enable()
+
+
 def main():
     import torch
     from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
@@ -85,8 +99,7 @@ def main():
                         "Accelerate CPU-Offloading auf MPS; "
                         "kein unsicherer Fallback auf pipeline.to('mps')"
                     ) from exc
-                pipeline.enable_vae_tiling()
-                pipeline.enable_vae_slicing()
+                configure_vae_memory_saving(pipeline)
                 loaded_model = model_key
                 loaded_scheduler = None
 
