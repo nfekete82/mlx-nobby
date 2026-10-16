@@ -223,9 +223,9 @@ async function updateVideoProfileAvailability(select) {
     }
 }
 
-const SDXL_IMAGE_PICKER_DESCRIPTIONS = Object.freeze({
-    'juggernaut-xl': 'Allround-Fotorealismus: Porträts, Lifestyle und Alltag',
-    'lustify-endgame-sdxl': 'Erotische Fotorealistik / NSFW, Körperdarstellung'
+const SDXL_IMAGE_PICKER_DESCRIPTION_KEYS = Object.freeze({
+    'juggernaut-xl': 'image_settings.juggernaut_picker',
+    'lustify-endgame-sdxl': 'image_settings.lustify_picker'
 });
 
 function storedImageModel() {
@@ -316,7 +316,8 @@ async function updateImageModelOptions(
             const option = document.createElement('option');
             option.value = model.id;
             option.disabled = model.available !== true;
-            const description = SDXL_IMAGE_PICKER_DESCRIPTIONS[model.id];
+            const descriptionKey = SDXL_IMAGE_PICKER_DESCRIPTION_KEYS[model.id];
+            const description = descriptionKey ? generationText(descriptionKey, '') : '';
             option.textContent =
                 (model.name || model.id) +
                 (description ? ' · ' + description : '') +
