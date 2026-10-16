@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import image_providers as providers
 import image_registry as registry
 from quality_profiles import resolve_image_profile
+import image_service as service
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +99,7 @@ def test_lustify_provider_passes_same_seed_cfg_steps_and_canvas(monkeypatch, tmp
     monkeypatch.setattr(providers, "sdxl_files", lambda item: (checkpoint, config))
     monkeypatch.setattr(providers, "_sdxl_worker_manager", worker)
     monkeypatch.setattr(providers, "_validate_provider_output", lambda *args, **kwargs: None)
+    monkeypatch.setattr(providers, "_maybe_quality_upscale", lambda *args, **kwargs: False)
     params = {
         "prompt": "Adult studio portrait", "negative_prompt": "blurry",
         "width": 832, "height": 1216, "steps": 30,
@@ -140,3 +142,35 @@ def test_benchmark_dry_run_has_identical_settings_and_distinct_names():
     assert {job["cfg"] for job in jobs} == {3.5}
     assert {job["width"] for job in jobs} == {832}
     assert {job["height"] for job in jobs} == {1216}
+
+
+def test_custom_lustify_directory_survives_registry_reload(tmp_path, monkeypatch):
+    monkeypatch.setattr(registry, "REGISTRY_FILE", tmp_path / "image-models.json")
+    monkeypatch.setattr(registry, "INVALID_REGISTRY_FILE", tmp_path / "image-models.invalid.json")
+    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path,))
+    registry.load_registry()
+    custom_dir = tmp_path / "custom-lustify-checkpoint"
+    registry.update_model(registry.LUSTIFY_ENDGAME_ID, {"local_path": str(custom_dir)})
+    assert registry.get_model(registry.LUSTIFY_ENDGAME_ID, require_enabled=False)["local_path"] == str(custom_dir)
+
+
+def test_health_names_lustify_if_it_is_the_resident_sdxl_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(registry, "REGISTRY_FILE", tmp_path / "image-models.json")
+    monkeypatch.setattr(registry, "INVALID_REGISTRY_FILE", tmp_path / "image-models.invalid.json")
+    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path,))
+    checkpoint_dir = tmp_path / "LustifyEndgame"
+    checkpoint_dir.mkdir()
+    checkpoint = checkpoint_dir / "standard-endgame.safetensors"
+    checkpoint.write_bytes(b"test weights")
+    config = checkpoint_dir / "config"
+    config.mkdir()
+    (config / "model_index.json").write_text("{}", encoding="utf-8")
+    registry.load_registry()
+    registry.update_model(registry.LUSTIFY_ENDGAME_ID, {
+        "local_path": str(checkpoint_dir), "enabled": True,
+    })
+    monkeypatch.setattr(service, "sdxl_worker_running", lambda: True)
+    monkeypatch.setattr(service, "sdxl_loaded_checkpoint", lambda: checkpoint)
+    monkeypatch.setattr(service, "_loaded_mlxserve_models", lambda: [])
+    monkeypatch.setattr(service, "_running", None)
+    assert service.health()["running_model"] == registry.LUSTIFY_ENDGAME_ID
