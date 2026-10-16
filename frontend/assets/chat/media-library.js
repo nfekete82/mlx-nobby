@@ -6,7 +6,8 @@
   const close = document.getElementById("nobbyLibraryClose");
   if (!panel || !grid || !toggle) return;
   const state = { kind: "all", engine: "all", query: "", collection: "all", dateFilter: "all", sort: "newest",
-    assets: [], organization: {favorites: [], collections: []}, workflows: {links: {}}, selected: new Set(),
+    assets: [], remoteAssets: null, remoteTotal: 0, searchVersion: 0,
+    organization: {favorites: [], collections: []}, workflows: {links: {}}, selected: new Set(),
     loaded: false, generation: 0 };
   const assetKey = asset => asset.kind + ":" + asset.id;
   const collectionFilter = document.getElementById("nobbyLibraryCollectionFilter");
