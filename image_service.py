@@ -62,6 +62,8 @@ class Generate(BaseModel):
     quality: Literal["fast", "standard", "quality", "ultra"] | None = None
     auto_size: bool = False
     original_prompt: str | None = None
+    # Diagnostic only. Defaults preserve the current safe SDXL VAE pipeline.
+    sdxl_vae_mode: Literal["optimized", "disabled"] | None = None
 
 
 class Edit(BaseModel):
@@ -711,13 +713,17 @@ def _resolve_generation(request):
     if request.width % 16 or request.height % 16:
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
+    if request.sdxl_vae_mode is not None and model["provider"] != "sdxl":
+        raise HTTPException(422, "Der VAE-Diagnosemodus ist nur für SDXL verfügbar")
     maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
     if request.width > maximum_edge or request.height > maximum_edge:
         raise HTTPException(
             422,
             f"width and height must not exceed {maximum_edge} for this model",
         )
-    params = request.model_dump(exclude={"original_prompt"})
+    params = request.model_dump(exclude={"original_prompt", "sdxl_vae_mode"})
+    if request.sdxl_vae_mode is not None:
+        params["sdxl_vae_mode"] = request.sdxl_vae_mode
     negative_prompt = str(request.negative_prompt or "").strip()
     if negative_prompt:
         params["negative_prompt"] = negative_prompt
@@ -738,6 +744,10 @@ def _resolve_generation(request):
             request.width, request.height, profile["long_edge"],
         )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
+    if model["id"] == registry.JUGGERNAUT_XL_ID:
+        # Ragnarok sampler recommended by its creator (SDE variant);
+        # the available Diffusers preset uses Karras sigmas.
+        params["scheduler"] = "dpmpp-2m-sde-karras"
     if model["provider"] == "diffusionkit" and params["steps"] > 8:
         raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
     if model["model_family"] == "flux2-klein" and "base" not in model["base_model"] and params["guidance"] != 1:
@@ -1199,7 +1209,24 @@ def upscale(request: Upscale):
 def generate(request: Generate):
     with exclusive():
         try:
-            return _generate_result(request)
+            # Resolve once; do not reroute between the memory handoff and the job.
+            resolved = _resolve_generation(request)
+            sdxl_job = resolved["model"].get("provider") == "sdxl"
+            with runtime_coordinator.image_runtime(
+                None, force_chat_unload=sdxl_job
+            ) as preflight:
+                try:
+                    return _generate_result(request, resolved=resolved)
+                finally:
+                    if sdxl_job:
+                        try:
+                            shutdown_sdxl_worker()
+                        except Exception:
+                            # Never restore a chat model on top of SDXL if
+                            # the image worker could not be terminated.
+                            if preflight is not None:
+                                preflight["suppress_chat_restore"] = True
+                            raise
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -1319,7 +1346,17 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             job_id, status="queued", phase="waiting_for_resources",
             progress=0.0, started_at=time.time(),
         )
-        with runtime_coordinator.image_runtime(cancel_event):
+        # Resolve image provider before allocating heavy runtime resources.
+        # SDXL always gets an exclusive chat handoff, even if the current
+        # estimated free percentage still looks healthy.
+        if operation == "generate" and resolved is None:
+            resolved = _resolve_generation(request)
+        selected = resolved.get("model") if isinstance(resolved, dict) else None
+        sdxl_job = bool(operation == "generate"
+                        and selected and selected.get("provider") == "sdxl")
+        with runtime_coordinator.image_runtime(
+            cancel_event, force_chat_unload=sdxl_job
+        ) as preflight:
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
             if operation == "edit":
@@ -1330,15 +1367,26 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 execute = _generate_result
 
             timings.mark("execution_started")
-            result = execute(
-                request,
-                provider_options=provider_options,
-                prepared_callback=prepared,
-                saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
-                **({"resolved": resolved} if resolved is not None else {}),
-                **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                   if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
-            )
+            try:
+                result = execute(
+                    request,
+                    provider_options=provider_options,
+                    prepared_callback=prepared,
+                    saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+                    **({"resolved": resolved} if resolved is not None else {}),
+                    **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
+                       if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
+                )
+            finally:
+                # Do not restart chat on top of a still-resident SDXL pipeline.
+                # This runs before the image_runtime context restores chat.
+                if sdxl_job:
+                    try:
+                        shutdown_sdxl_worker()
+                    except Exception:
+                        if preflight is not None:
+                            preflight["suppress_chat_restore"] = True
+                        raise
         timings.mark("execution_finished")
         if cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")

@@ -40,9 +40,11 @@ JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
 JUGGERNAUT_RAGNAROK_MODEL_VERSION = "1759168"
 JUGGERNAUT_RAGNAROK_CHECKPOINT = "juggernautXL_ragnarok.safetensors"
 JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
+# No longer offer the retired experimental SDXL model in persisted registries.
+RETIRED_MODEL_IDS = {"lustify-endgame-sdxl"}
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
-BUILTIN_DEFAULTS_REVISION = 8
+BUILTIN_DEFAULTS_REVISION = 9
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -406,8 +408,8 @@ def builtin_models():
         base_model="sdxl",
         quantization="none",
         enabled=False,
-        default_steps=30,
-        default_guidance=5.0,
+        default_steps=35,
+        default_guidance=4.0,
     ).model_dump())
     return models
 
@@ -507,6 +509,27 @@ def load_registry():
         raw_models = data.get("models")
         if not isinstance(raw_models, list):
             raise ValueError("Ungültige Image-Registry: Modelle fehlen")
+
+        retired_models = [
+            item for item in raw_models
+            if isinstance(item, dict)
+            and item.get("id") in RETIRED_MODEL_IDS
+        ]
+        if retired_models:
+            raw_models = [
+                item for item in raw_models if item not in retired_models
+            ]
+            data["models"] = raw_models
+            if data.get("default_model") in RETIRED_MODEL_IDS:
+                juggernaut_enabled = any(
+                    isinstance(item, dict)
+                    and item.get("id") == JUGGERNAUT_XL_ID
+                    and item.get("enabled") is True
+                    for item in raw_models
+                )
+                data["default_model"] = (
+                    JUGGERNAUT_XL_ID if juggernaut_enabled else LEGACY_ID
+                )
 
         removed_krea = [
             model
@@ -631,6 +654,17 @@ def load_registry():
                 ):
                     model["default_guidance"] = 5.0
 
+                if (
+                    data.get("builtin_defaults_revision", 0) < 9
+                    and model["id"] == JUGGERNAUT_XL_ID
+                ):
+                    # Only upgrade previous factory values, never override
+                    # deliberately customized sampler steps or guidance.
+                    if model["default_steps"] == 30:
+                        model["default_steps"] = 35
+                    if model["default_guidance"] == 5.0:
+                        model["default_guidance"] = 4.0
+
             data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while
         # preserving all user edits (enabled flags, LoRAs and custom entries).
@@ -642,6 +676,7 @@ def load_registry():
             added
             or defaults_changed
             or removed_krea
+            or retired_models
             or builtin_migrated
             or invalid_models
         ):
@@ -682,6 +717,8 @@ def update_model(model_id, patch):
 def add_model(payload):
     with _mutex:
         model = ImageModel(**payload).model_dump()
+        if model["id"] in RETIRED_MODEL_IDS:
+            raise ValueError("Dieses Bildmodell wurde entfernt")
         data = load_registry()
         if any(item["id"] == model["id"] for item in data["models"]):
             raise ValueError("Modell-ID bereits registriert")

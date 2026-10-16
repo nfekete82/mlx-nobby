@@ -73,7 +73,7 @@ def batch(client, first, **options):
 @pytest.mark.parametrize('family,model_id,quality,width,height,expected', [
     ('qwen-image21', 'qwen21', 'quality', 512, 512, (1024, 1024)),
     ('qwen-image21', 'qwen21', 'quality', 432, 768, (576, 1024)),
-    ('sdxl', 'juggernaut-xl', 'standard', 768, 432, (1024, 576)),
+    ('sdxl', 'juggernaut-xl', 'standard', 768, 432, (1216, 688)),
     ('sdxl', 'juggernaut-xl', 'quality', 512, 512, (1216, 1216)),
 ])
 def test_six_canonical_generate_variants(runtime, monkeypatch, family, model_id, quality, width, height, expected):

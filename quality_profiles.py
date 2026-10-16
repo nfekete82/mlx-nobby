@@ -11,9 +11,11 @@ IMAGE_PROFILES = {
         "quality": {"steps": 40, "guidance": 1.0, "long_edge": 1024},
     },
     "juggernaut-xl": {
-        "fast": {"steps": 20, "guidance": 4.5, "long_edge": 768},
-        "standard": {"steps": 30, "guidance": 5.0, "long_edge": 1024},
-        "quality": {"steps": 30, "guidance": 5.0, "long_edge": 1216},
+        # Ragnarok: 30-40 steps, CFG 3-6. Lower CFG favors photorealism.
+        # Fast remains a deliberate lower-resolution / fewer-step tradeoff.
+        "fast": {"steps": 20, "guidance": 4.0, "long_edge": 768},
+        "standard": {"steps": 35, "guidance": 4.0, "long_edge": 1216},
+        "quality": {"steps": 40, "guidance": 4.0, "long_edge": 1216},
     },
     "qwen-image21": {
         "fast": {"steps": 20, "guidance": 0.0, "long_edge": 768},

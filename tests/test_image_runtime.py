@@ -254,7 +254,7 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
-        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 8)
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 9)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
@@ -264,7 +264,8 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
         self.assertFalse(model["enabled"])
-        self.assertEqual(model["default_guidance"], 5.0)
+        self.assertEqual(model["default_steps"], 35)
+        self.assertEqual(model["default_guidance"], 4.0)
         self.assertIn("photorealistic", model["capabilities"])
 
     def test_existing_registry_repairs_stale_qwen_builtin_before_validation(self):
@@ -440,7 +441,7 @@ class ImageRuntimeTests(unittest.TestCase):
             for model in migrated["models"]
             if model["id"] == registry.JUGGERNAUT_XL_ID
         )
-        self.assertEqual(migrated_juggernaut["default_guidance"], 5.0)
+        self.assertEqual(migrated_juggernaut["default_guidance"], 4.0)
 
         migrated_juggernaut["default_guidance"] = 6.0
         migrated["builtin_defaults_revision"] = 5
@@ -583,6 +584,8 @@ class ImageRuntimeTests(unittest.TestCase):
         loads = []
         calls = []
         scheduler_loads = []
+        offloads = []
+        vae_modes = []
 
         class FakeGenerator:
             def __init__(self, device):
@@ -600,6 +603,10 @@ class ImageRuntimeTests(unittest.TestCase):
         class FakePipeline:
             def __init__(self):
                 self.scheduler = types.SimpleNamespace(config={"name": "original"})
+                self.vae = types.SimpleNamespace(
+                    enable_tiling=lambda: vae_modes.append("tiling"),
+                    enable_slicing=lambda: vae_modes.append("slicing"),
+                )
 
             @classmethod
             def from_single_file(cls, checkpoint, **options):
@@ -607,8 +614,10 @@ class ImageRuntimeTests(unittest.TestCase):
                 return cls()
 
             def to(self, device):
-                self.device = device
-                return self
+                raise AssertionError("Unsafe eager MPS load must never run")
+
+            def enable_model_cpu_offload(self, *, device):
+                offloads.append(device)
 
             def __call__(self, **options):
                 calls.append(options)
@@ -681,6 +690,8 @@ class ImageRuntimeTests(unittest.TestCase):
             sdxl_worker.main()
 
         self.assertEqual(len(loads), 1)
+        self.assertEqual(offloads, ["mps"])
+        self.assertEqual(vae_modes, ["tiling", "slicing"])
         self.assertEqual(len(scheduler_loads), 1)
         self.assertEqual(scheduler_loads[0][0], {"name": "original"})
         self.assertEqual(scheduler_loads[0][1], {
@@ -903,6 +914,7 @@ class ImageRuntimeTests(unittest.TestCase):
             prepared_callback=None,
             saving_callback=None,
             resolved_callback=None,
+            resolved=None,
         ):
             entered_provider.set()
 
@@ -924,6 +936,10 @@ class ImageRuntimeTests(unittest.TestCase):
             service,
             "_generate_result",
             side_effect=late_generate,
+        ), patch.object(
+            service,
+            "_resolve_generation",
+            return_value={"model": {"provider": "mflux"}},
         ):
             response = self.client.post(
                 "/jobs",
@@ -1493,7 +1509,7 @@ class ImageRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(calls[0][1]["guidance"], 5.0)
+        self.assertEqual(calls[0][1]["guidance"], 4.0)
         self.assertNotIn("negative_prompt", calls[0][1])
 
     def test_agent_automatic_image_dimensions(self):
@@ -1744,14 +1760,14 @@ class ImageRuntimeTests(unittest.TestCase):
                     "auto",
                     "A photorealistic studio portrait of a woman",
                 )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
+                registry.JUGGERNAUT_XL_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A realistic person in natural light",
                 )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
+                registry.JUGGERNAUT_XL_ID,
             )
             self.assertEqual(
                 service._generation_model(
@@ -2015,14 +2031,19 @@ class ImageRuntimeTests(unittest.TestCase):
 
     def test_legacy_prompt_png_metadata_and_seed(self):
         seen = []
-        def generate(model, params, path):
+        def generate(model, params, path, **_kwargs):
+            # Pipeline V2 always forwards an observed progress callback.
             seen.append(params.copy())
             Image.new("RGB", (params["width"], params["height"]), "red").save(path)
         prompt = 'adult portrait; $(never-run) --model example'
         with patch.object(service, "run_provider", side_effect=generate), \
              patch.object(service, "availability", return_value=(True, "ready")):
-            response = self.client.post("/generate", json={"prompt": prompt, "seed": 0})
-            variation = self.client.post("/generate", json={"prompt": prompt})
+            response = self.client.post("/generate", json={
+                "prompt": prompt, "seed": 0, "model": registry.LEGACY_ID,
+            })
+            variation = self.client.post("/generate", json={
+                "prompt": prompt, "model": registry.LEGACY_ID,
+            })
         self.assertEqual(response.status_code, 200)
         result = response.json()
         self.assertEqual(result["model"], registry.LEGACY_ID)
@@ -2246,6 +2267,8 @@ class ImageRuntimeTests(unittest.TestCase):
             "Popen",
             return_value=process,
         ) as popen, patch.object(
+            providers, "ImageProcessMemoryGuard", return_value=Mock()
+        ), patch.object(
             providers.time,
             "monotonic",
             side_effect=[0, providers.GENERATION_TIMEOUT + 1],
@@ -5457,15 +5480,16 @@ def test_image_quality_profiles_and_legacy_default():
     juggernaut = {
         "id": "juggernaut-xl", "provider": "sdxl",
         "model_family": "sdxl", "base_model": "sdxl",
-        "default_steps": 30, "default_guidance": 5.0,
+        "default_steps": 35, "default_guidance": 4.0,
     }
     assert resolve_image_profile(juggernaut, "fast") == {
-        "steps": 20, "guidance": 4.5, "long_edge": 768,
+        "steps": 20, "guidance": 4.0, "long_edge": 768,
     }
-    assert service._resolved_steps(juggernaut, None, "standard") == 30
-    assert service._resolved_steps(juggernaut, None, "quality") == 30
-    assert resolve_image_profile(juggernaut, "standard")["guidance"] == 5.0
-    assert resolve_image_profile(juggernaut, "quality")["guidance"] == 5.0
+    assert service._resolved_steps(juggernaut, None, "standard") == 35
+    assert service._resolved_steps(juggernaut, None, "quality") == 40
+    assert resolve_image_profile(juggernaut, "standard")["guidance"] == 4.0
+    assert resolve_image_profile(juggernaut, "quality")["guidance"] == 4.0
+    assert resolve_image_profile(juggernaut, "standard")["long_edge"] == 1216
     assert resolve_image_profile(juggernaut, "quality")["long_edge"] == 1216
 
     generic_sdxl = juggernaut | {"id": "custom-sdxl"}
@@ -5579,7 +5603,7 @@ def test_sdxl_quality_size_and_explicit_parameters_win(tmp_path):
         service.OUTPUT = old_output
 
     assert (quality["width"], quality["height"]) == (832, 1216)
-    assert (quality["steps"], quality["guidance"]) == (30, 5.0)
+    assert (quality["steps"], quality["guidance"]) == (40, 4.0)
     assert (explicit["width"], explicit["height"]) == (896, 1152)
     assert (explicit["steps"], explicit["guidance"]) == (42, 4.25)
 

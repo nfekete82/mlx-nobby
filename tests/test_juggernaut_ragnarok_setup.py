@@ -29,8 +29,8 @@ def test_juggernaut_ragnarok_registry_identity_and_defaults():
     assert model["local_path"] == str(
         Path.home() / "Models" / "JuggernautXL"
     )
-    assert model["default_steps"] == 30
-    assert model["default_guidance"] == 5.0
+    assert model["default_steps"] == 35
+    assert model["default_guidance"] == 4.0
 
 
 def test_juggernaut_ragnarok_setup_verifies_download_before_replacement():

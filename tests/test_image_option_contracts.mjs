@@ -72,6 +72,31 @@ assert.deepEqual(compose(stale, 'generate', false, ''), {
 assert.equal(source.includes("referenceMode ? 'reference' : 'edit'"), true);
 console.log('Image mode parameter contracts: generation/edit/reference settings isolated.');
 
+// The modal's displayed Ragnarok values must beat old explicit settings.
+const creatorSampling = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {model: 'juggernaut-xl', steps: 30, guidance: 5.0}},
+        'image', 'portrait', true, '', 'juggernaut-xl', 'generate',
+        {steps: 40, guidance: 4.0}
+    )
+));
+assert.equal(creatorSampling.steps, 40);
+assert.equal(creatorSampling.guidance, 4.0);
+assert.equal(creatorSampling.model, 'juggernaut-xl');
+assert.equal(creatorSampling.auto_size, true);
+
+// No accidental expert-parameter injection for other models or edits.
+const noCrossModel = JSON.parse(JSON.stringify(
+    context.imageOptionsForRequest(
+        {image: {}}, 'image', 'square', true, '',
+        'mlxserve-qwen-image-2.1', 'generate',
+        {steps: 40, guidance: 4.0}
+    )
+));
+assert.equal(noCrossModel.steps, undefined);
+assert.equal(noCrossModel.guidance, undefined);
+
+
 // A selected but temporarily unavailable model must remain explicit.
 const modelStart = source.indexOf('async function updateImageModelOptions(');
 const modelEnd = source.indexOf('\nconst IMAGE_OPTION_KEYS', modelStart);
