@@ -1280,7 +1280,8 @@ def image_runtime(
                 after = memory_snapshot()
                 preflight["memory_after"] = after
                 restore_unsafe = (
-                    memory_relief_needed(after)
+                    bool(preflight.get("suppress_chat_restore"))
+                    or memory_relief_needed(after)
                     or memory_hard_limit_reached(after)
                 )
                 preflight["chat_restore_skipped"] = restore_unsafe
