@@ -5,7 +5,7 @@
   const toggle = document.getElementById("sidebarLibraryButton");
   const close = document.getElementById("nobbyLibraryClose");
   if (!panel || !grid || !toggle) return;
-  const state = { kind: "all", engine: "all", query: "", collection: "all",
+  const state = { kind: "all", engine: "all", query: "", collection: "all", dateFilter: "all", sort: "newest",
     assets: [], organization: {favorites: [], collections: []}, workflows: {links: {}}, selected: new Set(),
     loaded: false, generation: 0 };
   const assetKey = asset => asset.kind + ":" + asset.id;
@@ -418,6 +418,12 @@
   }
   function visibleAssets() {
     const filter = state.query.trim().toLowerCase();
+    const now = Date.now() / 1000;
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const dateSince = state.dateFilter === "today" ? midnight.getTime() / 1000 :
+      state.dateFilter === "week" ? now - 7 * 86400 :
+      state.dateFilter === "month" ? now - 30 * 86400 : 0;
     const collection = state.organization.collections.find(c => c.id === state.collection);
     return state.assets.filter(item =>
       (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
@@ -425,13 +431,20 @@
         (state.engine === "talking_photo" && item.kind === "talking_photo") ||
         (state.engine === "standard" && item.kind === "video") ||
         item.engine === state.engine) &&
+      (Number(item.created_at) >= dateSince) &&
       (state.collection === "all" ||
         (state.collection === "favorites" && state.organization.favorites.includes(assetKey(item))) ||
         (collection && collection.items.includes(assetKey(item)))) &&
       (!filter || [label(item.kind), item.id, formatDate(item.created_at),
         engineLabel(item), formatDuration(metadataCache.get(assetKey(item))?.duration_seconds)]
         .some(value => String(value).toLowerCase().includes(filter)))
-    );
+    ).sort((a, b) => {
+      const first = state.sort === "largest" || state.sort === "smallest"
+        ? Number(a.size_bytes || 0) - Number(b.size_bytes || 0)
+        : Number(a.created_at || 0) - Number(b.created_at || 0);
+      const reverse = state.sort === "largest" || state.sort === "newest";
+      return (reverse ? -first : first) || assetKey(a).localeCompare(assetKey(b));
+    });
   }
   function render() {
     mediaObserver?.disconnect();
@@ -601,6 +614,14 @@
       if (result.errors) window.alert(t(`${result.errors} Dateien konnten nicht gelöscht werden.`, `${result.errors} files could not be deleted.`));
     } catch (error) { window.alert(error.message); }
     finally { button.disabled = false; }
+  });
+  document.getElementById("nobbyLibraryDateFilter")?.addEventListener("change", event => {
+    state.dateFilter = event.target.value;
+    render();
+  });
+  document.getElementById("nobbyLibrarySort")?.addEventListener("change", event => {
+    state.sort = event.target.value;
+    render();
   });
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
     state.query = event.target.value; render();
