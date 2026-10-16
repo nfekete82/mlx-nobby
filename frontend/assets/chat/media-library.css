@@ -154,3 +154,10 @@
   .nobby-library-engine-field{flex:1 1 170px}
   .nobby-library-engine-field select{flex:1;min-width:0;max-width:none}
 }
+
+.nobby-library-preview-fullscreen{position:absolute;top:8px;right:52px;z-index:1;min-height:32px;background:#263346;color:#fff;border:0;border-radius:8px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer}
+.nobby-library-preview-fullscreen:hover{background:#384962}
+.nobby-library-preview-shell:fullscreen{width:100vw;height:100vh;max-height:none;max-width:none;border:0;border-radius:0;background:#050a10}
+.nobby-library-preview-shell:fullscreen .nobby-library-preview-body{height:calc(100vh - 50px);max-height:none}
+.nobby-library-preview-shell:fullscreen .nobby-library-preview-body img,
+.nobby-library-preview-shell:fullscreen .nobby-library-preview-body video{max-height:calc(100vh - 60px)}
