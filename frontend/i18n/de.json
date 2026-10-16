@@ -1071,5 +1071,17 @@
   "library3.select_target": "Zielsammlung auswählen",
   "library3.add": "Hinzufügen",
   "library3.remove": "Entfernen",
-  "library3.delete_selected": "Auswahl löschen"
+  "library3.delete_selected": "Auswahl löschen",
+  "library17.period": "Zeitraum",
+  "library17.period_aria": "Zeitraum filtern",
+  "library17.any_time": "Alle Zeiten",
+  "library17.today": "Heute",
+  "library17.week": "7 Tage",
+  "library17.month": "30 Tage",
+  "library17.sort": "Sortierung",
+  "library17.sort_aria": "Medien sortieren",
+  "library17.newest": "Neueste zuerst",
+  "library17.oldest": "Älteste zuerst",
+  "library17.largest": "Größte zuerst",
+  "library17.smallest": "Kleinste zuerst"
 }
