@@ -244,12 +244,25 @@ def test_library_local_date_and_size_sorting(ui):
                lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
     page.route("**/api/library/workflows",
                lambda route: send(route, {"version": 1, "links": {}}))
+    # Serve media referenced by the fixture: unmocked assets return 501 in E2E.
+    image = _png()
+    for image_id in (old_image, recent_image):
+        page.route("**/api/mlx/images/" + image_id,
+                   lambda route: route.fulfill(
+                       status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/video/" + video_id + "/thumbnail",
+               lambda route: route.fulfill(
+                   status=200, content_type="image/png", body=image))
+    page.route("**/api/library/assets/video/" + video_id + "/metadata",
+               lambda route: send(route, {
+                   "kind": "video", "id": video_id, "duration_seconds": 5.0,
+               }))
     _open_library(page)
     expect(page.locator(".nobby-library-card")).to_have_count(3)
     page.locator("#nobbyLibrarySort").select_option("largest")
-    assert page.locator(".nobby-library-card").evaluate_all(
-        "nodes => nodes.map(n => n.textContent.includes('Video'))"
-    )[0]
+    expect(page.locator(".nobby-library-card").first.locator("img")).to_have_attribute(
+        "src", "/api/library/assets/video/" + video_id + "/thumbnail"
+    )
     page.locator("#nobbyLibraryDateFilter").select_option("month")
     expect(page.locator(".nobby-library-card")).to_have_count(2)
     page.locator("#nobbyLibraryDateFilter").select_option("week")
@@ -260,4 +273,7 @@ def test_library_local_date_and_size_sorting(ui):
     page.locator('[data-library-kind="image"]').click()
     expect(page.locator(".nobby-library-card")).to_have_count(2)
     page.locator("#nobbyLibrarySort").select_option("smallest")
-    assert page.locator(".nobby-library-card").first.inner_text().find(recent_image) >= 0
+    # IDs are not shown as card text. The image URL uniquely identifies the sorted asset.
+    expect(page.locator(".nobby-library-card").first.locator("img")).to_have_attribute(
+        "src", "/api/mlx/images/" + recent_image
+    )
