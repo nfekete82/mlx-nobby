@@ -221,6 +221,55 @@
       previewBody.appendChild(animate);
     }
     mediaLineage(asset, previewBody);
+
+    const detailsButton = elt("button", "nobby-library-action nobby-library-preview-info",
+      t("ⓘ Details anzeigen", "ⓘ Show details"));
+    detailsButton.type = "button";
+    const detailsPanel = elt("section", "nobby-library-detail-panel");
+    detailsPanel.hidden = true;
+    detailsPanel.setAttribute("aria-live", "polite");
+    detailsButton.addEventListener("click", async () => {
+      detailsButton.disabled = true;
+      detailsPanel.hidden = false;
+      detailsPanel.replaceChildren(elt("p", "", t("Details werden geladen …", "Loading details …")));
+      try {
+        const url = "/api/library/assets/" + encodeURIComponent(asset.kind) +
+          "/" + encodeURIComponent(asset.id) + "/details";
+        const response = await fetch(url, {cache: "no-store"});
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const info = await response.json();
+        if (preview.hidden || !detailsPanel.isConnected ||
+            info.kind !== asset.kind || info.id !== asset.id) return;
+        detailsPanel.replaceChildren();
+        detailsPanel.appendChild(elt("strong", "", t("Mediendetails", "Media details")));
+        const fields = [
+          [t("Typ", "Type"), label(info.kind)],
+          [t("Erstellt", "Created"), formatDate(info.created_at)],
+          [t("Dateigröße", "File size"), Number.isFinite(info.size_bytes)
+            ? (info.size_bytes / (1024 * 1024)).toFixed(2) + " MB" : ""],
+          [t("Modell", "Model"), info.model],
+          [t("Engine", "Engine"), info.engine],
+          [t("Auflösung", "Resolution"), info.width && info.height
+            ? info.width + " × " + info.height : ""],
+          [t("Dauer", "Duration"), formatDuration(info.duration_seconds)],
+          [t("Prompt", "Prompt"), info.original_prompt || info.prompt],
+          [t("Anbieter", "Provider"), info.provider],
+          [t("Datei-ID", "File ID"), info.id],
+        ];
+        for (const [name, value] of fields) {
+          if (value === undefined || value === null || value === "") continue;
+          const field = elt("div", "nobby-library-detail-row");
+          field.appendChild(elt("span", "", name));
+          field.appendChild(elt("span", "", String(value)));
+          detailsPanel.appendChild(field);
+        }
+      } catch (_error) {
+        if (!preview.hidden && detailsPanel.isConnected)
+          detailsPanel.replaceChildren(elt("p", "", t(
+            "Details sind momentan nicht verfügbar.", "Details are currently unavailable.")));
+      } finally { detailsButton.disabled = false; }
+    });
+    previewBody.append(detailsButton, detailsPanel);
     preview.hidden = false;
     previewClose.focus();
   }
@@ -365,6 +414,14 @@
       try { await action("DELETE", asset); await refresh(); }
       catch (error) { remove.disabled = false; window.alert(error.message); }
     });
+    const infoButton = elt("button", "nobby-library-action",
+      t("Details", "Details"));
+    infoButton.type = "button";
+    infoButton.addEventListener("click", () => {
+      showPreview(asset);
+      previewBody.querySelector(".nobby-library-preview-info")?.click();
+    });
+    buttons.append(infoButton);
     buttons.append(remove);
     text.appendChild(buttons);
     box.appendChild(text);
@@ -435,7 +492,7 @@
       (state.collection === "all" ||
         (state.collection === "favorites" && state.organization.favorites.includes(assetKey(item))) ||
         (collection && collection.items.includes(assetKey(item)))) &&
-      (!filter || [label(item.kind), item.id, formatDate(item.created_at),
+      (!filter || [label(item.kind), item.id, item.prompt, item.original_prompt, item.model, item.provider, item.operation, formatDate(item.created_at),
         engineLabel(item), formatDuration(metadataCache.get(assetKey(item))?.duration_seconds)]
         .some(value => String(value).toLowerCase().includes(filter)))
     ).sort((a, b) => {
