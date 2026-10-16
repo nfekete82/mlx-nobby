@@ -35,8 +35,8 @@ Das Status-Polling läuft nach Schließen des Dialogs weiter, solange die Seite
 geöffnet bleibt. Der Talking-Photo-Knopf in der oberen Leiste signalisiert den
 laufenden oder abgeschlossenen Job. Ein erneutes Öffnen setzt die Ansicht fort.
 **Das Schließen des Dialogs ist kein Abbrechen mehr**; dafür bleibt die explizite
-Abbrechen-Schaltfläche zuständig. Abgeschlossene, nicht gespeicherte Ergebnisse
-werden bei späterem Schließen weiterhin gelöscht.
+Abbrechen-Schaltfläche zuständig. Abgeschlossene Ergebnisse werden dauerhaft in der Videobibliothek gespeichert,
+auch wenn der Dialog anschließend geschlossen wird.
 
 Beim vollständigen Verlassen oder Neuladen der Seite greift weiterhin die
 bestehende Aufräumlogik: aktive Jobs werden abgebrochen beziehungsweise
@@ -90,6 +90,14 @@ test-venv/bin/python scripts/debug-talking-photo-quality.py \
 Die echten Ausgaben müssen visuell/gehörmäßig verglichen werden: Mund bewegt
 sich beim ersten Wort, später kein Versatz, keine Identitätsdrift. CI prüft
 nur die PCM- und Schnittstellenverträge – **keine echte Mac-Renderqualität**.
+
+## Talking Photo 2.0: längere Videos (Beta)
+
+Bis zu **60 Sekunden generiertes Sprach-Audio** werden bei allen LTX-Engines automatisch in maximal 18 Sekunden lange Abschnitte zerlegt. Zuerst wird die Stimme **einmal** synthetisiert. Die Abschnittsgrenzen liegen auf dem gemeinsamen 24-FPS-Raster, bevorzugt in ruhigen Sprechpausen; bei ununterbrochener Sprache wird ein möglichst leiser Schnittpunkt genutzt. Die erste Renderstrecke startet mit dem Originalfoto. Ab dem zweiten Abschnitt wird standardmäßig mit `ffmpeg` der **letzte sichtbare, nicht gepaddete Frame** des vorherigen Videos als neue LTX-Bildreferenz extrahiert (Continuity v1). Das soll plötzliche Sprünge in Kopfhaltung, Gesichtsausdruck und Bildausschnitt verringern. Alle Teile verwenden weiterhin denselben Seed. Falls das Auslesen der Referenz fehlschlägt, verwendet der nächste Abschnitt sicherheitshalber wieder das Ursprungsfoto; dieser Rückfall wird in den Render-Diagnosen vermerkt. Die Funktion lässt sich ohne UI-Schalter über `LTX_TALKING_PHOTO_LONGFORM_CONTINUITY=0` deaktivieren.
+
+Der MP4-Assembler schneidet das LTX-Endpadding **framegenau** ab und fügt ausschließlich die Videospuren zusammen. Die originale, ungeschnittene WAV-Datei wird **einmal** als Audio gemuxt. Ton, Wortfolge, Sprechtempo, bestehende Lippensynchronität und die Anzahl sichtbarer Frames werden nicht verschoben; es gibt keine Frame-Überblendung, die bei gesprochenen Phonemen Geisterbilder erzeugen würde. **Vollständig nahtlose Mimik ist damit noch nicht bewiesen**: Bei Modellneustarts können weiterhin kleine Sprünge oder über mehrere Teile eine Gesichtsdrift auftreten. Nutzerfeedback meldete bereits korrekten Ton und funktionierende Langvideos, aber teilweise sichtbare Sprünge. Die Kontinuitätsänderung braucht noch einen realen A/B-Render auf dem M5 Max.
+
+Maximal 60 Sekunden und höchstens sechs Teile; längere Sprache wird klar abgewiesen. Keine parallelen LTX-Renders, kein zusätzlich geladenes KI-Modell, nur kurzzeitige CPU-`ffmpeg`-Frameextraktion. Kurzvideos bis 20 Sekunden verwenden unverändert die bewährte Einzel-Render-Strecke.
 
 ## Audio und LTX
 

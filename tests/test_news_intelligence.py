@@ -9,6 +9,14 @@ from agent.news_intelligence import (
 )
 
 NOW = datetime(2026, 10, 15, 8, 10, tzinfo=timezone.utc)
+
+
+class FrozenNewsDateTime(datetime):
+    """Keep the end-to-end news fixture on its original reporting day."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return NOW.astimezone(tz or timezone.utc)
 TITLE = "Bundestag diskutiert Vorschläge zur Energieversorgung"
 BODY = ("Der Bundestag diskutiert Vorschläge zur Energieversorgung und prüft "
         "gemeinsam mit verschiedenen Abgeordneten Änderungen an bisherigen "
@@ -138,7 +146,8 @@ def test_real_chat_web_tool_uses_verified_digest_not_google_news_snippets():
     with patch.object(app, "searxng_search_results", return_value=result), \
          patch("agent.news_intelligence.publisher_news_candidates", return_value=[]), \
          patch.object(app, "fetch_web_page", return_value=source["fetch"]) as fetch, \
-         patch.object(app, "observed_agent_llm", return_value='{"summaries": []}'):
+         patch.object(app, "observed_agent_llm", return_value='{"summaries": []}'), \
+         patch("datetime.datetime", FrozenNewsDateTime):
         value = app.tool_web_search(SimpleNamespace(prompt="Alle wichtigen News von heute"))
     assert value["news_search"] is True
     assert value["news_digest"]["status"] == "available"

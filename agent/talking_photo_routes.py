@@ -40,6 +40,7 @@ def provider_status() -> dict:
         "setup_command": fast.get("setup_command"),
         "detail": fast.get("detail"),
         "default_engine": "ltx-distilled",
+        "max_longform_audio_seconds": 60,
         "quality_available": bool(quality.get("ready")),
         "ltx_available": bool(ltx.get("ready")),
         "ltx_distilled_available": bool(ltx.get("ready")),

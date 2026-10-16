@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Talking Photo longform continuity beta: condition each follow-up LTX clip on the exact last visible frame of the preceding clip (excluding 8n+1 padding). Keep source speech and frame timing unchanged, fall back safely to the original portrait on extraction errors, and expose a headless opt-out (`LTX_TALKING_PHOTO_LONGFORM_CONTINUITY=0`).
+
+- Talking Photo 2.0 beta: render up to 60 seconds by sequential short clips while preserving the original source audio as a single continuous track.
+
 - Keep finished Talking Photo videos permanently in Bibliothek → Video by default. Stop auto-discarding on modal close, new generation and pagehide; adopt surviving legacy MP4s at Agent startup without duplication. Preserve explicit Library delete and protect acceptance fixtures.
 
 - Promote LTX 0.16.3 Distilled (8+3) to the default Talking Photo engine after successful M5 Max hands-on testing; remove the audio lead-in experiment and motion selector from the UI, always request natural motion, and retain classic direct LTX, Hybrid and MuseTalk as alternatives.
