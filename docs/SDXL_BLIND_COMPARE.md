@@ -44,3 +44,17 @@ are reached. Never disable the MPS watermark to bypass an OOM.
 The first comparison uses the **same CFG 3.5** for strict A/B fairness.
 The models' preferred individual CFG settings (Ragnarok 5, Lustify 3.5)
 should be assessed separately after this initial blind comparison.
+
+## Startup health check
+
+`launchctl kickstart -k` is asynchronous: it may return before Uvicorn binds
+to `127.0.0.1:8030`. The benchmark now probes `GET /health` for up to
+45 seconds **before creating the run directory**, then starts the first job
+only once the guarded image service is reachable. It does not spawn its own
+SDXL worker. For persistent startup failures, run:
+
+```bash
+./scripts/mlx services
+launchctl print "gui/$(id -u)/de.nobby.mlx-images" | tail -n 35
+tail -n 80 ~/.config/mlx-web/image-error.log
+```

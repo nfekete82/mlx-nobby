@@ -58,3 +58,34 @@ def test_uses_guarded_http_image_service_not_raw_sdxl_worker():
     assert "subprocess.Popen(" not in source
     assert "benchmark-juggernaut" not in source
     assert "PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0" not in source
+
+
+def test_waits_for_async_launchd_start_without_spawning_worker(monkeypatch):
+    import io
+    import urllib.error
+    tool = load_tool()
+    requests = []
+
+    def urlopen(request, timeout):
+        requests.append(request.full_url)
+        if len(requests) == 1:
+            raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+        return io.BytesIO(b'{"status":"ready"}')
+
+    monkeypatch.setattr(tool, "urlopen", urlopen)
+    monkeypatch.setattr(tool.time, "sleep", lambda _: None)
+    tool.wait_for_service("http://127.0.0.1:8030", timeout=1)
+    assert requests == [
+        "http://127.0.0.1:8030/health",
+        "http://127.0.0.1:8030/health",
+    ]
+
+
+def test_unreachable_service_does_not_create_benchmark_outputs(tmp_path, monkeypatch, capsys):
+    tool = load_tool()
+    monkeypatch.setattr(tool, "wait_for_service",
+                        lambda *args: (_ for _ in ()).throw(RuntimeError("not running")))
+    target = tmp_path / "benchmarks"
+    assert tool.main(["--output-dir", str(target)]) == 1
+    assert not target.exists()
+    assert "Benchmark nicht gestartet" in capsys.readouterr().err

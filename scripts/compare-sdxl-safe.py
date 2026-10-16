@@ -113,6 +113,34 @@ def build_plan(args):
     return jobs
 
 
+def wait_for_service(base_url, timeout=45):
+    """Wait until the launchd-managed image API accepts requests.
+
+    launchctl kickstart returns before the Python/Uvicorn imports have
+    completed, so an immediate benchmark otherwise fails with Errno 61.
+    Do not launch separate workers or bypass the memory guard.
+    """
+    health_url = base_url.rstrip("/") + "/health"
+    deadline = time.monotonic() + timeout
+    last_error = None
+    print("Prüfe, ob der geschützte Bilddienst auf Port 8030 bereit ist …", flush=True)
+    while True:
+        try:
+            with urlopen(Request(health_url, method="GET"), timeout=3) as response:
+                if response.getcode() == 200:
+                    print("Bilddienst erreichbar.", flush=True)
+                    return
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Bilddienst auf {health_url} nach {timeout:g}s nicht erreichbar "
+                f"({last_error}). Status prüfen: ./scripts/mlx services; "
+                "Startfehler: tail -n 80 ~/.config/mlx-web/image-error.log"
+            )
+        time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+
+
 def request_image(base_url, payload, timeout):
     request = Request(
         base_url.rstrip("/") + "/generate",
@@ -172,6 +200,14 @@ def main(argv=None):
     if args.dry_run:
         print(json.dumps(jobs, ensure_ascii=False, indent=2))
         return 0
+
+    # Probe before creating output or starting jobs; launchctl restarts are
+    # asynchronous and a new service can take several seconds to import.
+    try:
+        wait_for_service(args.image_url)
+    except RuntimeError as exc:
+        print(f"Benchmark nicht gestartet: {exc}", file=sys.stderr)
+        return 1
 
     root = (
         args.output_dir.expanduser()
