@@ -4,7 +4,7 @@
 ![MLX](https://img.shields.io/badge/MLX-native-blue)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/badge/release-v1.13.0-informational)
+![Release](https://img.shields.io/badge/release-v1.14.0-informational)
 
 
 **MLX nobby** is an open-source local AI assistant and control center for Apple Silicon, built around Apple's MLX ecosystem. It brings local LLM chat, model management, RAG, coding workflows, image generation, speech transcription, and AI agents together in a single browser-based interface for macOS.
@@ -13,9 +13,9 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
-## Recent updates (v1.13.0)
+## Recent updates (v1.14.0)
 
-**v1.13.0** improves everyday factual assistance with source-grounded weather and news, context-aware follow-ups, and a clearer news-reading experience. It builds on the existing local semantic router instead of adding a competing model.
+**v1.14.0** brings Talking Photo 2.0 with longer, continuous-audio videos and improved frame-to-frame continuity, plus Media Library 2.0 with local video thumbnails, metadata, filtering and reuse of existing images for Talking Photo.
 
 Highlights include:
 
@@ -28,7 +28,7 @@ Highlights include:
 - **Better image editing:** Accessible local before/after comparison, optional object-target auto-mask and explicit change advisory. Osaurus Qwen Image 2.1 Edit adds a measured, model-specific Step Cache default with a per-job opt-out. See [Image editing V2](docs/IMAGE_EDITING_V2.md) and [Step Cache defaults](docs/PERFORMANCE_MFLUX_QWEN21_STEP_CACHE_DEFAULT.md).
 - **Runtime and performance diagnostics:** More transparent image/MLX-Gen and Qwen edit performance observations, long-chat/DFlash2 experiment harnesses, and guarded context-compaction and prefill watchdog improvements. Performance numbers depend on the local model, job and Mac; no universal speedup is claimed. See [Performance Observatory](docs/PERFORMANCE_OBSERVATORY.md).
 
-See [the changelog](CHANGELOG.md) for the complete v1.13.0 changes.
+See [the changelog](CHANGELOG.md) for the complete v1.14.0 changes.
 For releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
