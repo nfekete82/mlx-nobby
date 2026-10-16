@@ -54,6 +54,11 @@ function imageT(key, fallback = '', variables = {}) {
         const summary = node('summary', model.name + (data.effective_model === model.id ? imageT('image_settings.active_suffix', ' · active') : ''));
         card.append(summary);
         card.append(node('p', [model.provider, model.model_family, model.quantization].join(' · ')));
+        const sdxlDescriptions = {
+            'juggernaut-xl': 'Vielseitiger fotorealistischer Allrounder für Porträts, Lifestyle und allgemeine Bildgenerierung.',
+            'lustify-endgame-sdxl': 'SDXL-Checkpoint für fotorealistische erotische / NSFW-Bilder und Körperdarstellung.'
+        };
+        if (sdxlDescriptions[model.id]) card.append(node('p', sdxlDescriptions[model.id], 'settings-hint'));
         card.append(node('p', model.availability_note, 'settings-hint'));
         const legacy = model.id === 'FLUX.1-schnell';
         const form = node('div', null, 'image-model-fields');
