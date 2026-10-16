@@ -272,6 +272,35 @@ def image_file(image_id: str, download: bool = False):
         raise HTTPException(status_code=503, detail=f'Agent nicht erreichbar: {exc.reason}')
 
 
+# Media Library 3.0 organization lives on the host Agent, not in the
+# Docker web image. Keep the browser-facing routes aligned with the Agent.
+@app.get('/api/library/organize')
+def library_organize_get():
+    return agent_json_request('GET', '/api/library/organize', timeout=30)
+
+
+@app.post('/api/library/organize/collections')
+def library_organize_create_collection(payload: dict):
+    return agent_json_request(
+        'POST', '/api/library/organize/collections', payload, timeout=30,
+    )
+
+
+@app.delete('/api/library/organize/collections/{collection_id}')
+def library_organize_delete_collection(collection_id: str):
+    return agent_json_request(
+        'DELETE', '/api/library/organize/collections/' +
+        urllib.parse.quote(collection_id, safe=''), timeout=30,
+    )
+
+
+@app.post('/api/library/organize/batch')
+def library_organize_batch(payload: dict):
+    return agent_json_request(
+        'POST', '/api/library/organize/batch', payload, timeout=60,
+    )
+
+
 @app.get('/api/library/assets')
 def library_assets(kind: str = 'all', limit: int = 400):
     return agent_json_request(
