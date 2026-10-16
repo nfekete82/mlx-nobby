@@ -383,7 +383,7 @@
         left.append(preview);
         const focusHint = node('div', 'mlx-talking-photo-hint', localText(
             'Bei mehreren Personen: Tippe auf das gewünschte Gesicht. Nur der Bereich dieser Person wird animiert; das vollständige Foto bleibt sichtbar. Erneut tippen, um die Auswahl zu ändern.',
-            'For multiple people: click the intended face. Only that person's region is animated; the full image remains visible. Click again to change.',
+            'For multiple people: click the intended face. Only the selected face region is animated; the full image remains visible. Click again to change.',
         ));
         focusHint.id = 'talkingPhotoPersonFocusHint';
         focusHint.hidden = true;
