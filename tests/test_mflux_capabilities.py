@@ -206,6 +206,8 @@ def test_image_job_preserves_structured_provider_failure(monkeypatch):
         '_cancel_event': threading.Event()}})
     monkeypatch.setattr(service, '_active_job_id', 'job')
     monkeypatch.setattr(service, '_generate_result', generate)
+    monkeypatch.setattr(service, '_resolve_generation',
+                        lambda *_: {'model': {'provider': 'mflux'}})
     from contextlib import nullcontext
     monkeypatch.setattr(service.runtime_coordinator, 'image_runtime',
                         lambda *_args, **_kwargs: nullcontext())

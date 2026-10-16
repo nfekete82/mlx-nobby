@@ -913,6 +913,7 @@ class ImageRuntimeTests(unittest.TestCase):
             prepared_callback=None,
             saving_callback=None,
             resolved_callback=None,
+            resolved=None,
         ):
             entered_provider.set()
 
@@ -934,6 +935,10 @@ class ImageRuntimeTests(unittest.TestCase):
             service,
             "_generate_result",
             side_effect=late_generate,
+        ), patch.object(
+            service,
+            "_resolve_generation",
+            return_value={"model": {"provider": "mflux"}},
         ):
             response = self.client.post(
                 "/jobs",
@@ -1754,14 +1759,14 @@ class ImageRuntimeTests(unittest.TestCase):
                     "auto",
                     "A photorealistic studio portrait of a woman",
                 )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
+                registry.JUGGERNAUT_XL_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A realistic person in natural light",
                 )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
+                registry.JUGGERNAUT_XL_ID,
             )
             self.assertEqual(
                 service._generation_model(
@@ -2031,8 +2036,12 @@ class ImageRuntimeTests(unittest.TestCase):
         prompt = 'adult portrait; $(never-run) --model example'
         with patch.object(service, "run_provider", side_effect=generate), \
              patch.object(service, "availability", return_value=(True, "ready")):
-            response = self.client.post("/generate", json={"prompt": prompt, "seed": 0})
-            variation = self.client.post("/generate", json={"prompt": prompt})
+            response = self.client.post("/generate", json={
+                "prompt": prompt, "seed": 0, "model": registry.LEGACY_ID,
+            })
+            variation = self.client.post("/generate", json={
+                "prompt": prompt, "model": registry.LEGACY_ID,
+            })
         self.assertEqual(response.status_code, 200)
         result = response.json()
         self.assertEqual(result["model"], registry.LEGACY_ID)
