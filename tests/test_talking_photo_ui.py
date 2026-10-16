@@ -30,7 +30,7 @@ def test_talking_photo_browser_module_uses_local_voice_and_job_apis():
     assert "engineSelect.value = 'ltx-distilled'" in source
     assert "talkingPhotoLeadIn" not in source
     assert "lead_in_ms:" not in source
-    assert "motion: personFocus ? 'none' : 'natural'" in source
+    assert "motion: personFocus && engine === 'fast' ? 'none' : 'natural'" in source
     assert "person_focus: personFocus" in source
     assert "speed: 1.0" in source
     assert "talkingPhotoOutput" in source
@@ -68,7 +68,7 @@ def test_talking_photo_ui_has_no_motion_selector_or_audio_lead_in():
     assert "talkingPhotoMotion" not in source
     assert "talkingPhotoLeadIn" not in source
     assert "talking-photo-motion.js" not in loader
-    assert "motion: personFocus ? 'none' : 'natural'" in source
+    assert "motion: personFocus && engine === 'fast' ? 'none' : 'natural'" in source
     assert "person_focus: personFocus" in source
 
 def test_talking_photo_dropdown_styles_share_the_library_theme():
