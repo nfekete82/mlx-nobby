@@ -1402,7 +1402,9 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             operation == "edit" and getattr(request, "region_edit", False)
         )
         with runtime_coordinator.image_runtime(
-            cancel_event, force_chat_unload=(sdxl_job or region_qwen_job)
+            cancel_event,
+            force_chat_unload=(sdxl_job or region_qwen_job),
+            exclusive_models=True,
         ) as preflight:
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")

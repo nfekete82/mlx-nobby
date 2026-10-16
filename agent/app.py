@@ -8265,7 +8265,7 @@ def optimize_image_edit_prompt(prompt):
         return fallback
 
     try:
-        with runtime_coordinator.chat_runtime(), MODEL_RUNTIME_LOCK:
+        with runtime_coordinator.chat_runtime(exclusive_models=True), MODEL_RUNTIME_LOCK:
             call_metrics.set_queue_wait(
                 (time.monotonic() - wait_started) * 1000
             )
@@ -11673,6 +11673,7 @@ def agent_model_provider() -> ModelProvider:
         load_config=load_config,
         runtime_lease=lambda context: runtime_coordinator.chat_runtime(
             context.cancellation if context is not None else None,
+            exclusive_models=True,
         ),
     )
 
@@ -11760,7 +11761,7 @@ def runtime_chat(request: RuntimeChatRequest):
     )
     wait_started = time.monotonic()
 
-    with runtime_coordinator.chat_runtime(), MODEL_RUNTIME_LOCK:
+    with runtime_coordinator.chat_runtime(exclusive_models=True), MODEL_RUNTIME_LOCK:
         call_metrics.set_queue_wait(
             (time.monotonic() - wait_started) * 1000
         )
@@ -11962,7 +11963,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             )
 
         try:
-            with runtime_coordinator.chat_runtime(cancel_event), MODEL_RUNTIME_LOCK:
+            with runtime_coordinator.chat_runtime(cancel_event, exclusive_models=True), MODEL_RUNTIME_LOCK:
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
