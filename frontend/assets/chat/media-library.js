@@ -265,6 +265,7 @@
     return box;
   }
   function render() {
+    mediaObserver?.disconnect();
     const filter = state.query.trim().toLowerCase();
     const filtered = state.assets.filter(item =>
       (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
@@ -364,6 +365,11 @@
   for (const button of panel.querySelectorAll("[data-library-kind]")) {
     button.addEventListener("click", () => {
       state.kind = button.dataset.libraryKind;
+      if (state.kind === "image" && state.engine !== "all") {
+        state.engine = "all";
+        const engineControl = document.getElementById("nobbyLibraryEngine");
+        if (engineControl) engineControl.value = "all";
+      }
       for (const item of panel.querySelectorAll("[data-library-kind]")) {
         item.classList.toggle("active", item === button);
         item.setAttribute("aria-pressed", String(item === button));
