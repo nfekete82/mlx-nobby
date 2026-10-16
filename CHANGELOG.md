@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v1.18.0
+
+- Media Library 4.0: search by existing local prompt/model/provider metadata when available, plus safe per-media details for images and videos; legacy media remain visible without invented provenance.
+- Add bounded local job-metadata discovery, browser-to-Agent API proxy, responsive details UI and regression coverage; no model inference or media copies.
+
 ## v1.17.0
 
 - Media Library: client-side time-range filtering (today, last 7/30 days) and file size/date sorting, combinable with existing engine, media type and collection filters. No new ML model or indexing process.
