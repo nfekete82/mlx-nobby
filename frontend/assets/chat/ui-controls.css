@@ -1,0 +1,575 @@
+/* MLX-Nobby UI controls: explicit opt-in via body.nobby-ui and module scopes.
+ * This stylesheet deliberately leaves card layouts, media controls, and native
+ * checkboxes/radios/ranges/file inputs untouched. Works with JS-injected modules.
+ * Based on the existing Media Library / Talking Photo dark native picker.
+ */
+:root {
+  --nobby-ui-control-bg: #141b28;
+  --nobby-ui-control-open-bg: #182437;
+  --nobby-ui-control-border: #344052;
+  --nobby-ui-control-text: #edf3fc;
+  --nobby-ui-control-muted: #aab9cb;
+  --nobby-ui-focus: #82b4ff;
+  --nobby-ui-picker-bg: #172234;
+  --nobby-ui-picker-hover: #2d3c52;
+  --nobby-ui-picker-selected: #243d5c;
+  --nobby-ui-control-radius: 9px;
+  --nobby-ui-control-height: 41px;
+  --nobby-ui-gap-sm: 8px;
+  --nobby-ui-gap-md: 12px;
+  --nobby-ui-gap-lg: 16px;
+  --nobby-ui-gap-xl: 24px;
+}
+
+/* For every select below, the real <select> remains in the DOM.
+ * No custom combobox JS, no changed values, and no broken change handlers.
+ */
+body.nobby-ui :is(
+  .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+) {
+  box-sizing: border-box;
+  height: var(--nobby-ui-control-height);
+  min-height: var(--nobby-ui-control-height);
+  border: 1px solid var(--nobby-ui-control-border);
+  border-radius: var(--nobby-ui-control-radius);
+  background-color: var(--nobby-ui-control-bg);
+  color: var(--nobby-ui-control-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 11px;
+  cursor: pointer;
+  color-scheme: dark;
+  max-width: 100%;
+}
+
+/* Do not restyle special input types; in particular preserve sliders,
+ * toggles, drop zones and upload buttons. */
+body.nobby-ui :is(
+  .field input,
+  .field textarea,
+  .model-console-form input,
+  .model-overview-search,
+  .automation-field input,
+  .automation-field textarea,
+  .mlx-shorts-studio-field input,
+  .mlx-shorts-studio-field textarea,
+  .mlx-shorts-project-overlay input,
+  .mlx-shorts-project-overlay textarea,
+  .memory-manager-toolbar input,
+  .memory-manager-card textarea,
+  .memory-manager-create textarea,
+  .routing-feedback-editor input,
+  .routing-feedback-editor textarea,
+  .note-editor-field input,
+  .note-editor-field textarea,
+  .mlx-vm-card input
+):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]) {
+  box-sizing: border-box;
+  border: 1px solid var(--nobby-ui-control-border);
+  border-radius: var(--nobby-ui-control-radius);
+  background-color: var(--nobby-ui-control-bg);
+  color: var(--nobby-ui-control-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 11px;
+  min-width: 0;
+}
+
+/* Compact, consistent actions. Module-specific primary/danger themes win. */
+body.nobby-ui :is(
+  .model-scout-button,
+  .automation-button,
+  .mlx-vm-button,
+  .mlx-shorts-studio-actions button,
+  .memory-manager-actions button,
+  .memory-manager-create-actions button,
+  .routing-feedback-actions button,
+  .routing-observatory-refresh
+) {
+  border-radius: var(--nobby-ui-control-radius);
+  min-height: 36px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+body.nobby-ui :is(
+  .model-scout-button,
+  .automation-button,
+  .mlx-vm-button,
+  .mlx-shorts-studio-actions button,
+  .memory-manager-actions button,
+  .memory-manager-create-actions button,
+  .routing-feedback-actions button,
+  .routing-observatory-refresh
+):disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+/* A visible keyboard focus is mandatory, including finance ranges where an
+ * earlier rule deliberately removed the outline. */
+body.nobby-ui :is(
+  .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select,
+  .field input,
+  .field textarea,
+  .model-console-form input,
+  .model-overview-search,
+  .automation-field input,
+  .automation-field textarea,
+  .mlx-shorts-studio-field input,
+  .mlx-shorts-studio-field textarea,
+  .mlx-shorts-project-overlay input,
+  .mlx-shorts-project-overlay textarea,
+  .memory-manager-toolbar input,
+  .memory-manager-card textarea,
+  .memory-manager-create textarea,
+  .routing-feedback-editor input,
+  .routing-feedback-editor textarea,
+  .note-editor-field input,
+  .note-editor-field textarea,
+  .mlx-vm-card input,
+  .model-scout-button,
+  .automation-button,
+  .mlx-vm-button,
+  .mlx-shorts-studio-actions button,
+  .memory-manager-actions button,
+  .memory-manager-create-actions button,
+  .routing-feedback-actions button,
+  .routing-observatory-refresh,
+  .model-console-button,
+  .model-console-icon-button,
+  .mlx-vm-close,
+  .mlx-talking-photo-close,
+  .finance-chart-range,
+  .settings-tabs button,
+  .settings-subtabs button,
+  .model-scout-button,
+  .automation-button,
+  .mlx-vm-button
+):focus-visible {
+  outline: 2px solid var(--nobby-ui-focus);
+  outline-offset: 2px;
+  border-color: var(--nobby-ui-focus);
+}
+
+/* Native accessible custom select picker supported by current Chromium.
+ * Unsupported browsers retain dark native selects and their full semantics.
+ */
+@supports (appearance: base-select) and selector(::picker(select)) {
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ),
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  )::picker(select) {
+    appearance: base-select;
+    -webkit-appearance: base-select;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background-image: none;
+    line-height: 1.3;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ):open {
+    background: var(--nobby-ui-control-open-bg);
+    border-color: var(--nobby-ui-focus);
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  )::picker-icon {
+    color: #b3c4db;
+    flex-shrink: 0;
+    transition: transform .16s ease;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ):open::picker-icon {
+    transform: rotate(180deg);
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  )::picker(select) {
+    width: anchor-size(width);
+    min-width: anchor-size(width);
+    max-width: min(360px, calc(100vw - 30px));
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    padding: 6px;
+    margin-top: 5px;
+    border: 1px solid #394b66;
+    border-radius: 11px;
+    background: var(--nobby-ui-picker-bg);
+    color: #ecf2fb;
+    box-shadow: 0 16px 36px #0009;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 36px;
+    padding: 9px 10px;
+    border-radius: 7px;
+    background: transparent;
+    color: #e4edfa;
+    font-size: 13px;
+    line-height: 1.35;
+    white-space: normal;
+    cursor: pointer;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) option:hover,
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) option:focus {
+    background: var(--nobby-ui-picker-hover);
+    color: #fff;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) option:checked {
+    background: var(--nobby-ui-picker-selected);
+    color: #f6faff;
+    font-weight: 600;
+  }
+  body.nobby-ui :is(
+    .field select,
+  .model-console-form select,
+  .model-console-switcher select,
+  .model-role-item select,
+  .model-overview-select,
+  .model-scout-select,
+  .mlx-voice-select,
+  .mlx-voice-speed,
+  .mlx-vm-select,
+  .mlx-shorts-studio-field select,
+  .mlx-shorts-project-overlay select,
+  .automation-field select,
+  .memory-manager-toolbar select,
+  .memory-manager-card select,
+  .memory-manager-create select,
+  .routing-feedback-editor select,
+  .routing-observatory-filters select,
+  .media-duration-field select,
+  .note-folder-select,
+  .media-quality-control select,
+  .note-editor-field select
+  ) option::checkmark { color: var(--nobby-ui-focus); }
+}
+
+/* Control Center is Tailwind-driven, so scope its three known native selects. */
+body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens) {
+  min-height: var(--nobby-ui-control-height);
+  color-scheme: dark;
+  color: var(--nobby-ui-control-text);
+  background: var(--nobby-ui-control-bg);
+  border: 1px solid var(--nobby-ui-control-border);
+  border-radius: var(--nobby-ui-control-radius);
+}
+body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens):focus-visible {
+  outline: 2px solid var(--nobby-ui-focus);
+  outline-offset: 2px;
+}
+@supports (appearance: base-select) and selector(::picker(select)) {
+  body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens),
+  body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens)::picker(select) {
+    appearance: base-select;
+  }
+  body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens)::picker(select) {
+    width: anchor-size(width);
+    min-width: anchor-size(width);
+    max-width: min(360px, calc(100vw - 30px));
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid #394b66;
+    border-radius: 11px;
+    background: var(--nobby-ui-picker-bg);
+    color: var(--nobby-ui-control-text);
+    box-shadow: 0 16px 36px #0009;
+  }
+  body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens) option {
+    padding: 9px 10px;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--nobby-ui-control-text);
+  }
+  body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens) option:checked {
+    background: var(--nobby-ui-picker-selected);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.nobby-ui select::picker-icon { transition: none; }
+}
