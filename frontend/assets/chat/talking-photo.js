@@ -394,6 +394,7 @@
         focusReset.hidden = true;
         focusReset.addEventListener('click', () => {
             personFocus = null;
+            engineSelect.disabled = false;
             focusReset.hidden = true;
             preview.style.outline = '';
             focusHint.textContent = localText('Tippe auf die sprechende Person.', 'Click the speaking person.');
@@ -412,6 +413,7 @@
             if (x < 0 || x > 1 || y < 0 || y > 1) return;
             personFocus = {x, y};
             engineSelect.value = 'fast';
+            engineSelect.disabled = true;
             focusReset.hidden = false;
             preview.style.outline = '2px solid #4f8cff';
             focusHint.textContent = localText('Person ausgewählt – MuseTalk animiert diesen Bereich im vollständigen Bild.', 'Person selected – MuseTalk will animate this region in the full image.');
@@ -549,6 +551,7 @@
 
         imageInput.addEventListener('change', () => {
             personFocus = null;
+            engineSelect.disabled = false;
             focusReset.hidden = true;
             focusHint.hidden = !imageInput.files?.[0];
             preview.style.outline = '';
@@ -771,26 +774,6 @@
             await refreshProviderStatus();
         }
         await voices;
-    }
-
-    async function focusedImageDataUrl(file, focus) {
-        if (!focus) return fileToDataUrl(file);
-        const src = await createImageBitmap(file);
-        try {
-            // Keep the original aspect ratio while restricting the region to 55%.
-            // This is a focus crop, not face tracking or multi-speaker lip sync.
-            const width = Math.max(1, Math.round(src.width * 0.55));
-            const height = Math.max(1, Math.round(src.height * 0.55));
-            const sx = Math.max(0, Math.min(src.width - width, Math.round(focus.x * src.width - width / 2)));
-            const sy = Math.max(0, Math.min(src.height - height, Math.round(focus.y * src.height - height / 2)));
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            canvas.getContext('2d').drawImage(src, sx, sy, width, height, 0, 0, width, height);
-            return canvas.toDataURL('image/jpeg', 0.92);
-        } finally {
-            src.close();
-        }
     }
 
     async function startJob() {
