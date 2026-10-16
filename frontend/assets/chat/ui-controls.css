@@ -529,6 +529,16 @@ body.nobby-ui :is(
   ) option::checkmark { color: var(--nobby-ui-focus); }
 }
 
+/* Compact composer toolbar is intentionally 32px; the dark picker and focus
+ * style remain shared without expanding the chat input row on mobile. */
+body.nobby-ui .media-quality-control select {
+  height: 32px;
+  min-height: 32px;
+  max-width: 104px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
 /* Control Center is Tailwind-driven, so scope its three known native selects. */
 body.nobby-ui :is(#addModelQuant, #batchFileType, #batchChunkTokens) {
   min-height: var(--nobby-ui-control-height);
