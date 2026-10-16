@@ -1016,7 +1016,8 @@ async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt}) 
                 active_artifact_id: artifact_id,
                 image_options: {
                     model: 'auto',
-                    mask_path: mask_path
+                    mask_path: mask_path,
+                    region_edit: true
                 },
                 conversation_context: buildAgentConversationContext(session, userMessage),
                 trace_id: userMessage.trace_id,
