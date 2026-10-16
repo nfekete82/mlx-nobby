@@ -829,6 +829,7 @@ class SDXLWorkerManager:
         self._diagnostics = None
         self._idle_timer = None
         self._idle_generation = 0
+        self._loaded_checkpoint = None
 
     def _cancel_idle_timer_locked(self):
         self._idle_generation += 1
@@ -851,6 +852,7 @@ class SDXLWorkerManager:
 
             self._process = None
             self._diagnostics = None
+            self._loaded_checkpoint = None
 
             for stream in (process.stdin, process.stdout):
                 if stream is None:
@@ -862,6 +864,7 @@ class SDXLWorkerManager:
         else:
             self._process = None
             self._diagnostics = None
+            self._loaded_checkpoint = None
 
         if diagnostics is not None:
             try:
@@ -1037,6 +1040,7 @@ class SDXLWorkerManager:
                 if process_callback is not None:
                     process_callback(None)
                 if succeeded:
+                    self._loaded_checkpoint = Path(checkpoint)
                     self._schedule_idle_shutdown_locked()
                 else:
                     self._stop_locked()
@@ -1047,6 +1051,13 @@ class SDXLWorkerManager:
                 self._process is not None
                 and self._process.poll() is None
             )
+
+    def loaded_checkpoint(self):
+        """Return the last successfully loaded checkpoint, if still resident."""
+        with self._lock:
+            if self._process is None or self._process.poll() is not None:
+                return None
+            return self._loaded_checkpoint
 
     def close(self):
         with self._lock:
@@ -1059,6 +1070,11 @@ _sdxl_worker_manager = SDXLWorkerManager()
 def sdxl_worker_running():
     """Return whether the warm SDXL worker is currently running."""
     return _sdxl_worker_manager.is_running()
+
+
+def sdxl_loaded_checkpoint():
+    """Identify the resident SDXL checkpoint without assuming Juggernaut."""
+    return _sdxl_worker_manager.loaded_checkpoint()
 
 
 def shutdown_sdxl_worker():
