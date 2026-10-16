@@ -283,3 +283,51 @@ def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
     assert frame and video
     assert video["x"] >= frame["x"] - 2
     assert video["x"] + video["width"] <= frame["x"] + frame["width"] + 2
+
+def test_talking_photo_selects_match_library_dark_dropdowns(ui):
+    """Engine, voice and language share the opened Library picker theme."""
+    page, _agent, _allowed = ui
+
+    def send(route, body):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    page.route("**/api/talking-photo/status",
+               lambda route: send(route, {"providers": {
+                   "ltx-distilled": {"ready": True, "device": "mlx/metal"},
+                   "quality": {"ready": True},
+               }}))
+    page.route("**/api/mlx/audio/voices/manage",
+               lambda route: send(route, {"voices": [
+                   {"id": "lisa", "label": "Lisa"},
+               ]}))
+    open_talking_photo(page)
+    controls = ("#talkingPhotoEngine", "#talkingPhotoVoice", "#talkingPhotoLanguage")
+    expect(page.locator("#talkingPhotoVoice option")).to_have_count(2)
+    for selector in controls:
+        control = page.locator(selector)
+        computed = control.evaluate("""element => ({
+            appearance: getComputedStyle(element).appearance,
+            background: getComputedStyle(element, '::picker(select)').backgroundColor,
+            borderRadius: getComputedStyle(element, '::picker(select)').borderRadius
+        })""")
+        assert computed == {
+            "appearance": "base-select",
+            "background": "rgb(23, 34, 52)",
+            "borderRadius": "11px",
+        }, selector
+
+    engine = page.locator("#talkingPhotoEngine")
+    engine.click()
+    expect(page.locator("#talkingPhotoEngine:open")).to_be_visible()
+    dimensions = engine.evaluate("""element => ({
+        field: element.getBoundingClientRect().width,
+        menu: parseFloat(getComputedStyle(element, '::picker(select)').width)
+    })""")
+    assert abs(dimensions["field"] - dimensions["menu"]) < 2
+    page.keyboard.press("Escape")
+    engine.select_option("quality")
+    expect(engine).to_have_value("quality")
+    page.locator("#talkingPhotoVoice").select_option("lisa")
+    expect(page.locator("#talkingPhotoVoice")).to_have_value("lisa")
+    page.locator("#talkingPhotoLanguage").select_option("en")
+    expect(page.locator("#talkingPhotoLanguage")).to_have_value("en")
