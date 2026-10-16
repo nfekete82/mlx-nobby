@@ -432,7 +432,13 @@
     return box;
   }
   function selectedAssets() {
-    return state.assets.filter(asset => state.selected.has(assetKey(asset)));
+    const seen = new Set();
+    return [...state.assets, ...(state.remoteAssets || [])].filter(asset => {
+      const key = assetKey(asset);
+      if (!state.selected.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   function syncBulk() {
     const count = selectedAssets().length;
