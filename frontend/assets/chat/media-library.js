@@ -14,6 +14,7 @@
   const collectionTarget = document.getElementById("nobbyLibraryCollectionTarget");
   const bulk = document.getElementById("nobbyLibraryBulk");
 
+  let searchTimer = null;
   const metadataCache = new Map();
   let mediaObserver = null;
   const de = () => String(window.MLXI18n?.getLanguage?.() || document.documentElement.lang || "de").startsWith("de");
@@ -35,6 +36,8 @@
       close?.focus();
     } else {
       ++state.generation;
+      ++state.searchVersion;
+      if (searchTimer) clearTimeout(searchTimer);
       toggle.focus();
     }
   }
@@ -483,7 +486,7 @@
       state.dateFilter === "week" ? now - 7 * 86400 :
       state.dateFilter === "month" ? now - 30 * 86400 : 0;
     const collection = state.organization.collections.find(c => c.id === state.collection);
-    return state.assets.filter(item =>
+    return (state.remoteAssets || state.assets).filter(item =>
       (state.kind === "all" || (state.kind === "video" && ["video", "talking_photo"].includes(item.kind)) || item.kind === state.kind) &&
       (state.engine === "all" ||
         (state.engine === "talking_photo" && item.kind === "talking_photo") ||
