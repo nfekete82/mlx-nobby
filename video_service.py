@@ -415,6 +415,7 @@ def _run(job_id, request):
                 restore_error=f"Chat-Restore fehlgeschlagen: {exc}",
             ),
             admission_observer=record_admission,
+            exclusive_models=True,
         ) as preflight:
             # Persist only content-free timings and decisions. This includes
             # time waiting for the coordinator lease, not LTX model load time.

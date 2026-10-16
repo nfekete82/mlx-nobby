@@ -960,8 +960,9 @@ def video_runtime(
     admission_observer=None,
     requester=request_json,
     lock_path=LOCK_PATH,
+    exclusive_models=False,
 ):
-    """Hand off resources to video while preserving a healthy warm chat runtime."""
+    """Hand off video resources; exclusive mode releases other model weights."""
     lease_started = time.monotonic()
     with runtime_lease(
         cancel_event,
@@ -987,7 +988,7 @@ def video_runtime(
         image_health = release_idle_image_runtime(
             cancel_event,
             requester=requester,
-            should_unload=should_unload_image,
+            should_unload=None if exclusive_models else should_unload_image,
         )
         timings_ms["image_release"] = round(
             (time.monotonic() - image_release_started) * 1000, 2
@@ -999,7 +1000,8 @@ def video_runtime(
         # rather than unnecessarily stopping chat or risking admission.
         before = memory_budget_snapshot()
         if (
-            image_health.get("loaded") is True
+            not exclusive_models
+            and image_health.get("loaded") is True
             and not image_health.get("released")
             and not video_image_runtime_may_stay_loaded(before)
         ):
@@ -1032,7 +1034,7 @@ def video_runtime(
         # by their health checks and the coordinator lease.
         speech_health = {"available": None, "released": False}
         after_speech = before
-        if relief_needed:
+        if relief_needed or exclusive_models:
             speech_release_started = time.monotonic()
             speech_health = release_idle_speech_runtime(
                 cancel_event,
@@ -1048,7 +1050,7 @@ def video_runtime(
 
         musetalk_health = {"available": None, "released": False}
         after_musetalk = after_speech
-        if relief_needed:
+        if relief_needed or exclusive_models:
             musetalk_release_started = time.monotonic()
             musetalk_health = release_idle_musetalk_runtime(
                 cancel_event,
@@ -1062,7 +1064,7 @@ def video_runtime(
                 after_musetalk = memory_budget_snapshot()
                 relief_needed = needs_relief(after_musetalk)
 
-        restore_chat = bool(relief_needed and chat_loaded())
+        restore_chat = bool((relief_needed or exclusive_models) and chat_loaded())
         if restore_chat:
             chat_stop_started = time.monotonic()
             chat_command("stop")
@@ -1094,6 +1096,7 @@ def video_runtime(
         timings_ms["total"] = round((time.monotonic() - lease_started) * 1000, 2)
         preflight = {
             "workload": "video",
+            "exclusive_models": bool(exclusive_models),
             "memory_settle_attempts": memory_settle_attempts,
             "handoff_timings_ms": timings_ms,
             "memory_before": before,
@@ -1162,8 +1165,9 @@ def image_runtime(
     restore_error=None,
     memory_snapshot=None,
     force_chat_unload=False,
+    exclusive_models=False,
 ):
-    """Run image work with pressure-aware chat-runtime memory handoff.
+    """Run image work with pressure-aware or exclusive heavyweight handoff.
 
     SDXL can opt into unconditional chat release to avoid overlapping MPS
     checkpoint loading with a resident large language model.
@@ -1191,7 +1195,7 @@ def image_runtime(
 
         speech_health = {"available": None, "released": False}
         after_speech = before
-        if relief_needed:
+        if relief_needed or exclusive_models:
             speech_health = release_idle_speech_runtime(
                 cancel_event,
                 requester=requester,
@@ -1208,7 +1212,7 @@ def image_runtime(
 
         musetalk_health = {"available": None, "released": False}
         after_musetalk = after_speech
-        if relief_needed:
+        if relief_needed or exclusive_models:
             musetalk_health = release_idle_musetalk_runtime(
                 cancel_event,
                 requester=requester,
@@ -1223,7 +1227,7 @@ def image_runtime(
                     )
                 )
 
-        restore_chat = bool((relief_needed or force_chat_unload) and chat_loaded())
+        restore_chat = bool((relief_needed or force_chat_unload or exclusive_models) and chat_loaded())
         if restore_chat:
             chat_command("stop")
 
@@ -1251,6 +1255,7 @@ def image_runtime(
                 memory_settle_attempts += 1
         preflight = {
             "workload": "image",
+            "exclusive_models": bool(exclusive_models),
             "memory_settle_attempts": memory_settle_attempts,
             "memory_before": before,
             "memory_after_speech_release": after_speech,
@@ -1308,7 +1313,8 @@ def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
     inference solely because RAM crossed the load-admission threshold. Actual
     chat/VLM process startup is guarded by scripts/runtime-model-guard.py.
     """
-    with chat_runtime(requester=requester, lock_path=lock_path):
+    with chat_runtime(requester=requester, lock_path=lock_path,
+                      exclusive_models=True):
         return {
             "ok": True,
             "memory": memory_budget_snapshot(),
@@ -1318,9 +1324,10 @@ def prepare_chat_runtime(*, requester=request_json, lock_path=LOCK_PATH):
 
 @contextmanager
 def chat_runtime(
-    cancel_event=None, *, requester=request_json, lock_path=LOCK_PATH
+    cancel_event=None, *, requester=request_json, lock_path=LOCK_PATH,
+    exclusive_models=False,
 ):
-    """Hold the heavy-runtime lease for a chat request."""
+    """Hold the heavy-runtime lease; optionally reclaim idle media models."""
     already_coordinated = getattr(_LEASE_STATE, "depth", 0) > 0
     with runtime_lease(
         cancel_event,
@@ -1331,9 +1338,12 @@ def chat_runtime(
             try:
                 release_idle_image_runtime(cancel_event, requester=requester)
             except ServiceUnavailable:
-                # Preserve chat availability when the optional image service
-                # is offline. The cross-process lease still excludes any
-                # coordinated active generation.
+                # An offline optional image service has no known resident weights.
                 pass
+            if exclusive_models:
+                # The same lease protects these idle probes/unloads from
+                # concurrent coordinated jobs. Do not restart them eagerly.
+                release_idle_speech_runtime(cancel_event, requester=requester)
+                release_idle_musetalk_runtime(cancel_event, requester=requester)
         _check_cancelled(cancel_event)
         yield evidence

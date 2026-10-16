@@ -14,9 +14,10 @@ def _exercise(monkeypatch, *, region: bool):
     job_id = "region-chat-handoff-" + ("yes" if region else "no")
 
     @contextmanager
-    def guarded_image_runtime(cancel_event, *, force_chat_unload=False):
-        observed.append(force_chat_unload)
-        yield {"chat_released": force_chat_unload}
+    def guarded_image_runtime(cancel_event, *, force_chat_unload=False,
+                              exclusive_models=False):
+        observed.append((force_chat_unload, exclusive_models))
+        yield {"chat_released": force_chat_unload or exclusive_models}
 
     request = service.Edit(
         prompt="Change only the selected eyes",
@@ -52,8 +53,8 @@ def _exercise(monkeypatch, *, region: bool):
 
 
 def test_region_qwen_job_forces_chat_unload_even_without_measured_pressure(monkeypatch):
-    assert _exercise(monkeypatch, region=True) == [True]
+    assert _exercise(monkeypatch, region=True) == [(True, True)]
 
 
 def test_ordinary_edit_retains_pressure_based_chat_handoff(monkeypatch):
-    assert _exercise(monkeypatch, region=False) == [False]
+    assert _exercise(monkeypatch, region=False) == [(False, True)]
