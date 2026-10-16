@@ -70,7 +70,9 @@ def test_waits_for_async_launchd_start_without_spawning_worker(monkeypatch):
         requests.append(request.full_url)
         if len(requests) == 1:
             raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
-        return io.BytesIO(b'{"status":"ready"}')
+        response = io.BytesIO(b'{"status":"ready"}')
+        response.getcode = lambda: 200
+        return response
 
     monkeypatch.setattr(tool, "urlopen", urlopen)
     monkeypatch.setattr(tool.time, "sleep", lambda _: None)
