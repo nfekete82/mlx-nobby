@@ -71,6 +71,7 @@ def main():
     pipeline = None
     loaded_model = None
     loaded_scheduler = None
+    loaded_vae_mode = None
     scheduler_base_config = None
 
     for line in sys.stdin:
@@ -111,6 +112,7 @@ def main():
                     ) from exc
                 loaded_model = model_key
                 loaded_scheduler = None
+                loaded_vae_mode = None
 
             scheduler_name, scheduler_kwargs = scheduler_settings(
                 params.get("scheduler")
@@ -137,7 +139,9 @@ def main():
             vae_mode = params.get("sdxl_vae_mode") or "optimized"
             if vae_mode not in ("optimized", "disabled"):
                 raise ValueError("Invalid SDXL VAE diagnostic mode")
-            configure_vae_memory_saving(pipeline, enabled=(vae_mode == "optimized"))
+            if loaded_vae_mode != vae_mode:
+                configure_vae_memory_saving(pipeline, enabled=(vae_mode == "optimized"))
+                loaded_vae_mode = vae_mode
 
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 
