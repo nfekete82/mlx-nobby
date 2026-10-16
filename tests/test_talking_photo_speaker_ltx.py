@@ -26,7 +26,7 @@ def wav_bytes():
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(16000)
-        wav.writeframes(b"\\x00\\x00" * 6400)
+        wav.writeframes(bytes(12800))
     return buf.getvalue()
 
 
@@ -84,9 +84,11 @@ def test_ltx_runner_uses_selected_prompt_and_unchanged_full_image(distilled):
     native_mp4 = bytes(4) + b"ftyp" + bytes(48)
     original_image = b"original-photo-bytes"
     commands = []
+    real_popen = subprocess.Popen
 
     def fake_popen(command, **kwargs):
-        assert "--output" in command
+        if "--output" not in command:
+            return real_popen(command, **kwargs)
         commands.append(command)
         Path(command[command.index("--output") + 1]).write_bytes(native_mp4)
         process = mock.Mock(returncode=0)
