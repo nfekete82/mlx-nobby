@@ -37,18 +37,28 @@ def scheduler_settings(value=None):
     return scheduler, dict(SCHEDULER_PRESETS[scheduler])
 
 
-def configure_vae_memory_saving(pipeline):
-    """Enable VAE memory optimizations on AutoencoderKL, not on the pipeline.
+def configure_vae_memory_saving(pipeline, *, enabled=True):
+    """Toggle only VAE tiling/slicing, never CPU-offloading or MPS limits.
 
-    Diffusers does not guarantee that legacy enable_vae_* methods exist on
-    StableDiffusionXLPipeline. Optional optimizations must never stop a safe
-    CPU-offloaded generation merely because an API wrapper is absent.
+    Disabled mode is a diagnostic comparison, not a faster or safer default.
+    Fail instead of silently retaining optimization state if an older wrapper
+    cannot disable an already-enabled VAE optimization.
     """
     vae = getattr(pipeline, "vae", None)
-    for method_name in ("enable_tiling", "enable_slicing"):
-        enable = getattr(vae, method_name, None)
-        if callable(enable):
-            enable()
+    methods = (
+        ("enable_tiling", "enable_slicing")
+        if enabled else ("disable_tiling", "disable_slicing")
+    )
+    for method_name in methods:
+        method = getattr(vae, method_name, None)
+        if callable(method):
+            method()
+        elif not enabled:
+            attribute = ("use_tiling" if "tiling" in method_name else "use_slicing")
+            if getattr(vae, attribute, False):
+                raise RuntimeError(
+                    f"VAE-Diagnosemodus: {method_name} fehlt; sicherer Vergleich nicht möglich"
+                )
 
 
 def main():
@@ -99,7 +109,6 @@ def main():
                         "Accelerate CPU-Offloading auf MPS; "
                         "kein unsicherer Fallback auf pipeline.to('mps')"
                     ) from exc
-                configure_vae_memory_saving(pipeline)
                 loaded_model = model_key
                 loaded_scheduler = None
 
@@ -124,6 +133,11 @@ def main():
                     "scheduler": scheduler_name,
                 }), flush=True)
                 continue
+
+            vae_mode = params.get("sdxl_vae_mode") or "optimized"
+            if vae_mode not in ("optimized", "disabled"):
+                raise ValueError("Invalid SDXL VAE diagnostic mode")
+            configure_vae_memory_saving(pipeline, enabled=(vae_mode == "optimized"))
 
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 

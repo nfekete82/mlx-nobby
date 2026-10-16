@@ -62,6 +62,8 @@ class Generate(BaseModel):
     quality: Literal["fast", "standard", "quality", "ultra"] | None = None
     auto_size: bool = False
     original_prompt: str | None = None
+    # Diagnostic only. Defaults preserve the current safe SDXL VAE pipeline.
+    sdxl_vae_mode: Literal["optimized", "disabled"] | None = None
 
 
 class Edit(BaseModel):
@@ -711,13 +713,17 @@ def _resolve_generation(request):
     if request.width % 16 or request.height % 16:
         raise HTTPException(422, "width and height must be divisible by 16")
     model = _generation_model(request.model, request.prompt)
+    if request.sdxl_vae_mode is not None and model["provider"] != "sdxl":
+        raise HTTPException(422, "Der VAE-Diagnosemodus ist nur für SDXL verfügbar")
     maximum_edge = 1216 if model["model_family"] == "sdxl" else 1024
     if request.width > maximum_edge or request.height > maximum_edge:
         raise HTTPException(
             422,
             f"width and height must not exceed {maximum_edge} for this model",
         )
-    params = request.model_dump(exclude={"original_prompt"})
+    params = request.model_dump(exclude={"original_prompt", "sdxl_vae_mode"})
+    if request.sdxl_vae_mode is not None:
+        params["sdxl_vae_mode"] = request.sdxl_vae_mode
     negative_prompt = str(request.negative_prompt or "").strip()
     if negative_prompt:
         params["negative_prompt"] = negative_prompt
