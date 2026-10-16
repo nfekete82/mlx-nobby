@@ -28,6 +28,7 @@ def test_shared_controls_match_library_picker_and_preserve_native_behavior(ui):
         const select = document.createElement('select');
         select.id = 'uiPickerProbe';
         select.className = 'model-overview-select';
+        select.style.cssText = 'position:fixed;top:48px;left:16px;width:220px;z-index:99999';
         select.setAttribute('aria-label', 'UI picker test');
         for (const [value, name] of [['a', 'First'], ['b', 'Second']]) {
             const option = document.createElement('option');
