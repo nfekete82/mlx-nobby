@@ -17,6 +17,8 @@ component library or network dependency is used.
 
 These values mirror the Media Library / Talking Photo control style. The
 existing special-purpose overlays and layouts keep their original geometry.
+The chat composer quality picker intentionally remains 32px high while adopting
+our shared open-menu appearance.
 
 ## Native dropdowns
 
