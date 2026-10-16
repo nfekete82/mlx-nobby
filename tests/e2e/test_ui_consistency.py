@@ -8,7 +8,7 @@ def test_shared_controls_match_library_picker_and_preserve_native_behavior(ui):
     # Settings and media controls exist on the real chat page, even if their
     # parent settings pane is initially collapsed.
     for selector in ("#showMetrics", "#profilePersonality", "#interfaceLanguage",
-                     "#mediaQuality", "#mediaFormat", "#imageModel", "#videoProfile"):
+                     "#mediaFormat", "#imageModel", "#videoProfile"):
         styles = page.locator(selector).evaluate("""node => ({
             appearance: getComputedStyle(node).appearance,
             bg: getComputedStyle(node).backgroundColor,
@@ -21,6 +21,18 @@ def test_shared_controls_match_library_picker_and_preserve_native_behavior(ui):
             "picker": "rgb(23, 34, 52)",
             "minHeight": "41px",
         }, selector
+
+    # The composer quality picker keeps its intentionally compact geometry.
+    compact = page.locator("#mediaQuality").evaluate("""node => ({
+        minHeight: getComputedStyle(node).minHeight,
+        appearance: getComputedStyle(node).appearance,
+        picker: getComputedStyle(node, '::picker(select)').backgroundColor
+    })""")
+    assert compact == {
+        "minHeight": "32px",
+        "appearance": "base-select",
+        "picker": "rgb(23, 34, 52)",
+    }
 
     # Test a real selectable model module control with the same class used by
     # Model Overview; this does not rely on a mocked model registry.
