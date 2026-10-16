@@ -23,7 +23,7 @@ def test_model_call_does_not_hold_model_lock_while_waiting_for_chat_lease(caller
     errors = []
 
     @contextmanager
-    def lease(*_args):
+    def lease(*_args, **_kwargs):
         caller_at_lease.set()
         with coordinator:
             yield
@@ -87,7 +87,7 @@ def test_production_provider_injects_cancellable_runtime_lease():
     with mock.patch.object(agent_app.runtime_coordinator, 'chat_runtime') as lease:
         provider = agent_app.agent_model_provider()
         provider.runtime_lease(context)
-    lease.assert_called_once_with(context.cancellation)
+    lease.assert_called_once_with(context.cancellation, exclusive_models=True)
 
 
 def test_cancellation_while_queued_releases_lease_without_model_resolution():

@@ -848,7 +848,8 @@ class ModelRuntimeApiTests(unittest.TestCase):
         lease_directory = tempfile.TemporaryDirectory()
         self.addCleanup(lease_directory.cleanup)
         lease_path = Path(lease_directory.name)
-        def lease(cancel_event=None):
+        def lease(cancel_event=None, *, exclusive_models=False):
+            assert exclusive_models is True
             return agent_app.runtime_coordinator.runtime_lease(
                 cancel_event, lock_path=lease_path / "lock",
                 state_dir=lease_path / "state", workload="chat",
