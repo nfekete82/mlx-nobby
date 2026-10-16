@@ -44,7 +44,7 @@ JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9d
 RETIRED_MODEL_IDS = {"lustify-endgame-sdxl"}
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
-BUILTIN_DEFAULTS_REVISION = 8
+BUILTIN_DEFAULTS_REVISION = 9
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -408,8 +408,8 @@ def builtin_models():
         base_model="sdxl",
         quantization="none",
         enabled=False,
-        default_steps=30,
-        default_guidance=5.0,
+        default_steps=35,
+        default_guidance=4.0,
     ).model_dump())
     return models
 
@@ -653,6 +653,17 @@ def load_registry():
                     and model["default_guidance"] == 7.0
                 ):
                     model["default_guidance"] = 5.0
+
+                if (
+                    data.get("builtin_defaults_revision", 0) < 9
+                    and model["id"] == JUGGERNAUT_XL_ID
+                ):
+                    # Only upgrade previous factory values, never override
+                    # deliberately customized sampler steps or guidance.
+                    if model["default_steps"] == 30:
+                        model["default_steps"] = 35
+                    if model["default_guidance"] == 5.0:
+                        model["default_guidance"] = 4.0
 
             data["builtin_defaults_revision"] = BUILTIN_DEFAULTS_REVISION
         # Add newly supported built-in families to an existing registry while

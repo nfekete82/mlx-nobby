@@ -83,7 +83,8 @@ const IMAGE_FORMATS = Object.freeze([
     'portrait',
     'square',
     'landscape_4_3',
-    'portrait_3_4'
+    'portrait_3_4',
+    'portrait_ragnarok'
 ]);
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
@@ -108,6 +109,10 @@ const IMAGE_SIZES_BY_FORMAT = Object.freeze({
     portrait_3_4: Object.freeze({
         width: 432,
         height: 576
+    }),
+    portrait_ragnarok: Object.freeze({
+        width: 832,
+        height: 1216
     })
 });
 
@@ -132,6 +137,10 @@ function mediaFormatLabel(format) {
         portrait_3_4: [
             'ui.format_portrait_3_4',
             'Hochformat 3:4'
+        ],
+        portrait_ragnarok: [
+            'ui.format_portrait_ragnarok',
+            'Ragnarok-Porträt 832 × 1216'
         ]
     };
 
@@ -3024,7 +3033,10 @@ const imageFiles =
                         const allowed =
                             mediaQualityKind === 'video'
                                 ? VIDEO_FORMATS
-                                : IMAGE_FORMATS;
+                                : IMAGE_FORMATS.filter(format =>
+                                    format !== 'portrait_ragnarok' ||
+                                    selectedImageModel === 'juggernaut-xl'
+                                );
 
                         if (!allowed.includes(selectedMediaFormat)) {
                             selectedMediaFormat =
@@ -3244,6 +3256,7 @@ const imageFiles =
                             selectedImageModel = String(
                                 imageModelSelect?.value || 'auto'
                             ).trim() || 'auto';
+                            renderFormatOptions();
                             window.MLXImageCountPicker
                                 ?.prewarm?.();
                         };

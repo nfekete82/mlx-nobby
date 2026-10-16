@@ -6,20 +6,20 @@ from quality_profiles import resolve_image_profile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_juggernaut_quality_uses_native_1216_with_30_steps():
+def test_juggernaut_quality_uses_native_1216_with_40_steps():
     model = {
         "id": "juggernaut-xl",
         "model_family": "sdxl",
         "base_model": "sdxl",
-        "default_steps": 30,
-        "default_guidance": 5.0,
+        "default_steps": 35,
+        "default_guidance": 4.0,
     }
 
     profile = resolve_image_profile(model, "quality")
 
     assert profile == {
-        "steps": 30,
-        "guidance": 5.0,
+        "steps": 40,
+        "guidance": 4.0,
         "long_edge": 1216,
     }
 
@@ -41,11 +41,11 @@ def test_juggernaut_ultra_uses_native_1536_with_model_quality_steps():
         "id": "juggernaut-xl",
         "model_family": "sdxl",
         "base_model": "sdxl",
-        "default_steps": 30,
-        "default_guidance": 5.0,
+        "default_steps": 35,
+        "default_guidance": 4.0,
     }
     profile = resolve_image_profile(model, "ultra")
-    assert profile == {"steps": 30, "guidance": 5.0, "long_edge": 1536}
+    assert profile == {"steps": 40, "guidance": 4.0, "long_edge": 1536}
     assert resolve_image_profile(model, "quality")["long_edge"] == 1216
 
 

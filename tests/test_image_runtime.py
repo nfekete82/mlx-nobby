@@ -254,7 +254,7 @@ class ImageRuntimeTests(unittest.TestCase):
         )
 
     def test_juggernaut_registry_entry_is_local_and_opt_in(self):
-        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 8)
+        self.assertEqual(registry.BUILTIN_DEFAULTS_REVISION, 9)
         model = registry.get_model(
             registry.JUGGERNAUT_XL_ID,
             require_enabled=False,
@@ -264,7 +264,8 @@ class ImageRuntimeTests(unittest.TestCase):
         self.assertEqual(model["model_family"], "sdxl")
         self.assertEqual(model["local_path"], str(registry.JUGGERNAUT_XL_DIRECTORY))
         self.assertFalse(model["enabled"])
-        self.assertEqual(model["default_guidance"], 5.0)
+        self.assertEqual(model["default_steps"], 35)
+        self.assertEqual(model["default_guidance"], 4.0)
         self.assertIn("photorealistic", model["capabilities"])
 
     def test_existing_registry_repairs_stale_qwen_builtin_before_validation(self):
@@ -440,7 +441,7 @@ class ImageRuntimeTests(unittest.TestCase):
             for model in migrated["models"]
             if model["id"] == registry.JUGGERNAUT_XL_ID
         )
-        self.assertEqual(migrated_juggernaut["default_guidance"], 5.0)
+        self.assertEqual(migrated_juggernaut["default_guidance"], 4.0)
 
         migrated_juggernaut["default_guidance"] = 6.0
         migrated["builtin_defaults_revision"] = 5
@@ -5479,15 +5480,16 @@ def test_image_quality_profiles_and_legacy_default():
     juggernaut = {
         "id": "juggernaut-xl", "provider": "sdxl",
         "model_family": "sdxl", "base_model": "sdxl",
-        "default_steps": 30, "default_guidance": 5.0,
+        "default_steps": 35, "default_guidance": 4.0,
     }
     assert resolve_image_profile(juggernaut, "fast") == {
-        "steps": 20, "guidance": 4.5, "long_edge": 768,
+        "steps": 20, "guidance": 4.0, "long_edge": 768,
     }
-    assert service._resolved_steps(juggernaut, None, "standard") == 30
-    assert service._resolved_steps(juggernaut, None, "quality") == 30
-    assert resolve_image_profile(juggernaut, "standard")["guidance"] == 5.0
-    assert resolve_image_profile(juggernaut, "quality")["guidance"] == 5.0
+    assert service._resolved_steps(juggernaut, None, "standard") == 35
+    assert service._resolved_steps(juggernaut, None, "quality") == 40
+    assert resolve_image_profile(juggernaut, "standard")["guidance"] == 4.0
+    assert resolve_image_profile(juggernaut, "quality")["guidance"] == 4.0
+    assert resolve_image_profile(juggernaut, "standard")["long_edge"] == 1216
     assert resolve_image_profile(juggernaut, "quality")["long_edge"] == 1216
 
     generic_sdxl = juggernaut | {"id": "custom-sdxl"}
