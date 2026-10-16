@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.14.0
+
 - Media Library 2.0: lazy, cached on-device video thumbnail JPEGs; bounded ffprobe duration/dimensions; engine filters for Talking Photo; one-click reuse of existing library PNGs in Talking Photo. Canonical paths only, no original-media copies, explicit delete purges derived thumbnails. Desktop/mobile browser and security regressions included.
 
 
