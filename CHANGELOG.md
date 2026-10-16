@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v1.17.0
+
+- Media Library: client-side time-range filtering (today, last 7/30 days) and file size/date sorting, combinable with existing engine, media type and collection filters. No new ML model or indexing process.
+
 ## v1.16.0
 
 - Media Studio: animate any existing Library image into a video using the existing chat image-to-video pipeline or open it directly in Talking Photo. No new model or background inference service is introduced.
