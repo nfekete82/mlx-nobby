@@ -7,6 +7,13 @@ const runtime=fs.readFileSync('frontend/assets/chat/runtime.js','utf8');
 const appearance=fs.readFileSync('frontend/assets/chat/appearance.js','utf8');
 const css=fs.readFileSync('frontend/assets/chat/media-library.css','utf8');
 const chatCss=fs.readFileSync('frontend/assets/chat.css','utf8');
+test('Dateien & Jobs moves into System & Tools without replacing its button handler',()=>{
+ const utilities=fs.readFileSync('frontend/assets/chat/sidebar-rail-utilities.js','utf8');
+ assert.match(utilities,/\['sidebarJobsButton', 'mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton'\]/);
+ assert.match(utilities,/items\.appendChild\(button\)/);
+ assert.equal((html.match(/id="sidebarJobsButton"/g)||[]).length,1);
+});
+
 test('system info is in anchored sidebar not topbar',()=>{
  const bottom=html.indexOf('<div class="sidebar-bottom">');
  const main=html.indexOf('<main class="main">');
