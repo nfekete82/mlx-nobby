@@ -973,7 +973,7 @@ async function startRegionImageEdit({image_id, artifact_id, mask_path, prompt}) 
     if (MLXChatRuntime.isSwitching() || getGenerating()) {
         throw new Error(gt('image_job_busy', 'Another operation is running.'));
     }
-    if (!/^\\d{10}-[a-f0-9]{12}$/i.test(String(image_id || '')) ||
+    if (!/^\d{10}-[a-f0-9]{12}$/i.test(String(image_id || '')) ||
         artifact_id !== 'image-' + image_id ||
         typeof mask_path !== 'string' || !mask_path ||
         typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
