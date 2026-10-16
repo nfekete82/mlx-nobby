@@ -1212,13 +1212,14 @@ def upscale(request: Upscale):
 def generate(request: Generate):
     with exclusive():
         try:
-            model = _generation_model(request.model, request.prompt)
-            sdxl_job = model.get("provider") == "sdxl"
+            # Resolve once; do not reroute between the memory handoff and the job.
+            resolved = _resolve_generation(request)
+            sdxl_job = resolved["model"].get("provider") == "sdxl"
             with runtime_coordinator.image_runtime(
                 None, force_chat_unload=sdxl_job
             ) as preflight:
                 try:
-                    return _generate_result(request)
+                    return _generate_result(request, resolved=resolved)
                 finally:
                     if sdxl_job:
                         try:
@@ -1351,19 +1352,11 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
         # Resolve image provider before allocating heavy runtime resources.
         # SDXL always gets an exclusive chat handoff, even if the current
         # estimated free percentage still looks healthy.
-        selected = (resolved or {}).get("model") if isinstance(resolved, dict) else None
-        if operation == "generate" and selected is None:
-            try:
-                selected = _generation_model(request.model, request.prompt)
-            except Exception:
-                selected = None  # The normal execution path reports this error.
-        sdxl_job = bool(
-            operation == "generate"
-            and (
-                (selected and selected.get("provider") == "sdxl")
-                or request.model in {"juggernaut-xl", "lustify-endgame-sdxl"}
-            )
-        )
+        if operation == "generate" and resolved is None:
+            resolved = _resolve_generation(request)
+        selected = resolved.get("model") if isinstance(resolved, dict) else None
+        sdxl_job = bool(operation == "generate"
+                        and selected and selected.get("provider") == "sdxl")
         with runtime_coordinator.image_runtime(
             cancel_event, force_chat_unload=sdxl_job
         ) as preflight:

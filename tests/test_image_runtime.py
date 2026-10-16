@@ -2256,6 +2256,8 @@ class ImageRuntimeTests(unittest.TestCase):
             "Popen",
             return_value=process,
         ) as popen, patch.object(
+            providers, "ImageProcessMemoryGuard", return_value=Mock()
+        ), patch.object(
             providers.time,
             "monotonic",
             side_effect=[0, providers.GENERATION_TIMEOUT + 1],
