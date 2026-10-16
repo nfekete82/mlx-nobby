@@ -43,6 +43,8 @@ def test_library_studio_engine_filter_and_reuse_photo(ui):
 
     page.route("**/api/library/assets?limit=1000",
                lambda route: respond(route, {"assets": assets, "total": len(assets)}))
+    page.route("**/api/library/organize",
+               lambda route: respond(route, {"version": 1, "favorites": [], "collections": []}))
     page.route(f"**/api/mlx/images/{IMAGE_ID}",
                lambda route: route.fulfill(status=200, content_type="image/png", body=image))
     page.route(f"**/api/library/assets/talking_photo/{PHOTO_ID}/thumbnail",
