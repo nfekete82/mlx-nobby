@@ -27,6 +27,8 @@ from image_providers import (
     availability,
     run_provider,
     sdxl_worker_running,
+    sdxl_loaded_checkpoint,
+    sdxl_files,
     shutdown_sdxl_worker,
     terminate_process_tree,
     realesrgan_command,
@@ -324,7 +326,18 @@ def health():
     loaded = bool(_running) or sdxl_loaded or bool(mlxserve_loaded)
     running_model = _running
     if running_model is None and sdxl_loaded:
-        running_model = registry.JUGGERNAUT_XL_ID
+        resident_checkpoint = sdxl_loaded_checkpoint()
+        if resident_checkpoint is not None:
+            for candidate in data["models"]:
+                if candidate.get("provider") != "sdxl":
+                    continue
+                try:
+                    configured_checkpoint, _ = sdxl_files(candidate)
+                except (RuntimeError, ValueError):
+                    continue
+                if configured_checkpoint.resolve() == Path(resident_checkpoint).resolve():
+                    running_model = candidate["id"]
+                    break
     if running_model is None and mlxserve_loaded:
         running_model = mlxserve_loaded[0]["id"]
 
