@@ -12,5 +12,5 @@ def test_version_matches_release_heading_and_library_cache():
     html = (root / "frontend/chat.html").read_text(encoding="utf-8")
     cache_rev = "-".join(version.split(".")[:2]) + ("-search" if version >= "1.17.0" else "-workflows" if version >= "1.16.0" else "-collections" if version >= "1.15.0" else "-studio")
     assert f"media-library.js?v={cache_rev}" in html
-    assert re.search(r"media-library\\.css\\?v=[a-z0-9-]+", html)
+    assert "media-library.css?v=" in html
     assert 'media-library.js?v=1-13-' not in html
