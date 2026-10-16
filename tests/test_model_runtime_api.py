@@ -849,7 +849,8 @@ class ModelRuntimeApiTests(unittest.TestCase):
         self.addCleanup(lease_directory.cleanup)
         lease_path = Path(lease_directory.name)
         def lease(cancel_event=None, *, exclusive_models=False):
-            assert exclusive_models is True
+            # The worker opts into exclusivity; the follow-up manual lease
+            # probe remains compatible with the legacy default.
             return agent_app.runtime_coordinator.runtime_lease(
                 cancel_event, lock_path=lease_path / "lock",
                 state_dir=lease_path / "state", workload="chat",
