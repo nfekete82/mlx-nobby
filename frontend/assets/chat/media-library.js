@@ -6,7 +6,7 @@
   const close = document.getElementById("nobbyLibraryClose");
   if (!panel || !grid || !toggle) return;
   const state = { kind: "all", engine: "all", query: "", collection: "all",
-    assets: [], organization: {favorites: [], collections: []}, selected: new Set(),
+    assets: [], organization: {favorites: [], collections: []}, workflows: {links: {}}, selected: new Set(),
     loaded: false, generation: 0 };
   const assetKey = asset => asset.kind + ":" + asset.id;
   const collectionFilter = document.getElementById("nobbyLibraryCollectionFilter");
@@ -85,9 +85,59 @@
       if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error(t("Foto ist zu groß.", "Photo is too large."));
       const file = new File([blob], "nobby-library-" + asset.id + ".png", {type: "image/png"});
       setVisible(false);
-      await window.MLXTalkingPhoto.openWithImage(file);
+      await window.MLXTalkingPhoto.openWithImage(file, {sourceAsset: {kind: "image", id: asset.id}});
     } catch (error) {
       window.alert(t("Bild konnte nicht geladen werden: ", "Could not load image: ") + error.message);
+    }
+  }
+  // Use the existing chat image-to-video pipeline and its quality picker;
+  // never start a parallel renderer or silently submit a paid/heavy job.
+  async function createVideoFromImage(asset) {
+    if (asset.kind !== "image" || !window.MLXChatAttachments?.addFiles) {
+      window.alert(t("Bildanhänge sind nicht bereit.", "Image attachments are not ready."));
+      return;
+    }
+    try {
+      const response = await fetch(asset.url, {cache: "no-store"});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 10 * 1024 * 1024)
+        throw new Error(t("Bild ist zu groß.", "Image is too large."));
+      const file = new File([blob], "nobby-video-source-" + asset.id + ".png", {type: "image/png"});
+      await window.MLXChatAttachments.addFiles([file]);
+      const files = window.MLXChatAttachments.getAttachments?.() || [];
+      const attachment = files.find(item => item.file === file && item.kind === "image");
+      if (!attachment) throw new Error(t("Bild konnte nicht angehängt werden.", "Could not attach the source image."));
+      attachment.library_source = {kind: "image", id: asset.id};
+      const input = document.getElementById("input");
+      if (!input) throw new Error(t("Chat-Eingabe fehlt.", "Chat composer unavailable."));
+      const request = t("Animier dieses Bild als Video: ", "Animate this image into a video: ");
+      input.value = input.value.trim()
+        ? input.value.trim() + "\n" + request : request;
+      input.dispatchEvent(new Event("input", {bubbles: true}));
+      setVisible(false);
+      input.focus();
+    } catch (error) {
+      window.alert(t("Video-Vorbereitung fehlgeschlagen: ", "Video preparation failed: ") + error.message);
+    }
+  }
+  function mediaLineage(asset, container) {
+    const key = assetKey(asset);
+    const links = state.workflows?.links || {};
+    const from = links[key];
+    if (from) {
+      const source = state.assets.find(item => assetKey(item) === from);
+      if (source) {
+        const go = elt("button", "nobby-library-parent-link",
+          t("↖ Ausgangsbild anzeigen", "↖ Show source image"));
+        go.type = "button";
+        go.addEventListener("click", () => showPreview(source));
+        container.appendChild(go);
+      }
+    } else if (asset.kind === "image") {
+      const count = Object.values(links).filter(parent => parent === key).length;
+      if (count) container.appendChild(elt("span", "nobby-library-lineage-count",
+        t(count + " abgeleitete Videos", count + " derived videos")));
     }
   }
   function thumbnailUrl(asset) {
@@ -165,7 +215,12 @@
       reuse.type = "button";
       reuse.addEventListener("click", () => { closePreview(); void createFromImage(asset); });
       previewBody.appendChild(reuse);
+      const animate = elt("button", "nobby-library-action nobby-library-preview-use", t("Als Video animieren", "Animate as video"));
+      animate.type = "button";
+      animate.addEventListener("click", () => { closePreview(); void createVideoFromImage(asset); });
+      previewBody.appendChild(animate);
     }
+    mediaLineage(asset, previewBody);
     preview.hidden = false;
     previewClose.focus();
   }
@@ -284,6 +339,7 @@
       text.appendChild(details);
       observeMetadata(asset, details);
     }
+    mediaLineage(asset, text);
     const buttons = elt("div", "nobby-library-card-actions");
     buttons.append(link(asset.url, t("Download", "Download"), true));
     if (asset.kind === "image") {
@@ -291,6 +347,10 @@
       use.type = "button";
       use.addEventListener("click", () => void createFromImage(asset));
       buttons.append(use);
+      const animate = elt("button", "nobby-library-action", t("Als Video", "As video"));
+      animate.type = "button";
+      animate.addEventListener("click", () => void createVideoFromImage(asset));
+      buttons.append(animate);
     }
     const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
     remove.type = "button";
@@ -389,15 +449,18 @@
     const generation = ++state.generation;
     grid.replaceChildren(elt("p", "nobby-library-empty", t("Bibliothek wird geladen …", "Loading library …")));
     try {
-      const [response, organized] = await Promise.all([
+      const [response, organized, lineage] = await Promise.all([
         fetch("/api/library/assets?limit=1000", {cache: "no-store"}),
-        fetch("/api/library/organize", {cache: "no-store"})
+        fetch("/api/library/organize", {cache: "no-store"}),
+        fetch("/api/library/workflows", {cache: "no-store"})
       ]);
-      if (!response.ok || !organized.ok) throw new Error("HTTP " + (!response.ok ? response.status : organized.status));
-      const [data, organizedData] = await Promise.all([response.json(), organized.json()]);
+      if (!response.ok || !organized.ok || !lineage.ok)
+        throw new Error("HTTP " + (!response.ok ? response.status : !organized.ok ? organized.status : lineage.status));
+      const [data, organizedData, lineageData] = await Promise.all([response.json(), organized.json(), lineage.json()]);
       if (generation !== state.generation || panel.hidden) return;
       state.assets = Array.isArray(data.assets) ? data.assets : [];
       state.organization = organizedData;
+      state.workflows = lineageData && typeof lineageData.links === "object" ? lineageData : {links: {}};
       const keys = new Set(state.assets.map(assetKey));
       for (const key of state.selected) if (!keys.has(key)) state.selected.delete(key);
       renderCollections();
