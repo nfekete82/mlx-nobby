@@ -467,6 +467,11 @@ def _canonicalize_known_builtin(model, builtin_by_id):
         if key in model:
             migrated[key] = copy.deepcopy(model[key])
 
+    # A custom local SDXL directory is user configuration, not a provider
+    # structure change; retain it for both Juggernaut and Lustify.
+    if canonical.get("provider") == "sdxl" and model.get("local_path"):
+        migrated["local_path"] = copy.deepcopy(model["local_path"])
+
     return migrated
 
 
