@@ -1,5 +1,7 @@
 """Real provider is never launched: diagnostic schema, VAE switch, and safety."""
+import importlib.util
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,7 +10,12 @@ from pydantic import ValidationError
 
 import image_service as service
 import sdxl_worker
-from scripts import diagnose_juggernaut_vae as diagnostic
+spec = importlib.util.spec_from_file_location(
+    "diagnose_juggernaut_vae",
+    Path(__file__).resolve().parents[1] / "scripts/diagnose-juggernaut-vae.py",
+)
+diagnostic = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(diagnostic)
 
 
 def test_schema_limits_diagnostic_to_known_modes():
