@@ -59,7 +59,7 @@ def test_existing_registry_adds_lustify_without_touching_ragnarok(tmp_path, monk
 
 
 def test_lustify_uses_same_offline_sdxl_file_resolution(tmp_path, monkeypatch):
-    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path,))
+    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path, *registry.MODEL_ROOTS))
     model_dir = tmp_path / "LustifyEndgame"
     model_dir.mkdir()
     model = registry.ImageModel(**(
@@ -147,7 +147,7 @@ def test_benchmark_dry_run_has_identical_settings_and_distinct_names():
 def test_custom_lustify_directory_survives_registry_reload(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "REGISTRY_FILE", tmp_path / "image-models.json")
     monkeypatch.setattr(registry, "INVALID_REGISTRY_FILE", tmp_path / "image-models.invalid.json")
-    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path,))
+    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path, *registry.MODEL_ROOTS))
     registry.load_registry()
     custom_dir = tmp_path / "custom-lustify-checkpoint"
     registry.update_model(registry.LUSTIFY_ENDGAME_ID, {"local_path": str(custom_dir)})
@@ -157,7 +157,7 @@ def test_custom_lustify_directory_survives_registry_reload(tmp_path, monkeypatch
 def test_health_names_lustify_if_it_is_the_resident_sdxl_checkpoint(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "REGISTRY_FILE", tmp_path / "image-models.json")
     monkeypatch.setattr(registry, "INVALID_REGISTRY_FILE", tmp_path / "image-models.invalid.json")
-    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path,))
+    monkeypatch.setattr(registry, "MODEL_ROOTS", (tmp_path, *registry.MODEL_ROOTS))
     checkpoint_dir = tmp_path / "LustifyEndgame"
     checkpoint_dir.mkdir()
     checkpoint = checkpoint_dir / "standard-endgame.safetensors"
