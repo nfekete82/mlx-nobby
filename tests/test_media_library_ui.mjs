@@ -94,8 +94,19 @@ assert.match(html, /<details class="nobby-library-more">[\s\S]*?<button id="nobb
 assert.ok(html.indexOf('id="nobbyLibrarySearch"') < html.indexOf('id="nobbyLibraryDateFilter"'));
 assert.ok(html.indexOf('id="nobbyLibrarySort"') < html.indexOf('id="nobbyLibrarySelectVisible"'));
 assert.ok(html.indexOf('id="nobbyLibrarySelectVisible"') < html.indexOf('id="nobbyLibraryDeleteAll"'));
-assert.match(html, /media-library\.css\?v=1-17-toolbar-polish/);
+assert.match(html, /media-library\.css\?v=1-17-dropdown-polish/);
 assert.match(css, /\.nobby-library-secondary-row\{/);
 assert.match(css, /@media\(max-width:560px\)/);
 assert.match(css, /\.nobby-library-more-menu \[hidden\]\{display:none!important\}/);
 console.log("Library toolbar grouping, responsive filters, and protected actions contract passed.");
+
+
+assert.match(css, /@supports \(appearance:base-select\) and selector\(::picker\(select\)\)/);
+assert.match(css, /select::picker\(select\)/);
+assert.match(css, /width:anchor-size\(width\)/);
+assert.match(css, /select option:checked/);
+assert.match(css, /color-scheme:dark/);
+for (const id of ["nobbyLibraryCollectionFilter","nobbyLibraryEngine","nobbyLibraryDateFilter","nobbyLibrarySort"]) {
+  assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1);
+}
+console.log("Library select popups share a dark browser-native dropdown style.");
