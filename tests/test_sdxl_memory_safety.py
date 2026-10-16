@@ -1,5 +1,4 @@
 """Unified-memory regression tests for SDXL and image model guards."""
-import os
 import tempfile
 import threading
 from pathlib import Path
@@ -54,9 +53,9 @@ def test_worker_mps_watermarks_override_unsafe_inherited_environment(tmp_path):
     env = spawn.call_args.kwargs["env"]
     assert float(env["PYTORCH_MPS_HIGH_WATERMARK_RATIO"]) <= 0.55
     assert 0 < float(env["PYTORCH_MPS_LOW_WATERMARK_RATIO"]) < float(env["PYTORCH_MPS_HIGH_WATERMARK_RATIO"])
-    # No real worker was launched.
-    manager._process = None
-    manager.close()
+    # No real worker was launched; release the temporary diagnostics.
+    with mock.patch.object(providers, "terminate_process_tree"):
+        manager.close()
 
 
 def test_image_runtime_can_force_chat_unload_when_initial_pressure_is_normal():
@@ -86,3 +85,27 @@ def test_sdxl_speculative_prewarm_is_disabled_by_default(monkeypatch):
     assert result["started"] is False
     assert result["warm"] is False
     assert result["reason"] == "sdxl-prewarm-disabled-for-memory-safety"
+
+
+def test_process_guard_detects_system_pressure_not_only_process_rss():
+    low = {**SAFE, "free_percent": 19.0}
+    process = mock.Mock(pid=12345)
+    with mock.patch.object(providers.sys, "platform", "darwin"), \
+         mock.patch.object(runtime, "memory_budget_snapshot", side_effect=[SAFE, low]), \
+         mock.patch.object(providers.subprocess, "run", return_value=mock.Mock(stdout="5000")):
+        guard = providers.ImageProcessMemoryGuard()
+        guard._last_system_probe = 0.0
+        with pytest.raises(RuntimeError, match="RAM-Schutz"):
+            guard.check(process)
+
+
+def test_process_guard_detects_swap_spike_even_with_high_free_ram():
+    swap_growth = {**SAFE, "swap_used_gb": SAFE["swap_used_gb"] + 0.75}
+    process = mock.Mock(pid=12345)
+    with mock.patch.object(providers.sys, "platform", "darwin"), \
+         mock.patch.object(runtime, "memory_budget_snapshot", side_effect=[SAFE, swap_growth]), \
+         mock.patch.object(providers.subprocess, "run", return_value=mock.Mock(stdout="5000")):
+        guard = providers.ImageProcessMemoryGuard()
+        guard._last_system_probe = 0.0
+        with pytest.raises(RuntimeError, match="Swap"):
+            guard.check(process)
