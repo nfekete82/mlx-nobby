@@ -43,14 +43,24 @@
   const previewClose = elt("button", "nobby-library-preview-close", "×");
   previewClose.type = "button";
   previewClose.setAttribute("aria-label", t("Vorschau schließen", "Close preview"));
+  const previewFull = elt("button", "nobby-library-preview-fullscreen", t("Vollbild", "Fullscreen"));
+  previewFull.type = "button";
+  previewFull.setAttribute("aria-label", t("Vollbild umschalten", "Toggle fullscreen"));
+  previewFull.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement === shell) await document.exitFullscreen();
+      else if (shell.requestFullscreen) await shell.requestFullscreen();
+    } catch (_error) { /* Fullscreen permission can be denied. */ }
+  });
   const previewBody = elt("div", "nobby-library-preview-body");
-  shell.append(previewClose, previewBody);
+  shell.append(previewClose, previewFull, previewBody);
   preview.append(backdrop, shell);
   document.body.appendChild(preview);
   let previousFocus = null;
   function closePreview() {
     if (preview.hidden) return;
     preview.hidden = true;
+    if (document.fullscreenElement === shell) document.exitFullscreen?.().catch(() => {});
     previewBody.querySelector("video")?.pause();
     previewBody.replaceChildren();
     if (previousFocus?.isConnected) previousFocus.focus();
@@ -160,7 +170,7 @@
       event.preventDefault();
       closePreview();
     } else if (event.key === "Tab") {
-      const focusable = [previewClose, ...previewBody.querySelectorAll("button, a[href]")];
+      const focusable = [previewClose, previewFull, ...previewBody.querySelectorAll("button, a[href]")];
       if (event.shiftKey && document.activeElement === focusable[0]) {
         event.preventDefault();
         focusable[focusable.length - 1].focus();
