@@ -284,7 +284,6 @@ def test_talking_photo_responsive_preview_and_finished_video_layout(ui):
     assert video["x"] >= frame["x"] - 2
     assert video["x"] + video["width"] <= frame["x"] + frame["width"] + 2
 
-
 def test_talking_photo_selects_match_library_dark_dropdowns(ui):
     """Engine, voice and language share the opened Library picker theme."""
     page, _agent, _allowed = ui

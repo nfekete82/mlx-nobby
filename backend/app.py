@@ -321,6 +321,22 @@ def library_assets(kind: str = 'all', limit: int = 400):
     )
 
 
+@app.get('/api/library/search')
+def library_search(q: str = '', kind: str = 'all', limit: int = 100, offset: int = 0):
+    query = urllib.parse.urlencode({
+        'q': q, 'kind': kind, 'limit': max(1, min(500, limit)),
+        'offset': max(0, offset),
+    })
+    return agent_json_request('GET', '/api/library/search?' + query, timeout=30)
+
+
+@app.get('/api/library/assets/{kind}/{asset_id}/details')
+def library_asset_details(kind: str, asset_id: str):
+    path = '/api/library/assets/' + urllib.parse.quote(kind, safe='') + '/' + \
+        urllib.parse.quote(asset_id, safe='') + '/details'
+    return agent_json_request('GET', path, timeout=30)
+
+
 @app.get('/api/library/assets/{kind}/{asset_id}/metadata')
 def library_asset_metadata(kind: str, asset_id: str):
     return agent_json_request(
