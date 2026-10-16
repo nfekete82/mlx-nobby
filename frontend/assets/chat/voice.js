@@ -170,19 +170,9 @@
                 border-radius: 10px;
                 background-color: color-mix(in srgb, var(--panel-bg, #151515) 92%, white 8%);
                 color: inherit;
-                appearance: none;
-                -webkit-appearance: none;
-                outline: none;
+                color-scheme: dark;
                 cursor: pointer;
                 transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
-                background-image:
-                    linear-gradient(45deg, transparent 50%, currentColor 50%),
-                    linear-gradient(135deg, currentColor 50%, transparent 50%);
-                background-position:
-                    calc(100% - 15px) 50%,
-                    calc(100% - 10px) 50%;
-                background-size: 5px 5px, 5px 5px;
-                background-repeat: no-repeat;
             }
             .mlx-voice-select {
                 width: 100%;
