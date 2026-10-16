@@ -517,7 +517,13 @@
     mediaObserver?.disconnect();
     const filtered = visibleAssets();
     const count = document.getElementById("nobbyLibraryCount");
-    if (count) count.textContent = t(filtered.length + " Medien", filtered.length + " items");
+    if (count) {
+      const more = state.remoteAssets && state.remoteTotal > state.remoteAssets.length;
+      count.textContent = more
+        ? t(filtered.length + " von " + state.remoteTotal + " Treffern",
+            filtered.length + " of " + state.remoteTotal + " results")
+        : t(filtered.length + " Medien", filtered.length + " items");
+    }
     const fragment = document.createDocumentFragment();
     if (!filtered.length) fragment.appendChild(elt("p", "nobby-library-empty",
       t("Keine gespeicherten Medien gefunden.", "No stored media found.")));
