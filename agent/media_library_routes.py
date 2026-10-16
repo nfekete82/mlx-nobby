@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-from agent import media_lifecycle, media_library_previews, media_library_organize
+from agent import media_lifecycle, media_library_previews, media_library_organize, media_library_workflows
 
 KINDS = ("image", "video", "talking_photo")
 SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
@@ -95,6 +95,22 @@ def install_routes(app: FastAPI):
         except (ValueError, TypeError) as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    @app.get("/api/library/workflows")
+    def library_workflows():
+        return media_library_workflows.snapshot()
+
+    @app.post("/api/library/workflows/links")
+    def library_link_workflow(payload: dict):
+        try:
+            return media_library_workflows.link(
+                payload.get("source_kind"), payload.get("source_id"),
+                payload.get("output_kind"), payload.get("output_id"),
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
     @app.get("/api/library/assets/{kind}/{asset_id}/metadata")
     def library_metadata(kind: str, asset_id: str):
         try:
@@ -140,6 +156,7 @@ def install_routes(app: FastAPI):
                 if result["deleted"]:
                     media_library_previews.purge_cached(asset["kind"], asset["id"])
                     media_library_organize.forget(asset["kind"], asset["id"])
+                    media_library_workflows.forget(asset["kind"], asset["id"])
             except (ValueError, OSError):
                 errors += 1
         return {"deleted": deleted, "errors": errors, "selected": len(candidates)}
@@ -153,4 +170,5 @@ def install_routes(app: FastAPI):
         if result["deleted"]:
             media_library_previews.purge_cached(kind, asset_id)
             media_library_organize.forget(kind, asset_id)
+            media_library_workflows.forget(kind, asset_id)
         return {"deleted": result["deleted"], "kind": kind, "id": asset_id}
