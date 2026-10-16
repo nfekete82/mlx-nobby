@@ -45,6 +45,8 @@ def test_library_studio_engine_filter_and_reuse_photo(ui):
                lambda route: respond(route, {"assets": assets, "total": len(assets)}))
     page.route("**/api/library/organize",
                lambda route: respond(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: respond(route, {"version": 1, "links": {}}))
     page.route(f"**/api/mlx/images/{IMAGE_ID}",
                lambda route: route.fulfill(status=200, content_type="image/png", body=image))
     page.route(f"**/api/library/assets/talking_photo/{PHOTO_ID}/thumbnail",
@@ -120,6 +122,8 @@ def test_library_collections_favorites_multiselect_and_jobs_in_system_group(ui):
                lambda route: send(route, {"assets": images, "total": 2}))
     page.route("**/api/library/organize",
                lambda route: send(route, record))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
     page.route("**/api/library/organize/collections",
                post_collection)
     page.route("**/api/library/organize/batch", post_batch)
