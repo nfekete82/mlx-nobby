@@ -1392,8 +1392,17 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
         selected = resolved.get("model") if isinstance(resolved, dict) else None
         sdxl_job = bool(operation == "generate"
                         and selected and selected.get("provider") == "sdxl")
+        # The 48-GB unified-memory image editor can load a large Qwen Edit
+        # model even for 512x512 crops.  A resident chat model competes for
+        # the same RAM and can cause abrupt swap spikes after image admission.
+        # Release chat exclusively for opt-in masked region edits, just as
+        # for SDXL.  The existing image_runtime safety checks still govern
+        # admission and conditional restoration of chat after completion.
+        region_qwen_job = bool(
+            operation == "edit" and getattr(request, "region_edit", False)
+        )
         with runtime_coordinator.image_runtime(
-            cancel_event, force_chat_unload=sdxl_job
+            cancel_event, force_chat_unload=(sdxl_job or region_qwen_job)
         ) as preflight:
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
