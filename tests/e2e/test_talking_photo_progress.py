@@ -164,6 +164,8 @@ def test_completed_talking_photo_stays_in_video_library_after_closing(ui):
                }))
     page.route("**/api/library/organize",
                lambda route: json_response(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: json_response(route, {"version": 1, "links": {}}))
     page.route("**/api/library/assets?limit=1000",
                lambda route: json_response(route, {
                    "assets": [{
