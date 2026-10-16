@@ -223,6 +223,17 @@
       animate.type = "button";
       animate.addEventListener("click", () => { closePreview(); void createVideoFromImage(asset); });
       previewBody.appendChild(animate);
+      const regionEdit = elt("button", "nobby-library-action nobby-library-preview-use",
+        t("Bereich bearbeiten", "Edit region"));
+      regionEdit.type = "button";
+      regionEdit.addEventListener("click", () => {
+        closePreview();
+        setVisible(false);
+        window.MLXRegionEditor?.open?.({image_id: asset.id}).catch(error =>
+          window.alert(String(error?.message || error))
+        );
+      });
+      previewBody.appendChild(regionEdit);
     }
     mediaLineage(asset, previewBody);
 
@@ -403,6 +414,15 @@
       animate.type = "button";
       animate.addEventListener("click", () => void createVideoFromImage(asset));
       buttons.append(animate);
+      const regionEdit = elt("button", "nobby-library-action", t("Bereich bearbeiten", "Edit region"));
+      regionEdit.type = "button";
+      regionEdit.addEventListener("click", () => {
+        setVisible(false);
+        window.MLXRegionEditor?.open?.({image_id: asset.id}).catch(error =>
+          window.alert(String(error?.message || error))
+        );
+      });
+      buttons.append(regionEdit);
     }
     const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
     remove.type = "button";

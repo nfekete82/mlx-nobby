@@ -1917,6 +1917,16 @@ function renderImageArtifactCard(message) {
     download.className = 'message-action-btn'; download.textContent = 'Download';
     download.href = '/api/mlx/images/' + encodeURIComponent(artifact.image_id) + '?download=1';
     controls.appendChild(download);
+    const regionEdit = document.createElement('button');
+    regionEdit.type = 'button';
+    regionEdit.className = 'message-action-btn';
+    regionEdit.textContent = rt('region_editor_button', 'Bereich bearbeiten');
+    regionEdit.addEventListener('click', () => {
+        window.MLXRegionEditor?.open?.(artifact).catch(error =>
+            window.alert(String(error?.message || error))
+        );
+    });
+    controls.appendChild(regionEdit);
     // Preview IDs are issued by the local image service; never form URLs
     // from absolute source paths or from untrusted chat text.
     if (message.tool_result?.tool === 'image_edit' && artifact.source_image_id) {

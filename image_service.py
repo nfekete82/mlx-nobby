@@ -896,10 +896,15 @@ def _edit_result_inner(
         with Image.open(mask) as image, Image.open(source) as original:
             if image.size != original.size:
                 raise HTTPException(422, 'Die Maske muss zur Größe des ersten Referenzbilds passen')
+            mask_pixels = image.convert('L')
+            # A completely black mask means no area was selected; do not
+            # consume RAM/model time or silently edit the entire image.
+            if mask_pixels.getbbox() is None:
+                raise HTTPException(422, 'Maske enthält keinen markierten Bereich')
             working_mask = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
             temporary_sources.append(working_mask)
             with Image.open(edit_source) as working:
-                image.convert('L').resize(working.size, Image.Resampling.NEAREST).save(working_mask)
+                mask_pixels.resize(working.size, Image.Resampling.NEAREST).save(working_mask)
             working_mask.chmod(0o600)
         params['mask_path'] = str(working_mask)
 
