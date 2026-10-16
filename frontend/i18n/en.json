@@ -1083,5 +1083,6 @@
   "library17.newest": "Newest first",
   "library17.oldest": "Oldest first",
   "library17.largest": "Largest first",
-  "library17.smallest": "Smallest first"
+  "library17.smallest": "Smallest first",
+  "library.more_actions": "More actions"
 }
