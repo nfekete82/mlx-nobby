@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v1.19.0
+
+- Juggernaut XL Ragnarok: creator-aligned DPM++ 2M SDE Karras presets, native portrait size, adjustable Steps/CFG, and the guarded CPU-offload / VAE diagnostic. Preserve user-selected parameters and existing artwork.
+- Image region editor: precise brush and erase masks with prompt-based Qwen 2.1 editing, bounded 512px low-RAM crop, original image preservation and before/after comparison. Add zoom, keyboard shortcuts, prompt suggestions, persisted brush size, and clipped 0–12px mask feathering.
+- Exclusive heavyweight-model handoff: coordinated chat, image and video model transitions that unload other known idle model weights before inference, including a warm SDXL worker before switching image providers. Retain the cross-process lease and strict 90% admission, 20% active free-RAM floor, swap-growth watchdog and image/video load reserves.
+- Remove the superseded Lustify experiment from the active model registry without deleting any existing user media; preserve local private media jobs and progress.
+
 ## v1.18.0
 
 - Media Library 4.0: search by existing local prompt/model/provider metadata when available, plus safe per-media details for images and videos; legacy media remain visible without invented provenance.
