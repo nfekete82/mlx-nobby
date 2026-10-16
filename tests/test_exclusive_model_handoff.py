@@ -156,3 +156,79 @@ def test_exclusive_handoff_fails_closed_if_known_loaded_model_wont_unload():
                     raise AssertionError("Unsafe concurrent model admission")
             except RuntimeError as exc:
                 assert "Speech-Runtime konnte nicht entladen" in str(exc)
+
+
+def test_image_service_evicts_warm_sdxl_before_starting_qwen_edit(monkeypatch):
+    """Same image-service process must not retain SDXL weights under Qwen."""
+    import image_service as image
+    from contextlib import contextmanager
+
+    job_id = "exclusive-model-handoff-image"
+    state = {"sdxl_loaded": True, "events": []}
+
+    @contextmanager
+    def exclusive_lease(_cancel_event, **kwargs):
+        assert kwargs["exclusive_models"] is True
+        state["events"].append("lease")
+        yield {"chat_released": True}
+
+    def shutdown():
+        state["events"].append("sdxl-unload")
+        state["sdxl_loaded"] = False
+
+    def edit(*_args, **_kwargs):
+        state["events"].append("qwen-edit")
+        assert state["sdxl_loaded"] is False
+        return {"id": "1791111111-aaaaaaaaaaaa", "path": "/tmp/edited.png"}
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", exclusive_lease)
+    monkeypatch.setattr(image, "sdxl_worker_running",
+                        lambda: state["sdxl_loaded"])
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", shutdown)
+    monkeypatch.setattr(image, "_edit_result", edit)
+
+    image._jobs[job_id] = {
+        "id": job_id, "status": "queued", "phase": "queued",
+        "operation": "edit", "_cancel_event": threading.Event(),
+        "created_at": 1.0, "total_steps": 20,
+    }
+    try:
+        image._run_image_job(job_id, "edit",
+                             image.Edit(prompt="Change the selected eye color",
+                                        source_path="/tmp/original.png"),
+                             release_lock=False)
+        assert image._jobs[job_id]["status"] == "completed"
+        assert state["events"] == ["lease", "sdxl-unload", "qwen-edit"]
+    finally:
+        image._jobs.pop(job_id, None)
+
+
+def test_image_service_fails_closed_if_warm_sdxl_refuses_to_release(monkeypatch):
+    import image_service as image
+    from contextlib import contextmanager
+    job_id = "exclusive-model-handoff-failure"
+
+    @contextmanager
+    def lease(_cancel_event, **_kwargs):
+        yield {}
+
+    monkeypatch.setattr(image.runtime_coordinator, "image_runtime", lease)
+    monkeypatch.setattr(image, "sdxl_worker_running", lambda: True)
+    monkeypatch.setattr(image, "shutdown_sdxl_worker", lambda: None)
+    called = []
+    monkeypatch.setattr(image, "_edit_result", lambda *_args, **_kwargs: called.append(True))
+    image._jobs[job_id] = {
+        "id": job_id, "status": "queued", "phase": "queued",
+        "operation": "edit", "_cancel_event": threading.Event(),
+        "created_at": 1.0, "total_steps": 20,
+    }
+    try:
+        image._run_image_job(job_id, "edit",
+                             image.Edit(prompt="Enhance marked eyes",
+                                        source_path="/tmp/original.png"),
+                             release_lock=False)
+        assert image._jobs[job_id]["status"] == "failed"
+        assert "SDXL-Worker" in image._jobs[job_id]["error"]
+        assert called == []
+    finally:
+        image._jobs.pop(job_id, None)
