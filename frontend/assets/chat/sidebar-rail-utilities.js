@@ -14,7 +14,7 @@
     if (spacer && jobs) spacer.after(jobs);
     if (settings) rail.appendChild(settings);
 
-    // Collect Help, System Info, and Settings into one expandable group.
+    // Collect Files & Jobs, Help, System Info, and Settings into one expandable group.
     // Help is inserted asynchronously; move its existing button instead of
     // cloning it, so all original click handlers remain attached.
     const group = document.createElement('details');
@@ -30,7 +30,7 @@
     bottom.insertBefore(group, runtimeLabel || null);
 
     function syncSystemTools() {
-      for (const id of ['mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton']) {
+      for (const id of ['sidebarJobsButton', 'mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton']) {
         const button = document.getElementById(id);
         if (button && button.parentElement !== items) items.appendChild(button);
       }
