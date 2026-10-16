@@ -10,7 +10,7 @@ assert.match(html, /id="railLibrary"/);
 assert.match(html, /id="nobbyLibrary"/);
 assert.match(html, /id="nobbyLibraryGrid"/);
 assert.match(html, /id="nobbyLibrarySaveAll"/);
-assert.match(html, /media-library\.js\?v=1-16-workflows/);
+assert.match(html, /media-library\.js\?v=1-17-search/);
 assert.match(html, /media-library\.css\?v=[a-z0-9-]+/);
 assert.match(css, /\.nobby-library-panel\[hidden\]/);
 assert.match(css, /grid-template-columns:repeat\(auto-fill/);
@@ -75,3 +75,9 @@ assert.match(js, /mediaLineage\(asset/);
 assert.match(css, /\.nobby-library-parent-link/);
 assert.match(html, /generation\.js\?v=1-16-media-studio/);
 console.log("Media Studio 1.16: source-to-video composer and provenance UI contracts passed.");
+
+assert.match(html,/id="nobbyLibraryDateFilter"/);
+assert.match(html,/id="nobbyLibrarySort"/);
+assert.match(js,/state\.dateFilter === "today"/);
+assert.match(js,/state\.sort === "largest"/);
+console.log("Library 1.17 date and size sorting controls passed.");

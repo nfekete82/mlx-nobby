@@ -1071,5 +1071,17 @@
   "library3.select_target": "Select target collection",
   "library3.add": "Add",
   "library3.remove": "Remove",
-  "library3.delete_selected": "Delete selection"
+  "library3.delete_selected": "Delete selection",
+  "library17.period": "Period",
+  "library17.period_aria": "Filter by date",
+  "library17.any_time": "Any time",
+  "library17.today": "Today",
+  "library17.week": "Last 7 days",
+  "library17.month": "Last 30 days",
+  "library17.sort": "Sort by",
+  "library17.sort_aria": "Sort media",
+  "library17.newest": "Newest first",
+  "library17.oldest": "Oldest first",
+  "library17.largest": "Largest first",
+  "library17.smallest": "Smallest first"
 }
