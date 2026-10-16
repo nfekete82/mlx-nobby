@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-from agent import media_lifecycle, media_library_previews, media_library_organize, media_library_workflows
+from agent import media_lifecycle, media_library_previews, media_library_organize, media_library_workflows, media_library_details
 
 KINDS = ("image", "video", "talking_photo")
 SUFFIX = {"image": ".png", "video": ".mp4", "talking_photo": ".mp4"}
@@ -56,7 +56,7 @@ def list_assets(kind="all", limit=400):
                         "/api/talking-photo/videos/") + asset_id,
             })
     results.sort(key=lambda asset: (asset["created_at"], asset["id"]), reverse=True)
-    return {"assets": results[:limit], "total": len(results), "limit": limit}
+    return {"assets": media_library_details.enrich(results[:limit]), "total": len(results), "limit": limit}
 
 
 def install_routes(app: FastAPI):
@@ -66,6 +66,57 @@ def install_routes(app: FastAPI):
             return list_assets(kind, limit)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+
+    @app.get("/api/library/search")
+    def library_search(q: str = Query(default="", max_length=200),
+                       kind: str = "all", limit: int = Query(default=100, ge=1, le=500),
+                       offset: int = Query(default=0, ge=0)):
+        try:
+            # Metadata lookup is local-only, optional, and never starts inference.
+            # The cap bounds a single request even on unusually large libraries.
+            assets = list_assets(kind, 10000)["assets"]
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        terms = [part.casefold() for part in q.split() if part]
+        if terms:
+            assets = [
+                asset for asset in assets
+                if all(term in " ".join(str(asset.get(field) or "") for field in (
+                    "id", "kind", "engine", "prompt", "original_prompt",
+                    "model", "provider", "operation")).casefold() for term in terms)
+            ]
+        return {"assets": assets[offset:offset + limit], "total": len(assets),
+                "offset": offset, "limit": limit, "truncated": len(assets) == 10000}
+
+    @app.get("/api/library/assets/{kind}/{asset_id}/details")
+    def library_details(kind: str, asset_id: str):
+        try:
+            media_lifecycle._key(kind, asset_id)
+            asset = next(
+                (item for item in list_assets(kind, 10000)["assets"]
+                 if item["kind"] == kind and item["id"] == asset_id), None)
+        except ValueError as exc:
+            raise HTTPException(404, "Medium nicht gefunden") from exc
+        if asset is None:
+            raise HTTPException(404, "Medium nicht gefunden")
+        details = dict(asset)
+        if kind in {"video", "talking_photo"}:
+            try:
+                details.update({key: value for key, value in
+                                media_library_previews.metadata(kind, asset_id).items()
+                                if key in {"width", "height", "duration_seconds", "engine"}})
+            except (ValueError, FileNotFoundError, OSError):
+                pass
+        else:
+            try:
+                from PIL import Image
+                path = media_lifecycle._expected_path(kind, asset_id)
+                with Image.open(path) as picture:
+                    details["width"], details["height"] = picture.size
+            except (OSError, ValueError):
+                pass
+        return details
 
     @app.get("/api/library/organize")
     def library_organization():
