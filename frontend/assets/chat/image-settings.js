@@ -55,8 +55,8 @@ function imageT(key, fallback = '', variables = {}) {
         card.append(summary);
         card.append(node('p', [model.provider, model.model_family, model.quantization].join(' · ')));
         const sdxlDescriptions = {
-            'juggernaut-xl': 'Vielseitiger fotorealistischer Allrounder für Porträts, Lifestyle und allgemeine Bildgenerierung.',
-            'lustify-endgame-sdxl': 'SDXL-Checkpoint für fotorealistische erotische / NSFW-Bilder und Körperdarstellung.'
+            'juggernaut-xl': imageT('image_settings.juggernaut_description', 'Versatile photorealistic model for portraits, lifestyle, and general image generation.'),
+            'lustify-endgame-sdxl': imageT('image_settings.lustify_description', 'SDXL checkpoint for photorealistic erotic / NSFW images and anatomy.')
         };
         if (sdxlDescriptions[model.id]) card.append(node('p', sdxlDescriptions[model.id], 'settings-hint'));
         card.append(node('p', model.availability_note, 'settings-hint'));
