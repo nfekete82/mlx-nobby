@@ -84,22 +84,34 @@ def test_ltx_runner_uses_selected_prompt_and_unchanged_full_image(distilled):
     native_mp4 = bytes(4) + b"ftyp" + bytes(48)
     original_image = b"original-photo-bytes"
     commands = []
-    real_popen = subprocess.Popen
-
     def fake_popen(command, **kwargs):
-        if "--output" not in command:
-            return real_popen(command, **kwargs)
+        assert "--output" in command
         commands.append(command)
         Path(command[command.index("--output") + 1]).write_bytes(native_mp4)
         process = mock.Mock(returncode=0)
         process.communicate.return_value = ("ok", None)
         return process
 
+    def fake_pad_audio(source, target, duration):
+        # This test checks LTX speaker prompt and the original image bytes,
+        # not ffmpeg. Preserve valid, audible WAV data and exact padding length
+        # without depending on ffmpeg availability on macOS CI runners.
+        with wave.open(str(source), "rb") as wav:
+            samples = wav.readframes(wav.getnframes())
+        target_frames = math.ceil(duration * 16000)
+        padding = max(0, target_frames - len(samples) // 2)
+        with wave.open(str(target), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(samples + bytes(padding * 2))
+
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         with (
             mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
             mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 512)),
+            mock.patch.object(talking_photo_ltx, "_pad_audio", side_effect=fake_pad_audio),
             mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
             mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
         ):
