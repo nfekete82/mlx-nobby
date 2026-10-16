@@ -89,6 +89,29 @@ const IMAGE_FORMATS = Object.freeze([
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
 
+// Model-specific expert inputs; quality presets stay the convenient default.
+const RAGNAROK_SAMPLING_PRESETS = Object.freeze({
+    fast: Object.freeze({steps: 20, guidance: 4.0}),
+    standard: Object.freeze({steps: 35, guidance: 4.0}),
+    quality: Object.freeze({steps: 40, guidance: 4.0}),
+    ultra: Object.freeze({steps: 40, guidance: 4.0})
+});
+
+function ragnarokSamplingForQuality(quality) {
+    return {...(RAGNAROK_SAMPLING_PRESETS[quality] || RAGNAROK_SAMPLING_PRESETS.standard)};
+}
+
+function parseSamplingValues(stepsText, guidanceText) {
+    const rawSteps = String(stepsText ?? '').trim();
+    const rawGuidance = String(guidanceText ?? '').trim();
+    if (!rawSteps || !rawGuidance) return null;
+    const steps = Number(rawSteps);
+    const guidance = Number(rawGuidance);
+    if (!Number.isInteger(steps) || steps < 1 || steps > 50 ||
+        !Number.isFinite(guidance) || guidance < 0 || guidance > 10) return null;
+    return {steps, guidance};
+}
+
 const IMAGE_SIZES_BY_FORMAT = Object.freeze({
     landscape: Object.freeze({
         width: 768,
@@ -363,7 +386,8 @@ function imageOptionsForRequest(
     allowFormat = false,
     negativePrompt = '',
     imageModel = null,
-    operation = 'generate'
+    operation = 'generate',
+    samplingOverride = null
 ) {
     const existing = options?.image || null;
 
@@ -397,6 +421,14 @@ function imageOptionsForRequest(
             imageModel || 'auto'
         ).trim() || 'auto';
         merged.model = normalizedModel;
+    }
+
+    if (operation === 'generate' &&
+        merged.model === 'juggernaut-xl' && samplingOverride) {
+        // Visible modal values are authoritative, even if old session options
+        // contain different steps/CFG. Other models retain their own contract.
+        merged.steps = samplingOverride.steps;
+        merged.guidance = samplingOverride.guidance;
     }
 
     if (operation !== 'generate') Object.assign(merged, options?.referenceEdit || {});
@@ -2909,6 +2941,10 @@ const imageFiles =
                 'auto'
             ).trim() || 'auto';
 
+            // These are per-job choices; do not silently persist custom
+            // sampling values across models or across generation requests.
+            let selectedSampling = null;
+
             let selectedMediaFormat =
                 mediaQualityKind === 'video'
                     ? (
@@ -2950,6 +2986,14 @@ const imageFiles =
                         updateVideoProfileAvailability(profileSelect);
                     }
                 }
+                const samplingField =
+                    document.getElementById('imageSamplingField');
+                const samplingSteps =
+                    document.getElementById('imageSamplingSteps');
+                const samplingCfg =
+                    document.getElementById('imageSamplingCfg');
+                const samplingHint =
+                    document.getElementById('imageSamplingHint');
                 const negativePromptField =
                     document.getElementById('imageNegativePromptField');
                 const negativePromptInput =
@@ -3011,6 +3055,56 @@ const imageFiles =
                 {
                     // Default is Standard; subsequent jobs reuse this session's choice.
                     let choice = selectedMediaQuality;
+                    let samplingCustom = null;
+                    // Existing explicit caller options must be visible rather
+                    // than silently trumping the selected quality preset.
+                    if (selectedImageModel === 'juggernaut-xl' &&
+                        options?.image?.steps != null &&
+                        options?.image?.guidance != null) {
+                        samplingCustom = parseSamplingValues(
+                            options.image.steps, options.image.guidance
+                        );
+                        if (samplingCustom && samplingSteps && samplingCfg) {
+                            samplingSteps.value = String(samplingCustom.steps);
+                            samplingCfg.value = String(samplingCustom.guidance);
+                        }
+                    }
+
+                    const hasRagnarokSampling = () =>
+                        resolvedTarget === 'image' &&
+                        selectedImageModel === 'juggernaut-xl';
+
+                    const renderSampling = () => {
+                        const active = hasRagnarokSampling() &&
+                            samplingField && samplingSteps && samplingCfg;
+                        if (samplingField) samplingField.hidden = !active;
+                        if (!active) {
+                            confirm.disabled = false;
+                            return;
+                        }
+                        const preset = ragnarokSamplingForQuality(choice);
+                        // Never overwrite a number while the user is editing it.
+                        if (!samplingCustom) {
+                            samplingSteps.value = String(preset.steps);
+                            samplingCfg.value = String(preset.guidance);
+                        }
+                        const parsed = parseSamplingValues(
+                            samplingSteps.value, samplingCfg.value
+                        );
+                        confirm.disabled = !parsed;
+                        if (samplingHint) {
+                            samplingHint.textContent = parsed
+                                ? generationText(
+                                    'ui.ragnarok_sampling_summary',
+                                    '{steps} Steps · CFG {cfg} · DPM++ 2M SDE Karras',
+                                    {steps: parsed.steps, cfg: parsed.guidance.toFixed(1)}
+                                )
+                                : generationText(
+                                    'ui.ragnarok_sampling_invalid',
+                                    'Bitte gültige Steps (1–50) und CFG (0–10) eingeben.'
+                                );
+                        }
+                    };
 
                     const renderFormatOptions = () => {
                         if (!formatField || !formatSelect) {
@@ -3113,13 +3207,19 @@ const imageFiles =
                     };
 
                     const renderChoice = () => {
+                        // The native SDXL worker cannot accept Ultra's 1536 px:
+                        // its hard bound is 1216. Avoid presenting a broken mode.
+                        if (hasRagnarokSampling() && choice === 'ultra') {
+                            choice = 'quality';
+                        }
                         for (const button of qualityButtons) {
                             const isPreview =
                                 button.dataset.mediaQuality === 'preview';
 
                             button.hidden =
                                 (isPreview && !previewAvailable) ||
-                                (button.dataset.mediaQuality === 'ultra' && mediaQualityKind !== 'image');
+                                (button.dataset.mediaQuality === 'ultra' &&
+                                 (mediaQualityKind !== 'image' || hasRagnarokSampling()));
 
                             const active =
                                 !button.hidden &&
@@ -3138,6 +3238,7 @@ const imageFiles =
 
                         renderFormatOptions();
                         renderDurationOptions();
+                        renderSampling();
 
                         if (negativePromptField) {
                             negativePromptField.hidden =
@@ -3209,6 +3310,8 @@ const imageFiles =
                                 'change',
                                 onImageModelChange
                             );
+                            samplingSteps?.removeEventListener?.('input', onSamplingInput);
+                            samplingCfg?.removeEventListener?.('input', onSamplingInput);
 
                             cancel.removeEventListener(
                                 'click',
@@ -3243,7 +3346,9 @@ const imageFiles =
                                     .dataset.mediaQuality ||
                                 'standard', previewAvailable
                             );
-
+                            // Changing the preset resets manual overrides to
+                            // the exact values shown for the new preset.
+                            samplingCustom = null;
                             renderChoice();
                         };
 
@@ -3256,9 +3361,18 @@ const imageFiles =
                             selectedImageModel = String(
                                 imageModelSelect?.value || 'auto'
                             ).trim() || 'auto';
-                            renderFormatOptions();
+                            samplingCustom = null;
+                            renderChoice();
                             window.MLXImageCountPicker
                                 ?.prewarm?.();
+                        };
+
+                        const onSamplingInput = () => {
+                            samplingCustom = {
+                                steps: samplingSteps?.value ?? '',
+                                guidance: samplingCfg?.value ?? ''
+                            };
+                            renderSampling();
                         };
 
                         const onNegativePromptPreset = event => {
@@ -3272,6 +3386,24 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            if (hasRagnarokSampling()) {
+                                const parsed = parseSamplingValues(
+                                    samplingSteps?.value, samplingCfg?.value
+                                );
+                                if (!parsed) {
+                                    if (!samplingSteps?.checkValidity?.()) {
+                                        samplingSteps?.reportValidity?.();
+                                        samplingSteps?.focus?.();
+                                    } else {
+                                        samplingCfg?.reportValidity?.();
+                                        samplingCfg?.focus?.();
+                                    }
+                                    return;
+                                }
+                                selectedSampling = parsed;
+                            } else {
+                                selectedSampling = null;
+                            }
                             if (
                                 formatField &&
                                 !formatField.hidden &&
@@ -3356,6 +3488,8 @@ const imageFiles =
                                 onImageModelChange
                             );
                         }
+                        samplingSteps?.addEventListener?.('input', onSamplingInput);
+                        samplingCfg?.addEventListener?.('input', onSamplingInput);
 
                         cancel.addEventListener(
                             'click',
@@ -3473,7 +3607,8 @@ const imageFiles =
                         : null,
                     resolvedTarget === 'image_edit'
                         ? (referenceMode ? 'reference' : 'edit')
-                        : 'generate'
+                        : 'generate',
+                    selectedSampling
                 ),
                 video_options: videoOptionsForRequest(
                     options,
