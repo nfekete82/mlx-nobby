@@ -397,12 +397,12 @@
 
 
 /* Talking Photo: align closed controls, hints and focus rings with the Library. */
-.mlx-talking-photo-field > span{
+.mlx-talking-photo-dialog .mlx-talking-photo-field > span{
   color:#aab9cb;
   opacity:1;
   font-size:12px;
 }
-.mlx-talking-photo-field select{
+.mlx-talking-photo-dialog .mlx-talking-photo-field select{
   min-height:41px;
   color-scheme:dark;
   background:#141b28;
@@ -413,7 +413,7 @@
   font-size:13px;
   cursor:pointer;
 }
-.mlx-talking-photo-field :is(textarea,input:not([type="file"])){
+.mlx-talking-photo-dialog .mlx-talking-photo-field :is(textarea,input:not([type="file"])){
   background:#141b28;
   border:1px solid #344052;
   border-radius:9px;
@@ -421,11 +421,11 @@
   font:inherit;
   font-size:13px;
 }
-.mlx-talking-photo-field :is(select,textarea,input):focus-visible{
+.mlx-talking-photo-dialog .mlx-talking-photo-field :is(select,textarea,input):focus-visible{
   outline:2px solid #82b4ff;
   outline-offset:2px;
 }
-.mlx-talking-photo-field select:disabled{
+.mlx-talking-photo-dialog .mlx-talking-photo-field select:disabled{
   opacity:.55;
   cursor:not-allowed;
 }
