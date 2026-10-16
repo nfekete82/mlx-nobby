@@ -121,7 +121,30 @@ def thumbnail(kind: str, asset_id: str) -> Path:
         size = os.stat(scratch).st_size
         if not 100 < size <= MAX_PREVIEW_BYTES:
             raise RuntimeError("Unexpected thumbnail size")
+        with open(scratch, "rb") as handle:
+            start = handle.read(2)
+            handle.seek(-2, os.SEEK_END)
+            end = handle.read(2)
+        if start != bytes((255, 216)) or end != bytes((255, 217)):
+            raise RuntimeError("Generated preview is not a JPEG")
         os.replace(scratch, cached)
         return cached
     finally:
         Path(scratch).unlink(missing_ok=True)
+
+
+def purge_cached(kind: str, asset_id: str) -> None:
+    """Remove derived previews after explicit library deletion."""
+    if kind not in {"video", "talking_photo"}:
+        return
+    media_lifecycle._validate_id(kind, asset_id)
+    root = CACHE_ROOT / kind
+    if not root.is_dir():
+        return
+    for path in root.glob(asset_id + "-*.jpg"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            pass
