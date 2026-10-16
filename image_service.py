@@ -1406,6 +1406,16 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             force_chat_unload=(sdxl_job or region_qwen_job),
             exclusive_models=True,
         ) as preflight:
+            # The image service retains a warm SDXL worker between SDXL
+            # requests. It must not remain resident alongside a new Qwen,
+            # FLUX, video-derived edit or upscaler provider within this same
+            # service. Release it under the coordinator lease first.
+            if not sdxl_job and sdxl_worker_running():
+                shutdown_sdxl_worker()
+                if sdxl_worker_running():
+                    raise RuntimeError(
+                        "SDXL-Worker konnte vor dem Modellwechsel nicht entladen werden"
+                    )
             timings.mark("resources_acquired")
             _update_job(job_id, status="loading", phase="loading")
             if operation == "edit":
