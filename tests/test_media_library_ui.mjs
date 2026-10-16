@@ -65,3 +65,13 @@ assert.match(js, /state\.selected\.add/);
 assert.match(css, /\.nobby-library-bulk\[hidden\]/);
 assert.match(css, /\.nobby-library-star/);
 console.log("Library 3.0: persistent favorites, collections and bulk-selection UI contracts passed.");
+
+assert.match(js, /createVideoFromImage\(asset\)/);
+assert.match(js, /window\.MLXChatAttachments\.addFiles\(\[file\]\)/);
+assert.match(js, /attachment\.library_source\s*=/);
+assert.match(js, /fetch\("\/api\/library\/workflows"/);
+assert.match(js, /nobby-library-parent-link/);
+assert.match(js, /mediaLineage\(asset/);
+assert.match(css, /\.nobby-library-parent-link/);
+assert.match(html, /generation\.js\?v=1-16-media-studio/);
+console.log("Media Studio 1.16: source-to-video composer and provenance UI contracts passed.");
