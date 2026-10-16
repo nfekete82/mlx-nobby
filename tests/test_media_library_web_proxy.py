@@ -73,3 +73,29 @@ def test_browser_organization_routes_are_registered_once():
     ]
     assert set(actual) == expected
     assert len(actual) == len(expected), "No ambiguous duplicate proxy routes"
+
+
+def test_browser_library_search_and_details_proxy(monkeypatch):
+    calls = []
+
+    def forwarded(method, path, payload=None, timeout=10):
+        calls.append((method, path, timeout))
+        return {"assets": [], "total": 0}
+
+    monkeypatch.setattr(web, "agent_json_request", forwarded)
+    app = FastAPI()
+    for route in web.app.router.routes:
+        if getattr(route, "path", "") in {
+            "/api/library/search",
+            "/api/library/assets/{kind}/{asset_id}/details",
+        }:
+            app.router.routes.append(route)
+    client = TestClient(app)
+    response = client.get("/api/library/search", params={"q": "blue mountain", "limit": 25})
+    assert response.status_code == 200
+    response = client.get("/api/library/assets/image/1791579990-f04fe5195fe0/details")
+    assert response.status_code == 200
+    assert calls == [
+        ("GET", "/api/library/search?q=blue+mountain&kind=all&limit=25&offset=0", 30),
+        ("GET", "/api/library/assets/image/1791579990-f04fe5195fe0/details", 30),
+    ]
