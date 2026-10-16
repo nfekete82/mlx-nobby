@@ -561,6 +561,7 @@
       const [data, organizedData, lineageData] = await Promise.all([response.json(), organized.json(), lineage.json()]);
       if (generation !== state.generation || panel.hidden) return;
       state.assets = Array.isArray(data.assets) ? data.assets : [];
+      scheduleSearch();
       state.organization = organizedData;
       state.workflows = lineageData && typeof lineageData.links === "object" ? lineageData : {links: {}};
       const keys = new Set(state.assets.map(assetKey));
@@ -713,7 +714,9 @@
     render();
   });
   document.getElementById("nobbyLibrarySearch")?.addEventListener("input", event => {
-    state.query = event.target.value; render();
+    state.query = event.target.value;
+    scheduleSearch();
+    render();
   });
   document.getElementById("nobbyLibraryEngine")?.addEventListener("change", event => {
     state.engine = event.target.value; render();
@@ -721,6 +724,7 @@
   for (const button of panel.querySelectorAll("[data-library-kind]")) {
     button.addEventListener("click", () => {
       state.kind = button.dataset.libraryKind;
+      scheduleSearch();
       if (state.kind === "image" && state.engine !== "all") {
         state.engine = "all";
         const engineControl = document.getElementById("nobbyLibraryEngine");
