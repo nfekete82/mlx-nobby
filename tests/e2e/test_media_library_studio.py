@@ -277,3 +277,38 @@ def test_library_local_date_and_size_sorting(ui):
     expect(page.locator(".nobby-library-card").first.locator("img")).to_have_attribute(
         "src", "/api/mlx/images/" + recent_image
     )
+
+
+def test_library_dropdowns_use_consistent_dark_picker(ui):
+    """Keep native select semantics while styling opened menus uniformly."""
+    page, _agent, _allowed = ui
+
+    def send(route, data):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(data))
+
+    page.route("**/api/library/assets?limit=1000",
+               lambda route: send(route, {"assets": [], "total": 0}))
+    page.route("**/api/library/organize",
+               lambda route: send(route, {"version": 1, "favorites": [], "collections": []}))
+    page.route("**/api/library/workflows",
+               lambda route: send(route, {"version": 1, "links": {}}))
+    _open_library(page)
+
+    # Chrome's customizable native select keeps actual option values and
+    # the existing JS change event, with one consistent popup theme.
+    for selector in ("#nobbyLibraryCollectionFilter", "#nobbyLibraryEngine",
+                     "#nobbyLibraryDateFilter", "#nobbyLibrarySort"):
+        styles = page.locator(selector).evaluate("""node => ({
+            appearance: getComputedStyle(node).appearance,
+            pickerColor: getComputedStyle(node, '::picker(select)').backgroundColor
+        })""")
+        assert styles == {"appearance": "base-select", "pickerColor": "rgb(23, 34, 52)"}
+
+    sort = page.locator("#nobbyLibrarySort")
+    sort.click()
+    expect(page.locator("#nobbyLibrarySort:open")).to_be_visible()
+    widths = sort.evaluate("""node => ({
+        control: node.getBoundingClientRect().width,
+        picker: parseFloat(getComputedStyle(node, '::picker(select)').width)
+    })""")
+    assert abs(widths["control"] - widths["picker"]) < 2
