@@ -223,6 +223,11 @@ async function updateVideoProfileAvailability(select) {
     }
 }
 
+const SDXL_IMAGE_PICKER_DESCRIPTIONS = Object.freeze({
+    'juggernaut-xl': 'Allround-Fotorealismus: Porträts, Lifestyle und Alltag',
+    'lustify-endgame-sdxl': 'Erotische Fotorealistik / NSFW, Körperdarstellung'
+});
+
 function storedImageModel() {
     try {
         return String(
@@ -311,13 +316,12 @@ async function updateImageModelOptions(
             const option = document.createElement('option');
             option.value = model.id;
             option.disabled = model.available !== true;
+            const description = SDXL_IMAGE_PICKER_DESCRIPTIONS[model.id];
             option.textContent =
                 (model.name || model.id) +
-                (
-                    option.disabled
-                        ? ' · ' + unavailableLabel
-                        : ''
-                );
+                (description ? ' · ' + description : '') +
+                (option.disabled ? ' · ' + unavailableLabel : '');
+            if (description) option.title = description;
             select.appendChild(option);
         }
 
