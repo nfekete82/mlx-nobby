@@ -33,7 +33,7 @@ def _key(kind: str, asset_id: str) -> str:
     return media_lifecycle._key(kind, asset_id)
 
 
-def _visible_asset(kind: str, asset_id: str) -> Path | None:
+def _visible_asset(kind: str, asset_id: str, records: dict | None = None) -> Path | None:
     key = _key(kind, asset_id)
     root = media_lifecycle._root_for(kind)
     path = root / (asset_id + (".png" if kind == "image" else ".mp4"))
@@ -43,19 +43,21 @@ def _visible_asset(kind: str, asset_id: str) -> Path | None:
         return None
     if path.stat().st_size <= 0:
         return None
-    record = media_lifecycle._load_locked().get("assets", {}).get(key, {})
+    if records is None:
+        records = media_lifecycle._load_locked().get("assets", {})
+    record = records.get(key, {})
     if isinstance(record, dict) and record.get("owner") == "acceptance":
         return None
     return path
 
 
-def _valid_key(value: str) -> bool:
+def _valid_key(value: str, records: dict | None = None) -> bool:
     if not isinstance(value, str) or ":" not in value:
         return False
     try:
         kind, asset_id = value.split(":", 1)
         _key(kind, asset_id)
-        return _visible_asset(kind, asset_id) is not None
+        return _visible_asset(kind, asset_id, records) is not None
     except (ValueError, OSError):
         return False
 
@@ -74,9 +76,11 @@ def _read_locked() -> dict:
     if not isinstance(favorites, list) or not isinstance(collections, list):
         return _empty()
     result = _empty()
+    # Load lifecycle ownership once, rather than re-reading JSON per item.
+    records = media_lifecycle._load_locked().get("assets", {})
     result["favorites"] = [
         k for k in dict.fromkeys(v for v in favorites[:ITEM_LIMIT] if isinstance(v, str))
-        if _valid_key(k)
+        if _valid_key(k, records)
     ]
     ids = set()
     for entry in collections[:COLLECTION_LIMIT]:
@@ -94,7 +98,7 @@ def _read_locked() -> dict:
             "id": cid, "name": name,
             "items": [
                 k for k in dict.fromkeys(v for v in items[:ITEM_LIMIT] if isinstance(v, str))
-                if _valid_key(k)
+                if _valid_key(k, records)
             ],
         })
     return result
@@ -177,6 +181,11 @@ def update_many(items: list, operation: str, collection_id: str | None = None) -
             kind, asset_id = key.split(":", 1)
             if _visible_asset(kind, asset_id) is None:
                 raise ValueError("Asset missing or unavailable")
+        # Validate target capacities before promoting any temporary media.
+        if operation == "favorite" and len(set(state["favorites"]) | set(keys)) > ITEM_LIMIT:
+            raise ValueError("Too many favorites")
+        if operation == "add_collection" and len(set(target["items"]) | set(keys)) > ITEM_LIMIT:
+            raise ValueError("Collection is full")
         if operation in {"favorite", "add_collection"}:
             for key in keys:
                 kind, asset_id = key.split(":", 1)
