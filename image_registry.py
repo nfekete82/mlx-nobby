@@ -35,6 +35,11 @@ OSAURUS_QWEN21_EDIT_ID = "mflux-osaurus-qwen-image-2.1-edit"
 OSAURUS_QWEN21_EDIT_REPO = "OsaurusAI/Qwen-Image-2.1-mflux-4bit"
 MFLUX_BOOGU_ID = "mflux-boogu-image-turbo"
 JUGGERNAUT_XL_ID = "juggernaut-xl"
+LUSTIFY_ENDGAME_ID = "lustify-endgame-sdxl"
+LUSTIFY_ENDGAME_NAME = "Lustify Endgame (SDXL)"
+LUSTIFY_ENDGAME_DIRECTORY = Path.home() / "Models/LustifyEndgame"
+LUSTIFY_ENDGAME_CHECKPOINT = "lustifySDXLNSFW_endgame.safetensors"
+LUSTIFY_ENDGAME_SHA256 = "8c7b3ca29623c55c876fea72723ab5d464d8606c60056caae40cfbc173beb1f1"
 JUGGERNAUT_XL_DIRECTORY = Path.home() / "Models/JuggernautXL"
 JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
 JUGGERNAUT_RAGNAROK_MODEL_VERSION = "1759168"
@@ -42,7 +47,7 @@ JUGGERNAUT_RAGNAROK_CHECKPOINT = "juggernautXL_ragnarok.safetensors"
 JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
 LEGACY_KREA_REPOSITORIES = {"krea/Krea-2-Turbo"}
-BUILTIN_DEFAULTS_REVISION = 8
+BUILTIN_DEFAULTS_REVISION = 9
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}\Z")
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\Z")
 FAMILIES = {
@@ -408,6 +413,20 @@ def builtin_models():
         enabled=False,
         default_steps=30,
         default_guidance=5.0,
+    ).model_dump())
+    # Lustify is a separate local SDXL checkpoint, opt-in and never auto-downloaded.
+    # Keep Juggernaut's stable ID and existing custom settings untouched.
+    models.append(ImageModel(
+        id=LUSTIFY_ENDGAME_ID,
+        name=LUSTIFY_ENDGAME_NAME,
+        provider="sdxl",
+        local_path=str(LUSTIFY_ENDGAME_DIRECTORY),
+        model_family="sdxl",
+        base_model="sdxl",
+        quantization="none",
+        enabled=False,
+        default_steps=30,
+        default_guidance=3.5,
     ).model_dump())
     return models
 
