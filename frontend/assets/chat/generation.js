@@ -370,7 +370,7 @@ const IMAGE_OPTION_KEYS = Object.freeze({
         'prompt', 'negative_prompt', 'model', 'width', 'height',
         'steps', 'guidance', 'seed', 'auto_size'
     ]),
-    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
+    edit: new Set(['prompt', 'model', 'steps', 'guidance', 'seed', 'negative_prompt', 'mask_path', 'region_edit', 'auto_mask', 'strength', 'use_kv_cache', 'use_step_cache', 'step_cache_threshold', 'enhance_prompt', 'verify']),
     reference: new Set([
         'prompt', 'model', 'steps', 'guidance', 'seed',
         'width', 'height', 'auto_size', 'negative_prompt',
