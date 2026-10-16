@@ -301,6 +301,18 @@ def library_organize_batch(payload: dict):
     )
 
 
+@app.get('/api/library/workflows')
+def library_workflow_history():
+    return agent_json_request('GET', '/api/library/workflows', timeout=30)
+
+
+@app.post('/api/library/workflows/links')
+def library_workflow_link(payload: dict):
+    return agent_json_request(
+        'POST', '/api/library/workflows/links', payload, timeout=30,
+    )
+
+
 @app.get('/api/library/assets')
 def library_assets(kind: str = 'all', limit: int = 400):
     return agent_json_request(
