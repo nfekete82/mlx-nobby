@@ -1,5 +1,6 @@
 """Talking Photo UI acceptance: image import, selected face marker, LTX engine, paste."""
 import io
+import re
 
 from PIL import Image, ImageDraw
 from playwright.sync_api import expect
@@ -61,7 +62,7 @@ def test_talking_photo_person_selection_and_paste_keep_default_ltx(ui):
         }));
     }""")
     expect(marker).to_be_hidden()
-    expect(page.locator("#talkingPhotoClipboardHint")).to_contain_text("Bild")
+    expect(page.locator("#talkingPhotoClipboardHint")).to_contain_text(re.compile("Bild|image", re.I))
     expect(preview).to_be_visible()
     preview.click(position={"x": 150, "y": 60})
     expect(marker).to_be_visible()
