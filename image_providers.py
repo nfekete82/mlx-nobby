@@ -976,12 +976,19 @@ class SDXLWorkerManager:
         with self._lock:
             self._cancel_idle_timer_locked()
             if cancel_event is not None and cancel_event.is_set():
+                self._stop_locked()
                 raise ProviderCancelled("Image job was cancelled")
-            memory_guard = (
-                ImageProcessMemoryGuard()
-                if self.monitor_rss and sys.platform == "darwin"
-                else None
-            )
+            try:
+                memory_guard = (
+                    ImageProcessMemoryGuard()
+                    if self.monitor_rss and sys.platform == "darwin"
+                    else None
+                )
+            except Exception:
+                # An admission failure must not leave a previously warm worker
+                # resident after its idle-shutdown timer was cancelled.
+                self._stop_locked()
+                raise
             process = self._start_locked(environment)
             request_id = secrets.token_hex(16)
             request = {
