@@ -136,3 +136,21 @@
 
 /* Match the subtle separator above Letzte Chats. */
 .sidebar .nobby-sidebar-workspaces-divider{border-top:1px solid var(--border,#283244);margin-top:8px;padding-top:13px!important}
+
+
+/* Media Library 2.0: filter, real thumbnail grid and reusable-image action. */
+.nobby-library-engine-field{display:flex;align-items:center;gap:7px;color:#aab9cb;font-size:12px}
+.nobby-library-engine-field select{min-height:39px;max-width:220px;min-width:135px;background:#141b28;color:#f0f4ff;border:1px solid #344052;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px}
+.nobby-library-media{display:grid;place-items:center;overflow:hidden}
+.nobby-library-media img{grid-area:1/1;width:100%;height:100%;object-fit:contain}
+.nobby-library-media.nobby-library-no-thumbnail{background:linear-gradient(125deg,#151d29,#253249)}
+.nobby-library-play-icon{grid-area:1/1;z-index:1;display:grid;place-items:center;width:40px;height:40px;pointer-events:none;background:rgba(5,11,22,.68);border-radius:50%;color:#f3f7ff;box-shadow:0 2px 14px #0006}
+.nobby-library-media-details{display:block;color:#9eb6d4;font-size:12px;min-height:17px}
+.nobby-library-preview-body:has(.nobby-library-preview-use){flex-direction:column;gap:16px}
+.nobby-library-preview-use{font-size:13px;padding:11px 16px}
+.nobby-library-card-actions .nobby-library-action{min-height:34px}
+.nobby-library-engine-field select:focus-visible,.nobby-library-action:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+@media(max-width:780px){
+  .nobby-library-engine-field{flex:1 1 170px}
+  .nobby-library-engine-field select{flex:1;min-width:0;max-width:none}
+}
