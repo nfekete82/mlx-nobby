@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/chat.css?v=1-13-news-briefing">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
-<link rel="stylesheet" href="/assets/chat/media-library.css?v=20261010-sidebar-workspaces">
+<link rel="stylesheet" href="/assets/chat/media-library.css?v=1-14-studio">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -1461,6 +1461,18 @@
         <button data-library-kind="image" type="button" aria-pressed="false" data-i18n="library.images">Bilder</button>
         <button data-library-kind="video" type="button" aria-pressed="false" data-i18n="library.videos">Videos</button>
       </div>
+      <label class="nobby-library-engine-field" for="nobbyLibraryEngine">
+        <span>Engine</span>
+        <select id="nobbyLibraryEngine" aria-label="Nach Engine filtern">
+          <option value="all">Alle Engines</option>
+          <option value="talking_photo">Talking Photo</option>
+          <option value="ltx-distilled">LTX Distilled</option>
+          <option value="ltx">LTX direkt</option>
+          <option value="quality">LTX + MuseTalk</option>
+          <option value="fast">MuseTalk</option>
+          <option value="standard">Andere Videos</option>
+        </select>
+      </label>
       <button id="nobbyLibrarySaveAll" class="nobby-library-refresh" type="button" data-i18n="library.keep_all">Alle dauerhaft behalten</button>
       <button id="nobbyLibraryDeleteAll" class="nobby-library-refresh nobby-library-danger" type="button" data-i18n="library.delete_all">Alle dauerhaft löschen</button>
       <button id="nobbyLibraryRefresh" class="nobby-library-refresh" type="button"><span aria-hidden="true">↻</span> <span data-i18n="library.refresh">Aktualisieren</span></button>
@@ -1469,7 +1481,7 @@
     <div id="nobbyLibraryGrid" class="nobby-library-grid" aria-live="polite"></div>
   </div>
 </section>
-<script src="/assets/chat/media-library.js?v=1-11-library-preview"></script>
+<script src="/assets/chat/media-library.js?v=1-14-studio"></script>
 <script src="/assets/chat/sidebar-navigation.js?v=1-10-1"></script>
 <dialog id="runtimePopover" class="runtime-modal" aria-labelledby="runtimeModalTitle" hidden>
     <header class="runtime-modal-header">
