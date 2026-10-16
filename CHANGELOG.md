@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v1.15.0
+
+- Move Dateien & Jobs into the expanded System & Tools sidebar group without breaking its existing action or the collapsed-rail shortcut.
+- Media Library 3.0: locally persisted favorites and named collections, collection/favorite filters, multi-selection and bulk favorite/collection/delete actions. Keep media in its original locations, make collection deletion metadata-only, validate canonical asset IDs and exclude acceptance media, clear memberships after explicit media deletion, and retain saved favorites across restarts. Add Python and JS/browser regressions and refresh asset cache versions.
+
 ## v1.14.0
 
 - Media Library 2.0: lazy, cached on-device video thumbnail JPEGs; bounded ffprobe duration/dimensions; engine filters for Talking Photo; one-click reuse of existing library PNGs in Talking Photo. Canonical paths only, no original-media copies, explicit delete purges derived thumbnails. Desktop/mobile browser and security regressions included.
