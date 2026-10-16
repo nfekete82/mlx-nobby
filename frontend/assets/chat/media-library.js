@@ -519,6 +519,34 @@
     grid.replaceChildren(fragment);
     syncBulk();
   }
+  async function searchRemote(version, query, kind) {
+    try {
+      const url = "/api/library/search?q=" + encodeURIComponent(query) +
+        "&kind=" + encodeURIComponent(kind) + "&limit=500";
+      const response = await fetch(url, {cache: "no-store"});
+      if (!response.ok) return;
+      const data = await response.json();
+      if (panel.hidden || version !== state.searchVersion ||
+          state.query.trim() !== query || state.kind !== kind ||
+          !Array.isArray(data.assets)) return;
+      state.remoteAssets = data.assets;
+      state.remoteTotal = Number(data.total) || data.assets.length;
+      render();
+    } catch (_error) { /* Existing local search remains available. */ }
+  }
+
+  function scheduleSearch() {
+    ++state.searchVersion;
+    if (searchTimer) clearTimeout(searchTimer);
+    state.remoteAssets = null;
+    state.remoteTotal = 0;
+    const query = state.query.trim();
+    if (!query || panel.hidden) return;
+    const version = state.searchVersion;
+    const kind = state.kind;
+    searchTimer = setTimeout(() => void searchRemote(version, query, kind), 250);
+  }
+
   async function refresh() {
     const generation = ++state.generation;
     grid.replaceChildren(elt("p", "nobby-library-empty", t("Bibliothek wird geladen …", "Loading library …")));
