@@ -1509,7 +1509,7 @@ class ImageRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(calls[0][1]["guidance"], 5.0)
+        self.assertEqual(calls[0][1]["guidance"], 4.0)
         self.assertNotIn("negative_prompt", calls[0][1])
 
     def test_agent_automatic_image_dimensions(self):
@@ -5603,7 +5603,7 @@ def test_sdxl_quality_size_and_explicit_parameters_win(tmp_path):
         service.OUTPUT = old_output
 
     assert (quality["width"], quality["height"]) == (832, 1216)
-    assert (quality["steps"], quality["guidance"]) == (30, 5.0)
+    assert (quality["steps"], quality["guidance"]) == (40, 4.0)
     assert (explicit["width"], explicit["height"]) == (896, 1152)
     assert (explicit["steps"], explicit["guidance"]) == (42, 4.25)
 

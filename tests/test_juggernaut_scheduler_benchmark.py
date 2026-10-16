@@ -33,7 +33,7 @@ def test_sdxl_scheduler_default_is_existing_dpmpp_2m_karras():
     }
 
 
-def test_juggernaut_ragnarok_production_defaults_match_validated_baseline():
+def test_juggernaut_ragnarok_production_defaults_match_creator_recommendations():
     model = next(
         item
         for item in image_registry.builtin_models()
@@ -41,11 +41,13 @@ def test_juggernaut_ragnarok_production_defaults_match_validated_baseline():
     )
     standard = quality_profiles.resolve_image_profile(model, "standard")
 
+    # Unspecified custom SDXL checkpoints keep the old global fallback.
     assert sdxl_worker.DEFAULT_SCHEDULER == "dpmpp-2m-karras"
-    assert model["default_steps"] == 30
-    assert model["default_guidance"] == 5.0
-    assert standard["steps"] == 30
-    assert standard["guidance"] == 5.0
+    assert model["default_steps"] == 35
+    assert model["default_guidance"] == 4.0
+    assert standard["steps"] == 35
+    assert standard["guidance"] == 4.0
+    assert standard["long_edge"] == 1216
 
 
 def test_sdxl_scheduler_sde_preset_uses_sde_dpmsolver_plus_plus():

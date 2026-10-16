@@ -31,7 +31,7 @@ def test_mflux_020_quality_models_are_opt_in_and_krea_stays_removed():
     assert boogu["enabled"] is False
     assert "lora" not in boogu["capabilities"]
 
-    assert registry.BUILTIN_DEFAULTS_REVISION == 8
+    assert registry.BUILTIN_DEFAULTS_REVISION == 9
     assert not (registry.LEGACY_KREA_MODEL_IDS & models.keys())
 
 
