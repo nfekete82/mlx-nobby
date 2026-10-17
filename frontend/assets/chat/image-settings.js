@@ -709,7 +709,7 @@ function imageT(key, fallback = '', variables = {}) {
             const available = variantSourceAvailable(source);
             const single = document.createElement('button');
             const multiple = document.createElement('button');
-            const caption = imageT('ui.regenerate', 'Neu generieren');
+            const caption = imageT('ui.regenerate', 'Regenerate');
             const unavailable = imageT(
                 'generation.image_variants_unavailable',
                 'Variants are unavailable for this image. Generate a new image first.'
@@ -718,7 +718,7 @@ function imageT(key, fallback = '', variables = {}) {
                 button.type = 'button';
                 button.className = 'message-action-btn';
                 button.textContent = label;
-                button.title = available ? label + ' · neuer Seed' : unavailable;
+                button.title = available ? label : unavailable;
                 button.disabled = !available;
                 button.addEventListener('click', async () => {
                     if (!variantSourceAvailable(source)) return;
