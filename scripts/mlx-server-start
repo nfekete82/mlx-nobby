@@ -145,6 +145,19 @@ case "$CHAT_PERFORMANCE_PROFILE" in
         fi
         export APC_ENABLED=0
         ;;
+    hybrid)
+        if [ "$BACKEND" != "vlm" ]; then
+            echo "Hybrid profile requires mlx_vlm; leaving runtime stopped." >&2
+            exit 1
+        fi
+        # Experimental in-RAM DFlash+APC adapter, only for MLX-VLM 0.6.17.
+        # One exact cache snapshot; no disk persistence. This is not a byte cap.
+        export APC_ENABLED=1
+        export APC_NUM_BLOCKS=512
+        export APC_EXACT_CACHE_ENTRIES=1
+        export APC_DISK_PATH=""
+        export NOBBY_EXPERIMENTAL_HYBRID=1
+        ;;
     *)
         echo "Unknown MLX_CHAT_PERFORMANCE_PROFILE: $CHAT_PERFORMANCE_PROFILE" >&2
         exit 1
@@ -193,11 +206,17 @@ elif [ -n "$SPECULATIVE_TARGET_VALUE" ] && [ "$MODEL" != "$SPECULATIVE_TARGET_VA
     SPECULATIVE_STATUS="disabled (target mismatch)"
 fi
 
-if [ "$CHAT_PERFORMANCE_PROFILE" = "dflash" ] && {
+if { [ "$CHAT_PERFORMANCE_PROFILE" = "dflash" ] ||
+      [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; } && {
     [ "$SPECULATIVE_ENABLED" != "true" ] ||
     [ "$SPECULATIVE_KIND_VALUE" != "dflash" ]; }; then
-    echo "DFlash2 profile requires a configured, cached and compatible DFlash draft." >&2
+    echo "DFlash2/hybrid profile requires a configured, cached and compatible DFlash draft." >&2
     exit 1
+fi
+
+if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; then
+    # Refuse to start if installed sources drift; no files in the venv are edited.
+    "$PYTHON" "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" --check-only || exit 1
 fi
 
 "$PYTHON" "$PROJECT_DIR/scripts/runtime-model-guard.py" \
@@ -244,6 +263,12 @@ if [ "$BACKEND" = "vlm" ]; then
     fi
 
     echo "Starte mlx_vlm..."
+    if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; then
+        # The literal 'mlx_vlm server' arguments preserve Nobby's ps-based
+        # process identification while the in-memory runtime adapter starts.
+        exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" \
+            mlx_vlm server "${ARGS[@]:3}"
+    fi
     exec "$PYTHON" "${ARGS[@]}"
 
 else
