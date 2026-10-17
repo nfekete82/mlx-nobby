@@ -22,6 +22,7 @@ def test_synthetic_long_form_keeps_markers_only_in_initial_context():
     assert all(marker in first[1]["content"] for marker in gate.MARKERS)
     assert all(marker not in follow["content"] for marker in gate.MARKERS)
     assert "Prefill" in follow["content"]
+    assert "Die erste Ausgabezeile MUSS genau dieses Schema haben" in follow["content"]
 
 
 def test_technical_and_canary_verifier_distinguishes_bad_output():
@@ -36,6 +37,32 @@ def test_technical_and_canary_verifier_distinguishes_bad_output():
     assert checks["technical_terms_present"]
     assert not checks["long_enough"]
     assert gate.verify_long_answer("", 1800, 400)["captured_text_not_empty"] is False
+
+
+def test_marker_diagnostics_identifies_exact_missing_and_format_only_matches():
+    exact = (
+        "Kennwort 1: AURORAFADEN; Kennwort 2: SILBERBRUECKE; "
+        "Kennwort 3: WALDFENSTER."
+    )
+    result = gate.marker_diagnostics(exact + "\\nPrefill Decoding Streaming")
+    assert all(result["exact"].values())
+    assert all(result["normalized"].values())
+    assert all(result["first_line_exact"].values())
+    assert result["first_nonempty_line_characters"] > 40
+
+    # Separator and umlaut variants must be *visible* in diagnostics, never
+    # silently converted to strict recall success.
+    variant = "Aurora-Faden; Silberbrücke; Wald-Fenster."
+    diagnostic = gate.marker_diagnostics(variant)
+    assert not any(diagnostic["exact"].values())
+    assert all(diagnostic["normalized"].values())
+    assert gate.verify_long_answer(variant, 1200, 400)["canaries_recalled"] is False
+
+    missing = gate.marker_diagnostics("Kennwort 1: AURORAFADEN")
+    assert missing["exact"]["AURORAFADEN"] is True
+    assert missing["exact"]["SILBERBRUECKE"] is False
+    assert missing["exact"]["WALDFENSTER"] is False
+    assert "Kennwort 1:" not in json.dumps(diagnostic)
 
 
 def test_memory_and_swap_bounds_fail_closed():
