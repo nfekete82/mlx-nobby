@@ -587,3 +587,42 @@ def test_append_variant_rejects_failed_prior_slot_until_retried(runtime, monkeyp
     assert more.status_code == 202
     assert wait(runtime, more.json()["jobs"][-1]["id"])["status"] == "completed"
     assert len(calls) == 4
+
+
+def test_incremental_gallery_restores_and_can_be_extended_again(runtime, simple_source):
+    from image_variants import VariantBatch, install
+
+    first, calls = simple_source
+    identity = {"base_job_id": first["id"], "include_base": True,
+                "chat_id": "variants-test", "chat_revision": 0}
+    first_batch = runtime.post("/jobs/variants", json={**identity, "count": 2}).json()
+    group_id = first_batch["variant_group_id"]
+    wait(runtime, first_batch["jobs"][0]["id"])
+    second_batch = runtime.post("/jobs/variants", json={
+        **identity, "variant_group_id": group_id, "count": 3}).json()
+    previous_job = second_batch["jobs"][-1]
+    wait(runtime, previous_job["id"])
+    assert len(calls) == 3
+
+    # Simulate an image service restart: the group is read from private JSON,
+    # while each completed slot may still hold the *old* variant count.
+    service._jobs.clear()
+    routes = list(service.app.router.routes)
+    handler = install(service)
+    service.app.router.routes[:] = routes
+    request = VariantBatch(**identity, variant_group_id=group_id, count=3)
+    restored = handler(request)
+    assert restored["variant_count"] == 3
+    assert len(restored["jobs"]) == 2
+    assert all(job["variant_count"] == 3 for job in restored["jobs"])
+    assert all(job["result"]["variant_count"] == 3 for job in restored["jobs"])
+    assert restored["jobs"][-1]["id"] == previous_job["id"]
+    assert len(calls) == 3
+
+    next_batch = handler(VariantBatch(**identity, variant_group_id=group_id, count=4))
+    assert len(next_batch["jobs"]) == 3
+    newest = wait(runtime, next_batch["jobs"][-1]["id"])
+    assert newest["status"] == "completed", newest.get("error")
+    assert len(calls) == 4
+    assert len({call["seed"] for call in calls}) == 4
+    assert next_batch["jobs"][0]["id"] == first_batch["jobs"][0]["id"]
