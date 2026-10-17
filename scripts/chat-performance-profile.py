@@ -29,7 +29,7 @@ KEY = "MLX_CHAT_PERFORMANCE_PROFILE"
 ASSIGNMENT = re.compile(r"^\s*(?:export\s+)?MLX_CHAT_PERFORMANCE_PROFILE\s*=")
 AGENT = "http://127.0.0.1:8010"
 SERVER = "http://127.0.0.1:8000"
-PROFILES = ("default", "dflash", "apc")
+PROFILES = ("default", "dflash", "apc", "hybrid")
 
 
 def configured_profile(content: str) -> str:
@@ -138,6 +138,13 @@ def preflight(mode: str) -> None:
             # The comparison starts with known-working DFlash.
             raise RuntimeError("DFlash2 must already be active for first selection")
 
+    if mode == "hybrid":
+        runner = REPO / "scripts" / "hybrid_apc_dflash_runtime.py"
+        subprocess.run(
+            [str(REPO / "runtime-venv" / "bin" / "python"), str(runner), "--check-only"],
+            cwd=REPO, capture_output=True, text=True, check=True,
+        )
+
 
 def confirm_profile(mode: str) -> None:
     health = json_get(SERVER + "/health")
@@ -148,6 +155,13 @@ def confirm_profile(mode: str) -> None:
             raise RuntimeError("APC not enabled after restart")
         if "--draft-model" in current_server_args():
             raise RuntimeError("Unexpected speculative model still active")
+    if mode == "hybrid":
+        if health.get("apc_enabled") is not True:
+            raise RuntimeError("Hybrid APC is not enabled")
+        args = current_server_args()
+        if ("hybrid_apc_dflash_runtime.py" not in args or
+                "--draft-model" not in args or "--draft-kind dflash" not in args):
+            raise RuntimeError("Experimental hybrid adapter/DFlash2 not active")
     if mode == "dflash":
         if health.get("apc_enabled") is True:
             raise RuntimeError("APC still enabled in DFlash2 mode")
@@ -178,6 +192,8 @@ def switch_profile(mode: str, *, verify_idle: bool = True) -> bool:
             preflight(mode)
         elif not current_server_args():
             raise RuntimeError("Chat server not running; refusing mode change")
+        if mode == "hybrid" and prior != "default":
+            preflight("hybrid")
     write_config(updated_config(original, mode))
     try:
         restart()
@@ -205,6 +221,7 @@ def profile_status() -> None:
         print("APC enabled:", health.get("apc_enabled"))
         print("DFlash2 process flag:", "--draft-kind dflash" in args and
               "--draft-model" in args)
+        print("Experimental hybrid adapter:", "hybrid_apc_dflash_runtime.py" in args)
         if health.get("apc_enabled"):
             cache = json_get(SERVER + "/v1/cache/stats")
             print("APC exact hits:", cache.get("exact_hits"))
@@ -273,7 +290,8 @@ def compare(args) -> dict:
         signal.signal(signum, interrupted)
     results = {}
     try:
-        for profile in ("dflash", "apc"):
+        profiles = ("dflash", "apc", "hybrid") if getattr(args, "include_hybrid", False) else ("dflash", "apc")
+        for profile in profiles:
             print(f"\nTesting {profile} (long answers)...", file=sys.stderr, flush=True)
             switch_profile(profile)
             # Use the same public synthetic workload, and don't save
@@ -301,10 +319,11 @@ def compare(args) -> dict:
         "kind": "opt_in_chat_profile_comparison",
         "max_tokens": args.max_tokens,
         "nominal_context_sizes": args.context_sizes,
+        "experimental_hybrid_included": bool(getattr(args, "include_hybrid", False)),
         "starting_profile_restored": previous,
         "results": results,
         "notes": [
-            "DFlash2 ON+APC OFF versus APC ON+DFlash2 OFF; model switches not requested.",
+            "DFlash2/APC baseline; optional experimental hybrid uses both with in-process patch.",
             "Reports contain synthetic latency metadata only, never model text.",
             "Answers may terminate before max_tokens; report output characters, not exact token counts.",
             "Long-context sizes are estimated, not model-tokenizer exact.",
@@ -318,9 +337,11 @@ def compare(args) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("status", "default", "dflash", "apc"):
+    for name in ("status", "default", "dflash", "apc", "hybrid"):
         commands.add_parser(name)
     compare_cmd = commands.add_parser("compare")
+    compare_cmd.add_argument("--include-hybrid", action="store_true",
+                             help="Add experimental APC+DFlash2 mode to the A/B comparison")
     compare_cmd.add_argument("--context-sizes", type=load_benchmark().context_sizes,
                              default=[4000])
     compare_cmd.add_argument("--samples", type=int, choices=range(1, 7), default=2)
