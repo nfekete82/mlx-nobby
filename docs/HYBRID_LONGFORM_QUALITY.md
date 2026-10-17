@@ -56,3 +56,29 @@ until repeated Apple-Silicon soak tests and longer-answer comparisons pass.
 - Answer similarity is advisory because wording can differ between modes.
 - The context-size number is heuristic, not tokenizer-accurate.
 - If a check fails, don't blindly re-run: inspect the error and final profile.
+
+## First live hardware test: both profiles failed strict three-marker recall
+
+On the user's M5 Max, the first test of this branch returned `passed=false`
+in both DFlash2 and Hybrid: technical keywords were present, output was long
+enough, and Hybrid registered a true APC exact hit. No individual marker
+or generated content was included in the first report, so it was **not**
+possible to distinguish absent markers from differently formatted words.
+
+The initial follow-up wording ("without guessing") also permitted an
+unhelpful interpretation that the model should avoid supplying the words.
+The follow-up now specifies a required first-line format **without including
+the actual synthetic marker values**. Strict recall is still required.
+
+New output field `synthetic_marker_diagnostics` contains, for each of
+the three artificial markers, a boolean for exact presence, separator/umlaut
+normalized presence, and presence on the first nonempty answer line.
+No response excerpt, private text or model output is saved.
+
+Use these per-marker booleans to diagnose whether both models actually
+fail memory retrieval or instead change spelling/format. Do **not** loosen
+the passing criteria based on formatting alone. The previous low text
+similarity (0.307) was advisory, not evidence by itself of a hybrid error.
+
+The test still must be rerun on actual Apple Silicon hardware; GitHub
+CI checks CPU-only contracts, not real model output quality.
