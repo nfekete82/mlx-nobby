@@ -93,7 +93,11 @@ api_ready() {
 
 
 get_mlx_pid() {
-    pgrep -f "mlx_lm\.server.*--port[[:space:]]+$PORT" 2>/dev/null | head -1
+    # Accept both the traditional mlx_lm backend and mlx_vlm server used
+    # by Qwen3.8. The experimental hybrid runner also includes the literal
+    # "mlx_vlm server" arguments, so no special-case process detection is
+    # necessary. Anchor the port to avoid matching other local instances.
+    pgrep -f "(mlx_lm[.]server|mlx_vlm[[:space:]]+server).*--port[[:space:]]+$PORT([[:space:]]|$)" 2>/dev/null | head -1
 }
 
 
