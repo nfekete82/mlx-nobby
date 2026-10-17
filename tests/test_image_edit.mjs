@@ -1956,10 +1956,11 @@ for (const [prompt, expectedTarget, expectedModal] of [
         const select = modalElements.get('imageModel');
         assert.equal(field.hidden, false, prompt);
         assert.equal(select.disabled, false, prompt);
-        assert.equal(select.children.length, 3, prompt);
+        assert.equal(select.children.length, 2, prompt);
+        assert.equal(select.children[0].value, 'auto', prompt);
         assert.equal(select.children[1].value, 'juggernaut-xl', prompt);
-        assert.equal(select.children[2].value, 'qwen-image-2.1', prompt);
-        assert.equal(select.children[2].disabled, true, prompt);
+        assert.equal(select.children.some(item => item.value === 'qwen-image-2.1'), false, prompt);
+        assert.equal(select.children.some(item => item.value === 'qwen-image-edit'), false, prompt);
     }
 }
 
