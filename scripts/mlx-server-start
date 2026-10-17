@@ -122,12 +122,48 @@ model_reference_available() {
 BACKEND="$(detect_backend "$MODEL")"
 PREFILL_STEP_SIZE="$(adaptive_prefill_step_size)" || exit 1
 
+# Opt-in chat profiles. "default" preserves the original runtime configuration
+# exactly. The APC mode uses a bounded block pool, one exact-cache entry and
+# never enables disk caching. It does NOT promise a strict memory-byte cap.
+CHAT_PERFORMANCE_PROFILE="${MLX_CHAT_PERFORMANCE_PROFILE:-default}"
+case "$CHAT_PERFORMANCE_PROFILE" in
+    default) ;;
+    apc)
+        if [ "$BACKEND" != "vlm" ]; then
+            echo "APC profile requires mlx_vlm; leaving runtime stopped." >&2
+            exit 1
+        fi
+        export APC_ENABLED=1
+        export APC_NUM_BLOCKS=512
+        export APC_EXACT_CACHE_ENTRIES=1
+        export APC_DISK_PATH=""
+        ;;
+    dflash)
+        if [ "$BACKEND" != "vlm" ]; then
+            echo "DFlash2 profile requires mlx_vlm; leaving runtime stopped." >&2
+            exit 1
+        fi
+        export APC_ENABLED=0
+        ;;
+    *)
+        echo "Unknown MLX_CHAT_PERFORMANCE_PROFILE: $CHAT_PERFORMANCE_PROFILE" >&2
+        exit 1
+        ;;
+esac
+
 SPECULATIVE_ENABLED=false
 SPECULATIVE_STATUS="disabled"
 SPECULATIVE_TARGET_VALUE="${SPECULATIVE_TARGET:-}"
 SPECULATIVE_DRAFT_VALUE="${SPECULATIVE_DRAFT_MODEL:-}"
 SPECULATIVE_KIND_VALUE="${SPECULATIVE_DRAFT_KIND:-dflash}"
 SPECULATIVE_BLOCK_VALUE="${SPECULATIVE_DRAFT_BLOCK_SIZE:-}"
+
+# mlx_vlm v0.6.17 sends non-MTP speculative decoding through a separate
+# prefill path with cached_tokens=0. Keep DFlash2 and APC as distinct modes.
+if [ "$CHAT_PERFORMANCE_PROFILE" = "apc" ]; then
+    SPECULATIVE_TARGET_VALUE=""
+    SPECULATIVE_STATUS="disabled (APC profile)"
+fi
 
 if [ -n "$SPECULATIVE_TARGET_VALUE" ] && \
    [ -n "$SPECULATIVE_DRAFT_VALUE" ] && \
@@ -157,6 +193,13 @@ elif [ -n "$SPECULATIVE_TARGET_VALUE" ] && [ "$MODEL" != "$SPECULATIVE_TARGET_VA
     SPECULATIVE_STATUS="disabled (target mismatch)"
 fi
 
+if [ "$CHAT_PERFORMANCE_PROFILE" = "dflash" ] && {
+    [ "$SPECULATIVE_ENABLED" != "true" ] ||
+    [ "$SPECULATIVE_KIND_VALUE" != "dflash" ]; }; then
+    echo "DFlash2 profile requires a configured, cached and compatible DFlash draft." >&2
+    exit 1
+fi
+
 "$PYTHON" "$PROJECT_DIR/scripts/runtime-model-guard.py" \
     --workload chat \
     --wait
@@ -170,6 +213,7 @@ echo "Backend:     $BACKEND"
 echo "Port:        $PORT"
 echo "Thinking:    $THINKING"
 echo "Prefill:     $PREFILL_STEP_SIZE"
+echo "Chat profile: $CHAT_PERFORMANCE_PROFILE"
 echo "Speculative: $SPECULATIVE_STATUS"
 echo "============================================================"
 echo
