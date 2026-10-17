@@ -10180,6 +10180,10 @@ body.notes-resizing * {
 
 .media-quality-dialog {
     width: min(720px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .media-quality-options {

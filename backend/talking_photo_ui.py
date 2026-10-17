@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 _SCRIPTS = (
-    b'<script src="/assets/chat/talking-photo.js?v=1-14-library-reuse"></script>\n'
+    b'<script src="/assets/chat/talking-photo.js?v=20261017-ltx-speaker-selection"></script>\n'
     b'<script src="/assets/chat/talking-photo-clipboard.js?v=20261004-talking-photo-clipboard"></script>\n'
 )
 
@@ -85,8 +85,11 @@ class TalkingPhotoUiMiddleware:
                 headers = [
                     (key, value)
                     for key, value in list(start_message.get("headers") or [])
-                    if key.lower() not in {b"content-length", b"etag"}
+                    if key.lower() not in {b"content-length", b"etag", b"cache-control", b"expires"}
                 ]
+                # A page with injected versioned assets must not serve stale HTML
+                # from a browser cache after a new talking-photo deployment.
+                headers.append((b"cache-control", b"no-store"))
                 headers.append((b"content-length", str(len(body)).encode("ascii")))
                 start_message["headers"] = headers
 

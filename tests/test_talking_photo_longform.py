@@ -249,7 +249,9 @@ class TalkingPhotoLongformTests(unittest.TestCase):
             video, details = talking_photo_longform.assemble(
                 source, segments, videos, root / "assemble", cancelled=lambda: False,
             )
-            self.assertTrue(video.startswith(bytes(4) + b"ftyp"))
+            self.assertGreaterEqual(len(video), 8)
+            self.assertEqual(video[4:8], b"ftyp")
+            self.assertGreaterEqual(int.from_bytes(video[:4], "big"), 8)
             self.assertEqual(details["frames"], 48)
             self.assertAlmostEqual(details["audio_seconds"], 2.0)
             file = root / "final.mp4"

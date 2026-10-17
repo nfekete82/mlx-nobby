@@ -13,6 +13,7 @@ import time
 
 import runtime_coordinator
 from agent.talking_photo_audio import prepend_lead_in, validate_wav
+from agent.talking_photo_person_focus import validate_focus
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +49,30 @@ TALKING_PROMPT = (
     "and gentle breathing. Keep the face stable and mostly facing the camera. No exaggerated mouth opening, no "
     "identity drift, no camera movement, no zoom and no scene change."
 )
+
+    
+
+def speaker_prompt(person_focus: dict | None) -> str:
+    """Steer (not guarantee) the selected speaker while keeping full-frame LTX motion."""
+    if person_focus is None:
+        return TALKING_PROMPT
+    x, _y = validate_focus(person_focus)
+    position = "left" if x < 0.5 else "right"
+    opposite = "right" if position == "left" else "left"
+    return (
+        "A realistic continuous two-person talking-photo scene with the exact same "
+        "people, clothing, background, lighting, and composition as the reference image. "
+        f"The person on the {position} side of the image is the ONLY speaker. "
+        "That selected person speaks the provided speech audio with natural lip and jaw "
+        "articulation in sync with the voice, subtle head turns, natural blinking, "
+        "gentle breathing and small shoulder gestures. "
+        f"The other person (on the {opposite}) is a silent listener: "
+        "their lips stay closed and they do not speak or lip-sync to the audio. "
+        "The listener may blink, breathe and react with subtle natural head movement. "
+        "Keep BOTH people fully visible in their original positions throughout. "
+        "No camera movement, no zoom, no reframing, no extra people, no identity drift, "
+        "no cutaways, no swapped faces or speaking roles."
+    )
 
 
 class QualityCancelled(RuntimeError):
@@ -209,6 +234,7 @@ def generate(
     debug_dir: Path | None = None,
     lead_in_ms: int = 0,
     distilled: bool = False,
+    person_focus: dict | None = None,
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
     health = provider_health()
@@ -259,6 +285,7 @@ def generate(
         padded_audio = (debug_dir / padded_audio.name).resolve()
     runner_diagnostics = (debug_dir or work) / "runner.json"
 
+    render_prompt = speaker_prompt(person_focus)
     command = [
         str(RUNTIME_PYTHON), str(RUNNER),
         "--model", str(MODEL_DIR),
@@ -266,7 +293,7 @@ def generate(
         "--image", str(source_image),
         "--audio", str(padded_audio),
         "--output", str(output),
-        "--prompt", TALKING_PROMPT,
+        "--prompt", render_prompt,
         "--width", str(target_width),
         "--height", str(target_height),
         "--frames", str(frames),
@@ -283,7 +310,9 @@ def generate(
         "provider": "ltx-2.5-mlx-a2v", "seed": seed,
         "a2v_mode": "distilled" if distilled else "classic",
         "seed_source": "environment" if "LTX_TALKING_PHOTO_SEED" in os.environ else "job_id",
-        "prompt": TALKING_PROMPT,
+        "prompt": render_prompt,
+        "person_focus": person_focus,
+        "speaker_selection": "prompt-guided" if person_focus is not None else None,
         "negative_prompt": None if distilled else NEGATIVE_PROMPT,
         "frames": frames, "fps": FPS, "duration": clip_seconds,
         "audio_seconds": audio_seconds, "source_audio_stats": source_stats,

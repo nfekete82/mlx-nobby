@@ -20,7 +20,7 @@ import urllib.request
 
 from fastapi import HTTPException
 
-from agent import talking_photo_motion
+from agent import talking_photo_motion, talking_photo_person_focus
 
 
 ROOT = Path.home() / ".config/mlx-web/talking-photo"
@@ -311,6 +311,11 @@ def _run_job(job_id: str, image: bytes, request_payload: dict) -> None:
             wav = _audio_to_wav(audio, work)
 
             media = image
+            person_focus = request_payload.get("person_focus")
+            focus_context = None
+            if person_focus is not None:
+                media, background, mask, rect = talking_photo_person_focus.prepare(image, person_focus, work)
+                focus_context = (background, mask, rect)
             motion = str(request_payload.get("motion") or "none")
             if motion == "natural":
                 if _cancelled(job_id):
@@ -332,6 +337,10 @@ def _run_job(job_id: str, image: bytes, request_payload: dict) -> None:
             _update_job(job_id, status="lipsync", phase="lipsync", progress=0.8)
             avatar_key = hashlib.sha256(media).hexdigest()[:24]
             video, timing = _musetalk_lipsync(media, wav, avatar_key)
+            if _cancelled(job_id):
+                raise TalkingPhotoCancelled()
+            if focus_context is not None:
+                video = talking_photo_person_focus.composite(video, *focus_context, work)
 
             if _cancelled(job_id):
                 raise TalkingPhotoCancelled()
@@ -389,6 +398,12 @@ def create_job(payload: dict) -> dict:
             "MuseTalk ist nicht bereit. Einmalig ./scripts/setup-musetalk-mac ausführen.",
         )
     image, _extension = decode_image_data_url(payload["image_data_url"])
+    if payload.get("person_focus") is not None:
+        try:
+            talking_photo_person_focus.focus_rect(image, payload["person_focus"])
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        payload = {**payload, "motion": "none"}
     job_id = secrets.token_hex(12)
     now = time.time()
     motion = str(payload.get("motion") or "none")
@@ -402,6 +417,7 @@ def create_job(payload: dict) -> dict:
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": motion,
+        "person_focus": payload.get("person_focus"),
         "text_characters": len(payload["text"]),
         "provider": "musetalk-mac",
         "result": None,

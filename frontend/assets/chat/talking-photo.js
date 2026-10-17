@@ -38,6 +38,7 @@
     let pollInFlight = false;
     let elapsedTicker = null;
     let previewUrl = null;
+    let personFocus = null; // normalized click coordinates; reset when the source changes.
     let currentJobId = null;
     let lastJob = null;
     let preparing = false;
@@ -182,8 +183,18 @@
                 min-height: 200px; max-height: min(57vh, 610px);
                 object-fit: contain; border-radius: 12px; background: #09111d;
                 border: 1px solid rgba(148,163,184,.18);
+                user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
             }
             .mlx-talking-photo-preview[hidden] { display: none; }
+            .mlx-talking-photo-preview-wrap { position: relative; width: 100%; }
+            .mlx-talking-photo-focus-marker {
+                position: absolute; width: 30px; height: 30px;
+                border: 3px solid #69b7ff; border-radius: 50%;
+                background: rgba(54, 146, 255, .14);
+                box-shadow: 0 0 0 3px rgba(4, 13, 28, .65), 0 0 20px rgba(55, 152, 255, .65);
+                transform: translate(-50%, -50%); pointer-events: none; z-index: 2;
+            }
+            .mlx-talking-photo-focus-marker[hidden] { display: none; }
             .mlx-talking-photo-status {
                 margin: 0; padding: 10px 12px; border-radius: 10px;
                 background: rgba(148,163,184,.08); font-size: .86rem; white-space: pre-wrap;
@@ -379,7 +390,80 @@
         preview.className = 'mlx-talking-photo-preview';
         preview.alt = localText('Vorschau des Fotos', 'Photo preview');
         preview.hidden = true;
-        left.append(preview);
+        preview.draggable = false;
+        preview.tabIndex = 0;
+        const previewWrap = node('div', 'mlx-talking-photo-preview-wrap');
+        previewWrap.append(preview);
+        const focusMarker = node('span', 'mlx-talking-photo-focus-marker');
+        focusMarker.id = 'talkingPhotoFocusMarker';
+        focusMarker.hidden = true;
+        focusMarker.setAttribute('aria-hidden', 'true');
+        previewWrap.append(focusMarker);
+        left.append(previewWrap);
+        const focusHint = node('div', 'mlx-talking-photo-hint', localText(
+            'Bei mehreren Personen: Auf das Gesicht der sprechenden Person klicken. Standard-LTX bleibt aktiv und animiert beide Personen natürlich. Ein blauer Kreis markiert die Auswahl.',
+            'With multiple people: click the speaker\'s face. Standard LTX stays active and animates both people naturally. A blue circle marks the selection.',
+        ));
+        focusHint.id = 'talkingPhotoPersonFocusHint';
+        focusHint.setAttribute('role', 'status');
+        focusHint.setAttribute('aria-live', 'polite');
+        focusHint.hidden = true;
+        left.append(focusHint);
+        const focusReset = node('button', 'mlx-talking-photo-focus-reset', localText('Ganzes Foto verwenden', 'Use full photo'));
+        focusReset.id = 'talkingPhotoPersonFocusReset';
+        focusReset.type = 'button';
+        focusReset.hidden = true;
+        function focusMessage() {
+            return document.getElementById('talkingPhotoEngine')?.value === 'fast'
+                ? localText(
+                    'Gesicht markiert: MuseTalk animiert diesen Bereich, der Rest bleibt unverändert.',
+                    'Face selected: MuseTalk animates the selected region; the rest stays unchanged.',
+                )
+                : localText(
+                    'Gesicht markiert: LTX erzeugt natürliche Bewegung für beide Personen. Die Sprecherzuordnung ist experimentell und nicht garantiert.',
+                    'Face selected: LTX animates both people naturally. Speaker targeting is experimental and not guaranteed.',
+                );
+        }
+
+        function positionFocusMarker() {
+            if (!personFocus || preview.hidden || !preview.naturalWidth) return;
+            const rect = preview.getBoundingClientRect();
+            const parent = previewWrap.getBoundingClientRect();
+            const scale = Math.min(rect.width / preview.naturalWidth, rect.height / preview.naturalHeight);
+            const width = preview.naturalWidth * scale;
+            const height = preview.naturalHeight * scale;
+            focusMarker.style.left = (rect.left - parent.left + (rect.width - width) / 2 + personFocus.x * width) + 'px';
+            focusMarker.style.top = (rect.top - parent.top + (rect.height - height) / 2 + personFocus.y * height) + 'px';
+        }
+
+        focusReset.addEventListener('click', () => {
+            personFocus = null;
+            focusMarker.hidden = true;
+            focusReset.hidden = true;
+            preview.style.outline = '';
+            focusHint.textContent = localText('Tippe auf die sprechende Person.', 'Click the speaking person.');
+        });
+        preview.addEventListener('load', positionFocusMarker);
+        window.addEventListener('resize', positionFocusMarker);
+        left.append(focusReset);
+        preview.style.cursor = 'crosshair';
+        preview.addEventListener('click', event => {
+            if (preview.hidden || !preview.naturalWidth) return;
+            const rect = preview.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            // object-fit may letterbox; map the click into actual image pixels.
+            const scale = Math.min(rect.width / preview.naturalWidth, rect.height / preview.naturalHeight);
+            const dw = preview.naturalWidth * scale, dh = preview.naturalHeight * scale;
+            const x = (event.clientX - rect.left - (rect.width - dw) / 2) / dw;
+            const y = (event.clientY - rect.top - (rect.height - dh) / 2) / dh;
+            if (x < 0 || x > 1 || y < 0 || y > 1) return;
+            personFocus = {x, y};
+            if (engineSelect.value === 'quality') engineSelect.value = 'ltx-distilled';
+            focusMarker.hidden = false;
+            positionFocusMarker();
+            focusReset.hidden = false;
+            focusHint.textContent = focusMessage();
+        });
         left.append(node(
             'div',
             'mlx-talking-photo-hint',
@@ -512,6 +596,12 @@
         resultFrame.append(result);
 
         imageInput.addEventListener('change', () => {
+            personFocus = null;
+            focusMarker.hidden = true;
+            focusReset.hidden = true;
+            focusHint.hidden = !imageInput.files?.[0];
+            preview.style.outline = '';
+            focusHint.textContent = localText('Tippe auf die sprechende Person.', 'Click the speaking person.');
             selectedLibrarySource = null; // A manually chosen file breaks the previous ancestry.
             const file = imageInput.files?.[0];
             if (previewUrl) {
@@ -528,7 +618,17 @@
             preview.hidden = false;
         });
 
-        engineSelect.addEventListener('change', refreshProviderStatus);
+        engineSelect.addEventListener('change', () => {
+            if (personFocus && engineSelect.value === 'quality') {
+                engineSelect.value = 'ltx-distilled';
+                setStatus(localText(
+                    'Für die Personenauswahl bitte Standard-LTX, LTX direkt oder Fast verwenden. Hybrid wird noch nicht unterstützt.',
+                    'For selected-person playback use Standard LTX, Direct LTX or Fast. Hybrid is not supported yet.',
+                ));
+            }
+            if (personFocus) focusHint.textContent = focusMessage();
+            refreshProviderStatus();
+        });
         create.addEventListener('click', startJob);
         cancel.addEventListener('click', cancelCurrentJob);
         document.body.append(modal);
@@ -785,6 +885,9 @@
         try {
             setStatus(localText('Bild wird vorbereitet …', 'Preparing image …'));
             const imageDataUrl = await fileToDataUrl(file);
+            if (imageDataUrl.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 100) {
+                throw new Error(localText('Der Bildausschnitt ist zu groß.', 'The cropped image is too large.'));
+            }
             const job = await requestJson('/api/talking-photo/jobs', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -793,7 +896,8 @@
                     voice,
                     language: selectedLanguage,
                     engine,
-                    motion: 'natural',
+                    person_focus: personFocus,
+                    motion: personFocus && engine === 'fast' ? 'none' : 'natural',
                     speed: 1.0,
                 }),
             });
