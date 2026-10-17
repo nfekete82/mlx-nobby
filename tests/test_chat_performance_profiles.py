@@ -127,7 +127,7 @@ def test_live_apc_and_dflash_confirmation(monkeypatch):
 
 def test_apc_and_dflash_are_separate_server_modes():
     launcher = (ROOT / "scripts" / "mlx-server-start").read_text()
-    assert 'CHAT_PERFORMANCE_PROFILE="\${MLX_CHAT_PERFORMANCE_PROFILE:-default}"' in launcher
+    assert 'CHAT_PERFORMANCE_PROFILE="${MLX_CHAT_PERFORMANCE_PROFILE:-default}"' in launcher
     assert 'export APC_ENABLED=1' in launcher
     assert 'export APC_EXACT_CACHE_ENTRIES=1' in launcher
     assert 'export APC_DISK_PATH=""' in launcher
