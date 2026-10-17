@@ -290,7 +290,7 @@ def compare(args) -> dict:
         signal.signal(signum, interrupted)
     results = {}
     try:
-        profiles = ("dflash", "apc", "hybrid") if args.include_hybrid else ("dflash", "apc")
+        profiles = ("dflash", "apc", "hybrid") if getattr(args, "include_hybrid", False) else ("dflash", "apc")
         for profile in profiles:
             print(f"\nTesting {profile} (long answers)...", file=sys.stderr, flush=True)
             switch_profile(profile)
@@ -319,7 +319,7 @@ def compare(args) -> dict:
         "kind": "opt_in_chat_profile_comparison",
         "max_tokens": args.max_tokens,
         "nominal_context_sizes": args.context_sizes,
-        "experimental_hybrid_included": args.include_hybrid,
+        "experimental_hybrid_included": bool(getattr(args, "include_hybrid", False)),
         "starting_profile_restored": previous,
         "results": results,
         "notes": [
