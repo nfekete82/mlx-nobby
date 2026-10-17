@@ -96,7 +96,10 @@ def test_production_served_module_has_no_dangling_variant_references():
     source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
     patched = image_regenerate_ui.patch_image_settings_source(source)
     assert patched != source
-    wrapper = patched.split(b"generation.createImageUpscaleMenu = source => {", 1)[1]
+    assert b"generation.createImageUpscaleMenu = (source, originalMessage = null) => {" in patched
+    assert b"makeButton(single, caption, 2);" in patched
+    assert "makeButton(multiple, '3× ' + caption, 4);".encode() in patched
+    wrapper = patched.split(b"const regenerate = document.createElement('button');", 1)[1]
     wrapper = wrapper.split(b"return fragment;", 1)[0]
     assert b"variants" not in wrapper
     assert b"regenerate.addEventListener" in wrapper
@@ -112,8 +115,9 @@ def test_production_served_module_has_no_dangling_variant_references():
 const fs = require('fs');
 const vm = require('vm');
 const source = fs.readFileSync(0, 'utf8');
-const start = source.indexOf('    generation.createImageUpscaleMenu = source => {');
-const end = source.indexOf('        return fragment;', start) + '        return fragment;'.length;
+const start = source.indexOf('    generation.createImageUpscaleMenu = (source, originalMessage = null) => {');
+const generateStart = source.indexOf("const regenerate = document.createElement('button');", start);
+const end = source.indexOf('        return fragment;', generateStart) + '        return fragment;'.length;
 class Element {
   constructor() { this.children = []; this.listeners = {}; this.isConnected = true; }
   append(...children) { this.children.push(...children); }
@@ -160,3 +164,19 @@ def test_served_variant_runtime_executes_real_batches(tmp_path):
     module.write_bytes(served.content)
     subprocess.run(["node", str(ROOT / "tests/test_image_variant_served.mjs"), str(module)],
                    cwd=ROOT, check=True, capture_output=True, text=True)
+
+
+def test_edit_reroll_kept_in_served_script_and_card_receives_original_message():
+    source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
+    patched = image_regenerate_ui.patch_image_settings_source(source)
+    assert b"makeButton(single, caption, 2);" in patched
+    assert "makeButton(multiple, '3× ' + caption, 4);".encode() in patched
+    assert b"includeBase: true" in patched
+    assert b"firstMessage: originalMessage" in patched
+    assert b"const variants = document.createElement('button')" not in patched
+    assert b"createImageUpscaleMenu?.(artifact, message)" in (
+        ROOT / "frontend/assets/chat/rendering.js"
+    ).read_bytes()
+    html = (ROOT / "frontend/chat.html").read_text(encoding="utf-8")
+    assert "image-settings.js?v=20261017-image-edit-reroll" in html
+    assert "rendering.js?v=20261017-image-edit-reroll" in html
