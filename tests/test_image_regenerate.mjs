@@ -505,3 +505,84 @@ context.fetch = async () => ok(malformed);
 assert.equal(await api.submitVariantBatch(artifact, 3), null);
 assert.equal(session.messages.length, 0);
 assert.ok(diagnosticWarnings.length >= 3);
+
+
+// Finished Qwen edits expose one fresh edit or three more variants. Replay is
+// server-owned: the browser sends only the native job ID and chat ownership,
+// never a source path, painted mask, original seed, or edited output as source.
+const editedArtifact = {
+    ...artifact,
+    artifact_id: 'image-1781634000-fedcba987654',
+    image_id: '1781634000-fedcba987654',
+    source_image_id: '1781634000-abc123abc123',
+    source_path: '/private/mlx/images/1781634000-abc123abc123.png',
+    semantic_operation: 'edit',
+    model: 'mflux-osaurus-qwen-image-2.1-edit',
+    provider: 'mflux',
+    generation_job_id: 'e'.repeat(24),
+    variants_available: true,
+};
+const originalEditMessage = {
+    role: 'assistant',
+    content: '',
+    tool_result: {tool: 'image_edit', status: 'completed',
+        artifacts: [editedArtifact], data: {job: {id: editedArtifact.generation_job_id, status: 'completed'}}},
+    image_job: {id: editedArtifact.generation_job_id, status: 'completed', operation: 'edit'}
+};
+session.messages = [originalEditMessage];
+const editRerollControls = window.MLXChatGeneration.createImageUpscaleMenu(editedArtifact, originalEditMessage);
+assert.equal(editRerollControls.children.length, 3);
+assert.equal(editRerollControls.children[0].textContent, 'Neu generieren');
+assert.equal(editRerollControls.children[1].textContent, '3× Neu generieren');
+assert.equal(editRerollControls.children[2].className, 'image-upscale-menu');
+const editorCalls = [];
+context.fetch = async (url, options) => {
+    editorCalls.push({url, options});
+    assert.equal(url, '/api/mlx/image-jobs/variants');
+    const payload = JSON.parse(options.body);
+    return ok({
+        variant_group_id: String(editorCalls.length).repeat(24),
+        variant_count: payload.count,
+        base: {tool: 'image_edit', status: 'completed',
+            data: {job: {id: editedArtifact.generation_job_id, status: 'completed'}},
+            artifacts: [editedArtifact]},
+        jobs: Array.from({length: payload.count - 1}, (_, index) => ({
+            tool: 'image_edit', status: 'queued', artifacts: [],
+            data: {job: {id: String(index + 5).repeat(24),
+                operation: 'edit', status: 'queued',
+                variant_group_id: String(editorCalls.length).repeat(24),
+                variant_index: index + 2, variant_count: payload.count}}
+        }))
+    });
+};
+await editRerollControls.children[0].click();
+assert.equal(editorCalls.length, 1);
+const editRerollPayload = JSON.parse(editorCalls[0].options.body);
+assert.deepEqual(JSON.parse(JSON.stringify(editRerollPayload)), {
+    base_job_id: editedArtifact.generation_job_id,
+    count: 2,
+    include_base: true,
+    chat_id: session.id,
+    chat_revision: session.revision,
+    variant_group_id: null,
+});
+assert.equal(session.messages.length, 2);
+assert.equal(session.messages[0].image_variant_index, 1);
+assert.equal(session.messages[1].image_variant_index, 2);
+assert.equal(session.messages[1].image_job.operation, 'edit');
+
+// A batch of three *new* variations includes the original as its first slot.
+session.messages = [originalEditMessage];
+const threeEditControls = window.MLXChatGeneration.createImageUpscaleMenu(editedArtifact, originalEditMessage);
+await threeEditControls.children[1].click();
+assert.equal(editorCalls.length, 2);
+assert.equal(JSON.parse(editorCalls[1].options.body).count, 4);
+assert.equal(session.messages.length, 4);
+assert.deepEqual(session.messages.map(message => message.image_variant_index), [1, 2, 3, 4]);
+
+const legacyEdit = {...editedArtifact, variants_available: false};
+const oldEditControls = window.MLXChatGeneration.createImageUpscaleMenu(legacyEdit, originalEditMessage);
+assert.equal(oldEditControls.children[0].disabled, true);
+assert.equal(oldEditControls.children[1].disabled, true);
+assert.match(oldEditControls.children[0].title, /Variants are unavailable/);
+console.log('Edit reroll buttons preserve owned original-image jobs.');
