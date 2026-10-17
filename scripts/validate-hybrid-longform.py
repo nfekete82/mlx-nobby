@@ -59,8 +59,12 @@ def make_messages(context_tokens: int):
     followup = {
         "role": "user",
         "content": (
-            "Erinnere dich an die drei Kennwörter aus der Prüfnotiz. "
-            "Schreibe sie zu Beginn in einer Zeile auf (ohne ihre Werte zu raten). "
+            "Erinnere dich an die drei Kennwörter aus der Prüfnotiz "
+            "der ersten Nachricht. "
+            "Die erste Ausgabezeile MUSS genau dieses Schema haben: "
+            "Kennwort 1: <Wert 1>; Kennwort 2: <Wert 2>; Kennwort 3: <Wert 3>. "
+            "Ersetze die Platzhalter durch die tatsächlichen Wörter "
+            "aus der Prüfnotiz, ohne zusätzliche Wörter in dieser Zeile. "
             "Erkläre danach in mehreren ausführlichen deutschen Absätzen, "
             "wie Prefill, KV-Cache, Decoding und Streaming bei einem lokalen "
             "Sprachmodell zusammenspielen, einschließlich eines Beispiels "
@@ -72,15 +76,41 @@ def make_messages(context_tokens: int):
     return first, followup
 
 
+def canonical_text(text: str) -> str:
+    """Normalize ASCII/umlauts and ignore separators for diagnostics only."""
+    upper = text.upper()
+    for letter, replacement in (
+        ("Ä", "AE"), ("Ö", "OE"), ("Ü", "UE"), ("ẞ", "SS"), ("ß", "SS")
+    ):
+        upper = upper.replace(letter, replacement)
+    return re.sub(r"[^A-Z0-9]", "", upper)
+
+
+def marker_diagnostics(answer: str) -> dict:
+    """Emit ONLY synthetic marker booleans, never model output text."""
+    upper = answer.upper()
+    canonical = canonical_text(answer)
+    first_line = next((line for line in answer.splitlines() if line.strip()), "")
+    return {
+        "exact": {marker: marker in upper for marker in MARKERS},
+        "normalized": {
+            marker: canonical_text(marker) in canonical for marker in MARKERS
+        },
+        "first_line_exact": {
+            marker: marker in first_line.upper() for marker in MARKERS
+        },
+        "first_nonempty_line_characters": len(first_line),
+    }
+
+
 def verify_long_answer(answer: str, reported_characters: int,
                        min_characters: int) -> dict:
-    upper = answer.upper()
-    # bench.agent_stream retains at most the initial 2048 visible characters
-    # in memory. Check canaries on this captured span, not in saved reports.
+    # bench.agent_stream retains at most the first 2048 visible characters.
+    diagnostics = marker_diagnostics(answer)
     return {
-        "canaries_recalled": all(marker in upper for marker in MARKERS),
+        "canaries_recalled": all(diagnostics["exact"].values()),
         "technical_terms_present": all(
-            term in upper for term in ("PREFILL", "DECODING", "STREAMING")
+            term in answer.upper() for term in ("PREFILL", "DECODING", "STREAMING")
         ),
         "long_enough": reported_characters >= min_characters,
         "captured_text_not_empty": bool(answer.strip()),
@@ -157,6 +187,8 @@ def run_mode(mode: str, context_tokens: int, min_characters: int,
         "profile": mode,
         "passed": all(checks.values()),
         "checks": checks,
+        "synthetic_marker_diagnostics": marker_diagnostics(follow_text),
+        "captured_output_characters": len(follow_text),
         "prime_first_content_ms": prime_timing["first_content_ms"],
         "followup_first_content_ms": follow_timing["first_content_ms"],
         "followup_total_ms": follow_timing["total_ms"],
@@ -224,6 +256,8 @@ def compare_longform(context_tokens: int, min_characters: int, timeout: int):
             "Synthetic context and deterministic zero-temperature agent requests.",
             "First 2048 visible characters retained in memory for verification.",
             "Content similarity is descriptive, not a hard quality verdict.",
+            "Per-marker booleans distinguish missing values from formatting; strict exact recall still gates.",
+            "The follow-up now requests a concrete first-line format; no marker values appear in it.",
             "Memory before/after is not an instantaneous or continuous peak measurement.",
             "No private user content, model text or prompts are persisted.",
             "A pass is not proof of numerical equivalence or overall answer quality.",
