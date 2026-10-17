@@ -284,13 +284,6 @@ async function updateImageModelOptions(
 ) {
     if (!select) return 'auto';
     const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
-    function retainMissingChoice() {
-        const option = document.createElement('option');
-        option.value = requested;
-        option.textContent = requested + ' · ' + (window.MLXI18n?.t('ui.status_unavailable', 'Unavailable') || 'Unavailable');
-        option.disabled = true;
-        select.appendChild(option);
-    }
 
     const automatic = document.createElement('option');
     automatic.value = 'auto';
@@ -319,47 +312,38 @@ async function updateImageModelOptions(
                 : []
         ).filter(model =>
             model?.enabled === true &&
+            model?.available === true &&
             Array.isArray(model?.capabilities) &&
             model.capabilities.includes(capability)
         );
 
         const defaultModel = models.find(
-            model =>
-                model.id === data?.default_model &&
-                model.available === true
+            model => model.id === data?.default_model
         );
         if (defaultModel?.name) {
             automatic.textContent +=
                 ' (' + defaultModel.name + ')';
         }
 
-        const unavailableLabel =
-            window.MLXI18n?.t(
-                'ui.status_unavailable',
-                'Unavailable'
-            ) || 'Unavailable';
-
         for (const model of models) {
             const option = document.createElement('option');
             option.value = model.id;
-            option.disabled = model.available !== true;
-            option.textContent =
-                (model.name || model.id) +
-                (
-                    option.disabled
-                        ? ' · ' + unavailableLabel
-                        : ''
-                );
+            option.textContent = model.name || model.id;
             select.appendChild(option);
         }
 
-        if (requested !== 'auto' && !models.some(model => model.id === requested)) retainMissingChoice();
-        select.value = requested;
-        return select.value;
+        // A stale saved choice must never appear as a fake disabled model.
+        // Also prevent an edit-only checkpoint from leaking into Generate.
+        const selected = models.some(model => model.id === requested)
+            ? requested : 'auto';
+        select.value = selected;
+        if (selected !== requested) storeImageModel('auto');
+        return selected;
     } catch (_) {
-        if (requested !== 'auto') retainMissingChoice();
-        select.value = requested;
-        return requested;
+        // If the model service is offline, show only Automatic. Do not
+        // permanently clear preferences until the catalogue is authoritative.
+        select.value = 'auto';
+        return 'auto';
     } finally {
         select.disabled = false;
     }
