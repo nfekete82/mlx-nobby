@@ -62,8 +62,9 @@ def updated_config(content: str, mode: str) -> str:
     return clean + f'{KEY}="{mode}"\n'
 
 
-def write_config(content: str, config: Path = CONFIG) -> None:
+def write_config(content: str, config: Path | None = None) -> None:
     """Atomic, user-only replacement preserving file permission bits."""
+    config = CONFIG if config is None else config
     mode = stat.S_IMODE(config.stat().st_mode)
     fd, name = tempfile.mkstemp(prefix=".chat-profile-", dir=config.parent)
     try:
