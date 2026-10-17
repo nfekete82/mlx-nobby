@@ -117,7 +117,7 @@ const fs = require('fs');
 const vm = require('vm');
 const source = fs.readFileSync(0, 'utf8');
 const start = source.indexOf('    generation.createImageUpscaleMenu = (source, originalMessage = null) => {');
-const generateStart = source.indexOf("const regenerate = document.createElement('button');", start);
+const generateStart = source.indexOf("const regenerate = document.createElement('button');", source.indexOf('// Existing non-image-edit contexts', start));
 const end = source.indexOf('        return fragment;', generateStart) + '        return fragment;'.length;
 class Element {
   constructor() { this.children = []; this.listeners = {}; this.isConnected = true; }
