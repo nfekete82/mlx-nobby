@@ -161,7 +161,8 @@ PREFILL_ADAPTER = '''
 
 def transform_speculative_method(source: str) -> str:
     """Return patched function source or reject any unexpected upstream drift."""
-    code = textwrap.dedent(source)
+    # Match the original class-indented source first; dedent only for exec.
+    code = source
     if MARKER in code:
         raise RuntimeError("Hybrid adapter already installed")
     required = {
@@ -207,8 +208,9 @@ def transform_speculative_method(source: str) -> str:
                         float(prompt_tps_map[uid] or 0.0),''',
         1,
     )
-    compile(code, "<nobby-hybrid-apc-dflash>", "exec")
-    return code
+    standalone = textwrap.dedent(code)
+    compile(standalone, "<nobby-hybrid-apc-dflash>", "exec")
+    return standalone
 
 
 def install() -> None:
