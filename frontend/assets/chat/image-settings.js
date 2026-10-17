@@ -707,41 +707,33 @@ function imageT(key, fallback = '', variables = {}) {
         if (isOrdinaryEdit && originalMessage?.tool_result?.tool === 'image_edit') {
             const fragment = document.createDocumentFragment();
             const available = variantSourceAvailable(source);
-            const single = document.createElement('button');
-            const multiple = document.createElement('button');
+            const regenerate = document.createElement('button');
             const caption = imageT('ui.regenerate', 'Regenerate');
             const unavailable = imageT(
                 'generation.image_variants_unavailable',
                 'Variants are unavailable for this image. Generate a new image first.'
             );
-            const makeButton = (button, label, count) => {
-                button.type = 'button';
-                button.className = 'message-action-btn';
-                button.textContent = label;
-                button.title = available ? label : unavailable;
-                button.disabled = !available;
-                button.addEventListener('click', async () => {
-                    if (!variantSourceAvailable(source)) return;
-                    single.disabled = true;
-                    multiple.disabled = true;
-                    const savedLabel = button.textContent;
-                    button.textContent = imageT('common.loading', 'Loading…');
-                    const started = Boolean(await submitVariantBatch(source, count, {
-                        includeBase: true,
-                        firstMessage: originalMessage
-                    }));
-                    if (!started && button.isConnected) {
-                        single.disabled = !variantSourceAvailable(source);
-                        multiple.disabled = !variantSourceAvailable(source);
-                        button.textContent = savedLabel;
-                    }
-                });
-            };
-            // A batch includes the original: 2 = original + one new edit,
-            // 4 = original + three fresh-seed edits.
-            makeButton(single, caption, 2);
-            makeButton(multiple, '3× ' + caption, 4);
-            fragment.append(single, multiple, enhanceMenu);
+            regenerate.type = 'button';
+            regenerate.className = 'message-action-btn';
+            regenerate.textContent = caption;
+            regenerate.title = available ? caption : unavailable;
+            regenerate.disabled = !available;
+            regenerate.addEventListener('click', async () => {
+                if (!variantSourceAvailable(source)) return;
+                regenerate.disabled = true;
+                regenerate.textContent = imageT('common.loading', 'Loading…');
+                // One new edit with a fresh seed, grouped with the untouched
+                // original result. Never replay from the output image.
+                const started = Boolean(await submitVariantBatch(source, 2, {
+                    includeBase: true,
+                    firstMessage: originalMessage
+                }));
+                if (!started && regenerate.isConnected) {
+                    regenerate.disabled = !variantSourceAvailable(source);
+                    regenerate.textContent = caption;
+                }
+            });
+            fragment.append(regenerate, enhanceMenu);
             return fragment;
         }
 
