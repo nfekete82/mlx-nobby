@@ -21,18 +21,22 @@ def patch_image_settings_source(body: bytes) -> bytes:
     regenerate = b"        regenerate.addEventListener('click', async () => {"
     handler = b"        variants.addEventListener('click', async () => {"
     append = b"        fragment.append(regenerate, variants, enhanceMenu);"
-    markers = (wrapper, declaration, setup, regenerate, handler, append)
-    if any(body.count(marker) != 1 for marker in markers):
+    # Restrict matching to the Generate card. The Edit card now has its own
+    # regenerate.addEventListener before the Generate declarations, so a
+    # whole-file count would reject this valid module and disable the patch.
+    if body.count(wrapper) != 1 or body.count(declaration) != 1:
         return body
-    positions = [body.index(marker) for marker in markers]
+    declaration_start = body.index(declaration)
+    scoped = body[declaration_start:]
+    markers = (declaration, setup, regenerate, handler, append)
+    if any(scoped.count(marker) != 1 for marker in markers):
+        return body
+    positions = [scoped.index(marker) for marker in markers]
     if positions != sorted(positions):
         return body
-    # Scope the removal to the legacy Generate-only shortcut. The new Edit
-    # branch preceding this declaration has its own two explicit controls;
-    # slicing from the wrapper would mistakenly remove those controls.
-    prefix = body[:positions[1]]
-    suffix = body[positions[-1] + len(append):]
-    card = body[positions[1]:positions[-1]]
+    prefix = body[:declaration_start]
+    suffix = scoped[positions[-1] + len(append):]
+    card = scoped[:positions[-1]]
     card = card[:card.index(handler)]
     card = card[:card.index(setup)] + card[card.index(regenerate):]
     card = card.replace(declaration, b"")
