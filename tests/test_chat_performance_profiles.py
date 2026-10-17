@@ -166,6 +166,8 @@ def test_compare_restores_original_profile_even_if_probe_raises(monkeypatch, tmp
     monkeypatch.setattr(profile, "CONFIG", config)
     monkeypatch.setattr(profile, "ensure_idle", lambda: None)
     monkeypatch.setattr(profile, "preflight", lambda mode: None)
+    monkeypatch.setattr(profile, "cache_snapshot", lambda: {"enabled": False})
+    monkeypatch.setattr(profile, "memory_snapshot", lambda: {"free_percent": 50})
     changed = []
     def switch(mode):
         changed.append(mode)
