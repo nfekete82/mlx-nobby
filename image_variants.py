@@ -151,7 +151,9 @@ def install(service):
                 # Ordinary edits must rebuild their temporary crop/mask from
                 # the original source on every run. Their canonical params
                 # contain paths which are removed when the first edit ends.
-                reusable_resolved = (None if operation == "edit" and not group.get("reference_edit")
+                reference_replay = (group.get("reference_edit") is True or
+                                    group.get("request", {}).get("semantic_operation") == "reference_generate")
+                reusable_resolved = (None if operation == "edit" and not reference_replay
                                      else group["canonical"])
                 service._run_image_job(job["id"], operation, request,
                                        resolved=reusable_resolved, release_lock=False)
@@ -244,7 +246,12 @@ def install(service):
             reference_edit = (base.get("operation") == "edit" and
                               base.get("result", {}).get("semantic_operation") == "reference_generate")
             ordinary_edit = (base.get("operation") == "edit" and not reference_edit)
-            if base.get("operation") not in {"generate", "edit"} or not reusable(base) or not base.get("_canonical") or base.get("variants_available") is False:
+            canonical_base = base.get("_canonical") if base else None
+            if (base.get("operation") not in {"generate", "edit"} or not reusable(base)
+                    or not isinstance(canonical_base, dict) or base.get("variants_available") is False
+                    or (base.get("operation") == "edit" and
+                        (canonical_base.get("operation") != "edit" or
+                         not isinstance(canonical_base.get("request"), dict)))):
                 raise HTTPException(409, "Variants require a completed image job with replay metadata")
             group = None
             if request.variant_group_id:
