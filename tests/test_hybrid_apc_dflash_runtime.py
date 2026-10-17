@@ -180,3 +180,30 @@ def test_hybrid_only_added_when_explicitly_requested(monkeypatch):
     assert report["starting_profile_restored"] == "default"
     assert report["experimental_hybrid_included"] is True
     assert profiles.configured_profile(values["config"]) == "default"
+
+
+def test_mlx_memory_finds_vlm_hybrid_and_legacy_server_processes():
+    """The MLX RAM view must not claim a live mlx_vlm server is stopped."""
+    source = (ROOT / "scripts" / "mlx").read_text()
+    anchor = 'pgrep -f "'
+    line = next(line.strip() for line in source.splitlines()
+                if line.strip().startswith(anchor) and "mlx_vlm" in line)
+    expression = line.split(anchor, 1)[1].split('"', 1)[0].replace("$PORT", "8000")
+    true_examples = (
+        "python3 -m mlx_vlm server --model local --port 8000 --max-num-seqs 2",
+        "python3 scripts/hybrid_apc_dflash_runtime.py mlx_vlm server --model local --port 8000 --draft-kind dflash",
+        "python3 -m mlx_lm.server --model local --port 8000",
+    )
+    false_examples = (
+        "python3 -m mlx_vlm server --model local --port 8001",
+        "python3 -m mlx_lm.server --model local --port 18000",
+        "python3 -m mlx_vlm server --model local --port 80001",
+    )
+    for command in true_examples:
+        probe = subprocess.run(["grep", "-E", expression], input=command,
+                               capture_output=True, text=True)
+        assert probe.returncode == 0, (expression, command, probe.stderr)
+    for command in false_examples:
+        probe = subprocess.run(["grep", "-E", expression], input=command,
+                               capture_output=True, text=True)
+        assert probe.returncode == 1, (expression, command, probe.stderr)
