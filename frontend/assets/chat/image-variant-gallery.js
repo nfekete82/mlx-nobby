@@ -2,7 +2,7 @@
 
 (() => {
     const CSS_ID = 'mlx-image-variant-gallery-css';
-    const SCRIPT_VERSION = '20261002-gallery-final';
+    const SCRIPT_VERSION = '20261017-gallery-append-one';
     const ACTIVE_STATUSES = new Set([
         'queued',
         'loading',
@@ -15,7 +15,7 @@
         variant: 'Variant {index}',
         use: 'Use',
         selected: 'Selected',
-        more: 'Create {count} more',
+        more: 'Create one more variant',
         generating: 'Generating …',
         waiting: 'Waiting …',
         failed: 'Generation failed',
@@ -439,14 +439,17 @@
         const sourceArtifact = group.items
             .map(item => artifactForMessage(item.message))
             .find(Boolean);
-        if (sourceArtifact) {
+        const ownedBase = group.items.find(item =>
+            /^[a-f0-9]{24}$/.test(String(item.message.image_variant_base_job_id || '')));
+        if (sourceArtifact && ownedBase && group.count < 24) {
             const footer = document.createElement('div');
             footer.className = 'image-variant-gallery-footer';
             const more = document.createElement('button');
             more.type = 'button';
             more.className = 'message-action-btn';
-            more.textContent = t('more', { count: group.count });
-            more.disabled = active || !window.MLXImageRegenerate?.variantSourceAvailable?.(sourceArtifact);
+            more.textContent = t('more');
+            more.disabled = active || failed || !window.MLXImageRegenerate?.variantSourceAvailable?.(
+                {generation_job_id: ownedBase.message.image_variant_base_job_id});
             if (!active && more.disabled) more.title = t('unavailable');
             more.addEventListener('click', async () => {
                 more.disabled = true;
@@ -455,7 +458,7 @@
                 let started = false;
                 try {
                     started = await window.MLXImageRegenerate
-                        ?.generateImageVariants?.(sourceArtifact, group.count);
+                        ?.appendImageVariant?.(group.id);
                 } catch (_error) {}
                 if (!started && more.isConnected) {
                     more.disabled = false;
