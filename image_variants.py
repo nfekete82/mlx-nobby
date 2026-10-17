@@ -19,7 +19,7 @@ _TERMINAL = {"completed", "failed", "cancelled"}
 class VariantBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     base_job_id: str = Field(pattern=r"^[a-f0-9]{24}$")
-    count: int = Field(default=3, ge=2, le=6, strict=True)
+    count: int = Field(default=3, ge=2, le=24, strict=True)
     include_base: bool = True
     chat_id: str = Field(min_length=1)
     chat_revision: int = Field(ge=0, strict=True)
@@ -79,7 +79,7 @@ def prune_records(service):
     """Keep latest terminal records, plus dependencies of retained/active groups.
 
     The existing job limit bounds groups and standalone sources separately.
-    Each retained group pins at most six members and its source. Active groups
+    Each retained group pins at most 24 members and its source. Active groups
     and their dependencies are never removed; image files are never removed.
     """
     directory = service.OUTPUT / ".variants"
@@ -189,6 +189,11 @@ def install(service):
                     completed = load_record(service.OUTPUT, "job-" + job["id"])
                     if completed and completed["job"].get("variant_group_id") == group_id:
                         job.update(completed["job"])
+                    # Old per-job records reflect the group size at creation;
+                    # a subsequently extended gallery has the authoritative count.
+                    job["variant_count"] = group["count"]
+                    if isinstance(job.get("result"), dict):
+                        job["result"]["variant_count"] = group["count"]
                 group["running"] = False
                 groups[group_id] = group
         if group and not group.get("running"):
@@ -256,16 +261,62 @@ def install(service):
             group = None
             if request.variant_group_id:
                 group = owned_group(request.variant_group_id, request.chat_id, request.chat_revision)
-                if group["base_id"] != base["id"] or group["count"] != request.count or group["include_base"] != request.include_base:
+                if group["base_id"] != base["id"] or group["include_base"] != request.include_base:
                     raise HTTPException(404, "Variant group not found")
                 if group.get("running"):
                     raise HTTPException(409, "Variant group is running")
-                if all(reusable(job) for job in group["jobs"]):
+                is_extension = request.count == group["count"] + 1
+                if not is_extension and request.count != group["count"]:
+                    raise HTTPException(404, "Variant group not found")
+                if is_extension and not all(reusable(job) for job in group["jobs"]):
+                    raise HTTPException(409, "Finish or retry existing variants before adding another")
+                if not is_extension and all(reusable(job) for job in group["jobs"]):
                     return response(group)
+            elif request.count > 6:
+                # New batches retain the historical six-image cap. Only an
+                # existing, completed, owned gallery may grow one at a time.
+                raise HTTPException(422, "New variant batches may contain at most six images")
             if not service._lock.acquire(blocking=False):
                 raise HTTPException(409, "An image job is already running")
             try:
                 cancel_event = threading.Event()
+                if group is not None and is_extension:
+                    canonical = group["canonical"]
+                    seed_base = canonical["params"]["seed"]
+                    used_seeds = {seed_base, *(member["seed"] for member in group["jobs"])}
+                    if canonical.get("requested_seed") is not None:
+                        next_seed = (seed_base + len(group["jobs"]) + 1) % (2**32)
+                    else:
+                        next_seed = secrets.randbelow(2**32)
+                        while next_seed in used_seeds:
+                            next_seed = secrets.randbelow(2**32)
+                    index = request.count
+                    job = {
+                        "id": secrets.token_hex(12), "operation": group["operation"],
+                        "chat_id": request.chat_id, "chat_revision": request.chat_revision,
+                        "run_id": base["run_id"], "status": "queued", "phase": "queued",
+                        "progress": 0.0, "model": canonical["model"]["id"],
+                        "provider": canonical["model"]["provider"],
+                        "model_family": canonical["model"]["model_family"],
+                        "current_step": None, "total_steps": canonical["params"]["steps"],
+                        "seed": next_seed, "result": None, "error": None,
+                        "created_at": time.time(), "started_at": None, "finished_at": None,
+                        "variant_group_id": group["id"], "variant_index": index,
+                        "variant_count": index, "source_generation_job_id": base["id"],
+                        "_cancel_event": cancel_event, "_process": None, "_output_path": None,
+                    }
+                    if group.get("reference_edit"):
+                        job.update(semantic_operation="reference_generate", reference_used=True,
+                                   reference_mode=group["request"]["reference_mode"],
+                                   reference_relation=group["request"]["reference_mode"])
+                    # Preserve completed image files and their IDs. Only
+                    # presentation metadata changes as the gallery grows.
+                    group["count"] = index
+                    for previous in group["jobs"]:
+                        previous["variant_count"] = index
+                        if isinstance(previous.get("result"), dict):
+                            previous["result"]["variant_count"] = index
+                    group["jobs"].append(job)
                 if group is None:
                     canonical = copy.deepcopy(base["_canonical"])
                     operation = "edit" if (reference_edit or ordinary_edit) else "generate"
