@@ -220,6 +220,24 @@ def load_benchmark():
     return module
 
 
+def cache_snapshot() -> dict:
+    try:
+        raw = json_get(SERVER + "/v1/cache/stats")
+    except (OSError, RuntimeError, ValueError):
+        return {"available": False}
+    keys = ("enabled", "exact_hits", "exact_stores", "matched_tokens",
+            "lookups_hit", "lookups_miss", "pool_used", "resident_bytes",
+            "rejects")
+    return {key: raw.get(key) for key in keys}
+
+
+def memory_snapshot() -> dict:
+    raw = json_get(AGENT + "/api/performance/observatory?limit=1")
+    memory = ((raw.get("system") or {}).get("memory") or {})
+    keys = ("free_percent", "swap_used_gb", "headroom_gb", "pressure")
+    return {key: memory.get(key) for key in keys}
+
+
 def compact_result(report: dict) -> dict:
     return {
         "short": {
@@ -259,11 +277,17 @@ def compare(args) -> dict:
             switch_profile(profile)
             # Use the same public synthetic workload, and don't save
             # completion text, traces, or user messages.
+            before = {"cache": cache_snapshot(), "memory": memory_snapshot()}
             report = benchmark.run(
                 AGENT, args.context_sizes, args.samples,
                 args.max_tokens, args.timeout, answer_profile="long"
             )
-            results[profile] = compact_result(report)
+            after = {"cache": cache_snapshot(), "memory": memory_snapshot()}
+            results[profile] = {
+                "benchmark": compact_result(report),
+                "before": before,
+                "after": after,
+            }
     finally:
         try:
             if configured_profile(CONFIG.read_text(encoding="utf-8")) != previous:
