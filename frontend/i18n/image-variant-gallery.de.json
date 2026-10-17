@@ -3,7 +3,7 @@
   "variant": "Variante {index}",
   "use": "Verwenden",
   "selected": "Ausgewählt",
-  "more": "Noch {count} Varianten erstellen",
+  "more": "Noch eine Variante erstellen",
   "generating": "Wird generiert …",
   "waiting": "Wartet …",
   "failed": "Generierung fehlgeschlagen",
