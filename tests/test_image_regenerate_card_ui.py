@@ -180,5 +180,16 @@ def test_edit_reroll_kept_in_served_script_and_card_receives_original_message():
         ROOT / "frontend/assets/chat/rendering.js"
     ).read_bytes()
     html = (ROOT / "frontend/chat.html").read_text(encoding="utf-8")
-    assert "image-settings.js?v=20261017-image-edit-single-reroll" in html
+    assert "image-settings.js?v=20261017-gallery-append-one" in html
     assert "rendering.js?v=20261017-image-edit-reroll" in html
+
+
+def test_gallery_append_one_and_replay_are_exposed_without_extra_edit_button():
+    module = (ROOT / "frontend/assets/chat/image-settings.js").read_text(encoding="utf-8")
+    gallery = (ROOT / "frontend/assets/chat/image-variant-gallery.js").read_text(encoding="utf-8")
+    assert "async function appendImageVariant(groupId)" in module
+    assert "appendImageVariant," in module
+    assert "count + 1, {groupId, includeBase, firstMessage}" in module
+    assert "appendImageVariant?.(group.id)" in gallery
+    assert "generateImageVariants?.(sourceArtifact, group.count)" not in gallery
+    assert "image-variant-gallery.js?v=20261017-gallery-append-one" in module
