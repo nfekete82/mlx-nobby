@@ -112,3 +112,50 @@ the installed MLX-VLM package or weights.
   cache state remains unmeasured.
 - The run order is fixed; thermal, memory, and queue state may skew single
   measurements. Repeat controlled tests before choosing a new default.
+
+## Observed first hardware A/B measurement (2026-10-17)
+
+On an Apple M5 Max, the user performed the 4k nominal context, 384-token
+three-way test. First visible text and total answer time for the **warm
+same-prefix follow-up**:
+
+| Mode | First text | Full answer | Characters | Exact hits |
+| --- | ---: | ---: | ---: | ---: |
+| DFlash2 | 10.980 s | 19.229 s | 1659 | off |
+| APC | 1.096 s | 17.820 s | 1561 | 1 |
+| Hybrid | 1.099 s | 11.222 s | 1666 | 2 |
+
+One A/B pass is not a general speed claim: prompts are nominal-token sized,
+output lengths differ, and execution order and temperature may influence
+results. The cold/single-turn throughput still favors DFlash2. Hybrid memory
+telemetry showed 19.00 GB swap before and 18.97 GB after, pressure normal.
+This is **not** a claim that 19 GB swap is harmless or that exact KV/SSM
+snapshots have zero memory cost.
+
+## Required correctness gate (before considering merge)
+
+The latency benchmark stores only timings and response character counts.
+It does **not** inspect generated content. The new dedicated smoke test
+exercises a synthetic two-turn memory task in both DFlash2 and Hybrid at
+temperature 0, checks expected one-word answers, and requires a true
+Hybrid APC exact-cache hit. No prompts or answers are persisted or printed;
+only short pass/fail metrics. It guards Agent idleness and requires
+normal pressure with at least 6 GB headroom before inference. It always
+attempts to restore the starting chat profile.
+
+Run only when no chat/media jobs are running:
+
+```bash
+cd ~/mlx-web
+./test-venv/bin/python -m pytest -q   tests/test_validate_hybrid_correctness.py   tests/test_hybrid_apc_dflash_runtime.py   tests/test_chat_performance_profiles.py   tests/test_chat_experience_benchmark.py
+
+python3 scripts/validate-hybrid-correctness.py   --context-size 4000 --timeout 240
+
+./scripts/mlx chat-profile status
+./scripts/mlx memory
+```
+
+If any check fails, leave PR as draft, examine the failures and correct
+the adapter or prompt assumptions. If the test passes, that is only a
+minimal regression signal; compare actual multi-turn response correctness
+and memory pressure across a second real A/B pass before changing defaults.
