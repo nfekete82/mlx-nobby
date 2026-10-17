@@ -54,3 +54,27 @@ thermal and system-load effects. Snapshots miss transient unified-memory peaks;
 a multi-hour concurrency/media stress test remains an independent gate.
 
 **Do not enable Hybrid as production default solely from this soak.**
+
+## Extended sampled-memory repeatability (run only after the first 2 rounds passed)
+
+```bash
+cd ~/mlx-web
+git pull --ff-only origin test/hybrid-soak-guardrails
+./test-venv/bin/python -m pytest -q tests/test_validate_hybrid_soak.py
+python3 scripts/validate-hybrid-soak.py \
+  --rounds 6 --context-sizes 4000,8000 --timeout 300 \
+  --output /tmp/nobby-hybrid-soak-6rounds.json
+./scripts/mlx chat-profile status
+./scripts/mlx memory
+```
+
+This is 24 synthetic two-turn tests in alternating execution order, not a
+guaranteed wall-clock duration. A daemon thread polls the local agent
+observatory every 2 seconds **during each model workload**, recording only
+sample counts, the lowest headroom and highest swap usage. The test fails
+closed for absent/malformed sampling, observed pressure other than normal,
+sampled headroom under 5 GB or swap growth above 1 GB. Checks occur after
+the synchronous workload completes: this sampler does **not** preempt a
+running model inference when memory pressure rises. It cannot detect peaks
+between samples, does not represent GPU/MLX allocation peaks, and does not
+test concurrent image/video tasks; do not claim it does.
