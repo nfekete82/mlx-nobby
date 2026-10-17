@@ -117,7 +117,15 @@ def test_run_mode_validates_prime_quality_and_cache_hit(monkeypatch):
     assert result["swap_delta_gb"] == 0.0
     assert text == answer
     assert len(calls[1]) == 4
-    assert "AURORAFADEN" not in json.dumps(result)
+    # The report intentionally names PUBLIC synthetic canaries as dictionary
+    # keys so a failure can be diagnosed per word; it must never include the
+    # generated answer or its technical prose as unredacted content.
+    serialized = json.dumps(result)
+    assert answer not in serialized
+    assert "Prefill mit KV-Cache, danach Decoding und Streaming." not in serialized
+    assert result["synthetic_marker_diagnostics"]["exact"] == {
+        marker: True for marker in gate.MARKERS
+    }
 
     monkeypatch.setattr(
         gate.bench, "agent_stream",
