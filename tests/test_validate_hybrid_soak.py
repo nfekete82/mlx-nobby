@@ -43,3 +43,13 @@ def test_no_user_content_in_report():
     assert "answer" not in names
     assert "prompt" not in names
     assert "generated_text" not in names
+
+
+def test_sampled_memory_gates_present():
+    source = SOURCE.read_text(encoding="utf-8")
+    assert "def sample_during_workload(" in source
+    assert 'sampled["minimum_headroom_gb"]' not in source
+    assert 'summary["minimum_headroom_gb"] < 5' in source
+    assert 'summary["sampled_swap_growth_gb"] > 1' in source
+    assert 'summary["all_pressure_normal"]' in source
+    assert 'row["sampled_memory"] = sampled' in source
