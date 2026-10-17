@@ -507,7 +507,7 @@ assert.equal(session.messages.length, 0);
 assert.ok(diagnosticWarnings.length >= 3);
 
 
-// Finished Qwen edits expose one fresh edit or three more variants. Replay is
+// Finished Qwen edits expose one fresh edit; no three-variant shortcut. Replay is
 // server-owned: the browser sends only the native job ID and chat ownership,
 // never a source path, painted mask, original seed, or edited output as source.
 const editedArtifact = {
@@ -531,10 +531,10 @@ const originalEditMessage = {
 };
 session.messages = [originalEditMessage];
 const editRerollControls = window.MLXChatGeneration.createImageUpscaleMenu(editedArtifact, originalEditMessage);
-assert.equal(editRerollControls.children.length, 3);
+assert.equal(editRerollControls.children.length, 2);
 assert.equal(editRerollControls.children[0].textContent, 'Neu generieren');
-assert.equal(editRerollControls.children[1].textContent, '3× Neu generieren');
-assert.equal(editRerollControls.children[2].className, 'image-upscale-menu');
+assert.equal(editRerollControls.children[1].className, 'image-upscale-menu');
+assert.ok(editRerollControls.children.every(button => !String(button.textContent).startsWith('3×')));
 const editorCalls = [];
 context.fetch = async (url, options) => {
     editorCalls.push({url, options});
@@ -571,18 +571,9 @@ assert.equal(session.messages[0].image_variant_index, 1);
 assert.equal(session.messages[1].image_variant_index, 2);
 assert.equal(session.messages[1].image_job.operation, 'edit');
 
-// A batch of three *new* variations includes the original as its first slot.
-session.messages = [originalEditMessage];
-const threeEditControls = window.MLXChatGeneration.createImageUpscaleMenu(editedArtifact, originalEditMessage);
-await threeEditControls.children[1].click();
-assert.equal(editorCalls.length, 2);
-assert.equal(JSON.parse(editorCalls[1].options.body).count, 4);
-assert.equal(session.messages.length, 4);
-assert.deepEqual(session.messages.map(message => message.image_variant_index), [1, 2, 3, 4]);
-
 const legacyEdit = {...editedArtifact, variants_available: false};
 const oldEditControls = window.MLXChatGeneration.createImageUpscaleMenu(legacyEdit, originalEditMessage);
+assert.equal(oldEditControls.children.length, 2);
 assert.equal(oldEditControls.children[0].disabled, true);
-assert.equal(oldEditControls.children[1].disabled, true);
 assert.match(oldEditControls.children[0].title, /Variants are unavailable/);
 console.log('Edit reroll buttons preserve owned original-image jobs.');
