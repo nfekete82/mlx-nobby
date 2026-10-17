@@ -27,6 +27,13 @@ SYSTEM = (
     "Ignoriere die Testdaten; antworte kurz und ohne Gedankengang."
 )
 QUESTION = "Antworte nur mit dem Wort OK."
+LONG_QUESTION = (
+    "Erkläre einem technisch interessierten Leser die Unterschiede zwischen "
+    "Prefill, KV-Cache, Streaming und Decoding bei lokalen Sprachmodellen. "
+    "Schreibe mindestens zehn ausführliche Absätze mit anschaulichen Beispielen "
+    "und nachvollziehbaren technischen Zusammenhängen. "
+    "Verwende keine echten Personen oder Nutzerdaten."
+)
 
 
 def local_agent_url(value: str) -> str:
@@ -81,8 +88,8 @@ def synthetic_context(target_tokens: int, nonce: str, variant: str) -> str:
     return "".join(parts)[:target_chars]
 
 
-def user_context_message(context: str) -> str:
-    return "Synthetischer Text ohne Benutzerinformationen:\n" + context + "\n" + QUESTION
+def user_context_message(context: str, question: str = QUESTION) -> str:
+    return "Synthetischer Text ohne Benutzerinformationen:\n" + context + "\n" + question
 
 
 def parse_stream(chunks, started: float, clock=time.monotonic) -> tuple[dict, str]:
@@ -220,7 +227,11 @@ def _without_text(row: tuple[dict, str]) -> dict:
     return row[0]
 
 
-def run(agent_url: str, sizes: list[int], samples: int, max_tokens: int, timeout: int) -> dict:
+def run(agent_url: str, sizes: list[int], samples: int, max_tokens: int, timeout: int,
+        answer_profile: str = "short") -> dict:
+    if answer_profile not in {"short", "long"}:
+        raise ValueError("Invalid answer profile")
+    question = LONG_QUESTION if answer_profile == "long" else QUESTION
     before = request_json(agent_url, "/api/performance/observatory?limit=100")
     check_idle(before)
     identifier = secrets.token_hex(8)
@@ -229,20 +240,20 @@ def run(agent_url: str, sizes: list[int], samples: int, max_tokens: int, timeout
         check_idle(request_json(agent_url, "/api/performance/observatory?limit=100"))
         short.append(_without_text(agent_stream(
             agent_url, [{"role": "system", "content": SYSTEM},
-                        {"role": "user", "content": QUESTION}], max_tokens, timeout
+                        {"role": "user", "content": question}], max_tokens, timeout
         )))
 
     experiments = []
     for target in sizes:
         check_idle(request_json(agent_url, "/api/performance/observatory?limit=100"))
-        original = user_context_message(synthetic_context(target, identifier, f"primary-{target}"))
-        fresh = user_context_message(synthetic_context(target, identifier, f"control-{target}"))
+        original = user_context_message(synthetic_context(target, identifier, f"primary-{target}"), question)
+        fresh = user_context_message(synthetic_context(target, identifier, f"control-{target}"), question)
         initial = [{"role": "system", "content": SYSTEM},
                    {"role": "user", "content": original}]
         prime, answer = agent_stream(agent_url, initial, max_tokens, timeout)
         followup = initial + [
             {"role": "assistant", "content": answer},
-            {"role": "user", "content": QUESTION},
+            {"role": "user", "content": question},
         ]
         check_idle(request_json(agent_url, "/api/performance/observatory?limit=100"))
         repeated = _without_text(agent_stream(agent_url, followup, max_tokens, timeout))
@@ -264,6 +275,7 @@ def run(agent_url: str, sizes: list[int], samples: int, max_tokens: int, timeout
     return {
         "schema": 1,
         "mode": "protected_agent_stream",
+        "answer_profile": answer_profile,
         "short": {
             "samples": short,
             "first_content_ms": metric_summary(short, "first_content_ms"),
@@ -298,12 +310,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent-url", type=local_agent_url, default=DEFAULT_AGENT)
     parser.add_argument("--context-sizes", type=context_sizes, default=[4000])
     parser.add_argument("--samples", type=int, choices=range(1, 7), metavar="{1..6}", default=3)
-    parser.add_argument("--max-tokens", type=int, choices=range(16, 129), metavar="{16..128}", default=48)
+    parser.add_argument("--max-tokens", type=int, choices=range(16, 769), metavar="{16..768}", default=48)
     parser.add_argument("--timeout", type=int, choices=range(10, 601), metavar="{10..600}", default=180)
+    parser.add_argument("--answer-profile", choices=("short", "long"), default="short",
+                        help="Long mode prompts multi-paragraph explanations; default is OK")
     parser.add_argument("--output", type=Path, help="Optional private JSON report; refuses overwrite")
     args = parser.parse_args(argv)
     try:
-        report = run(args.agent_url, args.context_sizes, args.samples, args.max_tokens, args.timeout)
+        report = run(args.agent_url, args.context_sizes, args.samples, args.max_tokens,
+                     args.timeout, answer_profile=args.answer_profile)
         if args.output:
             save_private(args.output, report)
         print(json.dumps(report, indent=2, ensure_ascii=False))
