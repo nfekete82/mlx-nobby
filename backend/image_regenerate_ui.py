@@ -13,7 +13,9 @@ def patch_image_settings_source(body: bytes) -> bytes:
     If the module shape changes, serve it intact instead of leaving references
     to a deleted button declaration.
     """
-    wrapper = b"    generation.createImageUpscaleMenu = source => {"
+    old_wrapper = b"    generation.createImageUpscaleMenu = source => {"
+    new_wrapper = b"    generation.createImageUpscaleMenu = (source, originalMessage = null) => {"
+    wrapper = new_wrapper if new_wrapper in body else old_wrapper
     declaration = b"        const variants = document.createElement('button');\n"
     setup = b"        variants.type = 'button';"
     regenerate = b"        regenerate.addEventListener('click', async () => {"
@@ -25,13 +27,15 @@ def patch_image_settings_source(body: bytes) -> bytes:
     positions = [body.index(marker) for marker in markers]
     if positions != sorted(positions):
         return body
-    prefix = body[:positions[0]]
+    # Scope the removal to the legacy Generate-only shortcut. The new Edit
+    # branch preceding this declaration has its own two explicit controls;
+    # slicing from the wrapper would mistakenly remove those controls.
+    prefix = body[:positions[1]]
     suffix = body[positions[-1] + len(append):]
-    card = body[positions[0]:positions[-1]]
+    card = body[positions[1]:positions[-1]]
     card = card[:card.index(handler)]
     card = card[:card.index(setup)] + card[card.index(regenerate):]
     card = card.replace(declaration, b"")
-    # Only the single-regeneration handler remains in this scoped block.
     card = b"".join(line for line in card.splitlines(keepends=True)
                     if b"variants.disabled =" not in line)
     if b"variants" in card:
