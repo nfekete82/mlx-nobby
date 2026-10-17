@@ -97,8 +97,9 @@ def test_production_served_module_has_no_dangling_variant_references():
     patched = image_regenerate_ui.patch_image_settings_source(source)
     assert patched != source
     assert b"generation.createImageUpscaleMenu = (source, originalMessage = null) => {" in patched
-    assert b"makeButton(single, caption, 2);" in patched
-    assert "makeButton(multiple, '3× ' + caption, 4);".encode() in patched
+    assert b"submitVariantBatch(source, 2, {" in patched
+    assert b"makeButton(multiple" not in patched
+    assert b"const multiple = document.createElement('button')" not in patched
     wrapper = patched.split(b"const regenerate = document.createElement('button');", 1)[1]
     wrapper = wrapper.split(b"return fragment;", 1)[0]
     assert b"variants" not in wrapper
@@ -169,8 +170,9 @@ def test_served_variant_runtime_executes_real_batches(tmp_path):
 def test_edit_reroll_kept_in_served_script_and_card_receives_original_message():
     source = (ROOT / "frontend/assets/chat/image-settings.js").read_bytes()
     patched = image_regenerate_ui.patch_image_settings_source(source)
-    assert b"makeButton(single, caption, 2);" in patched
-    assert "makeButton(multiple, '3× ' + caption, 4);".encode() in patched
+    assert b"submitVariantBatch(source, 2, {" in patched
+    assert b"makeButton(multiple" not in patched
+    assert b"const multiple = document.createElement('button')" not in patched
     assert b"includeBase: true" in patched
     assert b"firstMessage: originalMessage" in patched
     assert b"const variants = document.createElement('button')" not in patched
@@ -178,5 +180,5 @@ def test_edit_reroll_kept_in_served_script_and_card_receives_original_message():
         ROOT / "frontend/assets/chat/rendering.js"
     ).read_bytes()
     html = (ROOT / "frontend/chat.html").read_text(encoding="utf-8")
-    assert "image-settings.js?v=20261017-image-edit-reroll" in html
+    assert "image-settings.js?v=20261017-image-edit-single-reroll" in html
     assert "rendering.js?v=20261017-image-edit-reroll" in html
