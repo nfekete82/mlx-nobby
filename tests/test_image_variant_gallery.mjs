@@ -125,6 +125,7 @@ window.MLXImageRegenerate = {
     retryImageVariants: async id => actions.push(['retry', id]),
     cancelImageVariants: async id => actions.push(['cancel', id]),
     generateImageVariants: async () => true,
+    appendImageVariant: async id => { actions.push(['append', id]); return true; },
 };
 function buttons(element) {
     return [...(element.tagName === 'button' ? [element] : []), ...element.children.flatMap(buttons)];
@@ -147,16 +148,32 @@ controls = buttons(helpers.buildGalleryArticle(group, gallerySession));
 const cancel = controls.find(button => button.textContent === 'Cancel variants');
 assert.ok(cancel);
 assert.equal(controls.some(button => button.textContent === 'Retry missing variants'), false);
-assert.equal(controls.find(button => button.textContent === 'Create 3 more').disabled, true);
+assert.equal(controls.find(button => button.textContent === 'Create one more variant').disabled, true);
 await cancel.listeners.click();
 assert.deepEqual(actions.at(-1), ['cancel', groupId]);
 failed.image_job.status = 'cancelled';
 delete completed.tool_result.artifacts[0].generation_job_id;
 controls = buttons(helpers.buildGalleryArticle(group, gallerySession));
-const more = controls.find(button => button.textContent === 'Create 3 more');
+const more = controls.find(button => button.textContent === 'Create one more variant');
 assert.equal(more.disabled, true);
 assert.match(more.title, /Variants are unavailable/);
+failed.image_job.status = 'completed';
+failed.tool_result = {
+    tool: 'image_edit', status: 'completed',
+    artifacts: [{image_id: 'new-image', artifact_id: 'new-image'}]
+};
+controls = buttons(helpers.buildGalleryArticle(group, gallerySession));
+const append = controls.find(button => button.textContent === 'Create one more variant');
+assert.ok(append && !append.disabled);
+await append.listeners.click();
+assert.deepEqual(actions.at(-1), ['append', groupId]);
+const cappedGroup = {...group, count: 24};
+controls = buttons(helpers.buildGalleryArticle(cappedGroup, gallerySession));
+assert.equal(controls.some(button => button.textContent === 'Create one more variant'), false);
+
 for (const language of ['de', 'en']) {
     const dictionary = JSON.parse(fs.readFileSync(new URL('../frontend/i18n/image-variant-gallery.' + language + '.json', import.meta.url), 'utf8'));
     assert.ok(dictionary.cancel && dictionary.retry && dictionary.unavailable);
+    assert.equal(dictionary.more, language === 'de'
+        ? 'Noch eine Variante erstellen' : 'Create one more variant');
 }

@@ -485,7 +485,7 @@ function imageT(key, fallback = '', variables = {}) {
     function validateVariantBatch(batch, includeBase) {
         const count = batch?.variant_count;
         if (!JOB_ID.test(String(batch?.variant_group_id || '')) ||
-            !Number.isInteger(count) || count < 2 || count > 6 ||
+            !Number.isInteger(count) || count < 2 || count > 24 ||
             !Array.isArray(batch.jobs) || batch.jobs.length !== count - (includeBase ? 1 : 0) ||
             !JOB_ID.test(String(batch.base?.data?.job?.id || '')) ||
             batch.base?.status !== 'completed' || !batch.base.artifacts?.[0]?.image_id) {
@@ -600,7 +600,7 @@ function imageT(key, fallback = '', variables = {}) {
                 const response = await fetch('/api/mlx/image-jobs/variants', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({base_job_id: artifact.generation_job_id,
-                        count: Math.max(2, Math.min(6, Math.round(Number(count) || 3))),
+                        count: Math.max(2, Math.min(options.groupId ? 24 : 6, Math.round(Number(count) || 3))),
                         include_base: Boolean(options.includeBase), chat_id: session.id,
                         chat_revision: revision, variant_group_id: options.groupId || null})
                 });
@@ -634,6 +634,28 @@ function imageT(key, fallback = '', variables = {}) {
 
     async function generateImageVariants(artifact, count = 3) {
         return Boolean(await submitVariantBatch(artifact, count));
+    }
+
+    async function appendImageVariant(groupId) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        if (!session || !JOB_ID.test(String(groupId || ''))) return false;
+        const members = session.messages.filter(message =>
+            message.image_variant_group_id === groupId &&
+            Number.isInteger(message.image_variant_count));
+        if (!members.length) return false;
+        const count = Math.max(...members.map(message => message.image_variant_count));
+        if (count < 2 || count >= 24 || members.some(message =>
+            activeImageJob(message.image_job?.status) ||
+            ['failed', 'cancelled'].includes(message.image_job?.status))) return false;
+        const anchor = members.find(message =>
+            JOB_ID.test(String(message.image_variant_base_job_id || '')));
+        if (!anchor) return false;
+        const includeBase = Boolean(anchor.image_variant_include_base);
+        const firstMessage = includeBase ? members.find(message => message.image_variant_index === 1) : null;
+        return Boolean(await submitVariantBatch(
+            {generation_job_id: anchor.image_variant_base_job_id},
+            count + 1, {groupId, includeBase, firstMessage}
+        ));
     }
 
     async function retryImageVariants(groupId) {
@@ -693,16 +715,52 @@ function imageT(key, fallback = '', variables = {}) {
         }
     }
 
-    generation.createImageUpscaleMenu = source => {
+    generation.createImageUpscaleMenu = (source, originalMessage = null) => {
         const enhanceMenu = originalCreateImageUpscaleMenu(source);
 
-        // Text-to-image artifacts have a prompt but no source image. Edits and
-        // upscales intentionally keep their existing enhancement-only UI.
-        if (
-            !source?.prompt ||
-            (source?.source_path && source?.semantic_operation !== 'reference_generate') ||
-            source?.scale
-        ) {
+        // Repeat an edit from its frozen native job, never from the displayed
+        // result or from paths provided by the browser. The backend owns the
+        // original source, mask, resolved model and all sampling settings.
+        const isOrdinaryEdit = Boolean(
+            source?.source_path &&
+            source?.semantic_operation !== 'reference_generate' &&
+            !source?.scale
+        );
+        if (isOrdinaryEdit && originalMessage?.tool_result?.tool === 'image_edit') {
+            const fragment = document.createDocumentFragment();
+            const available = variantSourceAvailable(source);
+            const regenerate = document.createElement('button');
+            const caption = imageT('ui.regenerate', 'Regenerate');
+            const unavailable = imageT(
+                'generation.image_variants_unavailable',
+                'Variants are unavailable for this image. Generate a new image first.'
+            );
+            regenerate.type = 'button';
+            regenerate.className = 'message-action-btn';
+            regenerate.textContent = caption;
+            regenerate.title = available ? caption : unavailable;
+            regenerate.disabled = !available;
+            regenerate.addEventListener('click', async () => {
+                if (!variantSourceAvailable(source)) return;
+                regenerate.disabled = true;
+                regenerate.textContent = imageT('common.loading', 'Loading…');
+                // One new edit with a fresh seed, grouped with the untouched
+                // original result. Never replay from the output image.
+                const started = Boolean(await submitVariantBatch(source, 2, {
+                    includeBase: true,
+                    firstMessage: originalMessage
+                }));
+                if (!started && regenerate.isConnected) {
+                    regenerate.disabled = !variantSourceAvailable(source);
+                    regenerate.textContent = caption;
+                }
+            });
+            fragment.append(regenerate, enhanceMenu);
+            return fragment;
+        }
+
+        // Existing non-image-edit contexts keep their original enhancement UI.
+        if (!source?.prompt || isOrdinaryEdit || source?.scale) {
             return enhanceMenu;
         }
 
@@ -772,6 +830,7 @@ function imageT(key, fallback = '', variables = {}) {
     window.MLXImageRegenerate = {
         regenerateImageArtifact,
         generateImageVariants,
+        appendImageVariant,
         submitVariantBatch,
         retryImageVariants,
         cancelImageVariants,
@@ -791,7 +850,7 @@ function imageT(key, fallback = '', variables = {}) {
     }
     const script = document.createElement('script');
     script.id = 'mlx-image-variant-gallery-script';
-    script.src = '/assets/chat/image-variant-gallery.js?v=20261002-gallery-final';
+    script.src = '/assets/chat/image-variant-gallery.js?v=20261017-gallery-append-one';
     script.async = false;
     document.head.appendChild(script);
 })();

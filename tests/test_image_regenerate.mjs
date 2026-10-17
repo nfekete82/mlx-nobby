@@ -505,3 +505,113 @@ context.fetch = async () => ok(malformed);
 assert.equal(await api.submitVariantBatch(artifact, 3), null);
 assert.equal(session.messages.length, 0);
 assert.ok(diagnosticWarnings.length >= 3);
+
+
+// Finished Qwen edits expose one fresh edit; no three-variant shortcut. Replay is
+// server-owned: the browser sends only the native job ID and chat ownership,
+// never a source path, painted mask, original seed, or edited output as source.
+const editedArtifact = {
+    ...artifact,
+    artifact_id: 'image-1781634000-fedcba987654',
+    image_id: '1781634000-fedcba987654',
+    source_image_id: '1781634000-abc123abc123',
+    source_path: '/private/mlx/images/1781634000-abc123abc123.png',
+    semantic_operation: 'edit',
+    model: 'mflux-osaurus-qwen-image-2.1-edit',
+    provider: 'mflux',
+    generation_job_id: 'e'.repeat(24),
+    variants_available: true,
+};
+const originalEditMessage = {
+    role: 'assistant',
+    content: '',
+    tool_result: {tool: 'image_edit', status: 'completed',
+        artifacts: [editedArtifact], data: {job: {id: editedArtifact.generation_job_id, status: 'completed'}}},
+    image_job: {id: editedArtifact.generation_job_id, status: 'completed', operation: 'edit'}
+};
+session.messages = [originalEditMessage];
+const editRerollControls = window.MLXChatGeneration.createImageUpscaleMenu(editedArtifact, originalEditMessage);
+assert.equal(editRerollControls.children.length, 2);
+assert.equal(editRerollControls.children[0].textContent, 'Neu generieren');
+assert.equal(editRerollControls.children[1].className, 'image-upscale-menu');
+assert.ok(editRerollControls.children.every(button => !String(button.textContent).startsWith('3×')));
+const editorCalls = [];
+context.fetch = async (url, options) => {
+    editorCalls.push({url, options});
+    assert.equal(url, '/api/mlx/image-jobs/variants');
+    const payload = JSON.parse(options.body);
+    const groupId = payload.variant_group_id || String(editorCalls.length).repeat(24);
+    return ok({
+        variant_group_id: groupId,
+        variant_count: payload.count,
+        base: {tool: 'image_edit', status: 'completed',
+            data: {job: {id: editedArtifact.generation_job_id, status: 'completed'}},
+            artifacts: [editedArtifact]},
+        jobs: Array.from({length: payload.count - 1}, (_, index) => {
+            const previous = payload.variant_group_id && index === 0 &&
+                session.messages.find(message =>
+                    message.image_variant_group_id === groupId && message.image_variant_index === 2);
+            const preserved = Boolean(previous?.image_job?.status === 'completed');
+            const status = preserved ? 'completed' : 'queued';
+            return {
+                tool: 'image_edit', status,
+                artifacts: preserved
+                    ? [{image_id: '1781634000-112233445566',
+                        artifact_id: 'image-1781634000-112233445566'}]
+                    : [],
+                data: {job: {id: String(index + 5).repeat(24),
+                    operation: 'edit', status,
+                    variant_group_id: groupId,
+                    variant_index: index + 2, variant_count: payload.count}}
+            };
+        })
+    });
+};
+await editRerollControls.children[0].click();
+assert.equal(editorCalls.length, 1);
+const editRerollPayload = JSON.parse(editorCalls[0].options.body);
+assert.deepEqual(JSON.parse(JSON.stringify(editRerollPayload)), {
+    base_job_id: editedArtifact.generation_job_id,
+    count: 2,
+    include_base: true,
+    chat_id: session.id,
+    chat_revision: session.revision,
+    variant_group_id: null,
+});
+assert.equal(session.messages.length, 2);
+assert.equal(session.messages[0].image_variant_index, 1);
+assert.equal(session.messages[1].image_variant_index, 2);
+assert.equal(session.messages[1].image_job.operation, 'edit');
+
+// Append a single additional Qwen edit into the same gallery, retaining
+// both earlier messages and their native job identities.
+const earlierSecond = session.messages[1];
+earlierSecond.image_job.status = 'completed';
+const oldSecondId = earlierSecond.image_job.id;
+const appended = await api.appendImageVariant('1'.repeat(24));
+assert.equal(appended, true);
+assert.equal(editorCalls.length, 2);
+const appendPayload = JSON.parse(editorCalls[1].options.body);
+assert.deepEqual(JSON.parse(JSON.stringify(appendPayload)), {
+    base_job_id: editedArtifact.generation_job_id,
+    count: 3,
+    include_base: true,
+    chat_id: session.id,
+    chat_revision: session.revision,
+    variant_group_id: '1'.repeat(24)
+});
+assert.equal(session.messages.length, 3);
+assert.equal(session.messages[0], originalEditMessage);
+assert.equal(session.messages[1], earlierSecond);
+assert.equal(session.messages[1].image_job.id, oldSecondId);
+assert.equal(session.messages[1].image_job.status, 'completed');
+assert.deepEqual(session.messages.map(message => message.image_variant_index), [1, 2, 3]);
+assert.deepEqual(session.messages.map(message => message.image_variant_count), [3, 3, 3]);
+assert.equal(session.messages[2].image_job.operation, 'edit');
+
+const legacyEdit = {...editedArtifact, variants_available: false};
+const oldEditControls = window.MLXChatGeneration.createImageUpscaleMenu(legacyEdit, originalEditMessage);
+assert.equal(oldEditControls.children.length, 2);
+assert.equal(oldEditControls.children[0].disabled, true);
+assert.match(oldEditControls.children[0].title, /Variants are unavailable/);
+console.log('Edit reroll buttons preserve owned original-image jobs.');

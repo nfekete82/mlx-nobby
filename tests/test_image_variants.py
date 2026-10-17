@@ -512,3 +512,117 @@ def test_delete_all_chats_stops_running_variant_workers(runtime, monkeypatch, si
         agent.image_variants_api(agent.VariantBatch(
             base_job_id=first['id'], count=count, chat_id='variants-test', chat_revision=0))
     assert exc.value.status_code == 404
+
+
+def test_append_exactly_one_image_to_same_owned_gallery(runtime, simple_source):
+    first, calls = simple_source
+    request = {"base_job_id": first["id"], "include_base": True,
+               "chat_id": "variants-test", "chat_revision": 0}
+    started = runtime.post("/jobs/variants", json={**request, "count": 2})
+    assert started.status_code == 202, started.text
+    group = started.json()
+    group_id = group["variant_group_id"]
+    original_id = group["jobs"][0]["id"]
+    previous = wait(runtime, original_id)
+    assert previous["status"] == "completed"
+    original_output = previous["result"].copy()
+
+    for target in (3, 4, 5, 6):
+        extended = runtime.post("/jobs/variants", json={
+            **request, "count": target, "variant_group_id": group_id})
+        assert extended.status_code == 202, extended.text
+        response = extended.json()
+        assert response["variant_group_id"] == group_id
+        assert response["variant_count"] == target
+        assert len(response["jobs"]) == target - 1
+        assert [job["variant_index"] for job in response["jobs"]] == list(range(2, target + 1))
+        assert response["jobs"][0]["id"] == original_id
+        assert response["jobs"][0]["status"] == "completed"
+        last = wait(runtime, response["jobs"][-1]["id"])
+        assert last["status"] == "completed", last["error"]
+        assert last["seed"] == 123 + target - 1
+        assert last["result"]["source_generation_job_id"] == first["id"]
+        assert last["result"]["variant_count"] == target
+        assert len(calls) == target
+        assert len({call["seed"] for call in calls}) == target
+        assert runtime.get("/jobs/" + original_id).json()["result"]["id"] == original_output["id"]
+        assert service._jobs[first["id"]]["result"]["id"] == first["result"]["id"]
+    status = runtime.get("/variant-groups/" + group_id, params={
+        "chat_id": "variants-test", "chat_revision": 0})
+    assert status.status_code == 200
+    assert status.json()["variant_count"] == 6
+    assert all(job["variant_count"] == 6 for job in status.json()["jobs"])
+
+    for invalid in (
+        {**request, "count": 8, "variant_group_id": group_id},
+        {**request, "count": 6, "variant_group_id": "a" * 24},
+        {**request, "count": 7},
+    ):
+        result = runtime.post("/jobs/variants", json=invalid)
+        assert result.status_code in {404, 422}
+    assert runtime.post("/jobs/variants", json={
+        **request, "count": 7, "variant_group_id": group_id,
+        "chat_id": "another-chat"}).status_code == 404
+    assert len(calls) == 6
+
+
+def test_append_variant_rejects_failed_prior_slot_until_retried(runtime, monkeypatch, simple_source):
+    first, calls = simple_source
+    request = {"base_job_id": first["id"], "include_base": True,
+               "chat_id": "variants-test", "chat_revision": 0}
+    group = runtime.post("/jobs/variants", json={**request, "count": 2}).json()
+    slot = wait(runtime, group["jobs"][0]["id"])
+    assert slot["status"] == "completed"
+    from pathlib import Path
+    Path(slot["result"]["path"]).unlink()
+    gid = group["variant_group_id"]
+    assert runtime.post("/jobs/variants", json={
+        **request, "count": 3, "variant_group_id": gid}).status_code == 409
+    restored = runtime.post("/jobs/variants", json={
+        **request, "count": 2, "variant_group_id": gid})
+    assert restored.status_code == 202
+    assert wait(runtime, slot["id"])["status"] == "completed"
+    more = runtime.post("/jobs/variants", json={
+        **request, "count": 3, "variant_group_id": gid})
+    assert more.status_code == 202
+    assert wait(runtime, more.json()["jobs"][-1]["id"])["status"] == "completed"
+    assert len(calls) == 4
+
+
+def test_incremental_gallery_restores_and_can_be_extended_again(runtime, simple_source):
+    from image_variants import VariantBatch, install
+
+    first, calls = simple_source
+    identity = {"base_job_id": first["id"], "include_base": True,
+                "chat_id": "variants-test", "chat_revision": 0}
+    first_batch = runtime.post("/jobs/variants", json={**identity, "count": 2}).json()
+    group_id = first_batch["variant_group_id"]
+    wait(runtime, first_batch["jobs"][0]["id"])
+    second_batch = runtime.post("/jobs/variants", json={
+        **identity, "variant_group_id": group_id, "count": 3}).json()
+    previous_job = second_batch["jobs"][-1]
+    wait(runtime, previous_job["id"])
+    assert len(calls) == 3
+
+    # Simulate an image service restart: the group is read from private JSON,
+    # while each completed slot may still hold the *old* variant count.
+    service._jobs.clear()
+    routes = list(service.app.router.routes)
+    handler = install(service)
+    service.app.router.routes[:] = routes
+    request = VariantBatch(**identity, variant_group_id=group_id, count=3)
+    restored = handler(request)
+    assert restored["variant_count"] == 3
+    assert len(restored["jobs"]) == 2
+    assert all(job["variant_count"] == 3 for job in restored["jobs"])
+    assert all(job["result"]["variant_count"] == 3 for job in restored["jobs"])
+    assert restored["jobs"][-1]["id"] == previous_job["id"]
+    assert len(calls) == 3
+
+    next_batch = handler(VariantBatch(**identity, variant_group_id=group_id, count=4))
+    assert len(next_batch["jobs"]) == 3
+    newest = wait(runtime, next_batch["jobs"][-1]["id"])
+    assert newest["status"] == "completed", newest.get("error")
+    assert len(calls) == 4
+    assert len({call["seed"] for call in calls}) == 4
+    assert next_batch["jobs"][0]["id"] == first_batch["jobs"][0]["id"]

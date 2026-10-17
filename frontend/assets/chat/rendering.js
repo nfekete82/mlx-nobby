@@ -1948,7 +1948,7 @@ function renderImageArtifactCard(message) {
     // A failing extension previously cleared the chat before this card attached.
     try {
         const enhanceMenu = window.MLXChatGeneration
-            ?.createImageUpscaleMenu?.(artifact);
+            ?.createImageUpscaleMenu?.(artifact, message);
         if (enhanceMenu) controls.appendChild(enhanceMenu);
     } catch (error) {
         console.warn('Could not render image actions', error);

@@ -964,11 +964,19 @@ def _edit_result_inner(
         params['height'] = max(256, (params['height'] // 32) * 32)
         if params['guidance'] < 1:
             raise HTTPException(422, 'Qwen 2.1 Edit benötigt Guidance mindestens 1')
-    if is_reference and resolved_callback:
+    if resolved_callback:
+        # Freeze the original edit request, not the temporary Qwen crop/mask.
+        # Every reroll prepares fresh working files from the same source and
+        # original user mask. Pin the resolved settings so model defaults may
+        # change without silently altering the repeated edit.
+        replay_request = request.model_dump() if is_reference else {
+            **request.model_dump(), 'model': model['id'],
+            'steps': params['steps'], 'guidance': params['guidance'],
+        }
         canonical = {'model': copy.deepcopy(model), 'params': {**copy.deepcopy(params), 'source_path': str(source),
                      **({'source_paths': [str(value) for value in sources]} if request.source_paths else {}),
                      **({'mask_path': request.mask_path} if request.mask_path else {})},
-                     'request': request.model_dump(), 'operation': 'edit',
+                     'request': replay_request, 'operation': 'edit',
                      'quality_profile': resolved.get('quality_profile') if resolved else profile,
                      'requested_model': request.model, 'requested_seed': request.seed}
         resolved_callback(canonical)
@@ -1434,7 +1442,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                     saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
                     **({"resolved": resolved} if resolved is not None else {}),
                     **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
-                       if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate") else {}),
+                       if operation in {"generate", "edit"} else {}),
                 )
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
@@ -1459,7 +1467,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             "status": "completed", "phase": "completed", "current_step": total_steps,
             "progress": 1.0, "result": result, "finished_at": time.time(),
         }
-        if operation == "generate" or (operation == "edit" and request.semantic_operation == "reference_generate"):
+        if operation in {"generate", "edit"}:
             from image_variants import persist_record
             canonical = _jobs[job_id].get("_canonical")
             completed["variants_available"] = canonical is not None

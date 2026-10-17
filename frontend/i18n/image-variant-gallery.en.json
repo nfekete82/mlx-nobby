@@ -3,7 +3,7 @@
   "variant": "Variant {index}",
   "use": "Use",
   "selected": "Selected",
-  "more": "Create {count} more",
+  "more": "Create one more variant",
   "generating": "Generating …",
   "waiting": "Waiting …",
   "failed": "Generation failed",
