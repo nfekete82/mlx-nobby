@@ -15,7 +15,7 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ## Recent updates (v1.19.0)
 
-**v1.19.0** adds a local, prompt-driven region editor with low-RAM mask cropping, natural feathered edges and zoom, and strengthens coordinated model handoffs across chat, images and video. Juggernaut XL Ragnarok now has creator-aligned quality presets and user-editable sampling controls. Existing private media and the strict RAM/swap watchdog remain protected.
+**v1.19.0** adds a local, prompt-driven image region editor with low-RAM mask cropping, natural feathered edges and zoom; adds selected-speaker Talking Photo for two-person photos with native LTX Distilled motion; and strengthens coordinated model handoffs across chat, images and video. Juggernaut XL Ragnarok has creator-aligned quality presets and user-editable sampling controls. The Talking Photo speaker selection is prompt-guided (not guaranteed face tracking); existing private media and the strict RAM/swap watchdog remain protected.
 
 Highlights include:
 
