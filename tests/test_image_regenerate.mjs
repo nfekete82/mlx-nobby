@@ -571,6 +571,31 @@ assert.equal(session.messages[0].image_variant_index, 1);
 assert.equal(session.messages[1].image_variant_index, 2);
 assert.equal(session.messages[1].image_job.operation, 'edit');
 
+// Append a single additional Qwen edit into the same gallery, retaining
+// both earlier messages and their native job identities.
+const earlierSecond = session.messages[1];
+earlierSecond.image_job.status = 'completed';
+const oldSecondId = earlierSecond.image_job.id;
+const appended = await api.appendImageVariant('1'.repeat(24));
+assert.equal(appended, true);
+assert.equal(editorCalls.length, 2);
+const appendPayload = JSON.parse(editorCalls[1].options.body);
+assert.deepEqual(JSON.parse(JSON.stringify(appendPayload)), {
+    base_job_id: editedArtifact.generation_job_id,
+    count: 3,
+    include_base: true,
+    chat_id: session.id,
+    chat_revision: session.revision,
+    variant_group_id: '1'.repeat(24)
+});
+assert.equal(session.messages.length, 3);
+assert.equal(session.messages[0], originalEditMessage);
+assert.equal(session.messages[1], earlierSecond);
+assert.equal(session.messages[1].image_job.id, oldSecondId);
+assert.deepEqual(session.messages.map(message => message.image_variant_index), [1, 2, 3]);
+assert.deepEqual(session.messages.map(message => message.image_variant_count), [3, 3, 3]);
+assert.equal(session.messages[2].image_job.operation, 'edit');
+
 const legacyEdit = {...editedArtifact, variants_available: false};
 const oldEditControls = window.MLXChatGeneration.createImageUpscaleMenu(legacyEdit, originalEditMessage);
 assert.equal(oldEditControls.children.length, 2);
