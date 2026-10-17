@@ -4,6 +4,7 @@
 
 ## v1.19.0
 
+- Talking Photo: select the speaking person directly in a two-person image, shown by a blue marker. Keep natural native LTX 2.5 Distilled (8+3) movement as the default rather than forcing MuseTalk; preserve Fast MuseTalk as an alternative. Selected-speaker control is prompt-guided, not guaranteed face tracking. Add clipboard/browser regressions, safe API validation and cache-refresh fixes.
 - Juggernaut XL Ragnarok: creator-aligned DPM++ 2M SDE Karras presets, native portrait size, adjustable Steps/CFG, and the guarded CPU-offload / VAE diagnostic. Preserve user-selected parameters and existing artwork.
 - Image region editor: precise brush and erase masks with prompt-based Qwen 2.1 editing, bounded 512px low-RAM crop, original image preservation and before/after comparison. Add zoom, keyboard shortcuts, prompt suggestions, persisted brush size, and clipped 0–12px mask feathering.
 - Exclusive heavyweight-model handoff: coordinated chat, image and video model transitions that unload other known idle model weights before inference, including a warm SDXL worker before switching image providers. Retain the cross-process lease and strict 90% admission, 20% active free-RAM floor, swap-growth watchdog and image/video load reserves.
