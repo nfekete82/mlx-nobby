@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from agent.batch_state import atomic_write_with
 
 _RECORD_LOCK = threading.RLock()
@@ -24,6 +24,12 @@ class VariantBatch(BaseModel):
     chat_id: str = Field(min_length=1)
     chat_revision: int = Field(ge=0, strict=True)
     variant_group_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{24}$")
+
+    @model_validator(mode="after")
+    def bound_new_batches(self):
+        if self.variant_group_id is None and self.count > 6:
+            raise ValueError("New variant batches may contain at most six images")
+        return self
 
 
 def valid_image_file(job):
