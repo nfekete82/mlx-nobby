@@ -1751,6 +1751,19 @@ Thinking:
   mlx thinking off
   mlx thinking status
 
+Chat-Performance (opt-in, nur Modellserver):
+  mlx chat-profile status
+      Laufendes Profil und Cache-Status anzeigen
+  mlx chat-profile apc
+      Prefix-Caching einschalten, DFlash2 zeitweilig aus
+  mlx chat-profile dflash
+      DFlash2 einschalten, APC aus (Draft muss vorhanden sein)
+  mlx chat-profile default
+      Ursprüngliche Konfiguration unverändert verwenden
+  mlx chat-profile compare
+      Beide Profile mit langen Streaming-Antworten testen und
+      ursprüngliches Profil anschließend wiederherstellen
+
 Diagnose:
   mlx status
       Serverstatus + RAM + Swap
@@ -1815,6 +1828,11 @@ fi
 load_config
 
 case "$1" in
+    chat-profile)
+        shift
+        profile_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        exec python3 "$profile_repo/scripts/chat-performance-profile.py" "$@"
+        ;;
     stop-ai)
         stop_ai
         ;;
