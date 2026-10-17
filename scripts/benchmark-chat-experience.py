@@ -258,7 +258,7 @@ def run(agent_url: str, sizes: list[int], samples: int, max_tokens: int, timeout
         check_idle(request_json(agent_url, "/api/performance/observatory?limit=100"))
         repeated = _without_text(agent_stream(agent_url, followup, max_tokens, timeout))
         control = [initial[0], {"role": "user", "content": fresh},
-                   {"role": "assistant", "content": answer}, {"role": "user", "content": QUESTION}]
+                   {"role": "assistant", "content": answer}, {"role": "user", "content": question}]
         check_idle(request_json(agent_url, "/api/performance/observatory?limit=100"))
         control_result = _without_text(agent_stream(agent_url, control, max_tokens, timeout))
         experiments.append({
