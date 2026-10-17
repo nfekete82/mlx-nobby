@@ -540,19 +540,31 @@ context.fetch = async (url, options) => {
     editorCalls.push({url, options});
     assert.equal(url, '/api/mlx/image-jobs/variants');
     const payload = JSON.parse(options.body);
+    const groupId = payload.variant_group_id || String(editorCalls.length).repeat(24);
     return ok({
-        variant_group_id: String(editorCalls.length).repeat(24),
+        variant_group_id: groupId,
         variant_count: payload.count,
         base: {tool: 'image_edit', status: 'completed',
             data: {job: {id: editedArtifact.generation_job_id, status: 'completed'}},
             artifacts: [editedArtifact]},
-        jobs: Array.from({length: payload.count - 1}, (_, index) => ({
-            tool: 'image_edit', status: 'queued', artifacts: [],
-            data: {job: {id: String(index + 5).repeat(24),
-                operation: 'edit', status: 'queued',
-                variant_group_id: String(editorCalls.length).repeat(24),
-                variant_index: index + 2, variant_count: payload.count}}
-        }))
+        jobs: Array.from({length: payload.count - 1}, (_, index) => {
+            const previous = payload.variant_group_id && index === 0 &&
+                session.messages.find(message =>
+                    message.image_variant_group_id === groupId && message.image_variant_index === 2);
+            const preserved = Boolean(previous?.image_job?.status === 'completed');
+            const status = preserved ? 'completed' : 'queued';
+            return {
+                tool: 'image_edit', status,
+                artifacts: preserved
+                    ? [{image_id: '1781634000-112233445566',
+                        artifact_id: 'image-1781634000-112233445566'}]
+                    : [],
+                data: {job: {id: String(index + 5).repeat(24),
+                    operation: 'edit', status,
+                    variant_group_id: groupId,
+                    variant_index: index + 2, variant_count: payload.count}}
+            };
+        })
     });
 };
 await editRerollControls.children[0].click();
@@ -592,6 +604,7 @@ assert.equal(session.messages.length, 3);
 assert.equal(session.messages[0], originalEditMessage);
 assert.equal(session.messages[1], earlierSecond);
 assert.equal(session.messages[1].image_job.id, oldSecondId);
+assert.equal(session.messages[1].image_job.status, 'completed');
 assert.deepEqual(session.messages.map(message => message.image_variant_index), [1, 2, 3]);
 assert.deepEqual(session.messages.map(message => message.image_variant_count), [3, 3, 3]);
 assert.equal(session.messages[2].image_job.operation, 'edit');
