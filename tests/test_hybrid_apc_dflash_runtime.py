@@ -63,7 +63,7 @@ SPECULATIVE_FIXTURE = """
 def test_compiles_in_memory_and_keeps_decoding_path():
     patched = hybrid.transform_speculative_method(SPECULATIVE_FIXTURE)
     assert hybrid.MARKER in patched
-    assert patched.startswith("def _run_speculative(self):")
+    assert patched.lstrip().startswith("def _run_speculative(self):")
     assert "run_speculative_server_rounds(" in patched
     assert "hybrid_apc_manager.lookup_exact_cache(" in patched
     assert "hybrid_apc_manager.store_exact_cache(" in patched
