@@ -148,8 +148,13 @@ def install(service):
                 operation = group.get("operation", "generate")
                 request = (service.Edit if operation == "edit" else service.Generate).model_validate(group["request"])
                 request.seed = job["seed"]
+                # Ordinary edits must rebuild their temporary crop/mask from
+                # the original source on every run. Their canonical params
+                # contain paths which are removed when the first edit ends.
+                reusable_resolved = (None if operation == "edit" and not group.get("reference_edit")
+                                     else group["canonical"])
                 service._run_image_job(job["id"], operation, request,
-                                       resolved=group["canonical"], release_lock=False)
+                                       resolved=reusable_resolved, release_lock=False)
                 persist(group)
                 if job["status"] != "completed":
                     for missing in group["jobs"]:
@@ -238,8 +243,9 @@ def install(service):
                 raise HTTPException(404, "Base image job not found for this chat revision")
             reference_edit = (base.get("operation") == "edit" and
                               base.get("result", {}).get("semantic_operation") == "reference_generate")
-            if (base.get("operation") != "generate" and not reference_edit) or not reusable(base) or not base.get("_canonical") or base.get("variants_available") is False:
-                raise HTTPException(409, "Variants require an available completed Generate or reference Edit job")
+            ordinary_edit = (base.get("operation") == "edit" and not reference_edit)
+            if base.get("operation") not in {"generate", "edit"} or not reusable(base) or not base.get("_canonical") or base.get("variants_available") is False:
+                raise HTTPException(409, "Variants require a completed image job with replay metadata")
             group = None
             if request.variant_group_id:
                 group = owned_group(request.variant_group_id, request.chat_id, request.chat_revision)
@@ -255,8 +261,8 @@ def install(service):
                 cancel_event = threading.Event()
                 if group is None:
                     canonical = copy.deepcopy(base["_canonical"])
-                    operation = "edit" if reference_edit else "generate"
-                    if reference_edit:
+                    operation = "edit" if (reference_edit or ordinary_edit) else "generate"
+                    if reference_edit or ordinary_edit:
                         payload = copy.deepcopy(canonical["request"])
                     else:
                         payload = {key: value for key, value in canonical["params"].items() if key in service.Generate.model_fields}
@@ -291,7 +297,8 @@ def install(service):
                             member.update(semantic_operation="reference_generate", reference_used=True,
                                           reference_mode=payload["reference_mode"], reference_relation=payload["reference_mode"])
                     group = {"id": group_id, "base_id": base["id"], "count": request.count,
-                             "include_base": request.include_base, "jobs": jobs, "canonical": canonical, "request": payload, "operation": operation,
+                             "include_base": request.include_base, "jobs": jobs, "canonical": canonical, "request": payload,
+                             "operation": operation, "reference_edit": reference_edit,
                              "base_job": service._job_snapshot(base), "request_chat_id": request.chat_id,
                              "request_chat_revision": request.chat_revision}
                     for old_id, old in list(groups.items()):
