@@ -96,15 +96,24 @@ def parse_stream(chunks, started: float, clock=time.monotonic) -> tuple[dict, st
     output = []
     output_size = 0
     done = False
+    current_event = None
     for raw in chunks:
         now = clock()
         if first_transport is None:
             first_transport = now
         line = raw.decode("utf-8", "replace").strip() if isinstance(raw, bytes) else str(raw).strip()
+        if not line:
+            current_event = None
+            continue
+        if line.startswith("event:"):
+            current_event = line[6:].strip()
+            continue
         if not line.startswith("data:"):
             continue
         payload = line[5:].strip()
-        if payload == "[DONE]":
+        if current_event == "error":
+            raise RuntimeError("Agent stream reported an error (details withheld)")
+        if current_event == "done" or payload == "[DONE]":
             done = True
             break
         try:
@@ -127,7 +136,7 @@ def parse_stream(chunks, started: float, clock=time.monotonic) -> tuple[dict, st
             output_size += len(delta)
             if sum(map(len, output)) < 2048:
                 output.append(delta)
-        if line.startswith("data:") and event.get("type") == "done":
+        if event.get("type") == "done":
             done = True
             break
     end = clock()
