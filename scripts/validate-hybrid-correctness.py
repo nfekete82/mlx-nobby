@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 import re
 import signal
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,7 +163,7 @@ def main(argv=None) -> int:
         report = validate(args.context_size, args.timeout)
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0 if report["passed"] else 2
-    except (RuntimeError, ValueError, OSError, KeyboardInterrupt) as exc:
+    except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError, KeyboardInterrupt) as exc:
         print(f"Quality check stopped: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
