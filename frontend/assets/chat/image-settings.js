@@ -693,16 +693,60 @@ function imageT(key, fallback = '', variables = {}) {
         }
     }
 
-    generation.createImageUpscaleMenu = source => {
+    generation.createImageUpscaleMenu = (source, originalMessage = null) => {
         const enhanceMenu = originalCreateImageUpscaleMenu(source);
 
-        // Text-to-image artifacts have a prompt but no source image. Edits and
-        // upscales intentionally keep their existing enhancement-only UI.
-        if (
-            !source?.prompt ||
-            (source?.source_path && source?.semantic_operation !== 'reference_generate') ||
-            source?.scale
-        ) {
+        // Repeat an edit from its frozen native job, never from the displayed
+        // result or from paths provided by the browser. The backend owns the
+        // original source, mask, resolved model and all sampling settings.
+        const isOrdinaryEdit = Boolean(
+            source?.source_path &&
+            source?.semantic_operation !== 'reference_generate' &&
+            !source?.scale
+        );
+        if (isOrdinaryEdit && originalMessage?.tool_result?.tool === 'image_edit') {
+            const fragment = document.createDocumentFragment();
+            const available = variantSourceAvailable(source);
+            const single = document.createElement('button');
+            const multiple = document.createElement('button');
+            const caption = imageT('ui.regenerate', 'Neu generieren');
+            const unavailable = imageT(
+                'generation.image_variants_unavailable',
+                'Variants are unavailable for this image. Generate a new image first.'
+            );
+            const makeButton = (button, label, count) => {
+                button.type = 'button';
+                button.className = 'message-action-btn';
+                button.textContent = label;
+                button.title = available ? label + ' · neuer Seed' : unavailable;
+                button.disabled = !available;
+                button.addEventListener('click', async () => {
+                    if (!variantSourceAvailable(source)) return;
+                    single.disabled = true;
+                    multiple.disabled = true;
+                    const savedLabel = button.textContent;
+                    button.textContent = imageT('common.loading', 'Loading…');
+                    const started = Boolean(await submitVariantBatch(source, count, {
+                        includeBase: true,
+                        firstMessage: originalMessage
+                    }));
+                    if (!started && button.isConnected) {
+                        single.disabled = !variantSourceAvailable(source);
+                        multiple.disabled = !variantSourceAvailable(source);
+                        button.textContent = savedLabel;
+                    }
+                });
+            };
+            // A batch includes the original: 2 = original + one new edit,
+            // 4 = original + three fresh-seed edits.
+            makeButton(single, caption, 2);
+            makeButton(multiple, '3× ' + caption, 4);
+            fragment.append(single, multiple, enhanceMenu);
+            return fragment;
+        }
+
+        // Existing non-image-edit contexts keep their original enhancement UI.
+        if (!source?.prompt || isOrdinaryEdit || source?.scale) {
             return enhanceMenu;
         }
 
