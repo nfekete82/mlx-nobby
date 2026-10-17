@@ -485,7 +485,7 @@ function imageT(key, fallback = '', variables = {}) {
     function validateVariantBatch(batch, includeBase) {
         const count = batch?.variant_count;
         if (!JOB_ID.test(String(batch?.variant_group_id || '')) ||
-            !Number.isInteger(count) || count < 2 || count > 6 ||
+            !Number.isInteger(count) || count < 2 || count > 24 ||
             !Array.isArray(batch.jobs) || batch.jobs.length !== count - (includeBase ? 1 : 0) ||
             !JOB_ID.test(String(batch.base?.data?.job?.id || '')) ||
             batch.base?.status !== 'completed' || !batch.base.artifacts?.[0]?.image_id) {
@@ -600,7 +600,7 @@ function imageT(key, fallback = '', variables = {}) {
                 const response = await fetch('/api/mlx/image-jobs/variants', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({base_job_id: artifact.generation_job_id,
-                        count: Math.max(2, Math.min(6, Math.round(Number(count) || 3))),
+                        count: Math.max(2, Math.min(options.groupId ? 24 : 6, Math.round(Number(count) || 3))),
                         include_base: Boolean(options.includeBase), chat_id: session.id,
                         chat_revision: revision, variant_group_id: options.groupId || null})
                 });
@@ -634,6 +634,28 @@ function imageT(key, fallback = '', variables = {}) {
 
     async function generateImageVariants(artifact, count = 3) {
         return Boolean(await submitVariantBatch(artifact, count));
+    }
+
+    async function appendImageVariant(groupId) {
+        const session = window.MLXChatSessions?.currentSession?.();
+        if (!session || !JOB_ID.test(String(groupId || ''))) return false;
+        const members = session.messages.filter(message =>
+            message.image_variant_group_id === groupId &&
+            Number.isInteger(message.image_variant_count));
+        if (!members.length) return false;
+        const count = Math.max(...members.map(message => message.image_variant_count));
+        if (count < 2 || count >= 24 || members.some(message =>
+            activeImageJob(message.image_job?.status) ||
+            ['failed', 'cancelled'].includes(message.image_job?.status))) return false;
+        const anchor = members.find(message =>
+            JOB_ID.test(String(message.image_variant_base_job_id || '')));
+        if (!anchor) return false;
+        const includeBase = Boolean(anchor.image_variant_include_base);
+        const firstMessage = includeBase ? members.find(message => message.image_variant_index === 1) : null;
+        return Boolean(await submitVariantBatch(
+            {generation_job_id: anchor.image_variant_base_job_id},
+            count + 1, {groupId, includeBase, firstMessage}
+        ));
     }
 
     async function retryImageVariants(groupId) {
@@ -808,6 +830,7 @@ function imageT(key, fallback = '', variables = {}) {
     window.MLXImageRegenerate = {
         regenerateImageArtifact,
         generateImageVariants,
+        appendImageVariant,
         submitVariantBatch,
         retryImageVariants,
         cancelImageVariants,
@@ -827,7 +850,7 @@ function imageT(key, fallback = '', variables = {}) {
     }
     const script = document.createElement('script');
     script.id = 'mlx-image-variant-gallery-script';
-    script.src = '/assets/chat/image-variant-gallery.js?v=20261002-gallery-final';
+    script.src = '/assets/chat/image-variant-gallery.js?v=20261017-gallery-append-one';
     script.async = false;
     document.head.appendChild(script);
 })();
