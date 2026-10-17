@@ -13,6 +13,7 @@ from pathlib import Path
 import signal
 import sys
 import time
+import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,6 +53,47 @@ def summarize(result: dict) -> dict:
     }
 
 
+def sample_during_workload(work, interval_seconds: float = 2.0):
+    """Sample memory while a synchronous inference workload executes."""
+    done = threading.Event()
+    samples = []
+    errors = []
+
+    def poll():
+        while not done.is_set():
+            try:
+                samples.append(profile.memory_snapshot())
+            except (OSError, RuntimeError, ValueError) as exc:
+                errors.append(type(exc).__name__)
+                break
+            done.wait(interval_seconds)
+
+    monitor = threading.Thread(target=poll, name="hybrid-memory-monitor", daemon=True)
+    monitor.start()
+    try:
+        result = work()
+    finally:
+        done.set()
+        monitor.join(timeout=15)
+    if monitor.is_alive() or errors or not samples:
+        raise RuntimeError("Memory sampling failed; cannot approve workload")
+    headrooms = [s.get("headroom_gb") for s in samples]
+    swaps = [s.get("swap_used_gb") for s in samples]
+    if any(type(v) not in (int, float) for v in headrooms + swaps):
+        raise RuntimeError("Invalid memory sample")
+    summary = {
+        "sample_count": len(samples),
+        "minimum_headroom_gb": round(min(headrooms), 3),
+        "maximum_swap_used_gb": round(max(swaps), 3),
+        "sampled_swap_growth_gb": round(max(swaps) - swaps[0], 3),
+        "all_pressure_normal": all(s.get("pressure") == "normal" for s in samples),
+        "sampling_interval_seconds": interval_seconds,
+    }
+    if summary["minimum_headroom_gb"] < 5 or summary["sampled_swap_growth_gb"] > 1 or not summary["all_pressure_normal"]:
+        raise RuntimeError("Sampled memory safety gate failed")
+    return result, summary
+
+
 def run(rounds: int, contexts: tuple[int, ...], timeout: int) -> dict:
     profile.ensure_idle()
     initial = profile.configured_profile(profile.CONFIG.read_text(encoding="utf-8"))
@@ -77,8 +119,11 @@ def run(rounds: int, contexts: tuple[int, ...], timeout: int) -> dict:
                 for mode in order_for_round(index):
                     profile.ensure_idle()
                     profile.switch_profile(mode)
-                    result, _ = quality.run_mode(mode, context_size, 400, timeout)
+                    (result, _), sampled = sample_during_workload(
+                        lambda: quality.run_mode(mode, context_size, 400, timeout)
+                    )
                     row = summarize(result)
+                    row["sampled_memory"] = sampled
                     row["round"] = index + 1
                     row["nominal_context_tokens"] = context_size
                     rows.append(row)
@@ -110,7 +155,7 @@ def run(rounds: int, contexts: tuple[int, ...], timeout: int) -> dict:
         "notes": [
             "All workloads are synthetic and generated text is not persisted.",
             "Order alternates between rounds; this is not randomized or blinded.",
-            "Before/after memory snapshots do not capture transient peaks.",
+            "Two-second memory samples may still miss transient peaks.",
             "This is a bounded smoke/soak, not proof of output equivalence or multi-hour media stability.",
         ],
     }
