@@ -100,9 +100,10 @@ def test_production_served_module_has_no_dangling_variant_references():
     assert b"submitVariantBatch(source, 2, {" in patched
     assert b"makeButton(multiple" not in patched
     assert b"const multiple = document.createElement('button')" not in patched
-    wrapper = patched.split(b"const regenerate = document.createElement('button');", 1)[1]
+    wrapper = patched.split(b"// Existing non-image-edit contexts keep their original enhancement UI.", 1)[1]
     wrapper = wrapper.split(b"return fragment;", 1)[0]
-    assert b"variants" not in wrapper
+    assert b"const variants = document.createElement('button')" not in wrapper
+    assert b"variants.disabled" not in wrapper
     assert b"regenerate.addEventListener" in wrapper
     assert b"fragment.append(regenerate, enhanceMenu)" in wrapper
     assert b"async function generateImageVariants" in patched
