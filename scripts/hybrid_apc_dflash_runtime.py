@@ -92,6 +92,13 @@ PREFILL_ADAPTER = '''
                             )
                             warm_cache = None
                             hybrid_matched_tokens = 0
+                        if nobby_hybrid_diag is not None:
+                            nobby_hybrid_diag.classify(
+                                hybrid_full_ids, hybrid_hash,
+                                matched_tokens=hybrid_matched_tokens,
+                                minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                            )
                         if warm_cache is not None and 0 < hybrid_matched_tokens < len(hybrid_full_ids):
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
@@ -146,6 +153,14 @@ PREFILL_ADAPTER = '''
                                 hybrid_full_ids[:hybrid_checkpoint],
                                 prompt_cache, extra_hash=hybrid_hash,
                             )
+                            if nobby_hybrid_diag is not None:
+                                nobby_hybrid_diag.classify(
+                                    hybrid_full_ids, hybrid_hash,
+                                    matched_tokens=hybrid_matched_tokens,
+                                    minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                    guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                    stored=True,
+                                )
                         except Exception:
                             logger.warning(
                                 "Hybrid APC checkpoint unavailable",
@@ -223,7 +238,14 @@ def install() -> None:
         raise RuntimeError(
             f"Hybrid requires mlx-vlm=={SUPPORTED_VERSION}, installed {installed}"
         )
+    # The installed library is unmodified; the patched method reads the
+    # opt-in diagnostic helper through the original generation globals.
     module = importlib.import_module("mlx_vlm.server.generation")
+    if os.environ.get("NOBBY_HYBRID_CACHE_DIAG") == "1":
+        import hybrid_cache_diagnostics
+        vars(module)["nobby_hybrid_diag"] = hybrid_cache_diagnostics
+    else:
+        vars(module)["nobby_hybrid_diag"] = None
     original = module.ResponseGenerator._run_speculative
     replacement = transform_speculative_method(inspect.getsource(original))
     namespace: dict = {}
