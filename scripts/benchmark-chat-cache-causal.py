@@ -20,6 +20,7 @@ STORE = "NOBBY_HYBRID_EARLY_CHECKPOINT_STORE"
 DIAG = "NOBBY_HYBRID_CACHE_DIAG"
 SLOTS = "NOBBY_HYBRID_EXACT_CACHE_ENTRIES"
 ALIGN = "NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE"
+PREFILL = "MLX_PREFILL_STEP_SIZE"
 SLOT_CASES = (
     ("baseline1", "0", "1", "1"),
     ("baseline2", "0", "1", "2"),
@@ -270,6 +271,8 @@ def compare_answers(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true")
+    parser.add_argument("--prefill-step", type=int,
+                        help="Temporarily force the SAME prefill step in every arm (128..4096); restored afterward")
     parser.add_argument("--compare-native", action="store_true",
                         help="Compare same-history forced early split versus native-chunk-aligned snapshot")
     parser.add_argument("--compare-slots", action="store_true",
@@ -286,6 +289,10 @@ def main(argv=None):
         parser.error("This experiment restarts MLX four times (five with --compare-slots or --compare-native); pass --confirm-restarts")
     if args.fixed_history and not args.capture_answers:
         parser.error("--fixed-history requires --capture-answers for its OFF baseline")
+    if args.prefill_step is not None and not (128 <= args.prefill_step <= 4096):
+        parser.error("--prefill-step must be between 128 and 4096")
+    if args.prefill_step is not None and not args.compare_native:
+        parser.error("--prefill-step currently requires --compare-native")
     if args.compare_native and args.compare_slots:
         parser.error("--compare-native and --compare-slots are mutually exclusive")
     if args.compare_native and not (args.fixed_history and args.capture_answers and args.diagnose):
@@ -306,13 +313,17 @@ def main(argv=None):
         else (FEATURE, STORE, DIAG, ALIGN) if args.diagnose
         else (FEATURE, STORE, ALIGN)
     )
+    if args.prefill_step is not None:
+        flag_names = (*flag_names, PREFILL)
     initial = {name: launch_value(name) for name in flag_names}
-    if any(initial[name] not in ("", "0", "1") for name in initial if name != SLOTS):
+    if any(initial[name] not in ("", "0", "1") for name in initial if name not in (SLOTS, PREFILL)):
         parser.error("Unexpected launchctl early-checkpoint configuration")
     if ALIGN in initial and initial[ALIGN] not in ("", "0", "1"):
         parser.error("Unexpected existing native-alignment configuration")
     if SLOTS in initial and initial[SLOTS] not in ("", "1", "2"):
         parser.error("Unexpected existing exact cache capacity (must be 1 or 2)")
+    if PREFILL in initial and initial[PREFILL] not in ("", *tuple(str(n) for n in range(128, 4097))):
+        parser.error("Unexpected original MLX_PREFILL_STEP_SIZE setting; refusing to overwrite")
     rows = []
     try:
         cases = (
@@ -333,6 +344,9 @@ def main(argv=None):
                 set_launch(ALIGN, align)
             if args.diagnose:
                 set_launch(DIAG, "1")
+            if args.prefill_step is not None:
+                set_launch(PREFILL, str(args.prefill_step))
+                print(f"Controlled MLX_PREFILL_STEP_SIZE={args.prefill_step}", flush=True)
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
             output = report_file.with_name(report_file.stem + f"-{mode}.json")
@@ -376,6 +390,7 @@ def main(argv=None):
             ),
             "slot_control": args.compare_slots or args.compare_native,
             "native_boundary_control": args.compare_native,
+            "prefill_step_override": args.prefill_step,
             "fixed_history": args.fixed_history,
             "note": ("All three modes use the OFF run's assistant history for subsequent requests. "
                      "Outputs may still differ; cache-hit differences do not prove semantic correctness."
