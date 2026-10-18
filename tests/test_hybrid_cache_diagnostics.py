@@ -38,7 +38,7 @@ def test_patch_instruments_both_cache_operations():
     src = (ROOT / "scripts/hybrid_apc_dflash_runtime.py").read_text()
     assert src.count("nobby_hybrid_diag.classify(") == 2
     # A failed cache store must not be logged as a successful snapshot.
-    assert "hybrid_final_saved = hybrid_apc_manager.store_exact_cache(" in src
+    assert "hybrid_final_saved = nobby_hybrid_cache_budget.store(" in src
     assert "stored=hybrid_final_saved," in src
     assert "stored=True" not in src
     assert 'vars(module)["nobby_hybrid_diag"]' in src

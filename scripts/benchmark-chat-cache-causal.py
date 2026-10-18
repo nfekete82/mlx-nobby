@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import hashlib
+import runpy
 import re
 import subprocess
 import sys
@@ -62,10 +64,22 @@ def memory_snapshot():
         ) as response:
             payload = json.load(response)
         memory = (payload.get("system") or {}).get("memory") or {}
-        return {key: memory.get(key) for key in (
+        snapshot = {key: memory.get(key) for key in (
             "swap_used_gb", "headroom_gb", "free_percent", "pressure"
         )}
-    except (OSError, ValueError, TypeError):
+        processes = subprocess.run(
+            ["ps", "-axo", "pid=,rss=,command="],
+            capture_output=True, text=True, check=True,
+        )
+        rss = []
+        for line in processes.stdout.splitlines():
+            fields = line.strip().split(None, 2)
+            if (len(fields) == 3 and "mlx_vlm server" in fields[2]
+                    and re.search(r"--port\s+8000(?:\s|$)", fields[2])):
+                rss.append(int(fields[1]) * 1024)
+        snapshot["server_rss_bytes"] = sum(rss) if rss else None
+        return snapshot
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError):
         return {"unavailable": True}
 
 
@@ -76,11 +90,12 @@ def verify_prefill_in_server_process(expected):
         capture_output=True, text=True, check=True,
     )
     candidates = [line for line in result.stdout.splitlines()
-                  if "hybrid_apc_dflash_runtime.py" in line and "mlx_vlm server" in line]
+                  if "hybrid_apc_dflash_runtime.py" in line and "mlx_vlm server" in line
+                  and re.search(r"--port\s+8000(?:\s|$)", line)]
     expected_arg = re.compile(
         r"(?:^|\s)--prefill-step-size(?:\s+|=)" + str(int(expected)) + r"(?:\s|$)"
     )
-    if not any(expected_arg.search(line) for line in candidates):
+    if len(candidates) != 1 or not expected_arg.search(candidates[0]):
         raise RuntimeError(
             "MLX server did not advertise requested --prefill-step-size "
             f"{expected}; refusing non-comparable experiment"
@@ -138,6 +153,21 @@ def compare_native_rows(rows):
         "turn3_total_ms": row["turns"][2]["total_ms"],
         "total_stores": sum(turn["delta_exact_stores"] for turn in row["turns"]),
     } for row in rows}
+
+
+def compare_request_and_response_hashes(rows):
+    """All turns, including cache hits. Missing hashes are never parity."""
+    baseline = rows[0]["turns"]
+    return {row["mode"]: [{
+        "turn": index,
+        "client_request_equal": bool(a.get("request_sha256")) and (
+            a["request_sha256"] == b.get("request_sha256")
+        ),
+        "answer_exact_equal": bool(a.get("answer_sha256")) and (
+            a["answer_sha256"] == b.get("answer_sha256")
+        ),
+    } for index, (a, b) in enumerate(zip(baseline, row["turns"]), 1)]
+        for row in rows[1:]}
 
 
 def compare_native_answers(rows):
@@ -322,6 +352,17 @@ def main(argv=None):
         parser.error("--compare-native requires --fixed-history --capture-answers --diagnose")
     if args.compare_slots and not (args.fixed_history and args.capture_answers and args.diagnose):
         parser.error("--compare-slots requires --fixed-history --capture-answers --diagnose")
+    profile = runpy.run_path(str(ROOT / "scripts/chat-performance-profile.py"))
+    profile["ensure_idle"]()
+    profile["confirm_profile"]("hybrid")
+    source_paths = [BENCH, Path(__file__), ROOT / "scripts/mlx-server-start",
+                    *(ROOT / "scripts" / name for name in (
+                        "hybrid_apc_dflash_runtime.py", "hybrid_checkpoint_policy.py",
+                        "hybrid_cache_budget.py"))]
+    def source_hashes():
+        return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in source_paths}
+    frozen_sources = source_hashes()
     report_file = Path(args.output)
     report_file.parent.mkdir(parents=True, exist_ok=True)
     capture_dir = report_file.with_name(report_file.stem + "-answers")
@@ -372,6 +413,7 @@ def main(argv=None):
                 print(f"Controlled MLX_PREFILL_STEP_SIZE={args.prefill_step}", flush=True)
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
+            profile["confirm_profile"]("hybrid")
             if args.prefill_step is not None:
                 verify_prefill_in_server_process(args.prefill_step)
                 print("Verified live MLX server prefill step:", args.prefill_step, flush=True)
@@ -388,7 +430,12 @@ def main(argv=None):
             if args.fixed_history and mode != baseline:
                 cmd += ["--replay-answers", str(capture_dir / (baseline + ".json"))]
             run_command(cmd)
+            if source_hashes() != frozen_sources:
+                raise RuntimeError("Source changed during benchmark; results are not comparable")
             row = json.loads(output.read_text(encoding="utf-8"))
+            row["server_args_sha256"] = hashlib.sha256(
+                profile["current_server_args"]().encode("utf-8")
+            ).hexdigest()
             row["mode"] = mode
             if args.compare_slots or args.compare_native:
                 row["memory_before"] = before_memory
@@ -417,6 +464,7 @@ def main(argv=None):
             "slot_control": args.compare_slots or args.compare_native,
             "native_boundary_control": args.compare_native,
             "prefill_step_override": args.prefill_step,
+            "source_sha256": frozen_sources,
             "fixed_history": args.fixed_history,
             "note": ("All three modes use the OFF run's assistant history for subsequent requests. "
                      "Outputs may still differ; cache-hit differences do not prove semantic correctness."
@@ -425,6 +473,7 @@ def main(argv=None):
                      "Textual similarity is not semantic equivalence."),
             "summary": summary,
             "comparison": comparison,
+            "all_turn_comparison": compare_request_and_response_hashes(rows),
             "quality_review": "PENDING",
             "prefix_gap_diagnostics": prefix_gap_summary(rows) if args.diagnose else None,
             "runs": rows,
@@ -438,15 +487,20 @@ def main(argv=None):
         print("Report:", report_file, flush=True)
         return 0
     finally:
+        restore_errors = []
         for name, value in initial.items():
             try:
                 set_launch(name, value)
             except subprocess.CalledProcessError as error:
+                restore_errors.append(str(error))
                 print(f"RESTORE FAILED for {name}: {error}", file=sys.stderr, flush=True)
         try:
             run_command([str(MLX), "restart"])
         except subprocess.CalledProcessError as error:
+            restore_errors.append(str(error))
             print(f"RESTORE RESTART FAILED: {error}", file=sys.stderr, flush=True)
+        if restore_errors:
+            raise RuntimeError("Benchmark restoration failed: " + "; ".join(restore_errors))
 
 
 if __name__ == "__main__":

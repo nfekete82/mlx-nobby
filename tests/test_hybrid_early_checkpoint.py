@@ -19,6 +19,7 @@ def test_disabled_by_default(monkeypatch):
 
 def test_secondary_checkpoint_on_observed_pattern(monkeypatch):
     monkeypatch.setenv("NOBBY_HYBRID_EARLY_CHECKPOINT", "1")
+    monkeypatch.setenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", "0")
     assert policy().early_checkpoint(1073, 324, 128) == 913
     assert policy().early_checkpoint(324, 0, 200) is None
     assert policy().early_checkpoint(1073, 950, 128) is None

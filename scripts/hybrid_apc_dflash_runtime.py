@@ -82,9 +82,18 @@ PREFILL_ADAPTER = '''
                         try:
                             warm_cache, hybrid_matched_tokens = (
                                 hybrid_apc_manager.lookup_exact_cache(
-                                    hybrid_full_ids, extra_hash=hybrid_hash
+                                    hybrid_full_ids, extra_hash=hybrid_hash,
+                                    max_prefix_tokens=hybrid_checkpoint,
                                 )
                             )
+                            if (type(hybrid_matched_tokens) is not int
+                                    or hybrid_matched_tokens < 0
+                                    or hybrid_matched_tokens > hybrid_checkpoint
+                                    or (hybrid_matched_tokens > 0 and (
+                                        not isinstance(warm_cache, list)
+                                        or len(warm_cache) != len(prompt_cache)
+                                    ))):
+                                raise ValueError("Invalid hybrid exact-cache snapshot")
                         except Exception:
                             logger.warning(
                                 "Hybrid APC lookup failed; using cold DFlash2 prefill",
@@ -99,7 +108,8 @@ PREFILL_ADAPTER = '''
                                 minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
                                 guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
                             )
-                        if warm_cache is not None and 0 < hybrid_matched_tokens < len(hybrid_full_ids):
+                        if (warm_cache is not None
+                                and 0 < hybrid_matched_tokens <= hybrid_checkpoint):
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
                             prompt_cache = warm_cache
@@ -164,7 +174,8 @@ PREFILL_ADAPTER = '''
                                     logger.info("Hybrid early checkpoint split-only: tokens=%d", hybrid_early_boundary)
                                 else:
                                     try:
-                                        hybrid_early_saved = hybrid_apc_manager.store_exact_cache(
+                                        hybrid_early_saved = nobby_hybrid_cache_budget.store(
+                                            hybrid_apc_manager,
                                             hybrid_full_ids[:hybrid_early_boundary],
                                             prompt_cache, extra_hash=hybrid_hash,
                                         )
@@ -183,7 +194,8 @@ PREFILL_ADAPTER = '''
                                 hybrid_early_boundary = None
                             mx.clear_cache()
                         try:
-                            hybrid_final_saved = hybrid_apc_manager.store_exact_cache(
+                            hybrid_final_saved = nobby_hybrid_cache_budget.store(
+                                hybrid_apc_manager,
                                 hybrid_full_ids[:hybrid_checkpoint],
                                 prompt_cache, extra_hash=hybrid_hash,
                             )
@@ -224,6 +236,7 @@ def transform_speculative_method(source: str) -> str:
         ANCHOR_BEFORE_PREFILL: 1,
         ANCHOR_STATS: 1,
         ANCHOR_STATS_ARGS: 1,
+        "prompt_tokens / prompt_elapsed": 1,
         "def _run_speculative(self):": 1,
         "run_speculative_server_rounds(": 1,
     }
@@ -283,6 +296,9 @@ def install() -> None:
     replacement = transform_speculative_method(inspect.getsource(original))
     nobby_hybrid_diag = importlib.import_module("hybrid_cache_diagnostics") if os.getenv("NOBBY_HYBRID_CACHE_DIAG") == "1" else None
     vars(module)["nobby_hybrid_diag"] = nobby_hybrid_diag
+    budget = importlib.import_module("hybrid_cache_budget")
+    budget.budget_bytes()  # reject invalid configuration before patching
+    vars(module)["nobby_hybrid_cache_budget"] = budget
     nobby_checkpoint_policy = importlib.import_module("hybrid_checkpoint_policy")
     vars(module)["nobby_checkpoint_policy"] = nobby_checkpoint_policy
     vars(module)["nobby_hybrid_early_store"] = os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_STORE", "1") != "0"

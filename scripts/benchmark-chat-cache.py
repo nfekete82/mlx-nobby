@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 import os
@@ -179,6 +180,12 @@ def run(args):
                 "temperature": args.temperature,
                 "max_tokens": args.max_tokens,
             }
+            # Hash the complete outbound request before history is mutated.
+            # This proves client input equality, not backend enrichment equality.
+            request_sha256 = hashlib.sha256(json.dumps(
+                payload, sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()
             answer, first_ms, total_ms = stream_answer(args.web_url, payload, timeout=args.timeout)
             current = counts(cache_stats(args.server_url))
             diff = delta(prior, current)
@@ -191,6 +198,8 @@ def run(args):
                             replay_answers[number - 1] if replay_answers else answer})
             row = {"turn": number, "first_content_ms": first_ms,
                    "total_ms": total_ms, "answer_chars": len(answer),
+                   "request_sha256": request_sha256,
+                   "answer_sha256": hashlib.sha256(answer.encode("utf-8")).hexdigest(),
                    **{"delta_" + k: v for k, v in diff.items()}}
             if getattr(args, "diagnose", False):
                 row["hybrid_diagnostic"] = diagnostic

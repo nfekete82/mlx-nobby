@@ -1,3 +1,8 @@
+> Historical experiment record. For current defaults, acceptance status and
+> reproduction instructions, use the [integration report](HYBRID_APC_DFLASH_FINAL_REPORT.md)
+> and [benchmark runbook](HYBRID_APC_DFLASH_BENCHMARK.md). Earlier PASS labels
+> cover their stated checks only; they do not certify release readiness.
+
 # Hybrid exact-cache LRU capacity: one vs two snapshots (MLX-VLM 0.6.17)
 
 ## Root cause found in the actual sources

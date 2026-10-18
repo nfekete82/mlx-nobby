@@ -13,6 +13,7 @@ import time
 import urllib.request
 import difflib
 import runpy
+import importlib.util
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "scripts/benchmark-chat-cache.py"
@@ -109,6 +110,21 @@ def main(argv=None):
         p.error("--capture-answers requires --quality-review")
     if not args.confirm_restarts:
         p.error("This test restarts the MLX server before each run. Pass --confirm-restarts.")
+    # Share the controlled runner: freeze ALL experiment flags, verify the
+    # live profile and restore even originally unset launchctl values.
+    spec = importlib.util.spec_from_file_location(
+        "nobby_causal_benchmark", ROOT / "scripts/benchmark-chat-cache-causal.py"
+    )
+    control = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(control)
+    profile = runpy.run_path(str(ROOT / "scripts/chat-performance-profile.py"))
+    profile["ensure_idle"]()
+    profile["confirm_profile"]("hybrid")
+    controlled = (control.FEATURE, control.STORE, control.ALIGN, control.SLOTS)
+    initial = {name: control.launch_value(name) for name in controlled}
+    if any(value not in ("", "0", "1") for name, value in initial.items()
+           if name != control.SLOTS) or initial[control.SLOTS] not in ("", "1", "2"):
+        p.error("Unexpected existing launchctl experiment settings")
     before = subprocess.run(["launchctl", "getenv", "NOBBY_HYBRID_EARLY_CHECKPOINT"],
                             capture_output=True, text=True, check=False).stdout.strip()
     if before not in {"", "0", "1"}:
@@ -128,8 +144,12 @@ def main(argv=None):
             print(f"\n=== A/B run {i}: early checkpoint {mode.upper()} ===", flush=True)
             run_checked(["launchctl", "setenv", "NOBBY_HYBRID_EARLY_CHECKPOINT",
                          "1" if mode == "on" else "0"])
+            control.set_launch(control.STORE, "1")
+            control.set_launch(control.ALIGN, "0")
+            control.set_launch(control.SLOTS, "2")
             run_checked([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
+            profile["confirm_profile"]("hybrid")
             turn_path = report_path.with_suffix(f".run{i}.json")
             before_memory = memory_snapshot()
             command = [sys.executable, str(BENCH), "--web-url", args.web_url,
@@ -139,6 +159,8 @@ def main(argv=None):
             answers_file = answers_dir / f"run{i}-{mode}.json"
             if args.capture_answers:
                 command.extend(["--answers-out", str(answers_file)])
+                if mode == "on":
+                    command.extend(["--replay-answers", results[-1]["answers_file"]])
             run_checked(command)
             record = json.loads(turn_path.read_text(encoding="utf-8"))
             record["mode"] = mode
@@ -174,9 +196,18 @@ def main(argv=None):
         return 0
     finally:
         # Do not leave experiment enabled after any error or interruption.
-        subprocess.run(["launchctl", "setenv", "NOBBY_HYBRID_EARLY_CHECKPOINT", before or "0"],
-                       check=False)
-        subprocess.run([str(MLX), "restart"], cwd=ROOT, check=False)
+        restore_errors = []
+        for name, value in initial.items():
+            try:
+                control.set_launch(name, value)
+            except subprocess.CalledProcessError as error:
+                restore_errors.append(str(error))
+        try:
+            run_checked([str(MLX), "restart"])
+        except subprocess.CalledProcessError as error:
+            restore_errors.append(str(error))
+        if restore_errors:
+            raise RuntimeError("Benchmark restoration failed: " + "; ".join(restore_errors))
 
 
 if __name__ == "__main__":

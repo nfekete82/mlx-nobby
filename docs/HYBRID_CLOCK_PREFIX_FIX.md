@@ -1,3 +1,8 @@
+> Historical experiment record. For current defaults, acceptance status and
+> reproduction instructions, use the [integration report](HYBRID_APC_DFLASH_FINAL_REPORT.md)
+> and [benchmark runbook](HYBRID_APC_DFLASH_BENCHMARK.md). Earlier PASS labels
+> cover their stated checks only; they do not certify release readiness.
+
 # Cache-friendly clock context (conservative first pass)
 
 ## Root cause

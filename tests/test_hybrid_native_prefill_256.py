@@ -57,7 +57,7 @@ def test_process_verification_requires_correct_hybrid_runtime_step():
     m = load(ROOT / "scripts/benchmark-chat-cache-causal.py")
     valid = (
         "python3 /repo/scripts/hybrid_apc_dflash_runtime.py mlx_vlm server "
-        "--model x --prefill-step-size 256 --max-num-seqs 2"
+        "--model x --port 8000 --prefill-step-size 256 --max-num-seqs 2"
     )
     with patch.object(m.subprocess, "run",
                       return_value=SimpleNamespace(stdout=valid, returncode=0)):

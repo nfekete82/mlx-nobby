@@ -1462,7 +1462,7 @@ def mlx_chat_stream(request: ChatRequest):
                         existing_system = str(
                             messages[0].get("content") or ""
                         ).strip()
-    
+
                         messages[0]["content"] = (
                             existing_system
                             + ("\n\n" if existing_system else "")

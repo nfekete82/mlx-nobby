@@ -1,3 +1,6 @@
+Current controlled Hybrid comparisons: [benchmark runbook](HYBRID_APC_DFLASH_BENCHMARK.md)
+and [integration status](HYBRID_APC_DFLASH_FINAL_REPORT.md).
+
 # Chat-cache terminal benchmark
 
 Run a three-turn conversation through the **web backend** (same API path as

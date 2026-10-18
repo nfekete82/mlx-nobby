@@ -35,7 +35,7 @@ def test_native_checkpoint_is_existing_chunk_boundary(monkeypatch):
 def test_existing_forced_boundary_unchanged_when_not_aligned(monkeypatch):
     policy = load(ROOT / "scripts/hybrid_checkpoint_policy.py")
     monkeypatch.setenv("NOBBY_HYBRID_EARLY_CHECKPOINT", "1")
-    monkeypatch.delenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", raising=False)
+    monkeypatch.setenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", "0")
     assert policy.early_checkpoint(986, 324, 16, prefill_step_size=256) == 826
     monkeypatch.delenv("NOBBY_HYBRID_EARLY_CHECKPOINT", raising=False)
     monkeypatch.setenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", "1")

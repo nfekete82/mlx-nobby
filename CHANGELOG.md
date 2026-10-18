@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Experimental Hybrid APC + DFlash2 integration candidate: guard-limited exact-prefix restoration, validation of cache offsets, conservative exact-snapshot tensor budgeting and natural-boundary defaults. Keep the profile and early checkpoint opt-in; no production speedup or response-equivalence claim.
+- Add client request/answer hashes, all-turn comparisons, controlled benchmark flags, explicit restoration failures and release checks that require parity and reproducible latency improvement in addition to cache/memory telemetry. Consolidate the historical experiment documentation under the current integration report.
+
 ## v1.19.0
 
 - Talking Photo: select the speaking person directly in a two-person image, shown by a blue marker. Keep natural native LTX 2.5 Distilled (8+3) movement as the default rather than forcing MuseTalk; preserve Fast MuseTalk as an alternative. Selected-speaker control is prompt-guided, not guaranteed face tracking. Add clipboard/browser regressions, safe API validation and cache-refresh fixes.

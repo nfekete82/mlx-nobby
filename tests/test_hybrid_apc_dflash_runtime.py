@@ -66,7 +66,7 @@ def test_compiles_in_memory_and_keeps_decoding_path():
     assert patched.lstrip().startswith("def _run_speculative(self):")
     assert "run_speculative_server_rounds(" in patched
     assert "hybrid_apc_manager.lookup_exact_cache(" in patched
-    assert "hybrid_apc_manager.store_exact_cache(" in patched
+    assert "nobby_hybrid_cache_budget.store(" in patched
     assert "remaining_to_checkpoint" in patched
     assert "B == 1" in patched
     assert 'draft_kind == "dflash"' in patched
@@ -83,6 +83,7 @@ def test_refuses_nonmatching_or_already_patched_sources():
         "    def _run_speculative(self):\n        return 3\n",
         SPECULATIVE_FIXTURE.replace("cached_tokens=0", "cached_tokens=%d"),
         SPECULATIVE_FIXTURE.replace("prompt_started = time.perf_counter()", "prompt_started=time.perf_counter()"),
+        SPECULATIVE_FIXTURE.replace("prompt_tokens / prompt_elapsed", "prompt_tokens / (prompt_elapsed + 1)"),
     ):
         with pytest.raises(RuntimeError, match="differs"):
             hybrid.transform_speculative_method(source)
