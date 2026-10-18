@@ -103,6 +103,9 @@ PREFILL_ADAPTER = '''
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
                             prompt_cache = warm_cache
+                            hybrid_consumed = hybrid_checkpoint - remaining_to_checkpoint
+                            if hybrid_early_boundary is not None and hybrid_consumed < hybrid_early_boundary:
+                                step = min(step, hybrid_early_boundary - hybrid_consumed)
                             hybrid_seq_keys = _sequence_aligned_prefill_keys(
                                 prompt_kwargs, batch_size=1,
                                 sequence_length=inputs_embeds_mx.shape[1],
@@ -152,6 +155,17 @@ PREFILL_ADAPTER = '''
                                 prompt_kwargs, hybrid_seq_keys, step
                             )
                             remaining_to_checkpoint -= step
+                            hybrid_consumed += step
+                            if hybrid_early_boundary is not None and hybrid_consumed == hybrid_early_boundary:
+                                try:
+                                    hybrid_apc_manager.store_exact_cache(
+                                        hybrid_full_ids[:hybrid_early_boundary],
+                                        prompt_cache, extra_hash=hybrid_hash,
+                                    )
+                                    logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
+                                except Exception:
+                                    logger.warning("Hybrid early checkpoint store failed", exc_info=True)
+                                hybrid_early_boundary = None
                             mx.clear_cache()
                         try:
                             hybrid_apc_manager.store_exact_cache(
