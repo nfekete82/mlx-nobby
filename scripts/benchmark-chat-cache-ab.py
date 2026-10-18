@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import difflib
 import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +61,29 @@ def swap_difference(before, after):
     return round(b - a, 3) if isinstance(a, (int, float)) and isinstance(b, (int, float)) else None
 
 
+def compare_captured_answers(reports):
+    """Exact and textual comparison only; never certify semantic correctness."""
+    comparisons = []
+    for index in range(0, len(reports) - 1, 2):
+        off, on = reports[index:index + 2]
+        if off.get("mode") != "off" or on.get("mode") != "on":
+            raise ValueError("Expected alternating OFF/ON response captures")
+        before = json.loads(Path(off["answers_file"]).read_text(encoding="utf-8"))["answers"]
+        after = json.loads(Path(on["answers_file"]).read_text(encoding="utf-8"))["answers"]
+        if len(before) != 3 or len(after) != 3:
+            raise ValueError("All three turn answers must be present")
+        turns = []
+        for b, a in zip(before, after):
+            if b["question"] != a["question"] or b["turn"] != a["turn"]:
+                raise ValueError("Question or turn changed between OFF and ON")
+            bt, at = b["answer"], a["answer"]
+            turns.append({"turn": b["turn"], "exact_equal": bt == at,
+                          "off_chars": len(bt), "on_chars": len(at),
+                          "similarity": round(difflib.SequenceMatcher(None, bt, at).ratio(), 3)})
+        comparisons.append({"pair": index // 2 + 1, "turns": turns})
+    return comparisons
+
+
 def sequence(pairs):
     return ["off", "on"] * pairs
 
@@ -75,10 +99,14 @@ def main(argv=None):
     p.add_argument("--settle-seconds", type=int, default=3)
     p.add_argument("--confirm-restarts", action="store_true")
     p.add_argument("--quality-review", action="store_true", help="Mark response quality as pending manual review")
+    p.add_argument("--capture-answers", action="store_true",
+                   help="OPT-IN: save raw model answers to private JSON files for manual comparison")
     p.add_argument("--release-gates", action="store_true", help="Evaluate conservative soak readiness (requires >=3 OFF and >=3 ON runs)")
     args = p.parse_args(argv)
     if args.pairs < 1 or args.pairs > 5:
         p.error("--pairs must be between 1 and 5")
+    if args.capture_answers and not args.quality_review:
+        p.error("--capture-answers requires --quality-review")
     if not args.confirm_restarts:
         p.error("This test restarts the MLX server before each run. Pass --confirm-restarts.")
     before = subprocess.run(["launchctl", "getenv", "NOBBY_HYBRID_EARLY_CHECKPOINT"],
@@ -88,6 +116,13 @@ def main(argv=None):
     results = []
     report_path = Path(args.output)
     report_path.parent.mkdir(parents=True, exist_ok=True)
+    answers_dir = report_path.with_name(report_path.stem + "-answers")
+    if args.capture_answers:
+        if answers_dir.is_symlink():
+            p.error("Refusing symlinked answers directory")
+        answers_dir.mkdir(mode=0o700, exist_ok=True)
+        answers_dir.chmod(0o700)
+        print("PRIVACY: saving raw answer text under", answers_dir, flush=True)
     try:
         for i, mode in enumerate(sequence(args.pairs), 1):
             print(f"\n=== A/B run {i}: early checkpoint {mode.upper()} ===", flush=True)
@@ -97,12 +132,18 @@ def main(argv=None):
             time.sleep(args.settle_seconds)
             turn_path = report_path.with_suffix(f".run{i}.json")
             before_memory = memory_snapshot()
-            run_checked([sys.executable, str(BENCH), "--web-url", args.web_url,
-                         "--server-url", args.server_url, "--max-tokens",
-                         str(args.max_tokens), "--timeout", str(args.timeout),
-                         "--temperature", "0", "--json-out", str(turn_path)])
+            command = [sys.executable, str(BENCH), "--web-url", args.web_url,
+                       "--server-url", args.server_url, "--max-tokens",
+                       str(args.max_tokens), "--timeout", str(args.timeout),
+                       "--temperature", "0", "--json-out", str(turn_path)]
+            answers_file = answers_dir / f"run{i}-{mode}.json"
+            if args.capture_answers:
+                command.extend(["--answers-out", str(answers_file)])
+            run_checked(command)
             record = json.loads(turn_path.read_text(encoding="utf-8"))
             record["mode"] = mode
+            if args.capture_answers:
+                record["answers_file"] = str(answers_file)
             record["memory_after_run"] = memory_snapshot()
             record["memory_before_run"] = before_memory
             record["memory_delta_swap_gb"] = swap_difference(before_memory, record["memory_after_run"])
@@ -114,11 +155,21 @@ def main(argv=None):
         if args.release_gates:
             final["release_gates"] = evaluate_release_gates(final)
         if args.quality_review:
-            final["quality_review"] = {"status": "PENDING", "note": "Manual semantic comparison required; output char counts alone do not establish correctness."}
+            final["quality_review"] = {"status": "PENDING", "note": "Manual semantic comparison required; identical text is not required, and similarity scores cannot establish correctness."}
+            if args.capture_answers:
+                comparisons = compare_captured_answers(results)
+                final["quality_review"]["text_comparisons"] = comparisons
+                if any(not pair["turns"][0]["exact_equal"] for pair in comparisons):
+                    final["quality_review"]["first_turn_divergence"] = True
+                    final["quality_review"]["warning"] = "OFF/ON differ even at turn 1 (before any cache hit). Inspect responses and prefill chunking before merging."
         report_path.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
         print("\nA/B summary:\n", json.dumps(final["summary"], indent=2), flush=True)
         if args.release_gates:
             print("Release gates:", json.dumps(final["release_gates"], indent=2), flush=True)
+        if args.capture_answers:
+            print("Quality review: PENDING (read raw answers in", answers_dir, ")", flush=True)
+            if final["quality_review"].get("first_turn_divergence"):
+                print("CAUTION: first-turn output differs with checkpoint ON vs OFF; manual inspection required", flush=True)
         print("Report:", report_path)
         return 0
     finally:
