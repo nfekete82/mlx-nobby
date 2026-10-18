@@ -54,6 +54,12 @@ def memory_snapshot(agent_url: str = "http://127.0.0.1:8010"):
         return {"unavailable": True}
 
 
+def swap_difference(before, after):
+    a = before.get("swap_used_gb")
+    b = after.get("swap_used_gb")
+    return round(b - a, 3) if isinstance(a, (int, float)) and isinstance(b, (int, float)) else None
+
+
 def sequence(pairs):
     return ["off", "on"] * pairs
 
@@ -68,6 +74,7 @@ def main(argv=None):
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--settle-seconds", type=int, default=3)
     p.add_argument("--confirm-restarts", action="store_true")
+    p.add_argument("--quality-review", action="store_true", help="Mark response quality as pending manual review")
     p.add_argument("--release-gates", action="store_true", help="Evaluate conservative soak readiness (requires >=3 OFF and >=3 ON runs)")
     args = p.parse_args(argv)
     if args.pairs < 1 or args.pairs > 5:
@@ -89,6 +96,7 @@ def main(argv=None):
             run_checked([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
             turn_path = report_path.with_suffix(f".run{i}.json")
+            before_memory = memory_snapshot()
             run_checked([sys.executable, str(BENCH), "--web-url", args.web_url,
                          "--server-url", args.server_url, "--max-tokens",
                          str(args.max_tokens), "--timeout", str(args.timeout),
@@ -96,6 +104,8 @@ def main(argv=None):
             record = json.loads(turn_path.read_text(encoding="utf-8"))
             record["mode"] = mode
             record["memory_after_run"] = memory_snapshot()
+            record["memory_before_run"] = before_memory
+            record["memory_delta_swap_gb"] = swap_difference(before_memory, record["memory_after_run"])
             results.append(record)
             print(f"Run {i} turn3: {record['turns'][2]['delta_matched_tokens']} cached tokens", flush=True)
         final = {"design": "alternating OFF/ON, fresh server restart each run",
@@ -103,6 +113,8 @@ def main(argv=None):
                  "summary": summarize(results), "runs": results}
         if args.release_gates:
             final["release_gates"] = evaluate_release_gates(final)
+        if args.quality_review:
+            final["quality_review"] = {"status": "PENDING", "note": "Manual semantic comparison required; output char counts alone do not establish correctness."}
         report_path.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
         print("\nA/B summary:\n", json.dumps(final["summary"], indent=2), flush=True)
         if args.release_gates:
