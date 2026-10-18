@@ -9,6 +9,7 @@ from local_security import LocalRequestGuard, read_upload
 import json
 import io
 import hashlib
+import logging
 import uuid
 import urllib.error
 import urllib.parse
