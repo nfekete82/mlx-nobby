@@ -42,6 +42,11 @@ def launch_value(name):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def valid_existing_prefill_setting(value):
+    """Do not silently overwrite unexpected LaunchAgent startup settings."""
+    return value == "" or (value.isdecimal() and 128 <= int(value) <= 4096)
+
+
 def set_launch(name, value):
     if value == "":
         subprocess.run(["launchctl", "unsetenv", name], check=True)
@@ -322,7 +327,7 @@ def main(argv=None):
         parser.error("Unexpected existing native-alignment configuration")
     if SLOTS in initial and initial[SLOTS] not in ("", "1", "2"):
         parser.error("Unexpected existing exact cache capacity (must be 1 or 2)")
-    if PREFILL in initial and initial[PREFILL] not in ("", *tuple(str(n) for n in range(128, 4097))):
+    if PREFILL in initial and not valid_existing_prefill_setting(initial[PREFILL]):
         parser.error("Unexpected original MLX_PREFILL_STEP_SIZE setting; refusing to overwrite")
     rows = []
     try:
