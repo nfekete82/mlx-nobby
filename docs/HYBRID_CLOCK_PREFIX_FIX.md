@@ -29,8 +29,12 @@ cd ~/mlx-web
 git fetch origin
 git switch --track origin/fix/hybrid-stable-clock-context
 ./test-venv/bin/python -m pytest -q tests/test_clock_context_routing.py tests/test_profile.py tests/test_system_clock.py tests/test_prompt_stage_diagnostics.py
+./scripts/mlx agent restart
 MLX_PROMPT_STAGE_DIAG=1 docker compose up -d --build --force-recreate --no-deps mlx-web
 ```
+
+The Agent restart is required because the profile endpoint runs in the
+LaunchAgent process, not inside the Docker web service.
 
 In a new browser chat, send the 3 Apple-Silicon questions. Read:
 
