@@ -83,6 +83,8 @@ def compare_answers(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true")
+    parser.add_argument("--fixed-history", action="store_true",
+                        help="Replay the OFF run's assistant replies when testing SPLIT_ONLY and ON")
     parser.add_argument("--capture-answers", action="store_true",
                         help="Opt-in: save full generated answers locally (0600 files)")
     parser.add_argument("--output", default="/tmp/chat-cache-causal-report.json")
@@ -90,6 +92,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.confirm_restarts:
         parser.error("This experiment restarts MLX four times; pass --confirm-restarts")
+    if args.fixed_history and not args.capture_answers:
+        parser.error("--fixed-history requires --capture-answers for its OFF baseline")
     report_file = Path(args.output)
     report_file.parent.mkdir(parents=True, exist_ok=True)
     capture_dir = report_file.with_name(report_file.stem + "-answers")
@@ -116,9 +120,12 @@ def main(argv=None):
             captured = capture_dir / (mode + ".json")
             if args.capture_answers:
                 cmd += ["--answers-out", str(captured)]
+            if args.fixed_history and mode != "off":
+                cmd += ["--replay-answers", str(capture_dir / "off.json")]
             run_command(cmd)
             row = json.loads(output.read_text(encoding="utf-8"))
             row["mode"] = mode
+            row["history_mode"] = "baseline_replay" if args.fixed_history and mode != "off" else "generated"
             if args.capture_answers:
                 row["answers_file"] = str(captured)
             rows.append(row)
@@ -128,7 +135,12 @@ def main(argv=None):
         comparison = compare_answers(rows)
         report = {
             "design": "OFF vs split-only vs ON, model restart for each",
-            "note": "Differences in identical zero-hit prompts indicate prefill or other startup variation. Textual similarity is not semantic equivalence.",
+            "fixed_history": args.fixed_history,
+            "note": ("All three modes use the OFF run's assistant history for subsequent requests. "
+                     "Outputs may still differ; cache-hit differences do not prove semantic correctness."
+                     if args.fixed_history else
+                     "Each run uses its own generated assistant history, so input prompts diverge after turn 1. "
+                     "Textual similarity is not semantic equivalence."),
             "summary": summary,
             "comparison": comparison,
             "quality_review": "PENDING",
