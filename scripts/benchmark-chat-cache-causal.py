@@ -226,8 +226,10 @@ def main(argv=None):
         print("Raw output files (private):", capture_dir, flush=True)
     flag_names = (FEATURE, STORE, DIAG, SLOTS) if args.compare_slots else ((FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE))
     initial = {name: launch_value(name) for name in flag_names}
-    if any(value not in ("", "0", "1") for value in initial.values()):
+    if any(initial[name] not in ("", "0", "1") for name in initial if name != SLOTS):
         parser.error("Unexpected launchctl early-checkpoint configuration")
+    if SLOTS in initial and initial[SLOTS] not in ("", "1", "2"):
+        parser.error("Unexpected existing exact cache capacity (must be 1 or 2)")
     rows = []
     try:
         cases = SLOT_CASES if args.compare_slots else tuple(
