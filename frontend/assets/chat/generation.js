@@ -3730,6 +3730,30 @@ const imageFiles =
 
             };
 
+            // Explicit no-tool instructions and referential text follow-ups
+            // must not be diverted to web_search by the semantic action router.
+            // Respect explicit live-search intent; never override media routing.
+            const noWebRequested =
+                /(?:ohne|keine|kein|nicht|verzichte\\s+auf|without|no)\\s+(?:\\w+\\s+){0,3}(?:websuche|internetsuche|werkzeuge|tools|web\\s*search)/i.test(prompt);
+            const refersToEarlierExplanation =
+                /(?:gerade|zuvor|vorher|eben|bereits)\\s+(?:\\w+\\s+){0,5}(?:erkl[aä]rt|besprochen|genannt)|(?:dies(?:er|e|es|em|en)|dem|der)\\s+(?:kv[- ]?cache|transformer)/i.test(prompt);
+            const liveInformationRequested =
+                /(?:suche\\s+(?:im\\s+)?(?:web|internet)|recherchiere\\s+online|websuche|aktuelle\\s+(?:nachrichten|kurse|preise)|heute\\s+(?:passiert|neu)|wetter|forecast)/i.test(prompt) &&
+                !noWebRequested;
+            const bypassSearchRouter =
+                resolvedTarget === 'chat' &&
+                !fileContext &&
+                !currentImageContext &&
+                !imageFiles.length &&
+                !visionImages.length &&
+                !documentFiles.length &&
+                !activeArtifactIdForEdit &&
+                (noWebRequested || (refersToEarlierExplanation && !liveInformationRequested));
+            if (bypassSearchRouter) {
+                await generateAssistant(session);
+                return;
+            }
+
             const actionResponse = await fetch('/api/mlx/chat/actions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3968,6 +3992,16 @@ const imageFiles =
                 }
 
                 if (!results.length) {
+                    // For timeless explanatory questions, an empty SearXNG
+                    // result is not itself an answer. Fall back to local chat.
+                    // Do not fabricate current events, weather or live facts.
+                    const currentSourceNeeded =
+                        /\\b(?:heute|aktuell|neueste|nachrichten|wetter|weather|today|latest|live|kurs|stock|preis)\\b/i.test(prompt);
+                    if (!currentSourceNeeded && !forecast?.answer &&
+                        !toolResult.data?.news_digest) {
+                        await generateAssistant(session);
+                        return;
+                    }
                     const providerStatus = toolResult.data?.provider_status;
                     const emptyMessage = forecast?.answer
                         ? forecast.answer
