@@ -302,9 +302,9 @@ def main(argv=None):
         capture_dir.chmod(0o700)
         print("Raw output files (private):", capture_dir, flush=True)
     flag_names = (
-        (FEATURE, STORE, DIAG, SLOTS, ALIGN) if args.compare_native
-        else (FEATURE, STORE, DIAG, SLOTS) if args.compare_slots
-        else (FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE)
+        (FEATURE, STORE, DIAG, SLOTS, ALIGN) if (args.compare_native or args.compare_slots)
+        else (FEATURE, STORE, DIAG, ALIGN) if args.diagnose
+        else (FEATURE, STORE, ALIGN)
     )
     initial = {name: launch_value(name) for name in flag_names}
     if any(initial[name] not in ("", "0", "1") for name in initial if name != SLOTS):
@@ -320,7 +320,7 @@ def main(argv=None):
             else tuple((mode, feature, store, slots, "0")
                        for mode, feature, store, slots in SLOT_CASES)
             if args.compare_slots
-            else tuple((mode, feature, store, None, None)
+            else tuple((mode, feature, store, None, "0")
                        for mode, feature, store in CASES)
         )
         for mode, feature, store, slots, align in cases:
@@ -329,7 +329,7 @@ def main(argv=None):
             set_launch(STORE, store)
             if slots is not None:
                 set_launch(SLOTS, slots)
-            if align is not None and args.compare_native:
+            if align is not None:
                 set_launch(ALIGN, align)
             if args.diagnose:
                 set_launch(DIAG, "1")
@@ -344,7 +344,7 @@ def main(argv=None):
                 cmd += ["--answers-out", str(captured)]
             if args.diagnose:
                 cmd += ["--diagnose"]
-            baseline = "baseline1" if args.compare_slots else "off"
+            baseline = "baseline1" if (args.compare_slots or args.compare_native) else "off"
             if args.fixed_history and mode != baseline:
                 cmd += ["--replay-answers", str(capture_dir / (baseline + ".json"))]
             run_command(cmd)
