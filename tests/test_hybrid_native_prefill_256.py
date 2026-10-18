@@ -1,5 +1,8 @@
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,3 +51,25 @@ def test_launcher_really_accepts_override():
     assert 'if [ -n "${MLX_PREFILL_STEP_SIZE:-}" ]; then' in code
     assert '"$MLX_PREFILL_STEP_SIZE" -lt 128' in code
     assert 'PREFILL_STEP_SIZE="$(adaptive_prefill_step_size)"' in code
+
+
+def test_process_verification_requires_correct_hybrid_runtime_step():
+    m = load(ROOT / "scripts/benchmark-chat-cache-causal.py")
+    valid = (
+        "python3 /repo/scripts/hybrid_apc_dflash_runtime.py mlx_vlm server "
+        "--model x --prefill-step-size 256 --max-num-seqs 2"
+    )
+    with patch.object(m.subprocess, "run",
+                      return_value=SimpleNamespace(stdout=valid, returncode=0)):
+        assert m.verify_prefill_in_server_process(256) is None
+        with pytest.raises(RuntimeError, match="did not advertise"):
+            m.verify_prefill_in_server_process(1024)
+
+
+def test_process_verification_rejects_unrelated_processes():
+    m = load(ROOT / "scripts/benchmark-chat-cache-causal.py")
+    unrelated = "python3 scripts/benchmark-chat-cache-causal.py --prefill-step 256"
+    with patch.object(m.subprocess, "run",
+                      return_value=SimpleNamespace(stdout=unrelated, returncode=0)):
+        with pytest.raises(RuntimeError, match="did not advertise"):
+            m.verify_prefill_in_server_process(256)
