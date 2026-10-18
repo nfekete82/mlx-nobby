@@ -8,6 +8,7 @@ services:
     ports:
       - "127.0.0.1:${MLX_WEB_PORT:-8090}:8000"
     environment:
+      NOBBY_RAG_LATE_CONTEXT: "${NOBBY_RAG_LATE_CONTEXT:-0}"
       NOBBY_CLOCK_CONTEXT_ALWAYS: "${NOBBY_CLOCK_CONTEXT_ALWAYS:-0}"
       MLX_PROMPT_STAGE_DIAG: "${MLX_PROMPT_STAGE_DIAG:-0}"
       AGENT_URL: "${AGENT_URL:-http://host.docker.internal:8010}"
