@@ -69,6 +69,24 @@ def memory_snapshot():
         return {"unavailable": True}
 
 
+def verify_prefill_in_server_process(expected):
+    """Fail closed if the restarted hybrid server ignored the test step."""
+    result = subprocess.run(
+        ["ps", "-axww", "-o", "command="],
+        capture_output=True, text=True, check=True,
+    )
+    candidates = [line for line in result.stdout.splitlines()
+                  if "hybrid_apc_dflash_runtime.py" in line and "mlx_vlm server" in line]
+    expected_arg = re.compile(
+        r"(?:^|\\s)--prefill-step-size(?:\\s+|=)" + str(int(expected)) + r"(?:\\s|$)"
+    )
+    if not any(expected_arg.search(line) for line in candidates):
+        raise RuntimeError(
+            "MLX server did not advertise requested --prefill-step-size "
+            f"{expected}; refusing non-comparable experiment"
+        )
+
+
 def run_command(command):
     subprocess.run(command, cwd=ROOT, check=True)
 
@@ -354,6 +372,9 @@ def main(argv=None):
                 print(f"Controlled MLX_PREFILL_STEP_SIZE={args.prefill_step}", flush=True)
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
+            if args.prefill_step is not None:
+                verify_prefill_in_server_process(args.prefill_step)
+                print("Verified live MLX server prefill step:", args.prefill_step, flush=True)
             output = report_file.with_name(report_file.stem + f"-{mode}.json")
             before_memory = memory_snapshot() if (args.compare_slots or args.compare_native) else None
             cmd = [sys.executable, str(BENCH), "--temperature", "0",
