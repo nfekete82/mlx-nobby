@@ -226,7 +226,7 @@ def main(argv=None):
     parser.add_argument("--settle-seconds", type=float, default=3)
     args = parser.parse_args(argv)
     if not args.confirm_restarts:
-        parser.error("This experiment restarts MLX four times; pass --confirm-restarts")
+        parser.error("This experiment restarts MLX four times (five with --compare-slots); pass --confirm-restarts")
     if args.fixed_history and not args.capture_answers:
         parser.error("--fixed-history requires --capture-answers for its OFF baseline")
     if args.compare_slots and not (args.fixed_history and args.capture_answers and args.diagnose):
@@ -281,7 +281,7 @@ def main(argv=None):
                 row["memory_after"] = memory_snapshot()
             if slots is not None:
                 row["exact_cache_slots"] = int(slots)
-            row["history_mode"] = "baseline_replay" if args.fixed_history and mode != "off" else "generated"
+            row["history_mode"] = "baseline_replay" if args.fixed_history and mode != baseline else "generated"
             if args.capture_answers:
                 row["answers_file"] = str(captured)
             rows.append(row)
