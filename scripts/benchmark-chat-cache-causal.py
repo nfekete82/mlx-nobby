@@ -58,7 +58,7 @@ def parse_lookup_diagnostic(entry):
     wanted = ("reason", "prompt_tokens", "checkpoint_tokens",
               "matched_tokens", "common_prefix_tokens", "previous_tokens",
               "semantic_hash_same")
-    parts = dict(re.findall(r"([a-z_]+)=([^\\s]+)", entry))
+    parts = dict(re.findall(r"([a-z_]+)=([^\s]+)", entry))
     if not all(key in parts for key in wanted):
         return None
     try:
@@ -221,7 +221,7 @@ def main(argv=None):
         if comparison is not None:
             print("First-turn text comparison:\n" + json.dumps(comparison, indent=2), flush=True)
         if args.diagnose:
-            print("Prefix gap diagnostics:\\n" + json.dumps(report["prefix_gap_diagnostics"], indent=2), flush=True)
+            print("Prefix gap diagnostics:\n" + json.dumps(report["prefix_gap_diagnostics"], indent=2), flush=True)
         print("Report:", report_file, flush=True)
         return 0
     finally:
