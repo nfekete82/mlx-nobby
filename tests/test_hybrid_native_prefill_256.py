@@ -36,6 +36,8 @@ def test_prefill_override_is_bounded_and_default_off():
     assert not m.valid_existing_prefill_setting("4097")
     assert not m.valid_existing_prefill_setting("nonsense")
     assert not m.valid_existing_prefill_setting("256; exit")
+    assert not m.valid_existing_prefill_setting("２５６")
+    assert not m.valid_existing_prefill_setting("0" * 50 + "256")
 
 
 def test_same_prefill_setting_applies_before_every_restart():

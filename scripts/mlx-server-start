@@ -69,7 +69,8 @@ adaptive_prefill_step_size() {
                 return 1
                 ;;
             *)
-                if [ "$MLX_PREFILL_STEP_SIZE" -lt 128 ] || [ "$MLX_PREFILL_STEP_SIZE" -gt 4096 ]; then
+                if [ "${#MLX_PREFILL_STEP_SIZE}" -gt 4 ] ||
+                   [ "$MLX_PREFILL_STEP_SIZE" -lt 128 ] || [ "$MLX_PREFILL_STEP_SIZE" -gt 4096 ]; then
                     echo "MLX_PREFILL_STEP_SIZE muss zwischen 128 und 4096 liegen" >&2
                     return 1
                 fi

@@ -46,7 +46,8 @@ def launch_value(name):
 
 def valid_existing_prefill_setting(value):
     """Do not silently overwrite unexpected LaunchAgent startup settings."""
-    return value == "" or (value.isdecimal() and 128 <= int(value) <= 4096)
+    return value == "" or (value.isascii() and value.isdecimal()
+                           and len(value) <= 4 and 128 <= int(value) <= 4096)
 
 
 def set_launch(name, value):

@@ -12,6 +12,10 @@ def early_checkpoint(checkpoint: int, matched: int, minimum: int,
     """
     if os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT") != "1":
         return None
+    alignment = os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", "1")
+    if alignment not in {"0", "1"}:
+        # A typo must never select the numerically different forced split.
+        return None
     # The observed third-turn miss diverged 108 tokens before the latest
     # checkpoint. A margin of 160 leaves room without caching only the
     # initial system block.
@@ -19,7 +23,7 @@ def early_checkpoint(checkpoint: int, matched: int, minimum: int,
     if candidate < minimum or candidate <= matched:
         return None
 
-    if os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE", "1") == "1":
+    if alignment == "1":
         # Preserve *exactly* the pre-existing inference call boundaries.
         # Prefill chunks start at matched (the restored cache offset),
         # advance in fixed steps, and end at the full checkpoint.

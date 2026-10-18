@@ -106,3 +106,22 @@ def test_lookup_failures_and_invalid_offsets_recompute_cold(monkeypatch):
         assert scope['hybrid_matched_tokens'] == 0
         assert manager.lookup_args == {'extra_hash': 17, 'max_prefix_tokens': 986}
         assert manager.saved == [(986, 986, 17)]
+
+
+def test_invalid_alignment_cannot_introduce_forced_chunks(monkeypatch):
+    monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
+    for value in ('yes', 'invalid', '2', ''):
+        monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', value)
+        manager = Manager(324)
+        calls, _ = execute(manager)
+        assert calls == [256, 256, 150]
+        assert manager.saved == [(986, 986, 17)]
+
+
+def test_enabled_checkpoint_defaults_to_natural_boundaries(monkeypatch):
+    monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
+    monkeypatch.delenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', raising=False)
+    manager = Manager(324)
+    calls, _ = execute(manager)
+    assert calls == [256, 256, 150]
+    assert manager.saved == [(580, 580, 17), (986, 986, 17)]
