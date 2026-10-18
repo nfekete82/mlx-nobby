@@ -135,7 +135,7 @@ def run(args):
     try:
         prior = counts(cache_stats(args.server_url))
         log_offset = None
-        if args.diagnose:
+        if getattr(args, "diagnose", False):
             if not os.path.isfile(args.log_file):
                 raise RuntimeError(f"No server log: {args.log_file}")
             log_offset = os.path.getsize(args.log_file)
@@ -154,7 +154,7 @@ def run(args):
             current = counts(cache_stats(args.server_url))
             diff = delta(prior, current)
             diagnostic = None
-            if args.diagnose:
+            if getattr(args, "diagnose", False):
                 log_offset, lines = read_diagnostic_lines(args.log_file, log_offset)
                 diagnostic = summarize_diagnostics(lines)
             prior = current
@@ -162,13 +162,13 @@ def run(args):
             row = {"turn": number, "first_content_ms": first_ms,
                    "total_ms": total_ms, "answer_chars": len(answer),
                    **{"delta_" + k: v for k, v in diff.items()}}
-            if args.diagnose:
+            if getattr(args, "diagnose", False):
                 row["hybrid_diagnostic"] = diagnostic
             rows.append(row)
             print(f"Turn {number}: first={first_ms}ms total={total_ms}ms "
                   f"hits+{diff['exact_hits']} matched+{diff['matched_tokens']} "
                   f"stores+{diff['exact_stores']} chars={len(answer)}", flush=True)
-            if args.diagnose:
+            if getattr(args, "diagnose", False):
                 print("  HYBRID lookup: " + (diagnostic or "no in-process diagnostic record"), flush=True)
         print("TOTAL hits+", sum(r["delta_exact_hits"] for r in rows),
               "matched+", sum(r["delta_matched_tokens"] for r in rows))
