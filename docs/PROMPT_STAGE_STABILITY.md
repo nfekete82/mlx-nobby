@@ -47,3 +47,23 @@ The Compose environment defaults to zero. To override a value explicitly
 stored in a project `.env`, unset or remove it there too.
 
 The hybrid runtime and its exact-cache matching are untouched.
+
+## Verified 2026-10-18 browser diagnosis
+
+Three subsequent requests yielded stable base system text (649 characters),
+but the same-length profile system text (2152 characters) diverged after
+710 characters. Turn two added 816 RAG characters; turn three did not.
+
+Source inspection identifies the primary mutable prefix:
+`agent/profile.py:context()` begins with `system_clock.context()`.
+The latter injects `datetime.now().astimezone()` with **second precision**
+in `agent/system_clock.py`, so the leading system message changes every
+turn even if the user profile and prior messages are unchanged.
+
+This is a confirmed prompt-drift cause, not a confirmed cache-engine bug.
+A safe fix must preserve authoritative per-turn clock information and system
+instruction precedence while moving or isolating mutable time context.
+Do **not** merely freeze the clock or move trusted instructions into
+untrusted source snippets to force APC hits. The MLX chat template's support
+for late system messages and runtime partial-prefix reuse must be assessed
+before choosing a solution.
