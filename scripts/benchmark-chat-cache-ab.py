@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from checkpoint_release_gates import evaluate
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "scripts/benchmark-chat-cache.py"
@@ -63,6 +64,7 @@ def main(argv=None):
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--settle-seconds", type=int, default=3)
     p.add_argument("--confirm-restarts", action="store_true")
+    p.add_argument("--release-gates", action="store_true", help="Evaluate conservative soak readiness (requires >=3 OFF and >=3 ON runs)")
     args = p.parse_args(argv)
     if args.pairs < 1 or args.pairs > 5:
         p.error("--pairs must be between 1 and 5")
@@ -95,8 +97,12 @@ def main(argv=None):
         final = {"design": "alternating OFF/ON, fresh server restart each run",
                  "caveats": "Model outputs and RAG may differ. Global cache counters require no concurrent traffic.",
                  "summary": summarize(results), "runs": results}
+        if args.release_gates:
+            final["release_gates"] = evaluate(final)
         report_path.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
         print("\nA/B summary:\n", json.dumps(final["summary"], indent=2), flush=True)
+        if args.release_gates:
+            print("Release gates:", json.dumps(final["release_gates"], indent=2), flush=True)
         print("Report:", report_path)
         return 0
     finally:
