@@ -163,17 +163,26 @@ PREFILL_ADAPTER = '''
                                     logger.info("Hybrid early checkpoint split-only: tokens=%d", hybrid_early_boundary)
                                 else:
                                     try:
-                                        hybrid_apc_manager.store_exact_cache(
+                                        hybrid_early_saved = hybrid_apc_manager.store_exact_cache(
                                             hybrid_full_ids[:hybrid_early_boundary],
                                             prompt_cache, extra_hash=hybrid_hash,
                                         )
-                                        logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
+                                        if hybrid_early_saved:
+                                            logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
+                                        else:
+                                            logger.warning("Hybrid early checkpoint was not stored: tokens=%d", hybrid_early_boundary)
+                                        if nobby_hybrid_diag is not None:
+                                            logger.info(
+                                                "HYBRID_APC_LRU phase=early capacity=%s entries=%s",
+                                                getattr(hybrid_apc_manager, "_exact_cache_max", None),
+                                                len(getattr(hybrid_apc_manager, "_exact_cache", ())),
+                                            )
                                     except Exception:
                                         logger.warning("Hybrid early checkpoint store failed", exc_info=True)
                                 hybrid_early_boundary = None
                             mx.clear_cache()
                         try:
-                            hybrid_apc_manager.store_exact_cache(
+                            hybrid_final_saved = hybrid_apc_manager.store_exact_cache(
                                 hybrid_full_ids[:hybrid_checkpoint],
                                 prompt_cache, extra_hash=hybrid_hash,
                             )
@@ -183,7 +192,13 @@ PREFILL_ADAPTER = '''
                                     matched_tokens=hybrid_matched_tokens,
                                     minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
                                     guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
-                                    stored=True,
+                                    stored=hybrid_final_saved,
+                                )
+                                logger.info(
+                                    "HYBRID_APC_LRU phase=final saved=%s capacity=%s entries=%s",
+                                    hybrid_final_saved,
+                                    getattr(hybrid_apc_manager, "_exact_cache_max", None),
+                                    len(getattr(hybrid_apc_manager, "_exact_cache", ())),
                                 )
                         except Exception:
                             logger.warning(
