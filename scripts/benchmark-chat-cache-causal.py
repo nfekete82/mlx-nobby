@@ -78,7 +78,7 @@ def verify_prefill_in_server_process(expected):
     candidates = [line for line in result.stdout.splitlines()
                   if "hybrid_apc_dflash_runtime.py" in line and "mlx_vlm server" in line]
     expected_arg = re.compile(
-        r"(?:^|\\s)--prefill-step-size(?:\\s+|=)" + str(int(expected)) + r"(?:\\s|$)"
+        r"(?:^|\s)--prefill-step-size(?:\s+|=)" + str(int(expected)) + r"(?:\s|$)"
     )
     if not any(expected_arg.search(line) for line in candidates):
         raise RuntimeError(
