@@ -1034,6 +1034,10 @@ def mlx_chat_stream(request: ChatRequest):
                 },
             )
 
+    from backend import rag_prefix_placement
+    if rag_prefix_placement.enabled():
+        rag_prefix_placement.append_stable_policy(messages)
+
     prompt_stage_compare("with_profile", messages, extra_chars=len(profile_context))
 
     temperature = max(
@@ -1440,28 +1444,38 @@ def mlx_chat_stream(request: ChatRequest):
                     context_parts
                 )
 
-                if (
-                    messages
-                    and isinstance(messages[0], dict)
-                    and messages[0].get("role") == "system"
-                ):
-                    existing_system = str(
-                        messages[0].get("content") or ""
-                    ).strip()
-
-                    messages[0]["content"] = (
-                        existing_system
-                        + ("\n\n" if existing_system else "")
-                        + rag_context
+                # This is experimental. On opt-in, keep high-priority
+                # policy stable and put untrusted snippets at the current
+                # user turn's end; fall back if no plain-text user turn.
+                late_placed = (
+                    rag_prefix_placement.enabled()
+                    and rag_prefix_placement.append_source_data_to_latest_user(
+                        messages, context_parts
                     )
-                else:
-                    messages.insert(
-                        0,
-                        {
-                            "role": "system",
-                            "content": rag_context,
-                        },
-                    )
+                )
+                if not late_placed:
+                    if (
+                        messages
+                        and isinstance(messages[0], dict)
+                        and messages[0].get("role") == "system"
+                    ):
+                        existing_system = str(
+                            messages[0].get("content") or ""
+                        ).strip()
+    
+                        messages[0]["content"] = (
+                            existing_system
+                            + ("\n\n" if existing_system else "")
+                            + rag_context
+                        )
+                    else:
+                        messages.insert(
+                            0,
+                            {
+                                "role": "system",
+                                "content": rag_context,
+                            },
+                        )
 
     prompt_stage_compare("with_rag", messages)
 
