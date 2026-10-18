@@ -988,10 +988,12 @@ def mlx_chat_stream(request: ChatRequest):
             },
         )
 
+    from backend.clock_context_routing import include_live_clock
+    clock_on = include_live_clock(request.messages, request.system_prompt)
     try:
         profile_result = agent_json_request(
             "GET",
-            "/api/profile/context",
+            "/api/profile/context?include_clock=" + ("1" if clock_on else "0"),
             timeout=5,
         )
         profile_context = str(
