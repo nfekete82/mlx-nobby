@@ -17,6 +17,13 @@ BENCH = ROOT / "scripts/benchmark-chat-cache.py"
 FEATURE = "NOBBY_HYBRID_EARLY_CHECKPOINT"
 STORE = "NOBBY_HYBRID_EARLY_CHECKPOINT_STORE"
 DIAG = "NOBBY_HYBRID_CACHE_DIAG"
+SLOTS = "NOBBY_HYBRID_EXACT_CACHE_ENTRIES"
+SLOT_CASES = (
+    ("baseline1", "0", "1", "1"),
+    ("baseline2", "0", "1", "2"),
+    ("split2", "1", "0", "2"),
+    ("early2", "1", "1", "2"),
+)
 CASES = (("off", "0", "1"), ("split_only", "1", "0"), ("on", "1", "1"))
 
 
@@ -49,6 +56,52 @@ def compare_case_rows(rows):
         } for r in rows
     }
 
+
+
+def compare_slot_rows(rows):
+    if [row["mode"] for row in rows] != [case[0] for case in SLOT_CASES]:
+        raise ValueError("Expected baseline1, baseline2, split2, early2 in order")
+    return {
+        row["mode"]: {
+            "slots": row["exact_cache_slots"],
+            "first_turn_chars": row["turns"][0]["answer_chars"],
+            "first_turn_hits": row["turns"][0]["delta_exact_hits"],
+            "turn2_matched_tokens": row["turns"][1]["delta_matched_tokens"],
+            "turn3_hits": row["turns"][2]["delta_exact_hits"],
+            "turn3_matched_tokens": row["turns"][2]["delta_matched_tokens"],
+            "turn3_first_content_ms": row["turns"][2]["first_content_ms"],
+            "total_stores": sum(turn["delta_exact_stores"] for turn in row["turns"]),
+        } for row in rows
+    }
+
+
+def compare_slot_answers(rows):
+    by_mode = {}
+    for row in rows:
+        with open(row["answers_file"], encoding="utf-8") as handle:
+            data = json.load(handle)
+        answer_rows = data["answers"]
+        if len(answer_rows) != 3:
+            raise ValueError("Need three answers for each variant")
+        by_mode[row["mode"]] = answer_rows
+    results = {}
+    for mode in ("baseline2", "split2", "early2"):
+        before, after = by_mode["baseline1"], by_mode[mode]
+        if any(a["question"] != b["question"] or a["turn"] != b["turn"]
+               for a, b in zip(before, after)):
+            raise ValueError("Questions mismatch across slots variants")
+        results["baseline1_vs_" + mode] = {
+            "turn1_exact_equal": before[0]["answer"] == after[0]["answer"],
+            "turn1_similarity": round(difflib.SequenceMatcher(
+                None, before[0]["answer"], after[0]["answer"]
+            ).ratio(), 3),
+        }
+    results["split2_vs_early2"] = {
+        "turn1_exact_equal": (
+            by_mode["split2"][0]["answer"] == by_mode["early2"][0]["answer"]
+        ),
+    }
+    return results
 
 
 def parse_lookup_diagnostic(entry):
@@ -146,6 +199,8 @@ def compare_answers(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true")
+    parser.add_argument("--compare-slots", action="store_true",
+                        help="Run four fixed-history cases comparing exact APC LRU capacity 1 vs 2")
     parser.add_argument("--diagnose", action="store_true", help="Enable temporary numeric-only hybrid cache lookup diagnostics")
     parser.add_argument("--fixed-history", action="store_true",
                         help="Replay the OFF run's assistant replies when testing SPLIT_ONLY and ON")
@@ -158,6 +213,8 @@ def main(argv=None):
         parser.error("This experiment restarts MLX four times; pass --confirm-restarts")
     if args.fixed_history and not args.capture_answers:
         parser.error("--fixed-history requires --capture-answers for its OFF baseline")
+    if args.compare_slots and not (args.fixed_history and args.capture_answers and args.diagnose):
+        parser.error("--compare-slots requires --fixed-history --capture-answers --diagnose")
     report_file = Path(args.output)
     report_file.parent.mkdir(parents=True, exist_ok=True)
     capture_dir = report_file.with_name(report_file.stem + "-answers")
@@ -167,16 +224,21 @@ def main(argv=None):
         capture_dir.mkdir(mode=0o700, exist_ok=True)
         capture_dir.chmod(0o700)
         print("Raw output files (private):", capture_dir, flush=True)
-    flag_names = (FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE)
+    flag_names = (FEATURE, STORE, DIAG, SLOTS) if args.compare_slots else ((FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE))
     initial = {name: launch_value(name) for name in flag_names}
     if any(value not in ("", "0", "1") for value in initial.values()):
         parser.error("Unexpected launchctl early-checkpoint configuration")
     rows = []
     try:
-        for mode, feature, store in CASES:
+        cases = SLOT_CASES if args.compare_slots else tuple(
+            (mode, feature, store, None) for mode, feature, store in CASES
+        )
+        for mode, feature, store, slots in cases:
             print(f"\n=== Causal test: {mode} ===", flush=True)
             set_launch(FEATURE, feature)
             set_launch(STORE, store)
+            if slots is not None:
+                set_launch(SLOTS, slots)
             if args.diagnose:
                 set_launch(DIAG, "1")
             run_command([str(MLX), "restart"])
@@ -189,21 +251,28 @@ def main(argv=None):
                 cmd += ["--answers-out", str(captured)]
             if args.diagnose:
                 cmd += ["--diagnose"]
-            if args.fixed_history and mode != "off":
-                cmd += ["--replay-answers", str(capture_dir / "off.json")]
+            baseline = "baseline1" if args.compare_slots else "off"
+            if args.fixed_history and mode != baseline:
+                cmd += ["--replay-answers", str(capture_dir / (baseline + ".json"))]
             run_command(cmd)
             row = json.loads(output.read_text(encoding="utf-8"))
             row["mode"] = mode
+            if slots is not None:
+                row["exact_cache_slots"] = int(slots)
             row["history_mode"] = "baseline_replay" if args.fixed_history and mode != "off" else "generated"
             if args.capture_answers:
                 row["answers_file"] = str(captured)
             rows.append(row)
             print(f"{mode}: first chars={row['turns'][0]['answer_chars']}, "
                   f"turn3 matched={row['turns'][2]['delta_matched_tokens']}", flush=True)
-        summary = compare_case_rows(rows)
-        comparison = compare_answers(rows)
+        summary = compare_slot_rows(rows) if args.compare_slots else compare_case_rows(rows)
+        comparison = compare_slot_answers(rows) if args.compare_slots else compare_answers(rows)
         report = {
-            "design": "OFF vs split-only vs ON, model restart for each",
+            "design": (
+                "1-slot baseline vs 2-slot baseline/split-only/early checkpoint"
+                if args.compare_slots else "OFF vs split-only vs ON, model restart for each"
+            ),
+            "slot_control": args.compare_slots,
             "fixed_history": args.fixed_history,
             "note": ("All three modes use the OFF run's assistant history for subsequent requests. "
                      "Outputs may still differ; cache-hit differences do not prove semantic correctness."
