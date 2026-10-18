@@ -11,10 +11,14 @@ import subprocess
 import sys
 import time
 import urllib.request
-from checkpoint_release_gates import evaluate
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "scripts/benchmark-chat-cache.py"
+
+
+def evaluate_release_gates(report):
+    return runpy.run_path(str(ROOT / "scripts/checkpoint_release_gates.py"))["evaluate"](report)
 MLX = ROOT / "scripts/mlx"
 
 
@@ -98,7 +102,7 @@ def main(argv=None):
                  "caveats": "Model outputs and RAG may differ. Global cache counters require no concurrent traffic.",
                  "summary": summarize(results), "runs": results}
         if args.release_gates:
-            final["release_gates"] = evaluate(final)
+            final["release_gates"] = evaluate_release_gates(final)
         report_path.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
         print("\nA/B summary:\n", json.dumps(final["summary"], indent=2), flush=True)
         if args.release_gates:
