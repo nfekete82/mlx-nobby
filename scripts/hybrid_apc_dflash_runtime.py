@@ -115,7 +115,7 @@ PREFILL_ADAPTER = '''
                         else:
                             hybrid_matched_tokens = 0
 
-                    # Commit a custom exact-cache checkpoint before the
+                    hybrid_early_boundary = nobby_checkpoint_policy.early_checkpoint(\n                        hybrid_checkpoint, hybrid_matched_tokens,\n                        hybrid_apc_manager.exact_cache_min_tokens,\n                    ) if hybrid_apc_manager is not None else None\n\n                    # Commit a custom exact-cache checkpoint before the
                     # tail that changes between chat turns. This must happen
                     # BEFORE speculative final-token capture and decoding.
                     if hybrid_apc_manager is not None and hybrid_checkpoint > hybrid_matched_tokens:
@@ -243,7 +243,7 @@ def install() -> None:
     replacement = transform_speculative_method(inspect.getsource(original))
     nobby_hybrid_diag = importlib.import_module("hybrid_cache_diagnostics") if os.getenv("NOBBY_HYBRID_CACHE_DIAG") == "1" else None
     vars(module)["nobby_hybrid_diag"] = nobby_hybrid_diag
-    namespace: dict = {}
+    nobby_checkpoint_policy = importlib.import_module("hybrid_checkpoint_policy")\n    vars(module)["nobby_checkpoint_policy"] = nobby_checkpoint_policy\n    namespace: dict = {}
     exec(compile(replacement, "<nobby-hybrid-apc-dflash>", "exec"), vars(module), namespace)
     patched = namespace.get("_run_speculative")
     if not callable(patched):
