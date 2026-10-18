@@ -975,6 +975,7 @@ def mlx_chat_stream(request: ChatRequest):
             observability.text_characters(request.messages)
         )
 
+    from backend.prompt_stage_diagnostics import compare as prompt_stage_compare
     system_prompt = request.system_prompt.strip()
     context_sources["system"]["characters"] += len(system_prompt)
 
@@ -999,6 +1000,7 @@ def mlx_chat_stream(request: ChatRequest):
     except Exception:
         profile_context = ""
 
+    prompt_stage_compare("base_system", messages)
     context_sources["profile"]["characters"] += len(profile_context)
 
     if profile_context:
@@ -1024,6 +1026,8 @@ def mlx_chat_stream(request: ChatRequest):
                     "content": profile_context,
                 },
             )
+
+    prompt_stage_compare("with_profile", messages, extra_chars=len(profile_context))
 
     temperature = max(
         0.0,
@@ -1452,6 +1456,8 @@ def mlx_chat_stream(request: ChatRequest):
                         },
                     )
 
+    prompt_stage_compare("with_rag", messages)
+
     # v2 Automatic public research. Only a short, non-private current question
     # goes to the search provider; no prior turns, workspace or file contents.
     if last_user_prompt:
@@ -1481,6 +1487,8 @@ def mlx_chat_stream(request: ChatRequest):
                     )
                 else:
                     messages.insert(0, {"role": "system", "content": live_context})
+
+    prompt_stage_compare("with_live_context", messages)
 
     if "rag_sources" not in locals():
         rag_sources = []
@@ -1520,6 +1528,8 @@ def mlx_chat_stream(request: ChatRequest):
             ][:3]
         else:
             rag_sources = rag_sources[:1]
+
+    prompt_stage_compare("final", messages)
 
     payload = {
         "messages": messages,
