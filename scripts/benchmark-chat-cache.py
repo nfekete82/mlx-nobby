@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import os
+from pathlib import Path
 import urllib.request
 import urllib.error
 
@@ -102,9 +104,42 @@ def stream_answer(web_url: str, payload: dict, timeout: int = 900):
     return answer, first_ms, total_ms
 
 
+def read_diagnostic_lines(path: str, offset: int):
+    """Read new complete diagnostic lines only, surviving log truncation."""
+    with open(path, "rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        end = stream.tell()
+        if end < offset:
+            offset = 0
+        stream.seek(offset)
+        raw = stream.read()
+    if not raw:
+        return end, []
+    parts = raw.rsplit(b"\n", 1)
+    if len(parts) == 1:
+        return offset, []
+    complete = parts[0] + b"\n"
+    new_offset = offset + len(complete)
+    lines = complete.decode("utf-8", errors="replace").splitlines()
+    return new_offset, [line for line in lines if "HYBRID_APC_DIAG" in line]
+
+
+def summarize_diagnostics(lines):
+    lookups = [line for line in lines if "stored=False" in line]
+    if not lookups:
+        return None
+    return lookups[-1].split("HYBRID_APC_DIAG ", 1)[-1]
+
+
 def run(args):
     try:
         prior = counts(cache_stats(args.server_url))
+        log_offset = None
+        if args.diagnose:
+            if not os.path.isfile(args.log_file):
+                raise RuntimeError(f"No server log: {args.log_file}")
+            log_offset = os.path.getsize(args.log_file)
+            print("DIAG: requires NOBBY_HYBRID_CACHE_DIAG=1 in mlx-server", flush=True)
         history = []
         rows = []
         for number, question in enumerate(QUESTIONS, 1):
@@ -118,15 +153,23 @@ def run(args):
             answer, first_ms, total_ms = stream_answer(args.web_url, payload, timeout=args.timeout)
             current = counts(cache_stats(args.server_url))
             diff = delta(prior, current)
+            diagnostic = None
+            if args.diagnose:
+                log_offset, lines = read_diagnostic_lines(args.log_file, log_offset)
+                diagnostic = summarize_diagnostics(lines)
             prior = current
             history.append({"role": "assistant", "content": answer})
             row = {"turn": number, "first_content_ms": first_ms,
                    "total_ms": total_ms, "answer_chars": len(answer),
                    **{"delta_" + k: v for k, v in diff.items()}}
+            if args.diagnose:
+                row["hybrid_diagnostic"] = diagnostic
             rows.append(row)
             print(f"Turn {number}: first={first_ms}ms total={total_ms}ms "
                   f"hits+{diff['exact_hits']} matched+{diff['matched_tokens']} "
                   f"stores+{diff['exact_stores']} chars={len(answer)}", flush=True)
+            if args.diagnose:
+                print("  HYBRID lookup: " + (diagnostic or "no in-process diagnostic record"), flush=True)
         print("TOTAL hits+", sum(r["delta_exact_hits"] for r in rows),
               "matched+", sum(r["delta_matched_tokens"] for r in rows))
         if args.json_out:
@@ -152,6 +195,8 @@ def main(argv=None):
     p.add_argument("--max-tokens", type=int, default=700)
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json-out")
+    p.add_argument("--diagnose", action="store_true", help="Read per-turn hybrid cache lookup reason from server log")
+    p.add_argument("--log-file", default=str(Path.home() / ".config/mlx-web/server-error.log"))
     return run(p.parse_args(argv))
 
 
