@@ -19,11 +19,18 @@ FEATURE = "NOBBY_HYBRID_EARLY_CHECKPOINT"
 STORE = "NOBBY_HYBRID_EARLY_CHECKPOINT_STORE"
 DIAG = "NOBBY_HYBRID_CACHE_DIAG"
 SLOTS = "NOBBY_HYBRID_EXACT_CACHE_ENTRIES"
+ALIGN = "NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE"
 SLOT_CASES = (
     ("baseline1", "0", "1", "1"),
     ("baseline2", "0", "1", "2"),
     ("split2", "1", "0", "2"),
     ("early2", "1", "1", "2"),
+)
+NATIVE_CASES = (
+    ("baseline1", "0", "1", "1", "0"),
+    ("baseline2", "0", "1", "2", "0"),
+    ("early2", "1", "1", "2", "0"),
+    ("native2", "1", "1", "2", "1"),
 )
 CASES = (("off", "0", "1"), ("split_only", "1", "0"), ("on", "1", "1"))
 
@@ -89,6 +96,54 @@ def compare_slot_rows(rows):
             "total_stores": sum(turn["delta_exact_stores"] for turn in row["turns"]),
         } for row in rows
     }
+
+
+def compare_native_rows(rows):
+    """Report the same fixed-history statistics for native chunk boundaries."""
+    expected = [case[0] for case in NATIVE_CASES]
+    if [row["mode"] for row in rows] != expected:
+        raise ValueError("Expected baseline1, baseline2, early2, native2")
+    return {row["mode"]: {
+        "slots": row["exact_cache_slots"],
+        "first_turn_chars": row["turns"][0]["answer_chars"],
+        "first_turn_hits": row["turns"][0]["delta_exact_hits"],
+        "turn2_matched_tokens": row["turns"][1]["delta_matched_tokens"],
+        "turn3_hits": row["turns"][2]["delta_exact_hits"],
+        "turn3_matched_tokens": row["turns"][2]["delta_matched_tokens"],
+        "turn3_first_content_ms": row["turns"][2]["first_content_ms"],
+        "turn3_total_ms": row["turns"][2]["total_ms"],
+        "total_stores": sum(turn["delta_exact_stores"] for turn in row["turns"]),
+    } for row in rows}
+
+
+def compare_native_answers(rows):
+    answers = {}
+    for row in rows:
+        with open(row["answers_file"], encoding="utf-8") as stream:
+            data = json.load(stream)
+        entries = data.get("answers")
+        if not isinstance(entries, list) or len(entries) != 3:
+            raise ValueError("Expected three captured answers per variant")
+        answers[row["mode"]] = entries
+    ref = answers["baseline1"]
+    comparisons = {}
+    for mode in ("baseline2", "early2", "native2"):
+        candidate = answers[mode]
+        if any(a["question"] != b["question"] or a["turn"] != b["turn"]
+               for a, b in zip(ref, candidate)):
+            raise ValueError("Questions mismatch across native-boundary variants")
+        comparisons["baseline1_vs_" + mode] = {
+            "turn1_exact_equal": ref[0]["answer"] == candidate[0]["answer"],
+            "turn1_similarity": round(difflib.SequenceMatcher(
+                None, ref[0]["answer"], candidate[0]["answer"]
+            ).ratio(), 3),
+        }
+    comparisons["early2_vs_native2"] = {
+        "turn1_exact_equal": (
+            answers["early2"][0]["answer"] == answers["native2"][0]["answer"]
+        ),
+    }
+    return comparisons
 
 
 def compare_slot_answers(rows):
@@ -215,6 +270,8 @@ def compare_answers(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true")
+    parser.add_argument("--compare-native", action="store_true",
+                        help="Compare same-history forced early split versus native-chunk-aligned snapshot")
     parser.add_argument("--compare-slots", action="store_true",
                         help="Run four fixed-history cases comparing exact APC LRU capacity 1 vs 2")
     parser.add_argument("--diagnose", action="store_true", help="Enable temporary numeric-only hybrid cache lookup diagnostics")
@@ -226,9 +283,13 @@ def main(argv=None):
     parser.add_argument("--settle-seconds", type=float, default=3)
     args = parser.parse_args(argv)
     if not args.confirm_restarts:
-        parser.error("This experiment restarts MLX four times (five with --compare-slots); pass --confirm-restarts")
+        parser.error("This experiment restarts MLX four times (five with --compare-slots or --compare-native); pass --confirm-restarts")
     if args.fixed_history and not args.capture_answers:
         parser.error("--fixed-history requires --capture-answers for its OFF baseline")
+    if args.compare_native and args.compare_slots:
+        parser.error("--compare-native and --compare-slots are mutually exclusive")
+    if args.compare_native and not (args.fixed_history and args.capture_answers and args.diagnose):
+        parser.error("--compare-native requires --fixed-history --capture-answers --diagnose")
     if args.compare_slots and not (args.fixed_history and args.capture_answers and args.diagnose):
         parser.error("--compare-slots requires --fixed-history --capture-answers --diagnose")
     report_file = Path(args.output)
@@ -240,29 +301,42 @@ def main(argv=None):
         capture_dir.mkdir(mode=0o700, exist_ok=True)
         capture_dir.chmod(0o700)
         print("Raw output files (private):", capture_dir, flush=True)
-    flag_names = (FEATURE, STORE, DIAG, SLOTS) if args.compare_slots else ((FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE))
+    flag_names = (
+        (FEATURE, STORE, DIAG, SLOTS, ALIGN) if args.compare_native
+        else (FEATURE, STORE, DIAG, SLOTS) if args.compare_slots
+        else (FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE)
+    )
     initial = {name: launch_value(name) for name in flag_names}
     if any(initial[name] not in ("", "0", "1") for name in initial if name != SLOTS):
         parser.error("Unexpected launchctl early-checkpoint configuration")
+    if ALIGN in initial and initial[ALIGN] not in ("", "0", "1"):
+        parser.error("Unexpected existing native-alignment configuration")
     if SLOTS in initial and initial[SLOTS] not in ("", "1", "2"):
         parser.error("Unexpected existing exact cache capacity (must be 1 or 2)")
     rows = []
     try:
-        cases = SLOT_CASES if args.compare_slots else tuple(
-            (mode, feature, store, None) for mode, feature, store in CASES
+        cases = (
+            NATIVE_CASES if args.compare_native
+            else tuple((mode, feature, store, slots, "0")
+                       for mode, feature, store, slots in SLOT_CASES)
+            if args.compare_slots
+            else tuple((mode, feature, store, None, None)
+                       for mode, feature, store in CASES)
         )
-        for mode, feature, store, slots in cases:
+        for mode, feature, store, slots, align in cases:
             print(f"\n=== Causal test: {mode} ===", flush=True)
             set_launch(FEATURE, feature)
             set_launch(STORE, store)
             if slots is not None:
                 set_launch(SLOTS, slots)
+            if align is not None and args.compare_native:
+                set_launch(ALIGN, align)
             if args.diagnose:
                 set_launch(DIAG, "1")
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
             output = report_file.with_name(report_file.stem + f"-{mode}.json")
-            before_memory = memory_snapshot() if args.compare_slots else None
+            before_memory = memory_snapshot() if (args.compare_slots or args.compare_native) else None
             cmd = [sys.executable, str(BENCH), "--temperature", "0",
                    "--json-out", str(output)]
             captured = capture_dir / (mode + ".json")
@@ -276,7 +350,7 @@ def main(argv=None):
             run_command(cmd)
             row = json.loads(output.read_text(encoding="utf-8"))
             row["mode"] = mode
-            if args.compare_slots:
+            if args.compare_slots or args.compare_native:
                 row["memory_before"] = before_memory
                 row["memory_after"] = memory_snapshot()
             if slots is not None:
@@ -287,14 +361,21 @@ def main(argv=None):
             rows.append(row)
             print(f"{mode}: first chars={row['turns'][0]['answer_chars']}, "
                   f"turn3 matched={row['turns'][2]['delta_matched_tokens']}", flush=True)
-        summary = compare_slot_rows(rows) if args.compare_slots else compare_case_rows(rows)
-        comparison = compare_slot_answers(rows) if args.compare_slots else compare_answers(rows)
+        summary = (compare_native_rows(rows) if args.compare_native
+                   else compare_slot_rows(rows) if args.compare_slots
+                   else compare_case_rows(rows))
+        comparison = (compare_native_answers(rows) if args.compare_native
+                      else compare_slot_answers(rows) if args.compare_slots
+                      else compare_answers(rows))
         report = {
             "design": (
+                "1-slot and 2-slot baseline vs forced and native-boundary early checkpoints"
+                if args.compare_native else
                 "1-slot baseline vs 2-slot baseline/split-only/early checkpoint"
                 if args.compare_slots else "OFF vs split-only vs ON, model restart for each"
             ),
-            "slot_control": args.compare_slots,
+            "slot_control": args.compare_slots or args.compare_native,
+            "native_boundary_control": args.compare_native,
             "fixed_history": args.fixed_history,
             "note": ("All three modes use the OFF run's assistant history for subsequent requests. "
                      "Outputs may still differ; cache-hit differences do not prove semantic correctness."
