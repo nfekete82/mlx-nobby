@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -15,6 +16,7 @@ MLX = ROOT / "scripts/mlx"
 BENCH = ROOT / "scripts/benchmark-chat-cache.py"
 FEATURE = "NOBBY_HYBRID_EARLY_CHECKPOINT"
 STORE = "NOBBY_HYBRID_EARLY_CHECKPOINT_STORE"
+DIAG = "NOBBY_HYBRID_CACHE_DIAG"
 CASES = (("off", "0", "1"), ("split_only", "1", "0"), ("on", "1", "1"))
 
 
@@ -46,6 +48,67 @@ def compare_case_rows(rows):
             "third_turn_matched_tokens": r["turns"][2]["delta_matched_tokens"],
         } for r in rows
     }
+
+
+
+def parse_lookup_diagnostic(entry):
+    """Parse only numeric/boolean diagnostic metadata; never token contents."""
+    if not isinstance(entry, str):
+        return None
+    wanted = ("reason", "prompt_tokens", "checkpoint_tokens",
+              "matched_tokens", "common_prefix_tokens", "previous_tokens",
+              "semantic_hash_same")
+    parts = dict(re.findall(r"([a-z_]+)=([^\\s]+)", entry))
+    if not all(key in parts for key in wanted):
+        return None
+    try:
+        result = {k: int(parts[k]) for k in wanted[1:-1]}
+    except ValueError:
+        return None
+    result["reason"] = parts["reason"]
+    result["semantic_hash_same"] = (
+        True if parts["semantic_hash_same"] == "True"
+        else False if parts["semantic_hash_same"] == "False" else None
+    )
+    return result
+
+
+def prefix_gap_summary(rows):
+    """Quantify why turn-3 exact lookup fails for identical replay histories.
+
+    Estimated early boundaries are just numerical predictions, not proof
+    that cache manager stored, retained or selected an early snapshot.
+    """
+    report = {}
+    for row in rows:
+        turns = row.get("turns") or []
+        if len(turns) != 3:
+            report[row.get("mode", "unknown")] = {"available": False}
+            continue
+        previous = parse_lookup_diagnostic(turns[1].get("hybrid_diagnostic"))
+        current = parse_lookup_diagnostic(turns[2].get("hybrid_diagnostic"))
+        if previous is None or current is None:
+            report[row["mode"]] = {"available": False}
+            continue
+        checkpoint = previous["checkpoint_tokens"]
+        prefix = current["common_prefix_tokens"]
+        estimated_early = max(0, checkpoint - 160)
+        report[row["mode"]] = {
+            "available": True,
+            "previous_full_checkpoint_tokens": checkpoint,
+            "turn3_common_prefix_tokens": prefix,
+            "turn3_prefix_gap_tokens": max(0, checkpoint - prefix),
+            "turn3_semantic_hash_same": current["semantic_hash_same"],
+            "turn3_reason": current["reason"],
+            "turn3_actual_matched_tokens": current["matched_tokens"],
+            "hypothetical_early_boundary_tokens": estimated_early,
+            "hypothetical_early_within_common_prefix": (
+                current["semantic_hash_same"] is True
+                and estimated_early > 0
+                and prefix >= estimated_early
+            ),
+        }
+    return report
 
 
 def compare_answers(rows):
@@ -83,6 +146,7 @@ def compare_answers(rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--confirm-restarts", action="store_true")
+    parser.add_argument("--diagnose", action="store_true", help="Enable temporary numeric-only hybrid cache lookup diagnostics")
     parser.add_argument("--fixed-history", action="store_true",
                         help="Replay the OFF run's assistant replies when testing SPLIT_ONLY and ON")
     parser.add_argument("--capture-answers", action="store_true",
@@ -103,7 +167,8 @@ def main(argv=None):
         capture_dir.mkdir(mode=0o700, exist_ok=True)
         capture_dir.chmod(0o700)
         print("Raw output files (private):", capture_dir, flush=True)
-    initial = {name: launch_value(name) for name in (FEATURE, STORE)}
+    flag_names = (FEATURE, STORE, DIAG) if args.diagnose else (FEATURE, STORE)
+    initial = {name: launch_value(name) for name in flag_names}
     if any(value not in ("", "0", "1") for value in initial.values()):
         parser.error("Unexpected launchctl early-checkpoint configuration")
     rows = []
@@ -112,6 +177,8 @@ def main(argv=None):
             print(f"\n=== Causal test: {mode} ===", flush=True)
             set_launch(FEATURE, feature)
             set_launch(STORE, store)
+            if args.diagnose:
+                set_launch(DIAG, "1")
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
             output = report_file.with_name(report_file.stem + f"-{mode}.json")
@@ -120,6 +187,8 @@ def main(argv=None):
             captured = capture_dir / (mode + ".json")
             if args.capture_answers:
                 cmd += ["--answers-out", str(captured)]
+            if args.diagnose:
+                cmd += ["--diagnose"]
             if args.fixed_history and mode != "off":
                 cmd += ["--replay-answers", str(capture_dir / "off.json")]
             run_command(cmd)
@@ -144,12 +213,15 @@ def main(argv=None):
             "summary": summary,
             "comparison": comparison,
             "quality_review": "PENDING",
+            "prefix_gap_diagnostics": prefix_gap_summary(rows) if args.diagnose else None,
             "runs": rows,
         }
         report_file.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print("\nCausal summary:\n" + json.dumps(summary, indent=2), flush=True)
         if comparison is not None:
             print("First-turn text comparison:\n" + json.dumps(comparison, indent=2), flush=True)
+        if args.diagnose:
+            print("Prefix gap diagnostics:\\n" + json.dumps(report["prefix_gap_diagnostics"], indent=2), flush=True)
         print("Report:", report_file, flush=True)
         return 0
     finally:
