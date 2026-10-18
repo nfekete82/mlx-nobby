@@ -1,5 +1,13 @@
 from pathlib import Path
-from tests.test_benchmark_chat_cache import module
+import importlib.util
+
+
+def module():
+    path = Path(__file__).resolve().parents[1] / 'scripts/benchmark-chat-cache.py'
+    spec = importlib.util.spec_from_file_location('chat_cache_turn_diag', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def test_read_only_new_diagnostic_lines(tmp_path):
