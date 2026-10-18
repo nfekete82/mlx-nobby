@@ -51,3 +51,52 @@ def test_run_maintains_history_and_measures_per_turn():
         assert m.run(args) == 0
     assert [len(x) for x in seen] == [1, 3, 5]
     assert seen[1][1] == {"role": "assistant", "content": "Answer"}
+
+
+def test_replay_requires_same_questions(tmp_path):
+    m = module()
+    data = {"answers": [
+        {"turn": i, "question": question, "answer": "Reference " + str(i)}
+        for i, question in enumerate(m.QUESTIONS, 1)
+    ]}
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    assert m.load_replay_answers(str(path)) == ("Reference 1", "Reference 2", "Reference 3")
+    data["answers"][1]["question"] = "Other question"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    import pytest
+    with pytest.raises(ValueError, match="Replay turn 2"):
+        m.load_replay_answers(str(path))
+
+
+def test_replay_keeps_baseline_history_not_fresh_answers(tmp_path):
+    m = module()
+    reference = {"answers": [
+        {"turn": i, "question": question, "answer": f"Fixed answer {i}"}
+        for i, question in enumerate(m.QUESTIONS, 1)
+    ]}
+    path = tmp_path / "reference.json"
+    path.write_text(json.dumps(reference, ensure_ascii=False), encoding="utf-8")
+    from argparse import Namespace
+    args = Namespace(web_url="http://127.0.0.1:8090",
+                     server_url="http://127.0.0.1:8000",
+                     system_prompt="base", chart_suffix=False,
+                     temperature=0, max_tokens=700, timeout=2,
+                     json_out=None, answers_out=None, replay_answers=str(path),
+                     diagnose=False)
+    stats = iter([
+        {"exact_hits": 0, "matched_tokens": 0, "exact_stores": 0},
+        {"exact_hits": 0, "matched_tokens": 0, "exact_stores": 1},
+        {"exact_hits": 1, "matched_tokens": 324, "exact_stores": 2},
+        {"exact_hits": 1, "matched_tokens": 324, "exact_stores": 3},
+    ])
+    sent = []
+    def generate(url, payload, timeout):
+        sent.append([entry.copy() for entry in payload["messages"]])
+        return "Fresh generation", 10, 20
+    with patch.object(m, "cache_stats", side_effect=lambda url: next(stats)), \
+         patch.object(m, "stream_answer", side_effect=generate):
+        assert m.run(args) == 0
+    assert sent[1][1]["content"] == "Fixed answer 1"
+    assert sent[2][3]["content"] == "Fixed answer 2"
+    assert sent[2][1]["content"] != "Fresh generation"
