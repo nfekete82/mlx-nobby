@@ -92,6 +92,13 @@ PREFILL_ADAPTER = '''
                             )
                             warm_cache = None
                             hybrid_matched_tokens = 0
+                        if nobby_hybrid_diag is not None:
+                            nobby_hybrid_diag.classify(
+                                hybrid_full_ids, hybrid_hash,
+                                matched_tokens=hybrid_matched_tokens,
+                                minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                            )
                         if warm_cache is not None and 0 < hybrid_matched_tokens < len(hybrid_full_ids):
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
@@ -146,6 +153,14 @@ PREFILL_ADAPTER = '''
                                 hybrid_full_ids[:hybrid_checkpoint],
                                 prompt_cache, extra_hash=hybrid_hash,
                             )
+                            if nobby_hybrid_diag is not None:
+                                nobby_hybrid_diag.classify(
+                                    hybrid_full_ids, hybrid_hash,
+                                    matched_tokens=hybrid_matched_tokens,
+                                    minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                    guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                    stored=True,
+                                )
                         except Exception:
                             logger.warning(
                                 "Hybrid APC checkpoint unavailable",
@@ -226,6 +241,8 @@ def install() -> None:
     module = importlib.import_module("mlx_vlm.server.generation")
     original = module.ResponseGenerator._run_speculative
     replacement = transform_speculative_method(inspect.getsource(original))
+    nobby_hybrid_diag = importlib.import_module("hybrid_cache_diagnostics") if os.getenv("NOBBY_HYBRID_CACHE_DIAG") == "1" else None
+    vars(module)["nobby_hybrid_diag"] = nobby_hybrid_diag
     namespace: dict = {}
     exec(compile(replacement, "<nobby-hybrid-apc-dflash>", "exec"), vars(module), namespace)
     patched = namespace.get("_run_speculative")
