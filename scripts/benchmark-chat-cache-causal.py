@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,21 @@ def set_launch(name, value):
         subprocess.run(["launchctl", "unsetenv", name], check=True)
     else:
         subprocess.run(["launchctl", "setenv", name, value], check=True)
+
+
+def memory_snapshot():
+    """Optional agent telemetry; not a direct snapshot memory measurement."""
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:8010/api/performance/observatory?limit=1", timeout=5
+        ) as response:
+            payload = json.load(response)
+        memory = (payload.get("system") or {}).get("memory") or {}
+        return {key: memory.get(key) for key in (
+            "swap_used_gb", "headroom_gb", "free_percent", "pressure"
+        )}
+    except (OSError, ValueError, TypeError):
+        return {"unavailable": True}
 
 
 def run_command(command):
@@ -246,6 +262,7 @@ def main(argv=None):
             run_command([str(MLX), "restart"])
             time.sleep(args.settle_seconds)
             output = report_file.with_name(report_file.stem + f"-{mode}.json")
+            before_memory = memory_snapshot() if args.compare_slots else None
             cmd = [sys.executable, str(BENCH), "--temperature", "0",
                    "--json-out", str(output)]
             captured = capture_dir / (mode + ".json")
@@ -259,6 +276,9 @@ def main(argv=None):
             run_command(cmd)
             row = json.loads(output.read_text(encoding="utf-8"))
             row["mode"] = mode
+            if args.compare_slots:
+                row["memory_before"] = before_memory
+                row["memory_after"] = memory_snapshot()
             if slots is not None:
                 row["exact_cache_slots"] = int(slots)
             row["history_mode"] = "baseline_replay" if args.fixed_history and mode != "off" else "generated"
