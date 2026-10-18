@@ -103,9 +103,6 @@ PREFILL_ADAPTER = '''
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
                             prompt_cache = warm_cache
-                            hybrid_consumed = hybrid_checkpoint - remaining_to_checkpoint
-                            if hybrid_early_boundary is not None and hybrid_consumed < hybrid_early_boundary:
-                                step = min(step, hybrid_early_boundary - hybrid_consumed)
                             hybrid_seq_keys = _sequence_aligned_prefill_keys(
                                 prompt_kwargs, batch_size=1,
                                 sequence_length=inputs_embeds_mx.shape[1],
@@ -133,6 +130,9 @@ PREFILL_ADAPTER = '''
                                 remaining_to_checkpoint,
                                 max(1, int(prefill_step_size)),
                             )
+                            hybrid_consumed = hybrid_checkpoint - remaining_to_checkpoint
+                            if hybrid_early_boundary is not None and hybrid_consumed < hybrid_early_boundary:
+                                step = min(step, hybrid_early_boundary - hybrid_consumed)
                             hybrid_seq_keys = _sequence_aligned_prefill_keys(
                                 prompt_kwargs, batch_size=1,
                                 sequence_length=inputs_embeds_mx.shape[1],
