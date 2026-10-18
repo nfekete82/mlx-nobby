@@ -30,7 +30,8 @@ def test_rollback_and_temporal_system_prompt(monkeypatch):
     monkeypatch.setenv("NOBBY_CLOCK_CONTEXT_ALWAYS", "1")
     assert include_live_clock([{"role": "user", "content": "Hi"}]) is True
     monkeypatch.delenv("NOBBY_CLOCK_CONTEXT_ALWAYS", raising=False)
-    assert include_live_clock([{"role": "user", "content": "Hi"}], "Tell me today's date") is True
+    assert include_live_clock([{"role": "user", "content": "Hi"}], "Use the current host time for all responses") is True
+    assert include_live_clock([{"role": "user", "content": "Hi"}], "For questions about today, dates or years, answer carefully") is False
 
 
 def test_profile_can_skip_time_without_losing_profile_instructions():
