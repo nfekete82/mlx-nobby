@@ -67,9 +67,16 @@ instruction adherence and RAG grounding.
 
 Record first-content latency, total duration, actual cached tokens and
 per-run configuration. Browser first-content includes web/Agent overhead and
-is not raw model TTFT. This runner does not measure reliable generated
-tokens/second; do not derive it from character count. Shared-server cache
-counters require exclusive traffic. The source-guarded snapshot budget logs
+is not raw model TTFT. This runner does not directly measure reliable generated
+tokens/second; do not derive it from character count. Backend completion logs
+can supply actual generated-token counts, decode rates and finish reasons only
+when uniquely correlated to the captured request. Check `finish_reason=length`:
+equality at a token cap does not certify completeness of the answer. Shared-server cache
+counters require exclusive traffic. Browser routing may itself make a
+`router.classify` model call in the same trace; this can alter APC counters,
+LRU state and backend inputs even with equal client hashes. Exclude such
+non-comparable arms rather than treating their global deltas as chat-only
+hits. Upstream's pool eviction counter also does not count exact-LRU pops. The source-guarded snapshot budget logs
 numeric payload sizes in `HYBRID_APC_MEMORY`; `resident_bytes` omits exact
 snapshots. The causal report includes process RSS before/after where available;
 these are not peak-RSS measurements. Agent swap/pressure samples may be cached.
@@ -96,6 +103,12 @@ results. Missing evidence produces REVIEW, never PASS.
 | `MLX_PROMPT_STAGE_DIAG` | disabled | backend system-prefix stage diagnostics |
 | `NOBBY_RAG_LATE_CONTEXT` | disabled | experimental late untrusted RAG placement |
 | `NOBBY_CLOCK_CONTEXT_ALWAYS` | disabled | restore unconditional live clock injection |
+
+`NOBBY_RAG_LATE_CONTEXT`, `MLX_PROMPT_STAGE_DIAG` and
+`NOBBY_CLOCK_CONTEXT_ALWAYS` belong to the web backend/container environment,
+not the native MLX LaunchAgent. Configure/recreate that backend explicitly if
+changing them. The native benchmark controllers do not change those backend
+settings; keep them fixed and verify their deployed behavior separately.
 
 Only set the flags needed for a diagnostic. Both runners restore tracked
 launchctl values including values that were originally unset, and restart

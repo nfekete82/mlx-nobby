@@ -297,6 +297,14 @@ repeatable end-to-end improvement still require hardware acceptance. See the
 [current integration and benchmark report](docs/HYBRID_APC_DFLASH_FINAL_REPORT.md)
 for measured results and blockers; older experiment reports are historical.
 
+In three M5 Max trials at temperature 0 with fixed history and 256-token steps,
+native checkpoints reused **580 instead of 324 tokens** on turn 3. Median first
+content improved from **1,660 to 1,346 ms**; median total time increased from
+17,710 to 17,838 ms. Native matched the baseline's nine captured responses,
+but every third response reached the 700-token limit. This is a sampled
+first-content improvement, without proof of faster completion or full answer
+quality. The 512/1024 controls added no third-turn native cache reuse.
+
 ```sh
 ./scripts/mlx chat-profile hybrid
 ./scripts/mlx chat-profile status
@@ -316,7 +324,7 @@ Snapshots consume additional unified memory. A conservative **1024 MiB**
 tensor-payload admission budget includes retained exact state plus the pending
 snapshot clone. `NOBBY_HYBRID_CACHE_MAX_MIB` accepts 64–8192 MiB. Storage is
 skipped on excess, unknown layouts or clone errors; generation continues.
-This budget is not a process-RSS or Metal allocator cap. In particular,
+This excludes the active inference cache and is not a process-RSS or Metal allocator cap. In particular,
 upstream `resident_bytes` reports the block pool and omits exact snapshots.
 Two entries are therefore not an assurance of low RAM usage.
 
