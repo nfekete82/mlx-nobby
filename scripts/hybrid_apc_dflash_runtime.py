@@ -118,6 +118,7 @@ PREFILL_ADAPTER = '''
                     hybrid_early_boundary = nobby_checkpoint_policy.early_checkpoint(
                         hybrid_checkpoint, hybrid_matched_tokens,
                         hybrid_apc_manager.exact_cache_min_tokens,
+                        prefill_step_size=prefill_step_size,
                     ) if hybrid_apc_manager is not None else None
 
                     # Commit a custom exact-cache checkpoint before the
