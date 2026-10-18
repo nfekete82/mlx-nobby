@@ -141,6 +141,22 @@ def secure_write_json(filename: str, content: str):
         stream.write(content)
 
 
+def load_replay_answers(filename: str):
+    """Validate the captured baseline before reusing any assistant replies."""
+    with open(filename, encoding="utf-8") as stream:
+        data = json.load(stream)
+    answers = data.get("answers")
+    if not isinstance(answers, list) or len(answers) != len(QUESTIONS):
+        raise ValueError("Replay needs exactly three saved benchmark answers")
+    for index, (entry, question) in enumerate(zip(answers, QUESTIONS), 1):
+        if not isinstance(entry, dict) or entry.get("turn") != index or entry.get("question") != question:
+            raise ValueError(f"Replay turn {index} does not match the benchmark question")
+        value = entry.get("answer")
+        if not isinstance(value, str) or not value.strip() or len(value) > 100000:
+            raise ValueError(f"Replay turn {index} has invalid answer text")
+    return tuple(entry["answer"] for entry in answers)
+
+
 def run(args):
     try:
         prior = counts(cache_stats(args.server_url))
@@ -150,6 +166,8 @@ def run(args):
                 raise RuntimeError(f"No server log: {args.log_file}")
             log_offset = os.path.getsize(args.log_file)
             print("DIAG: requires NOBBY_HYBRID_CACHE_DIAG=1 in mlx-server", flush=True)
+        replay_file = getattr(args, "replay_answers", None)
+        replay_answers = load_replay_answers(replay_file) if replay_file else None
         history = []
         rows = []
         captured_answers = []
@@ -169,7 +187,8 @@ def run(args):
                 log_offset, lines = read_diagnostic_lines(args.log_file, log_offset)
                 diagnostic = summarize_diagnostics(lines)
             prior = current
-            history.append({"role": "assistant", "content": answer})
+            history.append({"role": "assistant", "content":
+                            replay_answers[number - 1] if replay_answers else answer})
             row = {"turn": number, "first_content_ms": first_ms,
                    "total_ms": total_ms, "answer_chars": len(answer),
                    **{"delta_" + k: v for k, v in diff.items()}}
@@ -193,6 +212,7 @@ def run(args):
             Path(args.json_out).write_text(json.dumps({
                 "web_url": args.web_url, "server_url": args.server_url,
                 "note": "Cumulative shared-server counters; concurrent chats affect deltas.",
+                "history_mode": "fixed_replay" if replay_answers else "generated",
                 "turns": rows,
             }, indent=2) + "\n", encoding="utf-8")
         return 0
@@ -212,6 +232,7 @@ def main(argv=None):
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json-out")
     p.add_argument("--answers-out", help="OPT-IN: write raw answers as private 0600 JSON; may contain sensitive content")
+    p.add_argument("--replay-answers", help="Use saved baseline assistant replies in subsequent prompts; still measure and capture fresh generated replies")
     p.add_argument("--diagnose", action="store_true", help="Read per-turn hybrid cache lookup reason from server log")
     p.add_argument("--log-file", default=str(Path.home() / ".config/mlx-web/server-error.log"))
     return run(p.parse_args(argv))
