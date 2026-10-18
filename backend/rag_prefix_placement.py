@@ -21,7 +21,10 @@ _RAG_RULES = (
 
 
 def append_stable_policy(messages: list[dict]) -> None:
-    if not messages or messages[0].get("role") != "system":
+    if not messages:
+        return
+    if messages[0].get("role") != "system":
+        messages.insert(0, {"role": "system", "content": _RAG_RULES})
         return
     messages[0]["content"] = str(messages[0].get("content") or "") + "\n\n" + _RAG_RULES
 

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Experimental Hybrid APC + DFlash2 integration candidate: guard-limited exact-prefix restoration, strict configuration and cache-offset validation, conservative exact-snapshot tensor budgeting and natural-boundary defaults. Keep the profile and early checkpoint opt-in; no production speedup or response-equivalence claim.
+- Keep the opt-in late-RAG trust policy in a system message even when no profile or system prompt was supplied; preserve retrieved data and chat history separately. Real-model injection resistance remains unverified.
 - Add client request/answer hashes, all-turn comparisons, controlled benchmark flags, explicit restoration failures and release checks that require parity and reproducible latency improvement in addition to cache/memory telemetry. Consolidate the historical experiment documentation under the current integration report.
 
 ## v1.19.0

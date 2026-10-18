@@ -84,7 +84,13 @@ two is neither required by these measurements nor enabled by the launcher.
    or overwriting launch settings. These final invalid-configuration guards were
    added after the frozen series; the measured valid 0/1 and 256/512/1024 paths
    are unchanged. The direct soak uses the final guarded implementation (`ffed119`).
-8. Replace telemetry-only release PASS with conservative checks for prompt
+8. Ensure opt-in late RAG always creates its trusted system policy when
+   user/profile input supplied no initial system message. Keep retrieved text
+   in the user-data section and preserve prior user/assistant history. A
+   regression covers this missing-system case, including instruction-like
+   retrieved content. This is structural protection, not proof of resistance
+   against model-level prompt injection; real RAG acceptance remains open.
+9. Replace telemetry-only release PASS with conservative checks for prompt
    equality, answer parity, cold first turns, repeated latency improvement,
    finite memory metrics and within-run swap. Additional backend/config,
    long-session and RAG/trust review evidence is mandatory.
@@ -287,11 +293,11 @@ inferred from equality of these bounded outputs.
 
 ## Test evidence
 
-- `./scripts/mlx test-medium`: 3255 Python tests and 433 subtests passed;
+- `./scripts/mlx test-medium`: 3256 Python tests and 433 subtests passed;
   280 JavaScript tests passed. One existing Starlette/httpx deprecation warning.
 - `./scripts/mlx test-e2e`: 106 browser tests passed on the integration branch.
 - Targeted Hybrid/APC/DFlash2, benchmark, RAG, clock, prompt-stage, fallback,
-  memory-admission and release-gate suite: 83 tests passed after final changes.
+  memory-admission and release-gate suite: 84 tests passed after final changes.
 - MLX-VLM 0.6.17 source compatibility: PASS with Metal access.
 - All tracked Python files compiled; shell and frontend JavaScript syntax,
   i18n audit and diff whitespace checks: PASS.
