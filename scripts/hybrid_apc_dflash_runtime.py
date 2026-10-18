@@ -157,7 +157,7 @@ PREFILL_ADAPTER = '''
                             remaining_to_checkpoint -= step
                             hybrid_consumed += step
                             if hybrid_early_boundary is not None and hybrid_consumed == hybrid_early_boundary:
-                                if os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_STORE", "1") == "0":
+                                if not nobby_hybrid_early_store:
                                     # Causal control: keep the exact same prefill split,
                                     # but do NOT save a snapshot at this point.
                                     logger.info("Hybrid early checkpoint split-only: tokens=%d", hybrid_early_boundary)
@@ -269,6 +269,7 @@ def install() -> None:
     vars(module)["nobby_hybrid_diag"] = nobby_hybrid_diag
     nobby_checkpoint_policy = importlib.import_module("hybrid_checkpoint_policy")
     vars(module)["nobby_checkpoint_policy"] = nobby_checkpoint_policy
+    vars(module)["nobby_hybrid_early_store"] = os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_STORE", "1") != "0"
     namespace: dict = {}
     exec(compile(replacement, "<nobby-hybrid-apc-dflash>", "exec"), vars(module), namespace)
     patched = namespace.get("_run_speculative")
