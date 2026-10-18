@@ -10,6 +10,7 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "scripts/benchmark-chat-cache.py"
@@ -35,6 +36,17 @@ def summarize(reports):
             "turn3_total_ms_median": statistics.median(t["total_ms"] for t in turns),
         }
     return result
+
+
+def memory_snapshot(agent_url: str = "http://127.0.0.1:8010"):
+    try:
+        with urllib.request.urlopen(agent_url + "/api/performance/observatory?limit=1", timeout=10) as response:
+            data = json.load(response)
+        memory = ((data.get("system") or {}).get("memory") or {})
+        return {key: memory.get(key) for key in
+                ("swap_used_gb", "headroom_gb", "free_percent", "pressure")}
+    except (OSError, ValueError):
+        return {"unavailable": True}
 
 
 def sequence(pairs):
@@ -77,6 +89,7 @@ def main(argv=None):
                          "--temperature", "0", "--json-out", str(turn_path)])
             record = json.loads(turn_path.read_text(encoding="utf-8"))
             record["mode"] = mode
+            record["memory_after_run"] = memory_snapshot()
             results.append(record)
             print(f"Run {i} turn3: {record['turns'][2]['delta_matched_tokens']} cached tokens", flush=True)
         final = {"design": "alternating OFF/ON, fresh server restart each run",
