@@ -9666,10 +9666,10 @@ def user_profile_put(request: UserProfileRequest):
 
 
 @app.get("/api/profile/context")
-def user_profile_context():
+def user_profile_context(include_clock: bool = True):
     return {
         "enabled": profile.load().get("enabled", True),
-        "context": profile.context(),
+        "context": profile.context(include_clock=include_clock),
     }
 
 def _semantic_agent_route_allowed(
