@@ -36,4 +36,14 @@ def include_live_clock(messages: list, system_prompt: str = "") -> bool:
     text = latest["content"]
     if not text.strip():
         return True
-    # Do not scan generic system instructions for temporal words: broad\n    # boilerplate (e.g. "today", "date", "year") otherwise disables APC\n    # even when the user asks a timeless question. Only explicit system\n    # demands for fresh host time override the current user intent.\n    explicit_clock_instruction = re.search(\n        r"(?i)(?:current|live|actual|host|heutig|aktuell)\\s+"\n        r"(?:system\\s+)?(?:time|date|clock|uhrzeit|datum)|"\n        r"(?:zeit|uhrzeit|datum)\\s+(?:vom|des)\\s+(?:host|system)",\n        system_prompt,\n    )\n    return bool(_TEMPORAL.search(text) or explicit_clock_instruction)
+    # Do not scan generic system instructions for temporal words: broad
+    # boilerplate (e.g. "today", "date", "year") otherwise disables APC
+    # even when the user asks a timeless question. Only explicit system
+    # demands for fresh host time override the current user intent.
+    explicit_clock_instruction = re.search(
+        r"(?i)(?:current|live|actual|host|heutig|aktuell)\\s+"
+        r"(?:system\\s+)?(?:time|date|clock|uhrzeit|datum)|"
+        r"(?:zeit|uhrzeit|datum)\\s+(?:vom|des)\\s+(?:host|system)",
+        system_prompt,
+    )
+    return bool(_TEMPORAL.search(text) or explicit_clock_instruction)
