@@ -41,9 +41,9 @@ def include_live_clock(messages: list, system_prompt: str = "") -> bool:
     # even when the user asks a timeless question. Only explicit system
     # demands for fresh host time override the current user intent.
     explicit_clock_instruction = re.search(
-        r"(?i)(?:current|live|actual|host|heutig|aktuell)\\s+"
-        r"(?:system\\s+)?(?:time|date|clock|uhrzeit|datum)|"
-        r"(?:zeit|uhrzeit|datum)\\s+(?:vom|des)\\s+(?:host|system)",
+        r"(?i)(?:current|live|actual|host|heutig|aktuell)\s+"
+        r"(?:system\s+)?(?:time|date|clock|uhrzeit|datum)|"
+        r"(?:zeit|uhrzeit|datum)\s+(?:vom|des)\s+(?:host|system)",
         system_prompt,
     )
     return bool(_TEMPORAL.search(text) or explicit_clock_instruction)
