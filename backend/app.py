@@ -990,6 +990,10 @@ def mlx_chat_stream(request: ChatRequest):
 
     from backend.clock_context_routing import include_live_clock
     clock_on = include_live_clock(request.messages, request.system_prompt)
+    if os.getenv("MLX_PROMPT_STAGE_DIAG") == "1":
+        logging.getLogger("nobby.prompt_stages").warning(
+            "PROMPT_CLOCK_DECISION include_clock=%s", clock_on
+        )
     try:
         profile_result = agent_json_request(
             "GET",
