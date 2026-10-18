@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Three-turn reproducible web-chat APC benchmark (stdlib only)."""
+from __future__ import annotations
+
+import argparse
+import json
+import time
+import urllib.request
+import urllib.error
+
+QUESTIONS = (
+    "Wie funktioniert der Arbeitsspeicher bei Apple-Silicon-Prozessoren?",
+    "Welche Vorteile bietet dieser gemeinsame Arbeitsspeicher beim Betrieb lokaler KI-Modelle?",
+    "Wie kann ich diese Vorteile auf einem Mac mit 48 GB RAM optimal nutzen?",
+)
+CHART_SUFFIX = ('\nWhen the user asks for a data analysis or numeric comparison and real numeric data are available, optionally include ONE fenced nobby-chart JSON block after your explanation. Format: {"type":"auto","title":"Short title","unit":"€","data":[{"label":"2025-01","value":12.5},{"label":"2025-02","value":15.2}]}. Values must be finite JSON numbers, not strings. Only use measured or supplied values: never invent numbers, sources or time series. Prefer text when charts do not improve the answer. Use part_of_whole:true only for actual nonnegative parts of a whole. Never place untrusted data in code or HTML.\n')
+
+
+def read_json(url: str, timeout: int = 10) -> dict:
+    with urllib.request.urlopen(url, timeout=timeout) as res:
+        return json.load(res)
+
+
+def cache_stats(url: str) -> dict:
+    return read_json(url.rstrip("/") + "/v1/cache/stats")
+
+
+def counts(stats: dict) -> dict:
+    return {key: int(stats.get(key) or 0) for key in
+            ("exact_hits", "matched_tokens", "exact_stores")}
+
+
+def delta(previous: dict, current: dict) -> dict:
+    return {key: current[key] - previous[key] for key in previous}
+
+
+def iter_sse(response):
+    """Read SSE blocks, including multiline data and named error events."""
+    lines = []
+    for raw in response:
+        line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        if line == "":
+            if lines:
+                yield parse_sse_block(lines)
+                lines = []
+            continue
+        if not line.startswith(":"):
+            lines.append(line)
+    if lines:
+        yield parse_sse_block(lines)
+
+
+def parse_sse_block(lines):
+    event_name = "message"
+    data = []
+    for line in lines:
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+    return event_name, "\n".join(data)
+
+
+def stream_answer(web_url: str, payload: dict, timeout: int = 900):
+    request = urllib.request.Request(
+        web_url.rstrip("/") + "/api/chat/stream",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    start = time.perf_counter()
+    first_ms = None
+    parts = []
+    done = False
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        for name, data in iter_sse(response):
+            if name == "error":
+                raise RuntimeError(data[:500])
+            if name == "done":
+                done = True
+                break
+            if not data:
+                continue
+            try:
+                item = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if item.get("type") == "error" or item.get("error"):
+                raise RuntimeError(str(item.get("error") or item)[:500])
+            if item.get("type") == "content":
+                chunk = item.get("text", "")
+                if chunk:
+                    if first_ms is None:
+                        first_ms = round((time.perf_counter() - start) * 1000)
+                    parts.append(chunk)
+    total_ms = round((time.perf_counter() - start) * 1000)
+    if not done:
+        raise RuntimeError("SSE stream ended without done event")
+    answer = "".join(parts)
+    if not answer.strip():
+        raise RuntimeError("No assistant content returned")
+    return answer, first_ms, total_ms
+
+
+def run(args):
+    try:
+        prior = counts(cache_stats(args.server_url))
+        history = []
+        rows = []
+        for number, question in enumerate(QUESTIONS, 1):
+            history.append({"role": "user", "content": question})
+            payload = {
+                "messages": history,
+                "system_prompt": args.system_prompt + (CHART_SUFFIX if args.chart_suffix else ""),
+                "temperature": args.temperature,
+                "max_tokens": args.max_tokens,
+            }
+            answer, first_ms, total_ms = stream_answer(args.web_url, payload, timeout=args.timeout)
+            current = counts(cache_stats(args.server_url))
+            diff = delta(prior, current)
+            prior = current
+            history.append({"role": "assistant", "content": answer})
+            row = {"turn": number, "first_content_ms": first_ms,
+                   "total_ms": total_ms, "answer_chars": len(answer),
+                   **{"delta_" + k: v for k, v in diff.items()}}
+            rows.append(row)
+            print(f"Turn {number}: first={first_ms}ms total={total_ms}ms "
+                  f"hits+{diff['exact_hits']} matched+{diff['matched_tokens']} "
+                  f"stores+{diff['exact_stores']} chars={len(answer)}", flush=True)
+        print("TOTAL hits+", sum(r["delta_exact_hits"] for r in rows),
+              "matched+", sum(r["delta_matched_tokens"] for r in rows))
+        if args.json_out:
+            from pathlib import Path
+            Path(args.json_out).write_text(json.dumps({
+                "web_url": args.web_url, "server_url": args.server_url,
+                "note": "Cumulative shared-server counters; concurrent chats affect deltas.",
+                "turns": rows,
+            }, indent=2) + "\n", encoding="utf-8")
+        return 0
+    except (OSError, ValueError, RuntimeError, urllib.error.URLError) as exc:
+        print(f"BENCHMARK FAILED: {type(exc).__name__}: {exc}", flush=True)
+        return 1
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--web-url", default="http://127.0.0.1:8090")
+    p.add_argument("--server-url", default="http://127.0.0.1:8000")
+    p.add_argument("--system-prompt", default="", help="Exact browser system prompt, if known")
+    p.add_argument("--chart-suffix", action="store_true", help="Append browser chart guidance")
+    p.add_argument("--temperature", type=float, default=0.3)
+    p.add_argument("--max-tokens", type=int, default=700)
+    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--json-out")
+    return run(p.parse_args(argv))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
