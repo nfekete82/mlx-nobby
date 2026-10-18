@@ -106,6 +106,19 @@ first response can change even though no cache was restored. Snapshot cloning
 is a separate hypothesis tested with the split-only diagnostic. CPU structural
 checks cannot prove the numerical quality of real SSM/KV states.
 
+A final real **split-only cold control** used the exact same client request
+hash and 256-token step as the first baseline prompt, with forced alignment
+and early storage disabled (`EARLY_CHECKPOINT=1`, `ALIGN_NATIVE=0`, `STORE=0`).
+It logged one prefill, zero exact hits, zero matched tokens and one ordinary
+final store. The early 164-token split was logged, with no early snapshot
+store. Its captured answer was exactly equal to the forced-early answer and
+unequal to baseline2. This directly reproduces the cold divergence **without
+an additional early clone**: the forced split alone is sufficient for this
+prompt. All temporary settings and the config hash were restored.
+
+This closes the sampled cold-answer causal question; it does not certify
+uncapped answer quality, all warm-cache numerical paths or general RAG safety.
+
 The preliminary hardware run also reproduced cold first-turn equality for
 native versus baseline and divergence for forced splitting. That run overlapped
 implementation work and is excluded from final performance evidence.
