@@ -157,14 +157,19 @@ PREFILL_ADAPTER = '''
                             remaining_to_checkpoint -= step
                             hybrid_consumed += step
                             if hybrid_early_boundary is not None and hybrid_consumed == hybrid_early_boundary:
-                                try:
-                                    hybrid_apc_manager.store_exact_cache(
-                                        hybrid_full_ids[:hybrid_early_boundary],
-                                        prompt_cache, extra_hash=hybrid_hash,
-                                    )
-                                    logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
-                                except Exception:
-                                    logger.warning("Hybrid early checkpoint store failed", exc_info=True)
+                                if os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_STORE", "1") == "0":
+                                    # Causal control: keep the exact same prefill split,
+                                    # but do NOT save a snapshot at this point.
+                                    logger.info("Hybrid early checkpoint split-only: tokens=%d", hybrid_early_boundary)
+                                else:
+                                    try:
+                                        hybrid_apc_manager.store_exact_cache(
+                                            hybrid_full_ids[:hybrid_early_boundary],
+                                            prompt_cache, extra_hash=hybrid_hash,
+                                        )
+                                        logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
+                                    except Exception:
+                                        logger.warning("Hybrid early checkpoint store failed", exc_info=True)
                                 hybrid_early_boundary = None
                             mx.clear_cache()
                         try:
