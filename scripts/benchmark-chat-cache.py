@@ -131,6 +131,16 @@ def summarize_diagnostics(lines):
     return lookups[-1].split("HYBRID_APC_DIAG ", 1)[-1]
 
 
+def secure_write_json(filename: str, content: str):
+    """Explicit opt-in: save potentially sensitive model text as owner-only."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(filename, flags, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(content)
+
+
 def run(args):
     try:
         prior = counts(cache_stats(args.server_url))
@@ -142,6 +152,7 @@ def run(args):
             print("DIAG: requires NOBBY_HYBRID_CACHE_DIAG=1 in mlx-server", flush=True)
         history = []
         rows = []
+        captured_answers = []
         for number, question in enumerate(QUESTIONS, 1):
             history.append({"role": "user", "content": question})
             payload = {
@@ -165,6 +176,8 @@ def run(args):
             if getattr(args, "diagnose", False):
                 row["hybrid_diagnostic"] = diagnostic
             rows.append(row)
+            if getattr(args, "answers_out", None):
+                captured_answers.append({"turn": number, "question": question, "answer": answer})
             print(f"Turn {number}: first={first_ms}ms total={total_ms}ms "
                   f"hits+{diff['exact_hits']} matched+{diff['matched_tokens']} "
                   f"stores+{diff['exact_stores']} chars={len(answer)}", flush=True)
@@ -172,6 +185,9 @@ def run(args):
                 print("  HYBRID lookup: " + (diagnostic or "no in-process diagnostic record"), flush=True)
         print("TOTAL hits+", sum(r["delta_exact_hits"] for r in rows),
               "matched+", sum(r["delta_matched_tokens"] for r in rows))
+        if getattr(args, "answers_out", None):
+            content = json.dumps({"answers": captured_answers}, ensure_ascii=False, indent=2) + "\n"
+            secure_write_json(args.answers_out, content)
         if args.json_out:
             from pathlib import Path
             Path(args.json_out).write_text(json.dumps({
@@ -195,6 +211,7 @@ def main(argv=None):
     p.add_argument("--max-tokens", type=int, default=700)
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--json-out")
+    p.add_argument("--answers-out", help="OPT-IN: write raw answers as private 0600 JSON; may contain sensitive content")
     p.add_argument("--diagnose", action="store_true", help="Read per-turn hybrid cache lookup reason from server log")
     p.add_argument("--log-file", default=str(Path.home() / ".config/mlx-web/server-error.log"))
     return run(p.parse_args(argv))
