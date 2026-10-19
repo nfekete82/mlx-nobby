@@ -1,33 +1,33 @@
 # Hybrid final acceptance follow-up
 
-Status: IN PROGRESS. Historical results are not new acceptance evidence.
+Status: executable work completed; **RELEASE HOLD: BLOCKERS REMAIN**.
+See [the final report](HYBRID_APC_DFLASH_FINAL_REPORT.md) for real evidence,
+failed attempts, scope limits, gate statuses and blocker reproduction.
 
-1. Inventory original files, stashes, worktrees, config, services, PR and rules.
-   Use an isolated worktree; preserve the original checkout. Completed.
-2. Repair the observed Agent SQLite descriptor leak with transaction/closure
-   regressions, verify idle native jobs, then restore Agent availability. Done;
-   real endpoint recovered and subsequent DB descriptor count was zero.
-3. Add opt-in backend token/config auditing and full-response acceptance tools.
-   Freeze measured code and collect private artifacts with restricted modes. Done;
-   also record actual snapshot admission/LRU and a separate numerical diagnostic.
-4. Compare cache-OFF, hybrid baseline, native and diagnostic forced splitting
-   over at least 20 synthetic quality tasks with >=2048 output-token allowance,
-   fixed history, actual finish reasons and backend identity checks.
-5. Run >=20 synthetic local-model RAG attacks with explicit expected results.
-   Fix reproducible application defects; document model security limitations.
-   Late placement passed 20/20 controlled real cases after role framing and
-   provenance fixes; final shared-helper default/late repeats are in progress.
-6. Run a >=7200-second continuous native-server soak with mixed contexts,
-   safety checks, memory, cache and latency telemetry. Never bypass admission.
-7. Collect >=3 alternating controlled performance pairs; assess complete
-   responses, uncertainty and parity separately from first-content latency.
-8. Run final medium, browser, compatibility, syntax, i18n and diff checks;
-   update documentation and PR #299, push clean commits and inspect final CI.
-9. Assign G1–G10 only PASS, FAIL or NOT VERIFIED with evidence. Merge only
-   after all PASS and applicable review requirements. Otherwise keep Draft/HOLD.
-10. Restore launch settings/config, verify Git and services, preserve private
-    outputs and existing untracked files. Report restoration failures explicitly.
-
-New observed blocker: existing Agent could not accept requests (EMFILE), with
-124 live SQLite connections to automations.db. SQLite transaction contexts do
-not close connections; deterministic closure is necessary before long testing.
+1. Inventory and isolation: complete. Existing integration branch/PR only;
+   29 untracked files, three stash IDs and 20 unrelated worktree records preserved.
+2. Architecture corrections: complete. Guarded natural boundaries, upstream
+   final-token capture, descriptor closure, RAG trust/provenance, opt-in clock,
+   progressing-chat recovery protection and correct warm timing semantics.
+3. Private evidence tooling: complete. Actual backend tokens/arguments, full
+   answers/finish reasons, layer/logit diagnostics, snapshot/LRU/budget telemetry.
+4. Full four-arm 22-task quality: blocked/incomplete under unchanged memory
+   guards. 21 actual OFF/native pairs match, but long outputs fail word/topic
+   requirements; no-APC/no-draft English failures reproduce. G1 FAIL; G2 NOT VERIFIED.
+5. Real RAG: complete within stated bounds. Final default/late 40/40 actual
+   document/embedding/web/model attacks and 2/2 conflicting-source cases pass.
+   Test-owned sources removed and foreign records verified unchanged.
+6. >=7200-second soak: attempted, not verified. A 116-minute workload lost its
+   Agent stream; recovery defect fixed. Repeated long-output runs then stopped
+   on >1 GiB swap growth. No summing interrupted runs or bypassing admission.
+7. Performance: three final rotated OFF/hybrid/native triples completed for
+   explicit tasks 0/8/13 with full answers and backend identity. Additional
+   native-early benefit and long-output performance remain NOT VERIFIED.
+8. Final regressions and documentation: medium/E2E, syntax, i18n, compatibility,
+   diff checks and actual last-head CI are verified before the final response.
+   Versioned G9 records its pre-push snapshot; PR 299 records final-head CI.
+9. Release decision: HOLD. Main unchanged, PR remains Draft, no tag/version/release.
+   Resolve the report's quality/memory/missing-evidence blockers, then rerun gates.
+10. Restoration: exact original launch/config and installed package hashes,
+    original healthy model/profile, source cleanup and repository preservation
+    verified. Private raw answers/audit/recovery configs remain outside GitHub.

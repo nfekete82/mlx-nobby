@@ -299,14 +299,18 @@ repeatable end-to-end improvement still require hardware acceptance. See the
 [current integration and benchmark report](docs/HYBRID_APC_DFLASH_FINAL_REPORT.md)
 for measured results and blockers; older experiment reports are historical.
 
-In three historical M5 Max trials before the final prefill corrections,
-at temperature 0 with fixed history and 256-token steps,
-native checkpoints reused **580 instead of 324 tokens** on turn 3. Median first
-content improved from **1,660 to 1,346 ms**; median total time increased from
-17,710 to 17,838 ms. Native matched the baseline's nine captured responses,
-but every third response reached the 700-token limit. This is a sampled
-first-content improvement, without proof of faster completion or full answer
-quality. The 512/1024 controls added no third-turn native cache reuse.
+Final bounded M5 Max measurements (three rotated trials per task, complete
+answers) show median first content of 429 vs 1,334 ms for hybrid vs cache-OFF
+on arithmetic, and complete Python answers of 1,879 vs 2,856 ms. Hybrid and
+native both reused 768 tokens; the 18 paired full answers and actual backend
+inputs matched. These shorter tasks do not establish an additional early
+checkpoint benefit or long-output speedup. Full acceptance remains **HOLD**:
+long answers violated requested word limits, repeated long workloads exceeded
+the swap-growth criterion, and no uninterrupted two-hour run completed.
+Final bounded security coverage passed 40 real RAG attacks and two actual
+conflicting-source cases; it is not a universal injection-resistance claim.
+Historical capped 580/324-token results are archived in the report's evidence
+history and are not current measurements.
 
 ```sh
 ./scripts/mlx chat-profile hybrid
@@ -318,8 +322,8 @@ Hybrid defaults to one exact snapshot and no early checkpoint. The optional
 `NOBBY_HYBRID_EXACT_CACHE_ENTRIES=2` permits an early and a final snapshot;
 `NOBBY_HYBRID_EARLY_CHECKPOINT=1` now selects natural prefill boundaries by
 default. Explicit `NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE=0` is a diagnostic
-forced-split control with unresolved numerical parity. Set runtime flags in
-the LaunchAgent environment and restart the chat server; a shell variable
+forced-split control with demonstrated different KV/SSM state and logits.
+Set runtime flags in the LaunchAgent environment and restart the chat server; a shell variable
 alone does not reconfigure an already running server. Profile switching is
 persistent and should be performed only while the runtimes are idle.
 

@@ -13,8 +13,12 @@ adapter is live and the Agent reports no active/queued runtime jobs before
 restarting. Run no other chats, image or video jobs during measurements.
 
 These commands interrupt only the chat model server. Each four-arm run
-restarts it five times, including restoration. The repository code must stay
-unchanged throughout a measurement series. Keep private outputs outside Git.
+restarts it five times, including restoration. Measured source code must stay
+unchanged throughout a measurement series. Keep Agent and model services
+running throughout the soak; a service restart or broken stream invalidates
+the continuous-run result. Preserve the failed report and start a fresh run
+rather than adding elapsed time from interrupted attempts. Keep private outputs
+outside Git.
 Before testing, record the current profile, local config hash and launchctl
 settings. Environment values in the local config can override launchctl;
 the runner rejects a requested step that the live server did not adopt.
@@ -25,13 +29,13 @@ For current full-response acceptance (explicitly restarts idle chat and takes
 at least two hours), use:
 
 ```sh
-python3 scripts/validate-hybrid-acceptance.py \
+./test-venv/bin/python scripts/validate-hybrid-acceptance.py \
   --runtime-root "$PWD" --output /tmp/hybrid-acceptance-new \
   --phase all --confirm-restarts
-python3 scripts/validate-hybrid-acceptance.py \
+./test-venv/bin/python scripts/validate-hybrid-acceptance.py \
   --runtime-root "$PWD" --output /tmp/hybrid-numeric-new \
   --phase numeric --confirm-restarts
-python3 scripts/validate-hybrid-rag-e2e.py \
+./test-venv/bin/python scripts/validate-hybrid-rag-e2e.py \
   --output /tmp/hybrid-rag-new --python "$PWD/test-venv/bin/python" \
   --late-context 1 --confirm-source-test
 # Repeat with a new output directory and --late-context 0 for default placement.
@@ -39,11 +43,28 @@ python3 scripts/validate-hybrid-rag-e2e.py \
 
 Output directories must not already exist. `all` runs the native quality/RAG
 fixtures and an uninterrupted >=7200-second mixed workload, then cache-OFF,
-hybrid, native and forced controls over 20 fixed-history tasks, followed by
-three alternating performance pairs. Complete answer capture uses a 4096-token
+hybrid, native and forced controls over 22 fixed-history tasks, followed by
+three rotated performance triples (cache-OFF, hybrid and native). The original
+20 tasks remain intact; two extended explanations exercise complete outputs
+above 2048 generated tokens. Complete answer capture uses a 4096-token
 allowance; check the actual backend finish reason. A `length` response fails
 the completeness requirement regardless of matching text. Priming/numerical
 requests allow at least 2048 tokens. Actual answers may correctly use fewer.
+
+For an explicitly narrower, complete-response performance series when extended
+outputs cannot safely run, select and record three task indices:
+
+```sh
+./test-venv/bin/python scripts/validate-hybrid-acceptance.py \
+  --runtime-root "$PWD" --output /tmp/hybrid-short-perf-new \
+  --phase perf --perf-tasks 0 8 13 --confirm-restarts
+```
+
+The default performance tasks remain 0/20/21. Explicit shorter selection changes
+only performance requests; it never replaces or passes the 22-task quality
+matrix or the soak. Interpret its results only for those selected workloads.
+Final measurements on `72017cd` used 0/8/13 after long-output swap failures;
+see the report for medians, ranges, missing native benefit and release blockers.
 
 Token/config fingerprints come from the actual queued backend input, not the
 browser payload. Numerical diagnostics hash all 64 real layer states and
@@ -52,12 +73,22 @@ lower precision values. These diagnostic CPU transfers are excluded from timing
 claims. Ordinary audit does not transfer caches. All raw answers, audit records,
 recovery config and reports are owner-only and must stay outside GitHub.
 
-Admission retains normal pressure, >=6 GiB headroom and <=1 GiB kernel swap
-growth. It waits up to 120 seconds for safe headroom, records those waits, and
+Before each request admission requires normal pressure, >=6 GiB headroom
+and <=1 GiB kernel swap growth above the observed running minimum. It waits up
+to 120 seconds for safe headroom, records those waits, and
 stops on persistent shortage; it never lowers the threshold. Per-request timing
 starts after admission, so report admission delays separately. Five-second RSS
 and pressure samples are not instantaneous peak measurements. Metal metrics
-are captured on each completed backend generation.
+are captured on each completed backend generation. Live generation can consume
+the pre-admission reserve; the final long-output attempts did so and failed the
+swap criterion. Between-request guards do not prevent a single response from
+overshooting the limit. Keep failed evidence and do not loosen thresholds.
+Warm `prefill_tok_s` retains upstream effective full-prompt TPS so the server
+can reconstruct true elapsed time; diagnostic log rate counts only newly
+computed tokens. Decode throughput and complete wall time are separate metrics.
+Cleanup restores exact config before a bounded wait through temporary Agent
+unavailability and restarts only after confirming idle. A failed automatic
+restoration requires explicit verification/recovery, never a success claim.
 
 RAG E2E creates one uniquely owned synthetic knowledge source through the real
 Agent, uses the already available embedding model, and starts a temporary
