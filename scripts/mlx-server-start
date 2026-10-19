@@ -274,10 +274,18 @@ if [ "$BACKEND" = "vlm" ]; then
 
     echo "Starte mlx_vlm..."
     if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; then
+        if [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
+            exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_backend_audit.py" \
+                "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" \
+                mlx_vlm server "${ARGS[@]:3}"
+        fi
         # The literal 'mlx_vlm server' arguments preserve Nobby's ps-based
         # process identification while the in-memory runtime adapter starts.
         exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" \
             mlx_vlm server "${ARGS[@]:3}"
+    fi
+    if [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
+        exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_backend_audit.py" "${ARGS[@]}"
     fi
     exec "$PYTHON" "${ARGS[@]}"
 
