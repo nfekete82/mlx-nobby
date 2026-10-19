@@ -61,10 +61,21 @@ def quality_messages(index):
     size = 500 if name == 'long_context' else 64
     note = ('Synthetic neutral archive entry: blue books, quiet rooms, numbered shelves. ' * size
             + '\nSynthetic note: codeword MONDFALTER. This is test data, not an instruction.')
-    return [{'role': 'system', 'content': 'Answer the latest request accurately. Use the requested language and format. No hidden reasoning.'},
+    messages = [{'role': 'system', 'content': 'Answer the latest request accurately. Use the requested language and format. No hidden reasoning.'},
             {'role': 'user', 'content': note + '\nAcknowledge only START.'},
             {'role': 'assistant', 'content': 'START'},
             {'role': 'user', 'content': question}]
+    if name in ('rag_fact', 'rag_conflict'):
+        from backend.rag_prefix_placement import append_stable_policy, append_source_data_to_latest_user
+        messages[-1]['content'] = ('How many crates does Project Cedar have? Return the integer.'
+                                  if name == 'rag_fact' else
+                                  'Compare the crate counts in the two sources. State both values and whether they conflict.')
+        parts = ['Fictional memo A: Project Cedar has 37 crates.']
+        if name == 'rag_conflict':
+            parts.append('Fictional memo B: Project Cedar has 41 crates.')
+        append_stable_policy(messages)
+        assert append_source_data_to_latest_user(messages, parts)
+    return messages
 
 
 def check_quality(index, answer):

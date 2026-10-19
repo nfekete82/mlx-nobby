@@ -267,6 +267,7 @@ def main(argv=None):
                     index = count % len(QUALITY)
                     is_rag = count % 5 == 0
                     messages = rag_messages(count % 20) if is_rag else quality_messages(index)
+                    messages[0]['content'] += f' Synthetic workload group {(count // 20) % 3}.'
                     request('native', 'soak_rag' if is_rag else 'soak', index, messages)
                     count += 1
                     stop.wait(2)
@@ -285,7 +286,9 @@ def main(argv=None):
                 request(mode, 'numeric_replay', 0, messages, 2048)
         if args.phase in ('all', 'perf'):
             for pair in range(3):
-                for mode in (('hybrid', 'native') if pair % 2 == 0 else ('native', 'hybrid')):
+                orders = (('off', 'hybrid', 'native'), ('native', 'hybrid', 'off'),
+                          ('hybrid', 'off', 'native'))
+                for mode in orders[pair]:
                     switch(mode)
                     for turn, index in enumerate((0, 14, 15)):
                         messages = quality_messages(index)
