@@ -943,24 +943,14 @@ button {
 
 .copy-code {
     position: absolute;
-
     right: 8px;
     top: 8px;
-
-    padding: 5px 8px;
-
-    border-radius: 6px;
-    border: 1px solid #303846;
-
-    background: #111720;
-
-    color: #9ba7b7;
-
-    font-size: 11px;
+    z-index: 1;
 }
 
-.copy-code:hover {
-    color: white;
+.copy-code:focus-visible {
+    outline: 2px solid #7da8f8;
+    outline-offset: 2px;
 }
 
 /* ---------- Composer ---------- */
@@ -5614,7 +5604,8 @@ body > * {
     margin-top: 6px;
 }
 
-.message-actions .message-action-icon {
+.message-actions .message-action-icon,
+.copy-code {
     width: 28px;
     height: 28px;
     min-width: 28px;
@@ -5634,16 +5625,19 @@ body > * {
         transform 80ms ease;
 }
 
-.message-actions .message-action-icon:hover {
+.message-actions .message-action-icon:hover,
+.copy-code:hover {
     background: rgba(255, 255, 255, 0.07);
     color: #f1f3f5;
 }
 
-.message-actions .message-action-icon:active {
+.message-actions .message-action-icon:active,
+.copy-code:active {
     transform: scale(0.92);
 }
 
-.message-actions .message-action-icon svg {
+.message-actions .message-action-icon svg,
+.copy-code svg {
     width: 17px;
     height: 17px;
     display: block;
