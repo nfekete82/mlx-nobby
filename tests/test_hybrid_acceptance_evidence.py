@@ -69,3 +69,14 @@ def test_full_stream_retains_text_beyond_2048_and_requires_done(monkeypatch):
     monkeypatch.setattr(runner.urllib.request, 'urlopen', lambda *a, **k: nullcontext(lines[:1]))
     with pytest.raises(RuntimeError, match='Incomplete'):
         runner.stream([], 4096, 'synthetic-test')
+
+
+def test_freed_old_server_swap_cannot_mask_new_workload_growth(monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    runner = load('validate-hybrid-acceptance')
+    floor = runner.checked_swap_floor(35.2, 23.1)
+    assert floor == 23.1
+    floor = runner.checked_swap_floor(floor, 22.9)
+    assert runner.checked_swap_floor(floor, 23.8) == 22.9
+    with pytest.raises(RuntimeError, match='observed minimum'):
+        runner.checked_swap_floor(floor, 24.0)

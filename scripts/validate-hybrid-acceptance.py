@@ -88,6 +88,14 @@ def kernel_swap():
     return float(found[1]) / (1024 if found[2] == 'M' else 1)
 
 
+def checked_swap_floor(previous_floor, observed, limit=1.0):
+    """Freed pre-restart pages must not mask later per-workload swap growth."""
+    floor = min(previous_floor, observed)
+    if observed - floor > limit:
+        raise RuntimeError('Swap growth above 1 GiB from observed minimum; stopping')
+    return floor
+
+
 def server_pid():
     lines = subprocess.check_output(['ps', '-axww', '-o', 'pid=,command='], text=True).splitlines()
     pids = [int(line.split()[0]) for line in lines if 'mlx_vlm server' in line
@@ -146,6 +154,7 @@ def main(argv=None):
         write_json(args.output / 'report.json', report)
 
     def safety():
+        nonlocal baseline_swap
         started = time.monotonic()
         while True:
             p.ensure_idle()
@@ -157,8 +166,8 @@ def main(argv=None):
             if time.monotonic() - started >= 120:
                 raise RuntimeError('Memory safety precondition failed after 120s admission wait')
             time.sleep(5)
-        if kernel_swap() - baseline_swap > 1:
-            raise RuntimeError('Swap growth above 1 GiB; stopping')
+        baseline_swap = checked_swap_floor(baseline_swap, kernel_swap())
+        report['swap_guard_floor_gib'] = baseline_swap
         if any(hashlib.sha256(path.read_bytes()).hexdigest() != frozen[str(path)] for path in source_paths):
             raise RuntimeError('Measured source changed during execution')
         return (time.monotonic() - started) * 1000
