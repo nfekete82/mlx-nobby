@@ -261,19 +261,12 @@ def transform_speculative_method(source: str) -> str:
                 "MLX-VLM speculative code differs from verified 0.6.17 layout; "
                 "hybrid adapter not installed"
             )
-    # Keep performance metric numerators truthful for warm prefix reuse.
+    # Preserve upstream's full-prompt TPS numerator: the metrics envelope
+    # reconstructs elapsed time as full_prompt_tokens / prompt_tps. Using only
+    # computed tokens here inflates reported prefill time on warm requests.
     code = code.replace(
         ANCHOR_BEFORE_PREFILL,
         PREFILL_ADAPTER[1:],  # strip leading newline
-        1,
-    )
-    code = code.replace(
-        '''                    prompt_tokens = prompt_tokens_map[uid]
-                    prompt_tps_map[uid] = (
-                        prompt_tokens / prompt_elapsed''',
-        '''                    prompt_tokens = prompt_tokens_map[uid]
-                    prompt_tps_map[uid] = (
-                        max(0, prompt_tokens - hybrid_matched_tokens) / prompt_elapsed''',
         1,
     )
     code = code.replace(
@@ -288,7 +281,7 @@ def transform_speculative_method(source: str) -> str:
         '''                        prompt_tokens,
                         hybrid_matched_tokens,
                         prompt_elapsed,
-                        float(prompt_tps_map[uid] or 0.0),''',
+                        max(0, prompt_tokens - hybrid_matched_tokens) / prompt_elapsed if prompt_elapsed > 0 else 0.0,''',
         1,
     )
     standalone = textwrap.dedent(code)
