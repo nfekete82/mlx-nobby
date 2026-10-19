@@ -101,7 +101,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime-root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--phase', choices=('all', 'soak', 'matrix', 'perf', 'rag'), default='all')
+    parser.add_argument('--phase', choices=('all', 'soak', 'matrix', 'perf', 'rag', 'numeric'), default='all')
     parser.add_argument('--soak-seconds', type=int, default=7200)
     parser.add_argument('--confirm-restarts', action='store_true')
     args = parser.parse_args(argv)
@@ -114,7 +114,8 @@ def main(argv=None):
     p.ensure_idle()
     p.preflight('dflash')
     names = (c.FEATURE, c.STORE, c.ALIGN, c.SLOTS, c.PREFILL, c.DIAG,
-             'NOBBY_HYBRID_CACHE_MAX_MIB', 'MLX_RUNTIME_PYTHON', 'NOBBY_HYBRID_AUDIT_FILE')
+             'NOBBY_HYBRID_CACHE_MAX_MIB', 'MLX_RUNTIME_PYTHON', 'NOBBY_HYBRID_AUDIT_FILE',
+             'NOBBY_HYBRID_AUDIT_STATE')
     original = {name: c.launch_value(name) for name in names}
     config = p.CONFIG.read_text()
     audit = args.output / 'backend-audit.jsonl'
@@ -163,7 +164,8 @@ def main(argv=None):
                   c.STORE: '1', c.ALIGN: '0' if mode == 'forced' else '1',
                   c.SLOTS: '2', c.PREFILL: '256', c.DIAG: '1',
                   'NOBBY_HYBRID_CACHE_MAX_MIB': '1024',
-                  'NOBBY_HYBRID_AUDIT_FILE': str(audit)}
+                  'NOBBY_HYBRID_AUDIT_FILE': str(audit),
+                  'NOBBY_HYBRID_AUDIT_STATE': '1' if args.phase == 'numeric' else '0'}
         for name, value in values.items():
             c.set_launch(name, value)
         profile = 'dflash' if mode == 'off' else 'hybrid'
@@ -196,6 +198,7 @@ def main(argv=None):
         row.update(mode=mode, kind=kind, index=index, max_tokens=max_tokens,
                    backend=inputs[0], finish=ends[0], answer_sha256=digest(text),
                    answer_characters=len(text), cache_before=before, cache_after=after)
+        row['prefill_states'] = [event for event in events if event['kind'] == 'prefill_state']
         if kind in ('quality', 'soak'):
             row['checks'] = check_quality(index, text)
         elif kind in ('rag', 'soak_rag'):
@@ -253,6 +256,13 @@ def main(argv=None):
         if args.phase in ('all', 'matrix'):
             for mode in ('off', 'hybrid', 'native', 'forced'):
                 matrix_mode(mode)
+        if args.phase == 'numeric':
+            for mode in ('off', 'hybrid', 'native', 'forced'):
+                switch(mode)
+                messages = quality_messages(0)
+                request(mode, 'numeric_prime', 0, messages[:-2], 2048)
+                request(mode, 'numeric', 0, messages, 2048)
+                request(mode, 'numeric_replay', 0, messages, 2048)
         if args.phase in ('all', 'perf'):
             for pair in range(3):
                 for mode in (('hybrid', 'native') if pair % 2 == 0 else ('native', 'hybrid')):

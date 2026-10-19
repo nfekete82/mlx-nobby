@@ -17,6 +17,7 @@ from pathlib import Path
 import runpy
 import stat
 import sys
+import threading
 import time
 
 
@@ -44,9 +45,11 @@ def install(path):
         raise RuntimeError('Audit requires mlx-vlm==0.6.17')
     from mlx_vlm.server import generation
     original = generation.ResponseGenerator._log_prefill_started
+    current = threading.local()
 
     def observed(self, request, *, backend):
         info = original(self, request, backend=backend)
+        current.request_id = info['request_id']
         ids = request.raw_inputs['input_ids'].tolist()
         args = dataclasses.asdict(request.args)
         emit(path, {'kind': 'backend_input', 'pid': os.getpid(), 'time': time.time(),
@@ -59,6 +62,37 @@ def install(path):
         return info
 
     generation.ResponseGenerator._log_prefill_started = observed
+    if os.getenv('NOBBY_HYBRID_AUDIT_STATE') == '1':
+        # Separate numerical diagnostic, excluded from latency measurements.
+        # Transfer one layer at a time; never retain a second complete cache.
+        prefill = generation._run_chunked_speculative_prefill
+
+        def state_digest(value):
+            if value is None:
+                return None
+            if isinstance(value, (list, tuple)):
+                return [state_digest(item) for item in value]
+            if isinstance(value, dict):
+                return {key: state_digest(item) for key, item in value.items()}
+            import mlx.core as mx
+            import numpy as np
+            # float16/bfloat16 -> float32 is exact; values remain private.
+            array = np.asarray(value.astype(mx.float32))
+            if not np.isfinite(array).all():
+                raise RuntimeError('Non-finite prefill state')
+            return {'shape': list(array.shape), 'dtype': str(value.dtype),
+                    'values_sha256': hashlib.sha256(array.tobytes()).hexdigest()}
+
+        def numerical(*args, **kwargs):
+            result = prefill(*args, **kwargs)
+            states = [state_digest(layer.state) for layer in args[3]]
+            emit(path, {'kind': 'prefill_state', 'pid': os.getpid(), 'time': time.time(),
+                        'request_id': current.request_id, 'layers': len(states),
+                        'cache_sha256': digest(states),
+                        'logits_sha256': digest(state_digest(result[0].logits))})
+            return result
+
+        generation._run_chunked_speculative_prefill = numerical
     decode = generation.ResponseGenerator._log_decode_progress
 
     def finished(uid, info, **kwargs):
