@@ -1,10 +1,19 @@
-# Hybrid APC + DFlash2 final acceptance
+# Hybrid APC + DFlash2 integration and activation decisions
 
-Date: 2026-10-19. Decision: **RELEASE HOLD: BLOCKERS REMAIN**.
-PR [299](https://github.com/nfekete82/mlx-nobby/pull/299) stays Draft.
-Main remains `b97c1f6b0001032f42ce22b347111a7cfa78b61f`. Version remains
-1.19.0; no merge, tag or GitHub Release was performed. Optimization defaults
-remain conservative. Completed narrower tests do not waive the failed gates.
+Date: 2026-10-19. Scope: optional-code integration, separate from production/default activation.
+
+**A — Optional-code integration:** approve subject to the final regression,
+compatibility, CI and repository-rule checks recorded below and on
+[PR 299](https://github.com/nfekete82/mlx-nobby/pull/299). The merge adds guarded,
+experimental code; it does not activate Hybrid or Early Checkpoint by default.
+The actual last head, merge result and post-merge checks are recorded on that PR.
+
+**B — Production/default activation:** **HOLD**. Historical failed/incomplete
+quality, long-run, memory and broader performance evidence remains unchanged.
+No failed gate is converted to PASS by separating these decisions. No new
+product version, release tag or GitHub Release is part of this integration.
+Version stays 1.19.0. The pre-integration main was
+`b97c1f6b0001032f42ce22b347111a7cfa78b61f`.
 
 ## Final architecture and corrections
 
@@ -125,6 +134,9 @@ Neither text equality nor passing keyword checks is general answer acceptance.
 
 The complete final four-arm 22-task matrix is **not verified**. Hardware safety
 stops prevent claiming the missing hybrid/forced full-answer arms as complete.
+The word-limit weakness reproduced without APC/DFlash is a separate model
+instruction-adherence problem, not a demonstrated Hybrid regression. Other
+unlocalized differences remain limitations, not an invented parity PASS.
 Private manual evidence: `/tmp/mlx-hybrid-followup-manual-final.json`.
 
 ## Numerical cache/compute parity
@@ -256,7 +268,63 @@ Corrected backend prefill times are used above; earlier warm metric times were
 inflated by the numerator mismatch and are not treated as real prefill timing.
 Evidence: `/tmp/mlx-hybrid-followup-perf-72017cd/paired-performance.json`.
 
-## Regression tests, CI and release gates
+## A — Optional integration assessment
+
+The current instruction permits integrating an inactive experimental feature
+without declaring production/default activation ready. This is a scope
+distinction, not a relaxation of memory guards or relabeling failed tests.
+
+- `scripts/mlx-server-start` selects the original `default` profile unless the
+  user explicitly configures `MLX_CHAT_PERFORMANCE_PROFILE=hybrid`. The adapter
+  and its extra snapshots are confined to that profile.
+- Early Checkpoint requires `NOBBY_HYBRID_EARLY_CHECKPOINT=1`; unset/0 is off.
+  Natural alignment and one exact snapshot remain defaults. Snapshot admission
+  retains the 1024 MiB retained-plus-pending limit; unknown/oversize/failed stores
+  skip storage. Installed MLX-VLM package files are not patched on disk.
+- Existing model-load, RAM/swap and workload coordination guards are retained.
+  Unsupported source versions fail closed; unsupported batch/multimodal paths
+  use upstream inference; invalid restored offsets fall back to cold prefill.
+- Unconditional SQLite closure, chat recovery and default-RAG framing/provenance
+  fixes are included in full medium/browser tests and relevant regressions.
+  Prior real default/late RAG evidence remains bounded to the recorded cases.
+- The failed native/two-slot long workloads remain evidence against unrestricted
+  opt-in use and standard activation. They do not establish a default-path
+  regression when the experimental profile is not selected. No global
+  leak-free or long-context safety claim is made.
+- Merge does not change user config, inherited LaunchAgent values or selected
+  profiles, and does not restart services. Existing user opt-ins are preserved.
+
+| Integration check | Status | Evidence |
+| --- | --- | --- |
+| Default isolation | PASS | Original default profile; explicit Hybrid/Early selection; default-off/startup regressions |
+| Safeguards and fallbacks | PASS | Budget, guard, version/source, offset and unsupported-input regression coverage; guards unchanged |
+| Available bounded parity/security | PASS | Recorded 64-layer/logit and actual-token controls; 40 RAG attacks plus 2 conflicts; broader gaps retained below |
+| Current final regressions | PASS | Fresh medium: 3277 Python + 433 subtests + 280 JS; browser: 106; targeted Hybrid/fallback/RAG/docs: 121; syntax/compatibility/diff pass |
+| Final-head CI and repository rules | NOT VERIFIED | Final pushed head must pass; actual approval/merge log on PR 299 |
+| Activation limits and rollback | PASS | This report, README/runbook and unchanged existing configuration |
+
+`docs/RELEASING.md` governs version preparation, tags and publication. Its
+metadata-only release-PR and full release-publication gates are not being used
+to publish a product here. `CONTRIBUTING.md` product-PR tests, final CI and any
+configured branch/review rules still apply. GitHub currently reports no main
+branch protection/rulesets and no submitted reviews; no independent review
+approval is claimed. Recheck before merge and do not bypass any required rule.
+
+The integration closeout completed fresh checks on the unchanged implementation:
+`test-medium` passed 3277 Python tests, 433 subtests and 280 JavaScript tests
+(Python 56.67 s); `test-e2e` passed 106 browser tests (161.02 s). The targeted
+Hybrid/fallback/RAG/clock/recovery/documentation subset passed 121 tests.
+Tracked Python/JSON, JS/Bash syntax, i18n, pinned MLX-VLM source compatibility
+and both working-tree/full-PR diff checks passed. Private closeout logs are
+under `/tmp/mlx-hybrid-integration-closeout/` (`medium.log`, `e2e.log`,
+`relevant.log`, `checks.log`). Earlier runs below remain historical evidence.
+
+The bounded closeout runs only `test-medium`, `test-e2e`, relevant deterministic
+Hybrid/fallback/RAG regressions, syntax, compatibility and diff checks. It
+starts no new soak, real-model attack series or benchmark matrix. No new
+runtime feature is introduced by this closeout.
+
+## Regression evidence and B — production/default-activation gates
 
 Final inference implementation `72017cd` plus QA-only correction `f836fe3`:
 
@@ -289,12 +357,15 @@ G9 in this versioned file is deliberately the pre-push snapshot, not a claim
 about CI that has not run yet. The final approval log on
 [PR 299](https://github.com/nfekete82/mlx-nobby/pull/299/checks) records the exact
 last head and its check links after push. The final user/PR gate assessment uses
-that actual result. Existing failures still prohibit merge even if CI is green.
+that actual result. These historical failures prohibit claiming production/default activation
+ready. Optional-code integration is assessed separately under A above.
 
-## Reproduction and blocker resolution
+## Historical reproduction and production-activation blocker resolution
 
-Use [the benchmark runbook](HYBRID_APC_DFLASH_BENCHMARK.md). In a sufficiently
-idle environment, preserve exact settings, then run the unchanged corpus:
+The commands below preserve reproduction of earlier evidence; they are not
+part of the current integration closeout and were not rerun. For a separately
+authorized future production-activation study, use
+[the benchmark runbook](HYBRID_APC_DFLASH_BENCHMARK.md) and preserve settings:
 
 ```sh
 ./test-venv/bin/python scripts/validate-hybrid-acceptance.py \
@@ -322,8 +393,10 @@ idle environment, preserve exact settings, then run the unchanged corpus:
    series after memory is resolved. Include a prefix-divergence workload that
    actually distinguishes early from final snapshot reuse before claiming an
    additional native advantage. Repeat final regression/CI on the new head.
-4. Reassess all ten gates, reviews and repository rules. Only an all-PASS result
-   permits making PR 299 ready and merging main. Current evidence requires HOLD.
+4. Reassess all ten production/default-activation gates before authorizing B.
+   Their existing FAIL/NOT VERIFIED results remain. A uses the separate optional
+   integration checks above plus final CI and repository requirements; it does
+   not imply authorization to activate or publish the optimization.
 
 ## Repository preservation, rollback and release policy
 
@@ -332,7 +405,8 @@ integration branch/PR is used. The original 29 untracked files, three stash
 object IDs and 20 unrelated worktree records match inventory and were left
 untouched. No force-push, stacked-PR duplicate merge or foreign cleanup occurred.
 No main branch protection/rulesets or reviews were present at the final check;
-allowed merge methods do not waive quality gates. The repository release policy
+allowed merge methods do not waive required integration checks or authorize
+production activation. The repository release policy
 requires separate metadata preparation from a clean main and post-merge gates;
 no version is approved for a tag/release here.
 

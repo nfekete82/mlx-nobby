@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+- Separate integration of guarded, default-inactive experimental Hybrid code from production/default activation. Keep Hybrid opt-in, Early Checkpoint off, existing budget/guards/fallbacks and rollback. Preserve failed long-run/swap results; record word-limit failures that reproduce without APC/DFlash as a separate model limitation. No version, tag or product release.
+
 - Exclude formatting-only Markdown/math chunks from answer word bounds. Preserve failed prompts and raw evidence; correct the extended-English false length alarm while retaining actual topic and other word-limit failures.
 
-- Correct warm-prefill elapsed-time telemetry while retaining upstream effective full-prompt TPS semantics and logging the computed-token rate separately. Record final bounded parity/performance and 40 real RAG attacks plus two conflicting-source cases; retain RELEASE HOLD for full-answer failures, swap growth, incomplete four-arm quality and the missing uninterrupted two-hour run.
+- Correct warm-prefill elapsed-time telemetry while retaining upstream effective full-prompt TPS semantics and logging the computed-token rate separately. Record final bounded parity/performance and 40 real RAG attacks plus two conflicting-source cases; retain production/default-activation HOLD for model-quality limits, swap growth, incomplete four-arm quality and the missing uninterrupted two-hour run; optional-code integration is assessed separately.
 
 - Protect recently progressing runtime chat streams from an unrelated automatic Agent recovery. Retain stalled-stream recovery, track real content/reasoning progress, and make acceptance cleanup wait through temporary Agent unavailability before restarting idle chat.
 

@@ -4,6 +4,17 @@ Use [the current report](HYBRID_APC_DFLASH_FINAL_REPORT.md) for acceptance
 status. Historical experiment documents describe earlier branches and are
 not release approval.
 
+## Integration versus standard activation
+
+Optional/default-inactive code integration is assessed separately from
+production/default activation in the current report. The integration closeout
+runs deterministic regressions and final CI only. It does not rerun the lengthy
+commands below, raise guards or claim their failed/incomplete results passed.
+Hybrid requires explicit profile selection; Early remains off unless explicitly
+enabled. Roll back to the saved profile (standard: `mlx chat-profile default`),
+restore saved environment values and verify health while idle. Merge does not
+change existing config, LaunchAgents or services.
+
 ## Preconditions
 
 Use Apple Silicon with Metal, MLX-VLM 0.6.17, an already cached compatible

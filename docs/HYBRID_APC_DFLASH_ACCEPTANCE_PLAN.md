@@ -1,6 +1,9 @@
 # Hybrid final acceptance follow-up
 
-Status: executable work completed; **RELEASE HOLD: BLOCKERS REMAIN**.
+Current scope: **A — optional/default-inactive integration**, with final
+regressions/CI required. **B — production/default activation remains HOLD**.
+No new soak, real-model series or benchmark matrix is authorized or performed
+in this closeout. Historical work and failures remain recorded below.
 See [the final report](HYBRID_APC_DFLASH_FINAL_REPORT.md) for real evidence,
 failed attempts, scope limits, gate statuses and blocker reproduction.
 
@@ -26,8 +29,12 @@ failed attempts, scope limits, gate statuses and blocker reproduction.
 8. Final regressions and documentation: medium/E2E, syntax, i18n, compatibility,
    diff checks and actual last-head CI are verified before the final response.
    Versioned G9 records its pre-push snapshot; PR 299 records final-head CI.
-9. Release decision: HOLD. Main unchanged, PR remains Draft, no tag/version/release.
-   Resolve the report's quality/memory/missing-evidence blockers, then rerun gates.
+9. Current decision: assess optional integration against default isolation,
+   unchanged safeguards/fallbacks, deterministic regressions, final CI and actual
+   repository rules. If those pass, ready/merge PR 299 and verify origin/main;
+   no product version/tag/release. Historical activation failures remain HOLD.
+   Optional integration and production activation are separate acceptance
+   decisions; the original G1–G10 failures/gaps are not relabeled as PASS.
 10. Restoration: exact original launch/config and installed package hashes,
     original healthy model/profile, source cleanup and repository preservation
     verified. Private raw answers/audit/recovery configs remain outside GitHub.

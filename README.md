@@ -304,19 +304,29 @@ answers) show median first content of 429 vs 1,334 ms for hybrid vs cache-OFF
 on arithmetic, and complete Python answers of 1,879 vs 2,856 ms. Hybrid and
 native both reused 768 tokens; the 18 paired full answers and actual backend
 inputs matched. These shorter tasks do not establish an additional early
-checkpoint benefit or long-output speedup. Full acceptance remains **HOLD**:
-long answers violated requested word limits, repeated long workloads exceeded
-the swap-growth criterion, and no uninterrupted two-hour run completed.
+checkpoint benefit or long-output speedup. **Production/default activation
+remains HOLD**: repeated long workloads exceeded the swap-growth criterion
+and no uninterrupted two-hour run completed. Word-limit failures reproduced
+without APC/DFlash are documented as a separate model weakness. Integration
+of the guarded, default-inactive experimental code is assessed separately;
+it does not change these failed or incomplete activation results.
 Final bounded security coverage passed 40 real RAG attacks and two actual
 conflicting-source cases; it is not a universal injection-resistance claim.
 Historical capped 580/324-token results are archived in the report's evidence
 history and are not current measurements.
 
 ```sh
+# Explicit opt-in, only while runtimes are idle:
 ./scripts/mlx chat-profile hybrid
 ./scripts/mlx chat-profile status
 curl -fsS http://127.0.0.1:8000/v1/cache/stats
 ```
+
+The repository's standard chat profile is `default`; integration does not
+select `hybrid`, change existing user settings or restart services. To roll back
+an explicit opt-in, restore the prior profile (for the standard path:
+`./scripts/mlx chat-profile default`) while idle. Restore any explicitly changed
+LaunchAgent values, including originally unset values; verify profile/health.
 
 Hybrid defaults to one exact snapshot and no early checkpoint. The optional
 `NOBBY_HYBRID_EXACT_CACHE_ENTRIES=2` permits an early and a final snapshot;
