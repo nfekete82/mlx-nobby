@@ -589,3 +589,68 @@ def test_dead_vision_runtime_retry_returns_answer(monkeypatch):
     assert b'event: error' not in body
     assert factory.calls == 2
     assert recoveries == ["chat_first_byte_timeout"]
+
+
+def test_recovery_protects_recent_gateway_progress_but_allows_stalled_stream(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from agent import run_state
+    clock = [0.0]
+    monkeypatch.setattr(run_state, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(agent_routes, 'RECOVERY_STATE_FILE', tmp_path / 'recovery.json')
+    monkeypatch.setattr(agent_routes, '_read_runtime_leases', lambda now: {
+        'active': {'workload': 'chat', 'age_seconds': 300}})
+    scheduled = []
+    with run_state.active_chat_stream() as progress:
+        clock[0] = 300
+        progress()
+        with pytest.raises(Exception) as error:
+            agent_routes.request_recovery(agent_routes.RuntimeRecoveryRequest(),
+                                          restart_scheduler=scheduled.append)
+        assert error.value.status_code == 409
+        assert scheduled == []
+        clock[0] += agent_routes.RECOVERY_MIN_CHAT_AGE_SECONDS + 1
+        assert agent_routes.request_recovery(agent_routes.RuntimeRecoveryRequest(),
+                                            restart_scheduler=scheduled.append)['scheduled']
+    assert len(scheduled) == 1
+    assert not run_state.chat_stream_progress_is_recent(1000)
+
+
+def test_real_gateway_marks_progress_and_unregisters_after_completion(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from agent import app as gateway, run_state
+    clock = [0.0]
+    finish = threading.Event()
+    monkeypatch.setattr(run_state, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(gateway.runtime_coordinator, 'chat_runtime', lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(gateway, 'ensure_model_for_role', lambda role: {
+        'resolved': {'repo': 'synthetic-model', 'alias': 'chat', 'backend': 'mlx_lm'}})
+    monkeypatch.setattr(gateway, 'load_config', lambda: {'PORT': 8000})
+
+    class Upstream:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def __iter__(self):
+            clock[0] = 300
+            yield b'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'
+            assert finish.wait(3)
+            yield b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+            yield b'data: [DONE]\n\n'
+
+    monkeypatch.setattr(gateway.urllib.request, 'urlopen', lambda *a, **kw: Upstream())
+
+    async def exercise():
+        response = gateway.runtime_chat_stream(gateway.RuntimeChatRequest(
+            messages=[{'role': 'user', 'content': 'synthetic test'}]))
+        stream = response.body_iterator
+        try:
+            assert 'hello' in await anext(stream)
+            assert run_state.chat_stream_progress_is_recent(15)
+        finally:
+            finish.set()
+            async for _ in stream: pass
+            await stream.aclose()
+        # The terminal sentinel follows context cleanup in the producer.
+        assert not run_state.chat_stream_progress_is_recent(1000)
+
+    asyncio.run(exercise())

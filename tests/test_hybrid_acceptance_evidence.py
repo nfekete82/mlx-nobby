@@ -90,3 +90,23 @@ def test_longform_quality_rejects_length_noncompliance_even_with_all_terms():
     extended = 'Prefill Cache Decode Streaming speculative throughput '
     assert cases.check_quality(20, extended + 'word ' * 1600)['word_count_1500_1800']
     assert not cases.check_quality(20, extended + 'word ' * 1200)['word_count_1500_1800']
+
+
+def test_cleanup_waits_for_agent_recovery_and_idle_without_skipping_timeout(monkeypatch):
+    from types import SimpleNamespace
+    from urllib.error import URLError
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    runner = load('validate-hybrid-acceptance')
+    clock = [0]
+    monkeypatch.setattr(runner, 'time', SimpleNamespace(
+        monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+    outcomes = iter([URLError('Agent restarting'), RuntimeError('busy'), None])
+    def ensure_idle():
+        outcome = next(outcomes)
+        if outcome: raise outcome
+    runner.wait_for_idle(SimpleNamespace(ensure_idle=ensure_idle), timeout=3)
+    assert clock[0] == 2
+    def unavailable(): raise URLError('still restarting')
+    with pytest.raises(URLError):
+        runner.wait_for_idle(SimpleNamespace(ensure_idle=unavailable), timeout=2)
+    assert clock[0] == 4

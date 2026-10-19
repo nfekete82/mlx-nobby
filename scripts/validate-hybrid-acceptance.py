@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.error
 
 from hybrid_acceptance_cases import QUALITY, quality_messages, check_quality, rag_messages
 from hybrid_backend_audit import digest
@@ -105,6 +106,19 @@ def server_pid():
     return pids[0]
 
 
+def wait_for_idle(profile, timeout=120):
+    """Allow bounded Agent recovery without restarting an active workload."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            profile.ensure_idle()
+            return
+        except (RuntimeError, urllib.error.URLError):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(1)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime-root', type=Path, required=True)
@@ -132,6 +146,9 @@ def main(argv=None):
     source_paths += [ROOT / 'scripts' / name for name in (
         'hybrid_backend_audit.py', 'hybrid_acceptance_cases.py', 'validate-hybrid-acceptance.py')]
     source_paths += [ROOT / 'backend/rag_prefix_placement.py']
+    source_paths += [args.runtime_root / name for name in (
+        'agent/app.py', 'agent/run_state.py', 'agent/runtime_reliability_routes.py',
+        'backend/app.py', 'backend/clock_context_routing.py', 'runtime_coordinator.py')]
     packages = list((args.runtime_root / 'runtime-venv/lib').glob('python*/site-packages/mlx_vlm'))
     if len(packages) != 1:
         raise RuntimeError('Ambiguous installed MLX-VLM package')
@@ -320,16 +337,8 @@ def main(argv=None):
             except Exception as exc:
                 report['restoration_errors'].append(name + ':' + type(exc).__name__)
         try:
-            deadline = time.monotonic() + 120
-            while True:
-                try:
-                    p.ensure_idle()
-                    break
-                except RuntimeError:
-                    if time.monotonic() >= deadline:
-                        raise
-                    time.sleep(1)
             p.write_config(config)
+            wait_for_idle(p)
             c.run_command([str(c.MLX), 'restart'])
             p.confirm_profile(p.configured_profile(config))
         except Exception as exc:
