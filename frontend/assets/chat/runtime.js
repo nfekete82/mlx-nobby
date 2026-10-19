@@ -76,6 +76,8 @@
     let headerMemoryInterval = null;
     let headerMemoryRefreshing = false;
     let headerMemoryRevision = 0;
+    let headerMemoryTotalGb = null;
+    let headerMemoryLastUsedMb = null;
     const BOTTOM_TOLERANCE = 88;
     let autoScrollEnabled = true;
     let programmaticScroll = false;
@@ -687,6 +689,7 @@ function formatHeaderMemoryGb(value) {
 
 function resetHeaderMemory() {
     headerMemoryRevision += 1;
+    headerMemoryLastUsedMb = null;
     if (modelMemory) {
         modelMemory.hidden = true;
         modelMemory.textContent = '';
@@ -722,9 +725,39 @@ async function refreshHeaderMemory() {
     const revision = headerMemoryRevision;
 
     try {
-        const data = await fetchSystem();
+        // The status endpoint already includes the MLX process RSS.
+        // Total physical RAM is static and only needs one system lookup.
+        const status = await fetchStatus();
+        let usedMb = Number(status?.memory_mb);
+
+        if (!Number.isFinite(usedMb) || usedMb <= 0) usedMb = null;
+
+        if (status?.online && headerMemoryTotalGb === null) {
+            const system = await fetchSystem();
+            const totalGb = Number(system?.system?.total_gb);
+            if (Number.isFinite(totalGb) && totalGb > 0) {
+                headerMemoryTotalGb = totalGb;
+            }
+            if (usedMb === null) {
+                const fallbackMb = Number(system?.mlx?.memory_mb);
+                if (Number.isFinite(fallbackMb) && fallbackMb > 0) {
+                    usedMb = fallbackMb;
+                }
+            }
+        }
+
         if (revision === headerMemoryRevision && !isSwitching()) {
-            renderHeaderMemory(data);
+            if (status?.online && usedMb !== null) {
+                headerMemoryLastUsedMb = usedMb;
+            }
+            renderHeaderMemory({
+                mlx: {
+                    memory_mb: status?.online
+                        ? (usedMb ?? headerMemoryLastUsedMb)
+                        : 0
+                },
+                system: { total_gb: headerMemoryTotalGb }
+            });
         }
     } catch {
         if (revision === headerMemoryRevision && !isSwitching()) {
