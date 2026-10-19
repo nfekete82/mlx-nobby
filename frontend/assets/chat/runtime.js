@@ -73,6 +73,9 @@
     let modelAliases = [];
     let runtimeInfoInterval = null;
     let runtimeInfoRefreshing = false;
+    let headerMemoryInterval = null;
+    let headerMemoryRefreshing = false;
+    let headerMemoryRevision = 0;
     const BOTTOM_TOLERANCE = 88;
     let autoScrollEnabled = true;
     let programmaticScroll = false;
@@ -104,6 +107,7 @@
     const defaultMaxTokens = document.getElementById('defaultMaxTokens');
     const thinkingPreferred = document.getElementById('thinkingPreferred');
 const modelTitle = document.getElementById('modelTitle');
+    const modelMemory = document.getElementById('modelMemory');
     const modelPopover = document.getElementById('modelPopover');
     const modelList = document.getElementById('modelList');
     const modelSwitchStatus = document.getElementById(
@@ -576,6 +580,11 @@ function setModelStatus(message) {
 
 function renderStatus(data) {
     modelTitle.textContent = modelAliasFor(data);
+    if (data.online) {
+        refreshHeaderMemory();
+    } else {
+        resetHeaderMemory();
+    }
 
     document.getElementById(
         'statusText'
@@ -669,6 +678,79 @@ async function fetchSystem() {
 }
 
 
+function formatHeaderMemoryGb(value) {
+    return value.toLocaleString('de-DE', {
+        maximumFractionDigits: 1
+    });
+}
+
+
+function resetHeaderMemory() {
+    headerMemoryRevision += 1;
+    if (modelMemory) {
+        modelMemory.hidden = true;
+        modelMemory.textContent = '';
+    }
+}
+
+
+function renderHeaderMemory(data) {
+    if (!modelMemory) return;
+
+    const usedMb = Number(data?.mlx?.memory_mb);
+    const totalGb = Number(data?.system?.total_gb);
+
+    if (!Number.isFinite(usedMb) || usedMb <= 0 ||
+        !Number.isFinite(totalGb) || totalGb <= 0) {
+        modelMemory.hidden = true;
+        modelMemory.textContent = '';
+        return;
+    }
+
+    modelMemory.textContent =
+        'RAM ' + formatHeaderMemoryGb(usedMb / 1024) +
+        ' / ' + formatHeaderMemoryGb(totalGb) + ' GB';
+    modelMemory.hidden = false;
+}
+
+
+async function refreshHeaderMemory() {
+    if (!modelMemory || headerMemoryRefreshing || isSwitching() ||
+        document.visibilityState === 'hidden') return;
+
+    headerMemoryRefreshing = true;
+    const revision = headerMemoryRevision;
+
+    try {
+        const data = await fetchSystem();
+        if (revision === headerMemoryRevision && !isSwitching()) {
+            renderHeaderMemory(data);
+        }
+    } catch {
+        if (revision === headerMemoryRevision && !isSwitching()) {
+            modelMemory.hidden = true;
+            modelMemory.textContent = '';
+        }
+    } finally {
+        headerMemoryRefreshing = false;
+        // A model switch during the request invalidates the old measurement.
+        if (revision !== headerMemoryRevision && !isSwitching()) {
+            refreshHeaderMemory();
+        }
+    }
+}
+
+
+function initHeaderMemory() {
+    if (headerMemoryInterval !== null) return;
+    refreshHeaderMemory();
+    headerMemoryInterval = setInterval(refreshHeaderMemory, 15000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshHeaderMemory();
+    });
+}
+
+
 async function loadStatus() {
     if (isSwitching()) return;
 
@@ -680,6 +762,7 @@ async function loadStatus() {
         return data;
 
     } catch {
+        resetHeaderMemory();
         document.getElementById(
             'statusText'
         ).textContent =
@@ -1126,6 +1209,7 @@ async function toggleThinking(enabled) {
     }
 
     switchingThinking = true;
+    resetHeaderMemory();
     updateSendButton();
     runtimeInfoContent.textContent = enabled
         ? rut('thinking_on', 'Enabling Thinking…')
@@ -1175,6 +1259,7 @@ async function toggleThinking(enabled) {
     } finally {
         switchingThinking = false;
         updateSendButton();
+        refreshHeaderMemory();
 
         if (!runtimePopover.hidden) {
             refreshRuntimeInfo();
@@ -1207,6 +1292,7 @@ async function switchModel(alias) {
         }
 
         switchingModel = true;
+        resetHeaderMemory();
         closeModelPopover();
         closeRuntimePopover();
         updateSendButton();
@@ -1256,6 +1342,7 @@ async function switchModel(alias) {
     } finally {
         switchingModel = false;
         updateSendButton();
+        refreshHeaderMemory();
     }
 }
 
@@ -1289,6 +1376,8 @@ function initModelSwitcher() {
     loadModelAliases()
         .then(loadStatus)
         .catch(() => {});
+
+    initHeaderMemory();
 }
 
 
