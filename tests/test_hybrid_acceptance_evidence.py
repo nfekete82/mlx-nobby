@@ -80,3 +80,10 @@ def test_freed_old_server_swap_cannot_mask_new_workload_growth(monkeypatch):
     assert runner.checked_swap_floor(floor, 23.8) == 22.9
     with pytest.raises(RuntimeError, match='observed minimum'):
         runner.checked_swap_floor(floor, 24.0)
+
+
+def test_longform_quality_rejects_length_noncompliance_even_with_all_terms():
+    cases = load('hybrid_acceptance_cases')
+    terms = 'Prefill Cache Decode Streaming throughput '
+    assert cases.check_quality(14, terms + 'word ' * 650)['word_count_600_800']
+    assert not cases.check_quality(14, terms + 'word ' * 850)['word_count_600_800']

@@ -79,7 +79,10 @@ def quality_messages(index):
 
 
 def check_quality(index, answer):
-    return {term: term.casefold() in answer.casefold() for term in QUALITY[index][2]}
+    checks = {term: term.casefold() in answer.casefold() for term in QUALITY[index][2]}
+    if QUALITY[index][0] in ('long_english', 'long_german'):
+        checks['word_count_600_800'] = 600 <= len(answer.split()) <= 800
+    return checks
 
 
 def rag_messages(index):
