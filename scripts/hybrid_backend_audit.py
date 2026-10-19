@@ -62,6 +62,29 @@ def install(path):
         return info
 
     generation.ResponseGenerator._log_prefill_started = observed
+    import hybrid_cache_budget as budget
+    store = budget.store
+
+    def observed_store(manager, ids, cache, **kwargs):
+        with manager.lock:
+            before = set(manager._exact_cache)
+            retained = sum(budget.cache_bytes(entry.prompt_cache)
+                           for entry in manager._exact_cache.values())
+        incoming = budget.cache_bytes(cache)
+        saved = store(manager, ids, cache, **kwargs)
+        with manager.lock:
+            after = set(manager._exact_cache)
+            remaining = sum(budget.cache_bytes(entry.prompt_cache)
+                            for entry in manager._exact_cache.values())
+        emit(path, {'kind': 'cache_store', 'pid': os.getpid(), 'time': time.time(),
+                    'request_id': current.request_id, 'saved': bool(saved),
+                    'snapshot_bytes': incoming, 'retained_before_bytes': retained,
+                    'retained_after_bytes': remaining, 'budget_bytes': budget.budget_bytes(),
+                    'evicted_entries': len(before - after), 'entries': len(after),
+                    'capacity': manager._exact_cache_max})
+        return saved
+
+    budget.store = observed_store
     if os.getenv('NOBBY_HYBRID_AUDIT_STATE') == '1':
         # Separate numerical diagnostic, excluded from latency measurements.
         # Transfer one layer at a time; never retain a second complete cache.
