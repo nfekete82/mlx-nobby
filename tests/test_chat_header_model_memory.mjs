@@ -27,6 +27,9 @@ function harness() {
     const events = {};
     const timers = [];
     let system = { mlx: { memory_mb: 20480 }, system: { total_gb: 48 } };
+    let status = { online: true, memory_mb: 20480 };
+    let systemCalls = 0;
+    let statusCalls = 0;
     let switching = false;
     const sandbox = {
         modelMemory: memory,
@@ -37,15 +40,21 @@ function harness() {
         headerMemoryInterval: null,
         headerMemoryRefreshing: false,
         headerMemoryRevision: 0,
+        headerMemoryTotalGb: null,
+        headerMemoryLastUsedMb: null,
         isSwitching: () => switching,
-        fetchSystem: async () => system,
+        fetchStatus: async () => { statusCalls += 1; return status; },
+        fetchSystem: async () => { systemCalls += 1; return system; },
         setInterval(callback, period) { timers.push({ callback, period }); return 1; },
         console,
     };
     vm.runInNewContext(runtime.slice(from, until), sandbox);
     return {
         memory, events, timers, sandbox,
+        get systemCalls() { return systemCalls; },
+        get statusCalls() { return statusCalls; },
         setSystem(value) { system = value; },
+        setStatus(value) { status = value; },
         setSwitching(value) { switching = value; }
     };
 }
@@ -71,10 +80,16 @@ test('refresh is periodic, visibility-aware and invalidates memory during model 
     assert.equal(h.memory.textContent, 'RAM 20 / 48 GB');
     assert.equal(h.timers.length, 1);
     assert.equal(h.timers[0].period, 15000);
+    assert.equal(h.systemCalls, 1, 'physical RAM is looked up once');
     h.sandbox.initHeaderMemory();
     assert.equal(h.timers.length, 1);
 
-    h.setSystem({ mlx: { memory_mb: 10240 }, system: { total_gb: 48 } });
+    h.setStatus({ online: true, memory_mb: 10240 });
+    await h.timers[0].callback();
+    assert.equal(h.memory.textContent, 'RAM 10 / 48 GB');
+    assert.equal(h.systemCalls, 1, 'periodic refresh only requests model status');
+
+    h.setStatus({ online: true, memory_mb: 10240 });
     h.sandbox.resetHeaderMemory();
     h.setSwitching(true);
     await h.sandbox.refreshHeaderMemory();
@@ -84,11 +99,12 @@ test('refresh is periodic, visibility-aware and invalidates memory during model 
     assert.equal(h.memory.textContent, 'RAM 10 / 48 GB');
 
     h.sandbox.document.visibilityState = 'hidden';
-    h.setSystem({ mlx: { memory_mb: 5120 }, system: { total_gb: 48 } });
+    h.setStatus({ online: true, memory_mb: 5120 });
     await h.sandbox.refreshHeaderMemory();
     assert.equal(h.memory.textContent, 'RAM 10 / 48 GB');
     h.sandbox.document.visibilityState = 'visible';
     h.events.visibilitychange();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.memory.textContent, 'RAM 5 / 48 GB');
+    assert.equal(h.systemCalls, 1, 'tab visibility refresh does not poll system');
 });
