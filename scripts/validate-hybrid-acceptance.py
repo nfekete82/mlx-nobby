@@ -125,6 +125,9 @@ def main(argv=None):
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--phase', choices=('all', 'soak', 'matrix', 'perf', 'rag', 'numeric'), default='all')
     parser.add_argument('--soak-seconds', type=int, default=7200)
+    parser.add_argument('--perf-tasks', type=int, nargs=3, choices=range(len(QUALITY)),
+                        default=(0, 20, 21), metavar='INDEX',
+                        help='Three explicit quality-task indices for performance only; full matrix stays unchanged')
     parser.add_argument('--confirm-restarts', action='store_true')
     args = parser.parse_args(argv)
     if not args.confirm_restarts or args.soak_seconds < 7200:
@@ -155,6 +158,7 @@ def main(argv=None):
     source_paths += [packages[0] / 'server/generation.py', packages[0] / 'apc.py']
     frozen = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
     report = {'schema': 1, 'phase': args.phase, 'source_hashes': frozen,
+              'perf_task_indices': list(args.perf_tasks),
               'rows': [], 'samples': [], 'errors': [], 'restoration_errors': [],
               'started_at': time.time()}
     report['implementation_commit'] = subprocess.check_output(
@@ -317,12 +321,12 @@ def main(argv=None):
                           ('hybrid', 'off', 'native'))
                 for mode in orders[pair]:
                     switch(mode)
-                    for turn, index in enumerate((0, 20, 21)):
+                    for turn, index in enumerate(args.perf_tasks):
                         messages = quality_messages(index)
                         if turn == 0:
                             request(mode, 'perf_prime', pair, messages[:-2])
                         row = request(mode, 'perf', pair * 3 + turn, messages)
-                        row.update(pair=pair, turn=turn)
+                        row.update(pair=pair, turn=turn, task_index=index)
                         save()
     except BaseException as exc:
         report['errors'].append(type(exc).__name__ + ':' + str(exc))
