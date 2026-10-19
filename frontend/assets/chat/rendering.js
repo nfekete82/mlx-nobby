@@ -690,6 +690,21 @@ function markdownHtml(text) {
 }
 
 
+    // Use the same icons for copying a code block and a whole answer.
+    const COPY_ICON_SVG = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+            <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+        </svg>
+    `;
+
+    const COPIED_ICON_SVG = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12.5l4 4L19 6.5"></path>
+        </svg>
+    `;
+
+
 function enhanceCodeBlocks(container) {
     if (!container) return;
 
@@ -725,20 +740,31 @@ function enhanceCodeBlocks(container) {
             document.createElement('button');
 
         button.className = 'copy-code';
-        button.textContent = 'Kopieren';
+        button.type = 'button';
+        button.title = 'Kopieren';
+        button.setAttribute('aria-label', 'Kopieren');
+        button.innerHTML = COPY_ICON_SVG;
 
         button.addEventListener(
             'click',
             async () => {
-                await navigator.clipboard.writeText(
-                    code.textContent
-                );
+                try {
+                    await navigator.clipboard.writeText(
+                        code.textContent
+                    );
 
-                button.textContent = 'Kopiert';
+                    button.innerHTML = COPIED_ICON_SVG;
+                    button.title = 'Kopiert';
+                    button.setAttribute('aria-label', 'Kopiert');
 
-                setTimeout(() => {
-                    button.textContent = 'Kopieren';
-                }, 1200);
+                    setTimeout(() => {
+                        button.innerHTML = COPY_ICON_SVG;
+                        button.title = 'Kopieren';
+                        button.setAttribute('aria-label', 'Kopieren');
+                    }, 1200);
+                } catch {
+                    // Clipboard permission may be denied; keep copy icon.
+                }
             }
         );
 
@@ -2650,20 +2676,7 @@ function renderMessages(options = {}) {
             copy.title = 'Kopieren';
             copy.setAttribute('aria-label', 'Kopieren');
 
-            const copyIcon = `
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="9" y="9" width="11" height="11" rx="2"></rect>
-                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
-                </svg>
-            `;
-
-            const copiedIcon = `
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 12.5l4 4L19 6.5"></path>
-                </svg>
-            `;
-
-            copy.innerHTML = copyIcon;
+            copy.innerHTML = COPY_ICON_SVG;
 
             copy.addEventListener(
                 'click',
@@ -2672,13 +2685,15 @@ function renderMessages(options = {}) {
                         message.content
                     );
 
-                    copy.innerHTML = copiedIcon;
+                    copy.innerHTML = COPIED_ICON_SVG;
                     copy.title = 'Kopiert';
+                    copy.setAttribute('aria-label', 'Kopiert');
 
                     setTimeout(
                         () => {
-                            copy.innerHTML = copyIcon;
+                            copy.innerHTML = COPY_ICON_SVG;
                             copy.title = 'Kopieren';
+                            copy.setAttribute('aria-label', 'Kopieren');
                         },
                         1200
                     );
