@@ -127,6 +127,9 @@ def main(argv=None):
               'rows': [], 'samples': [], 'errors': [], 'restoration_errors': [],
               'started_at': time.time()}
     write_json(args.output / 'initial-state.json', {'launch': original, 'config_sha256': digest(config)})
+    # Exact recovery material for a hard kill/power loss; never published.
+    (args.output / 'original-config').write_text(config)
+    (args.output / 'original-config').chmod(0o600)
     stop = threading.Event()
     sampler = None
     baseline_swap = kernel_swap()
@@ -179,6 +182,9 @@ def main(argv=None):
         offset = audit.stat().st_size if audit.exists() else 0
         trace = f'hybrid-accept-{time.time_ns()}'
         text, row = stream(messages, max_tokens, trace)
+        with urllib.request.urlopen('http://127.0.0.1:8000/v1/metrics', timeout=10) as response:
+            metrics = json.load(response)
+        row['server_metrics'] = metrics.get('latest')
         after = p.cache_snapshot()
         with audit.open() as handle:
             handle.seek(offset)

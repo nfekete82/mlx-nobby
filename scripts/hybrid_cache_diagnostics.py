@@ -16,13 +16,14 @@ _previous = None
 
 
 def classify(ids, semantic_hash, *, matched_tokens, minimum_tokens, guard_tokens,
-             stored=False):
+             stored=False, checkpoint_tokens=None):
     """Emit safe numeric metadata and a reason, without exposing tokens."""
     global _previous
     if os.environ.get(ENV) != "1":
         return None
     count = len(ids)
-    checkpoint = max(0, count - guard_tokens)
+    checkpoint = (max(0, count - guard_tokens) if checkpoint_tokens is None
+                  else max(0, min(count - guard_tokens, checkpoint_tokens)))
     with _lock:
         previous = _previous
         common = 0

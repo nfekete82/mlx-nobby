@@ -111,6 +111,7 @@ PREFILL_ADAPTER = '''
                                 matched_tokens=hybrid_matched_tokens,
                                 minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
                                 guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                checkpoint_tokens=hybrid_checkpoint,
                             )
                         if (warm_cache is not None
                                 and 0 < hybrid_matched_tokens <= hybrid_checkpoint):
@@ -209,6 +210,7 @@ PREFILL_ADAPTER = '''
                                     matched_tokens=hybrid_matched_tokens,
                                     minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
                                     guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                    checkpoint_tokens=hybrid_checkpoint,
                                     stored=hybrid_final_saved,
                                 )
                                 logger.info(

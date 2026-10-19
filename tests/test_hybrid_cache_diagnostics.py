@@ -42,3 +42,14 @@ def test_patch_instruments_both_cache_operations():
     assert "stored=hybrid_final_saved," in src
     assert "stored=True" not in src
     assert 'vars(module)["nobby_hybrid_diag"]' in src
+
+
+def test_native_checkpoint_diagnostics_track_actual_stored_prefix(monkeypatch):
+    monkeypatch.setenv(diag.ENV, '1')
+    diag._previous = None
+    diag.classify(list(range(1002)), 17, matched_tokens=0, minimum_tokens=16,
+                  guard_tokens=16, checkpoint_tokens=768, stored=True)
+    assert len(diag._previous[0]) == 768
+    changed_tail = list(range(768)) + [-1] * 234
+    assert diag.classify(changed_tail, 17, matched_tokens=0, minimum_tokens=16,
+                         guard_tokens=16, checkpoint_tokens=768) == 'lookup_miss_despite_matching_prefix'

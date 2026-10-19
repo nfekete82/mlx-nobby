@@ -24,8 +24,9 @@ _TEMPORAL = re.compile(
 
 
 def include_live_clock(messages: list, system_prompt: str = "") -> bool:
-    # Escape hatch: old behavior always supplies the authoritative clock.
-    if os.getenv("NOBBY_CLOCK_CONTEXT_ALWAYS") == "1":
+    # Prefix stability is experimental: preserve authoritative time by default.
+    if (os.getenv("NOBBY_CLOCK_CONTEXT_STABLE") != "1"
+            or os.getenv("NOBBY_CLOCK_CONTEXT_ALWAYS") == "1"):
         return True
     # Scope to normal, purely textual latest user turns with explicit content.
     if not messages or not isinstance(messages[-1], dict):
