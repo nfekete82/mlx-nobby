@@ -92,6 +92,14 @@ def test_longform_quality_rejects_length_noncompliance_even_with_all_terms():
     assert not cases.check_quality(20, extended + 'word ' * 1200)['word_count_1500_1800']
 
 
+def test_word_bounds_ignore_format_only_chunks_but_count_unicode_words():
+    cases = load('hybrid_acceptance_cases')
+    assert cases.count_words('# ** — $$ = _ Grüße 37 KV-Cache') == 3
+    prose = 'Prefill Cache Decode Streaming throughput ' + 'word ' * 650
+    assert cases.check_quality(14, prose + '# ** $$ = ' * 100)['word_count_600_800']
+    assert not cases.check_quality(14, prose + 'extra ' * 200)['word_count_600_800']
+
+
 def test_cleanup_waits_for_agent_recovery_and_idle_without_skipping_timeout(monkeypatch):
     from types import SimpleNamespace
     from urllib.error import URLError

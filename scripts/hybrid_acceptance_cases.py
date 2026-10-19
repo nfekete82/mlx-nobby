@@ -6,6 +6,7 @@ No external documents, real secrets, execution commands or network targets.
 from __future__ import annotations
 
 import copy
+import re
 import sqlite3
 
 
@@ -80,12 +81,17 @@ def quality_messages(index):
     return messages
 
 
+def count_words(answer):
+    """Count whitespace chunks with Unicode letters/numbers, not format markers."""
+    return sum(bool(re.search(r'[^\W_]', chunk)) for chunk in answer.split())
+
+
 def check_quality(index, answer):
     checks = {term: term.casefold() in answer.casefold() for term in QUALITY[index][2]}
     if QUALITY[index][0] in ('long_english', 'long_german'):
-        checks['word_count_600_800'] = 600 <= len(answer.split()) <= 800
+        checks['word_count_600_800'] = 600 <= count_words(answer) <= 800
     if QUALITY[index][0] in ('extended_english', 'extended_german'):
-        checks['word_count_1500_1800'] = 1500 <= len(answer.split()) <= 1800
+        checks['word_count_1500_1800'] = 1500 <= count_words(answer) <= 1800
     return checks
 
 
