@@ -38,6 +38,7 @@ def run(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--python', type=Path, required=True)
+    parser.add_argument('--late-context', choices=('0', '1'), default='1')
     parser.add_argument('--confirm-source-test', action='store_true', required=True)
     args = parser.parse_args(argv)
     os.umask(0o077)
@@ -50,7 +51,7 @@ def run(argv=None):
     before = api('/api/knowledge/status')
     snapshot = {row['source_id']: row for row in before['sources']}
     report = {'rows': [], 'errors': [], 'cleanup_errors': [],
-              'source_name': name, 'started_at': time.time(),
+              'source_name': name, 'late_context': args.late_context, 'started_at': time.time(),
               'embedding_ready_before': bool(before.get('embedding'))}
 
     def save():
@@ -106,7 +107,7 @@ def run(argv=None):
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]
         environment = dict(os.environ, AGENT_URL='http://127.0.0.1:8010',
-                           NOBBY_RAG_LATE_CONTEXT='1', NOBBY_CLOCK_CONTEXT_STABLE='1',
+                           NOBBY_RAG_LATE_CONTEXT=args.late_context, NOBBY_CLOCK_CONTEXT_STABLE='1',
                            MLX_PROMPT_STAGE_DIAG='1')
         with (args.output / 'web.log').open('w') as log:
             process = subprocess.Popen([str(args.python), '-m', 'uvicorn', 'backend.entrypoint:app',

@@ -1421,9 +1421,11 @@ def mlx_chat_stream(request: ChatRequest):
                     rag_sources.append(source_entry)
 
             if context_parts:
+                if not rag_prefix_placement.enabled():
+                    rag_prefix_placement.append_stable_policy(messages)
                 rag_context = (
                     "LOKALE WISSENSBASIS – ABGERUFENER KONTEXT\n\n"
-                    + "\n\n".join(context_parts)
+                    + rag_prefix_placement.framed_source_data(context_parts)
                     + "\n\n"
                     "Regeln:\n"
                     "- Nutze diesen Kontext als bevorzugte Quelle für die "
