@@ -921,6 +921,7 @@
   "knowledge.searching": "Suche…",
   "knowledge.no_matches": "Keine passenden Chunks gefunden.",
   "knowledge.search_failed": "Suche fehlgeschlagen:",
+  "runtime_ui.memory_header_tooltip": "MLX-Prozessspeicher (RSS) / gesamter Unified Memory (Näherungswert, keine exakte GPU-Belegung)",
   "runtime_ui.system_unavailable": "Systemdaten nicht erreichbar",
   "runtime_ui.info_unavailable": "Runtime-Informationen nicht erreichbar: {message}",
   "runtime_ui.close_info": "Systeminfo schließen",
