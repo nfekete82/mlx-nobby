@@ -63,13 +63,20 @@ MLX-VLM reconstructs elapsed time as full prompt tokens divided by this rate;
 substituting only computed tokens had inflated reported warm prefill time.
 The diagnostic log separately reports the computed-token rate. This correction
 does not change model calls, cache state or decoding. Final implementation:
-`72017cdb20f3f68a0ad2deb07b1ffde6328fc8af`.
+`72017cdb20f3f68a0ad2deb07b1ffde6328fc8af`. A subsequent QA-only correction
+(`f836fe3`) excludes formatting-only chunks from word counts; prompts, model
+arguments, cache adapter and decoding are unchanged. Archived raw outputs are
+retained and reassessed rather than regenerated or silently rewritten.
 
 ## Full answer quality and backend identity
 
 The maintained corpus has 22 tasks: the original 20 plus two extended DE/EN
 explanations. It covers facts, mathematics, practical advice, executable code,
 conversation history, long context, retrieved facts and conflicting sources.
+Word counts below count whitespace-separated chunks containing a Unicode
+letter or number, excluding pure Markdown/math delimiters. The earlier simple
+whitespace checker over-counted those delimiters; its false word-limit failure
+for task 20 is corrected. That answer still omits Streaming.
 Quality requests allow 4096 tokens; primes/numerical requests allow at least
 2048. Actual backend finish reasons and complete private text are retained.
 `length` never counts as full quality. No failed fixture was replaced to pass.
@@ -82,8 +89,8 @@ corrections and is not final-head two-hour evidence. Its initial long outputs:
 | --- | ---: | ---: | ---: | --- | --- |
 | 14 EN explanation | 600–800 | 889 | 1069 | stop | Word limit violated |
 | 15 DE explanation | 600–800 | 788 | 1250 | stop | Bounded format/topic checks pass |
-| 20 extended EN | 1500–1800 | 1819 | 2866 | stop | Word limit violated; Streaming omitted |
-| 21 extended DE | 1500–1800 | 1926 | 3807 | stop | Word limit violated; Streaming omitted |
+| 20 extended EN | 1500–1800 | 1748 | 2866 | stop | Word bound passes; Streaming omitted |
+| 21 extended DE | 1500–1800 | 1862 | 3807 | stop | Word limit violated; Streaming omitted |
 
 A later cache-OFF matrix and corrected-Agent native run each completed tasks
 0–20 before interruption/safety stop. All 21 paired actual backend token hashes,
@@ -93,9 +100,11 @@ by itself localize target-model versus speculative-decoding behavior.
 
 A separate reference disabled **both** APC and DFlash2, retaining the same
 model, input tokens and generation arguments for available controls. Task 14
-still produced 869 words and task 20 produced 1999, both `stop`; task 21 produced
-1753 words/3125 tokens with `stop` and passed bounded word/topic checks.
-Task 20 produced 3054 actual tokens. The no-draft answers differ from DFlash,
+still produced 869 counted words and task 20 produced 1945, both `stop`; task 21 produced
+1735 counted words/3125 tokens with `stop` and passed bounded word/topic checks.
+Task 20 produced 3054 actual tokens. Its original whitespace count was 1999;
+the original task-21 whitespace count was 1753. Format-only chunks explain the
+difference, not a change to either generated answer. The no-draft answers differ from DFlash,
 so their complete outputs are not claimed interchangeable. Task 21 has no
 completed cache-OFF matrix counterpart. English word-limit failures persist
 without either optimization. The no-draft EN tutorial briefly mentions tokens
@@ -249,18 +258,18 @@ Evidence: `/tmp/mlx-hybrid-followup-perf-72017cd/paired-performance.json`.
 
 ## Regression tests, CI and release gates
 
-Final implementation `72017cd`:
+Final inference implementation `72017cd` plus QA-only correction `f836fe3`:
 
-- `./scripts/mlx test-medium`: **3276 Python tests + 433 subtests + 280 JavaScript tests**, all pass. Python 56.98 s.
-- `./scripts/mlx test-e2e`: **106 browser tests**, all pass in 160.51 s.
+- `./scripts/mlx test-medium`: **3277 Python tests + 433 subtests + 280 JavaScript tests**, all pass. Python 54.23 s.
+- `./scripts/mlx test-e2e`: **106 browser tests**, all pass in 160.22 s.
 - Final tracked Python/JSON, frontend JS, Bash/startup/plist syntax, i18n,
   MLX-VLM 0.6.17 check-only compatibility and diff checks pass.
 - Three documentation checks pass after the final README/runbook edits.
 
-Private logs: `/tmp/mlx-hybrid-followup-medium-final.log`,
-`/tmp/mlx-hybrid-followup-e2e-final.log`,
-`/tmp/mlx-hybrid-followup-checks-final.log` and
-`/tmp/mlx-hybrid-followup-docs-final.log`.
+Private logs: `/tmp/mlx-hybrid-followup-medium-verified.log`,
+`/tmp/mlx-hybrid-followup-e2e-verified.log`,
+`/tmp/mlx-hybrid-followup-checks-verified.log` and
+`/tmp/mlx-hybrid-followup-docs-verified.log`.
 Earlier green logs are not substituted for these.
 
 | Gate | Status | Evidence / remaining requirement |
@@ -272,7 +281,7 @@ Earlier green logs are not substituted for these.
 | G5 Two-hour stability | NOT VERIFIED | No completed uninterrupted >=7200-second workload; 116-minute attempt failed |
 | G6 RAM/swap/snapshot budget | FAIL | Snapshot budget passes, but repeated long-output system-swap growth exceeds 1 GiB and headroom falls below reserve |
 | G7 Reproducible performance | NOT VERIFIED | Three bounded triples pass; long-answer performance and additional native-early benefit unverified |
-| G8 Regression tests | PASS | 3276 Python, 433 subtests, 280 JS, 106 browser; final syntax/i18n/compatibility and documentation checks |
+| G8 Regression tests | PASS | 3277 Python, 433 subtests, 280 JS, 106 browser; final syntax/i18n/compatibility and documentation checks |
 | G9 GitHub CI | NOT VERIFIED | Snapshot at report commit creation; actual final-head results are recorded on PR 299 after push |
 | G10 Documentation/rollback | PASS | Exact config/launch/package integrity and healthy original model verified; rollback/runbook and failed evidence preserved |
 
@@ -345,7 +354,7 @@ production flags are unchanged. See the runbook for activation/deactivation.
 ## Follow-up implementation commits
 
 The final documentation commit is identified by PR 299's last head. Its
-implementation ancestors added during this follow-up are:
+implementation/test/documentation ancestors added during this follow-up are:
 
 ```text
 086ee79 fix(agent): close scheduler SQLite connections deterministically
@@ -366,4 +375,6 @@ fb5cd3b fix(test): bound swap growth from the observed memory floor
 37b4e6c fix(runtime): protect progressing chat streams from unrelated recovery
 e61da21 test(hybrid): record explicit bounded performance task selection
 72017cd fix(hybrid): preserve elapsed-time semantics in warm prefill metrics
+f312ff9 docs(hybrid): record final bounded evidence and unresolved release blockers
+f836fe3 fix(test): exclude formatting-only chunks from answer word bounds
 ```
