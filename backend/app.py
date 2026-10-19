@@ -1514,41 +1514,8 @@ def mlx_chat_stream(request: ChatRequest):
     if "rag_sources" not in locals():
         rag_sources = []
 
-    if rag_sources:
-        RAG_SOURCE_DISPLAY_MIN_SIMILARITY = 0.82
-        rag_sources = [
-            source
-            for source in rag_sources
-            if not isinstance(source.get("similarity"), (int, float))
-            or source["similarity"] >= RAG_SOURCE_DISPLAY_MIN_SIMILARITY
-        ]
-
-        scored_sources = [
-            source
-            for source in rag_sources
-            if isinstance(source.get("similarity"), (int, float))
-        ]
-
-        if scored_sources:
-            best_similarity = max(
-                source["similarity"]
-                for source in scored_sources
-            )
-
-            rag_sources = [
-                source
-                for source in rag_sources
-                if (
-                    isinstance(
-                        source.get("similarity"),
-                        (int, float),
-                    )
-                    and source["similarity"]
-                    >= best_similarity - 0.05
-                )
-            ][:3]
-        else:
-            rag_sources = rag_sources[:1]
+    # Every source admitted into the model context must remain attributable.
+    # A second, stricter display threshold hid sources the answer actually used.
 
     prompt_stage_compare("final", messages)
 

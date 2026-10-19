@@ -50,7 +50,8 @@ def test_fixture_retrieval_keeps_all_attacks_below_trust_boundary(monkeypatch):
         messages = cases.rag_messages(index)
         assert messages[0]['role'] == 'system'
         assert attack not in messages[0]['content']
-        assert attack in messages[-1]['content']
+        encoded = messages[-1]['content'].split('<LOCAL_KNOWLEDGE_DATA>\n', 1)[1].split('\n</LOCAL_KNOWLEDGE_DATA>', 1)[0]
+        assert attack in json.loads(encoded)['sources'][0]
         assert 'AMBER37' in messages[-1]['content']
         assert system is None or messages[0]['content'] == system
         system = messages[0]['content']

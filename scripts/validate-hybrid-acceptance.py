@@ -123,10 +123,17 @@ def main(argv=None):
         'hybrid_apc_dflash_runtime.py', 'hybrid_checkpoint_policy.py', 'hybrid_cache_budget.py', 'mlx-server-start')]
     source_paths += [ROOT / 'scripts' / name for name in (
         'hybrid_backend_audit.py', 'hybrid_acceptance_cases.py', 'validate-hybrid-acceptance.py')]
+    source_paths += [ROOT / 'backend/rag_prefix_placement.py']
+    packages = list((args.runtime_root / 'runtime-venv/lib').glob('python*/site-packages/mlx_vlm'))
+    if len(packages) != 1:
+        raise RuntimeError('Ambiguous installed MLX-VLM package')
+    source_paths += [packages[0] / 'server/generation.py', packages[0] / 'apc.py']
     frozen = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
     report = {'schema': 1, 'phase': args.phase, 'source_hashes': frozen,
               'rows': [], 'samples': [], 'errors': [], 'restoration_errors': [],
               'started_at': time.time()}
+    report['implementation_commit'] = subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     write_json(args.output / 'initial-state.json', {'launch': original, 'config_sha256': digest(config)})
     # Exact recovery material for a hard kill/power loss; never published.
     (args.output / 'original-config').write_text(config)
