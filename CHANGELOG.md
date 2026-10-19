@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve upstream prefill segmentation for ordinary guarded Hybrid snapshots, reject unaligned restored offsets and retain single-token speculative capture after restoring a prefix. Add real backend-token, full-response, KV/SSM/logit, two-hour soak and RAG acceptance diagnostics; keep optimization defaults conservative.
+- Close automation scheduler and notification SQLite connections deterministically, including rollback and setup errors, preventing the observed Agent file-descriptor exhaustion. Keep experimental clock omission behind `NOBBY_CLOCK_CONTEXT_STABLE=1`.
+- JSON-frame retrieved data in both placement paths and escape template role/section delimiters while preserving recoverable source text. Add role-spoofing regressions and real synthetic document/embedding/web/model security validation; no universal injection-resistance claim.
+- Disclose every RAG source admitted into the answer context; remove the stricter display-only threshold that silently hid sources the model actually used.
 - Experimental Hybrid APC + DFlash2 integration candidate: guard-limited exact-prefix restoration, strict configuration and cache-offset validation, conservative exact-snapshot tensor budgeting and natural-boundary defaults. Keep the profile and early checkpoint opt-in; no production speedup or response-equivalence claim.
 - Keep the opt-in late-RAG trust policy in a system message even when no profile or system prompt was supplied; preserve retrieved data and chat history separately. Real-model injection resistance remains unverified.
 - Add client request/answer hashes, all-turn comparisons, controlled benchmark flags, explicit restoration failures and release checks that require parity and reproducible latency improvement in addition to cache/memory telemetry. Consolidate the historical experiment documentation under the current integration report.

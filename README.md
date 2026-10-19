@@ -291,13 +291,16 @@ Version/source checks reject incompatible installations before startup.
 
 The optimization remains **experimental and opt-in**. A cache hit is not proof
 of faster or equivalent generation. Forced early checkpoint boundaries can
-change the first answer even without a cache hit. Native boundaries preserve
-the baseline hybrid prefill call sizes, but cache-hit response parity and
+change the first answer even without a cache hit. Guarded snapshots now round
+down to an existing upstream prefill boundary and retain upstream's single-token
+final speculative capture. Unaligned restored offsets fall back to cold prefill.
+Cache-hit response parity and
 repeatable end-to-end improvement still require hardware acceptance. See the
 [current integration and benchmark report](docs/HYBRID_APC_DFLASH_FINAL_REPORT.md)
 for measured results and blockers; older experiment reports are historical.
 
-In three M5 Max trials at temperature 0 with fixed history and 256-token steps,
+In three historical M5 Max trials before the final prefill corrections,
+at temperature 0 with fixed history and 256-token steps,
 native checkpoints reused **580 instead of 324 tokens** on turn 3. Median first
 content improved from **1,660 to 1,346 ms**; median total time increased from
 17,710 to 17,838 ms. Native matched the baseline's nine captured responses,
@@ -330,9 +333,16 @@ Two entries are therefore not an assurance of low RAM usage.
 
 For reproducible comparisons and restoration checks, use the
 [benchmark runbook](docs/HYBRID_APC_DFLASH_BENCHMARK.md). Client request hashes
-prove equality before backend enrichment only. Raw answer capture is opt-in
+prove equality before backend enrichment only. The full-response acceptance
+runner additionally audits actual backend token IDs and sampling parameters;
+a separate diagnostic compares real KV/SSM tensors and prefill logits.
+Raw answer capture is opt-in
 and owner-only. RAG late placement and prompt diagnostics remain separate,
 default-off experiments. Retrieved text remains untrusted reference data.
+`NOBBY_CLOCK_CONTEXT_STABLE=1` explicitly enables experimental clock omission;
+the default retains the authoritative current clock. Both RAG placement paths
+JSON-frame source strings and escape angle brackets to prevent raw template role delimiters.
+This is a trust-boundary measure, without a universal prompt-injection guarantee.
 
 Rollback with `./scripts/mlx chat-profile dflash` (or the previously configured
 profile), restore any experiment variables you explicitly changed, restart,

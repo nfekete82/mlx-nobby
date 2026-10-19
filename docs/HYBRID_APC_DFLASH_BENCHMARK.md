@@ -21,6 +21,55 @@ the runner rejects a requested step that the live server did not adopt.
 
 ## Controlled experiment
 
+For current full-response acceptance (explicitly restarts idle chat and takes
+at least two hours), use:
+
+```sh
+python3 scripts/validate-hybrid-acceptance.py \
+  --runtime-root "$PWD" --output /tmp/hybrid-acceptance-new \
+  --phase all --confirm-restarts
+python3 scripts/validate-hybrid-acceptance.py \
+  --runtime-root "$PWD" --output /tmp/hybrid-numeric-new \
+  --phase numeric --confirm-restarts
+python3 scripts/validate-hybrid-rag-e2e.py \
+  --output /tmp/hybrid-rag-new --python "$PWD/test-venv/bin/python" \
+  --late-context 1 --confirm-source-test
+# Repeat with a new output directory and --late-context 0 for default placement.
+```
+
+Output directories must not already exist. `all` runs the native quality/RAG
+fixtures and an uninterrupted >=7200-second mixed workload, then cache-OFF,
+hybrid, native and forced controls over 20 fixed-history tasks, followed by
+three alternating performance pairs. Complete answer capture uses a 4096-token
+allowance; check the actual backend finish reason. A `length` response fails
+the completeness requirement regardless of matching text. Priming/numerical
+requests allow at least 2048 tokens. Actual answers may correctly use fewer.
+
+Token/config fingerprints come from the actual queued backend input, not the
+browser payload. Numerical diagnostics hash all 64 real layer states and
+prefill logits, one layer at a time after exact float32 conversion of supported
+lower precision values. These diagnostic CPU transfers are excluded from timing
+claims. Ordinary audit does not transfer caches. All raw answers, audit records,
+recovery config and reports are owner-only and must stay outside GitHub.
+
+Admission retains normal pressure, >=6 GiB headroom and <=1 GiB kernel swap
+growth. It waits up to 120 seconds for safe headroom, records those waits, and
+stops on persistent shortage; it never lowers the threshold. Per-request timing
+starts after admission, so report admission delays separately. Five-second RSS
+and pressure samples are not instantaneous peak measurements. Metal metrics
+are captured on each completed backend generation.
+
+RAG E2E creates one uniquely owned synthetic knowledge source through the real
+Agent, uses the already available embedding model, and starts a temporary
+production web backend on an allocated loopback port. It removes only its own
+source and verifies other source records afterwards. Production web/container
+flags remain unchanged. Isolated FTS/model fixtures remain a separate, narrower
+layer. Neither layer proves resistance to all attacks or all retrieval policies.
+
+The older short controller below remains useful as a diagnostic, with a
+700-token cap; its historical 580/324-token results precede the final guarded
+checkpoint correction and must not be represented as current measurements.
+
 ```sh
 ./runtime-venv/bin/python scripts/hybrid_apc_dflash_runtime.py --check-only
 python3 scripts/benchmark-chat-cache-causal.py \
@@ -103,9 +152,12 @@ results. Missing evidence produces REVIEW, never PASS.
 | `MLX_PROMPT_STAGE_DIAG` | disabled | backend system-prefix stage diagnostics |
 | `NOBBY_RAG_LATE_CONTEXT` | disabled | experimental late untrusted RAG placement |
 | `NOBBY_CLOCK_CONTEXT_ALWAYS` | disabled | restore unconditional live clock injection |
+| `NOBBY_CLOCK_CONTEXT_STABLE` | disabled | opt in to experimental per-turn clock omission |
+| `NOBBY_HYBRID_AUDIT_FILE` | unset | private backend token/argument/Metal audit JSONL; owner-only directory |
+| `NOBBY_HYBRID_AUDIT_STATE` | disabled | extra numerical cache/logit diagnostic; exclude from timing |
 
 `NOBBY_RAG_LATE_CONTEXT`, `MLX_PROMPT_STAGE_DIAG` and
-`NOBBY_CLOCK_CONTEXT_ALWAYS` belong to the web backend/container environment,
+`NOBBY_CLOCK_CONTEXT_ALWAYS` and `NOBBY_CLOCK_CONTEXT_STABLE` belong to the web backend/container environment,
 not the native MLX LaunchAgent. Configure/recreate that backend explicitly if
 changing them. The native benchmark controllers do not change those backend
 settings; keep them fixed and verify their deployed behavior separately.

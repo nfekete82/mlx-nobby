@@ -5,14 +5,18 @@ Status: IN PROGRESS. Historical results are not new acceptance evidence.
 1. Inventory original files, stashes, worktrees, config, services, PR and rules.
    Use an isolated worktree; preserve the original checkout. Completed.
 2. Repair the observed Agent SQLite descriptor leak with transaction/closure
-   regressions, verify idle native jobs, then restore Agent availability.
+   regressions, verify idle native jobs, then restore Agent availability. Done;
+   real endpoint recovered and subsequent DB descriptor count was zero.
 3. Add opt-in backend token/config auditing and full-response acceptance tools.
-   Freeze measured code and collect private artifacts with restricted modes.
+   Freeze measured code and collect private artifacts with restricted modes. Done;
+   also record actual snapshot admission/LRU and a separate numerical diagnostic.
 4. Compare cache-OFF, hybrid baseline, native and diagnostic forced splitting
    over at least 20 synthetic quality tasks with >=2048 output-token allowance,
    fixed history, actual finish reasons and backend identity checks.
 5. Run >=20 synthetic local-model RAG attacks with explicit expected results.
    Fix reproducible application defects; document model security limitations.
+   Late placement passed 20/20 controlled real cases after role framing and
+   provenance fixes; final shared-helper default/late repeats are in progress.
 6. Run a >=7200-second continuous native-server soak with mixed contexts,
    safety checks, memory, cache and latency telemetry. Never bypass admission.
 7. Collect >=3 alternating controlled performance pairs; assess complete
