@@ -66,8 +66,8 @@ test('displays real MLX-process RSS against installed unified memory', () => {
 test('refresh is periodic, visibility-aware and invalidates memory during model switches', async () => {
     const h = harness();
     h.sandbox.initHeaderMemory();
-    await Promise.resolve();
-    await Promise.resolve();
+    // initHeaderMemory starts an unawaited request in a separate VM context.
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.memory.textContent, 'RAM 20 / 48 GB');
     assert.equal(h.timers.length, 1);
     assert.equal(h.timers[0].period, 15000);
@@ -88,7 +88,7 @@ test('refresh is periodic, visibility-aware and invalidates memory during model 
     await h.sandbox.refreshHeaderMemory();
     assert.equal(h.memory.textContent, 'RAM 10 / 48 GB');
     h.sandbox.document.visibilityState = 'visible';
-    await h.events.visibilitychange();
-    await Promise.resolve();
+    h.events.visibilitychange();
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.memory.textContent, 'RAM 5 / 48 GB');
 });
