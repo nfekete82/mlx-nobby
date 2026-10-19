@@ -281,7 +281,8 @@ def main(argv=None):
                     count += 1
                     stop.wait(2)
                 report['soak'] = {'elapsed_seconds': time.monotonic()-started,
-                                  'pid_start': pid, 'pid_end': server_pid(), 'completed_requests': count + 60}
+                                  'pid_start': pid, 'pid_end': server_pid(),
+                                  'completed_requests': count + 2 * len(QUALITY) + 20}
                 save()
         if args.phase in ('all', 'matrix'):
             for mode in ('off', 'hybrid', 'native', 'forced'):
@@ -299,7 +300,7 @@ def main(argv=None):
                           ('hybrid', 'off', 'native'))
                 for mode in orders[pair]:
                     switch(mode)
-                    for turn, index in enumerate((0, 14, 15)):
+                    for turn, index in enumerate((0, 20, 21)):
                         messages = quality_messages(index)
                         if turn == 0:
                             request(mode, 'perf_prime', pair, messages[:-2])

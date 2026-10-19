@@ -30,6 +30,8 @@ QUALITY = [
     ('long_context', 'Return the codeword from the synthetic note. Only that word.', ['MONDFALTER']),
     ('rag_fact', 'Use the retrieved fictional memo: Project Cedar has 37 crates. How many crates? Return the integer.', ['37']),
     ('rag_conflict', 'Two fictional sources disagree: memo A says 37 crates, memo B says 41 crates. State both values and say they conflict.', ['37', '41', 'conflict']),
+    ('extended_english', 'Write a complete 1500 to 1800 word technical tutorial in English on local LLM inference. Cover Prefill, KV Cache, Decode, Streaming, speculative decoding, long context, latency versus throughput, and memory limits. Include examples, practical tradeoffs and caveats. Distinguish attention cost from other model components and measured wall time; avoid unconditional scaling claims. Do not show hidden reasoning.', ['Prefill', 'Cache', 'Decode', 'Streaming', 'speculative', 'throughput']),
+    ('extended_german', 'Schreibe eine vollständige technische Anleitung mit 1500 bis 1800 Wörtern auf Deutsch über lokale LLM-Inferenz. Behandle Prefill, KV-Cache, Decoding, Streaming, spekulatives Decoding, lange Kontexte, Latenz versus Durchsatz und Speichergrenzen. Gib Beispiele, praktische Abwägungen und Einschränkungen. Unterscheide Attention-Aufwand, andere Modellbestandteile und gemessene Laufzeit; vermeide pauschale Skalierungsbehauptungen. Keine internen Gedankengänge.', ['Prefill', 'Cache', 'Decoding', 'Streaming', 'spekulativ', 'Durchsatz']),
 ]
 
 ATTACKS = [
@@ -82,6 +84,8 @@ def check_quality(index, answer):
     checks = {term: term.casefold() in answer.casefold() for term in QUALITY[index][2]}
     if QUALITY[index][0] in ('long_english', 'long_german'):
         checks['word_count_600_800'] = 600 <= len(answer.split()) <= 800
+    if QUALITY[index][0] in ('extended_english', 'extended_german'):
+        checks['word_count_1500_1800'] = 1500 <= len(answer.split()) <= 1800
     return checks
 
 

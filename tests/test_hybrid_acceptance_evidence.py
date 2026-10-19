@@ -87,3 +87,6 @@ def test_longform_quality_rejects_length_noncompliance_even_with_all_terms():
     terms = 'Prefill Cache Decode Streaming throughput '
     assert cases.check_quality(14, terms + 'word ' * 650)['word_count_600_800']
     assert not cases.check_quality(14, terms + 'word ' * 850)['word_count_600_800']
+    extended = 'Prefill Cache Decode Streaming speculative throughput '
+    assert cases.check_quality(20, extended + 'word ' * 1600)['word_count_1500_1800']
+    assert not cases.check_quality(20, extended + 'word ' * 1200)['word_count_1500_1800']
