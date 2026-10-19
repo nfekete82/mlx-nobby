@@ -51,6 +51,7 @@ PREFILL_ADAPTER = '''
                     and self.apc_manager is not None
                     and self.apc_mode == "exact"
                     and prefill_step_size is not None
+                    and prefill_step_size > 0
                     and pending[0].apc_semantic_hash is not None
                     and not pending[0].images
                     and not pending[0].audio
@@ -68,14 +69,16 @@ PREFILL_ADAPTER = '''
                     hybrid_full_ids = all_input_ids[0]
                     hybrid_hash = int(pending[0].apc_semantic_hash)
                     # Always keep a trailing text-only region uncached. A
-                    # chat template may change its final assistant delimiter
-                    # when the user sends a follow-up. We checkpoint *before*
-                    # these trailing tokens, exactly as normal APC does.
+                    # chat template may change its final assistant delimiter.
+                    # Store only at an existing upstream chunk boundary BEFORE
+                    # the guard. Cutting exactly at len(ids)-guard introduced
+                    # an extra forward split even when early storage was off.
                     hybrid_checkpoint = max(
                         0,
                         len(hybrid_full_ids)
                         - hybrid_apc_manager.exact_cache_guard_tokens,
                     )
+                    hybrid_checkpoint -= hybrid_checkpoint % int(prefill_step_size)
                     if hybrid_checkpoint < hybrid_apc_manager.exact_cache_min_tokens:
                         hybrid_apc_manager = None
                     else:
@@ -89,6 +92,7 @@ PREFILL_ADAPTER = '''
                             if (type(hybrid_matched_tokens) is not int
                                     or hybrid_matched_tokens < 0
                                     or hybrid_matched_tokens > hybrid_checkpoint
+                                    or hybrid_matched_tokens % int(prefill_step_size) != 0
                                     or (hybrid_matched_tokens > 0 and (
                                         not isinstance(warm_cache, list)
                                         or len(warm_cache) != len(prompt_cache)

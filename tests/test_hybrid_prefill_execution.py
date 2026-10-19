@@ -79,49 +79,49 @@ def execute(manager):
 
 def test_native_snapshot_does_not_add_forward_calls(monkeypatch):
     monkeypatch.delenv('NOBBY_HYBRID_EARLY_CHECKPOINT', raising=False)
-    baseline, _ = execute(Manager(324))
+    baseline, _ = execute(Manager(256))
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', '1')
-    manager = Manager(324)
+    manager = Manager(256)
     native, scope = execute(manager)
-    assert native == baseline == [256, 256, 150]
-    assert manager.saved == [(580, 580, 17), (986, 986, 17)]
-    assert scope['input_mx'].shape[1] == 16
+    assert native == baseline == [256, 256]
+    assert manager.saved == [(512, 512, 17), (768, 768, 17)]
+    assert scope['input_mx'].shape[1] == 234
 
 
 def test_forced_boundary_changes_forward_segmentation(monkeypatch):
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', '0')
-    manager = Manager(324)
+    manager = Manager(256)
     calls, _ = execute(manager)
-    assert calls == [256, 246, 160]
-    assert manager.saved == [(826, 826, 17), (986, 986, 17)]
+    assert calls == [256, 96, 160]
+    assert manager.saved == [(608, 608, 17), (768, 768, 17)]
 
 
 def test_lookup_failures_and_invalid_offsets_recompute_cold(monkeypatch):
     monkeypatch.delenv('NOBBY_HYBRID_EARLY_CHECKPOINT', raising=False)
-    for manager in (Manager(broken=True), Manager(990), Manager(-1), Manager('bad')):
+    for manager in (Manager(broken=True), Manager(990), Manager(324), Manager(-1), Manager('bad')):
         calls, scope = execute(manager)
-        assert calls == [256, 256, 256, 218]
+        assert calls == [256, 256, 256]
         assert scope['hybrid_matched_tokens'] == 0
-        assert manager.lookup_args == {'extra_hash': 17, 'max_prefix_tokens': 986}
-        assert manager.saved == [(986, 986, 17)]
+        assert manager.lookup_args == {'extra_hash': 17, 'max_prefix_tokens': 768}
+        assert manager.saved == [(768, 768, 17)]
 
 
 def test_invalid_alignment_cannot_introduce_forced_chunks(monkeypatch):
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
     for value in ('yes', 'invalid', '2', ''):
         monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', value)
-        manager = Manager(324)
+        manager = Manager(256)
         calls, _ = execute(manager)
-        assert calls == [256, 256, 150]
-        assert manager.saved == [(986, 986, 17)]
+        assert calls == [256, 256]
+        assert manager.saved == [(768, 768, 17)]
 
 
 def test_enabled_checkpoint_defaults_to_natural_boundaries(monkeypatch):
     monkeypatch.setenv('NOBBY_HYBRID_EARLY_CHECKPOINT', '1')
     monkeypatch.delenv('NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE', raising=False)
-    manager = Manager(324)
+    manager = Manager(256)
     calls, _ = execute(manager)
-    assert calls == [256, 256, 150]
-    assert manager.saved == [(580, 580, 17), (986, 986, 17)]
+    assert calls == [256, 256]
+    assert manager.saved == [(512, 512, 17), (768, 768, 17)]
