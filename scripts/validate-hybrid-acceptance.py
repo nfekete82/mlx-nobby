@@ -271,7 +271,15 @@ def main(argv=None):
             except Exception as exc:
                 report['restoration_errors'].append(name + ':' + type(exc).__name__)
         try:
-            p.ensure_idle()
+            deadline = time.monotonic() + 120
+            while True:
+                try:
+                    p.ensure_idle()
+                    break
+                except RuntimeError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(1)
             p.write_config(config)
             c.run_command([str(c.MLX), 'restart'])
             p.confirm_profile(p.configured_profile(config))

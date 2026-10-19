@@ -87,6 +87,7 @@ def test_native_snapshot_does_not_add_forward_calls(monkeypatch):
     assert native == baseline == [256, 256]
     assert manager.saved == [(512, 512, 17), (768, 768, 17)]
     assert scope['input_mx'].shape[1] == 234
+    assert scope['prefill_step_size'] == 233  # Upstream processes 233, then captures one.
 
 
 def test_forced_boundary_changes_forward_segmentation(monkeypatch):

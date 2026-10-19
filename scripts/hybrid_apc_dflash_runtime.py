@@ -227,6 +227,15 @@ PREFILL_ADAPTER = '''
                         "full_prompt_tokens=%d",
                         hybrid_matched_tokens, len(hybrid_full_ids),
                     )
+                    # Upstream chunks every token except the last when the
+                    # ORIGINAL prompt exceeds a step. The shortened tail may
+                    # now fit in one step, which would otherwise switch to a
+                    # multi-token speculative capture and change numerics.
+                    if (hybrid_full_ids is not None
+                            and prefill_step_size is not None
+                            and len(hybrid_full_ids) > prefill_step_size
+                            and 1 < input_mx.shape[1] <= prefill_step_size):
+                        prefill_step_size = input_mx.shape[1] - 1
                 out, input_mx = _run_chunked_speculative_prefill(
 '''
 

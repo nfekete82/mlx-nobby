@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import shutil
-import sqlite3
 import subprocess
 import sys
 import time
@@ -19,37 +19,33 @@ def _now() -> float:
     return time.time()
 
 
+@contextmanager
 def _connect():
-    automations.ROOT.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(automations.AUTOMATIONS_DB, timeout=10,
-                                 factory=automations.ClosingConnection)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA foreign_keys=ON")
-    automations._ensure_schema(connection)
-    connection.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS automation_notifications (
-            id TEXT PRIMARY KEY,
-            automation_id TEXT NOT NULL,
-            run_id TEXT NOT NULL UNIQUE,
-            level TEXT NOT NULL,
-            title TEXT NOT NULL,
-            message TEXT NOT NULL,
-            created_at REAL NOT NULL,
-            read_at REAL,
-            delivered_at REAL,
-            delivery_error TEXT,
-            FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
-            FOREIGN KEY (run_id) REFERENCES automation_runs(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_automation_notifications_created
-            ON automation_notifications(created_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_automation_notifications_unread
-            ON automation_notifications(read_at, created_at DESC);
-        """
-    )
-    return connection
+    with automations._connect() as connection:
+        automations._ensure_schema(connection)
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS automation_notifications (
+                id TEXT PRIMARY KEY,
+                automation_id TEXT NOT NULL,
+                run_id TEXT NOT NULL UNIQUE,
+                level TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                read_at REAL,
+                delivered_at REAL,
+                delivery_error TEXT,
+                FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
+                FOREIGN KEY (run_id) REFERENCES automation_runs(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_automation_notifications_created
+                ON automation_notifications(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_automation_notifications_unread
+                ON automation_notifications(read_at, created_at DESC);
+            """
+        )
+        yield connection
 
 
 def _row_to_notification(row) -> dict:
