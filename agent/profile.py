@@ -361,7 +361,7 @@ def _style_instruction_lines(fields: dict) -> list[str]:
     return lines
 
 
-def context() -> str:
+def context(*, include_clock: bool = True) -> str:
     profile = load()
     fields = profile["fields"]
 
@@ -380,7 +380,7 @@ def context() -> str:
         fields
     )
 
-    sections = [system_clock.context()]
+    sections = [system_clock.context()] if include_clock else []
 
     if personal_lines:
         sections.append(

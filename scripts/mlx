@@ -1756,6 +1756,9 @@ Thinking:
   mlx thinking status
 
 Chat-Performance (opt-in, nur Modellserver):
+  mlx benchmark chat-cache [--json-out file.json]
+  mlx benchmark chat-cache-ab --confirm-restarts [--pairs 2]
+      Drei aufeinander aufbauende Chat-Fragen und APC-Deltas messen
   mlx chat-profile status
       Laufendes Profil und Cache-Status anzeigen
   mlx chat-profile apc
@@ -1834,6 +1837,17 @@ fi
 load_config
 
 case "$1" in
+    benchmark)
+        shift
+        benchmark_name="${1:-}"
+        shift
+        benchmark_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        case "$benchmark_name" in
+            chat-cache) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache.py" "$@" ;;
+            chat-cache-ab) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache-ab.py" "$@" ;;
+            *) die "Verwendung: mlx benchmark chat-cache|chat-cache-ab [Optionen]" ;;
+        esac
+        ;;
     chat-profile)
         shift
         profile_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

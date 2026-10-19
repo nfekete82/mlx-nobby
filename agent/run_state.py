@@ -93,6 +93,31 @@ class RunContext:
 _CURRENT_RUN = ContextVar("mlx_agent_run", default=None)
 _ACTIVE_AGENT_LOCK = Lock()
 _ACTIVE_AGENT_COUNT = 0
+_CHAT_STREAM_ACTIVITY = {}
+
+
+@contextmanager
+def active_chat_stream():
+    """Track real gateway progress separately from a lease's acquisition age."""
+    token = object()
+
+    def progress():
+        with _ACTIVE_AGENT_LOCK:
+            _CHAT_STREAM_ACTIVITY[token] = time.monotonic()
+
+    progress()
+    try:
+        yield progress
+    finally:
+        with _ACTIVE_AGENT_LOCK:
+            _CHAT_STREAM_ACTIVITY.pop(token, None)
+
+
+def chat_stream_progress_is_recent(max_age_seconds):
+    now = time.monotonic()
+    with _ACTIVE_AGENT_LOCK:
+        return any(now - updated < max_age_seconds
+                   for updated in _CHAT_STREAM_ACTIVITY.values())
 
 
 def active_agent_run_count():

@@ -14,7 +14,7 @@ from typing import Callable
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from agent.run_state import active_agent_run_count
+from agent.run_state import active_agent_run_count, chat_stream_progress_is_recent
 
 
 STATE_DIR = Path(
@@ -224,6 +224,7 @@ def request_recovery(
         recovery = snapshot["recovery"]
 
         if not request.force and (active_agent_run_count() > 0 or
+                                  chat_stream_progress_is_recent(RECOVERY_MIN_CHAT_AGE_SECONDS) or
                                   active_workload not in {None, "chat"}):
             raise HTTPException(
                 status_code=409,

@@ -69,7 +69,8 @@ adaptive_prefill_step_size() {
                 return 1
                 ;;
             *)
-                if [ "$MLX_PREFILL_STEP_SIZE" -lt 128 ] || [ "$MLX_PREFILL_STEP_SIZE" -gt 4096 ]; then
+                if [ "${#MLX_PREFILL_STEP_SIZE}" -gt 4 ] ||
+                   [ "$MLX_PREFILL_STEP_SIZE" -lt 128 ] || [ "$MLX_PREFILL_STEP_SIZE" -gt 4096 ]; then
                     echo "MLX_PREFILL_STEP_SIZE muss zwischen 128 und 4096 liegen" >&2
                     return 1
                 fi
@@ -151,10 +152,19 @@ case "$CHAT_PERFORMANCE_PROFILE" in
             exit 1
         fi
         # Experimental in-RAM DFlash+APC adapter, only for MLX-VLM 0.6.17.
-        # One exact cache snapshot; no disk persistence. This is not a byte cap.
+        # Default one exact snapshot; opt-in two-entry test (still NOT a byte cap).
+        # Strict cap: extra snapshots carry potentially large hybrid/SSM states.
+        local_hybrid_slots="${NOBBY_HYBRID_EXACT_CACHE_ENTRIES:-1}"
+        case "$local_hybrid_slots" in
+            1|2) ;;
+            *)
+                echo "NOBBY_HYBRID_EXACT_CACHE_ENTRIES must be 1 or 2." >&2
+                exit 1
+                ;;
+        esac
         export APC_ENABLED=1
         export APC_NUM_BLOCKS=512
-        export APC_EXACT_CACHE_ENTRIES=1
+        export APC_EXACT_CACHE_ENTRIES="$local_hybrid_slots"
         export APC_DISK_PATH=""
         export NOBBY_EXPERIMENTAL_HYBRID=1
         ;;
@@ -264,10 +274,18 @@ if [ "$BACKEND" = "vlm" ]; then
 
     echo "Starte mlx_vlm..."
     if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; then
+        if [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
+            exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_backend_audit.py" \
+                "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" \
+                mlx_vlm server "${ARGS[@]:3}"
+        fi
         # The literal 'mlx_vlm server' arguments preserve Nobby's ps-based
         # process identification while the in-memory runtime adapter starts.
         exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_apc_dflash_runtime.py" \
             mlx_vlm server "${ARGS[@]:3}"
+    fi
+    if [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
+        exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_backend_audit.py" "${ARGS[@]}"
     fi
     exec "$PYTHON" "${ARGS[@]}"
 

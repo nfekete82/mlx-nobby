@@ -279,6 +279,90 @@ and local API integrations. Canonical technical references:
   [Routing Observatory](docs/ROUTING_OBSERVATORY.md)
 - [OpenAI-compatible API / Cline](docs/OPENAI_COMPATIBLE_API.md)
 
+## Experimental Hybrid APC + DFlash2
+
+Hybrid combines exact-prefix prompt-cache snapshots (APC) with DFlash2
+speculative decoding. It restores a complete previously computed KV/SSM state
+for matching text, then prefills the remaining tokens and uses the normal
+DFlash2 decoder. It never reconstructs recurrent state by slicing tensors or
+modifies the installed `mlx_vlm` package. The adapter requires **MLX-VLM
+0.6.17**, a compatible cached target/draft pair, and Apple Silicon with Metal.
+Version/source checks reject incompatible installations before startup.
+
+The optimization remains **experimental and opt-in**. A cache hit is not proof
+of faster or equivalent generation. Forced early checkpoint boundaries can
+change the first answer even without a cache hit. Guarded snapshots now round
+down to an existing upstream prefill boundary and retain upstream's single-token
+final speculative capture. Unaligned restored offsets fall back to cold prefill.
+Cache-hit response parity and
+repeatable end-to-end improvement still require hardware acceptance. See the
+[current integration and benchmark report](docs/HYBRID_APC_DFLASH_FINAL_REPORT.md)
+for measured results and blockers; older experiment reports are historical.
+
+Final bounded M5 Max measurements (three rotated trials per task, complete
+answers) show median first content of 429 vs 1,334 ms for hybrid vs cache-OFF
+on arithmetic, and complete Python answers of 1,879 vs 2,856 ms. Hybrid and
+native both reused 768 tokens; the 18 paired full answers and actual backend
+inputs matched. These shorter tasks do not establish an additional early
+checkpoint benefit or long-output speedup. **Production/default activation
+remains HOLD**: repeated long workloads exceeded the swap-growth criterion
+and no uninterrupted two-hour run completed. Word-limit failures reproduced
+without APC/DFlash are documented as a separate model weakness. Integration
+of the guarded, default-inactive experimental code is assessed separately;
+it does not change these failed or incomplete activation results.
+Final bounded security coverage passed 40 real RAG attacks and two actual
+conflicting-source cases; it is not a universal injection-resistance claim.
+Historical capped 580/324-token results are archived in the report's evidence
+history and are not current measurements.
+
+```sh
+# Explicit opt-in, only while runtimes are idle:
+./scripts/mlx chat-profile hybrid
+./scripts/mlx chat-profile status
+curl -fsS http://127.0.0.1:8000/v1/cache/stats
+```
+
+The repository's standard chat profile is `default`; integration does not
+select `hybrid`, change existing user settings or restart services. To roll back
+an explicit opt-in, restore the prior profile (for the standard path:
+`./scripts/mlx chat-profile default`) while idle. Restore any explicitly changed
+LaunchAgent values, including originally unset values; verify profile/health.
+
+Hybrid defaults to one exact snapshot and no early checkpoint. The optional
+`NOBBY_HYBRID_EXACT_CACHE_ENTRIES=2` permits an early and a final snapshot;
+`NOBBY_HYBRID_EARLY_CHECKPOINT=1` now selects natural prefill boundaries by
+default. Explicit `NOBBY_HYBRID_EARLY_CHECKPOINT_ALIGN_NATIVE=0` is a diagnostic
+forced-split control with demonstrated different KV/SSM state and logits.
+Set runtime flags in the LaunchAgent environment and restart the chat server; a shell variable
+alone does not reconfigure an already running server. Profile switching is
+persistent and should be performed only while the runtimes are idle.
+
+Snapshots consume additional unified memory. A conservative **1024 MiB**
+tensor-payload admission budget includes retained exact state plus the pending
+snapshot clone. `NOBBY_HYBRID_CACHE_MAX_MIB` accepts 64–8192 MiB. Storage is
+skipped on excess, unknown layouts or clone errors; generation continues.
+This excludes the active inference cache and is not a process-RSS or Metal allocator cap. In particular,
+upstream `resident_bytes` reports the block pool and omits exact snapshots.
+Two entries are therefore not an assurance of low RAM usage.
+
+For reproducible comparisons and restoration checks, use the
+[benchmark runbook](docs/HYBRID_APC_DFLASH_BENCHMARK.md). Client request hashes
+prove equality before backend enrichment only. The full-response acceptance
+runner additionally audits actual backend token IDs and sampling parameters;
+a separate diagnostic compares real KV/SSM tensors and prefill logits.
+Raw answer capture is opt-in
+and owner-only. RAG late placement and prompt diagnostics remain separate,
+default-off experiments. Retrieved text remains untrusted reference data.
+`NOBBY_CLOCK_CONTEXT_STABLE=1` explicitly enables experimental clock omission;
+the default retains the authoritative current clock. Both RAG placement paths
+JSON-frame source strings and escape angle brackets to prevent raw template role delimiters.
+This is a trust-boundary measure, without a universal prompt-injection guarantee.
+
+Rollback with `./scripts/mlx chat-profile dflash` (or the previously configured
+profile), restore any experiment variables you explicitly changed, restart,
+and inspect `chat-profile status`. No package reinstall is needed. Never
+promote the experimental checkpoint mode while answer parity is unresolved.
+
 ## MLX manager
 
 The maintained manager source is `scripts/mlx`; the installer creates

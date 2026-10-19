@@ -51,6 +51,7 @@ PREFILL_ADAPTER = '''
                     and self.apc_manager is not None
                     and self.apc_mode == "exact"
                     and prefill_step_size is not None
+                    and prefill_step_size > 0
                     and pending[0].apc_semantic_hash is not None
                     and not pending[0].images
                     and not pending[0].audio
@@ -68,23 +69,35 @@ PREFILL_ADAPTER = '''
                     hybrid_full_ids = all_input_ids[0]
                     hybrid_hash = int(pending[0].apc_semantic_hash)
                     # Always keep a trailing text-only region uncached. A
-                    # chat template may change its final assistant delimiter
-                    # when the user sends a follow-up. We checkpoint *before*
-                    # these trailing tokens, exactly as normal APC does.
+                    # chat template may change its final assistant delimiter.
+                    # Store only at an existing upstream chunk boundary BEFORE
+                    # the guard. Cutting exactly at len(ids)-guard introduced
+                    # an extra forward split even when early storage was off.
                     hybrid_checkpoint = max(
                         0,
                         len(hybrid_full_ids)
                         - hybrid_apc_manager.exact_cache_guard_tokens,
                     )
+                    hybrid_checkpoint -= hybrid_checkpoint % int(prefill_step_size)
                     if hybrid_checkpoint < hybrid_apc_manager.exact_cache_min_tokens:
                         hybrid_apc_manager = None
                     else:
                         try:
                             warm_cache, hybrid_matched_tokens = (
                                 hybrid_apc_manager.lookup_exact_cache(
-                                    hybrid_full_ids, extra_hash=hybrid_hash
+                                    hybrid_full_ids, extra_hash=hybrid_hash,
+                                    max_prefix_tokens=hybrid_checkpoint,
                                 )
                             )
+                            if (type(hybrid_matched_tokens) is not int
+                                    or hybrid_matched_tokens < 0
+                                    or hybrid_matched_tokens > hybrid_checkpoint
+                                    or hybrid_matched_tokens % int(prefill_step_size) != 0
+                                    or (hybrid_matched_tokens > 0 and (
+                                        not isinstance(warm_cache, list)
+                                        or len(warm_cache) != len(prompt_cache)
+                                    ))):
+                                raise ValueError("Invalid hybrid exact-cache snapshot")
                         except Exception:
                             logger.warning(
                                 "Hybrid APC lookup failed; using cold DFlash2 prefill",
@@ -92,7 +105,16 @@ PREFILL_ADAPTER = '''
                             )
                             warm_cache = None
                             hybrid_matched_tokens = 0
-                        if warm_cache is not None and 0 < hybrid_matched_tokens < len(hybrid_full_ids):
+                        if nobby_hybrid_diag is not None:
+                            nobby_hybrid_diag.classify(
+                                hybrid_full_ids, hybrid_hash,
+                                matched_tokens=hybrid_matched_tokens,
+                                minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                checkpoint_tokens=hybrid_checkpoint,
+                            )
+                        if (warm_cache is not None
+                                and 0 < hybrid_matched_tokens <= hybrid_checkpoint):
                             # Restore a deep-copied exact snapshot. Never
                             # reconstruct recurrent SSM state from KV blocks.
                             prompt_cache = warm_cache
@@ -108,6 +130,12 @@ PREFILL_ADAPTER = '''
                         else:
                             hybrid_matched_tokens = 0
 
+                    hybrid_early_boundary = nobby_checkpoint_policy.early_checkpoint(
+                        hybrid_checkpoint, hybrid_matched_tokens,
+                        hybrid_apc_manager.exact_cache_min_tokens,
+                        prefill_step_size=prefill_step_size,
+                    ) if hybrid_apc_manager is not None else None
+
                     # Commit a custom exact-cache checkpoint before the
                     # tail that changes between chat turns. This must happen
                     # BEFORE speculative final-token capture and decoding.
@@ -118,6 +146,9 @@ PREFILL_ADAPTER = '''
                                 remaining_to_checkpoint,
                                 max(1, int(prefill_step_size)),
                             )
+                            hybrid_consumed = hybrid_checkpoint - remaining_to_checkpoint
+                            if hybrid_early_boundary is not None and hybrid_consumed < hybrid_early_boundary:
+                                step = min(step, hybrid_early_boundary - hybrid_consumed)
                             hybrid_seq_keys = _sequence_aligned_prefill_keys(
                                 prompt_kwargs, batch_size=1,
                                 sequence_length=inputs_embeds_mx.shape[1],
@@ -140,12 +171,54 @@ PREFILL_ADAPTER = '''
                                 prompt_kwargs, hybrid_seq_keys, step
                             )
                             remaining_to_checkpoint -= step
+                            hybrid_consumed += step
+                            if hybrid_early_boundary is not None and hybrid_consumed == hybrid_early_boundary:
+                                if not nobby_hybrid_early_store:
+                                    # Causal control: keep the exact same prefill split,
+                                    # but do NOT save a snapshot at this point.
+                                    logger.info("Hybrid early checkpoint split-only: tokens=%d", hybrid_early_boundary)
+                                else:
+                                    try:
+                                        hybrid_early_saved = nobby_hybrid_cache_budget.store(
+                                            hybrid_apc_manager,
+                                            hybrid_full_ids[:hybrid_early_boundary],
+                                            prompt_cache, extra_hash=hybrid_hash,
+                                        )
+                                        if hybrid_early_saved:
+                                            logger.info("Hybrid early checkpoint stored: tokens=%d", hybrid_early_boundary)
+                                        else:
+                                            logger.warning("Hybrid early checkpoint was not stored: tokens=%d", hybrid_early_boundary)
+                                        if nobby_hybrid_diag is not None:
+                                            logger.info(
+                                                "HYBRID_APC_LRU phase=early capacity=%s entries=%s",
+                                                getattr(hybrid_apc_manager, "_exact_cache_max", None),
+                                                len(getattr(hybrid_apc_manager, "_exact_cache", ())),
+                                            )
+                                    except Exception:
+                                        logger.warning("Hybrid early checkpoint store failed", exc_info=True)
+                                hybrid_early_boundary = None
                             mx.clear_cache()
                         try:
-                            hybrid_apc_manager.store_exact_cache(
+                            hybrid_final_saved = nobby_hybrid_cache_budget.store(
+                                hybrid_apc_manager,
                                 hybrid_full_ids[:hybrid_checkpoint],
                                 prompt_cache, extra_hash=hybrid_hash,
                             )
+                            if nobby_hybrid_diag is not None:
+                                nobby_hybrid_diag.classify(
+                                    hybrid_full_ids, hybrid_hash,
+                                    matched_tokens=hybrid_matched_tokens,
+                                    minimum_tokens=hybrid_apc_manager.exact_cache_min_tokens,
+                                    guard_tokens=hybrid_apc_manager.exact_cache_guard_tokens,
+                                    checkpoint_tokens=hybrid_checkpoint,
+                                    stored=hybrid_final_saved,
+                                )
+                                logger.info(
+                                    "HYBRID_APC_LRU phase=final saved=%s capacity=%s entries=%s",
+                                    hybrid_final_saved,
+                                    getattr(hybrid_apc_manager, "_exact_cache_max", None),
+                                    len(getattr(hybrid_apc_manager, "_exact_cache", ())),
+                                )
                         except Exception:
                             logger.warning(
                                 "Hybrid APC checkpoint unavailable",
@@ -156,6 +229,15 @@ PREFILL_ADAPTER = '''
                         "full_prompt_tokens=%d",
                         hybrid_matched_tokens, len(hybrid_full_ids),
                     )
+                    # Upstream chunks every token except the last when the
+                    # ORIGINAL prompt exceeds a step. The shortened tail may
+                    # now fit in one step, which would otherwise switch to a
+                    # multi-token speculative capture and change numerics.
+                    if (hybrid_full_ids is not None
+                            and prefill_step_size is not None
+                            and len(hybrid_full_ids) > prefill_step_size
+                            and 1 < input_mx.shape[1] <= prefill_step_size):
+                        prefill_step_size = input_mx.shape[1] - 1
                 out, input_mx = _run_chunked_speculative_prefill(
 '''
 
@@ -169,6 +251,7 @@ def transform_speculative_method(source: str) -> str:
         ANCHOR_BEFORE_PREFILL: 1,
         ANCHOR_STATS: 1,
         ANCHOR_STATS_ARGS: 1,
+        "prompt_tokens / prompt_elapsed": 1,
         "def _run_speculative(self):": 1,
         "run_speculative_server_rounds(": 1,
     }
@@ -178,19 +261,12 @@ def transform_speculative_method(source: str) -> str:
                 "MLX-VLM speculative code differs from verified 0.6.17 layout; "
                 "hybrid adapter not installed"
             )
-    # Keep performance metric numerators truthful for warm prefix reuse.
+    # Preserve upstream's full-prompt TPS numerator: the metrics envelope
+    # reconstructs elapsed time as full_prompt_tokens / prompt_tps. Using only
+    # computed tokens here inflates reported prefill time on warm requests.
     code = code.replace(
         ANCHOR_BEFORE_PREFILL,
         PREFILL_ADAPTER[1:],  # strip leading newline
-        1,
-    )
-    code = code.replace(
-        '''                    prompt_tokens = prompt_tokens_map[uid]
-                    prompt_tps_map[uid] = (
-                        prompt_tokens / prompt_elapsed''',
-        '''                    prompt_tokens = prompt_tokens_map[uid]
-                    prompt_tps_map[uid] = (
-                        max(0, prompt_tokens - hybrid_matched_tokens) / prompt_elapsed''',
         1,
     )
     code = code.replace(
@@ -205,7 +281,7 @@ def transform_speculative_method(source: str) -> str:
         '''                        prompt_tokens,
                         hybrid_matched_tokens,
                         prompt_elapsed,
-                        float(prompt_tps_map[uid] or 0.0),''',
+                        max(0, prompt_tokens - hybrid_matched_tokens) / prompt_elapsed if prompt_elapsed > 0 else 0.0,''',
         1,
     )
     standalone = textwrap.dedent(code)
@@ -226,6 +302,14 @@ def install() -> None:
     module = importlib.import_module("mlx_vlm.server.generation")
     original = module.ResponseGenerator._run_speculative
     replacement = transform_speculative_method(inspect.getsource(original))
+    nobby_hybrid_diag = importlib.import_module("hybrid_cache_diagnostics") if os.getenv("NOBBY_HYBRID_CACHE_DIAG") == "1" else None
+    vars(module)["nobby_hybrid_diag"] = nobby_hybrid_diag
+    budget = importlib.import_module("hybrid_cache_budget")
+    budget.budget_bytes()  # reject invalid configuration before patching
+    vars(module)["nobby_hybrid_cache_budget"] = budget
+    nobby_checkpoint_policy = importlib.import_module("hybrid_checkpoint_policy")
+    vars(module)["nobby_checkpoint_policy"] = nobby_checkpoint_policy
+    vars(module)["nobby_hybrid_early_store"] = os.getenv("NOBBY_HYBRID_EARLY_CHECKPOINT_STORE", "1") != "0"
     namespace: dict = {}
     exec(compile(replacement, "<nobby-hybrid-apc-dflash>", "exec"), vars(module), namespace)
     patched = namespace.get("_run_speculative")

@@ -9,6 +9,7 @@ from local_security import LocalRequestGuard, read_upload
 import json
 import io
 import hashlib
+import logging
 import uuid
 import urllib.error
 import urllib.parse
@@ -975,6 +976,7 @@ def mlx_chat_stream(request: ChatRequest):
             observability.text_characters(request.messages)
         )
 
+    from backend.prompt_stage_diagnostics import compare as prompt_stage_compare
     system_prompt = request.system_prompt.strip()
     context_sources["system"]["characters"] += len(system_prompt)
 
@@ -987,10 +989,16 @@ def mlx_chat_stream(request: ChatRequest):
             },
         )
 
+    from backend.clock_context_routing import include_live_clock
+    clock_on = include_live_clock(request.messages, request.system_prompt)
+    if os.getenv("MLX_PROMPT_STAGE_DIAG") == "1":
+        logging.getLogger("nobby.prompt_stages").warning(
+            "PROMPT_CLOCK_DECISION include_clock=%s", clock_on
+        )
     try:
         profile_result = agent_json_request(
             "GET",
-            "/api/profile/context",
+            "/api/profile/context?include_clock=" + ("1" if clock_on else "0"),
             timeout=5,
         )
         profile_context = str(
@@ -999,6 +1007,7 @@ def mlx_chat_stream(request: ChatRequest):
     except Exception:
         profile_context = ""
 
+    prompt_stage_compare("base_system", messages)
     context_sources["profile"]["characters"] += len(profile_context)
 
     if profile_context:
@@ -1024,6 +1033,12 @@ def mlx_chat_stream(request: ChatRequest):
                     "content": profile_context,
                 },
             )
+
+    from backend import rag_prefix_placement
+    if rag_prefix_placement.enabled():
+        rag_prefix_placement.append_stable_policy(messages)
+
+    prompt_stage_compare("with_profile", messages, extra_chars=len(profile_context))
 
     temperature = max(
         0.0,
@@ -1406,9 +1421,11 @@ def mlx_chat_stream(request: ChatRequest):
                     rag_sources.append(source_entry)
 
             if context_parts:
+                if not rag_prefix_placement.enabled():
+                    rag_prefix_placement.append_stable_policy(messages)
                 rag_context = (
                     "LOKALE WISSENSBASIS – ABGERUFENER KONTEXT\n\n"
-                    + "\n\n".join(context_parts)
+                    + rag_prefix_placement.framed_source_data(context_parts)
                     + "\n\n"
                     "Regeln:\n"
                     "- Nutze diesen Kontext als bevorzugte Quelle für die "
@@ -1429,28 +1446,40 @@ def mlx_chat_stream(request: ChatRequest):
                     context_parts
                 )
 
-                if (
-                    messages
-                    and isinstance(messages[0], dict)
-                    and messages[0].get("role") == "system"
-                ):
-                    existing_system = str(
-                        messages[0].get("content") or ""
-                    ).strip()
+                # This is experimental. On opt-in, keep high-priority
+                # policy stable and put untrusted snippets at the current
+                # user turn's end; fall back if no plain-text user turn.
+                late_placed = (
+                    rag_prefix_placement.enabled()
+                    and rag_prefix_placement.append_source_data_to_latest_user(
+                        messages, context_parts
+                    )
+                )
+                if not late_placed:
+                    if (
+                        messages
+                        and isinstance(messages[0], dict)
+                        and messages[0].get("role") == "system"
+                    ):
+                        existing_system = str(
+                            messages[0].get("content") or ""
+                        ).strip()
 
-                    messages[0]["content"] = (
-                        existing_system
-                        + ("\n\n" if existing_system else "")
-                        + rag_context
-                    )
-                else:
-                    messages.insert(
-                        0,
-                        {
-                            "role": "system",
-                            "content": rag_context,
-                        },
-                    )
+                        messages[0]["content"] = (
+                            existing_system
+                            + ("\n\n" if existing_system else "")
+                            + rag_context
+                        )
+                    else:
+                        messages.insert(
+                            0,
+                            {
+                                "role": "system",
+                                "content": rag_context,
+                            },
+                        )
+
+    prompt_stage_compare("with_rag", messages)
 
     # v2 Automatic public research. Only a short, non-private current question
     # goes to the search provider; no prior turns, workspace or file contents.
@@ -1482,44 +1511,15 @@ def mlx_chat_stream(request: ChatRequest):
                 else:
                     messages.insert(0, {"role": "system", "content": live_context})
 
+    prompt_stage_compare("with_live_context", messages)
+
     if "rag_sources" not in locals():
         rag_sources = []
 
-    if rag_sources:
-        RAG_SOURCE_DISPLAY_MIN_SIMILARITY = 0.82
-        rag_sources = [
-            source
-            for source in rag_sources
-            if not isinstance(source.get("similarity"), (int, float))
-            or source["similarity"] >= RAG_SOURCE_DISPLAY_MIN_SIMILARITY
-        ]
+    # Every source admitted into the model context must remain attributable.
+    # A second, stricter display threshold hid sources the answer actually used.
 
-        scored_sources = [
-            source
-            for source in rag_sources
-            if isinstance(source.get("similarity"), (int, float))
-        ]
-
-        if scored_sources:
-            best_similarity = max(
-                source["similarity"]
-                for source in scored_sources
-            )
-
-            rag_sources = [
-                source
-                for source in rag_sources
-                if (
-                    isinstance(
-                        source.get("similarity"),
-                        (int, float),
-                    )
-                    and source["similarity"]
-                    >= best_similarity - 0.05
-                )
-            ][:3]
-        else:
-            rag_sources = rag_sources[:1]
+    prompt_stage_compare("final", messages)
 
     payload = {
         "messages": messages,

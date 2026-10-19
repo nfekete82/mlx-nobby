@@ -9666,10 +9666,10 @@ def user_profile_put(request: UserProfileRequest):
 
 
 @app.get("/api/profile/context")
-def user_profile_context():
+def user_profile_context(include_clock: bool = True):
     return {
         "enabled": profile.load().get("enabled", True),
-        "context": profile.context(),
+        "context": profile.context(include_clock=include_clock),
     }
 
 def _semantic_agent_route_allowed(
@@ -11963,7 +11963,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
             )
 
         try:
-            with runtime_coordinator.chat_runtime(cancel_event, exclusive_models=True), MODEL_RUNTIME_LOCK:
+            with run_state.active_chat_stream() as mark_progress, runtime_coordinator.chat_runtime(cancel_event, exclusive_models=True), MODEL_RUNTIME_LOCK:
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
@@ -12097,6 +12097,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                             )
 
                             if reasoning:
+                                mark_progress()
                                 call_metrics.mark_first_token()
                                 reasoning_characters += len(reasoning)
                                 event = json.dumps(
@@ -12111,6 +12112,7 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                                 )
 
                             if content:
+                                mark_progress()
                                 call_metrics.mark_first_token()
                                 output_characters += len(content)
                                 event = json.dumps(

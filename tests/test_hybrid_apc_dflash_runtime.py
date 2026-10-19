@@ -66,7 +66,7 @@ def test_compiles_in_memory_and_keeps_decoding_path():
     assert patched.lstrip().startswith("def _run_speculative(self):")
     assert "run_speculative_server_rounds(" in patched
     assert "hybrid_apc_manager.lookup_exact_cache(" in patched
-    assert "hybrid_apc_manager.store_exact_cache(" in patched
+    assert "nobby_hybrid_cache_budget.store(" in patched
     assert "remaining_to_checkpoint" in patched
     assert "B == 1" in patched
     assert 'draft_kind == "dflash"' in patched
@@ -83,6 +83,7 @@ def test_refuses_nonmatching_or_already_patched_sources():
         "    def _run_speculative(self):\n        return 3\n",
         SPECULATIVE_FIXTURE.replace("cached_tokens=0", "cached_tokens=%d"),
         SPECULATIVE_FIXTURE.replace("prompt_started = time.perf_counter()", "prompt_started=time.perf_counter()"),
+        SPECULATIVE_FIXTURE.replace("prompt_tokens / prompt_elapsed", "prompt_tokens / (prompt_elapsed + 1)"),
     ):
         with pytest.raises(RuntimeError, match="differs"):
             hybrid.transform_speculative_method(source)
@@ -207,3 +208,26 @@ def test_mlx_memory_finds_vlm_hybrid_and_legacy_server_processes():
         probe = subprocess.run(["grep", "-E", expression], input=command,
                                capture_output=True, text=True)
         assert probe.returncode == 1, (expression, command, probe.stderr)
+
+
+@pytest.mark.parametrize('reused', [0, 768])
+def test_prefill_metrics_preserve_elapsed_time_and_log_only_computed_tokens(reused):
+    import ast
+    tree = ast.parse(hybrid.transform_speculative_method(SPECULATIVE_FIXTURE))
+    assignment = next(node for node in ast.walk(tree)
+                      if isinstance(node, ast.Assign)
+                      and isinstance(node.targets[0], ast.Subscript)
+                      and isinstance(node.targets[0].value, ast.Name)
+                      and node.targets[0].value.id == 'prompt_tps_map')
+    log = next(node for node in ast.walk(tree)
+               if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == 'info'
+               and isinstance(node.args[0], ast.Constant)
+               and str(node.args[0].value).startswith('Prefill completed:'))
+    scope = {'prompt_tokens': 1000, 'prompt_elapsed': 0.25,
+             'hybrid_matched_tokens': reused}
+    tps = eval(compile(ast.Expression(assignment.value), '<metrics-test>', 'eval'), {}, scope)
+    # MLX-VLM 0.6.17's envelope reconstructs elapsed from the full token count.
+    assert 1000 / tps == 0.25
+    computed_rate = eval(compile(ast.Expression(log.args[-1]), '<rate-test>', 'eval'), {}, scope)
+    assert computed_rate == (1000 - reused) / 0.25
