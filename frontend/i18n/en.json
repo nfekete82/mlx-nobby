@@ -921,6 +921,7 @@
   "knowledge.searching": "Searching…",
   "knowledge.no_matches": "No matching chunks found.",
   "knowledge.search_failed": "Search failed:",
+  "runtime_ui.memory_header_tooltip": "MLX process RSS / total unified memory (approximate, not exact GPU usage)",
   "runtime_ui.system_unavailable": "System data unavailable",
   "runtime_ui.info_unavailable": "Runtime information unavailable: {message}",
   "runtime_ui.close_info": "Close system information",

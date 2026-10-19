@@ -414,6 +414,34 @@ button {
     position: relative;
 }
 
+.model-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+}
+
+.model-heading .model-title {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.model-memory {
+    flex: none;
+    padding: 3px 7px;
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 6px;
+    background: rgba(148, 163, 184, .06);
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.model-memory[hidden] {
+    display: none;
+}
+
 .model-title {
     font-weight: 650;
     font-size: 14px;
@@ -1932,6 +1960,9 @@ button {
     .model-title {
         max-width: 31vw;
     }
+
+    .model-heading { gap: 6px; }
+    .model-memory { font-size: 10px; padding: 2px 4px; }
 
     .model-info { flex: 1 1 auto; }
     .top-actions { flex: 0 0 auto; }
