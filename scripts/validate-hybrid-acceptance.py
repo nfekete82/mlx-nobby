@@ -139,20 +139,32 @@ def main(argv=None):
         write_json(args.output / 'report.json', report)
 
     def safety():
-        p.ensure_idle()
-        memory = p.memory_snapshot()
-        if memory.get('pressure') != 'normal' or (memory.get('headroom_gb') or 0) < 6:
-            raise RuntimeError('Memory safety precondition failed')
+        started = time.monotonic()
+        while True:
+            p.ensure_idle()
+            memory = p.memory_snapshot()
+            if memory.get('pressure') == 'normal' and (memory.get('headroom_gb') or 0) >= 6:
+                break
+            report.setdefault('admission_waits', []).append({'time': time.time(), 'memory': memory})
+            save()
+            if time.monotonic() - started >= 120:
+                raise RuntimeError('Memory safety precondition failed after 120s admission wait')
+            time.sleep(5)
         if kernel_swap() - baseline_swap > 1:
             raise RuntimeError('Swap growth above 1 GiB; stopping')
         if any(hashlib.sha256(path.read_bytes()).hexdigest() != frozen[str(path)] for path in source_paths):
             raise RuntimeError('Measured source changed during execution')
+        return (time.monotonic() - started) * 1000
 
     def sample():
         while not stop.is_set():
             try:
                 memory = c.memory_snapshot()
-                memory.update(time=time.time(), kernel_swap_gb=kernel_swap(), server_pid=server_pid())
+                try:
+                    pid = server_pid()
+                except RuntimeError:
+                    pid = None  # Expected between controlled arms/restarts.
+                memory.update(time=time.time(), kernel_swap_gb=kernel_swap(), server_pid=pid)
                 report['samples'].append(memory)
             except Exception as exc:
                 report['errors'].append('sampler:' + type(exc).__name__)
@@ -179,7 +191,7 @@ def main(argv=None):
         save()
 
     def request(mode, kind, index, messages, max_tokens=4096):
-        safety()
+        admission_wait_ms = safety()
         before = p.cache_snapshot()
         offset = audit.stat().st_size if audit.exists() else 0
         trace = f'hybrid-accept-{time.time_ns()}'
@@ -196,6 +208,7 @@ def main(argv=None):
         if len(inputs) != 1 or len(ends) != 1 or inputs[0]['request_id'] != ends[0]['request_id']:
             raise RuntimeError('Missing/ambiguous backend audit correlation')
         row.update(mode=mode, kind=kind, index=index, max_tokens=max_tokens,
+                   admission_wait_ms=admission_wait_ms,
                    backend=inputs[0], finish=ends[0], answer_sha256=digest(text),
                    answer_characters=len(text), cache_before=before, cache_after=after)
         row['prefill_states'] = [event for event in events if event['kind'] == 'prefill_state']
