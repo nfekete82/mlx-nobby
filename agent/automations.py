@@ -26,12 +26,26 @@ def _now() -> float:
     return time.time()
 
 
+class ClosingConnection(sqlite3.Connection):
+    """Preserve SQLite transaction semantics and deterministically close FDs."""
+
+    def __exit__(self, *exc):
+        try:
+            return super().__exit__(*exc)
+        finally:
+            self.close()
+
+
 def _connect():
     ROOT.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(AUTOMATIONS_DB, timeout=10)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA foreign_keys=ON")
+    connection = sqlite3.connect(AUTOMATIONS_DB, timeout=10, factory=ClosingConnection)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA foreign_keys=ON")
+    except BaseException:
+        connection.close()
+        raise
     return connection
 
 

@@ -21,7 +21,8 @@ def _now() -> float:
 
 def _connect():
     automations.ROOT.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(automations.AUTOMATIONS_DB, timeout=10)
+    connection = sqlite3.connect(automations.AUTOMATIONS_DB, timeout=10,
+                                 factory=automations.ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA foreign_keys=ON")
