@@ -19,6 +19,7 @@ import time
 import unicodedata
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler, ProxyHandler
+from urllib.error import HTTPError, URLError
 
 
 SUITE = "mlx-nobby-chat-quality-v1"
@@ -27,6 +28,43 @@ DEFAULT_AGENT = "http://127.0.0.1:8010"
 JSON_INSTRUCTION = '\nAntworte ausschließlich als gültiges JSON-Objekt {"answer":"..."} mit genau diesem einen String-Feld. Keine Erklärung.'
 MAX_SSE_BYTES = 512_000
 MAX_ANSWER_CHARS = 8_192
+
+# Map only our own control-plane errors. Never echo upstream exception details:
+# they can contain private model output or request content.
+SAFE_RUNTIME_ERRORS = {
+    "Chat runtime is not online": "CHAT_OFFLINE",
+    "Running model PID could not be verified": "MODEL_PID_UNAVAILABLE",
+    "Model identity, PID, or runtime settings changed during the benchmark": "MODEL_IDENTITY_CHANGED",
+    "Agent observatory unavailable": "OBSERVATORY_UNAVAILABLE",
+    "Runtime activity is unknown": "RUNTIME_ACTIVITY_UNKNOWN",
+    "Runtime not confirmed idle: chat": "CHAT_BUSY",
+    "Runtime not confirmed idle: image": "IMAGE_BUSY",
+    "Runtime not confirmed idle: video": "VIDEO_BUSY",
+    "Agent stream error": "AGENT_STREAM_ERROR",
+    "Malformed Agent stream": "MALFORMED_STREAM",
+    "No complete visible Agent answer": "INCOMPLETE_STREAM",
+    "Model response too long for benchmark": "ANSWER_TOO_LONG",
+    "Agent SSE exceeds size limit": "STREAM_TOO_LARGE",
+    "Oversized Agent response": "AGENT_RESPONSE_TOO_LARGE",
+    "Invalid Agent JSON": "INVALID_AGENT_JSON",
+}
+
+
+def safe_error_code(exc: BaseException) -> str:
+    """Categorize without exposing model output, URLs or arbitrary errors."""
+    if isinstance(exc, KeyboardInterrupt):
+        return "INTERRUPTED"
+    if isinstance(exc, HTTPError) and isinstance(exc.code, int) and 100 <= exc.code <= 599:
+        return f"AGENT_HTTP_{exc.code}"
+    if isinstance(exc, TimeoutError):
+        return "AGENT_TIMEOUT"
+    if isinstance(exc, URLError):
+        return "AGENT_CONNECTION_ERROR"
+    if isinstance(exc, RuntimeError):
+        return SAFE_RUNTIME_ERRORS.get(str(exc), "OTHER_RUNTIME_ERROR")
+    if isinstance(exc, OSError):
+        return "AGENT_CONNECTION_OR_IO_ERROR"
+    return "OTHER_BENCHMARK_ERROR"
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -280,10 +318,16 @@ def write_private(path: Path, data: dict) -> None:
 
 
 def run(origin: str, output: Path, review_file: Path | None, max_tokens: int = 256,
-        timeout: int = 180, smoke: bool = False) -> dict:
+        timeout: int = 180, smoke: bool = False, case_id: str | None = None) -> dict:
     cases, fingerprint = suite()
+    if smoke and case_id:
+        raise ValueError("--case-id cannot be combined with --smoke")
+    if case_id is not None and case_id not in {c["id"] for c in cases}:
+        raise ValueError("Unknown case ID")
     fresh_paths([output] + ([review_file] if review_file is not None else []))
-    if smoke:
+    if case_id:
+        chosen = [case for case in cases if case["id"] == case_id]
+    elif smoke:
         seen, chosen = set(), []
         for c in cases:
             if c["category"] not in seen:
@@ -296,11 +340,18 @@ def run(origin: str, output: Path, review_file: Path | None, max_tokens: int = 2
     records = []
     reviews = []
     error_type = None
+    error_code = None
+    error_phase = None
+    phase = "case_start"
     try:
         for index, case in enumerate(chosen, 1):
+            phase = "case_status:" + case["id"]
             verify_status(get_json(origin, "/api/status"), before)
+            phase = "case_idle:" + case["id"]
             check_idle(get_json(origin, "/api/performance/observatory?limit=100"))
+            phase = "case_stream:" + case["id"]
             timing, answer = agent_stream(origin, active_messages(case), max_tokens, timeout)
+            phase = "case_grade:" + case["id"]
             row = {"id": case["id"], "category": case["category"], "kind": case["kind"], **timing}
             if case["kind"] == "exact":
                 value = exact_answer(answer)
@@ -318,17 +369,22 @@ def run(origin: str, output: Path, review_file: Path | None, max_tokens: int = 2
             records.append(row)
             print(f"[{index}/{len(chosen)}] {case['id']}: {row['grade']} | "
                   f"TTFT {timing['first_content_ms']} ms", flush=True)
+        phase = "final_status"
         verify_status(get_json(origin, "/api/status"), before)
+        phase = "final_idle"
         check_idle(get_json(origin, "/api/performance/observatory?limit=100"))
     except (OSError, ValueError, RuntimeError, KeyboardInterrupt) as exc:
         error_type = type(exc).__name__
-        print("Benchmark aborted: " + error_type + " (details withheld)", file=sys.stderr)
-    complete = error_type is None and not smoke and len(records) == len(cases)
+        error_code = safe_error_code(exc)
+        error_phase = phase
+        print(f"Benchmark aborted: {error_code} at {error_phase} (details withheld)", file=sys.stderr)
+    complete = error_type is None and not smoke and case_id is None and len(records) == len(cases)
     report = {
         "schema": 1, "suite": SUITE, "suite_sha256": fingerprint,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "complete" if complete else "partial", "smoke": smoke,
-        "error_type": error_type, "runtime": before,
+        "case_id": case_id, "error_type": error_type, "error_code": error_code,
+        "error_phase": error_phase, "runtime": before,
         "parameters": {"temperature": 0, "max_tokens": max_tokens, "auto_route": False,
                        "transport": "agent_protected_stream"},
         "summary": summary(records, cases), "results": records,
@@ -414,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--review-file", type=Path, help="Opt-in 0600 manual-review raw answers")
     p.add_argument("--smoke", action="store_true", help="One case per category; not comparable")
+    p.add_argument("--case-id", metavar="CASE_ID", help="Run one suite case for debugging (not comparable)")
     p.add_argument("--max-tokens", type=int, choices=range(64, 513), metavar="{64..512}", default=256)
     p.add_argument("--timeout", type=int, choices=range(15, 601), metavar="{15..600}", default=180)
     p = sub.add_parser("compare", help="Compare full reports offline")
@@ -423,8 +480,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "run":
-            report = run(args.agent_url, args.output, args.review_file, args.max_tokens, args.timeout, args.smoke)
+            report = run(args.agent_url, args.output, args.review_file, args.max_tokens, args.timeout, args.smoke, args.case_id)
             print(json.dumps({"status": report["status"], "summary": report["summary"],
+                              "error_code": report["error_code"], "error_phase": report["error_phase"],
                               "output": str(args.output)}, ensure_ascii=False, indent=2))
             return 0 if report["status"] == "complete" or (args.smoke and report["error_type"] is None) else 1
         if args.baseline.stat().st_size > 2_000_000 or args.candidate.stat().st_size > 2_000_000:
