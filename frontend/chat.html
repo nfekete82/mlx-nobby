@@ -243,10 +243,10 @@
                     aria-haspopup="true"
                     aria-controls="modelPopover"
                     aria-expanded="false"
-                    aria-label="Chatmodell auswählen"
-                    title="Chatmodell auswählen"
+                    aria-label="Chatmodell auswählen" data-i18n-aria-label="runtime_ui.chat_model_choose"
+                    title="Chatmodell auswählen" data-i18n-title="runtime_ui.chat_model_choose"
                 >
-                    MLX wird geladen…
+                    <span data-i18n="runtime_ui.runtime_loading">MLX wird geladen…</span>
                 </button>
 
                 <span
@@ -285,8 +285,8 @@
                 class="model-popover"
                 hidden
             >
-                <div class="model-popover-heading">Chatmodell auswählen</div>
-                <div class="model-popover-hint">Wechselt das Chatmodell. Andere Modellrollen bleiben erhalten.</div>
+                <div class="model-popover-heading" data-i18n="runtime_ui.chat_model_choose">Chatmodell auswählen</div>
+                <div class="model-popover-hint" data-i18n="runtime_ui.chat_model_scope">Wechselt das Chatmodell. Andere Modellrollen bleiben erhalten.</div>
                 <div
                     id="modelSwitchStatus"
                     class="model-switch-status"
