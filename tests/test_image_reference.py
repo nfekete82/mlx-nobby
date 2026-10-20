@@ -27,6 +27,10 @@ import image_providers
     ('Keep the same face but change the setting.', 'same_identity'),
     ('Erstelle ein Bild der Frau aus dem Bild.', 'same_identity'),
     ('Make a photo similar to this person.', 'resemblance'),
+    ('Behalte dieselbe Person und das Gesicht möglichst ähnlich. Neue Pose: Ganzkörperaufnahme.', 'same_identity'),
+    ('Erstelle die gleiche Person, Gesicht möglichst ähnlich, jetzt stehend.', 'same_identity'),
+    ('Create the same person, preserve facial identity, with a different pose.', 'same_identity'),
+    ('Create a photo of this person that looks similar to the source.', 'resemblance'),
 ])
 def test_reference_intent_even_without_source(prompt, mode):
     for has_image in (True, False):
@@ -34,6 +38,20 @@ def test_reference_intent_even_without_source(prompt, mode):
         assert decision.intent == 'image_reference_generate'
         assert decision.target == 'image_edit'
         assert decision.reference_mode == mode
+
+
+def test_reference_identity_pose_instruction_never_downgrades_to_similarity():
+    from backend.image_reference import reference_mode, reference_instruction
+
+    prompt = (
+        'Behalte dieselbe Person und das Gesicht möglichst ähnlich. '
+        'Erstelle eine neue Ganzkörperaufnahme in einer anderen Pose.'
+    )
+    assert reference_mode(prompt) == 'same_identity'
+    instruction = reference_instruction('same_identity', prompt)
+    assert 'new composition' in instruction
+    assert 'selfie crop' in instruction
+    assert 'Preserve the person' in instruction
 
 
 @pytest.mark.parametrize('prompt,intent', [
