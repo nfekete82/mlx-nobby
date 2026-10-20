@@ -5552,6 +5552,16 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if media.handles_turn:
         return media.chat_routing()["intent"]
 
+    # Clear first-person advice outranks accidental market-price or search
+    # keywords ("our website", "prices", "statistics", etc.). Respect
+    # attached files, active coding workspaces and explicit coding requests.
+    if not file_context and not _looks_like_coding_action(prompt, conversation_context):
+        from agent.personal_advice_routing import is_personal_advice_without_external_request
+        if (is_personal_advice_without_external_request(prompt)
+                and _trusted_workspace_chat_action(
+                    prompt, file_context, conversation_context) is None):
+            return "normal_chat"
+
     # A user asking to rate a person, photograph or outfit wants a chat/vision
     # response, not a stock quote. Keep the request out of the finance tool
     # even if it contains multiple words after "bewerte".
@@ -5579,11 +5589,6 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     # A personal account asking for perspective is not a public research
     # request just because it mentions a website, prices or statistics.
     # Keep explicit search/news/dated-fact queries on the existing routes.
-    if not file_context and candidate in (None, "web_search"):
-        from agent.personal_advice_routing import is_personal_advice_without_external_request
-        if is_personal_advice_without_external_request(prompt):
-            return "normal_chat"
-
     if candidate == "orchestrator":
         return candidate
 
