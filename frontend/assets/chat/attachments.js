@@ -172,12 +172,51 @@ function attachmentT(key, fallback = '', variables = {}) {
         automatic.textContent = attachmentT('attachments.edit_auto', 'Automatic');
         select.append(automatic);
         select.value = 'auto';
+        const strengthLabel = document.createElement('label');
+        strengthLabel.className = 'image-edit-strength-field';
+        strengthLabel.textContent = attachmentT('attachments.img2img_strength', 'Veränderungsstärke');
+        const strengthValue = document.createElement('output');
+        strengthValue.className = 'image-edit-strength-value';
+        const strength = document.createElement('input');
+        strength.type = 'range';
+        strength.min = '0.15';
+        strength.max = '0.85';
+        strength.step = '0.05';
+        strength.className = 'image-edit-strength-control';
+        strength.value = String(editOptions.model === 'juggernaut-xl'
+            ? (editOptions.strength ?? 0.45) : 0.45);
+        const updateStrength = () => {
+            const useSdxl = select.value === 'juggernaut-xl';
+            strengthLabel.hidden = !useSdxl;
+            if (!useSdxl) {
+                delete editOptions.strength;
+            } else {
+                strength.value = String(editOptions.strength ?? 0.45);
+                editOptions.strength = Number(strength.value);
+                strengthValue.value = Number(strength.value).toFixed(2);
+                strengthValue.textContent = strengthValue.value;
+            }
+        };
+        strength.addEventListener('input', () => {
+            if (select.value !== 'juggernaut-xl') return;
+            editOptions.strength = Number(strength.value);
+            strengthValue.value = Number(strength.value).toFixed(2);
+            strengthValue.textContent = strengthValue.value;
+        });
         select.addEventListener('change', () => {
             if (select.value === 'auto') delete editOptions.model;
             else editOptions.model = select.value;
+            if (select.value === 'juggernaut-xl') {
+                // SDXL is whole-image img2img, not Qwen masked editing.
+                delete editOptions.mask_path;
+                delete editOptions.auto_mask;
+            }
+            updateStrength();
         });
         modelLabel.append(select);
         primary.append(modelLabel);
+        strengthLabel.append(strength, strengthValue);
+        primary.append(strengthLabel);
 
         availableEditModels().then(models => {
             if (!panel.isConnected) return;
@@ -197,6 +236,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                 select.append(unknown);
             }
             select.value = editOptions.model || 'auto';
+            updateStrength();
         }).catch(() => {
             // Keep automatic routing available even if model discovery is offline.
             if (editOptions.model) {
@@ -206,7 +246,10 @@ function attachmentT(key, fallback = '', variables = {}) {
                 select.append(previous);
                 select.value = editOptions.model;
             }
+            updateStrength();
         });
+
+        updateStrength();
 
         const advanced = document.createElement('details');
         advanced.className = 'image-edit-advanced';
@@ -276,6 +319,11 @@ function attachmentT(key, fallback = '', variables = {}) {
         });
         maskLabel.append(mask, maskStatus);
         fields.append(maskLabel);
+        const updateMaskVisibility = () => {
+            maskLabel.hidden = select.value === 'juggernaut-xl';
+        };
+        select.addEventListener('change', updateMaskVisibility);
+        updateMaskVisibility();
         advanced.append(fields);
         primary.append(advanced);
         panel.append(primary);
