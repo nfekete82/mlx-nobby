@@ -33,6 +33,31 @@ def test_adaptive_off_and_legacy_without_key_stay_off():
     assert "adaptive_response_length" not in legacy["settings"]
 
 
+
+def test_automatic_response_mode_persists_for_existing_and_new_chats():
+    enabled = chat_with_setting(False)
+    enabled["settings"]["adaptive_response_auto"] = True
+    normalized = agent_app.normalize_chat(enabled)
+    assert normalized["settings"]["adaptive_response_auto"] is True
+
+    disabled = chat_with_setting(True)
+    disabled["settings"]["adaptive_response_auto"] = False
+    normalized = agent_app.normalize_chat(disabled)
+    assert normalized["settings"]["adaptive_response_auto"] is False
+
+
+def test_automatic_response_mode_is_optional_for_legacy_chat_records():
+    legacy = agent_app.normalize_chat(chat_with_setting(False))
+    assert "adaptive_response_auto" not in legacy["settings"]
+
+
+def test_automatic_response_mode_rejects_non_booleans():
+    for invalid in ("true", 1, None, [], {}, "off"):
+        chat = chat_with_setting(False)
+        chat["settings"]["adaptive_response_auto"] = invalid
+        assert agent_app.normalize_chat(chat) is None
+
+
 def test_adaptive_rejects_non_boolean_values():
     for invalid in ("true", 1, None, [], {}):
         assert agent_app.normalize_chat(chat_with_setting(invalid)) is None
