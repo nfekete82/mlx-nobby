@@ -5540,6 +5540,31 @@ def _trusted_workspace_chat_action(
     return None
 
 
+def _personal_reflection_chat(prompt):
+    """Personal workplace/relationship reflections do not need public search.
+
+    Mentioning a website, offer, price or statistics as *background* is
+    not itself a request to look those things up.
+    """
+    value = str(prompt or "").strip().casefold()
+    if not re.search(r"\b(?:mein(?:e|em|en|er|es)?|unser(?:e|em|en|er|es)?)\s+"
+                     r"(?:chef|chefin|kolleg(?:e|in|en)|vorgesetzte[nr]?|"
+                     r"mutter|vater|partner(?:in)?|freund(?:in)?|familie)\b", value):
+        return False
+    if not re.search(r"\b(?:sagt|meint|behauptet|findet|ärgert|streit|"
+                     r"feedback|statistik(?:en)?|absprung|besucher|"
+                     r"fühle|fuehle|verstehe|recht|unfair|idiot|"
+                     r"warum|was hältst|wie siehst)\b", value):
+        return False
+    # Do not intercept explicit fresh/external-information requests.
+    return not bool(re.search(
+        r"\b(?:suche\s+(?:im\s+)?(?:web|internet)|websuche|"
+        r"recherchier\w*|google|aktuelle\s+(?:preise|news|angebote)|"
+        r"nachrichten\s+(?:heute|aktuell)|quelle[n]?\s+(?:dafür|dazu)|"
+        r"finde\s+(?:mir\s+)?(?:links|quellen))\b", value
+    ))
+
+
 def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     """Return only unambiguous direct actions that may bypass the LLM router.
 
@@ -5551,6 +5576,9 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
                                 image_count=_file_context_image_count(file_context))
     if media.handles_turn:
         return media.chat_routing()["intent"]
+
+    if not file_context and _personal_reflection_chat(prompt):
+        return "normal_chat"
 
     # A user asking to rate a person, photograph or outfit wants a chat/vision
     # response, not a stock quote. Keep the request out of the finance tool
