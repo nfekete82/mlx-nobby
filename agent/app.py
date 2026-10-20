@@ -2124,6 +2124,7 @@ def status():
         "port": port,
         "pid": pid,
         "memory_mb": process_memory_mb(pid),
+        "stream_model_pin_supported": True,
     }
 
 
