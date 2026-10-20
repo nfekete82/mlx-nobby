@@ -145,7 +145,10 @@ def test_interactive_local_scores(monkeypatch, tmp_path):
     monkeypatch.setattr(nsfw.client, "agent_stream", mock_answer)
     report = nsfw.run(nsfw.client.DEFAULT_AGENT, tmp_path / "report.json",
                       tmp_path / "reviews.json", "Qwen3.8")
-    monkeypatch.setattr(nsfw.sys.stdin, "isatty", lambda: True)
+    class FakeStdin:
+        def isatty(self):
+            return True
+    monkeypatch.setattr(nsfw.sys, "stdin", FakeStdin())
     answers = iter(["4"] * (len(report["results"]) * len(nsfw.AXES)))
     monkeypatch.setattr("builtins.input", lambda _: next(answers))
     score_file = tmp_path / "scores.json"
