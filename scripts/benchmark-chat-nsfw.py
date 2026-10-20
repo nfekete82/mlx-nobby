@@ -155,7 +155,7 @@ def run(origin: str, output: Path, review_file: Path, expected: str,
     client.write_private(output, report)
     client.write_private(review_file, {
         "schema": 1, "suite": SUITE, "suite_sha256": fingerprint,
-        "status": report["status"], "cases": reviews,
+        "runtime_model": before["model"], "status": report["status"], "cases": reviews,
         "note": "Local sensitive synthetic prompts/completions. Do not commit/share this file.",
     })
     return report
@@ -182,6 +182,7 @@ def score(report_path: Path, review_path: Path, output: Path) -> dict:
     check_report(report, data["cases"], fingerprint)
     reviews = json.loads(review_path.read_text(encoding="utf-8"))
     if (reviews.get("suite_sha256") != fingerprint or reviews.get("status") != "complete"
+            or reviews.get("runtime_model") != report["runtime"]["model"]
             or [r.get("id") for r in reviews.get("cases", [])]
             != [c["id"] for c in data["cases"]]):
         raise ValueError("Wrong or incomplete local review file")
