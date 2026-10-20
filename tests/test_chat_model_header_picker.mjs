@@ -12,7 +12,7 @@ test('chat model title is an accessible, visibly selectable header control', () 
     assert.match(button[0], /aria-haspopup="true"/);
     assert.match(button[0], /aria-controls="modelPopover"/);
     assert.match(button[0], /aria-expanded="false"/);
-    assert.match(html, /class="model-popover-heading">Chatmodell auswählen/);
+    assert.match(html, /class="model-popover-heading" data-i18n="runtime_ui.chat_model_choose">Chatmodell auswählen/);
     assert.match(css, /\.model-title::after\s*\{/);
     assert.match(css, /\.model-popover-hint\s*\{/);
 });
