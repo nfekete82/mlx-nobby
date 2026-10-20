@@ -51,6 +51,7 @@ grounding/longform tasks require human review. The benchmark runs only when
 the local Agent reports an idle runtime and writes private 0600 artifacts.
 Results cannot automatically approve Hybrid, APC, DFlash2, or a model upgrade.
 See [Chat Quality v1](docs/CHAT_QUALITY_V1.md) and the [baseline closeout](docs/CHAT_QUALITY_V1_CLOSEOUT.md).
+- [NSFW-/Erwachsenen-Rollenspiel-Benchmark v1](docs/CHAT_NSFW_BENCHMARK_V1.md) – optionaler, lokaler A/B-Test mit echten Modellidentitäten und manueller Bewertung; keine Antworttexte im Hauptbericht.
 
 ## Shorts backend
 
