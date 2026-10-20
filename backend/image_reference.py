@@ -48,6 +48,6 @@ def reference_instruction(mode, prompt):
             " If a new body pose or full-body view is requested, create a new "
             "composition with the specified pose, arms and camera framing; "
             "do not reproduce the original selfie crop or seated posture "
-            "unless requested. Exact facial identity is not guaranteed."
+            "unless requested."
         )
     return instruction + ' Follow the requested scene and clothing; do not copy the original setting unless requested. User instruction: ' + prompt
