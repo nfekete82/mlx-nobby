@@ -1096,5 +1096,7 @@
   "library17.oldest": "Oldest first",
   "library17.largest": "Largest first",
   "library17.smallest": "Smallest first",
-  "library.more_actions": "More actions"
+  "library.more_actions": "More actions",
+  "attachments.img2img_strength": "Transformation strength (Juggernaut img2img)",
+  "attachments.img2img_strength_hint": "0.15 = close to source · 0.85 = substantial change"
 }
