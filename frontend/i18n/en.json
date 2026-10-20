@@ -468,6 +468,8 @@
     "error": "Error:",
     "no_model": "No model",
     "models_loading": "Loading models…",
+    "chat_model_choose": "Choose chat model",
+    "chat_model_scope": "Changes the chat model. Other model assignments stay unchanged.",
     "switch_after_response": "Model switch available after the current response",
     "switch_failed": "Model switch failed",
     "new_messages": "New messages",
