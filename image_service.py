@@ -19,6 +19,7 @@ from image_job_timings import ImageJobTimings
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
 from image_region_edit import prepare_region, composite_region
+from image_img2img import prepare_sdxl_img2img_source, DEFAULT_STRENGTH
 import runtime_coordinator
 import subprocess
 from image_providers import (
@@ -863,6 +864,15 @@ def _edit_result_inner(
     if request.region_edit and (model.get('provider') != 'mflux'
                                 or model.get('model_family') != 'qwen-image21-edit'):
         raise HTTPException(422, 'Bereichsbearbeitung benötigt ein MFLUX Qwen 2.1 Edit-Modell')
+    if model.get("provider") == "sdxl" and (
+        len(sources) != 1 or request.mask_path or request.auto_mask
+        or request.use_kv_cache is not None or request.use_step_cache is not None
+        or request.step_cache_threshold is not None or request.enhance_prompt is not None
+        or request.verify is not None or request.region_edit
+    ):
+        raise HTTPException(
+            422, "Juggernaut img2img: genau ein Bild, keine Maske oder Qwen-Edit-Optionen"
+        )
     prepared_sources = []
     region_crop = None
     region_mask = None
@@ -875,7 +885,12 @@ def _edit_result_inner(
         temporary_sources.extend((region_source, region_mask))
         prepared_sources.append(region_source)
     for original in ([] if request.region_edit else sources):
-        if model.get('model_family') == 'qwen-image21-edit' or len(sources) > 1:
+        if model.get("provider") == "sdxl":
+            OUTPUT.mkdir(parents=True, exist_ok=True)
+            working = OUTPUT / (".edit-source-" + secrets.token_hex(12) + ".png")
+            temporary_sources.append(working)
+            prepare_sdxl_img2img_source(original, working)
+        elif model.get('model_family') == 'qwen-image21-edit' or len(sources) > 1:
             OUTPUT.mkdir(parents=True, exist_ok=True)
             working = OUTPUT / ('.edit-source-' + secrets.token_hex(12) + '.png')
             temporary_sources.append(working)
@@ -896,6 +911,12 @@ def _edit_result_inner(
         'semantic_operation', 'reference_mode', 'reference_artifact_id', 'original_prompt',
         'width', 'height', 'auto_size', 'precision_edit', 'region_edit', 'region_feather_px'}))
     params["source_path"] = str(edit_source)
+    if model.get("provider") == "sdxl":
+        # A bounded, user-editable denoising strength; unrelated Qwen edit
+        # defaults and the original source file are never changed.
+        params["strength"] = request.strength if request.strength is not None else DEFAULT_STRENGTH
+        with Image.open(edit_source) as sdxl_source:
+            params["width"], params["height"] = sdxl_source.size
     if request.source_paths:
         params['source_paths'] = [str(value) for value in prepared_sources]
     if (
@@ -1030,6 +1051,7 @@ def _edit_result_inner(
         "guidance": params["guidance"],
         "seed": params["seed"],
         "steps": params["steps"],
+        "strength": params.get("strength") if model.get("provider") == "sdxl" else None,
         "quality": request.quality,
         'semantic_operation': request.semantic_operation,
         'reference_used': is_reference,
