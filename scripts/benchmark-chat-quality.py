@@ -236,9 +236,16 @@ def parse_stream(chunks, started: float, clock=time.monotonic) -> tuple[dict, st
     }, "".join(answer)
 
 
-def agent_stream(origin: str, messages: list[dict], max_tokens: int, timeout: int) -> tuple[dict, str]:
+def agent_stream(origin: str, messages: list[dict], max_tokens: int, timeout: int,
+                 *, pin_active_model: str | None = None,
+                 pin_active_pid: int | None = None) -> tuple[dict, str]:
     payload = {"messages": messages, "temperature": 0, "max_tokens": max_tokens,
                "stream": True, "auto_route": False}
+    if pin_active_model is not None:
+        if not isinstance(pin_active_model, str) or not pin_active_model or type(pin_active_pid) is not int or pin_active_pid <= 0:
+            raise ValueError("Invalid pinned model identity")
+        payload["pin_active_model"] = pin_active_model
+        payload["pin_active_pid"] = pin_active_pid
     req = Request(origin + "/api/runtime/chat/stream",
                   data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                   headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
