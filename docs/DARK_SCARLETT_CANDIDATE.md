@@ -89,6 +89,44 @@ Hybrid-/DFlash-Profil wird eingeschaltet, kein anderes Modell ersetzt oder
 automatisch umkonfiguriert. Falls das Modell nicht fehlerfrei lädt, zurück zum
 vorherigen Modell und Logs prüfen; die bestehende Runtime nicht blind upgraden.
 
+## Falls der erste Start mit einer Hugging-Face-ID fehlgeschlagen ist
+
+Frühere Versionen von `scripts/mlx-server-start` erkannten nur lokale
+Verzeichnisse als Vision-Language-Modelle. Eine bereits gecachte Hugging-Face-
+Modellkennung wie `jancirnodziewiaty/Dark-Scarlett-27B-v2.0-oQ4e-mtp`
+wurde deshalb fälschlich an `mlx_lm.server` statt `mlx_vlm`
+übergeben. Die neue Backend-Erkennung liest den bereits heruntergeladenen
+`config.json`-Datensatz aus `~/.cache/huggingface/hub/models--.../snapshots`
+über `refs/main`; sie lädt nichts herunter und überschreibt keine
+Konfiguration. Diese Korrektur garantiert jedoch noch keinen
+fehlerfreien Modellstart mit oQ4e.
+
+Nach `git pull --ff-only origin main`, wenn der Chatserver noch offline ist:
+
+```bash
+# Keine aktiven Chats oder Medienjobs während eines Modellserver-Neustarts
+./scripts/mlx restart
+./scripts/mlx status
+tail -n 70 ~/.config/mlx-web/server-error.log
+tail -n 30 ~/.config/mlx-web/server.log
+```
+
+Im Startlog sollte nun `Backend: vlm` und `Starte mlx_vlm...`
+stehen. **Nicht** blind die MLX-Libraries aktualisieren, noch einmal
+17 GB herunterladen oder die Speicher-Grenzen erhöhen. Bei weiterhin
+fehlender API die beiden Logauszüge prüfen. Zum sofortigen Rückweg das
+ursprüngliche Qwen3.8-Modell bewusst auswählen:
+
+```bash
+./scripts/mlx model "$HOME/Models/Qwen3.8-27B-Abliterated-MLX-4bit"
+./scripts/mlx status
+```
+
+`Swap`-Belegung zeigt den momentan belegten Auslagerungsspeicher, nicht
+automatisch einen aktuellen Auslastungsalarm. Für die RAM-Sicherheit zählen
+zusätzlich Speicherdruck und freie Reserven. Ein Offline-Status nach 90 s
+kann von Laufzeitfehlern oder einem noch ladenden/wartenden Modell stammen.
+
 ## 4. Testkriterien statt allgemeinem Wissens-Leaderboard
 
 Für den Vergleich genügen einige *selbst erstellte, volljährige, fiktive*

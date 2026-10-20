@@ -29,7 +29,7 @@ class MlxServerSpeculativeTests(unittest.TestCase):
             "import json, os, sys\n"
             "if len(sys.argv) > 1 and sys.argv[1].endswith('runtime-model-guard.py'):\n"
             "    raise SystemExit(0)\n"
-            "if len(sys.argv) > 1 and sys.argv[1] == '-':\n"
+            "if len(sys.argv) > 1 and sys.argv[1].endswith('runtime-model-backend.py'):\n"
             "    print(os.environ.get('FAKE_BACKEND', 'vlm'))\n"
             "else:\n"
             "    print('FAKE_ARGS=' + json.dumps(sys.argv[1:]))\n",

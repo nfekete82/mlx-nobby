@@ -18,47 +18,9 @@ fi
 source "$CONFIG"
 
 detect_backend() {
-    local model="$1"
-
-    # Detect local models automatically through config.json
-    if [ -d "$model" ] && [ -f "$model/config.json" ]; then
-
-        "$PYTHON" - "$model/config.json" <<'PY'
-import json
-import sys
-
-path = sys.argv[1]
-
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
-except Exception:
-    print("lm")
-    raise SystemExit
-
-architectures = cfg.get("architectures") or []
-model_type = str(cfg.get("model_type", "")).lower()
-vision_config = cfg.get("vision_config")
-
-text = " ".join(map(str, architectures)).lower()
-
-is_vlm = (
-    vision_config is not None
-    or "vision" in text
-    or "conditionalgeneration" in text
-    or "_vl" in text
-    or "-vl" in text
-    or "_vl" in model_type
-    or "-vl" in model_type
-)
-
-print("vlm" if is_vlm else "lm")
-PY
-        return
-    fi
-
-    # Existing Hugging Face models remain language models.
-    echo "lm"
+    # Use the cached config.json for Hugging Face IDs as well as local folders.
+    # qwen3_5 VLM checkpoints must start with mlx_vlm, not mlx_lm.
+    "$PYTHON" "$PROJECT_DIR/scripts/runtime-model-backend.py" "$1"
 }
 
 adaptive_prefill_step_size() {
@@ -120,7 +82,7 @@ model_reference_available() {
     return 1
 }
 
-BACKEND="$(detect_backend "$MODEL")"
+BACKEND="$(detect_backend "$MODEL")" || exit 1
 PREFILL_STEP_SIZE="$(adaptive_prefill_step_size)" || exit 1
 
 # Opt-in chat profiles. "default" preserves the original runtime configuration
