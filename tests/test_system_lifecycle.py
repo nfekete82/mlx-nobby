@@ -183,7 +183,10 @@ class LifecycleScriptContractTests(unittest.TestCase):
         self.assertIn('"$INSTALL_LAUNCHD_BIN"', source)
         self.assertIn("verify_web_api", source)
         self.assertIn('"$WEB_URL/api/mlx/status"', source)
-        self.assertLess(source.index('"$MLX_BIN" agent restart'), source.index('"$MLX_BIN" restart-all'))
+        self.assertLess(
+            source.index('"$MLX_BIN" agent restart'),
+            source.index('"$MLX_BIN" restart-all', source.index('===== RESTART LOCAL SERVICES =====')),
+        )
 
         self.assertIn(
             "mlx-web",
