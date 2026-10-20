@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix the one-click System Reboot lifecycle: retain untracked local benchmark evidence while fast-forwarding otherwise clean tracked main; protect conflicting files and never force-update Git.
+- Recreate the Docker frontend at the exact Git commit, install updated LaunchAgent definitions, explicitly reload the host Agent, then restart MLX/model services. Keep the detached control helper active while the Agent reconnects and resumes lifecycle progress.
+- Verify expected ports, Agent readiness, the web API's exact product version and Git commit, and an online MLX chat proxy before declaring the reboot complete and refreshing the browser; report actionable failures and attempt service recovery.
+- Clarify the separate resource-saving menu action as "KI-Dienste stoppen" / "Stop AI services". It leaves the Agent and web UI online.
+
 - Fix personal workplace/relationship reflections with commercial context being routed to web search; restore normal local chat after irrelevant empty search while retaining factual/weather/news no-source safeguards.
 
 - Make the existing top-left chat-model picker discoverable and route selection through a chat-only, guarded model switch; persist `chat` role without rewriting agent/coding/vision roles. Model switching remains global to the shared chat runtime; optional Roleplay preset works as before.
