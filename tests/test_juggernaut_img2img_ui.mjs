@@ -16,6 +16,10 @@ test('img2img is an explicit edit model, not a global text-to-image setting', ()
   assert.match(attachments, /strength\.min = '0\.15'/);
   assert.match(attachments, /strength\.max = '0\.85'/);
   assert.match(attachments, /editOptions\.strength = Number\(strength\.value\)/);
+  assert.match(attachments, /'steps', 'attachments\.img2img_steps'/);
+  assert.match(attachments, /'guidance', 'attachments\.img2img_cfg'/);
+  assert.match(attachments, /'seed', 'attachments\.img2img_seed'/);
+  assert.match(attachments, /sdxlSampling\.hidden = select\.value !== 'juggernaut-xl'/);
 });
 
 test('frontend cache key changes and backend routes through bounded source', () => {
