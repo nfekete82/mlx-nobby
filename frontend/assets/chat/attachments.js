@@ -16,6 +16,64 @@ function attachmentT(key, fallback = '', variables = {}) {
     let editOptions = {};
     let imageMode = 'auto';
     let pendingMaskUpload = Promise.resolve();
+    let manualEditModel = false;
+    let manualEditFields = new Set();
+    let personPresetPending = false;
+    let appliedPersonPreset = null;
+
+    function personReferencePreset(prompt) {
+        const text = String(prompt || '');
+        // Specific identity promises outrank "möglichst ähnlich" qualifiers.
+        const exact = /\b(?:dieselbe[nr]?|derselben|demselben|denselben|gleiche[nmrs]?|gleichen|same|identical)\s+(?:person|frau|mann|gesicht|woman|man|face)\b|\b(?:behalte|bewahre|erhalte|keep|preserve|retain)\b.{0,80}\b(?:person|gesicht|aussehen|identität|face|identity|appearance)\b/iu;
+        const similarity = /\b(?:ähnelt|aehnelt|ähnlich|aehnlich|resembling|resembles|resemble|similar\s+to|looks\s+like)\b/iu;
+        if (exact.test(text)) {
+            return {kind: 'same_identity', strength: 0.75, steps: 40, guidance: 5.0};
+        }
+        if (similarity.test(text) && /\b(?:person|frau|mann|gesicht|woman|man|face)\b/iu.test(text)) {
+            return {kind: 'resemblance', strength: 0.55, steps: 36, guidance: 5.5};
+        }
+        return null;
+    }
+
+    function applyPersonReferencePreset(models) {
+        if (imageMode !== 'edit' ||
+            attachments.filter(file => file.kind === 'image').length !== 1) return false;
+
+        const preset = personReferencePreset(document.getElementById('input')?.value);
+        // Respect explicit user choices and keep Qwen as the fallback if
+        // Juggernaut is disabled, missing or not ready.
+        const available = models.some(model =>
+            model.id === 'juggernaut-xl' && model.enabled && model.available
+        );
+        if (!preset || !available || (manualEditModel && editOptions.model !== 'juggernaut-xl') ||
+            (editOptions.model && editOptions.model !== 'juggernaut-xl')) return false;
+
+        let changed = false;
+        if (!manualEditModel && editOptions.model !== 'juggernaut-xl') {
+            editOptions.model = 'juggernaut-xl';
+            changed = true;
+        }
+        for (const key of ['strength', 'steps', 'guidance']) {
+            if (!manualEditFields.has(key) && editOptions[key] !== preset[key]) {
+                editOptions[key] = preset[key];
+                changed = true;
+            }
+        }
+        appliedPersonPreset = preset.kind;
+        // Seed intentionally remains random; masks are not compatible with SDXL.
+        return changed;
+    }
+
+    function offerPersonReferencePreset() {
+        if (personPresetPending || imageMode !== 'edit' ||
+            attachments.filter(file => file.kind === 'image').length !== 1) return;
+        if (!personReferencePreset(document.getElementById('input')?.value)) return;
+        personPresetPending = true;
+        availableEditModels().then(models => {
+            personPresetPending = false;
+            if (applyPersonReferencePreset(models)) renderAttachments();
+        }).catch(() => { personPresetPending = false; });
+    }
 
     function uid() {
         return crypto.randomUUID();
@@ -148,6 +206,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         modeSelect.addEventListener('change', () => {
             imageMode = modeSelect.value;
             renderAttachments();
+            offerPersonReferencePreset();
         });
         modeLabel.append(modeText, modeSelect);
         bar.append(modeLabel);
@@ -200,10 +259,12 @@ function attachmentT(key, fallback = '', variables = {}) {
         strength.addEventListener('input', () => {
             if (select.value !== 'juggernaut-xl') return;
             editOptions.strength = Number(strength.value);
+            manualEditFields.add('strength');
             strengthValue.value = Number(strength.value).toFixed(2);
             strengthValue.textContent = strengthValue.value;
         });
         select.addEventListener('change', () => {
+            manualEditModel = true;
             if (select.value === 'auto') delete editOptions.model;
             else editOptions.model = select.value;
             if (select.value === 'juggernaut-xl') {
@@ -234,6 +295,10 @@ function attachmentT(key, fallback = '', variables = {}) {
                 unknown.textContent = editOptions.model;
                 unknown.disabled = true;
                 select.append(unknown);
+            }
+            if (applyPersonReferencePreset(models)) {
+                renderAttachments();
+                return;
             }
             select.value = editOptions.model || 'auto';
             updateStrength();
@@ -297,6 +362,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             field.placeholder = attachmentT('attachments.img2img_default', 'Standard');
             field.value = editOptions[key] == null ? '' : String(editOptions[key]);
             field.addEventListener('change', () => {
+                manualEditFields.add(key);
                 const raw = field.value.trim();
                 if (!raw) {
                     delete editOptions[key];
@@ -384,6 +450,9 @@ function attachmentT(key, fallback = '', variables = {}) {
         if (!attachments.some(file => file.kind === 'image')) {
             imageMode = 'auto';
             editOptions = {};
+            manualEditModel = false;
+            manualEditFields = new Set();
+            appliedPersonPreset = null;
         }
         bar.innerHTML = '';
 
@@ -968,6 +1037,9 @@ function attachmentT(key, fallback = '', variables = {}) {
         attachments = [];
         editOptions = {};
         imageMode = 'auto';
+        manualEditModel = false;
+        manualEditFields = new Set();
+        appliedPersonPreset = null;
         renderAttachments();
     }
 
@@ -1134,6 +1206,11 @@ function attachmentT(key, fallback = '', variables = {}) {
             document.getElementById(
                 'composer'
             );
+
+        // Defaults may become eligible after the user types the pose prompt.
+        document.getElementById('input')?.addEventListener(
+            'input', offerPersonReferencePreset
+        );
 
         composer.addEventListener(
             'dragover',
