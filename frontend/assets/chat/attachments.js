@@ -172,12 +172,51 @@ function attachmentT(key, fallback = '', variables = {}) {
         automatic.textContent = attachmentT('attachments.edit_auto', 'Automatic');
         select.append(automatic);
         select.value = 'auto';
+        const strengthLabel = document.createElement('label');
+        strengthLabel.className = 'image-edit-strength-field';
+        strengthLabel.textContent = attachmentT('attachments.img2img_strength', 'Veränderungsstärke');
+        const strengthValue = document.createElement('output');
+        strengthValue.className = 'image-edit-strength-value';
+        const strength = document.createElement('input');
+        strength.type = 'range';
+        strength.min = '0.15';
+        strength.max = '0.85';
+        strength.step = '0.05';
+        strength.className = 'image-edit-strength-control';
+        strength.value = String(editOptions.model === 'juggernaut-xl'
+            ? (editOptions.strength ?? 0.45) : 0.45);
+        const updateStrength = () => {
+            const useSdxl = select.value === 'juggernaut-xl';
+            strengthLabel.hidden = !useSdxl;
+            if (!useSdxl) {
+                delete editOptions.strength;
+            } else {
+                strength.value = String(editOptions.strength ?? 0.45);
+                editOptions.strength = Number(strength.value);
+                strengthValue.value = Number(strength.value).toFixed(2);
+                strengthValue.textContent = strengthValue.value;
+            }
+        };
+        strength.addEventListener('input', () => {
+            if (select.value !== 'juggernaut-xl') return;
+            editOptions.strength = Number(strength.value);
+            strengthValue.value = Number(strength.value).toFixed(2);
+            strengthValue.textContent = strengthValue.value;
+        });
         select.addEventListener('change', () => {
             if (select.value === 'auto') delete editOptions.model;
             else editOptions.model = select.value;
+            if (select.value === 'juggernaut-xl') {
+                // SDXL is whole-image img2img, not Qwen masked editing.
+                delete editOptions.mask_path;
+                delete editOptions.auto_mask;
+            }
+            updateStrength();
         });
         modelLabel.append(select);
         primary.append(modelLabel);
+        strengthLabel.append(strength, strengthValue);
+        primary.append(strengthLabel);
 
         availableEditModels().then(models => {
             if (!panel.isConnected) return;
@@ -197,6 +236,8 @@ function attachmentT(key, fallback = '', variables = {}) {
                 select.append(unknown);
             }
             select.value = editOptions.model || 'auto';
+            updateStrength();
+            updateSamplingVisibility();
         }).catch(() => {
             // Keep automatic routing available even if model discovery is offline.
             if (editOptions.model) {
@@ -206,7 +247,11 @@ function attachmentT(key, fallback = '', variables = {}) {
                 select.append(previous);
                 select.value = editOptions.model;
             }
+            updateStrength();
+            updateSamplingVisibility();
         });
+
+        updateStrength();
 
         const advanced = document.createElement('details');
         advanced.className = 'image-edit-advanced';
@@ -232,6 +277,52 @@ function attachmentT(key, fallback = '', variables = {}) {
         });
         negativeLabel.append(negative);
         fields.append(negativeLabel);
+
+        const sdxlSampling = document.createElement('div');
+        sdxlSampling.className = 'image-edit-sdxl-sampling';
+        const sdxlNumeric = [
+            ['steps', 'attachments.img2img_steps', 'Steps', 1, 50, 1],
+            ['guidance', 'attachments.img2img_cfg', 'CFG / Guidance', 0, 10, 0.1],
+            ['seed', 'attachments.img2img_seed', 'Seed (optional)', 0, 4294967295, 1]
+        ];
+        for (const [key, translationKey, fallback, min, max, step] of sdxlNumeric) {
+            const label = document.createElement('label');
+            label.textContent = attachmentT(translationKey, fallback);
+            const field = document.createElement('input');
+            field.type = 'number';
+            field.className = 'image-edit-control';
+            field.min = String(min);
+            field.max = String(max);
+            field.step = String(step);
+            field.placeholder = attachmentT('attachments.img2img_default', 'Standard');
+            field.value = editOptions[key] == null ? '' : String(editOptions[key]);
+            field.addEventListener('change', () => {
+                const raw = field.value.trim();
+                if (!raw) {
+                    delete editOptions[key];
+                } else if (field.checkValidity() && Number.isFinite(Number(raw))) {
+                    editOptions[key] = Number(raw);
+                } else {
+                    field.reportValidity();
+                }
+            });
+            label.append(field);
+            sdxlSampling.append(label);
+        }
+        const updateSamplingVisibility = () => {
+            sdxlSampling.hidden = select.value !== 'juggernaut-xl';
+            if (sdxlSampling.hidden) {
+                // Other edit models must not even receive the SDXL numeric
+                // inputs in the DOM; otherwise those controls can interfere
+                // with keyboard navigation or precision-edit workflows.
+                sdxlSampling.remove?.();
+                for (const key of ['steps', 'guidance', 'seed']) delete editOptions[key];
+            } else if (!Array.from(fields.children || []).includes(sdxlSampling)) {
+                fields.append(sdxlSampling);
+            }
+        };
+        select.addEventListener('change', updateSamplingVisibility);
+        updateSamplingVisibility();
 
         const maskLabel = document.createElement('label');
         maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Mask (optional)');
@@ -276,6 +367,11 @@ function attachmentT(key, fallback = '', variables = {}) {
         });
         maskLabel.append(mask, maskStatus);
         fields.append(maskLabel);
+        const updateMaskVisibility = () => {
+            maskLabel.hidden = select.value === 'juggernaut-xl';
+        };
+        select.addEventListener('change', updateMaskVisibility);
+        updateMaskVisibility();
         advanced.append(fields);
         primary.append(advanced);
         panel.append(primary);

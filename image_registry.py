@@ -262,6 +262,9 @@ class ImageModel(BaseModel):
         elif self.provider == "sdxl":
             self.capabilities = [
                 "text_to_image",
+                "image_edit",
+                "img2img",
+                "edit_strength",
                 "variation",
                 "photorealistic",
                 "people",

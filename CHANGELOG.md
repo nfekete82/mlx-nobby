@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add local Juggernaut XL Ragnarok image-to-image editing: source-preserving SDXL img2img pipeline with a per-job denoising strength slider (0.15–0.85), bounded private RGB image copy, shared offloaded model components, existing memory and job guards, source comparison, and unchanged Qwen masked editing. CPU/JS regression tests and real Apple Silicon release acceptance instructions accompany the opt-in model selection. Planned for v1.20.0 after release qualification.
+
 - Fix the one-click System Reboot lifecycle: retain untracked local benchmark evidence while fast-forwarding otherwise clean tracked main; protect conflicting files and never force-update Git.
 - Recreate the Docker frontend at the exact Git commit, install updated LaunchAgent definitions, explicitly reload the host Agent, then restart MLX/model services. Keep the detached control helper active while the Agent reconnects and resumes lifecycle progress.
 - Verify expected ports, Agent readiness, the web API's exact product version and Git commit, and an online MLX chat proxy before declaring the reboot complete and refreshing the browser; report actionable failures and attempt service recovery.

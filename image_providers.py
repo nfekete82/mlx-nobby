@@ -1044,6 +1044,10 @@ class SDXLWorkerManager:
                                     step = event.get("step")
                                     total_steps = event.get("total_steps")
                                     expected_steps = params.get("steps")
+                                    if params.get("source_path") and expected_steps is not None:
+                                        expected_steps = max(1, int(
+                                            expected_steps * float(params.get("strength", 0.45))
+                                        ))
                                     if (
                                         not isinstance(step, int)
                                         or not isinstance(total_steps, int)
@@ -1279,7 +1283,19 @@ def run_provider(
     process_callback=None,
     progress_callback=None,
 ):
-    if model["provider"] != "mflux" and (len(params.get("source_paths") or []) > 1 or
+    if model["provider"] == "sdxl":
+        # SDXL supports a single RGB reference + standard negative prompt and
+        # denoise strength. Qwen masks/caches remain unsupported.
+        if (len(params.get("source_paths") or []) > 1 or
+                any(params.get(key) is not None for key in (
+                    "mask_path", "auto_mask", "use_kv_cache", "use_step_cache",
+                    "step_cache_threshold", "enhance_prompt", "verify"
+                ))):
+            raise ProviderFailure(
+                "Juggernaut img2img unterstützt nur ein Quellbild ohne Maske oder Qwen-Cache-Optionen",
+                error_code="IMAGE_PROVIDER_INCOMPATIBLE"
+            )
+    elif model["provider"] != "mflux" and (len(params.get("source_paths") or []) > 1 or
             (params.get("source_path") and bool(params.get("negative_prompt"))) or
             any(params.get(key) is not None for key in ("mask_path", "auto_mask", "strength", "use_kv_cache", "use_step_cache", "step_cache_threshold", "enhance_prompt", "verify"))):
         raise ProviderFailure("Diese Bearbeitungsoptionen benötigen ein kompatibles MFLUX-Modell", error_code="IMAGE_PROVIDER_INCOMPATIBLE")
