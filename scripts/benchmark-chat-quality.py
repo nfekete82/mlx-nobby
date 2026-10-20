@@ -484,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"status": report["status"], "summary": report["summary"],
                               "error_code": report["error_code"], "error_phase": report["error_phase"],
                               "output": str(args.output)}, ensure_ascii=False, indent=2))
-            return 0 if report["status"] == "complete" or (args.smoke and report["error_type"] is None) else 1
+            return 0 if report["status"] == "complete" or ((args.smoke or args.case_id) and report["error_type"] is None) else 1
         if args.baseline.stat().st_size > 2_000_000 or args.candidate.stat().st_size > 2_000_000:
             raise ValueError("Comparison report is too large")
         if args.output:
