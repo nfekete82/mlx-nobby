@@ -51,6 +51,38 @@ Nach einer **bewusst separat vorgenommenen** Modell- oder Runtime-Änderung:
 
 Der Vergleich verlangt identische Aufgaben-SHA und Generationseinstellungen sowie je **48 vollständige Resultate**. Ausgegeben werden neue Treffer, Regressionen, Ergebnisse je Kategorie, Median-Ersttext-Latenz (TTFT) und Median-Gesamtlaufzeit. Der Entscheidungscode lautet absichtlich immer `REVIEW` beziehungsweise `REGRESSION_REVIEW`: selbst ein perfekter Score ist keine automatische Freigabe für den Produktivbetrieb.
 
+## Diagnose bei einem abgebrochenen Kandidatenlauf
+
+Ein unterbrochener Lauf (`status=partial`) **darf nicht verglichen** werden.
+Seit diesem Fix enthält der Hauptbericht bei Laufzeitfehlern nur die
+**sichere Fehlerklasse** `error_code` und die **Testphase** `error_phase`.
+Zum Beispiel bedeuten `CHAT_BUSY at case_idle:de-plural`, dass vor der
+zweiten Aufgabe der Chat-Slot nicht als frei bestätigt war; bei
+`AGENT_STREAM_ERROR at case_stream:de-plural` kam stattdessen ein
+fehlerhafter Agent-Stream zurück. Beliebige Exception-Nachrichten oder
+Upstream-Antworten werden weiterhin **nie** ausgegeben.
+
+Um gezielt nur den zweiten Fall zu reproduzieren:
+
+```bash
+./scripts/mlx benchmark chat-quality run \\
+  --case-id de-plural \\
+  --output /tmp/nobby-quality-de-plural-diagnostic-1.json
+```
+
+Der Einzeltest gibt bei fehlerfreiem Lauf Exitcode 0, aber immer
+`status=partial` zurück: **Er ist niemals als 48-Fall-Vergleich zulässig.**
+Bei jedem Versuch einen neuen Dateinamen wählen; Berichte werden weiterhin
+nicht überschrieben. Den lokalen Agent oder laufende Modelle für die
+Diagnose nicht neustarten, aktualisieren oder wechseln.
+
+Wenn ein vollständiger Lauf nach Aufgabe 1 stoppt, zuerst die
+`error_code`/`error_phase`-Felder eines neuen Versuchs ansehen.
+Ein einmaliger kalter Modellstart kann die Erstzeichen-Latenz erhöhen;
+eine einzelne TTFT-Messung sagt nichts über die Durchschnittsgeschwindigkeit.
+Funktioniert `de-plural` isoliert, kann der Fehler transient sein
+(z.B. verzögerter Idle-Status); das ist noch **kein Beweis** für die Ursache.
+
 ## Messgrenzen und Datenschutz
 
 - **TTFT** ist das erste *sichtbare* Content-Delta, einschließlich Gateway, Warteschlange und Prefill. Der Agent-SSE-Endpunkt liefert hier **keine** validen nativen Token/s. Die werden nicht erfunden. Model Scout, Performance Observatory und die bestehenden Cache-Benchmarks bleiben für native Durchsatz-/Cachingdiagnosen zuständig.

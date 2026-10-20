@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add privacy-safe failure diagnostics to the Chat Quality CLI (`error_code` and `error_phase` instead of opaque RuntimeError only) and `--case-id` for reproducing a single frozen task without 48 prompts; incomplete reports remain non-comparable and raw Agent errors are still hidden.
+
 - Fix native chat backend auto-detection for Hugging Face repository IDs already downloaded in the local hub cache: inspect their cached config.json just like local model directories. Prevent Qwen3.8-architecture oQ VLM checkpoints such as the opt-in Dark Scarlett candidate being incorrectly started with mlx_lm instead of mlx_vlm; reject malformed cached configs and retain existing runtime/memory guards.
 
 - Document the two completed Qwen3.8 chat-quality runs (42/44 twice), confirm the second run used the same model despite its filename, and close the initial baseline phase without starting a model leaderboard.
