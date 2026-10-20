@@ -50,7 +50,7 @@
     }
 
     function explicitlyShortRequest(text) {
-        return /(?:antworte|antwort|schreibe|beschreibe|sag|sage|reply|respond|write)\s+(?:bitte\s+)?(?:sehr\s+|ganz\s+)?(?:kurz|knapp|einsilbig|briefly|short|concisely)|(?:nur|only)\s+(?:ein(?:en|e|em)?\s+)?(?:satz|wort|sentence|word)|(?:in|mit)\s+(?:einem|1)\s+(?:satz|wort)/i.test(text);
+        return /(?:antworte|antwort|schreibe|beschreibe|sag|sage|reply|respond|write)\s+(?:bitte\s+)?(?:sehr\s+|ganz\s+)?(?:kurz|knapp|einsilbig|briefly|short|concisely)|(?:nur|only)\s+(?:(?:ein(?:en|e|em)?|one|1)\s+)?(?:satz|wort|sentence|word)|(?:in|mit)\s+(?:einem|1)\s+(?:satz|wort)/i.test(text);
     }
 
     function simpleFactQuestion(text) {
