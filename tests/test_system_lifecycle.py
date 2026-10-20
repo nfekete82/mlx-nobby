@@ -178,6 +178,12 @@ class LifecycleScriptContractTests(unittest.TestCase):
         self.assertIn("--no-deps", source)
         self.assertIn("verify_web_revision", source)
         self.assertIn("merge --ff-only origin/main", source)
+        self.assertIn("status --porcelain --untracked-files=no", source)
+        self.assertIn('"$MLX_BIN" agent restart', source)
+        self.assertIn('"$INSTALL_LAUNCHD_BIN"', source)
+        self.assertIn("verify_web_api", source)
+        self.assertIn('"$WEB_URL/api/mlx/status"', source)
+        self.assertLess(source.index('"$MLX_BIN" agent restart'), source.index('"$MLX_BIN" restart-all'))
 
         self.assertIn(
             "mlx-web",
@@ -236,6 +242,10 @@ class LifecycleScriptContractTests(unittest.TestCase):
             text,
         )
         self.assertIn(
+            '"reload-agent"',
+            text,
+        )
+        self.assertIn(
             '"restart-services"',
             text,
         )
@@ -270,7 +280,7 @@ class LifecycleScriptContractTests(unittest.TestCase):
 
 class RebootOrchestrationIntegrationTests(unittest.TestCase):
 
-    def run_reboot(self, *, ports_ready=True):
+    def run_reboot(self, *, ports_ready=True, http_mode="ready"):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             calls = root / "calls.log"
@@ -278,6 +288,8 @@ class RebootOrchestrationIntegrationTests(unittest.TestCase):
             mlx = root / "mlx"
             docker = root / "docker"
             port_check = root / "port-check"
+            http_check = root / "http-check"
+            installer = root / "install-launchd"
             docker_body = '''#!/bin/bash
 
 echo "docker $*" >> "$CALLS_LOG"
