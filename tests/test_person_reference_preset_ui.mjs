@@ -20,6 +20,10 @@ test('same-person face and different-pose prompts get Juggernaut pose defaults',
         preset('Create the same person in a different pose and preserve facial identity.'),
         {kind: 'same_identity', strength: 0.75, steps: 40, guidance: 5},
     );
+    assert.deepEqual(
+        preset('Create a photorealistic full-body photograph of the exact same adult woman from the reference image.'),
+        {kind: 'same_identity', strength: 0.75, steps: 40, guidance: 5},
+    );
 });
 
 test('resemblance-only prompts keep distinct conservative defaults', () => {
