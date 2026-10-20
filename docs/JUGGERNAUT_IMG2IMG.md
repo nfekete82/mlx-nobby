@@ -15,6 +15,26 @@ Image Edit remains recommended for region masks, object edits and multi-image
 composition. Original images are not overwritten. The image and output stay
 local.
 
+## New person-reference defaults
+
+For **one uploaded photo** in **Bearbeiten (Edit)** mode, Nobby can preselect
+Juggernaut Ragnarok automatically when it is enabled and genuinely available:
+
+- An explicit **same person / same face** request preselects Strength **0.75**,
+  **40** Steps and CFG **5.0**.
+- A **similar-looking person** request without a same-person requirement uses
+  Strength **0.55**, **36** Steps and CFG **5.5**.
+- Seed remains blank/random. These presets are suggestions and user-modified
+  model, strength or sampling fields take precedence. Unrelated image edits keep
+  their current automatic/Qwen selection. No model is downloaded or enabled.
+- Changing a close-up selfie into a full-body view is still stochastic:
+  img2img does not guarantee identity preservation or pose fidelity.
+  Qwen Image Edit may follow complex scene instructions more accurately.
+
+The intent classifier now prioritizes explicit same-person preservation over
+incidental "similar" qualifiers. For new poses it also instructs the selected
+edit model not to copy the original selfie framing.
+
 ## Technical contract
 
 - Built-in stable model ID: `juggernaut-xl`, provider `sdxl`.
