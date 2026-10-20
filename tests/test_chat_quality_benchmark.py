@@ -192,3 +192,80 @@ def test_owner_only_exclusive_outputs(tmp_path):
     with pytest.raises(FileExistsError):
         bench.write_private(target, {"schema": 2})
     assert json.loads(target.read_text()) == {"schema": 1}
+
+
+def test_safe_abort_metadata_locates_second_case_without_leaking_private_text(monkeypatch, tmp_path, capsys):
+    cases, _ = bench.suite()
+    calls = 0
+
+    def get(_origin, path, *args):
+        nonlocal calls
+        if path == "/api/status":
+            return status()
+        calls += 1
+        if calls == 3:  # before second case: preflight + first case idle
+            state = idle()
+            state["system"]["runtimes"]["chat"]["active"] = True
+            return state
+        return idle()
+
+    def stream(_origin, messages, _tokens, _timeout):
+        assert messages[-1]["content"].endswith(bench.JSON_INSTRUCTION)
+        answer = json.dumps({"answer": cases[0]["expected"]}, ensure_ascii=False)
+        return {"first_content_ms": 50, "first_transport_ms": 3,
+                "total_ms": 90, "output_characters": len(answer)}, answer
+
+    monkeypatch.setattr(bench, "get_json", get)
+    monkeypatch.setattr(bench, "agent_stream", stream)
+    output = tmp_path / "partial.json"
+    report = bench.run(bench.DEFAULT_AGENT, output, None)
+    assert report["status"] == "partial"
+    assert report["summary"]["automatic"]["completed"] == 1
+    assert report["error_code"] == "CHAT_BUSY"
+    assert report["error_phase"] == "case_idle:de-plural"
+    assert "CHAT_BUSY at case_idle:de-plural" in capsys.readouterr().err
+    assert report["error_type"] == "RuntimeError"
+    assert "messages" not in output.read_text()
+    with pytest.raises(ValueError):
+        bench.compare(report, report)
+
+
+def test_single_case_mode_is_partial_but_can_reproduce_second_case(monkeypatch, tmp_path):
+    cases, _ = bench.suite()
+    messages_seen = []
+
+    monkeypatch.setattr(bench, "get_json",
+                        lambda _origin, path: status() if path == "/api/status" else idle())
+
+    def stream(_origin, messages, _tokens, _timeout):
+        messages_seen.append(messages)
+        answer = json.dumps({"answer": cases[1]["expected"]}, ensure_ascii=False)
+        return {"first_content_ms": 8, "first_transport_ms": 3,
+                "total_ms": 20, "output_characters": len(answer)}, answer
+
+    monkeypatch.setattr(bench, "agent_stream", stream)
+    report = bench.run(bench.DEFAULT_AGENT, tmp_path / "single.json", None,
+                       case_id="de-plural")
+    assert report["status"] == "partial"
+    assert report["case_id"] == "de-plural"
+    assert report["error_code"] is None
+    assert report["error_phase"] is None
+    assert report["results"][0]["id"] == "de-plural"
+    assert report["results"][0]["grade"] == "correct"
+    assert len(report["results"]) == len(messages_seen) == 1
+    assert report["summary"]["automatic"]["accuracy"] is None
+    with pytest.raises(ValueError):
+        bench.compare(report, report)
+    with pytest.raises(ValueError):
+        bench.run(bench.DEFAULT_AGENT, tmp_path / "no-such-id.json", None,
+                  case_id="unknown-case")
+    with pytest.raises(ValueError):
+        bench.run(bench.DEFAULT_AGENT, tmp_path / "contradiction.json", None,
+                  case_id="de-plural", smoke=True)
+
+
+def test_safe_error_codes_are_allowlisted_not_arbitrary_exception_text():
+    assert bench.safe_error_code(RuntimeError("Runtime not confirmed idle: image")) == "IMAGE_BUSY"
+    assert bench.safe_error_code(RuntimeError("Agent stream error")) == "AGENT_STREAM_ERROR"
+    assert bench.safe_error_code(RuntimeError("sensitive private payload")) == "OTHER_RUNTIME_ERROR"
+    assert bench.safe_error_code(KeyboardInterrupt()) == "INTERRUPTED"
