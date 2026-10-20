@@ -1098,5 +1098,9 @@
   "library17.smallest": "Smallest first",
   "library.more_actions": "More actions",
   "attachments.img2img_strength": "Transformation strength (Juggernaut img2img)",
-  "attachments.img2img_strength_hint": "0.15 = close to source · 0.85 = substantial change"
+  "attachments.img2img_strength_hint": "0.15 = close to source · 0.85 = substantial change",
+  "attachments.img2img_steps": "Steps (optional)",
+  "attachments.img2img_cfg": "CFG / Guidance (optional)",
+  "attachments.img2img_seed": "Seed (optional)",
+  "attachments.img2img_default": "Default"
 }
