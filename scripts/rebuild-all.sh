@@ -16,11 +16,14 @@ ACTION="reboot"
 
 AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
 PORT_CHECK_BIN="${PORT_CHECK_BIN:-$(command -v lsof || true)}"
+HTTP_CHECK_BIN="${MLX_NOBBY_HTTP_CHECK_BIN:-$(command -v curl || true)}"
+INSTALL_LAUNCHD_BIN="${MLX_NOBBY_INSTALL_LAUNCHD_BIN:-$PROJECT_DIR/scripts/install-launchd.sh}"
+WEB_URL="${MLX_NOBBY_WEB_URL:-http://127.0.0.1:8090}"
 SERVICE_WAIT_TIMEOUT="${MLX_NOBBY_SERVICE_WAIT_TIMEOUT:-60}"
 EXPECTED_PORTS="${MLX_NOBBY_REBOOT_PORTS:-8000 8010 8020 8030 8040 8050 8060 8090 11234}"
 LIFECYCLE_REPORT_FILE="${MLX_NOBBY_LIFECYCLE_REPORT_FILE:-}"
 CURRENT_STEP=0
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 FAILED_PHASE="preparing"
 AI_STOPPED=0
 FAILURE_DETAIL=""
@@ -107,7 +110,79 @@ wait_for_port() {
     return 1
 }
 
+wait_for_http() {
+    local url="$1"
+    local attempts=$((SERVICE_WAIT_TIMEOUT * 2))
+    local attempt
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if "$HTTP_CHECK_BIN" -fsS --connect-timeout 1 --max-time 3 "$url" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    FAILURE_DETAIL="HTTP-Endpunkt $url ist nach ${SERVICE_WAIT_TIMEOUT}s nicht bereit."
+    echo "ERROR: $FAILURE_DETAIL"
+    return 1
+}
+
+verify_web_api() {
+    local version_json status_json expected_version
+    expected_version="$(tr -d '\r\n' < "$PROJECT_DIR/VERSION")"
+    version_json="$("$HTTP_CHECK_BIN" -fsS --connect-timeout 1 --max-time 3 "$WEB_URL/api/version")" || {
+        FAILURE_DETAIL="Version API ist nicht erreichbar."
+        return 1
+    }
+
+    if ! python3 - "$MLX_NOBBY_BUILD_SHA" "$expected_version" "$version_json" <<'PYVERIFY'
+import json
+import sys
+expected_sha, expected_version, value = sys.argv[1:]
+try:
+    actual = json.loads(value)
+except (ValueError, TypeError):
+    sys.exit(1)
+sys.exit(0 if (
+    isinstance(actual, dict)
+    and actual.get("commit") == expected_sha
+    and actual.get("version") == expected_version
+) else 1)
+PYVERIFY
+    then
+        FAILURE_DETAIL="Web-Version oder Commit stimmt nicht mit dem ausgecheckten Code überein."
+        echo "ERROR: $FAILURE_DETAIL"
+        return 1
+    fi
+
+    status_json="$("$HTTP_CHECK_BIN" -fsS --connect-timeout 1 --max-time 3 "$WEB_URL/api/mlx/status")" || {
+        FAILURE_DETAIL="Web-Agent-Proxy antwortet nicht."
+        return 1
+    }
+    if ! python3 - "$status_json" <<'PYSTATUS'
+import json
+import sys
+try:
+    status = json.loads(sys.argv[1])
+except (TypeError, ValueError):
+    sys.exit(1)
+sys.exit(0 if isinstance(status, dict) and status.get("online") is True else 1)
+PYSTATUS
+    then
+        FAILURE_DETAIL="Web-Agent-Proxy meldet keinen betriebsbereiten Modellserver."
+        echo "ERROR: $FAILURE_DETAIL"
+        return 1
+    fi
+
+    echo "Web-Version, Commit und Chat-Proxy verifiziert: $expected_version / $MLX_NOBBY_BUILD_SHA"
+}
+
 sync_source() {
+    if [ "${MLX_NOBBY_SKIP_SOURCE_SYNC:-0}" = "1" ]; then
+        echo "Source sync für isolierte Prüfung deaktiviert."
+        return 0
+    fi
+
     local branch
     branch="$(git -C "$PROJECT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
@@ -116,8 +191,8 @@ sync_source() {
         return 0
     fi
 
-    if [ -n "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=normal)" ]; then
-        echo "Source sync übersprungen: lokale Änderungen vorhanden."
+    if [ -n "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no)" ]; then
+        echo "Source sync übersprungen: Änderungen an getrackten Dateien vorhanden."
         return 0
     fi
 
@@ -133,7 +208,7 @@ sync_source() {
     fi
 
     if ! git -C "$PROJECT_DIR" merge --ff-only origin/main; then
-        echo "WARN: main konnte nicht per Fast-Forward aktualisiert werden; lokaler Stand wird weiter verwendet."
+        echo "WARN: Fast-Forward nicht möglich (z.B. Konflikt mit ungetrackter Datei); lokaler Stand und Benutzerdateien bleiben erhalten."
         return 0
     fi
 }
@@ -225,6 +300,16 @@ if [ -z "$PORT_CHECK_BIN" ] || [ ! -x "$PORT_CHECK_BIN" ]; then
     exit 127
 fi
 
+if [ -z "$HTTP_CHECK_BIN" ] || [ ! -x "$HTTP_CHECK_BIN" ]; then
+    echo "ERROR: curl executable not found"
+    exit 127
+fi
+
+if [ ! -x "$INSTALL_LAUNCHD_BIN" ]; then
+    echo "ERROR: LaunchAgent installer not executable: $INSTALL_LAUNCHD_BIN"
+    exit 127
+fi
+
 # Let the initiating HTTP response finish first.
 sleep 1
 
@@ -282,11 +367,37 @@ report_lifecycle \
 verify_web_revision
 
 echo
+echo "===== RELOAD UPDATED AGENT ====="
+
+FAILED_PHASE="reload-agent"
+FAILURE_DETAIL="Aktualisierte LaunchAgents oder Agent-Code konnten nicht neu geladen werden."
+CURRENT_STEP=4
+report_lifecycle \
+    "running" \
+    "$FAILED_PHASE" \
+    "$CURRENT_STEP" \
+    "$TOTAL_STEPS" \
+    "LaunchAgents werden synchronisiert; der Agent wird anschließend neu gestartet."
+
+"$INSTALL_LAUNCHD_BIN"
+"$MLX_BIN" agent restart
+
+# The helper is detached: restarting the host Agent resets its in-memory
+# lifecycle state but must not terminate this script. Report again when ready.
+wait_for_http "$AGENT_URL/api/status"
+report_lifecycle \
+    "running" \
+    "$FAILED_PHASE" \
+    "$CURRENT_STEP" \
+    "$TOTAL_STEPS" \
+    "Neuer Agent ist bereit; der Reboot läuft weiter."
+
+echo
 echo "===== RESTART LOCAL SERVICES ====="
 
 FAILED_PHASE="restart-services"
 FAILURE_DETAIL="mlx restart-all ist fehlgeschlagen."
-CURRENT_STEP=4
+CURRENT_STEP=5
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
@@ -301,17 +412,22 @@ echo "===== VERIFY SERVICES ====="
 
 FAILED_PHASE="verify-services"
 FAILURE_DETAIL="Mindestens ein erwarteter Dienst ist nicht erreichbar."
-CURRENT_STEP=5
+CURRENT_STEP=6
 report_lifecycle \
     "running" \
     "$FAILED_PHASE" \
     "$CURRENT_STEP" \
     "$TOTAL_STEPS" \
-    "Erwartete Dienste und Ports werden geprüft."
+    "Erwartete Dienste, APIs und Version werden geprüft."
 
 for port in $EXPECTED_PORTS; do
     wait_for_port "$port"
 done
+
+wait_for_http "$AGENT_URL/api/status"
+wait_for_http "$WEB_URL/api/version"
+wait_for_http "$WEB_URL/api/mlx/status"
+verify_web_api
 
 AI_STOPPED=0
 report_lifecycle \

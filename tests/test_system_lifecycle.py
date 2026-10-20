@@ -178,6 +178,15 @@ class LifecycleScriptContractTests(unittest.TestCase):
         self.assertIn("--no-deps", source)
         self.assertIn("verify_web_revision", source)
         self.assertIn("merge --ff-only origin/main", source)
+        self.assertIn("status --porcelain --untracked-files=no", source)
+        self.assertIn('"$MLX_BIN" agent restart', source)
+        self.assertIn('"$INSTALL_LAUNCHD_BIN"', source)
+        self.assertIn("verify_web_api", source)
+        self.assertIn('"$WEB_URL/api/mlx/status"', source)
+        self.assertLess(
+            source.index('"$MLX_BIN" agent restart'),
+            source.index('"$MLX_BIN" restart-all', source.index('===== RESTART LOCAL SERVICES =====')),
+        )
 
         self.assertIn(
             "mlx-web",
@@ -236,6 +245,10 @@ class LifecycleScriptContractTests(unittest.TestCase):
             text,
         )
         self.assertIn(
+            '"reload-agent"',
+            text,
+        )
+        self.assertIn(
             '"restart-services"',
             text,
         )
@@ -270,7 +283,7 @@ class LifecycleScriptContractTests(unittest.TestCase):
 
 class RebootOrchestrationIntegrationTests(unittest.TestCase):
 
-    def run_reboot(self, *, ports_ready=True):
+    def run_reboot(self, *, ports_ready=True, http_mode="ready"):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             calls = root / "calls.log"
@@ -278,6 +291,8 @@ class RebootOrchestrationIntegrationTests(unittest.TestCase):
             mlx = root / "mlx"
             docker = root / "docker"
             port_check = root / "port-check"
+            http_check = root / "http-check"
+            installer = root / "install-launchd"
             docker_body = '''#!/bin/bash
 
 echo "docker $*" >> "$CALLS_LOG"
@@ -285,9 +300,34 @@ if [ "$1" = "compose" ] && [ "$2" = "exec" ]; then
     git -C "$MLX_NOBBY_PROJECT_DIR" rev-parse --short=12 HEAD
 fi
 '''
+            http_body = '''#!/bin/bash
+url=""
+for arg in "$@"; do url="$arg"; done
+echo "http $url" >> "$CALLS_LOG"
+if [ "$HTTP_MODE" = "unavailable" ]; then exit 7; fi
+case "$url" in
+    */api/version)
+        if [ "$HTTP_MODE" = "wrong-revision" ]; then
+            echo '{"name":"MLX Nobby","version":"1.19.0","commit":"000000000000"}'
+        else
+            sha="$(git -C "$MLX_NOBBY_PROJECT_DIR" rev-parse --short=12 HEAD)"
+            version="$(cat "$MLX_NOBBY_PROJECT_DIR/VERSION")"
+            printf '{"name":"MLX Nobby","version":"%s","commit":"%s"}\n' "$version" "$sha"
+        fi
+        ;;
+    */api/mlx/status)
+        if [ "$HTTP_MODE" = "offline" ]; then echo '{"online":false}'
+        else echo '{"online":true}'; fi
+        ;;
+    */api/status) echo '{"online":true}' ;;
+    *) exit 22 ;;
+esac
+'''
             for path, body in (
                 (mlx, '#!/bin/bash\necho "mlx $*" >> "$CALLS_LOG"\n'),
                 (docker, docker_body),
+                (installer, '#!/bin/bash\necho "install launchd" >> "$CALLS_LOG"\n'),
+                (http_check, http_body),
                 (port_check, '#!/bin/bash\necho "port $*" >> "$CALLS_LOG"\n' + ("exit 0\n" if ports_ready else "exit 1\n")),
             ):
                 path.write_text(body, encoding="utf-8")
@@ -298,6 +338,10 @@ fi
                 "MLX_BIN": str(mlx),
                 "DOCKER_BIN": str(docker),
                 "PORT_CHECK_BIN": str(port_check),
+                "MLX_NOBBY_HTTP_CHECK_BIN": str(http_check),
+                "MLX_NOBBY_INSTALL_LAUNCHD_BIN": str(installer),
+                "MLX_NOBBY_SKIP_SOURCE_SYNC": "1",
+                "HTTP_MODE": http_mode,
                 "CALLS_LOG": str(calls),
                 "MLX_NOBBY_REBOOT_LOG": str(root / "reboot.log"),
                 "MLX_NOBBY_LIFECYCLE_REPORT_FILE": str(report_file),
@@ -332,15 +376,35 @@ fi
             called[3].startswith("docker compose exec -T mlx-web "),
             called[3],
         )
-        self.assertEqual(called[4], "mlx restart-all")
+        self.assertEqual(called[4], "install launchd")
+        self.assertEqual(called[5], "mlx agent restart")
+        self.assertEqual(called[6], "http http://127.0.0.1:8010/api/status")
+        self.assertEqual(called[7], "mlx restart-all")
         self.assertEqual(
-            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[5:]],
+            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[8:11]],
             ["8000", "8010", "8090"],
         )
+        self.assertIn("http http://127.0.0.1:8090/api/version", called)
+        self.assertIn("http http://127.0.0.1:8090/api/mlx/status", called)
         self.assertEqual(reports[-2]["phase"], "verify-services")
         self.assertLess(reports[-2]["current"], reports[-2]["total"])
         self.assertEqual(reports[-1]["state"], "completed")
         self.assertEqual(reports[-1]["current"], reports[-1]["total"])
+
+    def test_real_helper_detects_wrong_web_commit(self):
+        result, called, reports = self.run_reboot(http_mode="wrong-revision")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(reports[-1]["state"], "failed")
+        self.assertEqual(reports[-1]["phase"], "verify-services")
+        self.assertIn("Commit", reports[-1]["error"])
+        self.assertEqual(called[-1], "mlx restart-all")
+
+    def test_real_helper_detects_offline_proxy(self):
+        result, called, reports = self.run_reboot(http_mode="offline")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(reports[-1]["state"], "failed")
+        self.assertEqual(reports[-1]["phase"], "verify-services")
+        self.assertIn("Proxy", reports[-1]["error"])
 
     def test_real_helper_reports_port_timeout_as_failed(self):
         result, called, reports = self.run_reboot(ports_ready=False)
