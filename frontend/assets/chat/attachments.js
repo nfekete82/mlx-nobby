@@ -19,7 +19,6 @@ function attachmentT(key, fallback = '', variables = {}) {
     let manualEditModel = false;
     let manualEditFields = new Set();
     let personPresetPending = false;
-    let appliedPersonPreset = null;
 
     function personReferencePreset(prompt) {
         const text = String(prompt || '');
@@ -59,7 +58,6 @@ function attachmentT(key, fallback = '', variables = {}) {
                 changed = true;
             }
         }
-        appliedPersonPreset = preset.kind;
         // Seed intentionally remains random; masks are not compatible with SDXL.
         return changed;
     }
@@ -231,6 +229,11 @@ function attachmentT(key, fallback = '', variables = {}) {
         automatic.textContent = attachmentT('attachments.edit_auto', 'Automatic');
         select.append(automatic);
         select.value = 'auto';
+        // During async model discovery the current model's option is not yet
+        // attached. Do not erase its strength/steps while rebuilding the UI.
+        let modelOptionsLoaded = false;
+        const selectedSdxl = () => select.value === 'juggernaut-xl' ||
+            (!modelOptionsLoaded && editOptions.model === 'juggernaut-xl');
         const strengthLabel = document.createElement('label');
         strengthLabel.className = 'image-edit-strength-field';
         strengthLabel.textContent = attachmentT('attachments.img2img_strength', 'Veränderungsstärke');
@@ -245,7 +248,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         strength.value = String(editOptions.model === 'juggernaut-xl'
             ? (editOptions.strength ?? 0.45) : 0.45);
         const updateStrength = () => {
-            const useSdxl = select.value === 'juggernaut-xl';
+            const useSdxl = selectedSdxl();
             strengthLabel.hidden = !useSdxl;
             if (!useSdxl) {
                 delete editOptions.strength;
@@ -281,6 +284,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
         availableEditModels().then(models => {
             if (!panel.isConnected) return;
+            modelOptionsLoaded = true;
             for (const model of models) {
                 const option = document.createElement('option');
                 option.value = model.id;
@@ -304,6 +308,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             updateStrength();
             updateSamplingVisibility();
         }).catch(() => {
+            modelOptionsLoaded = true;
             // Keep automatic routing available even if model discovery is offline.
             if (editOptions.model) {
                 const previous = document.createElement('option');
@@ -376,7 +381,8 @@ function attachmentT(key, fallback = '', variables = {}) {
             sdxlSampling.append(label);
         }
         const updateSamplingVisibility = () => {
-            sdxlSampling.hidden = select.value !== 'juggernaut-xl';
+            sdxlSampling.hidden = select.value !== 'juggernaut-xl' &&
+                !(!modelOptionsLoaded && editOptions.model === 'juggernaut-xl');
             if (sdxlSampling.hidden) {
                 // Other edit models must not even receive the SDXL numeric
                 // inputs in the DOM; otherwise those controls can interfere
@@ -434,7 +440,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         maskLabel.append(mask, maskStatus);
         fields.append(maskLabel);
         const updateMaskVisibility = () => {
-            maskLabel.hidden = select.value === 'juggernaut-xl';
+            maskLabel.hidden = selectedSdxl();
         };
         select.addEventListener('change', updateMaskVisibility);
         updateMaskVisibility();
@@ -452,7 +458,6 @@ function attachmentT(key, fallback = '', variables = {}) {
             editOptions = {};
             manualEditModel = false;
             manualEditFields = new Set();
-            appliedPersonPreset = null;
         }
         bar.innerHTML = '';
 
@@ -1039,7 +1044,6 @@ function attachmentT(key, fallback = '', variables = {}) {
         imageMode = 'auto';
         manualEditModel = false;
         manualEditFields = new Set();
-        appliedPersonPreset = null;
         renderAttachments();
     }
 
@@ -1261,6 +1265,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         addFiles: addFiles,
         getEditOptions: () => imageMode === 'edit' ? {...editOptions} : {},
         getImageMode: () => imageMode,
+        suggestPersonReferencePreset: personReferencePreset,
         whenReady: () => Promise.all([addingFiles, pendingMaskUpload]),
         moveAttachment: moveAttachment,
         buildAttachmentContext:
