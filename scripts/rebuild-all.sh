@@ -129,7 +129,7 @@ wait_for_http() {
 
 verify_web_api() {
     local version_json status_json expected_version
-    expected_version="$(tr -d '\\r\\n' < "$PROJECT_DIR/VERSION")"
+    expected_version="$(tr -d '\r\n' < "$PROJECT_DIR/VERSION")"
     version_json="$("$HTTP_CHECK_BIN" -fsS --connect-timeout 1 --max-time 3 "$WEB_URL/api/version")" || {
         FAILURE_DETAIL="Version API ist nicht erreichbar."
         return 1
@@ -178,6 +178,11 @@ PYSTATUS
 }
 
 sync_source() {
+    if [ "${MLX_NOBBY_SKIP_SOURCE_SYNC:-0}" = "1" ]; then
+        echo "Source sync für isolierte Prüfung deaktiviert."
+        return 0
+    fi
+
     local branch
     branch="$(git -C "$PROJECT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
