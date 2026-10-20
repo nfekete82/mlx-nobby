@@ -1098,5 +1098,9 @@
   "library17.smallest": "Kleinste zuerst",
   "library.more_actions": "Weitere Aktionen",
   "attachments.img2img_strength": "Veränderungsstärke (Juggernaut img2img)",
-  "attachments.img2img_strength_hint": "0,15 = nah am Original · 0,85 = frei verändert"
+  "attachments.img2img_strength_hint": "0,15 = nah am Original · 0,85 = frei verändert",
+  "attachments.img2img_steps": "Schritte (optional)",
+  "attachments.img2img_cfg": "CFG / Guidance (optional)",
+  "attachments.img2img_seed": "Seed (optional)",
+  "attachments.img2img_default": "Standardwert"
 }
