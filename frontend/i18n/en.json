@@ -878,8 +878,8 @@
     "system_action_failed": "System action failed: {message}",
     "system_action_timeout": "The system action did not complete before the timeout.",
     "system_reconnecting": "Reconnecting to services …",
-    "adaptive_response_length": "Adaptive response length",
-    "adaptive_response_length_hint": "For this chat only: Gently guides the next reply after three unusually short answers. No automatic regeneration."
+    "adaptive_response_length": "Automatic response adaptation",
+    "adaptive_response_length_hint": "On by default for all chats. Detects unusually brief reply patterns and tailors the next response to the conversation. Disable for this chat if desired; no automatic regeneration."
   },
   "attachments.rag_ready": " · ✓ RAG ready",
   "attachments.image_read_failed": "Image could not be read: {name}",
