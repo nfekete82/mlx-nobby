@@ -14,7 +14,8 @@ SPEC.loader.exec_module(nsfw)
 
 def status(model="local/Qwen3.8-27B-Abliterated-MLX-4bit"):
     return {"model": model, "pid": 1234, "online": True,
-            "thinking": False, "port": 8000}
+            "thinking": False, "port": 8000,
+            "stream_model_pin_supported": True}
 
 
 def idle():
@@ -181,3 +182,18 @@ def test_review_files_cannot_be_assigned_to_a_different_model(monkeypatch, tmp_p
                    tmp_path / "dark.json-review",
                    tmp_path / "invalid-score.json")
     assert not (tmp_path / "invalid-score.json").exists()
+
+
+def test_legacy_agent_fails_before_any_nsfw_inference(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        nsfw.client, "get_json",
+        lambda _origin, path: {**status(), "stream_model_pin_supported": False}
+        if path == "/api/status" else idle(),
+    )
+    monkeypatch.setattr(
+        nsfw.client, "agent_stream", lambda *args, **kwargs: pytest.fail("no stream"),
+    )
+    with pytest.raises(RuntimeError, match="Updated Agent required"):
+        nsfw.run(nsfw.client.DEFAULT_AGENT,
+                 tmp_path / "stale.json", tmp_path / "stale-review.json", "Qwen3.8")
+    assert not (tmp_path / "stale.json").exists()
