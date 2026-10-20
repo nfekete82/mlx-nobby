@@ -104,7 +104,10 @@ def run(origin: str, output: Path, review_file: Path, expected: str,
             phase = "case_idle:" + case["id"]
             client.check_idle(client.get_json(origin, "/api/performance/observatory?limit=100"))
             phase = "case_stream:" + case["id"]
-            timing, answer = client.agent_stream(origin, case["messages"], max_tokens, timeout)
+            timing, answer = client.agent_stream(
+                origin, case["messages"], max_tokens, timeout,
+                pin_active_model=before["model"], pin_active_pid=before["pid"],
+            )
             phase = "case_record:" + case["id"]
             if len(answer) > MAX_RESPONSE_CHARS:
                 raise RuntimeError("Model response too long for benchmark")
