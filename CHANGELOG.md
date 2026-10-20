@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- New **opt-in**, local, consenting-adult NSFW/roleplay A/B benchmark (`mlx benchmark chat-nsfw`): eight privacy-protected synthetic tasks, mandatory actual-model identity check, separate owner-only answer files, interactive five-axis human scoring, and strict different-model comparison. Existing 44+4 Chat Quality suite remains unchanged.
+
 - Add privacy-safe failure diagnostics to the Chat Quality CLI (`error_code` and `error_phase` instead of opaque RuntimeError only) and `--case-id` for reproducing a single frozen task without 48 prompts; incomplete reports remain non-comparable and raw Agent errors are still hidden.
 
 - Fix native chat backend auto-detection for Hugging Face repository IDs already downloaded in the local hub cache: inspect their cached config.json just like local model directories. Prevent Qwen3.8-architecture oQ VLM checkpoints such as the opt-in Dark Scarlett candidate being incorrectly started with mlx_lm instead of mlx_vlm; reject malformed cached configs and retain existing runtime/memory guards.
