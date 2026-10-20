@@ -1,18 +1,27 @@
-/* Optional, per-chat response-length steering. No message contents are stored. */
+/* Automatic, per-chat response-style recovery. No prompts or chat text are logged. */
 (function () {
     'use strict';
 
     const SHORT_TOKEN_LIMIT = 70;
     const REQUIRED_SHORT_REPLIES = 3;
     const MAX_SHORT_USER_CHARS = 320;
-    const GUIDANCE = (
-        '\n\nFor this reply only: The recent dialogue has settled into ' +
-        'unintentionally short roleplay responses. Continue the scene ' +
-        'naturally in approximately three to five substantive sentences, ' +
-        'using fitting action or dialogue instead of a single reaction. ' +
-        'Stay in character, avoid padding or repetition, and never write ' +
-        'dialogue, decisions, or actions for the user character. ' +
-        'Follow any explicit length or style instruction from the user.'
+
+    const SCENE_GUIDANCE = (
+        '\n\nFor this reply only: The ongoing scene has fallen into a pattern ' +
+        'of unusually short reactions. Continue naturally with a few ' +
+        'substantive sentences, fitting actions and dialogue. Stay in ' +
+        'character; do not pad or repeat, and never decide or speak ' +
+        'for the user character. Respect the user\'s explicit style and ' +
+        'length requests.'
+    );
+
+    const GENERAL_GUIDANCE = (
+        '\n\nFor this reply only: Recent replies have been unusually short. ' +
+        'Match the actual conversation and the user\'s latest request: ' +
+        'give an open-ended question, personal exchange or explanation ' +
+        'enough substance to be useful rather than just a terse reaction. ' +
+        'Keep genuinely simple factual questions concise. Never add filler, ' +
+        'repetition or invented details, and respect explicit brevity.'
     );
 
     function lastChatCall(message) {
@@ -41,11 +50,35 @@
     }
 
     function explicitlyShortRequest(text) {
-        return /(?:antworte|antwort|schreibe|beschreibe|sag|sage|reply|respond|write)\s+(?:bitte\s+)?(?:sehr\s+)?(?:kurz|knapp|einsilbig|briefly|short|concisely)|(?:nur|only)\s+(?:ein(?:en|e|em)?\s+)?(?:satz|wort|sentence|word)|(?:in|mit)\s+(?:einem|1)\s+(?:satz|wort)/i.test(text);
+        return /(?:antworte|antwort|schreibe|beschreibe|sag|sage|reply|respond|write)\s+(?:bitte\s+)?(?:sehr\s+|ganz\s+)?(?:kurz|knapp|einsilbig|briefly|short|concisely)|(?:nur|only)\s+(?:ein(?:en|e|em)?\s+)?(?:satz|wort|sentence|word)|(?:in|mit)\s+(?:einem|1)\s+(?:satz|wort)/i.test(text);
+    }
+
+    function simpleFactQuestion(text) {
+        return /^(?:wer|wann|wo|wieviel|wie viel|wie spät|what time|who|when|where|how much)\b/i.test(text.trim());
+    }
+
+    function isScene(session, messages) {
+        if (session?.settings?.preset_id === 'roleplay') return true;
+        const prompt = String(session?.settings?.system_prompt || '');
+        if (/\b(?:roleplay|role-play|rollenspiel|stay in character|spiele eine figur|du bist eine figur|character role|szenenbeschreibung)\b/i.test(prompt)) {
+            return true;
+        }
+
+        const recent = messages.slice(-10).filter(m =>
+            m?.role === 'assistant' && typeof m.content === 'string'
+        );
+
+        return recent.some(message => {
+            const text = message.content.slice(0, 600);
+            return /\*[^*\n]{4,120}\*/.test(text) ||
+                /(?:^|\n)\s*[A-ZÄÖÜ][a-zäöüß]{2,24}\s+(?:blinzelt|lächelt|grinst|schaut|blickt|atmet|schweigt|dreht|nimmt|setzt|steht|nickt|flüstert|starrt|zögert|smiles|looks|blinks|whispers|nods)\b/m.test(text);
+        });
     }
 
     function instructionForTurn(session, messages) {
-        if (session?.settings?.adaptive_response_length !== true ||
+        // A new setting enables this on existing as well as new chats.
+        // Legacy adaptive_response_length remains accepted by persistence.
+        if (session?.settings?.adaptive_response_auto === false ||
             !Array.isArray(messages) || messages.length < 7) {
             return '';
         }
@@ -63,8 +96,15 @@
             if (messages[i]?.role === 'assistant') replies.push(messages[i]);
         }
 
-        return replies.length === REQUIRED_SHORT_REPLIES &&
-            replies.every(isShortModelReply) ? GUIDANCE : '';
+        if (replies.length !== REQUIRED_SHORT_REPLIES ||
+            !replies.every(isShortModelReply)) {
+            return '';
+        }
+
+        const narrative = isScene(session, messages);
+        if (!narrative && simpleFactQuestion(current.content)) return '';
+
+        return narrative ? SCENE_GUIDANCE : GENERAL_GUIDANCE;
     }
 
     window.MLXChatResponseLength = Object.freeze({
