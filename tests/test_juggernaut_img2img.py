@@ -59,6 +59,8 @@ def test_sdxl_edit_preserves_source_and_uses_default_or_explicit_strength(tmp_pa
     original = source.read_bytes()
     monkeypatch.setattr(service, "OUTPUT", tmp_path / "outputs")
     monkeypatch.setattr(service, "_edit_model", lambda *_args, **_kw: juggernaut)
+    # Explicitly scope test paths; never loosen production upload validation.
+    monkeypatch.setattr(service, "validate_edit_source", lambda path: Path(path))
     monkeypatch.setattr(service.runtime_coordinator,
                         "ensure_model_load_allowed", lambda *_: None)
     monkeypatch.setattr(service, "image_change_advisory", lambda *_: None)
@@ -94,6 +96,8 @@ def test_sdxl_edit_rejects_qwen_masks_and_multiple_sources(tmp_path, monkeypatch
     path = tmp_path / "original.png"
     Image.new("RGB", (512, 512)).save(path)
     monkeypatch.setattr(service, "_edit_model", lambda *_args, **_kw: juggernaut)
+    # Explicitly scope test paths; never loosen production upload validation.
+    monkeypatch.setattr(service, "validate_edit_source", lambda path: Path(path))
     with pytest.raises(Exception, match="keine Maske"):
         service._edit_result(service.Edit(prompt="Make it brighter",
             source_path=str(path), model="juggernaut-xl", mask_path=str(path)))
