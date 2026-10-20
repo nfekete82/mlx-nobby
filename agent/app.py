@@ -5576,6 +5576,14 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if trusted_workspace_action is not None:
         return trusted_workspace_action
 
+    # A personal account asking for perspective is not a public research
+    # request just because it mentions a website, prices or statistics.
+    # Keep explicit search/news/dated-fact queries on the existing routes.
+    if not file_context:
+        from agent.personal_advice_routing import is_personal_advice_without_external_request
+        if is_personal_advice_without_external_request(prompt):
+            return "normal_chat"
+
     if candidate == "orchestrator":
         return candidate
 
@@ -10145,6 +10153,18 @@ def run_chat_action(request: ChatActionRequest):
         return chat_tool_result(action, "failed", error="Aktion ist nicht registriert")
     try:
         data = handler(request)
+        if action == "web_search" and isinstance(data, dict):
+            from agent.personal_advice_routing import is_personal_advice_without_external_request
+            if (isinstance(data.get("results"), list)
+                    and not data["results"]
+                    and not data.get("weather_forecast")
+                    and not data.get("news_digest")
+                    and is_personal_advice_without_external_request(request.prompt)):
+                # If a classifier or older preflight still sends a personal
+                # account to search, allow the UI to continue normal chat.
+                # Never assert such a fallback for genuine external research.
+                data = dict(data)
+                data["empty_search_chat_fallback"] = True
         artifacts = []
         if action in {
             "image_generate",
