@@ -237,6 +237,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             }
             select.value = editOptions.model || 'auto';
             updateStrength();
+            updateSamplingVisibility();
         }).catch(() => {
             // Keep automatic routing available even if model discovery is offline.
             if (editOptions.model) {
@@ -247,6 +248,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                 select.value = editOptions.model;
             }
             updateStrength();
+            updateSamplingVisibility();
         });
 
         updateStrength();
