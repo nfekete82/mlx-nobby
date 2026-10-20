@@ -5579,7 +5579,7 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     # A personal account asking for perspective is not a public research
     # request just because it mentions a website, prices or statistics.
     # Keep explicit search/news/dated-fact queries on the existing routes.
-    if not file_context:
+    if not file_context and candidate in (None, "web_search"):
         from agent.personal_advice_routing import is_personal_advice_without_external_request
         if is_personal_advice_without_external_request(prompt):
             return "normal_chat"
