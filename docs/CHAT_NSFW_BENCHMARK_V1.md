@@ -12,7 +12,13 @@ candidate_model derselbe Qwen3.8-Pfad**. Beide Läufe hatten 42/44.
 Das ist ein Vergleich desselben Modells und **kein Ergebnis für Dark Scarlett**.
 
 Der neue NSFW-Benchmark verlangt deshalb bei jedem Run die erwartete
-**reale Modellidentität vom Agenten** mit --expect-model. Er verweigert
+**reale Modellidentität vom Agenten** mit --expect-model. Jede einzelne
+Benchmark-Anfrage übermittelt außerdem die aktuell bestätigte **Modell-ID
+und Chatserver-PID** an den Agenten. Im expliziten Benchmark-Modus wird die
+Chat-Rolle nicht neu aufgelöst und es wird **kein anderes Modell gestartet**.
+Wenn sich die Konfiguration oder die PID inzwischen geändert hat, wird die
+Anfrage stattdessen verworfen. Ohne diesen Opt-in-Modus bleibt die normale
+Chat-Rollensteuerung unverändert. Er verweigert
 einen Model-A/B-Vergleich, wenn beide Berichte dieselbe Identität haben.
 Der **Dateiname** gilt ausdrücklich nicht als Modellnachweis.
 
@@ -98,6 +104,12 @@ Nach erfolgreichem Modellstart:
 
 **Wichtig:** Wird weiterhin Qwen3.8 vom Agenten gemeldet, wird dieser
 Lauf **abgelehnt**, statt eine falsche Dark-Scarlett-Punktzahl zu erzeugen.
+Die Tests ändern keine gespeicherten `model-roles.json`-Rollen. Das ist
+wichtig: Die Chat-Rolle kann bei normaler Bedienung weiterhin Qwen wählen,
+obwohl `./scripts/mlx model dark-scarlett-27b` ausdrücklich Dark Scarlett
+für den Runtime-Server gesetzt hat. Die Testanfragen respektieren stattdessen
+die aktuell aktive Modell-ID + Prozess-ID. Alte **unvollständige** Dark-
+Scarlett-Berichte bleiben unbrauchbar; für neue Versuche neue Dateinamen nutzen.
 
 ### 3) Beide Antworten lokal selbst bewerten
 
