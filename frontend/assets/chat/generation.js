@@ -13,6 +13,20 @@ function generationText(key, fallback = '', variables = {}) {
     return value;
 }
 
+function shouldAnswerAfterEmptyWebSearch(prompt, toolResult) {
+    const text = String(prompt || '');
+    const providerStatus = toolResult?.data?.provider_status;
+    if (toolResult?.data?.weather_forecast ||
+        toolResult?.data?.news_digest ||
+        providerStatus === 'location_required') return false;
+    // Only fall back for personal reflection/advice, not genuine requests
+    // for verifiable external facts or the latest public information.
+    const personal = /\b(?:mein(?:e|em|en|er|es)?|unser(?:e|em|en|er|es)?)\s+(?:chef|chefin|kolleg(?:e|in|en)|vorgesetzte[nr]?|mutter|vater|partner(?:in)?|freund(?:in)?|familie)\b/i.test(text);
+    const opinion = /\b(?:sagt|meint|behauptet|findet|ärgert|streit|feedback|statistik(?:en)?|besucher|fühle|verstehe|unfair|idiot|warum|wie siehst|was hältst)\b/i.test(text);
+    const needsEvidence = /\b(?:suche\s+(?:im\s+)?(?:web|internet)|websuche|recherchier\w*|google|aktuelle\s+(?:preise|news|angebote)|nachrichten\s+(?:heute|aktuell)|quelle[n]?\s+(?:dafür|dazu)|finde\s+(?:mir\s+)?(?:links|quellen))\b/i.test(text);
+    return personal && opinion && !needsEvidence;
+}
+
 function gt(key, fallback = '', variables = {}) {
     return generationText(
         'generation.' + key,
@@ -3968,6 +3982,19 @@ const imageFiles =
                 }
 
                 if (!results.length) {
+                    if (shouldAnswerAfterEmptyWebSearch(prompt, toolResult)) {
+                        // An irrelevant zero-result search must not become the
+                        // assistant answer. Reuse the original user message and
+                        // local model, without adding fabricated web evidence.
+                        userMessage.web_search = {
+                            provider: toolResult.data?.provider || 'unknown',
+                            query: toolResult.data?.query || '',
+                            results: []
+                        };
+                        MLXChatSessions.saveSessions();
+                        await generateAssistant(session);
+                        return;
+                    }
                     const providerStatus = toolResult.data?.provider_status;
                     const emptyMessage = forecast?.answer
                         ? forecast.answer
