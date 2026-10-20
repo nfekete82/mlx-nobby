@@ -877,7 +877,9 @@
     "shutdown_ai_running": "KI- und Modell-Dienste werden beendet …",
     "system_action_failed": "Systemaktion fehlgeschlagen: {message}",
     "system_action_timeout": "Die Systemaktion wurde nicht innerhalb des Zeitlimits abgeschlossen.",
-    "system_reconnecting": "Verbindung zu den Diensten wird wiederhergestellt …"
+    "system_reconnecting": "Verbindung zu den Diensten wird wiederhergestellt …",
+    "adaptive_response_length": "Dynamische Antwortlänge",
+    "adaptive_response_length_hint": "Nur für diesen Chat: Steuert nach drei auffällig kurzen Antworten sanft gegen. Keine automatische Neugenerierung."
   },
   "attachments.rag_ready": " · ✓ RAG bereit",
   "attachments.image_read_failed": "Bild konnte nicht gelesen werden: {name}",

@@ -99,6 +99,7 @@
     );
     const temperature = document.getElementById('temperature');
     const maxTokens = document.getElementById('maxTokens');
+    const adaptiveResponseLength = document.getElementById('adaptiveResponseLength');
     const mediaQuality = document.getElementById('mediaQuality');
     const showMetrics = document.getElementById('showMetrics');
     const autoScroll = document.getElementById('autoScroll');
@@ -1474,6 +1475,7 @@ function createSessionSettings() {
                 : 'custom',
         temperature: globalSettings.default_temperature,
         max_tokens: globalSettings.default_max_tokens,
+        adaptive_response_length: false,
         media_quality: DEFAULT_MEDIA_QUALITY,
         negative_prompt: ''
     };
@@ -1653,6 +1655,14 @@ function sessionSettings(session) {
                 session.settings.max_tokens
             );
 
+        const normalizedAdaptiveResponseLength =
+            session.settings.adaptive_response_length === true;
+
+        if (session.settings.adaptive_response_length !== normalizedAdaptiveResponseLength) {
+            session.settings.adaptive_response_length = normalizedAdaptiveResponseLength;
+            changed = true;
+        }
+
         const normalizedMediaQuality = normalizeMediaQuality(
             session.settings.media_quality
         );
@@ -1708,6 +1718,7 @@ function sessionSettings(session) {
         preset_id: preset ? preset[0] : 'custom',
         temperature: DEFAULT_TEMPERATURE,
         max_tokens: DEFAULT_MAX_TOKENS,
+        adaptive_response_length: false,
         media_quality: DEFAULT_MEDIA_QUALITY,
         negative_prompt: ''
     };
@@ -1765,6 +1776,7 @@ function loadSessionSettings() {
             : 'custom';
     temperature.value = settings.temperature;
     maxTokens.value = settings.max_tokens;
+    adaptiveResponseLength.checked = settings.adaptive_response_length;
     mediaQuality.value = settings.media_quality;
 }
 
@@ -1823,6 +1835,9 @@ function handleSystemPromptInput(event) {
             maxTokens.value
         );
         maxTokens.value = settings.max_tokens;
+
+    } else if (event.target === adaptiveResponseLength) {
+        settings.adaptive_response_length = adaptiveResponseLength.checked;
 
     } else if (event.target === systemPrompt) {
         settings.system_prompt = systemPrompt.value;
