@@ -10540,6 +10540,23 @@ body.notes-resizing * {
     color: #a5b4fc;
 }
 .image-edit-strength-field[hidden] { display: none; }
+.image-edit-sdxl-sampling {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+.image-edit-sdxl-sampling[hidden] { display: none; }
+.image-edit-sdxl-sampling label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    font-size: 12px;
+}
+@media (max-width: 620px) {
+    .image-edit-sdxl-sampling { grid-template-columns: minmax(0, 1fr); }
+}
 .image-edit-advanced { min-width: 0; }
 .image-edit-advanced summary {
     box-sizing: border-box;
