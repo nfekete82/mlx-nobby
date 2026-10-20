@@ -6,7 +6,8 @@
 2. Set **Bild verwenden für → Bearbeiten (Edit)**.
 3. In **Bearbeitungsmodell**, choose **Juggernaut XL Ragnarok**.
 4. Set **Veränderungsstärke / Strength** (0.15–0.85, default 0.45).
-5. Enter a scene/style instruction and start the image job, choosing normal quality.
+5. Optionally open **Weitere Optionen** to set Steps (1–50), CFG (0–10) or a reproducible Seed. If blank, Nobby uses the selected quality/model defaults and a random seed.
+6. Enter a scene/style instruction and start the image job, choosing normal quality.
 
 The edit uses an SDXL image-to-image denoising pipeline. This is **not**
 precision editing: facial identity and individual elements may change. Qwen
