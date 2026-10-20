@@ -24,7 +24,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         const text = String(prompt || '');
         // Specific identity promises outrank "möglichst ähnlich" qualifiers.
         const exact = /\b(?:dieselbe[nr]?|derselben|demselben|denselben|gleiche[nmrs]?|gleichen|same|identical)\s+(?:person|frau|mann|gesicht|woman|man|face)\b|\b(?:behalte|bewahre|erhalte|keep|preserve|retain)\b.{0,80}\b(?:person|gesicht|aussehen|identität|face|identity|appearance)\b/iu;
-        const similarity = /\b(?:ähnelt|aehnelt|ähnlich|aehnlich|resembling|resembles|resemble|similar\s+to|looks\s+like)\b/iu;
+        const similarity = /(?:^|[^\p{L}])(?:ähnelt|aehnelt|ähnlich|aehnlich|resembling|resembles|resemble|similar\s+to|looks\s+like)(?!\p{L})/iu;
         if (exact.test(text)) {
             return {kind: 'same_identity', strength: 0.75, steps: 40, guidance: 5.0};
         }
