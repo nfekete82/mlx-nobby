@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix long English person-reference photo prompts ("Create a photorealistic full-body photograph of the exact same adult woman ..."): recognize `photograph` as an image output and `exact same adult woman` as an identity reference. Treat negative *composition constraints* such as "not a minor variation of the original" or "do not recreate the original selfie" as styling rather than cancelling the requested image. Preserve "do not create/generate an image" as a strict non-execution instruction. Add preflight/execution and reference-routing regressions to prevent chat-only false success.
+
 - Person-reference defaults: explicitly requesting the same person/face now outranks soft words such as "möglichst ähnlich", retaining `same_identity` instead of accidentally downgrading to resemblance. New one-image Edit requests suggesting the same person auto-select available Juggernaut XL with denoise 0.75 / 40 steps / CFG 5.0; resemblance-only requests use 0.55 / 36 / 5.5. Leave Seed random, preserve manual selections, and fall back to Auto/Qwen when Juggernaut is not available. Preserve unrelated edits and regular T2I behavior. Pose-aware identity instructions discourage copying the original selfie crop.
 
 - Add local Juggernaut XL Ragnarok image-to-image editing: source-preserving SDXL img2img pipeline with a per-job denoising strength slider (0.15–0.85), bounded private RGB image copy, shared offloaded model components, existing memory and job guards, source comparison, and unchanged Qwen masked editing. CPU/JS regression tests and real Apple Silicon release acceptance instructions accompany the opt-in model selection. Planned for v1.20.0 after release qualification.

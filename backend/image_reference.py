@@ -5,15 +5,15 @@ REFERENCE_VERBS = frozenset('zeige zeigen show keep preserve behalte behalten be
 PERSON_REFERENCE = re.compile(
     r'\b(?:(?:dies(?:e|er|elbe|elben)|derselben|demselben|denselben|gleiche[nmrs]?|gleichen|dieses|gleiches|dasselbe|demselben)\s+(?:person|gesicht|frau|mann)|'
     r'(?:person|frau|mann|sie|ihn)\s+(?:aus|auf)\s+(?:dem|diesem)\s+(?:bild|foto)|'
-    r'(?:same|this)\s+(?:person|face|woman|man)|person\s+(?:in|from)\s+(?:this|the)\s+(?:image|photo)|'
+    r'(?:exact(?:ly)?\s+)?(?:same|this)\s+(?:(?:adult|young|older|middle-aged|elderly)\s+){0,2}(?:person|face|woman|man)|person\s+(?:in|from)\s+(?:this|the)\s+(?:image|photo)|'
     r'(?:behalte|beibehalten|keep|preserve)\s+(?:(?:das|die|the)\s+)?(?:gesicht|person|aussehen|face|identity)|'
     r'(?:gesicht|person|aussehen)\s+beibehalten)\b', re.I)
 RESEMBLANCE = re.compile(r'\b(?:ähnelt|aehnelt|ähnlich|aehnlich|resembling|resembles|resemble|similar\s+to|looks\s+like|sieht\s+aus\s+wie)\b', re.I)
 # Strong identity requests outrank soft qualifiers such as "möglichst ähnlich".
 # "Ein Bild, das dieser Person ähnelt" still means resemblance, not identity.
 EXACT_IDENTITY = re.compile(
-    r'\b(?:dieselbe[nr]?|derselben|demselben|denselben|gleiche[nmrs]?|gleichen|dasselbe[nr]?|same|identical)\s+'
-    r'(?:person|gesicht|frau|mann|face|woman|man)\b|'
+    r'\b(?:dieselbe[nr]?|derselben|demselben|denselben|gleiche[nmrs]?|gleichen|dasselbe[nr]?|same|identical|exact\s+same)\s+'
+    r'(?:(?:adult|young|older|middle-aged|elderly)\s+){0,2}(?:person|gesicht|frau|mann|face|woman|man)\b|'
     r'\b(?:behalte|beibehalten|bewahre|erhalte|keep|preserve|retain)\b.{0,80}'
     r'\b(?:person|gesicht|gesichtszüge|aussehen|identität|face|identity|appearance)\b|'
     r'\b(?:facial\s+identity|same\s+facial\s+features)\b',

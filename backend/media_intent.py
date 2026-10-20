@@ -56,7 +56,7 @@ DISCUSS = set(
     .split()
 )
 OBJECTS = {
-    **dict.fromkeys("bild bilder foto photo image picture illustration grafik graphic porträt portrait headshot".split(), "image_generate"),
+    **dict.fromkeys("bild bilder foto photo photograph photographs image picture illustration grafik graphic porträt portrait headshot".split(), "image_generate"),
     **dict.fromkeys("video clip animation film movie".split(), "video_generate"),
     **dict.fromkeys("short shorts tiktok reel reels kurzvideo kurzvideos".split(), "shorts_generate"),
 }
@@ -97,6 +97,22 @@ def _negates_execution(words, command):
         if word not in NEGATIONS:
             continue
         following = index + 1
+        # "Create a new photograph, not a minor variation of the original"
+        # describes the *output*. It does not cancel the image request.
+        # Contrast "do not create an image", which must still block execution.
+        if word in {"not", "nicht", "don't", "dont"}:
+            rest = words[following:]
+            if (len(rest) >= 4
+                    and rest[:3] in (["a", "minor", "variation"],
+                                     ["a", "small", "variation"],
+                                     ["eine", "kleine", "variation"])
+                    and any(token in {"original", "source", "previous", "originals"}
+                            for token in rest[3:])):
+                continue
+            if (rest and rest[0] in {"recreate", "reproduce", "replicate", "copy"}
+                    and any(token in {"original", "source", "previous", "existing"}
+                            for token in rest[1:6])):
+                continue
         while following < len(words) and words[following] in CONTENT_QUALIFIERS:
             following += 1
         if following < len(words) and words[following] in CONTENT_CONSTRAINTS:
