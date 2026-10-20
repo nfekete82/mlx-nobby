@@ -1096,5 +1096,7 @@
   "library17.oldest": "Älteste zuerst",
   "library17.largest": "Größte zuerst",
   "library17.smallest": "Kleinste zuerst",
-  "library.more_actions": "Weitere Aktionen"
+  "library.more_actions": "Weitere Aktionen",
+  "attachments.img2img_strength": "Veränderungsstärke (Juggernaut img2img)",
+  "attachments.img2img_strength_hint": "0,15 = nah am Original · 0,85 = frei verändert"
 }
