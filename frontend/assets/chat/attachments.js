@@ -310,12 +310,17 @@ function attachmentT(key, fallback = '', variables = {}) {
         const updateSamplingVisibility = () => {
             sdxlSampling.hidden = select.value !== 'juggernaut-xl';
             if (sdxlSampling.hidden) {
+                // Other edit models must not even receive the SDXL numeric
+                // inputs in the DOM; otherwise those controls can interfere
+                // with keyboard navigation or precision-edit workflows.
+                sdxlSampling.remove?.();
                 for (const key of ['steps', 'guidance', 'seed']) delete editOptions[key];
+            } else if (!Array.from(fields.children || []).includes(sdxlSampling)) {
+                fields.append(sdxlSampling);
             }
         };
         select.addEventListener('change', updateSamplingVisibility);
         updateSamplingVisibility();
-        fields.append(sdxlSampling);
 
         const maskLabel = document.createElement('label');
         maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Mask (optional)');
