@@ -11995,7 +11995,8 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
-                if request.pin_active_model is not None or request.pin_active_pid is not None:
+                if (getattr(request, "pin_active_model", None) is not None
+                        or getattr(request, "pin_active_pid", None) is not None):
                     role = _pinned_stream_model_role(request)
                 else:
                     runtime = ensure_model_for_role(selected_role)
