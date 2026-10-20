@@ -106,7 +106,8 @@ def _negates_execution(words, command):
                     and rest[:3] in (["a", "minor", "variation"],
                                      ["a", "small", "variation"],
                                      ["eine", "kleine", "variation"])
-                    and "original" in rest or False):
+                    and any(token in {"original", "source", "previous", "originals"}
+                            for token in rest[3:])):
                 continue
             if (rest and rest[0] in {"recreate", "reproduce", "replicate", "copy"}
                     and any(token in {"original", "source", "previous", "existing"}
