@@ -1,0 +1,649 @@
+{
+  "schema": 1,
+  "suite": "mlx-nobby-chat-quality-v1",
+  "description": "Frozen synthetic German, reasoning, PHP, JS, SQLite, context and manual review tasks. No external sources.",
+  "cases": [
+    {
+      "id": "de-article",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Welcher bestimmte Artikel gehört zum Substantiv Tisch? Antworte nur mit dem Artikel."
+        }
+      ],
+      "expected": "der"
+    },
+    {
+      "id": "de-plural",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Wie lautet der Plural des Wortes Kind?"
+        }
+      ],
+      "expected": "Kinder"
+    },
+    {
+      "id": "de-case",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In „Ich helfe dem Mann“: In welchem grammatischen Fall steht „dem Mann“?"
+        }
+      ],
+      "expected": "Dativ"
+    },
+    {
+      "id": "de-past",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Wie lautet das Präteritum von „gehen“ in der 3. Person Singular?"
+        }
+      ],
+      "expected": "ging"
+    },
+    {
+      "id": "de-opposite",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Wie lautet das Gegenteil von „früh“?"
+        }
+      ],
+      "expected": "spät"
+    },
+    {
+      "id": "de-reading",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Lena gibt Tom ein Buch. Tom reicht es Eva. Bei wem befindet sich das Buch am Ende?"
+        }
+      ],
+      "expected": "Eva"
+    },
+    {
+      "id": "de-wordclass",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Zu welcher Wortart gehört „schnell“ in „Der schnelle Zug“? Nenne die Grundwortart."
+        }
+      ],
+      "expected": "Adjektiv"
+    },
+    {
+      "id": "de-gender",
+      "category": "german",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Welcher bestimmte Artikel gehört zum Wort Blume?"
+        }
+      ],
+      "expected": "die"
+    },
+    {
+      "id": "logic-tickets",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ein Kino hat 48 Karten. Es verkauft 13, dann 17, dann 8. Wie viele bleiben?"
+        }
+      ],
+      "expected": "10"
+    },
+    {
+      "id": "logic-train",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ein Zug fährt um 14:35 ab und benötigt 90 Minuten. Ankunft im Format HH:MM?"
+        }
+      ],
+      "expected": "16:05"
+    },
+    {
+      "id": "logic-handshakes",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Acht Personen geben sich gegenseitig genau einmal die Hand. Wie viele Händedrücke?"
+        }
+      ],
+      "expected": "28"
+    },
+    {
+      "id": "logic-combinations",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Aus 5 verschiedenen Büchern werden 2 ohne Reihenfolge ausgewählt. Wie viele Möglichkeiten?"
+        }
+      ],
+      "expected": "10"
+    },
+    {
+      "id": "logic-profit",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ein Händler kauft 24 Bücher für je 7 Euro. 18 verkauft er für je 11 Euro, 6 für je 5 Euro. Gewinn in Euro?"
+        }
+      ],
+      "expected": "60"
+    },
+    {
+      "id": "logic-sequence",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Setze die Zahlenfolge fort: 2, 6, 12, 20, 30, ?."
+        }
+      ],
+      "expected": "42"
+    },
+    {
+      "id": "logic-ratio",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ein Rezept benötigt für 3 Personen 450 Gramm Reis. Wie viel Gramm werden bei proportionaler Skalierung für 5 Personen benötigt?"
+        }
+      ],
+      "expected": "750"
+    },
+    {
+      "id": "logic-order",
+      "category": "reasoning",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Anna ist älter als Bernd. Carla ist jünger als Anna, aber älter als Bernd. Wer ist die zweitälteste Person?"
+        }
+      ],
+      "expected": "Carla"
+    },
+    {
+      "id": "php-copy",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: $a=[1,2]; $b=$a; $b[]=3; echo count($a); Welche Ausgabe erscheint?"
+        }
+      ],
+      "expected": "2"
+    },
+    {
+      "id": "php-strict",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: echo (int) (\"5\" === 5); Was erscheint?"
+        }
+      ],
+      "expected": "0"
+    },
+    {
+      "id": "php-add",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: $x=3; $x+=4; echo $x; Was erscheint?"
+        }
+      ],
+      "expected": "7"
+    },
+    {
+      "id": "php-length",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: echo strlen(\"Nobby\"); Was erscheint?"
+        }
+      ],
+      "expected": "5"
+    },
+    {
+      "id": "php-array",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: $a=[\"x\"=>2]; echo $a[\"x\"]*3; Was erscheint?"
+        }
+      ],
+      "expected": "6"
+    },
+    {
+      "id": "php-map",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: echo implode(\"-\",array_map(fn($x)=>$x*2,[1,2,3])); Was erscheint?"
+        }
+      ],
+      "expected": "2-4-6"
+    },
+    {
+      "id": "php-uppercase",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: $s=\"abc\"; echo strtoupper($s[1]); Was erscheint?"
+        }
+      ],
+      "expected": "B"
+    },
+    {
+      "id": "php-spaceship",
+      "category": "php",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "PHP 8: echo 2 <=> 5; Was erscheint?"
+        }
+      ],
+      "expected": "-1"
+    },
+    {
+      "id": "js-map",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log([1,2,3].map(x=>x*2).join(\",\")); Was erscheint?"
+        }
+      ],
+      "expected": "2,4,6"
+    },
+    {
+      "id": "js-typeof",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log(typeof null); Was erscheint?"
+        }
+      ],
+      "expected": "object"
+    },
+    {
+      "id": "js-strict",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log(0 === false); Was erscheint?"
+        }
+      ],
+      "expected": "false"
+    },
+    {
+      "id": "js-reference",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: let a=[1];let b=a;b.push(2);console.log(a.length); Was erscheint?"
+        }
+      ],
+      "expected": "2"
+    },
+    {
+      "id": "js-filter",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log([1,2,3].filter(x=>x>1).reduce((a,b)=>a+b,0)); Was erscheint?"
+        }
+      ],
+      "expected": "5"
+    },
+    {
+      "id": "js-slice",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log(\"abc\".slice(1)); Was erscheint?"
+        }
+      ],
+      "expected": "bc"
+    },
+    {
+      "id": "js-power",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log(3**2); Was erscheint?"
+        }
+      ],
+      "expected": "9"
+    },
+    {
+      "id": "js-truthy",
+      "category": "javascript",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "JavaScript: console.log(Boolean(\"0\")); Was erscheint?"
+        }
+      ],
+      "expected": "true"
+    },
+    {
+      "id": "sql-count",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Tabelle t(x) hat die Zeilen (1),(2),(2). Ergebnis von SELECT COUNT(*) FROM t WHERE x>=2?"
+        }
+      ],
+      "expected": "2"
+    },
+    {
+      "id": "sql-max",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Tabelle t(x) hat die Zeilen (1),(3),(2). Ergebnis von SELECT MAX(x) FROM t?"
+        }
+      ],
+      "expected": "3"
+    },
+    {
+      "id": "sql-coalesce",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Ergebnis von SELECT COALESCE(NULL,7)?"
+        }
+      ],
+      "expected": "7"
+    },
+    {
+      "id": "sql-distinct",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Tabelle t(city) hat (\"Berlin\"),(\"Berlin\"),(\"Ulm\"). Ergebnis von SELECT COUNT(DISTINCT city) FROM t?"
+        }
+      ],
+      "expected": "2"
+    },
+    {
+      "id": "sql-sum",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Tabelle t(amount) hat (2),(3),(-1). Ergebnis von SELECT SUM(amount) FROM t?"
+        }
+      ],
+      "expected": "4"
+    },
+    {
+      "id": "sql-null",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Tabelle t(value) hat (NULL),(2),(3). Ergebnis von SELECT COUNT(*) FROM t WHERE value IS NULL?"
+        }
+      ],
+      "expected": "1"
+    },
+    {
+      "id": "sql-lower",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Ergebnis von SELECT LOWER('ABC')?"
+        }
+      ],
+      "expected": "abc"
+    },
+    {
+      "id": "sql-precedence",
+      "category": "sql",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "SQLite 3: Ergebnis von SELECT 2 + 3 * 4?"
+        }
+      ],
+      "expected": "14"
+    },
+    {
+      "id": "context-code",
+      "category": "context",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Für diese Testunterhaltung lautet das Codewort MANGO."
+        },
+        {
+          "role": "assistant",
+          "content": "Verstanden."
+        },
+        {
+          "role": "user",
+          "content": "Welches Codewort wurde in diesem Chat festgelegt?"
+        }
+      ],
+      "expected": "MANGO"
+    },
+    {
+      "id": "context-price",
+      "category": "context",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Paket A kostet 12 Euro, Paket B kostet 19 Euro."
+        },
+        {
+          "role": "assistant",
+          "content": "Die Preise sind notiert."
+        },
+        {
+          "role": "user",
+          "content": "Wie viele Euro kostet das teurere Paket mehr? Antworte nur als ganze Zahl."
+        }
+      ],
+      "expected": "7"
+    },
+    {
+      "id": "context-update",
+      "category": "context",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Die Farbe ist blau."
+        },
+        {
+          "role": "assistant",
+          "content": "Notiert."
+        },
+        {
+          "role": "user",
+          "content": "Korrektur: Die Farbe ist jetzt grün."
+        },
+        {
+          "role": "assistant",
+          "content": "Korrektur verstanden."
+        },
+        {
+          "role": "user",
+          "content": "Welche Farbe ist nach der Korrektur gültig?"
+        }
+      ],
+      "expected": "grün"
+    },
+    {
+      "id": "context-chain",
+      "category": "context",
+      "kind": "exact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Mira legt den Schlüssel in die Tasche."
+        },
+        {
+          "role": "assistant",
+          "content": "Notiert."
+        },
+        {
+          "role": "user",
+          "content": "Später nimmt Mira ihn aus der Tasche und legt ihn in die Schublade."
+        },
+        {
+          "role": "assistant",
+          "content": "Verstanden."
+        },
+        {
+          "role": "user",
+          "content": "Wo liegt der Schlüssel am Ende?"
+        }
+      ],
+      "expected": "Schublade"
+    },
+    {
+      "id": "review-advice",
+      "category": "advice",
+      "kind": "review",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Eine fiktive Person ist von vielen Aufgaben überfordert. Gib 3 konkrete und priorisierte nächste Schritte ohne Diagnosen."
+        }
+      ],
+      "review_checks": [
+        "Drei umsetzbare, priorisierte Schritte",
+        "Keine Diagnose aus dem Prompt ableiten",
+        "Respektvoller, sachlicher Ton"
+      ]
+    },
+    {
+      "id": "review-code",
+      "category": "coding",
+      "kind": "review",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Zeige eine kurze sichere PHP-8-PDO-Abfrage, die einen übergebenen Nutzernamen ohne SQL-Injection nachschlägt."
+        }
+      ],
+      "review_checks": [
+        "Prepared Statement und Bindung des Wertes",
+        "Keine Stringkonkatenation mit Nutzereingaben in SQL",
+        "Lauffähiges, knappes PHP-Beispiel"
+      ]
+    },
+    {
+      "id": "review-source",
+      "category": "rag_faithfulness",
+      "kind": "review",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Nur folgender synthetischer Auszug ist als Quelle gegeben: \"Betrieb Alpha: Support Mo–Fr von 9 bis 17 Uhr. Samstags geschlossen. Antwortzeit nicht angegeben.\" Welche Supportzeiten gelten, und ist eine Antwortzeit dokumentiert?"
+        }
+      ],
+      "review_checks": [
+        "Mo–Fr 9–17 Uhr korrekt wiedergegeben",
+        "Samstag geschlossen",
+        "Keine erfundene Antwortzeit",
+        "Kennzeichnet Quelle als vorgegebenen Auszug, nicht als verifizierte Website"
+      ]
+    },
+    {
+      "id": "review-longform",
+      "category": "longform",
+      "kind": "review",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Erkläre für einen erfahrenen Entwickler den Unterschied zwischen Prefill, Decoding, KV-Cache und Unified Memory in 4 nummerierten Abschnitten mit einem konkreten Praxisbeispiel."
+        }
+      ],
+      "review_checks": [
+        "Vier klar strukturierte Abschnitte",
+        "Technisch korrekte Unterscheidung der vier Begriffe",
+        "Plausibles konkretes Praxisbeispiel",
+        "Keine ungesicherten Hardware-Messwerte behauptet"
+      ]
+    }
+  ]
+}
