@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix personal-advice chats wrongly routed to Websuche: first-person workplace/family situations without explicit external research stay in normal chat; only an Agent-certified empty personal search may fall through to the regular model, while news, weather and live-source requests still fail closed. Includes API/UI regression tests for the O2/chef/statistics case.
+
 - Make the existing top-left chat-model picker discoverable and route selection through a chat-only, guarded model switch; persist `chat` role without rewriting agent/coding/vision roles. Model switching remains global to the shared chat runtime; optional Roleplay preset works as before.
 
 - Fix `chat-nsfw` benchmark: explicitly pin active model **and PID** inside the protected Agent stream, bypassing persistent `chat` role resolution (which previously switched Dark Scarlett back to Qwen3.8 after the first case); reject changed runtime identity, leave normal role routing intact.
