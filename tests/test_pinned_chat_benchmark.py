@@ -38,7 +38,7 @@ def test_stream_pin_uses_requested_running_model_without_role_switch():
          mock.patch.object(agent_app, "switch_model_runtime", side_effect=AssertionError("runtime switch forbidden")) as runtime_switch, \
          mock.patch.object(agent_app.runtime_coordinator, "chat_runtime", return_value=nullcontext()), \
          mock.patch.object(agent_app.urllib.request, "urlopen", side_effect=fake_open):
-        with TestClient(agent_app.app) as client:
+        with TestClient(agent_app.app, base_url="http://localhost") as client:
             response = client.post("/api/runtime/chat/stream", json={
                 "messages": [{"role": "user", "content": "hello"}],
                 "stream": True, "auto_route": False,
@@ -64,7 +64,7 @@ def test_stream_pin_rejects_model_mismatch_without_generation_or_switch():
              mock.patch.object(agent_app, "switch_model_runtime") as switch, \
              mock.patch.object(agent_app.runtime_coordinator, "chat_runtime", return_value=nullcontext()), \
              mock.patch.object(agent_app.urllib.request, "urlopen") as urlopen:
-            with TestClient(agent_app.app) as client:
+            with TestClient(agent_app.app, base_url="http://localhost") as client:
                 response = client.post("/api/runtime/chat/stream", json={
                     "messages": [{"role": "user", "content": "hello"}],
                     "stream": True, "auto_route": auto_route,
@@ -84,7 +84,7 @@ def test_regular_stream_without_pin_keeps_existing_role_resolution():
                            return_value={"PORT": 8000, "THINKING": "false"}), \
          mock.patch.object(agent_app.runtime_coordinator, "chat_runtime", return_value=nullcontext()), \
          mock.patch.object(agent_app.urllib.request, "urlopen", return_value=FakeStream()):
-        with TestClient(agent_app.app) as client:
+        with TestClient(agent_app.app, base_url="http://localhost") as client:
             response = client.post("/api/runtime/chat/stream", json={
                 "messages": [{"role": "user", "content": "hello"}],
                 "auto_route": False,
