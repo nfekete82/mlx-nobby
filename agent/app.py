@@ -316,6 +316,12 @@ def normalize_chat(raw_chat, expected_id=None):
                 return None
             chat["settings"]["adaptive_response_length"] = adaptive
 
+        if "adaptive_response_auto" in settings:
+            automatic = settings["adaptive_response_auto"]
+            if type(automatic) is not bool:
+                return None
+            chat["settings"]["adaptive_response_auto"] = automatic
+
     if workspace is not None:
         chat["workspace"] = workspace
 
