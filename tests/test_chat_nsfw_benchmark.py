@@ -14,7 +14,8 @@ SPEC.loader.exec_module(nsfw)
 
 def status(model="local/Qwen3.8-27B-Abliterated-MLX-4bit"):
     return {"model": model, "pid": 1234, "online": True,
-            "thinking": False, "port": 8000}
+            "thinking": False, "port": 8000,
+            "stream_model_pin_supported": True}
 
 
 def idle():
@@ -29,7 +30,7 @@ def monkeypatch_transport(monkeypatch, model="local/Qwen3.8-27B-Abliterated-MLX-
                         if endpoint == "/api/status" else idle())
 
 
-def mock_answer(_origin, _msgs, _tokens, _timeout):
+def mock_answer(_origin, _msgs, _tokens, _timeout, **kwargs):
     answer = "Fiktive, einvernehmliche Erwachsene: Testantwort"
     return ({"first_content_ms": 120, "first_transport_ms": 5,
              "total_ms": 180, "output_characters": len(answer)}, answer)
@@ -62,9 +63,9 @@ def test_runtime_identity_mismatch_rejected_before_stream(monkeypatch, tmp_path)
 def test_success_report_private_and_no_automatic_quality_score(monkeypatch, tmp_path):
     monkeypatch_transport(monkeypatch)
     calls = []
-    def agent(*args):
-        calls.append(args)
-        return mock_answer(*args)
+    def agent(*args, **kwargs):
+        calls.append((args, kwargs))
+        return mock_answer(*args, **kwargs)
     monkeypatch.setattr(nsfw.client, "agent_stream", agent)
     report_file = tmp_path / "qwen.json"
     review_file = tmp_path / "qwen-review.json"
@@ -74,7 +75,10 @@ def test_success_report_private_and_no_automatic_quality_score(monkeypatch, tmp_
     assert report["summary"]["review_pending"] == 8
     assert report["summary"]["automatic_quality_score"] is None
     assert len(calls) == 8
-    assert all(args[2] == 512 and args[3] == 180 for args in calls)
+    assert all(args[2] == 512 and args[3] == 180
+               and kw["pin_active_model"] == status()["model"]
+               and kw["pin_active_pid"] == status()["pid"]
+               for args, kw in calls)
     raw = report_file.read_text()
     assert "Fiktive, einvernehmliche" not in raw
     assert "Nina" not in raw
@@ -88,7 +92,7 @@ def test_success_report_private_and_no_automatic_quality_score(monkeypatch, tmp_
 def test_partial_report_guard_and_noncomparison(monkeypatch, tmp_path):
     monkeypatch_transport(monkeypatch)
     n = 0
-    def stream(*args):
+    def stream(*args, **kwargs):
         nonlocal n
         n += 1
         if n == 2:
@@ -178,3 +182,18 @@ def test_review_files_cannot_be_assigned_to_a_different_model(monkeypatch, tmp_p
                    tmp_path / "dark.json-review",
                    tmp_path / "invalid-score.json")
     assert not (tmp_path / "invalid-score.json").exists()
+
+
+def test_legacy_agent_fails_before_any_nsfw_inference(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        nsfw.client, "get_json",
+        lambda _origin, path: {**status(), "stream_model_pin_supported": False}
+        if path == "/api/status" else idle(),
+    )
+    monkeypatch.setattr(
+        nsfw.client, "agent_stream", lambda *args, **kwargs: pytest.fail("no stream"),
+    )
+    with pytest.raises(RuntimeError, match="Updated Agent required"):
+        nsfw.run(nsfw.client.DEFAULT_AGENT,
+                 tmp_path / "stale.json", tmp_path / "stale-review.json", "Qwen3.8")
+    assert not (tmp_path / "stale.json").exists()

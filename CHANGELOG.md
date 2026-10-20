@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix `chat-nsfw` benchmark: explicitly pin active model **and PID** inside the protected Agent stream, bypassing persistent `chat` role resolution (which previously switched Dark Scarlett back to Qwen3.8 after the first case); reject changed runtime identity, leave normal role routing intact.
+
 - New **opt-in**, local, consenting-adult NSFW/roleplay A/B benchmark (`mlx benchmark chat-nsfw`): eight privacy-protected synthetic tasks, mandatory actual-model identity check, separate owner-only answer files, interactive five-axis human scoring, and strict different-model comparison. Existing 44+4 Chat Quality suite remains unchanged.
 
 - Add privacy-safe failure diagnostics to the Chat Quality CLI (`error_code` and `error_phase` instead of opaque RuntimeError only) and `--case-id` for reproducing a single frozen task without 48 prompts; incomplete reports remain non-comparable and raw Agent errors are still hidden.
