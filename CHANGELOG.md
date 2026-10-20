@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the existing top-left chat-model picker discoverable and route selection through a chat-only, guarded model switch; persist `chat` role without rewriting agent/coding/vision roles. Model switching remains global to the shared chat runtime; optional Roleplay preset works as before.
+
 - Fix `chat-nsfw` benchmark: explicitly pin active model **and PID** inside the protected Agent stream, bypassing persistent `chat` role resolution (which previously switched Dark Scarlett back to Qwen3.8 after the first case); reject changed runtime identity, leave normal role routing intact.
 
 - New **opt-in**, local, consenting-adult NSFW/roleplay A/B benchmark (`mlx benchmark chat-nsfw`): eight privacy-protected synthetic tasks, mandatory actual-model identity check, separate owner-only answer files, interactive five-axis human scoring, and strict different-model comparison. Existing 44+4 Chat Quality suite remains unchanged.
