@@ -166,3 +166,15 @@ def test_no_overwrite_with_private_reports(monkeypatch, tmp_path):
     nsfw.run(nsfw.client.DEFAULT_AGENT, output, review, "Qwen3.8")
     with pytest.raises(FileExistsError):
         nsfw.run(nsfw.client.DEFAULT_AGENT, output, review, "Qwen3.8")
+
+
+def test_review_files_cannot_be_assigned_to_a_different_model(monkeypatch, tmp_path):
+    q = full_report(monkeypatch, tmp_path, "local/Qwen3.8-27B-Abliterated-MLX-4bit",
+                    "qwen.json")
+    full_report(monkeypatch, tmp_path,
+                "jancirnodziewiaty/Dark-Scarlett-27B-v2.0-oQ4e-mtp", "dark.json")
+    with pytest.raises(ValueError, match="Wrong or incomplete"):
+        nsfw.score(tmp_path / "qwen.json",
+                   tmp_path / "dark.json-review",
+                   tmp_path / "invalid-score.json")
+    assert not (tmp_path / "invalid-score.json").exists()
