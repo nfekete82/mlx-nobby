@@ -276,6 +276,47 @@ function attachmentT(key, fallback = '', variables = {}) {
         negativeLabel.append(negative);
         fields.append(negativeLabel);
 
+        const sdxlSampling = document.createElement('div');
+        sdxlSampling.className = 'image-edit-sdxl-sampling';
+        const sdxlNumeric = [
+            ['steps', 'attachments.img2img_steps', 'Steps', 1, 50, 1],
+            ['guidance', 'attachments.img2img_cfg', 'CFG / Guidance', 0, 10, 0.1],
+            ['seed', 'attachments.img2img_seed', 'Seed (optional)', 0, 4294967295, 1]
+        ];
+        for (const [key, translationKey, fallback, min, max, step] of sdxlNumeric) {
+            const label = document.createElement('label');
+            label.textContent = attachmentT(translationKey, fallback);
+            const field = document.createElement('input');
+            field.type = 'number';
+            field.className = 'image-edit-control';
+            field.min = String(min);
+            field.max = String(max);
+            field.step = String(step);
+            field.placeholder = attachmentT('attachments.img2img_default', 'Standard');
+            field.value = editOptions[key] == null ? '' : String(editOptions[key]);
+            field.addEventListener('change', () => {
+                const raw = field.value.trim();
+                if (!raw) {
+                    delete editOptions[key];
+                } else if (field.checkValidity() && Number.isFinite(Number(raw))) {
+                    editOptions[key] = Number(raw);
+                } else {
+                    field.reportValidity();
+                }
+            });
+            label.append(field);
+            sdxlSampling.append(label);
+        }
+        const updateSamplingVisibility = () => {
+            sdxlSampling.hidden = select.value !== 'juggernaut-xl';
+            if (sdxlSampling.hidden) {
+                for (const key of ['steps', 'guidance', 'seed']) delete editOptions[key];
+            }
+        };
+        select.addEventListener('change', updateSamplingVisibility);
+        updateSamplingVisibility();
+        fields.append(sdxlSampling);
+
         const maskLabel = document.createElement('label');
         maskLabel.textContent = attachmentT('attachments.edit_mask_short', 'Mask (optional)');
         const mask = document.createElement('input');
