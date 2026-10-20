@@ -63,11 +63,7 @@ def configure_vae_memory_saving(pipeline, *, enabled=True):
 
 def main():
     import torch
-    from diffusers import (
-        DPMSolverMultistepScheduler,
-        StableDiffusionXLPipeline,
-        StableDiffusionXLImg2ImgPipeline,
-    )
+    from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
     from PIL import Image
 
     if not torch.backends.mps.is_available():
@@ -160,6 +156,7 @@ def main():
                 # from_pipe components remain shared with the text-to-image
                 # pipeline and its CPU offload hooks; never load a second SDXL.
                 if img2img_pipeline is None:
+                    from diffusers import StableDiffusionXLImg2ImgPipeline
                     img2img_pipeline = StableDiffusionXLImg2ImgPipeline(**pipeline.components)
                 img2img_pipeline.scheduler = pipeline.scheduler
                 render_pipeline = img2img_pipeline
