@@ -13,6 +13,20 @@ function generationText(key, fallback = '', variables = {}) {
     return value;
 }
 
+function shouldResumeChatAfterEmptySearch(toolResult) {
+    const data = toolResult?.data;
+    // The Agent must explicitly certify that the original first-person
+    // narrative is answerable without fresh public evidence. Do not turn
+    // failed news, weather, shopping or explicit research into guessed facts.
+    return toolResult?.tool === 'web_search' &&
+        toolResult?.status === 'completed' &&
+        data?.empty_search_chat_fallback === true &&
+        Array.isArray(data.results) &&
+        data.results.length === 0 &&
+        !data.weather_forecast &&
+        !data.news_digest;
+}
+
 function gt(key, fallback = '', variables = {}) {
     return generationText(
         'generation.' + key,
@@ -3968,6 +3982,14 @@ const imageFiles =
                 }
 
                 if (!results.length) {
+                    if (shouldResumeChatAfterEmptySearch(toolResult)) {
+                        // Preserve the original message, history and session.
+                        // The ordinary chat model can give perspective even
+                        // when an unnecessary search returned no evidence.
+                        await generateAssistant(session);
+                        return;
+                    }
+
                     const providerStatus = toolResult.data?.provider_status;
                     const emptyMessage = forecast?.answer
                         ? forecast.answer
