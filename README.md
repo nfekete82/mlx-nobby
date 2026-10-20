@@ -646,3 +646,5 @@ audited.
 ## License
 
 Released under the [MIT License](LICENSE).
+
+- [Chatmodell oben links auswählen](docs/CHAT_HEADER_MODEL_PICKER.md) – direkter Chat-Modellwechsel im Header, ohne Agent-/Coding-/Vision-Rollen zu ändern.

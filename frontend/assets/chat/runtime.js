@@ -1084,7 +1084,7 @@ function renderModelList() {
 
         option.type = 'button';
         option.className = 'model-option';
-        option.disabled = isSwitching() || model.active;
+        option.disabled = isSwitching() || isGenerating() || model.active;
 
         const alias = document.createElement('div');
 
@@ -1155,8 +1155,9 @@ async function openModelPopover() {
         await loadModelAliases();
         const status = await fetchStatus();
 
-        modelSwitchStatus.textContent =
-            rut('active_prefix', 'Active:') + ' ' + modelAliasFor(status);
+        modelSwitchStatus.textContent = isGenerating()
+            ? rut('switch_after_response', 'Model switch available after the current response')
+            : rut('active_prefix', 'Active:') + ' ' + modelAliasFor(status);
         modelTitle.textContent = modelAliasFor(status);
 
     } catch (error) {
@@ -1332,7 +1333,7 @@ async function switchModel(alias) {
         setModelStatus('Wechsle zu ' + alias + '…');
 
         const response = await fetch(
-            '/api/mlx/model/' + encodeURIComponent(alias),
+            '/api/mlx/model/chat/' + encodeURIComponent(alias),
             { method: 'POST' }
         );
 
@@ -1386,13 +1387,6 @@ function initModelSwitcher() {
             openModelPopover();
         } else {
             closeModelPopover();
-        }
-    });
-
-    modelTitle.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            modelTitle.click();
         }
     });
 

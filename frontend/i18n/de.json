@@ -468,6 +468,8 @@
     "error": "Fehler:",
     "no_model": "Kein Modell",
     "models_loading": "Modelle werden geladen…",
+    "chat_model_choose": "Chatmodell auswählen",
+    "chat_model_scope": "Wechselt das Chatmodell. Andere Modellrollen bleiben erhalten.",
     "switch_after_response": "Modellwechsel erst nach der laufenden Antwort",
     "switch_failed": "Modellwechsel fehlgeschlagen",
     "new_messages": "Neue Nachrichten",

@@ -16,7 +16,7 @@ test('RAM indicator is adjacent to the model name and hidden until measured', ()
     assert.ok(header.indexOf('id="modelTitle"') < header.indexOf('id="modelMemory"'));
     assert.match(header, /id="modelMemory"[\s\S]*?hidden/);
     assert.match(css, /\.model-memory\[hidden\]/);
-    assert.match(html, /runtime\.js\?v=20261019-model-ram-header/);
+    assert.match(html, /runtime\.js\?v=20261020-chat-picker/);
 });
 
 function harness() {

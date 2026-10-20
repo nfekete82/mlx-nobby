@@ -2004,6 +2004,15 @@ def mlx_remove_alias(alias: str):
 
 
 
+@app.post("/api/mlx/model/chat/{alias}")
+def mlx_chat_model(alias: str):
+    """Chat header switch: preserve coding/agent/vision role preferences."""
+    return post_json(
+        f"{AGENT_URL}/api/model/chat/{urllib.parse.quote(alias, safe='')}",
+        timeout=300,
+    )
+
+
 @app.post("/api/mlx/model/{alias}")
 def mlx_model(alias: str):
     return post_json(
