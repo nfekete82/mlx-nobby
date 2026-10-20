@@ -3412,6 +3412,36 @@ def persist_explicit_model_selection(alias: str):
     return save_model_roles(roles)
 
 
+@app.post("/api/model/chat/{alias}")
+@locked_model_change
+def select_chat_model(alias: str):
+    """Switch the shared runtime and persist only the user-selected chat role.
+
+    Explicit header selection must survive ensure_model_for_role('chat')
+    without unexpectedly overwriting agent/coding/vision role preferences.
+    """
+    selected = next(
+        (item for item in load_models() if item.get("alias") == alias),
+        None,
+    )
+    if selected is None:
+        raise HTTPException(404, "Unbekanntes Modell-Alias: " + alias)
+
+    try:
+        result = switch_model_runtime(alias)
+    except RuntimeError as exc:
+        # Existing model validation, runtime and memory guards remain in charge.
+        raise HTTPException(503, str(exc)) from exc
+
+    roles = load_model_roles()
+    roles["chat"] = alias
+    saved = save_model_roles(roles)
+    return {"ok": True, "alias": alias, "runtime": result["runtime"],
+            "roles": saved, "scope": "chat"}
+
+
+
+
 @app.post("/api/download/{target:path}")
 def download_model(target: str):
     target = target.strip()
