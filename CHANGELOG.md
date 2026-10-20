@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix native chat backend auto-detection for Hugging Face repository IDs already downloaded in the local hub cache: inspect their cached config.json just like local model directories. Prevent Qwen3.8-architecture oQ VLM checkpoints such as the opt-in Dark Scarlett candidate being incorrectly started with mlx_lm instead of mlx_vlm; reject malformed cached configs and retain existing runtime/memory guards.
+
 - Document the two completed Qwen3.8 chat-quality runs (42/44 twice), confirm the second run used the same model despite its filename, and close the initial baseline phase without starting a model leaderboard.
 - Add explicitly opt-in Dark Scarlett 27B v2.0 MLX candidate status/alias registration (`mlx candidate dark-scarlett`) using the existing alias command; no downloads, model changes, runtime restarts or profile-default changes, plus CPU regressions and rollback guidance.
 
