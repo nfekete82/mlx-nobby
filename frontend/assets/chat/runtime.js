@@ -1476,6 +1476,7 @@ function createSessionSettings() {
         temperature: globalSettings.default_temperature,
         max_tokens: globalSettings.default_max_tokens,
         adaptive_response_length: false,
+        adaptive_response_auto: true,
         media_quality: DEFAULT_MEDIA_QUALITY,
         negative_prompt: ''
     };
@@ -1657,6 +1658,11 @@ function sessionSettings(session) {
 
         const normalizedAdaptiveResponseLength =
             session.settings.adaptive_response_length === true;
+        const adaptiveResponseAuto = session.settings.adaptive_response_auto !== false;
+        if (session.settings.adaptive_response_auto !== adaptiveResponseAuto) {
+            session.settings.adaptive_response_auto = adaptiveResponseAuto;
+            changed = true;
+        }
 
         if (session.settings.adaptive_response_length !== normalizedAdaptiveResponseLength) {
             session.settings.adaptive_response_length = normalizedAdaptiveResponseLength;
@@ -1719,6 +1725,7 @@ function sessionSettings(session) {
         temperature: DEFAULT_TEMPERATURE,
         max_tokens: DEFAULT_MAX_TOKENS,
         adaptive_response_length: false,
+        adaptive_response_auto: true,
         media_quality: DEFAULT_MEDIA_QUALITY,
         negative_prompt: ''
     };
@@ -1776,7 +1783,7 @@ function loadSessionSettings() {
             : 'custom';
     temperature.value = settings.temperature;
     maxTokens.value = settings.max_tokens;
-    adaptiveResponseLength.checked = settings.adaptive_response_length;
+    adaptiveResponseLength.checked = settings.adaptive_response_auto !== false;
     mediaQuality.value = settings.media_quality;
 }
 
@@ -1837,7 +1844,7 @@ function handleSystemPromptInput(event) {
         maxTokens.value = settings.max_tokens;
 
     } else if (event.target === adaptiveResponseLength) {
-        settings.adaptive_response_length = adaptiveResponseLength.checked;
+        settings.adaptive_response_auto = adaptiveResponseLength.checked;
 
     } else if (event.target === systemPrompt) {
         settings.system_prompt = systemPrompt.value;
