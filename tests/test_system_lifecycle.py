@@ -373,15 +373,35 @@ esac
             called[3].startswith("docker compose exec -T mlx-web "),
             called[3],
         )
-        self.assertEqual(called[4], "mlx restart-all")
+        self.assertEqual(called[4], "install launchd")
+        self.assertEqual(called[5], "mlx agent restart")
+        self.assertEqual(called[6], "http http://127.0.0.1:8010/api/status")
+        self.assertEqual(called[7], "mlx restart-all")
         self.assertEqual(
-            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[5:]],
+            [line.split("-tiTCP:", 1)[1].split()[0] for line in called[8:11]],
             ["8000", "8010", "8090"],
         )
+        self.assertIn("http http://127.0.0.1:8090/api/version", called)
+        self.assertIn("http http://127.0.0.1:8090/api/mlx/status", called)
         self.assertEqual(reports[-2]["phase"], "verify-services")
         self.assertLess(reports[-2]["current"], reports[-2]["total"])
         self.assertEqual(reports[-1]["state"], "completed")
         self.assertEqual(reports[-1]["current"], reports[-1]["total"])
+
+    def test_real_helper_detects_wrong_web_commit(self):
+        result, called, reports = self.run_reboot(http_mode="wrong-revision")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(reports[-1]["state"], "failed")
+        self.assertEqual(reports[-1]["phase"], "verify-services")
+        self.assertIn("Commit", reports[-1]["error"])
+        self.assertEqual(called[-1], "mlx restart-all")
+
+    def test_real_helper_detects_offline_proxy(self):
+        result, called, reports = self.run_reboot(http_mode="offline")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(reports[-1]["state"], "failed")
+        self.assertEqual(reports[-1]["phase"], "verify-services")
+        self.assertIn("Proxy", reports[-1]["error"])
 
     def test_real_helper_reports_port_timeout_as_failed(self):
         result, called, reports = self.run_reboot(ports_ready=False)
