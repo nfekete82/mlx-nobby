@@ -2,6 +2,8 @@
 
 **Phase 1 von Chat Quality 2.0** ist ein **opt-in** Qualitätstest über den vorhandenen macOS-Agenten. Er nutzt den bestehenden Runtime-Lease, Modell-Lock und die RAM-Zulassung. Er startet, stoppt, lädt oder konfiguriert **keine** Modelle und Dienste; alle Eingaben sind synthetisch.
 
+**Abschluss des ersten lokalen Baselineschritts:** [Ergebniszusammenfassung](CHAT_QUALITY_V1_CLOSEOUT.md). Beide gemessenen vollständigen Läufe nutzten tatsächlich Qwen3.8, jeweils 42/44 automatisch korrekt. Diese Umsetzung bleibt ein optionales Regressionstool; ein großes Modell-Leaderboard ist nicht vorgesehen.
+
 ## Eingefrorene Suite
 
 Die Datei `benchmarks/chat-quality-v1.json` enthält **48 Aufgaben** mit einer Suite-SHA256:
