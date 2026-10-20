@@ -90,7 +90,12 @@ def run(origin: str, output: Path, review_file: Path, expected: str,
         max_tokens: int = 512, timeout: int = 180) -> dict:
     data, fingerprint = suite()
     client.fresh_paths([output, review_file])
-    before = client.verify_status(client.get_json(origin, "/api/status"))
+    status = client.get_json(origin, "/api/status")
+    if status.get("stream_model_pin_supported") is not True:
+        print("NSFW benchmark requires updated Agent with pinned-stream support; restart the Agent first.",
+              file=sys.stderr)
+        raise RuntimeError("Updated Agent required for pinned NSFW benchmark")
+    before = client.verify_status(status)
     expected_model(before["model"], expected)
     client.check_idle(client.get_json(origin, "/api/performance/observatory?limit=100"))
     cases = data["cases"]
