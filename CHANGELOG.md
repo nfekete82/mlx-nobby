@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Document the two completed Qwen3.8 chat-quality runs (42/44 twice), confirm the second run used the same model despite its filename, and close the initial baseline phase without starting a model leaderboard.
+- Add explicitly opt-in Dark Scarlett 27B v2.0 MLX candidate status/alias registration (`mlx candidate dark-scarlett`) using the existing alias command; no downloads, model changes, runtime restarts or profile-default changes, plus CPU regressions and rollback guidance.
+
 - Add opt-in Chat Quality v1: frozen 44 exact-answer and four human-review synthetic Agent chat cases, local-only model-identity/idle preflight, owner-only reports and strict complete-run offline comparison; no changes to active runtime defaults.
 
 - Separate integration of guarded, default-inactive experimental Hybrid code from production/default activation. Keep Hybrid opt-in, Early Checkpoint off, existing budget/guards/fallbacks and rollback. Preserve failed long-run/swap results; record word-limit failures that reproduce without APC/DFlash as a separate model limitation. No version, tag or product release.

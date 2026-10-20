@@ -1741,6 +1741,7 @@ Modelle:
   mlx model <alias>
   mlx model <huggingface-repo>
   mlx model add <alias> <repo>
+  mlx candidate dark-scarlett status|register  # optional, ändert aktives Modell NICHT
   mlx model remove <alias>
 
 Downloads / Cache:
@@ -1834,6 +1835,14 @@ if [[ "${1:-}" = test-quick || "${1:-}" = test-medium || "${1:-}" = test-e2e || 
         test-real) exec "$test_python" tests/acceptance/runner.py "$@" ;;
         test-release) exec "$test_python" tests/acceptance/release.py "$@" ;;
     esac
+fi
+
+# Opt-in model candidate helper reads user alias state without requiring runtime
+# configuration, and does not select/download/start any model automatically.
+if [ "${1:-}" = "candidate" ]; then
+    shift
+    candidate_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    exec python3 "$candidate_repo/scripts/model-candidate.py" "$@"
 fi
 
 load_config

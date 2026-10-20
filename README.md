@@ -33,6 +33,15 @@ For releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
 
+## Optional adult-roleplay chat candidate (18+)
+
+Dark Scarlett 27B v2.0 MLX 4-bit can be **registered as a separate model
+alias** without downloading weights, changing the default chat model, or
+restarting services. Runtime compatibility and model quality have **not** been
+validated locally. Only explicitly download and activate after reviewing
+the model's age/license terms. See
+[Dark Scarlett optional setup](docs/DARK_SCARLETT_CANDIDATE.md).
+
 ## Chat Quality v1 (opt-in)
 
 A frozen 48-case synthetic baseline and strict offline A/B comparison help
@@ -41,7 +50,7 @@ evaluate Qwen chat changes without changing models or production settings.
 grounding/longform tasks require human review. The benchmark runs only when
 the local Agent reports an idle runtime and writes private 0600 artifacts.
 Results cannot automatically approve Hybrid, APC, DFlash2, or a model upgrade.
-See [Chat Quality v1](docs/CHAT_QUALITY_V1.md).
+See [Chat Quality v1](docs/CHAT_QUALITY_V1.md) and the [baseline closeout](docs/CHAT_QUALITY_V1_CLOSEOUT.md).
 
 ## Shorts backend
 
