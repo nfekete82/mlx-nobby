@@ -31,6 +31,9 @@ import image_providers
     ('Erstelle die gleiche Person, Gesicht möglichst ähnlich, jetzt stehend.', 'same_identity'),
     ('Create the same person, preserve facial identity, with a different pose.', 'same_identity'),
     ('Create a photo of this person that looks similar to the source.', 'resemblance'),
+    ('Create a completely new, highly photorealistic full-body photograph of the exact same adult woman from the reference image. Preserve her recognizable facial features. Completely change the original selfie composition. Create a genuinely new photograph, not a minor variation of the original.', 'same_identity'),
+    ('Generate a professional photograph of the exact same adult woman in the uploaded photo, now standing.', 'same_identity'),
+    ('Create a full-body photograph of the same older man from this image.', 'same_identity'),
 ])
 def test_reference_intent_even_without_source(prompt, mode):
     for has_image in (True, False):
