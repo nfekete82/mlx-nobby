@@ -63,12 +63,18 @@ def configure_vae_memory_saving(pipeline, *, enabled=True):
 
 def main():
     import torch
-    from diffusers import DPMSolverMultistepScheduler, StableDiffusionXLPipeline
+    from diffusers import (
+        DPMSolverMultistepScheduler,
+        StableDiffusionXLPipeline,
+        StableDiffusionXLImg2ImgPipeline,
+    )
+    from PIL import Image
 
     if not torch.backends.mps.is_available():
         raise RuntimeError("SDXL requires an available PyTorch MPS device")
 
     pipeline = None
+    img2img_pipeline = None
     loaded_model = None
     loaded_scheduler = None
     loaded_vae_mode = None
@@ -83,6 +89,9 @@ def main():
             model_key = (request["checkpoint"], request["config"])
             if pipeline is None or loaded_model != model_key:
                 if pipeline is not None:
+                    # The img2img wrapper shares the already-offloaded
+                    # SDXL components and does not own a second weight copy.
+                    img2img_pipeline = None
                     del pipeline
                     pipeline = None
                     gc.collect()
@@ -111,6 +120,7 @@ def main():
                         "kein unsicherer Fallback auf pipeline.to('mps')"
                     ) from exc
                 loaded_model = model_key
+                img2img_pipeline = None
                 loaded_scheduler = None
                 loaded_vae_mode = None
 
@@ -122,6 +132,8 @@ def main():
                     scheduler_base_config,
                     **scheduler_kwargs,
                 )
+                if img2img_pipeline is not None:
+                    img2img_pipeline.scheduler = pipeline.scheduler
                 loaded_scheduler = scheduler_name
 
             # Prewarm loads the exact production pipeline and scheduler into
@@ -143,6 +155,31 @@ def main():
                 configure_vae_memory_saving(pipeline, enabled=(vae_mode == "optimized"))
                 loaded_vae_mode = vae_mode
 
+            source_path = params.get("source_path")
+            if source_path:
+                # from_pipe components remain shared with the text-to-image
+                # pipeline and its CPU offload hooks; never load a second SDXL.
+                if img2img_pipeline is None:
+                    img2img_pipeline = StableDiffusionXLImg2ImgPipeline(**pipeline.components)
+                img2img_pipeline.scheduler = pipeline.scheduler
+                render_pipeline = img2img_pipeline
+                strength = float(params.get("strength", 0.45))
+                if not 0 < strength <= 1:
+                    raise ValueError("Img2img strength muss zwischen 0 und 1 liegen")
+                image = Image.open(source_path)
+                try:
+                    reference = image.convert("RGB")
+                finally:
+                    image.close()
+                # Diffusers uses floor(steps * strength) active denoising
+                # steps (minimum one). This avoids bogus progress totals.
+                effective_steps = max(1, int(params["steps"] * strength))
+            else:
+                render_pipeline = pipeline
+                reference = None
+                strength = None
+                effective_steps = params["steps"]
+
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 
             def report_step(_pipeline, step, _timestep, callback_kwargs):
@@ -151,22 +188,25 @@ def main():
                     "request_id": request_id,
                     "phase": "generate",
                     "step": step + 1,
-                    "total_steps": params["steps"],
+                    "total_steps": effective_steps,
                     "scheduler": scheduler_name,
                 }), flush=True)
                 return callback_kwargs
 
-            result = pipeline(
-                prompt=params["prompt"],
-                negative_prompt=params.get("negative_prompt") or None,
-                width=params["width"],
-                height=params["height"],
-                num_inference_steps=params["steps"],
-                guidance_scale=params["guidance"],
-                generator=generator,
-                callback_on_step_end=report_step,
-                callback_on_step_end_tensor_inputs=[],
-            )
+            arguments = {
+                "prompt": params["prompt"],
+                "negative_prompt": params.get("negative_prompt") or None,
+                "num_inference_steps": params["steps"],
+                "guidance_scale": params["guidance"],
+                "generator": generator,
+                "callback_on_step_end": report_step,
+                "callback_on_step_end_tensor_inputs": [],
+            }
+            if source_path:
+                arguments.update(image=reference, strength=strength)
+            else:
+                arguments.update(width=params["width"], height=params["height"])
+            result = render_pipeline(**arguments)
             result.images[0].save(request["output"], format="PNG")
             del result
             print(json.dumps({
