@@ -56,6 +56,10 @@ Modellpräferenzen nicht unbewusst einfließen zu lassen.
 ## Bedienung auf dem Mac
 
 **Voraussetzungen:** Nobby-Agent (8010) und Chatserver (8000) erreichbar.
+**Nach dem Git-Pull unbedingt `./scripts/mlx agent restart` aufrufen:** Der
+Benchmark prüft `stream_model_pin_supported` der tatsächlich laufenden
+Agent-Version. Ein alter Prozess ohne diese Unterstützung wird sicher
+abgelehnt, damit keine Chat-Rollenumschaltung erfolgt.
 Keine sonstigen KI-Jobs während der Messung. Weder lädt noch wechselt das
 Benchmark-Skript Modelle und es verändert keine Performanceprofile.
 
