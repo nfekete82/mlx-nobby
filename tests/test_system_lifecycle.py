@@ -297,9 +297,34 @@ if [ "$1" = "compose" ] && [ "$2" = "exec" ]; then
     git -C "$MLX_NOBBY_PROJECT_DIR" rev-parse --short=12 HEAD
 fi
 '''
+            http_body = '''#!/bin/bash
+url=""
+for arg in "$@"; do url="$arg"; done
+echo "http $url" >> "$CALLS_LOG"
+if [ "$HTTP_MODE" = "unavailable" ]; then exit 7; fi
+case "$url" in
+    */api/version)
+        if [ "$HTTP_MODE" = "wrong-revision" ]; then
+            echo '{"name":"MLX Nobby","version":"1.19.0","commit":"000000000000"}'
+        else
+            sha="$(git -C "$MLX_NOBBY_PROJECT_DIR" rev-parse --short=12 HEAD)"
+            version="$(cat "$MLX_NOBBY_PROJECT_DIR/VERSION")"
+            printf '{"name":"MLX Nobby","version":"%s","commit":"%s"}\n' "$version" "$sha"
+        fi
+        ;;
+    */api/mlx/status)
+        if [ "$HTTP_MODE" = "offline" ]; then echo '{"online":false}'
+        else echo '{"online":true}'; fi
+        ;;
+    */api/status) echo '{"online":true}' ;;
+    *) exit 22 ;;
+esac
+'''
             for path, body in (
                 (mlx, '#!/bin/bash\necho "mlx $*" >> "$CALLS_LOG"\n'),
                 (docker, docker_body),
+                (installer, '#!/bin/bash\necho "install launchd" >> "$CALLS_LOG"\n'),
+                (http_check, http_body),
                 (port_check, '#!/bin/bash\necho "port $*" >> "$CALLS_LOG"\n' + ("exit 0\n" if ports_ready else "exit 1\n")),
             ):
                 path.write_text(body, encoding="utf-8")
@@ -310,6 +335,10 @@ fi
                 "MLX_BIN": str(mlx),
                 "DOCKER_BIN": str(docker),
                 "PORT_CHECK_BIN": str(port_check),
+                "MLX_NOBBY_HTTP_CHECK_BIN": str(http_check),
+                "MLX_NOBBY_INSTALL_LAUNCHD_BIN": str(installer),
+                "MLX_NOBBY_SKIP_SOURCE_SYNC": "1",
+                "HTTP_MODE": http_mode,
                 "CALLS_LOG": str(calls),
                 "MLX_NOBBY_REBOOT_LOG": str(root / "reboot.log"),
                 "MLX_NOBBY_LIFECYCLE_REPORT_FILE": str(report_file),
