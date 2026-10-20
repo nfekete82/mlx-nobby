@@ -11725,6 +11725,34 @@ class RuntimeChatRequest(BaseModel):
     auto_route: bool = False
 
 
+class RuntimeChatStreamRequest(RuntimeChatRequest):
+    # Opt-in benchmark mode only: keep the already running process rather
+    # than resolving a persisted chat role and switching MLX mid-benchmark.
+    pin_active_model: str | None = None
+    pin_active_pid: int | None = None
+
+
+def _pinned_stream_model_role(request: RuntimeChatStreamRequest) -> dict:
+    """Check active model + listener PID while holding MODEL_RUNTIME_LOCK.
+
+    No role resolution and, critically, no call to switch_model_runtime.
+    """
+    model = request.pin_active_model
+    pid = request.pin_active_pid
+    if (request.auto_route or not isinstance(model, str) or not model
+            or len(model) > 1024 or type(pid) is not int or pid <= 0):
+        raise RuntimeError("Invalid pinned chat runtime request")
+
+    config = load_config()
+    configured_model = config.get("MODEL")
+    port = int(config.get("PORT", 8000))
+    listening_pid = find_server_pid(port)
+    if configured_model != model or listening_pid != pid:
+        raise RuntimeError("Pinned chat model or PID changed")
+
+    return {"repo": model, "alias": None, "backend": None}
+
+
 def _runtime_chat_role(request):
     from agent.intelligent_routing import select_chat_role
     if not request.auto_route:
@@ -11901,7 +11929,7 @@ def runtime_chat(request: RuntimeChatRequest):
 
 
 @app.post("/api/runtime/chat/stream")
-def runtime_chat_stream(request: RuntimeChatRequest):
+def runtime_chat_stream(request: RuntimeChatStreamRequest):
     """
     Role-aware streaming gateway for regular chat.
 
@@ -11967,8 +11995,11 @@ def runtime_chat_stream(request: RuntimeChatRequest):
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
-                runtime = ensure_model_for_role(selected_role)
-                role = runtime["resolved"]
+                if request.pin_active_model is not None or request.pin_active_pid is not None:
+                    role = _pinned_stream_model_role(request)
+                else:
+                    runtime = ensure_model_for_role(selected_role)
+                    role = runtime["resolved"]
                 model = role.get("repo")
 
                 if not model:
