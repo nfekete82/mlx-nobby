@@ -33,6 +33,16 @@ For releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
 
+## Chat Quality v1 (opt-in)
+
+A frozen 48-case synthetic baseline and strict offline A/B comparison help
+evaluate Qwen chat changes without changing models or production settings.
+44 exact-answer tasks are scored automatically; four advisory/coding/source-
+grounding/longform tasks require human review. The benchmark runs only when
+the local Agent reports an idle runtime and writes private 0600 artifacts.
+Results cannot automatically approve Hybrid, APC, DFlash2, or a model upgrade.
+See [Chat Quality v1](docs/CHAT_QUALITY_V1.md).
+
 ## Shorts backend
 
 Shorts Studio offers a pre-production editor, saved drafts and History with
