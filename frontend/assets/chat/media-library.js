@@ -25,10 +25,8 @@
     if (label !== undefined) element.textContent = label;
     return element;
   }
-  // Keep the preview actions visually consistent without icon fonts or new dependencies.
-  function previewAction(label, paths, css = "") {
-    const button = elt("button", "nobby-library-action nobby-library-preview-use " + css);
-    button.type = "button";
+  // Use the same lightweight inline SVGs in the preview and compact card menus.
+  function libraryIcon(paths) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("aria-hidden", "true");
@@ -38,7 +36,12 @@
       path.setAttribute("d", d);
       svg.appendChild(path);
     }
-    button.append(svg, elt("span", "", label));
+    return svg;
+  }
+  function previewAction(label, paths, css = "") {
+    const button = elt("button", "nobby-library-action nobby-library-preview-use " + css);
+    button.type = "button";
+    button.append(libraryIcon(paths), elt("span", "", label));
     return button;
   }
   const previewIcons = {
@@ -48,10 +51,38 @@
     edit: ["M12 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9",
       "M16 4l4 4-9 9-5 1 1-5 9-9Z"],
     info: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
-      "M12 11v6", "M12 7h.01"]
+      "M12 11v6", "M12 7h.01"],
+    download: ["M12 3v12", "m7 10 5 5 5-5", "M5 17v3h14v-3"],
+    more: ["M4 12h.01", "M12 12h.01", "M20 12h.01"],
+    trash: ["M3 6h18", "M8 6V4h8v2", "M5 6l1 15h12l1-15",
+      "M10 10v7", "M14 10v7"]
   };
+  function cardAction(labelText, paths, css = "") {
+    const button = elt("button", "nobby-library-action nobby-library-card-menu-item " + css);
+    button.type = "button";
+    button.append(libraryIcon(paths), elt("span", "", labelText));
+    return button;
+  }
+  let activeCardActions = null;
+  function closeCardActions(focus = false) {
+    if (!activeCardActions) return;
+    const {button, menu} = activeCardActions;
+    activeCardActions = null;
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (focus && button.isConnected) button.focus();
+  }
+  // Click outside or open another card to collapse the previous action list.
+  document.addEventListener("click", event => {
+    if (activeCardActions && !activeCardActions.container.contains(event.target)) {
+      closeCardActions();
+    }
+  });
   function setVisible(visible) {
-    if (!visible) closePreview();
+    if (!visible) {
+      closeCardActions();
+      closePreview();
+    }
     panel.hidden = !visible;
     panel.setAttribute("aria-hidden", String(!visible));
     document.body.classList.toggle("nobby-library-open", visible);
@@ -367,6 +398,7 @@
     if (!response.ok) throw new Error(t("Aktion fehlgeschlagen", "Action failed") + " (HTTP " + response.status + ")");
     return response.json();
   }
+  let cardActionsCounter = 0;
   function card(asset) {
     const box = elt("article", "nobby-library-card");
     const media = elt("div", "nobby-library-media");
@@ -446,17 +478,50 @@
     }
     mediaLineage(asset, text);
     const buttons = elt("div", "nobby-library-card-actions");
-    buttons.append(link(asset.url, t("Download", "Download"), true));
+    const mainActions = elt("div", "nobby-library-card-action-row");
+    const download = link(asset.url, t("Download", "Download"), true);
+    download.classList.add("nobby-library-card-download");
+    download.replaceChildren(libraryIcon(previewIcons.download), elt("span", "", t("Download", "Download")));
+    mainActions.append(download);
+    const moreButton = cardAction(t("Aktionen", "Actions"), previewIcons.more,
+      "nobby-library-card-more-button");
+    moreButton.setAttribute("aria-expanded", "false");
+    const menu = elt("div", "nobby-library-card-action-menu");
+    // One unique ID per rendered card; use a counter rather than untrusted media IDs.
+    menu.id = "nobby-library-card-actions-" + (++cardActionsCounter);
+    moreButton.setAttribute("aria-controls", menu.id);
+    menu.setAttribute("role", "group");
+    menu.setAttribute("aria-label", t("Weitere Aktionen", "More actions"));
+    menu.hidden = true;
+    mainActions.append(moreButton);
+    buttons.append(mainActions, menu);
+    moreButton.addEventListener("click", () => {
+      if (activeCardActions?.container === buttons) {
+        closeCardActions();
+        return;
+      }
+      closeCardActions();
+      menu.hidden = false;
+      moreButton.setAttribute("aria-expanded", "true");
+      activeCardActions = {container: buttons, button: moreButton, menu};
+    });
+    buttons.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !menu.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeCardActions(true);
+      }
+    });
     if (asset.kind === "image") {
-      const use = elt("button", "nobby-library-action", t("Talking Photo", "Talking Photo"));
+      const use = cardAction(t("Talking Photo", "Talking Photo"), previewIcons.talking);
       use.type = "button";
       use.addEventListener("click", () => void createFromImage(asset));
-      buttons.append(use);
-      const animate = elt("button", "nobby-library-action", t("Als Video", "As video"));
+      menu.append(use);
+      const animate = cardAction(t("Als Video", "As video"), previewIcons.video);
       animate.type = "button";
       animate.addEventListener("click", () => void createVideoFromImage(asset));
-      buttons.append(animate);
-      const regionEdit = elt("button", "nobby-library-action", t("Bereich bearbeiten", "Edit region"));
+      menu.append(animate);
+      const regionEdit = cardAction(t("Bereich bearbeiten", "Edit region"), previewIcons.edit);
       regionEdit.type = "button";
       regionEdit.addEventListener("click", () => {
         setVisible(false);
@@ -464,9 +529,9 @@
           window.alert(String(error?.message || error))
         );
       });
-      buttons.append(regionEdit);
+      menu.append(regionEdit);
     }
-    const remove = elt("button", "nobby-library-action danger", t("Löschen", "Delete"));
+    const remove = cardAction(t("Löschen", "Delete"), previewIcons.trash, "danger");
     remove.type = "button";
     remove.addEventListener("click", async () => {
       const confirmed = window.MLXConfirm ? await window.MLXConfirm({
@@ -479,15 +544,13 @@
       try { await action("DELETE", asset); await refresh(); }
       catch (error) { remove.disabled = false; window.alert(error.message); }
     });
-    const infoButton = elt("button", "nobby-library-action",
-      t("Details", "Details"));
+    const infoButton = cardAction(t("Details", "Details"), previewIcons.info);
     infoButton.type = "button";
     infoButton.addEventListener("click", () => {
       showPreview(asset);
       previewBody.querySelector(".nobby-library-preview-info")?.click();
     });
-    buttons.append(infoButton);
-    buttons.append(remove);
+    menu.append(infoButton, remove);
     text.appendChild(buttons);
     box.appendChild(text);
     return box;
