@@ -637,6 +637,9 @@
   "ui.alternative_vision_description": "Alternative model for image analysis and fallback tasks",
   "ui.embeddings_description": "Knowledge base and semantic search",
   "ui": {
+    "image_converter": "Image converter",
+    "image_converter_subtitle": "Convert and compress image batches locally.",
+    "image_converter_back": "Back to chat",
     "chat_history_menu": "Chat menu",
     "delete_all_chats": "Delete all chats",
     "delete_all_chats_title": "Really delete all chats?",
