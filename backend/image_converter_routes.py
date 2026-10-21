@@ -32,6 +32,8 @@ MAX_FILES = 100
 MAX_FILE_BYTES = 25 * 1024 * 1024
 MAX_BATCH_BYTES = 220 * 1024 * 1024
 MAX_PIXELS = 40_000_000
+MAX_OUTPUT_BYTES = 400 * 1024 * 1024
+MAX_SINGLE_OUTPUT_BYTES = 150 * 1024 * 1024
 JOB_LIFETIME_SECONDS = 60 * 60
 MAX_JOBS = 6
 
@@ -147,6 +149,7 @@ def _work(job_id: str, files: list[tuple[str, Path]], options: dict) -> None:
             return
         job["status"] = "running"
     produced = []
+    written_bytes = 0
     used_names = set()
     for number, (filename, path) in enumerate(files):
         with _lock:
@@ -164,11 +167,15 @@ def _work(job_id: str, files: list[tuple[str, Path]], options: dict) -> None:
         record = {"source": filename, "output": output_name, "bytes_before": path.stat().st_size}
         try:
             details = _convert_image(path, destination, options)
+            if (details["bytes_after"] > MAX_SINGLE_OUTPUT_BYTES
+                    or written_bytes + details["bytes_after"] > MAX_OUTPUT_BYTES):
+                raise ValueError("Ausgabe überschreitet den Speichergrenzwert")
+            written_bytes += details["bytes_after"]
             record.update(details)
             record["saved_percent"] = round(100 * (1 - details["bytes_after"] / max(record["bytes_before"], 1)), 1)
             record["status"] = "complete"
             produced.append((destination, output_name))
-        except (OSError, ValueError, SyntaxError, UnidentifiedImageError) as exc:
+        except Exception as exc:  # One damaged image must not strand the entire job.
             destination.unlink(missing_ok=True)
             record.update(status="failed", error=f"Bild konnte nicht verarbeitet werden: {type(exc).__name__}")
         with _lock:
@@ -191,9 +198,14 @@ def _work(job_id: str, files: list[tuple[str, Path]], options: dict) -> None:
                 z.write(path, arcname=name)
             manifest = json.dumps({"files": job["results"]}, ensure_ascii=False, indent=2)
             z.writestr("ergebnisse.json", manifest)
+        if job["cancel"].is_set():
+            archive.unlink(missing_ok=True)
+            with _lock:
+                job["status"] = "cancelled"
+            return
         with _lock:
             job["status"] = "complete"
-    except OSError:
+    except Exception:
         archive.unlink(missing_ok=True)
         with _lock:
             job["status"] = "failed"
