@@ -10,7 +10,7 @@ assert.match(html, /id="railLibrary"/);
 assert.match(html, /id="nobbyLibrary"/);
 assert.match(html, /id="nobbyLibraryGrid"/);
 assert.match(html, /id="nobbyLibrarySaveAll"/);
-assert.match(html, /media-library\.js\?v=1-19-search&amp;gallery=20261021-preview-actions-toggle/);
+assert.match(html, /media-library\.js\?v=1-19-search&amp;gallery=20261021-compact-card-actions/);
 assert.match(html, /media-library\.css\?v=[a-z0-9-]+/);
 assert.match(css, /\.nobby-library-panel\[hidden\]/);
 assert.match(css, /grid-template-columns:repeat\(auto-fill/);
