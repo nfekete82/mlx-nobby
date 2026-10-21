@@ -436,7 +436,45 @@
   justify-content:flex-start;
   gap:12px;
 }
-.nobby-library-preview-info{flex:none;padding:9px 15px;font-size:13px}
+.nobby-library-preview-actions{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:min(100%,800px);
+  box-sizing:border-box;
+}
+.nobby-library-preview-actions .nobby-library-action{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:38px;
+  padding:9px 12px;
+  font-size:12px;
+  line-height:1.3;
+  white-space:normal;
+  text-align:center;
+}
+.nobby-library-preview-actions .nobby-library-action svg{
+  flex:0 0 17px;
+  width:17px;
+  height:17px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.nobby-library-preview-actions .nobby-library-preview-info[aria-expanded="true"]{
+  background:#30435e;
+  border-color:#6787b3;
+}
+@media(max-width:560px){
+  .nobby-library-preview-actions{gap:7px}
+  .nobby-library-preview-actions .nobby-library-action{flex:1 1 145px}
+}
 .nobby-library-detail-panel[hidden]{display:none!important}
 .nobby-library-detail-panel{
   width:min(100%,700px);
