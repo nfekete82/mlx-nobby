@@ -17,6 +17,12 @@ fi
 
 source "$CONFIG"
 
+# Dormant: an explicit, coordinated lab rollout is required to enable this.
+case "${LTX_LAB_ADMISSION:-0}" in
+    0|1) ;;
+    *) echo "LTX_LAB_ADMISSION muss 0 oder 1 sein." >&2; exit 1 ;;
+esac
+
 detect_backend() {
     # Use the cached config.json for Hugging Face IDs as well as local folders.
     # qwen3_5 VLM checkpoints must start with mlx_vlm, not mlx_lm.
@@ -247,6 +253,13 @@ if [ "$BACKEND" = "vlm" ]; then
     fi
 
     echo "Starte mlx_vlm..."
+    if [ "${LTX_LAB_ADMISSION:-0}" = "1" ]; then
+        if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ] || [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
+            echo "LTX Admission kann Hybrid-/Audit-Launcher nicht sicher umschließen." >&2
+            exit 1
+        fi
+        exec "$PYTHON" -m ltx_lab.guarded_serve --role chat -- "${ARGS[@]}"
+    fi
     if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]; then
         if [ -n "${NOBBY_HYBRID_AUDIT_FILE:-}" ]; then
             exec "$PYTHON" "$PROJECT_DIR/scripts/hybrid_backend_audit.py" \
@@ -264,6 +277,10 @@ if [ "$BACKEND" = "vlm" ]; then
     exec "$PYTHON" "${ARGS[@]}"
 
 else
+    if [ "${LTX_LAB_ADMISSION:-0}" = "1" ]; then
+        echo "LTX Admission unterstützt hier nur das mlx_vlm-Backend." >&2
+        exit 1
+    fi
 
     ARGS=(
         -m mlx_lm.server

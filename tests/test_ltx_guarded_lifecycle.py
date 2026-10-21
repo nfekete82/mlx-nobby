@@ -95,3 +95,20 @@ def test_lifecycle_preserves_original_server_and_wraps_with_admission(monkeypatc
     assert uvicorn.run is real_run
     assert cli_module.run is real_run
     gate.assert_called_once()
+
+
+def test_chat_router_launchers_keep_admission_explicitly_opt_in():
+    """CPU-only syntax/regression check: no launchctl or model imports."""
+    from pathlib import Path
+    import subprocess
+    scripts = [Path("scripts/mlx-server-start"), Path("scripts/mlx-router-start")]
+    for path in scripts:
+        subprocess.run(["/bin/bash", "-n", str(path)], check=True, timeout=5)
+        contents = path.read_text()
+        assert "LTX_LAB_ADMISSION:-0" in contents
+        assert "-m ltx_lab.guarded_serve --role " in contents
+    chat, router = [s.read_text() for s in scripts]
+    assert 'if [ "$CHAT_PERFORMANCE_PROFILE" = "hybrid" ]' in chat
+    assert 'if [ "${LTX_LAB_ADMISSION:-0}" = "1" ]; then' in chat
+    assert '1) exec "$PYTHON" -m ltx_lab.guarded_serve --role router -- "${ARGS[@]}"' in router
+    assert '0) exec "$PYTHON" "${ARGS[@]}"' in router

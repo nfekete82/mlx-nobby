@@ -97,3 +97,14 @@ dürfen nicht stillschweigend unter einen unpassenden Wrapper fallen.
 Vor produktiver Umstellung müssen sämtliche Dienste, Queue-Tickets,
 Recovery und der komplette Offline-Startpfad gemeinsam integriert und geprüft sein.
 
+
+## Vorbereitete Chat-/Router-Startskripte (standardmäßig aus)
+
+`scripts/mlx-server-start` und `scripts/mlx-router-start` unterstützen
+`LTX_LAB_ADMISSION=1` als **opt-in** zum echten
+`ltx_lab.guarded_serve`-Wrapper. Standard bleibt `0` ohne Änderung
+der gewohnten Serverargumente. Hybrid-/Audit-Launcher sowie `mlx_lm`
+werden bei aktiviertem Schalter ausdrücklich abgelehnt.
+**Noch nicht in LaunchAgents aktivieren.** Der eigenständige
+`mlx-serve`-Prozess auf Port 11234 ist damit weiterhin nicht abgedeckt.
+Die komplette Admission-/Recovery-Abnahme steht aus.

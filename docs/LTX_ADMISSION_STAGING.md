@@ -20,10 +20,12 @@ noch LaunchAgents, Chat-/Router-Lifecycle, MuseTalk oder Modelle werden verände
 ## Warum der Live-A/B-Test weiterhin gesperrt ist
 
 Die vorhandenen produktiven Listener bieten `/lab/admission` nicht an
-(Chat: HTTP 404). Der gelieferte Launcher `ltx_lab.guarded_serve` akzeptiert
-`-m uvicorn` oder `-m mlx_vlm`, **nicht** den produktiven Chatstart über
-`-m model_lifecycle_launcher`. Eine direkte LaunchAgent-Umstellung würde
-damit das bestehende Chat-Lifecycle-Verhalten gefährden.
+(Chat: HTTP 404). Der Admission-Launcher unterstützt inzwischen auch den bestehenden
+`-m model_lifecycle_launcher` (Chat mit aktivem Lifecycle). Die
+Chat- und Router-Startskripte besitzen nun den **standardmäßig abgeschalteten**
+Schalter `LTX_LAB_ADMISSION=1`. Chat lehnt damit nicht unterstützte
+Hybrid-/Audit-Launcher und das `mlx_lm`-Backend ab.
+**Produktive LaunchAgents und ihre Umgebungen bleiben unverändert.**
 
 Hinzu kommt: `ltx_lab.exclusive.verify_services` verlangt für alle
 laufenden Listener, darunter auch Port 11234, eine identische Gate-/Build-
@@ -37,10 +39,12 @@ Daher wurden diese beiden ursprünglichen Testdateien **nicht** als
 vorgeblich grüne Branch-Regressionen eingecheckt. Ihre lokalen Originale
 dürfen nicht überschrieben werden.
 
-**Nächster Integrationsteil:** Einen kompatiblen Adapter für
-`model_lifecycle_launcher` sowie den verifizierten, optional aktivierten
-Proof- und Queue-Vertrag aller Listener in einer *separaten* Runtime testen.
-Erst nach vollständiger Abnahme kontrolliert deployen.
+**Verbleibender Blocker:** Das externe `mlx-serve`-Binary (Port 11234)
+nutzt den Python/ASGI-Startpfad nicht. Auch Agent, Embeddings, Image,
+Speech, Video und MuseTalk benötigen eine vollständige, verifizierte
+Admission-/Queue-Anbindung. Einen künstlichen `/lab/admission`-Endpoint
+einzubauen wäre kein wirksamer Schutz. Vor einem echten GPU-Lauf sind
+gemeinsame Admission-, Recovery- und Offline-Start-Abnahme erforderlich.
 
 ## Sicherheit
 - `scripts/ltx-ab-once-safe.py` bleibt bis dahin fail-closed.
