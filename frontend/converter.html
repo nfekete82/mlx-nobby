@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dateikonverter · MLX Nobby</title>
+  <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/converter.css?v=converter-v1">
+  <script src="/assets/converter.js?v=converter-v1" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/chat"><img src="/assets/mlx-nobby.svg" alt=""> MLX Nobby</a>
+    <a class="back" href="/chat">← Zurück zum Chat</a>
+  </header>
+  <main>
+    <div class="intro">
+      <p class="eyebrow">WERKZEUGE / LOKAL</p>
+      <h1>Bild- &amp; Dateikonverter</h1>
+      <p class="sub">Viele Bilder auf einmal optimieren oder umwandeln – lokal auf deinem Mac, ohne KI-Modell.</p>
+    </div>
+    <div class="layout">
+      <section class="panel files-panel" aria-labelledby="uploadTitle">
+        <h2 id="uploadTitle">Dateien</h2>
+        <div id="dropZone" class="drop-zone" role="button" tabindex="0" aria-label="Bilder auswählen oder hier ablegen">
+          <div class="drop-icon">⇧</div>
+          <strong>Bilder hier hineinziehen</strong>
+          <span>oder klicken, um mehrere Dateien auszuwählen</span>
+          <small>PNG · JPG · HEIC · HEIF · WebP · TIFF · BMP</small>
+        </div>
+        <input id="filePicker" type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.webp,.tiff,.tif,.bmp,image/*" multiple hidden>
+        <div class="selection-head">
+          <span id="fileSummary" aria-live="polite">Noch keine Dateien ausgewählt</span>
+          <div class="selection-buttons">
+            <label class="text-action" for="folderPicker">Ordner wählen</label>
+            <input id="folderPicker" type="file" webkitdirectory directory multiple hidden>
+            <button type="button" id="clearFiles" class="text-action">Auswahl leeren</button>
+          </div>
+        </div>
+        <div id="selectedFiles" class="file-list"></div>
+      </section>
+      <aside class="panel options-panel" aria-labelledby="optionsTitle">
+        <h2 id="optionsTitle">Einstellungen</h2>
+        <label for="target">Ausgabeformat</label>
+        <select id="target">
+          <option value="webp">WebP · gut fürs Web</option>
+          <option value="jpg">JPG · universell</option>
+          <option value="png">PNG · verlustfrei</option>
+          <option value="avif">AVIF · hohe Kompression</option>
+        </select>
+        <div class="quality-label"><label for="quality">Qualität</label><output id="qualityValue" for="quality">85 %</output></div>
+        <input id="quality" type="range" min="40" max="100" step="5" value="85">
+        <p id="qualityHint" class="hint">Niedrigerer Wert = kleinere Datei, weniger Details.</p>
+        <label for="maxDimension">Maximale Bildkante</label>
+        <select id="maxDimension">
+          <option value="0">Originalauflösung</option>
+          <option value="3840">3840 px</option>
+          <option value="2560">2560 px</option>
+          <option value="1920">1920 px</option>
+          <option value="1280">1280 px</option>
+          <option value="800">800 px</option>
+        </select>
+        <label for="background">Hintergrundfarbe für JPG-Transparenz</label>
+        <div class="color-option"><input id="background" type="color" value="#ffffff"><span>Standard: Weiß</span></div>
+        <label class="check"><input id="stripMetadata" type="checkbox" checked> EXIF- und Farbprofil-Metadaten entfernen</label>
+        <button class="primary" id="startButton" type="button" disabled>Jetzt konvertieren</button>
+        <p class="hint">Max. 100 Bilder · 25 MB pro Bild · 220 MB je Auftrag. Nur das erste Bild animierter Formate wird nicht stillschweigend konvertiert: solche Dateien werden als Fehler angezeigt.</p>
+      </aside>
+    </div>
+    <section class="panel progress-panel" id="progressPanel" hidden aria-labelledby="progressTitle">
+      <div class="result-header"><h2 id="progressTitle">Verarbeitung</h2><button id="cancelButton" class="text-action" type="button">Abbrechen</button></div>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      <p id="progressText" role="status" aria-live="polite"></p>
+      <div id="results" class="results"></div>
+      <a id="downloadAll" class="download" hidden href="#" download>↓ Alle Ergebnisse als ZIP laden</a>
+      <p class="hint" id="resultHint">Dateien werden temporär gespeichert und nach Ablauf entfernt.</p>
+    </section>
+    <p class="footer-note">Alle Berechnungen erfolgen auf deinem lokalen MLX-Nobby-Webserver. Die Originaldateien werden nicht verändert. Keine GPU und kein Agent erforderlich.</p>
+  </main>
+</body>
+</html>
