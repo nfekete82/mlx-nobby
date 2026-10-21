@@ -37,7 +37,7 @@ assert.match(js, /previewBody\.querySelector\("video"\)\?\.pause\(\)/);
 assert.match(js, /event\.key === "Escape"/);
 assert.doesNotMatch(js, /buttons\.append\(save, remove\)/);
 assert.doesNotMatch(js, /t\("Öffnen", "Open"\), false/);
-assert.match(js, /buttons\.append\(remove\)/);
+assert.match(js, /menu\.append\(infoButton, remove\)/);
 assert.match(js, /nobbyLibrarySaveAll/);
 assert.match(css, /\.nobby-library-preview\[hidden\]/);
 
