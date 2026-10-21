@@ -7355,7 +7355,7 @@ def _fallback_public_search(query, limit=8):
     same_day_news = requires_today_news(query)
     # Google's News RSS search supports a bounded last-day search. The
     # actual timestamps are still validated after retrieval.
-    from backend.news_query import normalized_news_query
+    from backend.news_query import normalized_news_query, filter_financial_news_results
     feed_query = normalized_news_query(query) + (" when:1d" if same_day_news else "")
     url = ("https://news.google.com/rss/search?q=" +
            urllib.parse.quote_plus(feed_query) + "&hl=de&gl=DE&ceid=DE:de")
@@ -7387,6 +7387,7 @@ def _fallback_public_search(query, limit=8):
             break
     if same_day_news:
         results = filter_today_news(results)
+    results = filter_financial_news_results(query, results)
     results = results[:max(1, min(int(limit), 20))]
     return {"query": query, "provider": "Google News RSS (fallback)",
             "provider_status": ("available" if results else
@@ -7447,7 +7448,7 @@ def searxng_search_results(query, limit=8):
         .rstrip("/")
     )
 
-    from backend.news_query import normalized_news_query
+    from backend.news_query import normalized_news_query, filter_financial_news_results
     from agent.search_freshness import requires_today_news, filter_today_news
     same_day_news = requires_today_news(query)
     params = urllib.parse.urlencode({
@@ -7559,6 +7560,7 @@ def searxng_search_results(query, limit=8):
 
     if same_day_news:
         normalized = filter_today_news(normalized)
+    normalized = filter_financial_news_results(query, normalized)
     if weather_query:
         normalized = [
             item for item in normalized
