@@ -30,7 +30,7 @@ def test_converter_dropzone_upload_progress_and_zip_download(web, browser, tmp_p
         expect(page.locator("#startButton")).to_be_enabled()
         page.locator("#target").select_option("jpg")
         page.locator("#startButton").click()
-        expect(page.locator("#progressText")).to_contain_text("Fertig:", timeout=20000)
+        expect(page.locator("#progressText")).to_contain_text("Done:", timeout=20000)
         expect(page.locator("#downloadAll")).to_be_visible()
         expect(page.locator(".result-row")).to_have_count(1)
         with page.expect_download(timeout=15000) as pending:
