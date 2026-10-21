@@ -78,3 +78,22 @@ genügend Reserven sind Voraussetzung für die spätere produktive Umschaltung.
 Diese Stufe ist Vorbereitung/opt-in-Code, kein belegter Speedup.
 
 Bezug: [Performance-Labor](LTX_PERFORMANCE_LAB.md), [Cold-Ressourcenbericht](LTX_COLD_COMPARISON_2026-10-21.md).
+
+## Der bestehende Chat-Lifecycle-Launcher
+
+Der optionale Admission-Serverwrapper versteht nun auch Nobbys bestehenden
+`-m model_lifecycle_launcher server ...`-Startpfad, aber ausschließlich mit
+`--role chat` und `MLX_LIFECYCLE_ENABLE=1`. Dabei umschließt die Admission-ASGI-Schicht
+den bestehenden `model_lifecycle_asgi:app`-Server. Modell-Lifecycle, Lazy-Load und
+DFlash-CLI-Argumente werden nicht durch einen alternativen Chatserver ersetzt.
+
+**Nur zur vorbereitenden Codeintegration:** Der Produktionsstart in
+`scripts/mlx-server-start` und sämtliche LaunchAgent-Vorlagen bleiben unverändert.
+Eine einzelne gestartete Chat-Gate-Instanz berechtigt **nicht** zum Benchmark:
+`exclusive.verify_services()` prüft weiterhin alle Listener inklusive Port 11234
+auf dieselbe Gate- und Build-Identität, Prozesszuordnung und Jobblocker.
+Nicht unterstützte Startpfade (beispielsweise Hybrid-DFlash-In-Memory-Launcher)
+dürfen nicht stillschweigend unter einen unpassenden Wrapper fallen.
+Vor produktiver Umstellung müssen sämtliche Dienste, Queue-Tickets,
+Recovery und der komplette Offline-Startpfad gemeinsam integriert und geprüft sein.
+

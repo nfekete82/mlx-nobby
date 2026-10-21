@@ -88,8 +88,15 @@ def main(argv=None):
     command = args.command
     if command[:1] == ["--"]:
         command = command[1:]
-    if len(command) < 2 or command[0] != "-m" or command[1] not in {"uvicorn", "mlx_vlm"}:
-        p.error("Only -m uvicorn or -m mlx_vlm is supported")
+    if len(command) < 2 or command[0] != "-m" or command[1] not in {
+        "uvicorn", "mlx_vlm", "model_lifecycle_launcher"
+    }:
+        p.error("Only -m uvicorn, -m mlx_vlm or the guarded chat lifecycle launcher is supported")
+    if command[1] == "model_lifecycle_launcher" and (
+        args.role != "chat" or os.environ.get("MLX_LIFECYCLE_ENABLE") != "1"
+        or command[2:3] != ["server"]
+    ):
+        p.error("The lifecycle launcher is supported only for chat with explicit lifecycle opt-in")
     if any(v == "--reload" or v.startswith("--workers") for v in command):
         p.error("Reload/multi-worker launch is unsupported; admission proof must identify the listener PID")
     # Restrict model-owning restore runtimes, not Agent's download/model-management features.
