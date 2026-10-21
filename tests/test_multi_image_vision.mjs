@@ -39,7 +39,7 @@ vm.runInNewContext(source, {
 // A body-part rating must reuse the active generated image, not go to Finance.
 assert.match(
     source,
-    /const refersToExistingImage\\s*=\\s*[\\s\\S]*?\\|\\|[\\s\\S]*?hände/,
+    /const refersToExistingImage\s*=\s*[\s\S]*?\|\|[\s\S]*?hände/,
     'hand rating should recognize the active image as vision context',
 );
 
