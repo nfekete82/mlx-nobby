@@ -312,9 +312,7 @@
         const chips = [
             [t('installed', '{count} installed', { count: rows.length }), false],
             ...(filtered ? [[t('visible', '{count} of {total} visible', { count: visible, total: rows.length }), false]] : []),
-            [t('vision', '{count} Vision', { count: vision }), false],
-            [t('local', '{count} local', { count: local }), false],
-            [t('active', '{count} active', { count: active }), active > 0],
+            [t('selected', '{count} für Chat gewählt', { count: active }), active > 0],
         ];
         // Avoid retriggering the DOM observer when the summary has not changed.
         const signature = JSON.stringify(chips);

@@ -12,6 +12,7 @@
 
     const state = {
         activeTab: 'models',
+        hubView: 'models',
         runtimeAction: null,
         deletingModel: false,
         selectedModel: null,
@@ -369,7 +370,7 @@
         const titleLine = node('div', 'model-console-row-title');
         titleLine.appendChild(node('strong', '', displayName(model)));
         if (active) titleLine.appendChild(badge(
-            '● ' + mt('status.active', 'Active'),
+            '● ' + mt('status.chat_selected', 'Für Chat gewählt'),
             'active'
         ));
         main.appendChild(titleLine);
@@ -405,12 +406,11 @@
         menu.appendChild(summary);
         const menuPanel = node('div', 'model-console-menu-panel');
         menuPanel.appendChild(actionButton(mt('actions.details', 'Details'), 'model-details', { alias: model.alias }));
-        if (!active) menuPanel.appendChild(actionButton(mt('actions.load_model', 'Load model'), 'load-model', { alias: model.alias, disabled: globallyBusy || availability.state !== 'ready' }));
         if (availability.state === 'error') menuPanel.appendChild(actionButton(mt('actions.continue_download', 'Resume download'), 'retry-download', { target: model.alias }));
         menuPanel.appendChild(actionButton(mt('actions.remove_config', 'Remove from configuration'), 'remove-model', { alias: model.alias, danger: true, disabled: active || globallyBusy }));
         if (model.local && model.available !== false) {
             const protectedModel = model.active || activeModel()?.repo === model.repo;
-            actions.appendChild(actionButton(mt('actions.delete', 'Delete'), 'delete-local-model', {
+            menuPanel.appendChild(actionButton(mt('actions.delete', 'Delete'), 'delete-local-model', {
                 alias: model.alias, danger: true,
                 disabled: protectedModel || globallyBusy || isJobRunning(jobForModel(model)),
                 title: protectedModel ? mt('models.active_protected', 'The active model is protected even when the runtime is stopped.') : mt('models.delete_local', 'Delete local model files and alias'),
@@ -420,6 +420,28 @@
         actions.appendChild(menu);
         row.appendChild(actions);
         return row;
+    }
+
+    function renderModelIntro() {
+        const configuredRepo = state.status?.model || state.aliases.current;
+        const selected = state.aliases.models.find(item => item.repo === configuredRepo) || activeModel();
+        const section = node('section', 'model-hub-featured');
+        const main = node('div', 'model-hub-featured-main');
+
+        main.appendChild(node('span', 'model-hub-kicker', 'FÜR CHAT AUSGEWÄHLT'));
+        main.appendChild(node('h4', 'model-hub-featured-title',
+            selected ? displayName(selected) : (configuredRepo ? displayName(configuredRepo) : 'Kein Modell ausgewählt')));
+        if (configuredRepo) main.appendChild(node('div', 'model-hub-repo', configuredRepo));
+        main.appendChild(node('p', 'model-hub-featured-hint',
+            'Auswahl ist nicht gleich RAM-Belegung. Das Modell wird bei Bedarf geladen.'));
+
+        const side = node('div', 'model-hub-featured-side');
+        side.appendChild(statusChip());
+        side.appendChild(node('span', 'model-hub-model-count',
+            state.aliases.models.length + ' Modelle verfügbar'));
+
+        section.append(main, side);
+        return section;
     }
 
     function renderModels() {
@@ -451,6 +473,7 @@
             state.aliases.models.forEach(model => list.appendChild(renderModelRow(model)));
             section.appendChild(list);
         }
+        fragment.appendChild(renderModelIntro());
         fragment.appendChild(section);
         return fragment;
     }
@@ -831,12 +854,31 @@
         return banner;
     }
 
+    function syncHubView() {
+        const nav = document.getElementById('modelHubTabs');
+        const onModels = state.activeTab === 'models';
+        const view = state.hubView;
+        if (nav) {
+            nav.hidden = !onModels;
+            nav.querySelectorAll('[data-model-hub-view]').forEach(button => {
+                const selected = button.dataset.modelHubView === view;
+                button.classList.toggle('active', selected);
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+        }
+        content.hidden = onModels && view === 'assignments';
+        content.dataset.modelHubView = onModels ? view : 'models';
+        if (assignments) assignments.hidden = !onModels || view !== 'assignments';
+        const addButton = document.getElementById('modelConsoleAdd');
+        if (addButton) addButton.hidden = !onModels || view !== 'models';
+    }
+
     function render() {
         if (!root || !content) return;
         const addButton = document.getElementById('modelConsoleAdd');
         const header = root.querySelector('.model-console-header');
-        if (header) header.hidden = state.activeTab !== 'models';
-        if (addButton) addButton.hidden = state.activeTab !== 'models';
+        if (header) header.hidden = state.activeTab !== 'models' || state.hubView !== 'models';
+        if (addButton) addButton.hidden = state.activeTab !== 'models' || state.hubView !== 'models';
         // Read the native state before replacing DOM, including a toggle whose
         // asynchronous event has not fired yet. A different tab starts closed.
         const technicalOpen = state.activeTab === 'runtime'
@@ -848,6 +890,7 @@
         if (errorBanner) content.appendChild(errorBanner);
         if (!state.loaded && state.loading) {
             renderSkeleton();
+            syncHubView();
             return;
         }
         if (state.activeTab === 'runtime') content.appendChild(renderRuntime(technicalOpen));
@@ -855,7 +898,7 @@
         else if (state.activeTab === 'downloads') content.appendChild(renderDownloads());
         else content.appendChild(renderModels());
         content.setAttribute('aria-busy', state.loading ? 'true' : 'false');
-        if (assignments) assignments.hidden = state.activeTab !== 'models';
+        syncHubView();
     }
 
     function load(options = {}) {
@@ -907,6 +950,12 @@
         if (!state.visible) return;
         const hasRunningJobs = state.jobs.some(isJobRunning);
         state.refreshTimer = setTimeout(() => load({ force: true }), delay ?? (hasRunningJobs ? 4000 : 15000));
+    }
+
+    function setHubView(view) {
+        if (!['models', 'assignments', 'discover'].includes(view)) return;
+        state.hubView = view;
+        syncHubView();
     }
 
     function setTab(tab) {
@@ -1420,6 +1469,8 @@
 
     if (root) {
         root.addEventListener('click', event => {
+            const hubTab = event.target.closest('[data-model-hub-view]');
+            if (hubTab) return setHubView(hubTab.dataset.modelHubView);
             const tab = event.target.closest('[data-model-console-tab]');
             if (tab) return setTab(tab.dataset.modelConsoleTab);
             const button = event.target.closest('[data-action]');
@@ -1441,6 +1492,7 @@
         close,
         load,
         setTab,
+        setHubView,
         __test: {
             state,
             displayName,

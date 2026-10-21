@@ -1073,6 +1073,11 @@
                 <button id="modelConsoleAdd" class="model-console-button primary" type="button" data-i18n="ui.add_model">+ Modell hinzufügen</button>
             </header>
 
+            <nav class="model-hub-tabs" id="modelHubTabs" aria-label="Modellbereiche">
+                <button type="button" class="active" data-model-hub-view="models" aria-pressed="true">Modelle</button>
+                <button type="button" data-model-hub-view="assignments" aria-pressed="false">Zuordnung</button>
+                <button type="button" data-model-hub-view="discover" aria-pressed="false">Entdecken</button>
+            </nav>
             <div id="modelConsoleStatus" class="model-console-live" role="status" aria-live="polite"></div>
             <div id="modelConsoleContent" class="model-console-content" aria-busy="true"></div>
             <div id="modelConsoleAssignments" class="model-console-secondary">

@@ -10932,3 +10932,108 @@ body.notes-resizing * {
         margin: 0 !important;
     }
 }
+
+
+/* Model hub: focused views without changing model or role APIs. */
+#modelConsole .model-hub-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 0 14px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border, #273044);
+}
+#modelConsole .model-hub-tabs[hidden],
+#modelConsole #modelConsoleContent[hidden],
+#modelConsole #modelConsoleAssignments[hidden],
+#modelConsole .model-console-header[hidden] { display: none !important; }
+#modelConsole .model-hub-tabs button {
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted, #96a5b8);
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    padding: 9px 13px;
+}
+#modelConsole .model-hub-tabs button:hover {
+    background: rgba(117, 161, 255, .08);
+    color: var(--text);
+}
+#modelConsole .model-hub-tabs button.active {
+    color: var(--text);
+    background: rgba(80, 128, 218, .14);
+    border-color: rgba(98, 146, 232, .3);
+}
+#modelConsole .model-hub-tabs button:focus-visible {
+    outline: 2px solid #79a6fc;
+    outline-offset: 2px;
+}
+#modelConsole .model-hub-featured {
+    display: flex;
+    justify-content: space-between;
+    gap: 22px;
+    align-items: flex-start;
+    padding: 20px;
+    background: linear-gradient(120deg, rgba(40, 71, 106, .22), rgba(15, 21, 31, .36));
+    border: 1px solid rgba(86, 115, 155, .32);
+    border-radius: 13px;
+}
+#modelConsole .model-hub-featured-main { min-width: 0; }
+#modelConsole .model-hub-kicker {
+    display: block;
+    color: #91a5bd;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: .09em;
+}
+#modelConsole .model-hub-featured-title {
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 720;
+    overflow-wrap: anywhere;
+    margin: 9px 0 6px;
+}
+#modelConsole .model-hub-repo {
+    font-size: 11px;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+#modelConsole .model-hub-featured-hint {
+    margin: 12px 0 0;
+    color: var(--muted);
+    line-height: 1.5;
+    font-size: 11px;
+}
+#modelConsole .model-hub-featured-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 9px;
+    flex: none;
+}
+#modelConsole .model-hub-model-count {
+    color: var(--muted);
+    font-size: 11px;
+}
+#modelConsole #modelConsoleContent[data-active-model-tab="models"][data-model-hub-view="models"] > .model-scout,
+#modelConsole #modelConsoleContent[data-active-model-tab="models"][data-model-hub-view="discover"] > :not(.model-scout) {
+    display: none !important;
+}
+#modelConsole #modelConsoleContent[data-active-model-tab="models"][data-model-hub-view="discover"] > .model-scout {
+    margin-top: 0;
+}
+#modelConsole #modelConsoleContent.model-overview-enhanced .model-console-row-meta .model-console-badge:nth-of-type(n+3) {
+    display: none;
+}
+#modelConsole #modelConsoleAssignments .settings-model-roles {
+    margin: 0;
+}
+@media (max-width: 680px) {
+    #modelConsole .model-hub-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #modelConsole .model-hub-tabs button { padding: 10px 5px; }
+    #modelConsole .model-hub-featured { flex-direction: column; gap: 12px; }
+    #modelConsole .model-hub-featured-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+}
