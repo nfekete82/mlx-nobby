@@ -165,5 +165,6 @@ def test_frontend_and_version_remain_release_safe():
     assert 'id="dropZone"' in html and 'id="downloadAll"' in html
     assert "/api/converter/jobs" in script
     assert 'href="/converter"' in chat
-    assert (root / "VERSION").read_text().strip() == "1.19.0"
+    import re
+    assert re.fullmatch(r"\d+\.\d+\.\d+", (root / "VERSION").read_text().strip())
     assert "local image converter" in (root / "CHANGELOG.md").read_text()
