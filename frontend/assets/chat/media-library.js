@@ -505,6 +505,7 @@
       moreButton.setAttribute("aria-expanded", "true");
       activeCardActions = {container: buttons, button: moreButton, menu};
     });
+    menu.addEventListener("click", () => closeCardActions());
     buttons.addEventListener("keydown", event => {
       if (event.key === "Escape" && !menu.hidden) {
         event.preventDefault();
@@ -639,6 +640,7 @@
     });
   }
   function render() {
+    closeCardActions();
     mediaObserver?.disconnect();
     const filtered = visibleAssets();
     const count = document.getElementById("nobbyLibraryCount");
