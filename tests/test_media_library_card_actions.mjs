@@ -15,6 +15,7 @@ function setup() {
       this.children = [];
       this.events = {};
       this.attributes = {};
+      this.dataset = {};
       this.hidden = false;
       this.isConnected = true;
       this.className = '';
