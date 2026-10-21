@@ -65,6 +65,34 @@ class ResearchTests(unittest.TestCase):
         self.assertIn("Elektroauto vorgestellt 2026", result)
         self.assertIn("https://news.google.com/rss/articles/123", result)
 
+    def test_compound_borsennews_uses_finance_rss_and_today_filter(self):
+        from datetime import datetime, timezone
+        from urllib.parse import parse_qs, urlsplit
+        rss = ('<rss><channel>'
+               '<item><title>GIB Gibraltar News</title>'
+               '<link>https://example.org/gib</link>'
+               '<pubDate>Thu, 15 Oct 2026 07:00:00 GMT</pubDate></item>'
+               '<item><title>DAX und Aktienmärkte steigen</title>'
+               '<link>https://example.org/dax</link>'
+               '<pubDate>Thu, 15 Oct 2026 07:00:00 GMT</pubDate></item>'
+               '<item><title>Aktien von gestern</title>'
+               '<link>https://example.org/old</link>'
+               '<pubDate>Wed, 14 Oct 2026 07:00:00 GMT</pubDate></item>'
+               '</channel></rss>')
+        visited = []
+        def opener(req, timeout):
+            visited.append(req.full_url)
+            return FakeResponse(rss)
+        output = retrieve_web_research(
+            "gib mir alle börsennews von heute",
+            opener=opener, now=datetime(2026, 10, 15, 9, tzinfo=timezone.utc))
+        params = parse_qs(urlsplit(visited[0]).query)
+        self.assertEqual(params["q"], ["Börse Aktienmärkte when:1d"])
+        self.assertIn("news.google.com/rss/search", visited[0])
+        self.assertIn("DAX und Aktienmärkte", output)
+        self.assertNotIn("GIB Gibraltar", output)
+        self.assertNotIn("Aktien von gestern", output)
+
     def test_network_error_not_fabricated(self):
         def offline(_req, timeout):
             raise OSError("offline")
