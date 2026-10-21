@@ -73,7 +73,10 @@ def test_library_studio_engine_filter_and_reuse_photo(ui):
     page.locator('[data-library-kind="image"]').click()
     expect(page.locator("#nobbyLibraryEngine")).to_have_value("all")
     expect(page.locator(".nobby-library-card")).to_have_count(1)
-    page.locator(".nobby-library-card-actions button").filter(has_text="Talking Photo").click()
+    expect(page.locator(".nobby-library-card-action-menu")).to_be_hidden()
+    page.locator(".nobby-library-card-more-button").click()
+    expect(page.locator(".nobby-library-card-action-menu")).to_be_visible()
+    page.locator(".nobby-library-card-action-menu button").filter(has_text="Talking Photo").click()
     expect(page.locator("#nobbyLibrary")).to_be_hidden()
     expect(page.locator("#talkingPhotoModal")).to_be_visible()
     assert page.locator("#talkingPhotoImage").evaluate("input => input.files.length") == 1
@@ -207,9 +210,10 @@ def test_media_studio_image_to_video_prefill_and_source_navigation(ui):
     expect(page.locator(".nobby-library-preview-body img")).to_be_visible()
     page.locator(".nobby-library-preview-close").click()
 
-    page.locator(".nobby-library-card").filter(has=page.locator(".nobby-library-lineage-count")).locator(
-        ".nobby-library-card-actions button"
-    ).filter(has_text="Video").click()
+    source_card = page.locator(".nobby-library-card").filter(
+        has=page.locator(".nobby-library-lineage-count"))
+    source_card.locator(".nobby-library-card-more-button").click()
+    source_card.locator(".nobby-library-card-action-menu button").filter(has_text="Video").click()
     expect(page.locator("#nobbyLibrary")).to_be_hidden()
     expect(page.locator("#attachmentBar .image-attachment-chip")).to_have_count(1)
     assert "video" in page.locator("#input").input_value().lower()
@@ -351,7 +355,8 @@ def test_library_searches_prompt_and_shows_real_asset_details(ui):
     _open_library(page)
     page.locator("#nobbyLibrarySearch").fill("jungle robot")
     expect(page.locator(".nobby-library-card")).to_have_count(1)
-    page.locator(".nobby-library-card-actions button").filter(has_text="Details").click()
+    page.locator(".nobby-library-card-more-button").click()
+    page.locator(".nobby-library-card-action-menu button").filter(has_text="Details").click()
     expect(page.locator(".nobby-library-detail-panel")).to_be_visible()
     expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Jungle robot walking")
     expect(page.locator(".nobby-library-detail-panel")).to_contain_text("Juggernaut-XI")
