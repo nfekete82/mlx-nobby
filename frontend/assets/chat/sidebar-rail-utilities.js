@@ -39,6 +39,7 @@
 
     const utilities = [
       ['talkingPhotoButton', 'railTalkingPhoto', 'Talking Photo'],
+      ['imageConverterButton', 'railImageConverter', 'Bildkonverter'],
       ['mlxSidebarHelpButton', 'railHelp', 'Hilfe'],
       ['mlx-shorts-history-launcher', 'railShorts', 'Shorts'],
       ['runtimeInfoButton', 'railRuntimeInfo', 'Systeminfo']
