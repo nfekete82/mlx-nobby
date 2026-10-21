@@ -127,6 +127,7 @@ def test_only_broad_news_requests_use_curated_feeds():
     def no_request(*_args, **_kwargs):
         raise AssertionError("should not request fixed feeds")
     assert publisher_news_candidates("NVIDIA News von heute", opener=no_request, now=NOW) == []
+    assert publisher_news_candidates("gib mir alle börsennews von heute", opener=no_request, now=NOW) == []
     assert publisher_news_candidates("News von gestern", opener=no_request, now=NOW) == []
 
 
