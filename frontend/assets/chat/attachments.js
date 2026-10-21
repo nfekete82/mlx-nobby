@@ -19,6 +19,11 @@ function attachmentT(key, fallback = '', variables = {}) {
     let manualEditModel = false;
     let manualEditFields = new Set();
     let personPresetPending = false;
+    let autoSelectedEditModel = null;
+
+    // A fresh standing/full-body pose is structural editing, which Qwen Edit
+    // handles better than SDXL image-to-image's source-framing preservation.
+    const PERSON_NEW_POSE = /\b(?:ganzkörper(?:aufnahme|bild|foto)?|full[ -]?body|head[ -]to[ -]toe|new\s+pose|different\s+pose|other\s+pose|standing|walking|sitting|steht|stehend|sitzend|sitzt|läuft|geh(?:t|end)|neue[nr]?\s+pose|andere[nr]?\s+pose|pose\s+ändern|pose\s+wechseln|von\s+kopf\s+bis\s+fuß)\b/iu;
 
     function personReferencePreset(prompt) {
         const text = String(prompt || '');
@@ -26,6 +31,9 @@ function attachmentT(key, fallback = '', variables = {}) {
         const exact = /\b(?:dieselbe[nr]?|derselben|demselben|denselben|gleiche[nmrs]?|gleichen)\s+(?:person|frau|mann|gesicht)\b|\b(?:exact(?:ly)?\s+)?(?:same|identical)\s+(?:(?:adult|young|older|middle-aged|elderly)\s+){0,2}(?:person|woman|man|face)\b|\b(?:behalte|bewahre|erhalte|keep|preserve|retain)\b.{0,80}\b(?:person|gesicht|aussehen|identität|face|identity|appearance)\b/iu;
         const similarity = /(?:^|[^\p{L}])(?:ähnelt|aehnelt|ähnlich|aehnlich|resembling|resembles|resemble|similar\s+to|looks\s+like)(?!\p{L})/iu;
         if (exact.test(text)) {
+            if (PERSON_NEW_POSE.test(text)) {
+                return {kind: 'same_identity', pose_change: true};
+            }
             return {kind: 'same_identity', strength: 0.75, steps: 40, guidance: 5.0};
         }
         if (similarity.test(text) && /\b(?:person|frau|mann|gesicht|woman|man|face)\b/iu.test(text)) {
@@ -34,23 +42,51 @@ function attachmentT(key, fallback = '', variables = {}) {
         return null;
     }
 
+    function preferredPersonReferenceModel(preset, models) {
+        const ready = id => models.some(model =>
+            model.id === id && model.enabled && model.available
+        );
+        if (preset?.pose_change) {
+            // Both are opt-in; never enable or download a model automatically.
+            return ['mflux-osaurus-qwen-image-2.1-edit',
+                'mflux-qwen-image-2.1-edit'].find(ready) || null;
+        }
+        return preset && ready('juggernaut-xl') ? 'juggernaut-xl' : null;
+    }
+
     function applyPersonReferencePreset(models) {
         if (imageMode !== 'edit' ||
             attachments.filter(file => file.kind === 'image').length !== 1) return false;
 
         const preset = personReferencePreset(document.getElementById('input')?.value);
-        // Respect explicit user choices and keep Qwen as the fallback if
-        // Juggernaut is disabled, missing or not ready.
-        const available = models.some(model =>
-            model.id === 'juggernaut-xl' && model.enabled && model.available
-        );
-        if (!preset || !available || (manualEditModel && editOptions.model !== 'juggernaut-xl') ||
-            (editOptions.model && editOptions.model !== 'juggernaut-xl')) return false;
+        if (!preset || manualEditModel) return false;
+        // Other models and manually entered parameters must never be replaced.
+        if (editOptions.model && editOptions.model !== autoSelectedEditModel) return false;
+        if (preset.pose_change && manualEditFields.size) return false;
+        if (!preset.pose_change && (editOptions.mask_path || editOptions.auto_mask)) return false;
 
+        const target = preferredPersonReferenceModel(preset, models);
         let changed = false;
-        if (!manualEditModel && editOptions.model !== 'juggernaut-xl') {
-            editOptions.model = 'juggernaut-xl';
+        if (target && editOptions.model !== target) {
+            editOptions.model = target;
+            autoSelectedEditModel = target;
             changed = true;
+        } else if (!target && autoSelectedEditModel && editOptions.model === autoSelectedEditModel) {
+            // E.g. the user changes "variation" to "new pose" while Qwen is
+            // unavailable: go back to Auto rather than forcing Juggernaut.
+            delete editOptions.model;
+            autoSelectedEditModel = null;
+            changed = true;
+        }
+        // Do not inject Juggernaut strength/CFG/steps into Qwen requests.
+        if (target !== 'juggernaut-xl') {
+            for (const key of ['strength', 'steps', 'guidance']) {
+                if (!manualEditFields.has(key) && key in editOptions) {
+                    delete editOptions[key];
+                    changed = true;
+                }
+            }
+            return changed;
         }
         for (const key of ['strength', 'steps', 'guidance']) {
             if (!manualEditFields.has(key) && editOptions[key] !== preset[key]) {
@@ -58,7 +94,7 @@ function attachmentT(key, fallback = '', variables = {}) {
                 changed = true;
             }
         }
-        // Seed intentionally remains random; masks are not compatible with SDXL.
+        // Seed remains random; user-selected seed is never rewritten.
         return changed;
     }
 
@@ -268,6 +304,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         });
         select.addEventListener('change', () => {
             manualEditModel = true;
+            autoSelectedEditModel = null;
             if (select.value === 'auto') delete editOptions.model;
             else editOptions.model = select.value;
             if (select.value === 'juggernaut-xl') {
@@ -457,6 +494,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             imageMode = 'auto';
             editOptions = {};
             manualEditModel = false;
+            autoSelectedEditModel = null;
             manualEditFields = new Set();
         }
         bar.innerHTML = '';
@@ -1043,6 +1081,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         editOptions = {};
         imageMode = 'auto';
         manualEditModel = false;
+        autoSelectedEditModel = null;
         manualEditFields = new Set();
         renderAttachments();
     }
@@ -1266,6 +1305,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         getEditOptions: () => imageMode === 'edit' ? {...editOptions} : {},
         getImageMode: () => imageMode,
         suggestPersonReferencePreset: personReferencePreset,
+        suggestPreferredPersonReferenceModel: preferredPersonReferenceModel,
         whenReady: () => Promise.all([addingFiles, pendingMaskUpload]),
         moveAttachment: moveAttachment,
         buildAttachmentContext:

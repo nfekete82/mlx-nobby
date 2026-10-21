@@ -17,19 +17,24 @@ local.
 
 ## New person-reference defaults
 
-For **one uploaded photo** in **Bearbeiten (Edit)** mode, Nobby can preselect
-Juggernaut Ragnarok automatically when it is enabled and genuinely available:
+For **one uploaded photo** in **Bearbeiten (Edit)** mode, Nobby selects
+models by the task requested, only when those models are enabled and available:
 
-- An explicit **same person / same face** request preselects Strength **0.75**,
-  **40** Steps and CFG **5.0**.
-- A **similar-looking person** request without a same-person requirement uses
-  Strength **0.55**, **36** Steps and CFG **5.5**.
-- Seed remains blank/random. These presets are suggestions and user-modified
-  model, strength or sampling fields take precedence. Unrelated image edits keep
-  their current automatic/Qwen selection. No model is downloaded or enabled.
-- Changing a close-up selfie into a full-body view is still stochastic:
-  img2img does not guarantee identity preservation or pose fidelity.
-  Qwen Image Edit may follow complex scene instructions more accurately.
+- **Same person, new pose, standing/walking or full-body view:** prefer
+  **Qwen Image 2.1 Edit · Osaurus 4-bit**. If unavailable, prefer the enabled
+  **MFLUX Qwen 2.1 Edit Q4** candidate. If both are unavailable, retain the
+  automatic model selection without forcing Juggernaut. Qwen uses its own
+  model defaults, not SDXL's Strength / Steps / CFG.
+- **Same-person photo variation without a new pose:** Juggernaut XL Ragnarok
+  with Strength **0.75**, **40** Steps, CFG **5.0**.
+- **Resemblance-only reference** without same-person requirement: Juggernaut
+  with Strength **0.55**, **36** Steps, CFG **5.5**.
+- Seed remains blank/random. Explicit user model and sampling selections always
+  take precedence. Unrelated edits, masked Qwen edits and normal text-to-image
+  are not re-routed. No model is downloaded or enabled automatically.
+- Facial identity, exact pose and full-body framing cannot be guaranteed by
+  either model. For precise pose control an optional pose-conditioned workflow
+  (e.g. a compatible ControlNet/OpenPose pipeline) would be separate future work.
 
 The intent classifier now prioritizes explicit same-person preservation over
 incidental "similar" qualifiers. For new poses it also instructs the selected

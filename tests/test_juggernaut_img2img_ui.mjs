@@ -6,6 +6,7 @@ const attachments = readFileSync(new URL('../frontend/assets/chat/attachments.js
 const html = readFileSync(new URL('../frontend/chat.html', import.meta.url), 'utf8');
 const registry = readFileSync(new URL('../image_registry.py', import.meta.url), 'utf8');
 const imageService = readFileSync(new URL('../image_service.py', import.meta.url), 'utf8');
+const rendering = readFileSync(new URL('../frontend/assets/chat/rendering.js', import.meta.url), 'utf8');
 
 test('img2img is an explicit edit model, not a global text-to-image setting', () => {
   assert.match(attachments, /model\.capabilities\?\.includes\('image_edit'\)/);
@@ -23,8 +24,10 @@ test('img2img is an explicit edit model, not a global text-to-image setting', ()
 });
 
 test('frontend cache key changes and backend routes through bounded source', () => {
-  assert.match(html, /attachments\.js\?v=20261020-photograph-routing-fix/);
+  assert.match(html, /attachments\.js\?v=20261021-qwen-pose-preference/);
   assert.match(imageService, /prepare_sdxl_img2img_source/);
   assert.match(imageService, /params\["strength"\]/);
   assert.match(imageService, /"strength": params\.get\("strength"\)/);
+  assert.match(rendering, /artifact\.strength != null \? 'Strength '/);
+  assert.match(html, /rendering\.js\?v=20261021-image-strength/);
 });

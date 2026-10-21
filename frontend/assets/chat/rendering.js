@@ -1936,6 +1936,7 @@ function renderImageArtifactCard(message) {
         artifact.scale ? artifact.scale + '×' : '',
         artifact.quality ? 'Qualität: ' + ({ preview: 'Vorschau', fast: 'Schnell', standard: 'Standard', quality: 'Qualität' }[artifact.quality] || artifact.quality) : '',
         artifact.steps ? artifact.steps + ' Steps' : '',
+        artifact.strength != null ? 'Strength ' + Number(artifact.strength).toFixed(2) : '',
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');
     const controls = document.createElement('div'); controls.className = 'batch-chat-controls';
