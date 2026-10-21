@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Media Library gallery preview: place Talking Photo, Animate as Video, Edit Region and Details actions in a compact responsive row with matching inline SVG icons; make Details a true accessible Show/Hide toggle (aria-expanded, on-demand metadata cache) and ignore stale responses after closing or switching previews. Include deterministic JS DOM regression tests and fresh frontend asset versions.
+
 - Prefer available, opt-in Qwen Image 2.1 Edit Osaurus (then MFLUX Q4) for same-person **new-pose/full-body** edits, rather than auto-selecting source-framing Juggernaut img2img. Retain Juggernaut variation defaults and explicit model/parameter choices, never enable/download unavailable Qwen, prevent SDXL sampling parameters from leaking into Qwen, and expose img2img Strength in the generated image's metadata. Add English/German pose and availability regressions.
 
 - Fix long English person-reference photo prompts ("Create a photorealistic full-body photograph of the exact same adult woman ..."): recognize `photograph` as an image output and `exact same adult woman` as an identity reference. Treat negative *composition constraints* such as "not a minor variation of the original" or "do not recreate the original selfie" as styling rather than cancelling the requested image. Preserve "do not create/generate an image" as a strict non-execution instruction. Add preflight/execution and reference-routing regressions to prevent chat-only false success.
