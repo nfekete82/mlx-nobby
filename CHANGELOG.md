@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add local image converter under System & Tools: bounded multi-file PNG/JPG/HEIC/WebP/TIFF/BMP upload, optimized JPG/PNG/WebP/AVIF exports, resolution/quality/background/metadata controls, CPU-only sequential jobs, status/cancel, per-file download and ZIP plus manifest. No model loading or media-library mutation. Version remains 1.19.0 until release qualification; tests and CI are mandatory.
+
 - Reduce per-media card button clutter in the Library gallery: keep icon-labeled Download visible and group Talking Photo, video animation, region edit, details and permanent deletion under a compact SVG-icon **Aktionen / Actions** disclosure. Support keyboard Escape and click-outside dismissal, allow only one expanded card at a time, preserve native links and deletion confirmation, and cache-bust assets while keeping existing release-version prefixes. Add interactive Node regression tests.
 
 - Media Library gallery preview: place Talking Photo, Animate as Video, Edit Region and Details actions in a compact responsive row with matching inline SVG icons; make Details a true accessible Show/Hide toggle (aria-expanded, on-demand metadata cache) and ignore stale responses after closing or switching previews. Include deterministic JS DOM regression tests and fresh frontend asset versions.
