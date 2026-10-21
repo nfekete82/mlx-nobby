@@ -14,6 +14,7 @@ def _png():
 
 def test_converter_dropzone_upload_progress_and_zip_download(web, browser, tmp_path):
     url, agent = web
+    agent.reset()
     context = browser.new_context(viewport={"width": 1280, "height": 900}, accept_downloads=True)
     page = context.new_page()
     errors = []
