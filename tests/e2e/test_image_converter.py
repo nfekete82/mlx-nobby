@@ -26,7 +26,7 @@ def test_converter_dropzone_upload_progress_and_zip_download(web, browser, tmp_p
         page.locator("#filePicker").set_input_files(
             [{"name": "Testbild.png", "mimeType": "image/png", "buffer": _png()}]
         )
-        expect(page.locator("#fileSummary")).to_contain_text("1 Dateien")
+        expect(page.locator("#fileSummary")).to_contain_text("1 files")
         expect(page.locator("#startButton")).to_be_enabled()
         page.locator("#target").select_option("jpg")
         page.locator("#startButton").click()
