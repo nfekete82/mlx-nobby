@@ -120,7 +120,7 @@ def install_routes(app: FastAPI, agent_json_request) -> None:
         @app.get("/api/mlx/model-scout/discover")
         def model_scout_discover(
             limit: int = Query(default=30, ge=1, le=100),
-            role: str = Query(default="all", pattern="^(all|chat|coding|vision)$"),
+            role: str = Query(default="all", pattern="^(all|chat|coding|vision|tts|asr|audio|memory|embedding|reranker|image|video)$"),
         ):
             return agent_json_request(
                 "GET",
