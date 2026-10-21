@@ -10,7 +10,7 @@ assert.match(html, /id="railLibrary"/);
 assert.match(html, /id="nobbyLibrary"/);
 assert.match(html, /id="nobbyLibraryGrid"/);
 assert.match(html, /id="nobbyLibrarySaveAll"/);
-assert.match(html, /media-library\.js\?v=1-19-search/);
+assert.match(html, /media-library\.js\?v=1-19-search&amp;gallery=20261021-preview-actions-toggle/);
 assert.match(html, /media-library\.css\?v=[a-z0-9-]+/);
 assert.match(css, /\.nobby-library-panel\[hidden\]/);
 assert.match(css, /grid-template-columns:repeat\(auto-fill/);
@@ -94,7 +94,7 @@ assert.match(html, /<details class="nobby-library-more">[\s\S]*?<button id="nobb
 assert.ok(html.indexOf('id="nobbyLibrarySearch"') < html.indexOf('id="nobbyLibraryDateFilter"'));
 assert.ok(html.indexOf('id="nobbyLibrarySort"') < html.indexOf('id="nobbyLibrarySelectVisible"'));
 assert.ok(html.indexOf('id="nobbyLibrarySelectVisible"') < html.indexOf('id="nobbyLibraryDeleteAll"'));
-assert.match(html, /media-library\.css\?v=1-18-shared-pickers/);
+assert.match(html, /media-library\.css\?v=1-18-shared-pickers&amp;gallery=20261021-preview-actions-icons/);
 assert.match(css, /\.nobby-library-secondary-row\{/);
 assert.match(css, /@media\(max-width:560px\)/);
 assert.match(css, /\.nobby-library-more-menu \[hidden\]\{display:none!important\}/);
@@ -117,6 +117,23 @@ assert.match(js, /\/details"/);
 assert.match(css, /\.nobby-library-detail-row\{/);
 assert.doesNotMatch(js, /innerHTML\s*=/);
 console.log("Library 4.0 metadata search and on-demand details UI contracts passed.");
+
+assert.match(js, /nobby-library-preview-actions/);
+assert.match(js, /previewAction\(t\("Als Talking Photo verwenden"/);
+assert.match(js, /previewAction\(t\("Als Video animieren"/);
+assert.match(js, /previewAction\(t\("Bereich bearbeiten"/);
+assert.match(js, /previewIcons\.info/);
+assert.match(js, /detailsButton\.setAttribute\("aria-expanded", "false"\)/);
+assert.match(js, /detailsPanel\.hidden = true/);
+assert.match(js, /if \(!detailsPanel\.hidden\)/);
+assert.match(js, /detailsButton\.setAttribute\("aria-expanded", "true"\)/);
+assert.match(js, /if \(detailsLoaded\) return/);
+assert.match(js, /request !== detailsRequest/);
+assert.match(css, /\.nobby-library-preview-actions\{/);
+assert.match(css, /flex-wrap:wrap/);
+assert.match(css, /\.nobby-library-preview-actions \.nobby-library-action svg\{/);
+console.log("Gallery preview uses compact SVG actions and a reversible accessible details toggle.");
+
 
 assert.match(css, /:is\(\.nobby-library-panel :is\(\.nobby-library-secondary-row,\.nobby-library-bulk\), \.mlx-talking-photo-field\) select/);
 assert.match(css, /\.mlx-talking-photo-dialog \.mlx-talking-photo-field select\{/);
