@@ -134,6 +134,17 @@ assert.match(css, /flex-wrap:wrap/);
 assert.match(css, /\.nobby-library-preview-actions \.nobby-library-action svg\{/);
 console.log("Gallery preview uses compact SVG actions and a reversible accessible details toggle.");
 
+assert.match(js, /nobby-library-card-action-row/);
+assert.match(js, /nobby-library-card-action-menu/);
+assert.match(js, /moreButton\.setAttribute\("aria-expanded", "false"\)/);
+assert.match(js, /menu\.hidden = true/);
+assert.match(js, /menu\.append\(infoButton, remove\)/);
+assert.match(js, /closeCardActions\(true\)/);
+assert.match(css, /\.nobby-library-card-action-menu\[hidden\]/);
+assert.match(css, /\.nobby-library-card-action-row\{/);
+console.log("Compact gallery cards show Download and an expandable icon Actions menu.");
+
+
 
 assert.match(css, /:is\(\.nobby-library-panel :is\(\.nobby-library-secondary-row,\.nobby-library-bulk\), \.mlx-talking-photo-field\) select/);
 assert.match(css, /\.mlx-talking-photo-dialog \.mlx-talking-photo-field select\{/);
