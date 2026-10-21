@@ -25,9 +25,13 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     expect(button).to_be_visible()
     button.click()
     expect(page.locator("#imageConverterWorkspace")).to_be_visible()
-    expect(page.locator("#messages")).to_be_hidden()
-    expect(page.locator(".composer-wrap")).to_be_hidden()
-    assert page.url.endswith("/chat")  # No redirect or second page.
+    expect(page.locator("#messages")).to_be_visible()
+    expect(page.locator(".composer-wrap")).to_be_visible()
+    expect(page.locator(".mlx-image-converter-modal-shell")).to_be_visible()
+    expect(page.locator("#imageConverterWorkspace")).to_have_attribute("aria-hidden", "false")
+    bounds = page.locator(".mlx-image-converter-modal-shell").bounding_box()
+    assert abs(bounds["x"] + bounds["width"] / 2 - page.viewport_size["width"] / 2) < 4
+    assert page.url.endswith("/chat")  # Modal: no redirect or second page.
 
     inside = page.frame_locator("#imageConverterFrame")
     expect(inside.locator("#converterForm")).to_be_visible()
@@ -54,7 +58,10 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     button.click()
     expect(page.locator("#imageConverterWorkspace")).to_be_visible()
     assert page.frame_locator("#imageConverterFrame").locator("#fmt").input_value() == "WEBP"
+    inside.locator("#fmt").focus()
+    page.keyboard.press("Escape")
+    expect(page.locator("#imageConverterWorkspace")).to_be_hidden()
+    expect(page.locator("#messages")).to_be_visible()
     _ensure_sidebar(page)
     page.locator("#newChat").click()
-    expect(page.locator("#imageConverterWorkspace")).to_be_hidden()
     expect(page.locator("#messages")).to_be_visible()
