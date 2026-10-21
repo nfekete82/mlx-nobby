@@ -30,10 +30,12 @@
     bottom.insertBefore(group, runtimeLabel || null);
 
     function syncSystemTools() {
-      for (const id of ['sidebarConverterLink', 'sidebarJobsButton', 'mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton']) {
+      for (const id of ['sidebarJobsButton', 'mlxSidebarHelpButton', 'runtimeInfoButton', 'sidebarSettingsButton']) {
         const button = document.getElementById(id);
         if (button && button.parentElement !== items) items.appendChild(button);
       }
+      const converter = document.getElementById('sidebarConverterLink');
+      if (converter && converter.parentElement !== items) items.prepend(converter);
     }
     syncSystemTools();
 
