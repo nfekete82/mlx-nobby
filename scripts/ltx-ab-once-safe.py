@@ -11,6 +11,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Running "python scripts/..." sets sys.path[0] to scripts/, not the repository.
+# Add only our trusted repository root for runtime_coordinator imports.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 DOMAIN = "gui/" + str(os.getuid())
 SERVICES = (("de.nobby.musetalk", 8070), ("de.nobby.mlx-router", 8040))
 stopped = []
