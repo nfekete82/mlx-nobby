@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo
 
 _LOCAL_NEWS_TZ = ZoneInfo("Europe/Berlin")
 _NEWS_TERMS = re.compile(
-    r"\b(?:news|nachrichten|schlagzeilen|meldungen|topnews|headlines)\b",
+    r"\b(?:(?:börsen|aktien|finanz|wirtschafts)[\s-]*(?:news|nachrichten)"
+    r"|news|nachrichten|schlagzeilen|meldungen|topnews|headlines)\b",
     re.IGNORECASE,
 )
 _TODAY_TERMS = re.compile(
