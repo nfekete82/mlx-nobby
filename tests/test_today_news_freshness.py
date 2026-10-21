@@ -31,6 +31,10 @@ class TodayNewsTest(TestCase):
     def test_only_explicit_same_day_news_uses_strict_filter(self):
         self.assertTrue(requires_today_news("Gib mir alle wichtigen News von heute zusammengefasst"))
         self.assertTrue(requires_today_news("Nachrichten heute"))
+        self.assertTrue(requires_today_news("gib mir alle börsennews von heute"))
+        self.assertTrue(requires_today_news("Aktien-Nachrichten heute"))
+        self.assertTrue(requires_today_news("Finanznews heute"))
+        self.assertFalse(requires_today_news("Börsennews aus dem Jahr 2025"))
         self.assertFalse(requires_today_news("Was gibt es Neues bei NVIDIA?"))
         self.assertFalse(requires_today_news("Wie wird das Wetter heute?"))
         self.assertFalse(requires_today_news("News aus dem Jahr 2025"))
@@ -108,6 +112,30 @@ class TodayNewsTest(TestCase):
             result = searxng_search_results("Wichtige News von heute")
         self.assertEqual(recorded[0]["time_range"], ["day"])
         self.assertEqual([item["title"] for item in result["results"]], ["Current"])
+        self.assertEqual(result["freshness_status"], "verified_today_only")
+
+    def test_compound_borsennews_uses_targeted_search_day_and_relevance(self):
+        from agent.app import searxng_search_results
+        payload = {
+            "results": [
+                {"title": "GIB Gibraltar Firmen", "url": "https://example.org/gib",
+                 "publishedDate": format_datetime(datetime.now(timezone.utc))},
+                {"title": "DAX: Aktienmärkte steigen", "url": "https://example.org/dax",
+                 "publishedDate": format_datetime(datetime.now(timezone.utc))},
+            ],
+            "unresponsive_engines": [],
+        }
+        submitted = []
+        def search(_base, params):
+            submitted.append(parse_qs(params))
+            return payload, [{"status": "available"}]
+        with patch("agent.app.request_searxng", side_effect=search), \
+             patch("agent.app.web_url_is_safe", return_value=True):
+            result = searxng_search_results("gib mir alle börsennews von heute")
+        self.assertEqual(submitted[0]["q"], ["Börse Aktienmärkte"])
+        self.assertEqual(submitted[0]["time_range"], ["day"])
+        self.assertEqual([item["title"] for item in result["results"]],
+                         ["DAX: Aktienmärkte steigen"])
         self.assertEqual(result["freshness_status"], "verified_today_only")
 
     def test_undated_today_news_fall_back_without_fabrication(self):
