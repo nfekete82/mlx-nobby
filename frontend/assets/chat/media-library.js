@@ -230,6 +230,15 @@
     previousFocus = document.activeElement;
     const media = elt(asset.kind === "image" ? "img" : "video");
     media.src = asset.url;
+    if (asset.kind === "image") {
+      media.alt = t("Generiertes Bild", "Generated image");
+    } else {
+      media.controls = true;
+      media.playsInline = true;
+      media.preload = "metadata";
+      media.setAttribute("aria-label", label(asset.kind));
+    }
+    previewBody.replaceChildren(media);
     const actions = elt("div", "nobby-library-preview-actions");
     actions.setAttribute("role", "group");
     actions.setAttribute("aria-label", t("Medienaktionen", "Media actions"));
