@@ -2326,7 +2326,7 @@ const imageFiles =
 
     const refersToExistingImage =
         imageComparisonRequest ||
-        /\b(?:das|dieses|diesem|dieser|bild|foto|abbildung|es|davon|darauf)\b|\bist\s+das\b|\bsieht\s+(?:das|es)\b/i
+        /\b(?:das|dieses|diesem|dieser|bild|foto|abbildung|es|davon|darauf|hand|hände|händen|haende|haenden|finger|fingernägel|fingernaegel|hands?|fingers?|fingernails?)\b|\bist\s+das\b|\bsieht\s+(?:das|es)\b/i
             .test(prompt);
     const transformPattern = /anonymis|entfern|bereinig|ersetz|änder|aender|transformier|schwärz|schwaerz/i;
     const fileOperationPattern = /anonymis|entfern|bereinig|ersetz|änder|aender|transformier|schwärz|schwaerz|fass|zusammenfass|prüf|pruef|struktur|datensätz|datensaetz|felder|zeitraum|auffällig|auffaellig|problem|muster|analys/i;
