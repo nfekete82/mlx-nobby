@@ -32,7 +32,7 @@
     ['#maxDimension option[value="0"]', localText('Originalauflösung', 'Original resolution')],
     ['label[for="background"]', localText('Hintergrundfarbe für JPG-Transparenz', 'Background for transparent JPGs')],
     ['.color-option span', localText('Standard: Weiß', 'Default: white')],
-    ['.check', localText(' EXIF- und Farbprofil-Metadaten entfernen', ' Remove EXIF and color-profile metadata')],
+    ['#metadataLabel', localText('EXIF- und Farbprofil-Metadaten entfernen', 'Remove EXIF and color-profile metadata')],
     ['#startButton', localText('Jetzt konvertieren', 'Convert now')],
     ['#progressTitle', localText('Verarbeitung', 'Processing')],
     ['#cancelButton', localText('Abbrechen', 'Cancel')],
@@ -46,7 +46,6 @@
     const element = document.querySelector(selector);
     if (element) element.textContent = label;
   });
-  const metadataCheckbox = byId('stripMetadata');
   byId('stripMetadata').setAttribute('aria-label', localText('Metadaten entfernen', 'Remove metadata'));
   const limitNote = document.querySelector('.options-panel > .hint:last-child');
   if (limitNote) limitNote.textContent = localText(
