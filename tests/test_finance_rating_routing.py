@@ -20,6 +20,10 @@ from agent import app as chat_app
     "Bewerte die Person auf einer Skala von 1 bis 10",
     "Bewerte das Foto von NVIDIA auf einer Skala von 1 bis 10",
     "Bewerte das Bild auf einer Skala von 1 bis 10",
+    "bewerte die hände auf einer skala von 1 bis 10",
+    "Bewerte die Hand von 1 bis 10",
+    "Bewerte die Finger auf einer Skala von 1 bis 10",
+    "Rate the hands from 1 to 10",
     "Bewerte dieses Outfit auf einer Skala von 1 bis 10",
     "Bewerte den Film auf einer Skala von 1 bis 10",
     "Rate this woman from 1 to 10",
@@ -61,8 +65,11 @@ def test_nonfinancial_followup_cannot_inherit_previous_ticker():
     assert chat_app._direct_chat_action(prompt, conversation_context=context) == "normal_chat"
 
 
-def test_actual_image_context_stays_on_existing_media_discussion_route():
-    prompt = "Bewerte die Frau auf einer Skala von 1 bis 10"
+@pytest.mark.parametrize("prompt", [
+    "Bewerte die Frau auf einer Skala von 1 bis 10",
+    "bewerte die hände auf einer skala von 1 bis 10",
+])
+def test_actual_image_context_stays_on_existing_media_discussion_route(prompt):
     # The shared media policy is authoritative for a real image attachment.
     result = chat_app.classify_chat_action_details(
         prompt, file_context={"mime_type": "image/png", "kind": "image"}
