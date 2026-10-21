@@ -77,6 +77,8 @@ _NON_FINANCIAL_RATING_OBJECT = re.compile(
     r'(?:frau|mann|person|mädchen|junge|woman|man|person|'
     r'girl|boy|foto|photo|bild|picture|image|porträt|portrait|'
     r'gesicht|face|aussehen|appearance|outfit|kleidung|kleid|'
+    r'hand|hände|händen|haende|haenden|finger|fingernagel|fingernägel|'
+    r'fingernaegel|nägel|naegel|hands?|fingers?|fingernails?|'
     r'film|movie)\b',
     re.I,
 )
