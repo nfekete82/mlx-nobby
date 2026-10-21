@@ -166,3 +166,10 @@ assert.equal(regression.ok, true);
 assert.equal(Array.from(regression.warnings).includes('quality_regression'), true);
 
 console.log('Model Scout v3 helpers passed.');
+
+const useCaseUi = fs.readFileSync(new URL('../frontend/assets/chat/model-scout.js', import.meta.url), 'utf8');
+assert.match(useCaseUi, /placement_title/);
+assert.match(useCaseUi, /placement_adapter_required/);
+assert.match(useCaseUi, /candidate\.role === 'chat' \|\| candidate\.role === 'coding'/);
+assert.doesNotMatch(useCaseUi, /Upgrade candidate/);
+assert.match(source, /candidate\.role === 'chat' \|\| candidate\.role === 'coding'/);
