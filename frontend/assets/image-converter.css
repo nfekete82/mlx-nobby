@@ -11,3 +11,62 @@ html.converter-embedded #dropzone { min-height: 145px; }
   html.converter-embedded form { padding: 14px; }
   html.converter-embedded section { grid-template-columns: 1fr; }
 }
+
+/* Glass modal skin: standalone /converter keeps its original opaque appearance. */
+html.converter-embedded,
+html.converter-embedded body,
+html.converter-embedded main {
+  background: transparent !important;
+  color: #e9f0fb;
+}
+html.converter-embedded body { padding: 0 20px 15px; }
+html.converter-embedded main { width: 100%; max-width: none; }
+html.converter-embedded h1 { display: none; }
+html.converter-embedded main > p:not(.foot) {
+  margin: 3px 0 13px;
+  color: rgba(205, 219, 239, .76);
+  font-size: 13px;
+}
+html.converter-embedded form {
+  margin: 0;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(166,194,234,.14);
+  background: rgba(17,30,52,.34);
+  box-shadow: none;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+html.converter-embedded #dropzone {
+  min-height: 145px;
+  background: rgba(78,118,174,.07);
+  border: 1.5px dashed rgba(126,170,230,.44);
+  border-radius: 14px;
+  transition: background .15s ease, border-color .15s ease;
+}
+html.converter-embedded #dropzone:hover,
+html.converter-embedded #dropzone.over {
+  background: rgba(96,140,208,.13);
+  border-color: rgba(154,198,255,.77);
+}
+html.converter-embedded select {
+  background: rgba(36,57,86,.58);
+  border-color: rgba(162,192,230,.2);
+}
+html.converter-embedded input[type="range"] { accent-color: #86b5ff; }
+html.converter-embedded button#submit {
+  background: #3978e9;
+  color: white;
+}
+html.converter-embedded button#submit:not(:disabled):hover { background: #548df2; }
+html.converter-embedded output,
+html.converter-embedded .foot {
+  color: rgba(207,221,240,.74);
+}
+html.converter-embedded .foot { margin: 12px 2px 0; }
+@media (max-width: 560px) {
+  html.converter-embedded body { padding: 0 12px 12px; }
+  html.converter-embedded form { padding: 12px; }
+  html.converter-embedded section { grid-template-columns: 1fr 1fr; gap: 13px; }
+  html.converter-embedded #dropzone { min-height: 120px; }
+}
