@@ -14,7 +14,34 @@
 .nobby-library-media{aspect-ratio:4/3;background:#090e16}
 .nobby-library-media img,.nobby-library-media video{display:block;width:100%;height:100%;object-fit:contain}
 .nobby-library-card-body{padding:14px;display:grid;gap:7px}
-.nobby-library-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.nobby-library-card-actions{display:block;margin-top:8px}
+.nobby-library-card-action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.nobby-library-card-action-row .nobby-library-action{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-width:0;min-height:36px;padding:8px 6px;white-space:nowrap
+}
+.nobby-library-card-actions .nobby-library-action svg{
+  width:16px;height:16px;flex:0 0 16px;
+  fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round
+}
+.nobby-library-card-more-button[aria-expanded="true"]{background:#30435e;border-color:#6787b3}
+.nobby-library-card-more-button::after{content:"⌄";font-size:14px;line-height:1;transition:transform .14s}
+.nobby-library-card-more-button[aria-expanded="true"]::after{transform:rotate(180deg)}
+.nobby-library-card-action-menu[hidden]{display:none!important}
+.nobby-library-card-action-menu{
+  display:grid;gap:4px;margin-top:7px;padding:6px;
+  background:#101a29;border:1px solid #34445b;border-radius:10px
+}
+.nobby-library-card-action-menu .nobby-library-card-menu-item{
+  display:flex;align-items:center;justify-content:flex-start;gap:9px;
+  min-height:36px;padding:8px 10px;width:100%;text-align:left;box-sizing:border-box
+}
+.nobby-library-card-action-menu .danger{color:#f5a5a5}
+.nobby-library-card-action-row .nobby-library-action:focus-visible,
+.nobby-library-card-action-menu .nobby-library-action:focus-visible{
+  outline:2px solid #82b4ff;outline-offset:2px
+}
 .nobby-library-action{background:#243147;border:1px solid #35455c;color:#e4eaf5;border-radius:8px;padding:7px 9px;font:inherit;font-size:12px;text-decoration:none;cursor:pointer}
 .nobby-library-action:hover{background:#30435e}
 .nobby-library-action.danger{color:#f5a5a5}
