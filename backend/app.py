@@ -168,6 +168,12 @@ def chat_page():
     return FileResponse(str(FRONTEND_DIR / "chat.html"))
 
 
+@app.get("/converter")
+def converter_page():
+    """Local image conversion without GPU or Agent involvement."""
+    return FileResponse(str(FRONTEND_DIR / "converter.html"))
+
+
 @app.get("/control")
 def control_page():
     """Legacy administration remains available behind the chat-first UI."""
