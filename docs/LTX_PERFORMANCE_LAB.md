@@ -3,6 +3,8 @@
 Stand: 21. Oktober 2026. Feature-Branch: `feature/ltx-performance-lab-v017`.
 Grundlage ist der vollständig gelesene [Auditbericht](LTX_2_5_PERFORMANCE_AUDIT_2026-10-21.md).
 
+Die erste kontrollierte Cold-Benchmarkfreigabe wurde anschließend geprüft: [Ressourcenbefund und Vergleichsbericht vom 21. Oktober](LTX_COLD_COMPARISON_2026-10-21.md). Beide Läufe blieben wegen Ressourcenmangels und der prozessbasierten VLM-Sperre ungestartet. Der Bericht dokumentiert konkrete PIDs, Footprints, GPU-Treiberwerte und bestehende Soft-Unload-Möglichkeiten; keine Dienste wurden gestoppt.
+
 **Implementierter Umfang.** `ltx_lab/` ist ein ausdrücklich aktiviertes Testwerkzeug. Die produktiven Worker, Provider, LaunchAgents, Modellgewichte und Einstellungen werden nicht umgestellt. `scripts/benchmark-ltx-video.py --isolated` verwendet direkte Testprozesse und kontaktiert weder die Serviceports 8060/18060/18061 noch Reset-/Generate-Endpunkte. Ohne `--execute --approve-gpu` entsteht keine GPU-Generierung. Im Rahmen dieser Umsetzung wurde kein GPU-Benchmark ausgeführt; ein Qualitäts- oder Geschwindigkeitsgewinn ist noch nicht gemessen.
 
 **Lokal aufgebaute Umgebungen.**
