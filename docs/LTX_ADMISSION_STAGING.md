@@ -58,3 +58,8 @@ Gezielter CPU-Test (nur in sauberer Arbeitskopie):
 ```bash
 python3 -B -m pytest -q tests/test_ltx_admission_core.py
 ```
+
+## Abschlussprüfung ohne GPU oder Dienstneustart
+
+`python3 -B scripts/ltx-release-readiness.py --lab-root ~/mlx-web/.ltx-lab` prüft nur die zwei isolierten Runtime-Pins, die bestehende globale Listener-Admission sowie die Speicher-Freigabe. Das Skript führt **keine** Lastgenerierung, Modell-Downloads, `launchctl`-Kommandos oder Schreiboperationen an produktiven Modelldateien aus. Ergebnis bleibt **NO-GO**, solange der Runtime-/Admission-Nachweis oder der noch ausstehende End-to-End-Recovery-/GPU-/Qualitätsnachweis fehlt. Es gibt absichtlich keinen unsicheren `--force`-Modus.
+
