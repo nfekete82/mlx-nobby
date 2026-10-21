@@ -1,8 +1,6 @@
 # LTX-Performance-Labor: Phasenmessung und isolierter 0.17.0-Vergleich
 
 Stand: 21. Oktober 2026. Feature-Branch: `feature/ltx-performance-lab-v017`.
-
-**Update-Stufe:** [Abgesicherte 0.17.0-Auswahl und genau ein A/B-Praxistest](LTX_017_STAGED_UPGRADE.md). Der produktive 0.16.3-Pin bleibt Standard.
 Grundlage ist der vollständig gelesene [Auditbericht](LTX_2_5_PERFORMANCE_AUDIT_2026-10-21.md).
 
 Die erste kontrollierte Cold-Benchmarkfreigabe wurde anschließend geprüft: [Ressourcenbefund und Vergleichsbericht vom 21. Oktober](LTX_COLD_COMPARISON_2026-10-21.md). Beide Läufe blieben wegen Ressourcenmangels und der prozessbasierten VLM-Sperre ungestartet. Der Bericht dokumentiert konkrete PIDs, Footprints, GPU-Treiberwerte und bestehende Soft-Unload-Möglichkeiten; keine Dienste wurden gestoppt.
