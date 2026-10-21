@@ -1,5 +1,6 @@
 (() => {
  "use strict";
+ const localText = (de, en) => (localStorage.getItem("mlx-nobby-language") === "de" ? de : en);
  const form = document.getElementById("converterForm");
  const input = document.getElementById("imageFiles");
  const status = document.getElementById("status");
@@ -12,7 +13,7 @@
  });
  input.addEventListener("change", () => {
    const total = Array.from(input.files).reduce((sum, f) => sum + f.size, 0);
-   selected.textContent = input.files.length + " Dateien, " + (total / 1048576).toFixed(1) + " MB";
+   selected.textContent = input.files.length + localText(" Dateien, ", " files, ") + (total / 1048576).toFixed(1) + " MB";
  });
  ["dragover", "dragenter"].forEach(name => drop.addEventListener(name, event => {
    event.preventDefault(); drop.classList.add("over");
@@ -30,7 +31,7 @@
    if (!input.files.length) return;
    const data = new FormData(form);
    button.disabled = true;
-   status.textContent = "Bilder werden lokal konvertiert…";
+   status.textContent = localText("Bilder werden lokal konvertiert…", "Converting images locally…");
    try {
      const response = await fetch("/api/image-converter/batch", { method: "POST", body: data });
      if (!response.ok) {
@@ -47,16 +48,16 @@
      a.click();
      a.remove();
      setTimeout(() => URL.revokeObjectURL(url), 5000);
-     status.textContent = (response.headers.get("X-Converted-Count") || "Mehrere") + " Bild(er) fertig.";
+     status.textContent = (response.headers.get("X-Converted-Count") || "Mehrere") + localText(" Bild(er) fertig.", " image(s) converted.");
    } catch (error) {
-     status.textContent = "Fehler: " + error.message;
+     status.textContent = localText("Fehler: ", "Error: ") + error.message;
    } finally {
      button.disabled = false;
    }
  });
  fetch("/api/image-converter/formats").then(r => r.json()).then(data => {
    if (!data.heic_available) {
-     status.textContent = "Hinweis: HEIC ist auf diesem Server noch nicht verfügbar.";
+     status.textContent = localText("Hinweis: HEIC ist auf diesem Server noch nicht verfügbar.", "HEIC support is not available on this server.");
    }
  }).catch(() => {});
 })();
