@@ -213,7 +213,7 @@ def test_media_studio_image_to_video_prefill_and_source_navigation(ui):
     source_card = page.locator(".nobby-library-card").filter(
         has=page.locator(".nobby-library-lineage-count"))
     source_card.locator(".nobby-library-card-more-button").click()
-    source_card.locator(".nobby-library-card-action-menu button").filter(has_text="Als Video").click()
+    source_card.locator(".nobby-library-card-action-menu button").filter(has_text="Video").click()
     expect(page.locator("#nobbyLibrary")).to_be_hidden()
     expect(page.locator("#attachmentBar .image-attachment-chip")).to_have_count(1)
     assert "video" in page.locator("#input").input_value().lower()
