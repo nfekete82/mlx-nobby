@@ -8,6 +8,9 @@ import re
 from urllib.parse import quote_plus, urlparse, parse_qs, unquote
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+from backend.news_query import (
+    normalized_news_query, financial_news_topic, filter_financial_news_results,
+)
 from backend.weather_search import (
     is_locationless_weather_question,
     is_weather_query,
@@ -38,7 +41,7 @@ def needs_web_research(prompt: str) -> bool:
         return False
     return bool(
         8 <= len(text) <= 260
-        and (TIME_SENSITIVE.search(text) or is_weather_query(text))
+        and (TIME_SENSITIVE.search(text) or financial_news_topic(text) or is_weather_query(text))
         and not PRIVATE.search(text)
     )
 
@@ -92,8 +95,8 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
     # Restrict provider input to the current, bounded user question.
     sources = []
     try:
-        if NEWS.search(query):
-            feed_query = query + (" when:1d" if same_day_news else "")
+        if NEWS.search(query) or financial_news_topic(query):
+            feed_query = normalized_news_query(query) + (" when:1d" if same_day_news else "")
             url = "https://news.google.com/rss/search?q=" + quote_plus(feed_query) + "&hl=de&gl=DE&ceid=DE:de"
             root = ET.fromstring(_get(url, opener))
             for item in root.findall("./channel/item")[:40 if same_day_news else 5]:
@@ -143,6 +146,13 @@ def retrieve_web_research(prompt: str, *, opener=None, now=None) -> str:
         )
         sources = [(item["title"], item["url"], item["published_date"]) for item in verified]
 
+    sources = [
+        (item["title"], item["url"], item["published_date"])
+        for item in filter_financial_news_results(query, [
+            {"title": title, "url": link, "published_date": published}
+            for title, link, published in sources
+        ])
+    ]
     valid = []
     for title, link, published in sources:
         host = urlparse(link).hostname or ""
