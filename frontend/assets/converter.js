@@ -2,6 +2,58 @@
   'use strict';
 
   const byId = id => document.getElementById(id);
+
+  const german = (() => {
+    try { return localStorage.getItem('mlx-nobby-language') === 'de'; }
+    catch (_) { return false; }
+  })();
+  const t = (de, en) => german ? de : en;
+  const staticCopy = [
+    ['.back', t('← Zurück zum Chat', '← Back to chat')],
+    ['.eyebrow', t('WERKZEUGE / LOKAL', 'TOOLS / LOCAL')],
+    ['h1', t('Bild- & Dateikonverter', 'Image & file converter')],
+    ['.sub', t('Viele Bilder auf einmal optimieren oder umwandeln – lokal auf deinem Mac, ohne KI-Modell.',
+                'Optimize or convert batches of images locally on your Mac, without loading an AI model.')],
+    ['#uploadTitle', t('Dateien', 'Files')],
+    ['.drop-zone strong', t('Bilder hier hineinziehen', 'Drag images here')],
+    ['.drop-zone span', t('oder klicken, um mehrere Dateien auszuwählen', 'or click to select multiple files')],
+    ['.drop-zone small', t('PNG · JPG · HEIC · HEIF · WebP · TIFF · BMP',
+                           'PNG · JPG · HEIC · HEIF · WebP · TIFF · BMP')],
+    ['label[for="folderPicker"]', t('Ordner wählen', 'Choose folder')],
+    ['#clearFiles', t('Auswahl leeren', 'Clear selection')],
+    ['#optionsTitle', t('Einstellungen', 'Settings')],
+    ['label[for="target"]', t('Ausgabeformat', 'Output format')],
+    ['#target option[value="webp"]', t('WebP · gut fürs Web', 'WebP · great for web')],
+    ['#target option[value="jpg"]', t('JPG · universell', 'JPG · universal')],
+    ['#target option[value="png"]', t('PNG · verlustfrei', 'PNG · lossless')],
+    ['#target option[value="avif"]', t('AVIF · hohe Kompression', 'AVIF · efficient')],
+    ['label[for="quality"]', t('Qualität', 'Quality')],
+    ['label[for="maxDimension"]', t('Maximale Bildkante', 'Maximum image dimension')],
+    ['#maxDimension option[value="0"]', t('Originalauflösung', 'Original resolution')],
+    ['label[for="background"]', t('Hintergrundfarbe für JPG-Transparenz', 'Background for transparent JPGs')],
+    ['.color-option span', t('Standard: Weiß', 'Default: white')],
+    ['.check', t(' EXIF- und Farbprofil-Metadaten entfernen', ' Remove EXIF and color-profile metadata')],
+    ['#startButton', t('Jetzt konvertieren', 'Convert now')],
+    ['#progressTitle', t('Verarbeitung', 'Processing')],
+    ['#cancelButton', t('Abbrechen', 'Cancel')],
+    ['#downloadAll', t('↓ Alle Ergebnisse als ZIP laden', '↓ Download all as ZIP')],
+    ['#resultHint', t('Dateien werden temporär gespeichert und nach Ablauf entfernt.',
+                      'Files are stored temporarily and removed after expiry.')],
+    ['.footer-note', t('Alle Berechnungen erfolgen auf deinem lokalen MLX-Nobby-Webserver. Die Originaldateien werden nicht verändert. Keine GPU und kein Agent erforderlich.',
+                       'All processing runs on your local MLX Nobby web server. Original files are unchanged. No GPU or AI Agent is required.')],
+  ];
+  staticCopy.forEach(([selector, label]) => {
+    const element = document.querySelector(selector);
+    if (element) element.textContent = label;
+  });
+  const metadataCheckbox = byId('stripMetadata');
+  byId('stripMetadata').setAttribute('aria-label', t('Metadaten entfernen', 'Remove metadata'));
+  const limitNote = document.querySelector('.options-panel > .hint:last-child');
+  if (limitNote) limitNote.textContent = t(
+    'Max. 100 Bilder · 25 MB pro Bild · 220 MB je Auftrag. Animierte Bilder werden als Fehler angezeigt.',
+    'Up to 100 images · 25 MB each · 220 MB per batch. Animated images are reported as errors.'
+  );
+
   const files = [];
   const knownExtensions = new Set(['png','jpg','jpeg','heic','heif','webp','tif','tiff','bmp']);
   const maxFiles = 100;
@@ -31,8 +83,8 @@
 
   function renderFiles() {
     byId('fileSummary').textContent = files.length
-      ? files.length + ' Dateien · ' + size(files.reduce((sum, item) => sum + item.size, 0))
-      : 'Noch keine Dateien ausgewählt';
+      ? files.length + t(' Dateien · ', ' files · ') + size(files.reduce((sum, item) => sum + item.size, 0))
+      : t('Noch keine Dateien ausgewählt', 'No files selected');
     const host = byId('selectedFiles');
     host.replaceChildren();
     files.forEach((file, i) => {
@@ -54,8 +106,8 @@
       remove.className = 'remove-file';
       remove.type = 'button';
       remove.textContent = '×';
-      remove.title = 'Datei entfernen';
-      remove.setAttribute('aria-label', 'Datei ' + file.name + ' entfernen');
+      remove.title = t('Datei entfernen', 'Remove file');
+      remove.setAttribute('aria-label', t('Datei ', 'Remove file ') + file.name + t(' entfernen', ''));
       remove.disabled = busy;
       remove.addEventListener('click', () => {
         if (!busy) { files.splice(i, 1); renderFiles(); }
@@ -81,7 +133,7 @@
       batchSize += file.size;
     }
     renderFiles();
-    if (rejected.length) showError('Nicht aufgenommen: ' + rejected.slice(0, 5).join(', ') + (rejected.length > 5 ? ' …' : ''));
+    if (rejected.length) showError(t('Nicht aufgenommen: ', 'Skipped: ') + rejected.slice(0, 5).join(', ') + (rejected.length > 5 ? ' …' : ''));
   }
 
   const drop = byId('dropZone');
@@ -109,8 +161,8 @@
     const lossless = format.value === 'png';
     quality.disabled = lossless || busy;
     byId('qualityHint').textContent = lossless
-      ? 'PNG verwendet eine verlustfreie Optimierung; der Qualitätsregler hat hier keine Wirkung.'
-      : 'Niedrigerer Wert = kleinere Datei, weniger Bilddetails.';
+      ? t('PNG verwendet eine verlustfreie Optimierung; der Qualitätsregler hat hier keine Wirkung.', 'PNG is optimized losslessly; quality does not apply.')
+      : t('Niedrigerer Wert = kleinere Datei, weniger Bilddetails.', 'Lower quality means smaller files with less detail.');
   };
   quality.addEventListener('input', syncQuality);
   format.addEventListener('change', syncQuality);
@@ -130,7 +182,7 @@
         + ' · ' + item.saved_percent + ' % · ' + item.width + ' × ' + item.height;
       meta.className += ' ok';
     } else {
-      meta.textContent = item.error || 'Konvertierung fehlgeschlagen';
+      meta.textContent = item.error || t('Konvertierung fehlgeschlagen', 'Conversion failed');
       meta.className += ' failed';
     }
     info.append(name, meta);
@@ -153,14 +205,14 @@
     (job.files || []).forEach((item, index) => host.append(makeResult(item, index, job.id)));
     const done = ['complete','failed','cancelled'].includes(job.status);
     if (job.status === 'complete') {
-      status('Fertig: ' + (job.files || []).filter(x => x.status === 'complete').length + ' von ' + total + ' Dateien konvertiert.');
+      status(t('Fertig: ', 'Done: ') + (job.files || []).filter(x => x.status === 'complete').length + t(' von ', ' of ') + total + t(' Dateien konvertiert.', ' files converted.'));
       setProgress(100);
     } else if (job.status === 'failed') {
-      status(job.error || 'Keine Bilder konnten konvertiert werden.');
+      status(job.error || t('Keine Bilder konnten konvertiert werden.', 'No images could be converted.'));
     } else if (job.status === 'cancelled') {
-      status('Konvertierung abgebrochen.');
+      status(t('Konvertierung abgebrochen.', 'Conversion cancelled.'));
     } else {
-      status((job.status === 'queued' ? 'Warteschlange' : 'Konvertiere Bilder') +
+      status((job.status === 'queued' ? t('Warteschlange', 'Queued') : t('Konvertiere Bilder', 'Converting images')) +
         ': ' + (job.processed || 0) + ' / ' + total);
     }
     byId('downloadAll').hidden = job.status !== 'complete';
@@ -184,7 +236,7 @@
       if (renderJob(job)) return;
       pollTimer = setTimeout(() => poll(jobId), 500);
     } catch (error) {
-      showError('Status konnte nicht geladen werden: ' + error.message);
+      showError(t('Status konnte nicht geladen werden: ', 'Could not load job status: ') + error.message);
       toggleBusy(false);
     }
   }
@@ -195,8 +247,8 @@
     try {
       const response = await fetch('/api/converter/jobs/' + activeJob + '/cancel', {method:'POST'});
       if (!response.ok) throw new Error('HTTP ' + response.status);
-      status('Abbruch angefordert – laufendes Bild wird noch abgeschlossen.');
-    } catch (error) { showError('Abbruch fehlgeschlagen: ' + error.message); }
+      status(t('Abbruch angefordert – laufendes Bild wird noch abgeschlossen.', 'Cancellation requested; current image is finishing.'));
+    } catch (error) { showError(t('Abbruch fehlgeschlagen: ', 'Cancellation failed: ') + error.message); }
   });
 
   byId('startButton').addEventListener('click', async () => {
@@ -208,7 +260,7 @@
     byId('downloadAll').hidden = true;
     byId('cancelButton').hidden = false;
     setProgress(0);
-    status('Dateien werden hochgeladen …');
+    status(t('Dateien werden hochgeladen …', 'Uploading files…'));
     const body = new FormData();
     files.forEach(file => body.append('files', file, file.name));
     body.append('target', format.value);
@@ -221,7 +273,7 @@
     request.open('POST', '/api/converter/jobs');
     request.upload.addEventListener('progress', e => {
       if (e.lengthComputable) {
-        status('Upload: ' + Math.round(e.loaded / e.total * 100) + ' %');
+        status(t('Upload: ', 'Upload: ') + Math.round(e.loaded / e.total * 100) + ' %');
       }
     });
     request.onload = () => {
@@ -229,17 +281,17 @@
       let data = {};
       try { data = JSON.parse(request.responseText || '{}'); } catch (_) { /* handled below */ }
       if (request.status !== 202 || !/^[0-9a-f]{32}$/.test(data.id || '')) {
-        showError('Upload fehlgeschlagen: ' + (typeof data.detail === 'string' ? data.detail : 'HTTP ' + request.status));
+        showError(t('Upload fehlgeschlagen: ', 'Upload failed: ') + (typeof data.detail === 'string' ? data.detail : 'HTTP ' + request.status));
         toggleBusy(false); syncQuality(); return;
       }
       activeJob = data.id;
       poll(activeJob);
     };
     request.onerror = () => {
-      uploading = null; showError('Netzwerkfehler beim Upload.'); toggleBusy(false); syncQuality();
+      uploading = null; showError(t('Netzwerkfehler beim Upload.', 'Network error during upload.')); toggleBusy(false); syncQuality();
     };
     request.onabort = () => {
-      uploading = null; status('Upload abgebrochen.'); toggleBusy(false); syncQuality();
+      uploading = null; status(t('Upload abgebrochen.', 'Upload cancelled.')); toggleBusy(false); syncQuality();
       byId('cancelButton').hidden = true;
     };
     request.send(body);
@@ -250,7 +302,7 @@
       if (info && !info.heic) {
         const small = document.createElement('p');
         small.className = 'hint';
-        small.textContent = 'Hinweis: HEIC ist auf diesem Server derzeit nicht verfügbar.';
+        small.textContent = t('Hinweis: HEIC ist auf diesem Server derzeit nicht verfügbar.', 'Notice: HEIC is not available on this server.');
         drop.after(small);
       }
     }).catch(() => {});
