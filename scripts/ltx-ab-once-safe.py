@@ -135,9 +135,44 @@ def run_benchmark():
         raise
 
 
+def require_guarded_lab():
+    """Fail *before* stopping any services unless the admission contract is present.
+
+    The old one-shot helper has no durable exclusive session spanning its
+    child, interruption and LaunchAgent recovery. A read-only proof snapshot
+    is NOT authorization to proceed, even if every server reports healthy.
+    The managed lab controller is the only intended owner of that fence.
+    """
+    try:
+        from ltx_lab.admission import Gate
+        from ltx_lab.exclusive import verify_services
+    except ImportError as exc:
+        raise RuntimeError(
+            "Die vollständige lokale Admission-Implementierung fehlt. "
+            "Keine Dienste werden gestoppt; erst das sichere LTX-Labor "
+            "vollständig integrieren."
+        ) from exc
+    try:
+        verify_services(Gate())
+    except Exception as exc:
+        raise RuntimeError(
+            "Admission-Deployment nicht verifiziert (z. B. /lab/admission 404). "
+            "Keine Dienste werden gestoppt: " + str(exc)
+        ) from exc
+    raise RuntimeError(
+        "Admission-Nachweise sind vorhanden, aber dieses ältere One-Shot-Skript "
+        "besitzt keine durchgängige exklusive Gate-/Recovery-Sitzung. "
+        "Bitte den abgesicherten LTX-Laborcontroller verwenden; "
+        "kein ungesicherter automatischer Dienststopp."
+    )
+
+
 def main():
     os.chdir(ROOT)
-    print("=== LTX 0.16.3 vs 0.17.0 – EIN A/B-LAUF ===", flush=True)
+    print("=== LTX 0.16.3 vs 0.17.0 – Admission-Prüfung ===", flush=True)
+    require_guarded_lab()
+    # The original workflow below is intentionally unreachable until it can
+    # be replaced with a durable, Gate-owned, restore-verified transaction.
     print("Währenddessen keine weiteren KI-Jobs oder Chats starten.", flush=True)
     for label, port in SERVICES:
         if health(port) is not None and not loaded(label):

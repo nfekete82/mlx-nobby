@@ -32,6 +32,24 @@ sind ausdrücklich **nicht** durch diesen Schalter umgestellt.
 
 ## Genau ein geplanter GPU-A/B-Vergleich
 
+**Admission-Stand (21.10.2026):** Ein zusätzliches, bislang nur lokal vorhandenes
+Labor verlangt von allen laufenden Diensten den verifizierten Endpoint
+`/lab/admission`. Der Chat-Listener liefert noch **HTTP 404**; die Gate-Adapter
+sind nicht aktiv. Das ältere `scripts/ltx-ab-once-safe.py` hat deshalb
+vorläufig einen **frühen Fail-Closed-Schutz**: Es beendet keine Dienste, solange
+die vollständige Admission-Implementierung fehlt oder nicht verifiziert ist.
+Auch ein gültiger Status-Snapshot genügt nicht ohne eine durchgängige
+exklusive Admission-/Recovery-Sitzung.
+
+Die lokalen Dateien `ltx_lab/admission.py`, `services.py`,
+`queue_admission.py`, `offline.py` und weitere zugehörige Dateien liegen
+nicht in diesem GitHub-Branch und müssen als zusammenhängende, geprüfte
+Implementierung übernommen werden; einzelne Wrapper oder nachgemachte
+`/lab/admission`-Antworten sind keine sichere Abkürzung. Bis zur vollständigen
+Deployment-/Recovery-Abnahme: **kein weiterer GPU-A/B-Start und kein
+automatisches Stoppen von Chat, Router oder MuseTalk.**
+
+
 Die beiden unabhängigen Runtimeverzeichnisse sind laut Laborbericht vom 21.10. bereits eingerichtet.
 Vor der GPU-Freigabe sicherstellen, dass keine aktiven Chat-, Video- oder anderen Modelljobs
 laufen und die vorhandene konservative Ressourcenprüfung besteht. Sie wird nicht umgangen.
