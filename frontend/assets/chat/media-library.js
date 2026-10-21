@@ -25,6 +25,31 @@
     if (label !== undefined) element.textContent = label;
     return element;
   }
+  // Keep the preview actions visually consistent without icon fonts or new dependencies.
+  function previewAction(label, paths, css = "") {
+    const button = elt("button", "nobby-library-action nobby-library-preview-use " + css);
+    button.type = "button";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    for (const d of paths) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      svg.appendChild(path);
+    }
+    button.append(svg, elt("span", "", label));
+    return button;
+  }
+  const previewIcons = {
+    talking: ["M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z",
+      "M19 10v2a7 7 0 0 1-14 0v-2", "M12 19v3", "M8 22h8"],
+    video: ["M4 4h16v16H4z", "M4 9h16", "M4 15h16", "M9 4v5", "M15 15v5"],
+    edit: ["M12 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9",
+      "M16 4l4 4-9 9-5 1 1-5 9-9Z"],
+    info: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
+      "M12 11v6", "M12 7h.01"]
+  };
   function setVisible(visible) {
     if (!visible) closePreview();
     panel.hidden = !visible;
@@ -205,27 +230,15 @@
     previousFocus = document.activeElement;
     const media = elt(asset.kind === "image" ? "img" : "video");
     media.src = asset.url;
+    const actions = elt("div", "nobby-library-preview-actions");
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", t("Medienaktionen", "Media actions"));
     if (asset.kind === "image") {
-      media.alt = t("Generiertes Bild", "Generated image");
-    } else {
-      media.controls = true;
-      media.playsInline = true;
-      media.preload = "metadata";
-      media.setAttribute("aria-label", label(asset.kind));
-    }
-    previewBody.replaceChildren(media);
-    if (asset.kind === "image") {
-      const reuse = elt("button", "nobby-library-action nobby-library-preview-use", t("Als Talking Photo verwenden", "Use for Talking Photo"));
-      reuse.type = "button";
+      const reuse = previewAction(t("Als Talking Photo verwenden", "Use for Talking Photo"), previewIcons.talking);
       reuse.addEventListener("click", () => { closePreview(); void createFromImage(asset); });
-      previewBody.appendChild(reuse);
-      const animate = elt("button", "nobby-library-action nobby-library-preview-use", t("Als Video animieren", "Animate as video"));
-      animate.type = "button";
+      const animate = previewAction(t("Als Video animieren", "Animate as video"), previewIcons.video);
       animate.addEventListener("click", () => { closePreview(); void createVideoFromImage(asset); });
-      previewBody.appendChild(animate);
-      const regionEdit = elt("button", "nobby-library-action nobby-library-preview-use",
-        t("Bereich bearbeiten", "Edit region"));
-      regionEdit.type = "button";
+      const regionEdit = previewAction(t("Bereich bearbeiten", "Edit region"), previewIcons.edit);
       regionEdit.addEventListener("click", () => {
         closePreview();
         setVisible(false);
@@ -233,19 +246,33 @@
           window.alert(String(error?.message || error))
         );
       });
-      previewBody.appendChild(regionEdit);
+      actions.append(reuse, animate, regionEdit);
     }
-    mediaLineage(asset, previewBody);
 
-    const detailsButton = elt("button", "nobby-library-action nobby-library-preview-info",
-      t("ⓘ Details anzeigen", "ⓘ Show details"));
-    detailsButton.type = "button";
+    const detailsButton = previewAction(t("Details anzeigen", "Show details"), previewIcons.info,
+      "nobby-library-preview-info");
+    const detailsLabel = detailsButton.querySelector("span");
+    detailsButton.setAttribute("aria-expanded", "false");
+    detailsButton.setAttribute("aria-controls", "nobby-library-preview-details");
     const detailsPanel = elt("section", "nobby-library-detail-panel");
+    detailsPanel.id = "nobby-library-preview-details";
     detailsPanel.hidden = true;
     detailsPanel.setAttribute("aria-live", "polite");
+    let detailsLoaded = false;
+    let detailsRequest = 0;
     detailsButton.addEventListener("click", async () => {
-      detailsButton.disabled = true;
+      if (!detailsPanel.hidden) {
+        ++detailsRequest; // Invalidate any pending fetch if the user closes the panel.
+        detailsPanel.hidden = true;
+        detailsButton.setAttribute("aria-expanded", "false");
+        detailsLabel.textContent = t("Details anzeigen", "Show details");
+        return;
+      }
       detailsPanel.hidden = false;
+      detailsButton.setAttribute("aria-expanded", "true");
+      detailsLabel.textContent = t("Details ausblenden", "Hide details");
+      if (detailsLoaded) return; // Avoid another request when reopening details.
+      const request = ++detailsRequest;
       detailsPanel.replaceChildren(elt("p", "", t("Details werden geladen …", "Loading details …")));
       try {
         const url = "/api/library/assets/" + encodeURIComponent(asset.kind) +
@@ -253,8 +280,8 @@
         const response = await fetch(url, {cache: "no-store"});
         if (!response.ok) throw new Error("HTTP " + response.status);
         const info = await response.json();
-        if (preview.hidden || !detailsPanel.isConnected ||
-            info.kind !== asset.kind || info.id !== asset.id) return;
+        if (request !== detailsRequest || detailsPanel.hidden || preview.hidden ||
+            !detailsPanel.isConnected || info.kind !== asset.kind || info.id !== asset.id) return;
         detailsPanel.replaceChildren();
         detailsPanel.appendChild(elt("strong", "", t("Mediendetails", "Media details")));
         const fields = [
@@ -278,12 +305,18 @@
           field.appendChild(elt("span", "", String(value)));
           detailsPanel.appendChild(field);
         }
+        detailsLoaded = true;
       } catch (_error) {
-        if (!preview.hidden && detailsPanel.isConnected)
+        if (request === detailsRequest && !detailsPanel.hidden &&
+            !preview.hidden && detailsPanel.isConnected) {
           detailsPanel.replaceChildren(elt("p", "", t("Details sind momentan nicht verfügbar.", "Details are currently unavailable.")));
-      } finally { detailsButton.disabled = false; }
+        }
+      }
     });
-    previewBody.append(detailsButton, detailsPanel);
+    actions.appendChild(detailsButton);
+    previewBody.append(actions);
+    mediaLineage(asset, previewBody);
+    previewBody.appendChild(detailsPanel);
     preview.hidden = false;
     previewClose.focus();
   }
