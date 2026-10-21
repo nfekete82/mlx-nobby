@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import atexit
 import concurrent.futures
+from functools import lru_cache
 import json
 import os
 import subprocess
@@ -32,9 +33,14 @@ from video_providers import (
 )
 
 
+# 0.17.0 is strictly opt-in. The production 0.16.3 checkout remains untouched.
+# Reuse the existing independent, pinned benchmark environment as the canary.
+LTX_MLX_ENGINE_VERSION = os.environ.get("LTX_MLX_ENGINE_VERSION", "0.16.3").strip()
+LTX_MLX_V017_RUNTIME = Path(__file__).resolve().parent / ".ltx-lab/runtime-v0.17.0"
 LTX_MLX_RUNTIME_ROOT = Path(os.environ.get(
     "LTX_MLX_RUNTIME_ROOT",
-    str(Path.home() / ".local/share/mlx-nobby/ltx-2-mlx"),
+    str(LTX_MLX_V017_RUNTIME if LTX_MLX_ENGINE_VERSION == "0.17.0"
+        else Path.home() / ".local/share/mlx-nobby/ltx-2-mlx"),
 )).expanduser()
 LTX_MLX_PYTHON = Path(os.environ.get(
     "LTX_MLX_PYTHON",
@@ -78,9 +84,50 @@ def owns_runtime(runtime):
     return isinstance(runtime, (MlxWarmRuntime, MlxCliRuntime))
 
 
+@lru_cache(maxsize=1)
+def _engine_preflight():
+    """Validate the isolated 0.17.0 checkout before it may run any video job.
+
+    No GPU import, checkout mutation, model download, service restart or setup.
+    The unchanged 0.16.3 production path incurs no new validation work.
+    """
+    if LTX_MLX_ENGINE_VERSION == "0.16.3":
+        return None
+    if LTX_MLX_ENGINE_VERSION != "0.17.0":
+        return f"Unbekannte LTX-Engine-Version: {LTX_MLX_ENGINE_VERSION}"
+    expected = LTX_MLX_V017_RUNTIME.resolve()
+    runtime = LTX_MLX_RUNTIME_ROOT.resolve()
+    if runtime != expected:
+        return "LTX 0.17.0 darf nur die isolierte .ltx-lab/runtime-v0.17.0 verwenden"
+    if Path(os.path.abspath(LTX_MLX_PYTHON)) != Path(os.path.abspath(expected / ".venv/bin/python")):
+        return "LTX 0.17.0 erwartet den Python-Interpreter der isolierten Runtime"
+    if Path(os.path.abspath(LTX_MLX_CLI)) != Path(os.path.abspath(expected / ".venv/bin/ltx-2-mlx")):
+        return "LTX 0.17.0 erwartet die CLI der isolierten Runtime"
+    try:
+        from ltx_lab.compatibility import inspect_runtime, validate_environment
+        result = inspect_runtime(runtime, "0.17.0")
+        if not result.get("compatible"):
+            return "LTX 0.17.0 ist nicht sauber oder nicht API-kompatibel gepinnt"
+        validate_environment(runtime, "0.17.0")
+    except Exception as exc:
+        return f"LTX 0.17.0 nicht einsatzbereit: {type(exc).__name__}: {exc}"
+    return None
+
+
+def _require_engine_ready():
+    # Recheck the exact version immediately before creating a process.
+    _engine_preflight.cache_clear()
+    reason = _engine_preflight()
+    if reason:
+        raise RuntimeError(reason)
+
+
 def availability(model):
     if str(model.get("provider") or "") != "ltx-mlx":
         return False, "Kein LTX-MLX-Modell"
+    engine_error = _engine_preflight()
+    if engine_error:
+        return False, engine_error
     if not video_registry.local_files_available(model):
         missing = video_registry.missing_files(model)
         return False, "LTX-2.5-MLX-Q4-Gewichte fehlen: " + ", ".join(missing)
@@ -93,7 +140,7 @@ def availability(model):
         if not LTX_MLX_CLI.is_file() or not os.access(LTX_MLX_CLI, os.X_OK):
             return False, f"LTX-MLX-CLI fehlt: {LTX_MLX_CLI}"
     mode = "persistenter MLX-Worker" if PERSISTENT_WORKER else "MLX-CLI"
-    return True, f"LTX 2.5 Q4 ist nativ über MLX/Metal verfügbar ({mode}, experimentell)"
+    return True, f"LTX 2.5 Q4 ist nativ über MLX/Metal verfügbar ({mode}, Engine {LTX_MLX_ENGINE_VERSION}, experimentell)"
 
 
 def _worker_headers():
@@ -158,6 +205,7 @@ def _runtime_alive(runtime):
 
 
 def _start_runtime(model, cancel_event):
+    _require_engine_ready()
     host, port = _worker_endpoint()
     LTX_MLX_LOG.parent.mkdir(parents=True, exist_ok=True)
     log = LTX_MLX_LOG.open("ab", buffering=0)
@@ -336,6 +384,7 @@ def _command(model, params, output, *, image=None):
 
 def _run_process(command, *, cancel_event, response_callback=None,
                  progress_callback=None, phase_callback=None):
+    _require_engine_ready()
     if phase_callback:
         phase_callback("loading")
     process = subprocess.Popen(

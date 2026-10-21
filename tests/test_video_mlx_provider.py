@@ -78,6 +78,41 @@ class VideoMlxProviderTests(unittest.TestCase):
             "first_frame": None,
         }
 
+    def test_ltx_017_opt_in_refuses_nonisolated_runtime(self):
+        # A wrong or production checkout must never become a 0.17.0 worker.
+        with mock.patch.object(video_providers_mlx, "LTX_MLX_ENGINE_VERSION", "0.17.0"), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_RUNTIME_ROOT", Path("/tmp/production-ltx")):
+            video_providers_mlx._engine_preflight.cache_clear()
+            self.assertIn("isolierte", video_providers_mlx._engine_preflight())
+        video_providers_mlx._engine_preflight.cache_clear()
+
+    def test_ltx_017_opt_in_checks_pinned_runtime(self):
+        isolated = video_providers_mlx.LTX_MLX_V017_RUNTIME
+        with mock.patch.object(video_providers_mlx, "LTX_MLX_ENGINE_VERSION", "0.17.0"), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_RUNTIME_ROOT", isolated), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_PYTHON", isolated / ".venv/bin/python"), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_CLI", isolated / ".venv/bin/ltx-2-mlx"), \
+             mock.patch("ltx_lab.compatibility.inspect_runtime", return_value={"compatible": True}) as inspect, \
+             mock.patch("ltx_lab.compatibility.validate_environment", return_value={}) as validate:
+            video_providers_mlx._engine_preflight.cache_clear()
+            self.assertIsNone(video_providers_mlx._engine_preflight())
+            inspect.assert_called_once_with(isolated.resolve(), "0.17.0")
+            validate.assert_called_once_with(isolated.resolve(), "0.17.0")
+        video_providers_mlx._engine_preflight.cache_clear()
+
+    def test_ltx_017_rejects_failed_contract_check(self):
+        isolated = video_providers_mlx.LTX_MLX_V017_RUNTIME
+        with mock.patch.object(video_providers_mlx, "LTX_MLX_ENGINE_VERSION", "0.17.0"), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_RUNTIME_ROOT", isolated), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_PYTHON", isolated / ".venv/bin/python"), \
+             mock.patch.object(video_providers_mlx, "LTX_MLX_CLI", isolated / ".venv/bin/ltx-2-mlx"), \
+             mock.patch("ltx_lab.compatibility.inspect_runtime", return_value={"compatible": False}), \
+             mock.patch("ltx_lab.compatibility.validate_environment") as validate:
+            video_providers_mlx._engine_preflight.cache_clear()
+            self.assertIn("nicht sauber", video_providers_mlx._engine_preflight())
+            validate.assert_not_called()
+        video_providers_mlx._engine_preflight.cache_clear()
+
     def test_distilled_q4_command_matches_nobby_8_plus_3_profile(self):
         model = video_registry.builtin_mlx_model()
         with mock.patch.object(video_providers_mlx, "LTX_MLX_CLI", Path("/runtime/ltx-2-mlx")), \
