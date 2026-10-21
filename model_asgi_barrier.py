@@ -1,6 +1,7 @@
 """ASGI request/unload barrier. No automatic unload or startup changes."""
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
 
 
@@ -11,6 +12,7 @@ class ASGIModelBarrier:
         self.active = 0
         self.pending = 0
         self.unloading = False
+        self.last_activity = time.monotonic()
 
     def snapshot(self):
         return {
@@ -27,6 +29,7 @@ class ASGIModelBarrier:
                 while self.unloading:
                     await self.condition.wait()
                 self.active += 1
+                self.last_activity = time.monotonic()
             finally:
                 self.pending -= 1
         try:
@@ -34,6 +37,7 @@ class ASGIModelBarrier:
         finally:
             async with self.condition:
                 self.active -= 1
+                self.last_activity = time.monotonic()
                 self.condition.notify_all()
 
     @asynccontextmanager
@@ -66,7 +70,7 @@ class ASGIModelBarrier:
 
         # Health and discovery are read-only and do not execute models.
         if method == "GET" and route in (
-            "/health", "/models", "/v1/models"
+            "/health", "/models", "/v1/models", "/metrics", "/v1/metrics"
         ):
             await self.app(scope, receive, send)
             return

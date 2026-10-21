@@ -221,6 +221,13 @@ if [ "$BACKEND" = "vlm" ]; then
 
     # Standard: bisheriges Preloading beibehalten.
     # Opt-in: Modell erst mit der ersten Modellanfrage laden.
+    # Opt-in lifecycle wrapper: original CLI parameters remain unchanged.
+    if [ "${MLX_CHAT_LIFECYCLE:-0}" = "1" ]; then
+        ARGS[1]="model_lifecycle_launcher"
+        export MLX_LIFECYCLE_ENABLE=1
+        export MLX_LIFECYCLE_ROLE=chat
+    fi
+
     if [ "${MLX_CHAT_LAZY_LOAD:-0}" != "1" ]; then
         ARGS+=(--model "$MODEL")
     fi
