@@ -1,12 +1,14 @@
 """Local bounded image batch conversion with ZIP export."""
+import asyncio
 from io import BytesIO
 from pathlib import Path
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import ZipFile, ZIP_STORED
 import json
 import re
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 router = APIRouter()
@@ -16,6 +18,8 @@ MAX_FILES = 40
 MAX_PER_FILE = 18 * 1024 * 1024
 MAX_TOTAL = 100 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = 45_000_000
+# Keep CPU/memory-intensive encodes off the API event loop and serialize them.
+_CONVERSION_LIMIT = asyncio.Semaphore(1)
 
 try:
     import pillow_heif
@@ -90,7 +94,7 @@ async def batch(files: list[UploadFile] = File(...), fmt: str = Form("WEBP"),
     results = []
     used = set()
     out = BytesIO()
-    with ZipFile(out, "w", ZIP_DEFLATED, compresslevel=6) as archive:
+    with ZipFile(out, "w", ZIP_STORED) as archive:
         for file in files:
             name = clean_name(file.filename)
             raw = await file.read(MAX_PER_FILE + 1)
@@ -98,7 +102,10 @@ async def batch(files: list[UploadFile] = File(...), fmt: str = Form("WEBP"),
             if len(raw) > MAX_PER_FILE or total > MAX_TOTAL:
                 raise HTTPException(413, "Upload überschreitet Größenlimit")
             try:
-                processed = convert_bytes(raw, name, fmt, quality, max_edge, background)
+                async with _CONVERSION_LIMIT:
+                    processed = await run_in_threadpool(
+                        convert_bytes, raw, name, fmt, quality, max_edge, background
+                    )
                 stem = clean_name(Path(name).stem)
                 target = stem + FORMATS[fmt]
                 n = 2
