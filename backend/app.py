@@ -24,6 +24,10 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"
 
 app = FastAPI(title="MLX Control Center")
+
+from backend.image_converter import router as image_converter_router
+app.include_router(image_converter_router)
+
 app.add_middleware(LocalRequestGuard)
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
@@ -157,6 +161,10 @@ def agent_json_request(method, path, payload=None, timeout=10):
 def image_json_request(path, payload=None, timeout=900):
     return agent_json_request("POST" if payload is not None else "GET", "/api/image" + path, payload, timeout=timeout)
 
+
+@app.get("/converter")
+def image_converter_page():
+    return FileResponse(str(FRONTEND_DIR / "converter.html"))
 
 @app.get("/")
 def root():

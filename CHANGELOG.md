@@ -1,3 +1,10 @@
+## Unreleased — Lokaler Bildkonverter (Feature-Branch)
+
+- Neuer Bildkonverter unter /converter: Stapel-Upload, PNG/JPG/WebP und HEIC/HEIF, verlustfreie PNG-Optimierung und Qualitätsoptionen.
+- ZIP-Export mit JSON-Bericht, eindeutigen Dateinamen, Größen- und Dateianzahllimits.
+- Konvertierung läuft im Webdienst ohne Modelle, GPU oder Änderungen am Agent; isolierte Tests enthalten.
+- Version in VERSION bleibt bis zur Release-Zusammenführung unverändert, um parallele Release-Arbeit nicht zu überschreiben.
+
 # Changelog
 
 ## Unreleased
