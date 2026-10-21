@@ -871,6 +871,8 @@
         if (assignments) assignments.hidden = !onModels || view !== 'assignments';
         const addButton = document.getElementById('modelConsoleAdd');
         if (addButton) addButton.hidden = !onModels || view !== 'models';
+        const header = root.querySelector('.model-console-header');
+        if (header) header.hidden = !onModels || view !== 'models';
     }
 
     function render() {
