@@ -4,6 +4,7 @@ from backend.app import AGENT_URL, agent_json_request, app, mlx_chat_stream
 from backend.openai_gateway import install_routes as install_openai_gateway
 from backend.automation_routes import install_routes as install_automation_routes
 from backend.chat_reliability_routes import install_routes as install_chat_reliability_routes
+from backend.image_converter_routes import install_routes as install_image_converter_routes
 from backend.image_followup_ui import ImageFollowupUiMiddleware
 from backend.image_pipeline_routes import install_routes as install_image_pipeline_routes
 from backend.image_regenerate_ui import ImageRegenerateUiMiddleware
@@ -65,6 +66,7 @@ app.add_middleware(MediaLifecycleUiMiddleware)
 install_openai_gateway(app, agent_url=AGENT_URL)
 install_automation_routes(app, agent_json_request)
 install_image_pipeline_routes(app, agent_json_request)
+install_image_converter_routes(app)
 install_media_lifecycle_routes(app, agent_json_request)
 install_memory_manager_routes(app, agent_json_request)
 install_model_scout_routes(app, agent_json_request)
