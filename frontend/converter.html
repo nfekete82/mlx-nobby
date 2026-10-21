@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bildkonverter · MLX Nobby</title><script>if (new URLSearchParams(location.search).get("embedded") === "1") document.documentElement.classList.add("converter-embedded");</script><link rel="stylesheet" href="/assets/image-converter.css?v=1"></head>
+<title>Bildkonverter · MLX Nobby</title><script>if (new URLSearchParams(location.search).get("embedded") === "1") { document.documentElement.classList.add("converter-embedded"); document.addEventListener("keydown", event => { if (event.key === "Escape") window.parent.postMessage({type:"mlx-image-converter-close"}, location.origin); }); }</script><link rel="stylesheet" href="/assets/image-converter.css?v=2-glass-modal"></head>
 <body><main><header><a href="/">← MLX Nobby</a><span>Lokaler Bildkonverter</span></header>
 <h1>Bilder konvertieren &amp; komprimieren</h1>
 <p>Bis zu 40 Bilder gleichzeitig. Keine KI, kein Cloud-Upload, Originaldateien bleiben unverändert.</p>
