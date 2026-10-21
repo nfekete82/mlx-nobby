@@ -27,7 +27,7 @@ def test_conversion_and_safe_names():
 
 
 def test_batch_zip_duplicate_names_and_rejected_images():
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         response = client.post("/api/image-converter/batch", data={"fmt": "WEBP"},
             files=[("files", ("same.png", sample(), "image/png")),
                    ("files", ("same.png", sample(), "image/png")),
@@ -41,7 +41,7 @@ def test_batch_zip_duplicate_names_and_rejected_images():
 
 
 def test_batch_limits():
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         too_large = client.post("/api/image-converter/batch",
             files=[("files", ("large.png", b"x" * (18 * 1024 * 1024 + 1), "image/png"))])
         invalid = client.post("/api/image-converter/batch", data={"fmt": "GIF"},
