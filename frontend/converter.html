@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Bildkonverter · MLX nobby</title>
+  <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/image-converter.css?v=1">
+  <script src="/assets/image-converter.js?v=1" defer></script>
+</head>
+<body>
+  <main class="page">
+    <nav class="top">
+      <a class="back" href="/chat" aria-label="Zurück zum Chat">← Zurück zum Chat</a>
+      <span class="brand"><img src="/assets/mlx-nobby.svg" alt=""> MLX nobby</span>
+    </nav>
+    <header class="heading">
+      <div class="eyebrow">LOKALES WERKZEUG · KEIN KI-MODELL</div>
+      <h1>Bilder konvertieren &amp; komprimieren</h1>
+      <p>PNG, JPG, WebP oder HEIC hochladen und gesammelt als JPG, PNG oder WebP ausgeben. Die Originale bleiben unverändert.</p>
+    </header>
+    <form id="convertForm" novalidate>
+      <section class="panel" aria-label="Bilder auswählen">
+        <input id="files" name="files" type="file" accept=".png,.jpg,.jpeg,.webp,.heic,.heif" multiple hidden>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Bilder auswählen oder hier ablegen">
+          <div class="drop-icon" aria-hidden="true">⇪</div>
+          <strong>Dateien hierher ziehen</strong>
+          <span>oder klicken und mehrere Bilder auswählen</span>
+          <small>Bis zu 50 Bilder · maximal 25 MB je Bild · 200 MB pro Stapel</small>
+        </div>
+        <div class="file-heading"><h2>Ausgewählte Dateien <span id="fileCount">0</span></h2><button id="clear" class="link" type="button" disabled>Auswahl leeren</button></div>
+        <div id="fileList" class="file-list" aria-live="polite"><p class="empty">Noch keine Dateien ausgewählt.</p></div>
+        <div class="total" id="inputTotal"></div>
+      </section>
+      <section class="panel settings">
+        <h2>Ausgabe</h2>
+        <div class="controls">
+          <label>Zielformat
+            <select id="outputFormat" name="format">
+              <option value="webp" selected>WebP · kleine Dateigröße</option>
+              <option value="jpeg">JPG · breit kompatibel</option>
+              <option value="png">PNG · verlustfrei</option>
+            </select>
+          </label>
+          <label>Maximale Bildkante
+            <select id="maxDimension" name="max_dimension">
+              <option value="0" selected>Originalauflösung</option>
+              <option value="8192">8192 px</option>
+              <option value="4096">4096 px</option>
+              <option value="2048">2048 px</option>
+              <option value="1600">1600 px</option>
+              <option value="1200">1200 px</option>
+              <option value="800">800 px</option>
+            </select>
+          </label>
+        </div>
+        <label class="quality-label" for="quality">Qualität <strong id="qualityValue">85 %</strong></label>
+        <input id="quality" name="quality" type="range" min="30" max="100" step="1" value="85">
+        <p class="hint" id="formatHint">WebP komprimiert verlustbehaftet, Transparenz bleibt erhalten.</p>
+        <p class="hint">Bei JPG wird Transparenz durch Weiß ersetzt. EXIF-Daten (z. B. Standortinformationen) werden nicht übernommen.</p>
+        <button id="convert" type="submit" disabled><span id="actionLabel">Bilder umwandeln und ZIP herunterladen</span></button>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div id="result" class="result" hidden></div>
+      </section>
+    </form>
+  </main>
+</body>
+</html>
