@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
 <link rel="stylesheet" href="/assets/chat/media-library.css?v=1-18-shared-pickers&amp;gallery=20261021-compact-card-actions">
 <link rel="stylesheet" href="/assets/chat/ui-controls.css?v=1-18-ui-consistency">
+<link rel="stylesheet" href="/assets/chat/image-converter-workspace.css?v=1-0">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
 
@@ -194,7 +195,7 @@
 
 
         <div class="sidebar-bottom">
-        <a href="/converter" class="sidebar-action nobby-sidebar-nav" title="Bildkonverter" aria-label="Bildkonverter" style="display:flex;align-items:center;gap:12px;text-decoration:none"><span aria-hidden="true">⇄</span><span class="sidebar-action-label">Bildkonverter</span></a>
+        <button id="imageConverterButton" class="sidebar-action nobby-sidebar-nav" type="button" aria-label="Bildkonverter" data-i18n-aria-label="ui.image_converter" title="Bildkonverter" data-i18n-title="ui.image_converter"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="8" height="8" rx="1.5"></rect><path d="m4 11 2-2 2 2 2-2"></path><path d="M13 8h8m-3-3 3 3-3 3"></path><path d="M21 17h-8m3-3-3 3 3 3"></path></svg><span class="sidebar-action-label" data-i18n="ui.image_converter">Bildkonverter</span></button>
         <button id="sidebarJobsButton" class="sidebar-action nobby-sidebar-nav" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="sidebar-action-label" data-i18n="ui.jobs">Dateien &amp; Jobs</span></button>
 
                 <button
@@ -385,6 +386,17 @@
                 id="messagesInner"
                 class="messages-inner"
             ></div>
+        </section>
+
+        <section id="imageConverterWorkspace" class="mlx-image-converter-workspace" aria-labelledby="imageConverterWorkspaceTitle" hidden>
+            <div class="mlx-image-converter-workspace-header">
+                <div>
+                    <h2 id="imageConverterWorkspaceTitle" data-i18n="ui.image_converter">Bildkonverter</h2>
+                    <p data-i18n="ui.image_converter_subtitle">Bilder stapelweise lokal konvertieren und komprimieren.</p>
+                </div>
+                <button id="imageConverterBack" type="button" data-i18n="ui.image_converter_back" aria-label="Zurück zum Chat" data-i18n-aria-label="ui.image_converter_back">Zurück zum Chat</button>
+            </div>
+            <iframe id="imageConverterFrame" class="mlx-image-converter-frame" title="Bildkonverter" data-i18n-title="ui.image_converter" loading="lazy"></iframe>
         </section>
 
     </main>
@@ -1795,6 +1807,7 @@
 <script src="/assets/chat/dictation.js?v=20260906"></script>
 <script src="/assets/chat.js?v=20261015-ttft-idle"></script>
 <script src="/assets/chat/sidebar-rail-utilities.js?v=1-15-jobs-group" defer></script>
+<script src="/assets/chat/image-converter-workspace.js?v=1-0" defer></script>
 
 <div
     id="confirmModal"

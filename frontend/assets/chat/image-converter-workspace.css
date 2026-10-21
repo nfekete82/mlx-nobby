@@ -1,0 +1,69 @@
+/* Inline converter uses the same center column as the chat, never a popup/tab. */
+.mlx-image-converter-workspace[hidden] { display: none !important; }
+.mlx-image-converter-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px clamp(14px, 3vw, 44px) 28px;
+  gap: 18px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.mlx-image-converter-workspace-header {
+  width: min(1030px, 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.mlx-image-converter-workspace-header h2 {
+  font-size: clamp(22px, 2.5vw, 30px);
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+.mlx-image-converter-workspace-header p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+#imageConverterBack {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel2);
+  color: var(--text);
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+#imageConverterBack:hover { border-color: #648ad1; }
+.mlx-image-converter-frame {
+  display: block;
+  width: min(1030px, 100%);
+  margin: 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #121720;
+}
+body.mlx-image-converter-open .main > .messages,
+body.mlx-image-converter-open .composer-wrap {
+  display: none !important;
+}
+#imageConverterButton[aria-pressed="true"],
+#railImageConverter[aria-pressed="true"] {
+  background: var(--panel2);
+  color: #8fb7ff;
+}
+@media (max-width: 700px) {
+  .mlx-image-converter-workspace { padding: 16px 10px; gap: 12px; }
+  .mlx-image-converter-workspace-header { align-items: flex-start; }
+  .mlx-image-converter-workspace-header p { max-width: 240px; }
+  #imageConverterBack { padding: 9px; }
+}
