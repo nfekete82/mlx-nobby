@@ -1,26 +1,53 @@
-/* Inline converter uses the same center column as the chat, never a popup/tab. */
+/* Centered glass dialog; the original MLX Nobby binary backdrop remains visible. */
 .mlx-image-converter-workspace[hidden] { display: none !important; }
 .mlx-image-converter-workspace {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 1550;
+  isolation: isolate;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 18px;
+  background: rgba(2, 6, 15, .26);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+.mlx-image-converter-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.mlx-image-converter-modal-shell {
+  width: min(860px, 100%);
+  max-height: calc(100dvh - 36px);
   display: flex;
   flex-direction: column;
-  padding: 24px clamp(14px, 3vw, 44px) 28px;
-  gap: 18px;
   overflow: hidden;
-  background: var(--bg);
+  position: relative;
+  border: 1px solid rgba(169, 199, 243, .19);
+  border-radius: 20px;
+  color: var(--text);
+  background: rgba(13, 22, 37, .66);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, .30), inset 0 1px 0 rgba(255,255,255,.055);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .mlx-image-converter-workspace-header {
-  width: min(1030px, 100%);
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  padding: 20px 24px 12px;
 }
 .mlx-image-converter-workspace-header h2 {
-  font-size: clamp(22px, 2.5vw, 30px);
+  font-size: clamp(22px, 2.5vw, 28px);
   font-weight: 700;
   margin: 0;
   color: var(--text);
@@ -28,42 +55,53 @@
 .mlx-image-converter-workspace-header p {
   margin: 5px 0 0;
   font-size: 13px;
-  color: var(--muted);
+  color: rgba(202, 216, 238, .77);
 }
 #imageConverterBack {
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(177, 201, 241, .16);
   border-radius: 10px;
-  background: var(--panel2);
-  color: var(--text);
-  padding: 9px 14px;
+  background: rgba(255,255,255,.05);
+  color: #e1ebfb;
   font: inherit;
-  font-size: 13px;
   cursor: pointer;
 }
-#imageConverterBack:hover { border-color: #648ad1; }
+#imageConverterBack:hover {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(143,183,255,.45);
+}
+#imageConverterBack:focus-visible,
+#imageConverterButton:focus-visible {
+  outline: 2px solid #90b9ff;
+  outline-offset: 3px;
+}
 .mlx-image-converter-frame {
   display: block;
-  width: min(1030px, 100%);
-  margin: 0 auto;
-  flex: 1 1 auto;
-  min-height: 0;
+  width: 100%;
+  height: min(540px, calc(100dvh - 130px));
+  min-height: min(350px, calc(100dvh - 130px));
+  flex: 0 1 auto;
   border: 0;
-  border-radius: 14px;
-  background: #121720;
+  background: transparent;
+  color-scheme: dark;
 }
-body.mlx-image-converter-open .main > .messages,
-body.mlx-image-converter-open .composer-wrap {
-  display: none !important;
-}
+/* Preserve chat messages/composer behind the modal and the native body::before 1/0 field. */
+body.mlx-image-converter-open { overflow: hidden; }
 #imageConverterButton[aria-pressed="true"],
 #railImageConverter[aria-pressed="true"] {
-  background: var(--panel2);
+  background: rgba(255,255,255,.085);
   color: #8fb7ff;
 }
-@media (max-width: 700px) {
-  .mlx-image-converter-workspace { padding: 16px 10px; gap: 12px; }
-  .mlx-image-converter-workspace-header { align-items: flex-start; }
-  .mlx-image-converter-workspace-header p { max-width: 240px; }
-  #imageConverterBack { padding: 9px; }
+@media (max-width: 620px) {
+  .mlx-image-converter-workspace { padding: 10px; }
+  .mlx-image-converter-modal-shell { border-radius: 15px; max-height: calc(100dvh - 20px); }
+  .mlx-image-converter-workspace-header { padding: 16px 16px 8px; }
+  .mlx-image-converter-workspace-header h2 { font-size: 22px; }
+  .mlx-image-converter-workspace-header p { font-size: 12px; }
+  .mlx-image-converter-frame { height: min(620px, calc(100dvh - 110px)); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .mlx-image-converter-modal-shell { background: rgba(13,22,37,.93); }
 }
