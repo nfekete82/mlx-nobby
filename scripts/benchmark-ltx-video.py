@@ -623,6 +623,12 @@ def print_table(results):
 
 
 def main():
+    if "--isolated" in sys.argv[1:]:
+        # Direct lab runner never contacts production APIs or their reset endpoint.
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from ltx_lab.cli import main as isolated_main
+        return isolated_main([arg for arg in sys.argv[1:] if arg != "--isolated"])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8060")
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
