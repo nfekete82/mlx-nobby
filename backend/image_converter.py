@@ -77,6 +77,9 @@ def convert_image(
             image = ImageOps.exif_transpose(decoded)
             if max_dimension and max(image.size) > max_dimension:
                 image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+            if fmt == "png" and ("transparency" in image.info) and "A" not in image.getbands():
+                # Palette/tRNS alpha would be lost by clearing PNG metadata.
+                image = image.convert("RGBA")
             if fmt == "jpeg":
                 if image.mode in {"RGBA", "LA", "P"} and (
                     image.mode != "P" or "transparency" in image.info
@@ -94,6 +97,8 @@ def convert_image(
             elif image.mode not in {"1", "L", "LA", "P", "RGB", "RGBA", "I", "I;16"}:
                 image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
             size = image.size
+            # No EXIF, XMP, comments or embedded location tags in exports.
+            image.info.clear()
             output = BytesIO()
             if fmt == "jpeg":
                 image.save(output, format="JPEG", quality=quality, optimize=True, progressive=True)
