@@ -35,8 +35,7 @@ def _key(kind: str, asset_id: str) -> str:
 
 def _visible_asset(kind: str, asset_id: str, records: dict | None = None) -> Path | None:
     key = _key(kind, asset_id)
-    root = media_lifecycle._root_for(kind)
-    path = root / (asset_id + (".png" if kind == "image" else ".mp4"))
+    path = media_lifecycle._expected_path(kind, asset_id)
     if path.is_symlink() or not path.is_file():
         return None
     if path.resolve() != media_lifecycle._expected_path(kind, asset_id):
