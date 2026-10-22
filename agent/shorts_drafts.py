@@ -54,6 +54,9 @@ def save_draft(project=None, *, draft_id=None, chat_id="shorts-studio", source_j
                expected_version=None, normalization_warnings=None):
     from agent.shorts_normalization import normalize_short_for_available_runtime
     normalized, warnings = normalize_short_for_available_runtime(project or default_project())
+    # A scene reference explicitly selects image-to-video, never silently T2V.
+    if any(scene.get("scene_image_id") for scene in normalized.get("scenes", [])):
+        normalized["consistency_mode"] = True
     warnings = list(dict.fromkeys([*(normalization_warnings or []), *warnings]))
     value = ShortProject.model_validate(normalized, context={"draft": True})
     if source_job_id:
@@ -106,6 +109,12 @@ def plan_draft(draft_id, provider, *, scene_count=None):
     constraints["scene_count"] = scene_count or len(p["scenes"])
     project = plan_short(p["briefing"], provider, constraints=constraints)
     project.briefing = p["briefing"]
+    # Keep explicitly selected images/voices when a user replans the script.
+    for previous, planned in zip(p["scenes"], project.scenes):
+        if previous.get("scene_image_id"):
+            planned.scene_image_id = previous["scene_image_id"]
+        if previous.get("voice"):
+            planned.voice = previous["voice"]
     return save_draft(project.model_dump(mode="json"), draft_id=draft_id,
                       expected_version=draft["version"], normalization_warnings=project._normalization_warnings)
 
