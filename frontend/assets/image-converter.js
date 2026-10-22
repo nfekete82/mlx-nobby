@@ -46,6 +46,7 @@
   const t = key => messages[language]?.[key] || messages.en?.[key] || fallbackEnglish[key] || key;
 
   function readableSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
     const unit = bytes < 1048576 ? 'KB' : 'MB';
     const amount = bytes / (unit === 'KB' ? 1024 : 1048576);
     const digits = unit === 'KB' ? 0 : 1;
