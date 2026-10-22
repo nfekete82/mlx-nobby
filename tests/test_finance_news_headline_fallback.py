@@ -29,7 +29,11 @@ def test_finance_headlines_fallback_is_labeled_not_fake_article_summary():
     assert len(digest["items"]) == 2
     assert all(item["article_loaded"] is False and not item["summary"]
                for item in digest["items"])
-    assert "Originaltext ungeprüft" in digest["answer"]
+    assert "Kurzüberblick (aus Überschriften)" in digest["answer"]
+    assert "Wichtigste Meldungen" in digest["answer"]
+    assert "Originalartikel nicht ausreichend verifiziert" in digest["answer"]
+    assert "Technologie und KI" not in digest["answer"]
+    assert "Europäische Aktien" in digest["answer"]
     assert "2021" not in digest["answer"]
 
 
@@ -44,3 +48,26 @@ def test_finance_fallback_never_uses_undated_headlines():
     row.pop("published_date")
     digest = grounded_news_digest("börsennews von heute", [row], now=NOW)
     assert digest["status"] == "no_summarizable_articles"
+
+def test_finance_headlines_readable_sections_and_source_timestamps():
+    rows = [
+        _row("DAX und KI-Aktien unter Druck - Manager Magazin"),
+        _row("Aktien Europa: Verluste im Luxussektor - boerse.de",
+             "https://news.google.com/rss/articles/eu"),
+        _row("Börsencrash als Risiko - WirtschaftsWoche",
+             "https://news.google.com/rss/articles/crash"),
+        _row("Ölpreis und Börse im Fokus - XTB.com",
+             "https://news.google.com/rss/articles/oil"),
+    ]
+    digest = grounded_news_digest("börsennews von heute", rows, now=NOW)
+    answer = digest["answer"]
+    assert digest["status"] == "headlines_only"
+    assert "**Kurzüberblick (aus Überschriften)**" in answer
+    assert "**Wichtigste Meldungen**" in answer
+    assert "**Weitere Meldungen**" in answer
+    assert "Technologie und KI" in answer
+    assert "Europäische Aktien" in answer
+    assert "Manager Magazin · 12:00 Uhr" in answer
+    assert "Originalartikel nicht ausreichend verifiziert" in answer
+    assert "https://news.google.com/rss/articles/test" in answer
+    assert len(digest["items"]) == 4
