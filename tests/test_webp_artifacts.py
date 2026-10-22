@@ -101,3 +101,38 @@ def test_library_and_lifecycle_accept_new_and_legacy_images(tmp_path, monkeypatc
     assert media_lifecycle._expected_path("image", ID) == legacy
     assert media_library_routes.list_assets("image")["total"] == 1
     assert media_library_organize._visible_asset("image", ID) == legacy
+
+
+def test_generation_service_publishes_webp_and_keeps_native_png_temporary(tmp_path, monkeypatch):
+    import image_service as service
+
+    root = tmp_path / "output"
+    monkeypatch.setattr(service, "OUTPUT", root)
+    monkeypatch.setattr(service.runtime_coordinator, "ensure_model_load_allowed",
+                        lambda *args, **kwargs: None)
+    monkeypatch.delenv("MLX_IMAGE_OUTPUT_FORMAT", raising=False)
+    seen = []
+
+    def native_provider(model, params, output, **kwargs):
+        assert output.suffix == ".png"
+        Image.new("RGB", (256, 256), (120, 50, 20)).save(output, "PNG")
+        seen.append(output)
+
+    monkeypatch.setattr(service, "run_provider", native_provider)
+    request = service.Generate(prompt="A blue city skyline", model="test",
+                               width=256, height=256, seed=3)
+    resolved = {
+        "model": {"id": "test", "provider": "mflux", "model_family": "test",
+                  "quantization": "4bit", "loras": []},
+        "params": {"width": 256, "height": 256, "prompt": request.prompt,
+                   "negative_prompt": None, "guidance": 3.0, "seed": 3,
+                   "steps": 12, "quality": "standard", "auto_size": False},
+        "quality_profile": {}, "requested_model": "test"
+    }
+    result = service._generate_result(request, resolved=resolved)
+    assert result["mime_type"] == "image/webp"
+    assert Path(result["path"]).suffix == ".webp"
+    assert Path(result["path"]).is_file()
+    assert len(seen) == 1 and not seen[0].exists()
+    with Image.open(result["path"]) as image:
+        assert image.format == "WEBP" and image.size == (256, 256)
