@@ -124,7 +124,7 @@ def test_converter_language_matches_chat_and_keeps_uploaded_files(ui):
     expect(inside.locator('[data-converter-i18n="submit"]')).to_have_text(
         "Convert and download ZIP"
     )
-    expect(inside.locator("#selection")).to_contain_text("1 files")
+    expect(inside.locator("#selection")).to_contain_text("1 file")
     assert inside.locator("#imageFiles").evaluate("input => input.files.length") == 1
 
 
