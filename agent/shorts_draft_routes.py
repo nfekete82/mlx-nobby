@@ -2,7 +2,7 @@
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from agent import shorts_drafts, shorts_jobs
+from agent import shorts_drafts, shorts_jobs, shorts_scene_images
 from agent.shorts_planner import quality_capabilities
 from agent.shorts_composer import library_tracks, library_path
 
@@ -13,6 +13,11 @@ class DraftWrite(BaseModel):
     chat_id: str = Field(default="shorts-studio", min_length=1, max_length=200)
     source_job_id: str | None = None
     expected_version: int | None = Field(default=None, ge=1)
+
+
+class SceneImageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content_base64: str = Field(min_length=1, max_length=11_184_820)
 
 
 class PlanRequest(BaseModel):
@@ -65,6 +70,18 @@ def install_routes(app):
         return {"qualities": quality_capabilities(), "music": library_tracks(shorts_jobs.MUSIC_DIRECTORY),
                 "sfx": library_tracks(shorts_jobs.MUSIC_DIRECTORY.parent / "sfx"),
                 "transitions": ["cut", "fade", "fadeblack", "fadewhite", "flash"]}
+
+    @app.post("/api/shorts/scene-images", status_code=201)
+    def upload_scene_image(request: SceneImageRequest):
+        return checked(shorts_scene_images.upload_image, request.content_base64)
+
+    @app.get("/api/shorts/scene-images")
+    def list_scene_images():
+        return {"images": shorts_scene_images.list_images()}
+
+    @app.get("/api/shorts/scene-images/{image_id}")
+    def get_scene_image(image_id: str):
+        return FileResponse(checked(shorts_scene_images.image_path, image_id), media_type="image/png")
 
     @app.get("/api/shorts/drafts")
     def drafts():
