@@ -221,10 +221,10 @@ def article_short_summary(item, *, max_characters=330):
 
 def _headline_publisher(title, fallback):
     """Extract a short publication label without trusting it as verified."""
-    parts = re.split(r"\\s+-\\s+", str(title or ""))
+    parts = re.split(r"\s+-\s+", str(title or ""))
     suffix = parts[-1].strip() if len(parts) > 1 else ""
     if suffix and len(suffix) <= 48 and not re.search(
-        r"(?i)\\b(?:dax|aktien|börse|markt|ölpreis|crash)\\b", suffix
+        r"(?i)\b(?:dax|aktien|börse|markt|ölpreis|crash)\b", suffix
     ):
         return suffix
     return str(fallback or "Nachrichtenindex")[:60]
@@ -233,15 +233,15 @@ def _headline_publisher(title, fallback):
 def _headline_subject(title):
     """Only identify explicit topics in a headline; never infer market moves."""
     title = str(title or "").casefold()
-    if re.search(r"\\b(?:ki.aktien|tech|sap|infineon|nvidia|nasdaq)\\b", title):
+    if re.search(r"\b(?:ki.aktien|tech|sap|infineon|nvidia|nasdaq)\b", title):
         return "Technologie und KI"
-    if re.search(r"\\b(?:europa|europäisch|luxus|herm[eè]s)\\b", title):
+    if re.search(r"\b(?:europa|europäisch|luxus|herm[eè]s)\b", title):
         return "Europäische Aktien"
-    if re.search(r"\\b(?:dax|mdax|deutsche börse)\\b", title):
+    if re.search(r"\b(?:dax|mdax|deutsche börse)\b", title):
         return "Deutscher Aktienmarkt"
-    if re.search(r"\\b(?:crash|risik|warn|sorge)\\b", title):
+    if re.search(r"\b(?:crash|risik|warn|sorge)\b", title):
         return "Marktmeinungen und Risiken"
-    if re.search(r"\\b(?:ölpreis|energie|rohstoff)\\b", title):
+    if re.search(r"\b(?:ölpreis|energie|rohstoff)\b", title):
         return "Energie und Rohstoffe"
     return "Weitere Börsenthemen"
 
