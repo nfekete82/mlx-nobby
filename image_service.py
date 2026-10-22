@@ -1512,6 +1512,9 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output_path is not None:
             output_path.unlink(missing_ok=True)
+            # If encoding completed just before cancellation/failure, remove
+            # the alternate finalized artifact too, without touching inputs.
+            output_path.with_suffix(".webp").unlink(missing_ok=True)
         _update_job(
             job_id,
             status="cancelled",
@@ -1522,6 +1525,9 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
     except Exception as exc:
         if output_path is not None:
             output_path.unlink(missing_ok=True)
+            # If encoding completed just before cancellation/failure, remove
+            # the alternate finalized artifact too, without touching inputs.
+            output_path.with_suffix(".webp").unlink(missing_ok=True)
         if cancel_event.is_set():
             _update_job(
                 job_id, status="cancelled", result=None,
