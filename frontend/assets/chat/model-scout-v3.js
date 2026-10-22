@@ -264,7 +264,7 @@
         if (!actions) return;
         const preflight = preflightCandidate(candidate, benchmark);
         let adopt = actions.querySelector('[data-scout-adopt]');
-        if (!adopt && candidate.installed) {
+        if (!adopt && candidate.installed && (candidate.role === 'chat' || candidate.role === 'coding')) {
             adopt = document.createElement('button');
             adopt.type = 'button';
             adopt.className = 'model-scout-button model-scout-adopt';
@@ -368,7 +368,7 @@
         const status = await requestJson('/api/mlx/status', { cache: 'no-store' }).catch(() => ({}));
         const eligible = cards
             .map(candidateForCard)
-            .filter(candidate => candidate?.installed && candidate?.benchmark_ready && candidate?.installed_alias && candidate.id !== status.model)
+            .filter(candidate => (candidate?.role === 'chat' || candidate?.role === 'coding') && candidate.installed && candidate.benchmark_ready && candidate.installed_alias && candidate.id !== status.model)
             .slice(0, 3);
         if (!eligible.length) {
             button.textContent = text('batch_none');
@@ -420,7 +420,7 @@
     }
 
     async function adoptCandidate(candidate, button) {
-        if (busySwitch || busyBatch) return;
+        if (busySwitch || busyBatch || !['chat', 'coding'].includes(candidate?.role)) return;
         const benchmark = latestBenchmarkFor(candidate);
         const preflight = preflightCandidate(candidate, benchmark);
         if (!preflight.ok) return;
