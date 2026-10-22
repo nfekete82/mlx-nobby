@@ -51,7 +51,7 @@ def test_multi_image_order_replace_library_and_existing_player(ui):
     page.evaluate(MEDIA)
     page.locator('#mediaQualityModalConfirm').click()
     expect(page.locator('.video-artifact-player')).to_be_visible()
-    action = next(body for method, path, body in agent.calls if path == '/api/chat/actions')
+    action = next(body for method, path, body in agent.calls if path == '/api/video/jobs')
     assert action['multi_image_mode'] == 'scenes'
     assert len(action['multi_images']) == 3
     assert action['multi_images'][-1] == {'artifact_id': 'image-' + asset_id}

@@ -123,7 +123,7 @@ class AgentFixture:
         if path == '/api/chat/actions/route':
             target = 'video' if 'ball' in payload.get('prompt', '').lower() else 'image' if 'mug' in payload.get('prompt', '').lower() else 'chat'
             return {'target': target, 'intent': target + '_generate' if target != 'chat' else 'chat'}
-        if path == '/api/chat/actions':
+        if path in ('/api/chat/actions', '/api/video/jobs'):
             kind = payload['resolved_target']
             if kind == 'chat':
                 return {'tool': 'normal_chat', 'status': 'completed', 'data': {}}
