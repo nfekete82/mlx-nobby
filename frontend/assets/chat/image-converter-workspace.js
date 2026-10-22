@@ -17,13 +17,30 @@
       .filter(Boolean);
     const originalInert = backgroundLayers.map(element => element.inert);
 
+    const selectedLanguage = () =>
+      window.MLXI18n?.getLanguage?.() === 'de' ? 'de' : 'en';
+    const forwardLanguage = language => {
+      frame.contentWindow?.postMessage({
+        type: 'mlx-image-converter-language',
+        language: language === 'de' ? 'de' : 'en'
+      }, location.origin);
+    };
+    frame.addEventListener('load', () => forwardLanguage(selectedLanguage()));
+    document.addEventListener('mlx-language-changed', event => {
+      if (frame.getAttribute('src')) forwardLanguage(event.detail?.language);
+    });
+
     let active = false;
     let previousFocus = null;
     const open = () => {
       if (active) return;
       active = true;
       previousFocus = document.activeElement;
-      if (!frame.getAttribute('src')) frame.setAttribute('src', '/converter?embedded=1');
+      if (!frame.getAttribute('src')) {
+        frame.setAttribute('src', '/converter?embedded=1&lang=' + selectedLanguage());
+      } else {
+        forwardLanguage(selectedLanguage());
+      }
       panel.hidden = false;
       panel.setAttribute('aria-hidden', 'false');
       document.body.classList.add('mlx-image-converter-open');

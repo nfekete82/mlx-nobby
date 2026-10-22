@@ -1,20 +1,61 @@
 <!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bildkonverter · MLX Nobby</title><script>if (new URLSearchParams(location.search).get("embedded") === "1") { document.documentElement.classList.add("converter-embedded"); document.addEventListener("keydown", event => { if (event.key === "Escape") window.parent.postMessage({type:"mlx-image-converter-close"}, location.origin); }); }</script><link rel="stylesheet" href="/assets/image-converter.css?v=3-layered-modal"></head>
-<body><main><header><a href="/">← MLX Nobby</a><span>Lokaler Bildkonverter</span></header>
-<h1>Bilder konvertieren &amp; komprimieren</h1>
-<p>Bis zu 40 Bilder gleichzeitig. Keine KI, kein Cloud-Upload, Originaldateien bleiben unverändert.</p>
-<form id="converterForm">
-<label id="dropzone" for="imageFiles">Bilder hier ablegen oder auswählen <small>PNG · JPG · HEIC · WebP · TIFF · BMP</small></label>
-<input id="imageFiles" name="files" type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.webp,.tif,.tiff,.bmp" multiple required>
-<output id="selection" aria-live="polite">Noch keine Dateien ausgewählt</output>
-<section>
-<label>Zielformat<select name="fmt" id="fmt"><option value="WEBP">WebP</option><option value="JPEG">JPG</option><option value="PNG">PNG (verlustfrei)</option></select></label>
-<label>Qualität <span id="qualityText">85 %</span><input type="range" id="quality" name="quality" min="40" max="100" value="85"></label>
-<label>Maximale Kantenlänge<select name="max_edge"><option value="0">Originalauflösung</option><option value="1280">1280 px</option><option value="1920">1920 px</option><option value="2560">2560 px</option></select></label>
-<label>Transparenz bei JPG<input type="color" name="background" value="#ffffff"></label>
-</section>
-<button type="submit" id="submit">Konvertieren und ZIP herunterladen</button>
-<p id="status" role="status" aria-live="polite"></p>
-</form><p class="foot">Das ZIP enthält conversion-report.json mit Dateigrößen und eventuellen Fehlern einzelner Bilder.</p>
-</main><script src="/assets/image-converter.js?v=1"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image converter · MLX Nobby</title>
+  <script>
+    if (new URLSearchParams(location.search).get("embedded") === "1") {
+      document.documentElement.classList.add("converter-embedded");
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+          window.parent.postMessage({type: "mlx-image-converter-close"}, location.origin);
+        }
+      });
+    }
+  </script>
+  <link rel="stylesheet" href="/assets/image-converter.css?v=3-layered-modal">
+</head>
+<body>
+  <main>
+    <header><a href="/">← MLX Nobby</a><span data-converter-i18n="header">Local image converter</span></header>
+    <h1 data-converter-i18n="heading">Convert and compress images</h1>
+    <p data-converter-i18n="intro">Up to 40 images at once. No AI, no cloud upload. Originals remain unchanged.</p>
+    <form id="converterForm">
+      <label id="dropzone" for="imageFiles">
+        <span data-converter-i18n="drop">Drop images here or choose files</span>
+        <small>PNG · JPG · HEIC · WebP · TIFF · BMP</small>
+      </label>
+      <input id="imageFiles" name="files" type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.webp,.tif,.tiff,.bmp" multiple required>
+      <output id="selection" aria-live="polite">No files selected</output>
+      <section>
+        <label><span data-converter-i18n="format">Output format</span>
+          <select name="fmt" id="fmt">
+            <option value="WEBP">WebP</option>
+            <option value="JPEG">JPG</option>
+            <option value="PNG" data-converter-i18n="png">PNG (lossless)</option>
+          </select>
+        </label>
+        <label><span><span data-converter-i18n="quality">Quality</span> <span id="qualityText">85 %</span></span>
+          <input type="range" id="quality" name="quality" min="40" max="100" value="85">
+        </label>
+        <label><span data-converter-i18n="maxEdge">Maximum edge length</span>
+          <select name="max_edge">
+            <option value="0" data-converter-i18n="original">Original resolution</option>
+            <option value="1280">1280 px</option>
+            <option value="1920">1920 px</option>
+            <option value="2560">2560 px</option>
+          </select>
+        </label>
+        <label><span data-converter-i18n="alpha">Transparency for JPG</span>
+          <input type="color" name="background" value="#ffffff">
+        </label>
+      </section>
+      <button type="submit" id="submit" data-converter-i18n="submit">Convert and download ZIP</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+    <p class="foot" data-converter-i18n="footer">The ZIP includes conversion-report.json with image sizes and any per-file errors.</p>
+  </main>
+  <script src="/assets/image-converter.js?v=2-bilingual"></script>
+</body>
+</html>

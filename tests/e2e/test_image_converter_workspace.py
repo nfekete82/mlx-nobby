@@ -87,3 +87,36 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     _ensure_sidebar(page)
     page.locator("#newChat").click()
     expect(page.locator("#messages")).to_be_visible()
+
+
+def test_converter_language_matches_chat_and_keeps_uploaded_files(ui):
+    page, _agent, _allowed = ui
+    _ensure_sidebar(page)
+    page.locator("#imageConverterButton").click()
+    inside = page.frame_locator("#imageConverterFrame")
+
+    # MLX-Nobby's configured default is English.
+    expect(page.locator("#imageConverterWorkspaceTitle")).to_have_text("Image converter")
+    expect(inside.locator('[data-converter-i18n="format"]')).to_have_text("Output format")
+    expect(inside.locator("#selection")).to_have_text("No files selected")
+
+    inside.locator("#imageFiles").set_input_files({
+        "name": "bild.png", "mimeType": "image/png", "buffer": _png(),
+    })
+    expect(inside.locator("#selection")).to_contain_text("1 files")
+
+    # Switching the main app language updates the iframe in place.
+    page.evaluate("window.MLXI18n.setLanguage('de')")
+    expect(page.locator("#imageConverterWorkspaceTitle")).to_have_text("Bildkonverter")
+    expect(inside.locator('[data-converter-i18n="format"]')).to_have_text("Zielformat")
+    expect(inside.locator('[data-converter-i18n="drop"]')).to_contain_text("Bilder hier")
+    expect(inside.locator("#selection")).to_contain_text("1 Dateien")
+    assert inside.locator("#imageFiles").evaluate("input => input.files.length") == 1
+
+    page.evaluate("window.MLXI18n.setLanguage('en')")
+    expect(page.locator("#imageConverterWorkspaceTitle")).to_have_text("Image converter")
+    expect(inside.locator('[data-converter-i18n="submit"]')).to_have_text(
+        "Convert and download ZIP"
+    )
+    expect(inside.locator("#selection")).to_contain_text("1 files")
+    assert inside.locator("#imageFiles").evaluate("input => input.files.length") == 1
