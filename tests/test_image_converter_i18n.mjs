@@ -8,9 +8,9 @@ const dictionaries = JSON.parse(fs.readFileSync('frontend/i18n/image-converter.j
 
 const keys = ['header', 'heading', 'intro', 'drop', 'format', 'png', 'quality',
   'maxEdge', 'original', 'alpha', 'submit', 'footer', 'none',
-  'files', 'working', 'done', 'error', 'heic', 'several'];
+  'file', 'files', 'more', 'working', 'done', 'error', 'heic', 'several'];
 for (const key of keys) {
-  if (!['none', 'files', 'working', 'done', 'error', 'heic', 'several'].includes(key)) {
+  if (!['none', 'file', 'files', 'more', 'working', 'done', 'error', 'heic', 'several'].includes(key)) {
     assert.match(html, new RegExp('data-converter-i18n="' + key + '"'), key);
   }
   assert.equal(typeof dictionaries.en[key], 'string', 'Missing EN ' + key);
