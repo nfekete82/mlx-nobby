@@ -65,6 +65,17 @@
     }
   }
 
+  const enErrors = {
+    'Ungültiges Zielformat, Qualität oder Bildgröße': 'Invalid output format, quality or image size',
+    'Ungültige Hintergrundfarbe': 'Invalid background color',
+    'Maximal 40 Bilder pro Stapel': 'Maximum 40 images per batch',
+    'Upload überschreitet Größenlimit': 'Upload exceeds size limit',
+    'Keine lesbaren Bilder gefunden': 'No readable images found'
+  };
+  const localizedError = detail => language === 'en'
+    ? enErrors[detail] || detail
+    : detail;
+
   let language = initialLanguage();
   let statusKey = '';
   let statusParams = {};
@@ -90,7 +101,7 @@
     else if (statusKey === 'done') status.textContent =
       (statusParams.count || t('several')) + t('done');
     else if (statusKey === 'heic') status.textContent = t('heic');
-    else if (statusKey === 'error') status.textContent = t('error') + (statusParams.detail || '');
+    else if (statusKey === 'error') status.textContent = t('error') + localizedError(statusParams.detail || '');
     else status.textContent = '';
   }
 
