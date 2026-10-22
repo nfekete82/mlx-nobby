@@ -18,6 +18,7 @@ import video_registry as registry
 from video_profiles import preflight_profile, profile_capabilities
 from quality_profiles import resolve_video_profile
 import runtime_coordinator
+import video_multi_image
 from local_security import LocalRequestGuard
 from video_providers import (
     ProviderCancelled, availability, generate, i2v_aspect_ratio, i2v_source_size,
@@ -72,6 +73,13 @@ _VOLATILE_PROGRESS_FIELDS = frozenset({
 })
 
 
+class VideoImage(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    path: str
+    frame_index: int | None = Field(default=None, ge=0, strict=True)
+    strength: float = Field(default=1.0, ge=0, le=1)
+
+
 class VideoPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     prompt: str = Field(min_length=3, max_length=4000)
@@ -82,6 +90,9 @@ class VideoPayload(BaseModel):
     fps: Literal[8, 24] = 24
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
     first_frame: str | None = None
+    images: list[VideoImage] = Field(default_factory=list, max_length=5)
+    multi_image_mode: Literal["keyframes", "scenes"] | None = None
+    resume_from: str | None = Field(default=None, pattern=r"^[a-f0-9]{24}$")
     resize_mode: Literal["contain", "cover"] | None = None
     quality: Literal["preview", "fast", "standard", "quality"] | None = None
     width: int | None = None
@@ -126,7 +137,7 @@ class VideoPayload(BaseModel):
 
 class JobCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    operation: Literal["t2v", "i2v"]
+    operation: Literal["t2v", "i2v", "multi_i2v"]
     payload: VideoPayload
     chat_id: str = Field(min_length=1)
     run_id: str | None = None
@@ -139,6 +150,23 @@ class JobCreate(BaseModel):
         profile = resolve_video_profile(
             registry.get_model(self.payload.model), quality,
         )
+
+        multi = self.operation == "multi_i2v"
+        if multi:
+            if not 2 <= len(self.payload.images) <= 5 or not self.payload.multi_image_mode:
+                raise ValueError("Multi-Image-to-Video benötigt 2–5 Bilder und einen Modus")
+            if self.payload.first_frame:
+                raise ValueError("Multi-Image verwendet images statt first_frame")
+            if registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
+                raise ValueError("Multi-Image-to-Video benötigt den installierten LTX-MLX-Provider")
+            if self.payload.multi_image_mode == "keyframes" and not _multi_capabilities()["native_keyframes"]:
+                raise ValueError("Die installierte LTX-MLX-Version unterstützt keine nativen Keyframes; Szenen verbinden verwenden")
+            for image in self.payload.images:
+                validate_first_frame(image.path)
+        elif self.payload.images or self.payload.multi_image_mode or self.payload.resume_from:
+            raise ValueError("Multi-Image-Parameter benötigen multi_i2v")
+        if self.payload.resume_from and self.payload.multi_image_mode != "scenes":
+            raise ValueError("Nur Szenenjobs können fortgesetzt werden")
 
         if quality == "preview" and self.operation != "t2v":
             raise ValueError(
@@ -158,8 +186,8 @@ class JobCreate(BaseModel):
             raise ValueError("T2V akzeptiert kein First Frame")
         if self.operation == "t2v" and self.payload.resize_mode is not None:
             raise ValueError("resize_mode ist nur für I2V verfügbar")
-        if self.operation == "i2v":
-            source = validate_first_frame(self.payload.first_frame)
+        if self.operation == "i2v" or multi:
+            source = validate_first_frame(self.payload.images[0].path if multi else self.payload.first_frame)
             source_width, source_height = i2v_source_size(source)
 
             if "aspect_ratio" not in supplied:
@@ -192,7 +220,36 @@ class JobCreate(BaseModel):
                 self.payload.width, self.payload.height = width, height
             self.payload.aspect_ratio = "9:16" if self.payload.height > self.payload.width else "16:9"
         self.payload.frames = self.payload.duration * self.payload.fps + 1
+        if multi:
+            positions = video_multi_image.frame_positions(len(self.payload.images), self.payload.frames)
+            for index, image in enumerate(self.payload.images):
+                if self.payload.multi_image_mode == "scenes":
+                    if image.frame_index not in {None, 0} or image.strength != 1:
+                        raise ValueError("Szenenbilder verwenden Frame 0 und Stärke 1")
+                    image.frame_index = 0
+                else:
+                    if image.frame_index is None:
+                        image.frame_index = positions[index]
+                    if image.frame_index >= self.payload.frames:
+                        raise ValueError("Keyframe liegt außerhalb des Videos")
+            if self.payload.multi_image_mode == "keyframes":
+                indices = [image.frame_index for image in self.payload.images]
+                if indices != sorted(set(indices)):
+                    raise ValueError("Keyframes müssen streng aufsteigend und eindeutig sein")
         return self
+
+
+def _multi_capabilities():
+    from video_providers_mlx import LTX_MLX_RUNTIME_ROOT
+    return video_multi_image.keyframe_capabilities(LTX_MLX_RUNTIME_ROOT)
+
+
+def _multi_source_versions(payload):
+    versions = []
+    for image in payload.images:
+        stat = Path(image.path).stat()
+        versions.append({"path": image.path, "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+    return versions
 
 
 def _video_dimensions(resolution, aspect_ratio):
@@ -481,12 +538,17 @@ def _run(job_id, request):
                     changes["status"] = status
                 _update(job_id, **changes)
 
-            media = generate(
-                model, request.payload.model_dump(), output,
-                cancel_event=cancel, response_callback=runtime_changed,
-                progress_callback=progress_changed,
-                phase_callback=phase_changed,
-            )
+            callbacks = dict(cancel_event=cancel, response_callback=runtime_changed,
+                             progress_callback=progress_changed, phase_callback=phase_changed)
+            if request.payload.multi_image_mode == "scenes":
+                media = video_multi_image.generate_scenes(
+                    model, request.payload.model_dump(), output, job_id=job_id,
+                    checkpoints=JOBS / "segments",
+                    resume_job=_jobs.get(request.payload.resume_from), generate=generate,
+                    update=lambda **changes: _update(job_id, **changes), **callbacks,
+                )
+            else:
+                media = generate(model, request.payload.model_dump(), output, **callbacks)
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
@@ -508,6 +570,8 @@ def _run(job_id, request):
                 "seed": request.payload.seed, "operation": request.operation,
                 "quality": request.payload.quality or "standard",
                 "resolution": request.payload.resolution, "first_frame": request.payload.first_frame,
+                "multi_image_mode": request.payload.multi_image_mode,
+                "images": [image.model_dump() for image in request.payload.images],
                 "created_at": time.time(), "memory_before": before, "memory_peak": dict(peak),
                 "memory_after": after, **media,
             }
@@ -529,7 +593,15 @@ def _run(job_id, request):
         if cancel.is_set():
             _update(job_id, status="cancelled", result=None, error=None, finished_at=time.time())
         else:
-            _update(job_id, status="failed", result=None, error=str(exc)[-4000:], finished_at=time.time(), memory_after=_memory_snapshot())
+            error = str(exc)[-4000:]
+            if request.operation == "multi_i2v" and any(word in error.lower() for word in (
+                "out of memory", "insufficient memory", "memory limit", "speicherbudget",
+            )):
+                error = ("Nicht genügend freier Speicher für LTX. Andere speicherintensive Programme schließen "
+                         "oder Fast-Qualität verwenden. / Insufficient free memory for LTX. "
+                         "Close memory-intensive apps or use Fast quality. "
+                         "Fertige Szenen können fortgesetzt werden. / Completed scenes can be reused. " + error)
+            _update(job_id, status="failed", result=None, error=error, finished_at=time.time(), memory_after=_memory_snapshot())
     finally:
         with _jobs_lock:
             if job_id in _jobs:
@@ -562,24 +634,42 @@ def models():
         ready, reason = availability(model)
         described.append(model | {"available": ready, "availability_note": reason, "local_path": str(registry.model_path(model))})
     default = next((m for m in described if m["id"] == data["default_model"]), {})
-    return data | {"models": described, "offline": True,
+    return data | {"models": described, "offline": True, "multi_image": _multi_capabilities(),
                    "profiles": profile_capabilities(default)}
 
 
 @app.post("/preflight")
 def preflight(request: JobCreate):
     preflight_profile(request.payload.profile, registry.get_model(request.payload.model))
+    if request.payload.resume_from:
+        previous = _jobs.get(request.payload.resume_from)
+        payload = request.payload.model_dump(exclude={"resume_from"})
+        old_payload = dict((previous or {}).get("payload") or {})
+        old_payload.pop("resume_from", None)
+        if (not previous or previous.get("status") not in {"failed", "cancelled"}
+                or previous.get("chat_id") != request.chat_id or payload != old_payload):
+            raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Szenenjob mit unveränderten Einstellungen und Bildern")
+        if ((previous.get("source_versions") is not None
+             and previous["source_versions"] != _multi_source_versions(request.payload))
+                or (previous.get("resolved_model") is not None
+                    and previous["resolved_model"] != registry.get_model(request.payload.model)["id"])):
+            raise HTTPException(422, "Quellbilder oder Modell wurden seit dem Szenenjob verändert")
     return {"available": True, "profile": request.payload.profile}
 
 
 @app.post("/jobs", status_code=202)
 def create_job(request: JobCreate):
     preflight(request)
+    source_versions = _multi_source_versions(request.payload)
+    resolved_model = registry.get_model(request.payload.model)["id"]
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Ein Video-Job läuft bereits")
     job_id = secrets.token_hex(12)
     job = {
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,
+        "multi_image_mode": request.payload.multi_image_mode,
+        "resolved_model": resolved_model,
+        "source_versions": source_versions,
         "run_id": request.run_id or job_id, "chat_revision": request.chat_revision,
         "status": "queued", "phase": "queued", "model": request.payload.model,
         "current_step": None,

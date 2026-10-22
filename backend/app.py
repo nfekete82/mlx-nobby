@@ -421,6 +421,11 @@ def video_job_cancel(job_id: str):
     return agent_json_request('POST', '/api/video/jobs/' + urllib.parse.quote(job_id, safe='') + '/cancel', {}, timeout=35)
 
 
+@app.post('/api/mlx/video-jobs/{job_id}/retry', status_code=202)
+def video_job_retry(job_id: str):
+    return agent_json_request('POST', '/api/video/jobs/' + urllib.parse.quote(job_id, safe='') + '/retry', {}, timeout=35)
+
+
 @app.get('/api/mlx/shorts-jobs/{job_id}')
 def shorts_job(job_id: str):
     return agent_json_request(

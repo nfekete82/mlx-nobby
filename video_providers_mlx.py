@@ -329,6 +329,8 @@ def _command(model, params, output, *, image=None):
         command.append("--low-ram")
     if image is not None:
         command.extend(["--image", str(image)])
+    for anchor in params.get("images") or []:
+        command.extend(["--image", anchor["path"], str(anchor["frame_index"]), str(anchor["strength"])])
     for path, strength in request_loras(params.get("profile", "standard")):
         command.extend(["--lora", path, str(strength)])
     return command
@@ -350,11 +352,15 @@ def _run_process(command, *, cancel_event, response_callback=None,
     if progress_callback:
         progress_callback({"phase": "generating", "progress": 0.01})
     output = ""
+    deadline = time.monotonic() + 7200
     try:
         while True:
             if cancel_event.is_set():
                 _terminate_process(process)
                 raise ProviderCancelled("Video job was cancelled")
+            if time.monotonic() >= deadline:
+                _terminate_process(process)
+                raise RuntimeError("LTX-MLX: Zeitlimit der Generierung erreicht")
             try:
                 stdout, _ = process.communicate(timeout=0.5)
                 output = stdout or ""
@@ -391,6 +397,7 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
                 "stage1_steps": 1 if params.get("quality") == "preview" else 8,
                 "stage2_steps": 1 if params.get("quality") == "preview" else 3,
                 "image": str(image) if image is not None else None,
+                "images": params.get("images") or [],
                 "profile": params.get("profile", "standard"),
             }
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -444,6 +451,11 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
             raise ValueError("uncensored: Adapter konnte nicht vorbereitet werden") from exc
 
     source = validate_first_frame(params.get("first_frame"))
+    anchors = params.get("images") or []
+    if anchors:
+        from video_multi_image import keyframe_capabilities
+        if not keyframe_capabilities(LTX_MLX_RUNTIME_ROOT)["native_keyframes"]:
+            raise ValueError("Installierte LTX-MLX-Version unterstützt keine nativen Keyframes")
     if params.get("quality") == "preview" and source is not None:
         raise ValueError("Video-Vorschau ist nur für Text-zu-Video verfügbar")
 
@@ -455,6 +467,15 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
     worker_result = {}
 
     with tempfile.TemporaryDirectory(prefix="mlx-nobby-ltx-mlx-") as temporary:
+        params = dict(params)
+        prepared_anchors = []
+        for index, anchor in enumerate(anchors):
+            anchor_source = validate_first_frame(anchor["path"])
+            anchor_path = Path(temporary) / f"anchor-{index}.png"
+            _prepare_first_frame(anchor_source, int(params["width"]), int(params["height"]),
+                                 params.get("resize_mode") or "contain", anchor_path)
+            prepared_anchors.append(dict(anchor, path=str(anchor_path)))
+        params["images"] = prepared_anchors
         prepared = None
         if source is not None:
             prepared = Path(temporary) / "first-frame.png"

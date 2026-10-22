@@ -336,6 +336,7 @@
     }
   },
   "rendering": {
+        "multi_video_retry": "Fertige Szenen übernehmen · Fortsetzen",
     "image_preview_open": "Große Bildvorschau öffnen",
     "region_editor_button": "Bereich bearbeiten",
     "image_preview_title": "Bildvorschau",
