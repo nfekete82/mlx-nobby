@@ -38,7 +38,7 @@ assert.match(style, /\.mlx-image-converter-workspace\[hidden\]/);
 assert.doesNotMatch(style, /body\.mlx-image-converter-open \.composer-wrap\s*\{/);
 assert.match(embedded, /URLSearchParams\(location\.search\)/);
 assert.match(embedded, /mlx-image-converter-close/);
-assert.match(embedded, /image-converter\.css\?v=3-layered-modal/);
+assert.match(embedded, /image-converter\.css\?v=4-file-previews/);
 assert.match(embeddedCSS, /html\.converter-embedded/);
 assert.match(embeddedCSS, /background: transparent !important/);
 assert.match(embeddedCSS, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
