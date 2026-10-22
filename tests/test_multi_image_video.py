@@ -105,14 +105,15 @@ def test_agent_resolves_upload_and_library_sources(managed, monkeypatch):
         agent._video_payload(action, "multi_i2v")
 
 
-def test_plain_prompt_from_explicit_multi_image_ui_routes_to_video(managed):
+def test_explicit_video_endpoint_preserves_video_with_red_image_context(managed):
     action = agent.ChatActionRequest(prompt="A red ball rolls slowly", action="video_generate",
         resolved_target="video", multi_image_mode="keyframes",
+        file_context={"kind": "image", "image_count": 2, "stored_path": str(managed[0])},
         multi_images=[{"stored_path": str(path)} for path in managed[:2]])
     with mock.patch.object(agent, "_start_chat_video_job", return_value={
         "id": "a" * 24, "status": "queued", "operation": "multi_i2v",
     }) as start:
-        result = agent.run_chat_action(action)
+        result = agent.video_job_create_api(action)
     assert result["tool"] == "video_generate"
     start.assert_called_once()
 

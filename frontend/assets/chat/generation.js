@@ -3757,7 +3757,7 @@ const imageFiles =
 
             };
 
-            const actionResponse = await fetch('/api/mlx/chat/actions', {
+            const actionResponse = await fetch(multiVideoSelection ? '/api/mlx/video/jobs' : '/api/mlx/chat/actions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(actionPayload)
