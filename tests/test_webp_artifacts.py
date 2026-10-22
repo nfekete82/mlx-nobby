@@ -65,7 +65,7 @@ def test_artifact_identity_image_routes_and_legacy_png(tmp_path, monkeypatch):
     assert agent._resolve_image_artifact_source("image-" + ID) == root / (ID + ".webp")
     reply = agent.image_download(ID)
     assert reply.media_type == "image/webp"
-    assert reply.path == str(root / (ID + ".webp"))
+    assert Path(reply.path) == root / (ID + ".webp")
 
     # A pre-update PNG with the same managed ID must continue to work.
     (root / (ID + ".webp")).unlink()
