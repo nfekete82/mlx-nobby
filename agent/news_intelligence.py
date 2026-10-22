@@ -218,6 +218,44 @@ def article_short_summary(item, *, max_characters=330):
     return " ".join(selected)[:max_characters]
 
 
+
+def _headline_publisher(title, fallback):
+    """Extract a short publication label without trusting it as verified."""
+    parts = re.split(r"\\s+-\\s+", str(title or ""))
+    suffix = parts[-1].strip() if len(parts) > 1 else ""
+    if suffix and len(suffix) <= 48 and not re.search(
+        r"(?i)\\b(?:dax|aktien|börse|markt|ölpreis|crash)\\b", suffix
+    ):
+        return suffix
+    return str(fallback or "Nachrichtenindex")[:60]
+
+
+def _headline_subject(title):
+    """Only identify explicit topics in a headline; never infer market moves."""
+    title = str(title or "").casefold()
+    if re.search(r"\\b(?:ki.aktien|tech|sap|infineon|nvidia|nasdaq)\\b", title):
+        return "Technologie und KI"
+    if re.search(r"\\b(?:europa|europäisch|luxus|herm[eè]s)\\b", title):
+        return "Europäische Aktien"
+    if re.search(r"\\b(?:dax|mdax|deutsche börse)\\b", title):
+        return "Deutscher Aktienmarkt"
+    if re.search(r"\\b(?:crash|risik|warn|sorge)\\b", title):
+        return "Marktmeinungen und Risiken"
+    if re.search(r"\\b(?:ölpreis|energie|rohstoff)\\b", title):
+        return "Energie und Rohstoffe"
+    return "Weitere Börsenthemen"
+
+
+def _headline_overview(items):
+    """A factual topic index, not a generated event or directional claim."""
+    topics = list(dict.fromkeys(_headline_subject(item["title"]) for item in items))
+    if not topics:
+        return "Es liegen datierte Börsenschlagzeilen vor."
+    return ("In den heutigen Überschriften geht es unter anderem um "
+            + ", ".join(topics[:3]) + ". Die Themenübersicht beruht nur auf "
+            "Schlagzeilen, nicht auf geprüften Artikelinhalten.")
+
+
 def grounded_news_digest(query, results, *, now=None, max_items=6):
     """An extractive headline overview: no generated details or invented events."""
     now = now or datetime.now(timezone.utc)
@@ -295,19 +333,32 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
             if len(headline_items) >= max_items:
                 break
         if headline_items:
-            lines = [f"**Börsen-Schlagzeilen vom {day}**", "",
-                     "*Nur datierte Überschriften aus dem Nachrichtenindex. "
-                     "Die Originalartikel konnten nicht ausreichend verifiziert "
-                     "werden; deshalb keine inhaltlichen Zusammenfassungen "
-                     "oder daraus abgeleiteten Kursbehauptungen.*", ""]
-            for item in headline_items:
+            lines = [f"## Börsenüberblick · {day}", "",
+                     "**Kurzüberblick (aus Überschriften)**",
+                     _safe_md(_headline_overview(headline_items)), "",
+                     "**Wichtigste Meldungen**", ""]
+            for index, item in enumerate(headline_items):
+                if index == 3:
+                    lines.extend(("", "**Weitere Meldungen**", ""))
                 url = item["url"].replace("(", "%28").replace(")", "%29")
                 local = datetime.fromisoformat(item["published_date"]).astimezone(
                     ZoneInfo("Europe/Berlin"))
-                lines.append(
-                    f"- **[{_safe_md(item['title'])}]({url})** "
-                    f"— {local.strftime('%H:%M')} Uhr "
-                    f"(Index-Zeitstempel; Originaltext ungeprüft)")
+                label = _safe_md(_headline_publisher(
+                    item["title"], item["publisher"]))
+                title = _safe_md(item["title"])
+                if index < 3:
+                    lines.append(
+                        f"{index + 1}. **[{title}]({url})**  "
+                        f"\\n   {label} · {local.strftime('%H:%M')} Uhr")
+                else:
+                    lines.append(
+                        f"- [{title}]({url}) — {label} · "
+                        f"{local.strftime('%H:%M')} Uhr")
+            lines.extend(("", "*Quellenhinweis: Datierte Schlagzeilen aus dem "
+                          "Nachrichtenindex. Veröffentlichungszeiten sind "
+                          "Index-Zeitstempel. Originalartikel nicht ausreichend "
+                          "verifiziert; keine Inhaltszusammenfassungen oder "
+                          "unbestätigten Kursangaben.*"))
             return {
                 "status": "headlines_only", "answer": "\n".join(lines),
                 "items": headline_items, "requested_count": max_items,
