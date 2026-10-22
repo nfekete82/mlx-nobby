@@ -387,7 +387,7 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                 if index < 3:
                     lines.append(
                         f"{index + 1}. **[{title}]({url})**  "
-                        f"\\n   {label} · {local.strftime('%H:%M')} Uhr")
+                        f"\n   {label} · {local.strftime('%H:%M')} Uhr")
                 else:
                     lines.append(
                         f"- [{title}]({url}) — {label} · "
