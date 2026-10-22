@@ -50,6 +50,11 @@ def test_scene_image_upload_is_bounded_managed_and_persisted(store):
     item = shorts_scene_images.upload_image(image_data())
     image_id = item["id"]
     assert shorts_scene_images.image_path(image_id).is_file()
+    import video_providers
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(video_providers, "IMAGE_ROOT", shorts_scene_images.image_directory())
+        assert video_providers.validate_first_frame(
+            shorts_scene_images.image_path(image_id)) == shorts_scene_images.image_path(image_id)
     assert shorts_scene_images.list_images()[0]["id"] == image_id
     with pytest.raises(ValueError):
         shorts_scene_images.image_path("../../secrets")
