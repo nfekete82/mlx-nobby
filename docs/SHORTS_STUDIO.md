@@ -14,6 +14,24 @@
    Failed/cancelled jobs offer Retry; completed projects offer Duplicate;
    active jobs display Cancel.
 
+## User scene images and local voices
+
+Upload one PNG/JPEG/WebP image (maximum 8 MiB) per scene or choose a previously
+uploaded image from the private Shorts scene-image gallery. The agent normalizes
+uploads to PNG in `~/.config/mlx-web/shorts/scene-images`, then saves only an
+opaque `ShortScene.scene_image_id` in drafts. Images remain in the gallery when
+the scene reference is removed. Replanning keeps existing selected images by
+scene position; saved drafts and revisions preserve them.
+
+Selected images force the existing consistency/LTX-I2V render path and become
+the native `first_frame`, bypassing AI keyframe generation for those scenes.
+Other scenes can still generate keyframes. Preflight verifies referenced files;
+changes to a scene image invalidate the scene's visual media.
+
+The non-expert Studio editor also exposes a project-wide voice and an optional
+`ShortScene.voice` for each scene's narration. Options are loaded from locally
+registered voices; cast voices continue to apply to named dialogue turns.
+
 ## Draft lifecycle
 
 Drafts persist atomically in `~/.config/mlx-web/shorts/drafts.json`. Each has
@@ -121,6 +139,9 @@ names. All paths are relative to their service (agent normally 8010; web 8090).
 | --- | --- | --- | --- | --- |
 | POST | `/api/shorts/plan` | `/api/mlx/shorts/plan` | Briefing → `{draft}` | 201 / 201 |
 | GET | `/api/shorts/capabilities` | `/api/mlx/shorts/capabilities` | None → `{qualities, music, sfx, transitions}` | 200 / 200 |
+| POST | `/api/shorts/scene-images` | `/api/mlx/shorts/scene-images` | Base64 PNG/JPG/WebP → `{id, url}` | 201 / 201 |
+| GET | `/api/shorts/scene-images` | `/api/mlx/shorts/scene-images` | None → `{images}` | 200 / 200 |
+| GET | `/api/shorts/scene-images/{image_id}` | `/api/mlx/shorts/scene-images/{image_id}` | Opaque image ID → managed PNG | 200 / 200 |
 | GET | `/api/shorts/drafts` | `/api/mlx/shorts/drafts` | None → `{drafts}` (newest updated first) | 200 / 200 |
 | POST | `/api/shorts/drafts` | `/api/mlx/shorts/drafts` | DraftWrite → `{draft}` | 201 / 201 |
 | GET | `/api/shorts/drafts/{draft_id}` | `/api/mlx/shorts/drafts/{draft_id}` | None → `{draft}` | 200 / 200 |
