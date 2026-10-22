@@ -45,4 +45,15 @@ assert.match(embeddedCSS, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/
 assert.match(embeddedCSS, /html\.converter-embedded h1 \{ display: none; \}/);
 assert.doesNotMatch(controller, /createSession|deleteSession|replaceChildren\(.*messages|window\.location\s*=/);
 
+assert.match(embedded, /id="dropzoneFiles"/);
+assert.match(embedded, /id="dropzoneEmpty"/);
+assert.match(embedded, /image-converter\.js\?v=4-file-previews/);
+assert.match(embeddedCSS, /\.dropzone-files/);
+assert.match(embeddedCSS, /\.dropzone-thumb-image/);
+const converterJS = fs.readFileSync(new URL('../frontend/assets/image-converter.js', import.meta.url), 'utf8');
+assert.match(converterJS, /renderDropzoneFiles\(\)/);
+assert.match(converterJS, /PREVIEW_LIMIT = 3/);
+assert.match(converterJS, /name\.textContent = file\.name/);
+assert.match(converterJS, /URL\.revokeObjectURL/);
+assert.match(converterJS, /drop\.addEventListener\('drop'/);
 console.log('Image converter foreground modal, no-obstruction layout and chat preservation contracts passed.');
