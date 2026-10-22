@@ -7908,9 +7908,12 @@ def tool_web_search(request):
             )
             if len(digest["items"]) >= requested_count or len(attempted) >= max_attempts:
                 break
-        if digest is None:
+        # Keep dated index headlines available for the explicitly labeled
+        # finance fallback. Publisher-only HTML fetching above must not
+        # discard Google News RSS wrappers before headline evaluation.
+        if digest is None or digest.get("status") == "no_summarizable_articles":
             digest = grounded_news_digest(
-                query, [], now=now, max_items=requested_count
+                query, attempted + candidates, now=now, max_items=requested_count
             )
         if digest.get("status") == "available":
             from agent.news_briefing import enhance_grounded_news
