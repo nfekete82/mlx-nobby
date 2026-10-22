@@ -5587,8 +5587,14 @@ def _direct_chat_action(prompt, file_context=None, conversation_context=None):
     if media.handles_turn:
         return media.chat_routing()["intent"]
 
-    if not file_context and _personal_reflection_chat(prompt):
-        return "normal_chat"
+    # Prefer the guarded personal-story route over accidental finance/search
+    # keywords, without intercepting attached files or coding workspaces.
+    if not file_context and not _looks_like_coding_action(prompt, conversation_context):
+        from agent.personal_advice_routing import is_personal_advice_without_external_request
+        if (is_personal_advice_without_external_request(prompt)
+                and _trusted_workspace_chat_action(
+                    prompt, file_context, conversation_context) is None):
+            return "normal_chat"
 
     # A user asking to rate a person, photograph or outfit wants a chat/vision
     # response, not a stock quote. Keep the request out of the finance tool
@@ -10187,6 +10193,17 @@ def run_chat_action(request: ChatActionRequest):
         return chat_tool_result(action, "failed", error="Aktion ist nicht registriert")
     try:
         data = handler(request)
+        if action == "web_search" and isinstance(data, dict):
+            from agent.personal_advice_routing import is_personal_advice_without_external_request
+            if (isinstance(data.get("results"), list)
+                    and not data["results"]
+                    and not data.get("weather_forecast")
+                    and not data.get("news_digest")
+                    and is_personal_advice_without_external_request(request.prompt)):
+                # The Agent authorizes chat fallback only for personal stories,
+                # never for genuine external news/weather/product research.
+                data = dict(data)
+                data["empty_search_chat_fallback"] = True
         artifacts = []
         if action in {
             "image_generate",
