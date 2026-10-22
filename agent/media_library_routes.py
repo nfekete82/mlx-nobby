@@ -26,7 +26,8 @@ def list_assets(kind="all", limit=400):
         if not root.is_dir():
             continue
         for path in root.iterdir():
-            if not path.is_file() or path.is_symlink() or path.suffix.lower() != SUFFIX[media_kind]:
+            valid_suffixes = {".webp", ".png"} if media_kind == "image" else {SUFFIX[media_kind]}
+            if not path.is_file() or path.is_symlink() or path.suffix.lower() not in valid_suffixes:
                 continue
             try:
                 asset_id = media_lifecycle._validate_id(media_kind, path.stem)

@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 import image_registry as registry
 from image_job_timings import ImageJobTimings
+from image_output_format import finalize_image
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
 from image_region_edit import prepare_region, composite_region
@@ -701,8 +702,10 @@ def _generate_result(
             ) from cleanup_error
     if saving_callback:
         saving_callback()
+    path = finalize_image(path)
     return {
-        "id": image_id, "path": str(path), "mime_type": "image/png",
+        "id": image_id, "path": str(path),
+        "mime_type": "image/webp" if path.suffix == ".webp" else "image/png",
         "width": params["width"], "height": params["height"],
         "prompt": params["prompt"], "original_prompt": request.original_prompt or request.prompt,
         "negative_prompt": params.get("negative_prompt"),
@@ -1030,13 +1033,17 @@ def _edit_result_inner(
     # legitimate global edits, and never claims semantic compliance.
     quality_check = image_change_advisory(source, path) if not is_reference else None
     source_image_id = comparison_image_id(source, OUTPUT) if not is_reference else None
+    # Exact masked-region preservation requires lossless PNG pixels outside
+    # the requested area. Ordinary edits still finalize as WebP 90.
+    if not request.region_edit:
+        path = finalize_image(path)
 
     return {
         **({"source_image_id": source_image_id} if source_image_id else {}),
         **({"quality_check": quality_check} if quality_check else {}),
         "id": image_id,
         "path": str(path),
-        "mime_type": "image/png",
+        "mime_type": "image/webp" if path.suffix == ".webp" else "image/png",
         "width": width,
         "height": height,
         "prompt": request.prompt,
@@ -1230,11 +1237,12 @@ def _upscale_result(
 
     with Image.open(path) as image:
         width, height = image.size
+    path = finalize_image(path)
 
     return {
         "id": image_id,
         "path": str(path),
-        "mime_type": "image/png",
+        "mime_type": "image/webp" if path.suffix == ".webp" else "image/png",
         "width": width,
         "height": height,
         "source_width": source_width,
@@ -1507,6 +1515,9 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output_path is not None:
             output_path.unlink(missing_ok=True)
+            # If encoding completed just before cancellation/failure, remove
+            # the alternate finalized artifact too, without touching inputs.
+            output_path.with_suffix(".webp").unlink(missing_ok=True)
         _update_job(
             job_id,
             status="cancelled",
@@ -1517,6 +1528,9 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
     except Exception as exc:
         if output_path is not None:
             output_path.unlink(missing_ok=True)
+            # If encoding completed just before cancellation/failure, remove
+            # the alternate finalized artifact too, without touching inputs.
+            output_path.with_suffix(".webp").unlink(missing_ok=True)
         if cancel_event.is_set():
             _update_job(
                 job_id, status="cancelled", result=None,

@@ -69,8 +69,16 @@ def _validate_id(kind: str, asset_id: str) -> str:
 
 def _expected_path(kind: str, asset_id: str) -> Path:
     asset_id = _validate_id(kind, asset_id)
-    suffix = ".png" if kind == "image" else ".mp4"
-    return (_root_for(kind) / f"{asset_id}{suffix}").expanduser().resolve()
+    root = _root_for(kind)
+    if kind == "image":
+        webp = (root / f"{asset_id}.webp").expanduser()
+        # New files are WebP, but previously generated PNGs stay readable.
+        if webp.is_file() and not webp.is_symlink():
+            return webp.resolve()
+        suffix = ".png"
+    else:
+        suffix = ".mp4"
+    return (root / f"{asset_id}{suffix}").expanduser().resolve()
 
 
 def _validate_path(kind: str, asset_id: str, path: str | Path | None = None) -> Path:
