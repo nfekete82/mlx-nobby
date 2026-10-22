@@ -10,6 +10,13 @@
     const backdrop = document.getElementById('imageConverterBackdrop');
     if (!button || !panel || !frame || !back || !backdrop) return;
 
+    // Mount directly under <body>: the chat grid is a separate stacking context.
+    // A z-index on a modal nested inside .main cannot overtake the composer.
+    document.body.appendChild(panel);
+    const backgroundLayers = [document.querySelector('.app'), document.querySelector('.composer-wrap')]
+      .filter(Boolean);
+    const originalInert = backgroundLayers.map(element => element.inert);
+
     let active = false;
     let previousFocus = null;
     const open = () => {
@@ -20,6 +27,7 @@
       panel.hidden = false;
       panel.setAttribute('aria-hidden', 'false');
       document.body.classList.add('mlx-image-converter-open');
+      backgroundLayers.forEach(element => { element.inert = true; });
       button.classList.add('active');
       button.setAttribute('aria-pressed', 'true');
       document.getElementById('railImageConverter')?.setAttribute('aria-pressed', 'true');
@@ -32,6 +40,7 @@
       panel.hidden = true;
       panel.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('mlx-image-converter-open');
+      backgroundLayers.forEach((element, index) => { element.inert = originalInert[index]; });
       button.classList.remove('active');
       button.setAttribute('aria-pressed', 'false');
       document.getElementById('railImageConverter')?.setAttribute('aria-pressed', 'false');

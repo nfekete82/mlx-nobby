@@ -33,8 +33,29 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     assert abs(bounds["x"] + bounds["width"] / 2 - page.viewport_size["width"] / 2) < 4
     assert page.url.endswith("/chat")  # Modal: no redirect or second page.
 
+    # The modal must win hit-testing at the same screen coordinates as the composer.
+    front_layer = page.evaluate("""() => {
+        const panel = document.getElementById('imageConverterWorkspace');
+        const shell = document.querySelector('.mlx-image-converter-modal-shell');
+        const r = shell.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2,
+                                              r.top + r.height / 2);
+        return {
+            bodyChild: panel.parentElement === document.body,
+            foreground: shell.contains(top),
+            chatInert: document.querySelector('.app').inert,
+        };
+    }""")
+    assert front_layer == {"bodyChild": True, "foreground": True, "chatInert": True}
+
     inside = page.frame_locator("#imageConverterFrame")
     expect(inside.locator("#converterForm")).to_be_visible()
+
+    if page.viewport_size["width"] >= 900:
+        sizes = inside.locator("html").evaluate(
+            "node => ({content: node.scrollHeight, available: node.clientHeight})"
+        )
+        assert sizes["content"] <= sizes["available"] + 1, sizes
     inside.locator("#imageFiles").set_input_files({
         "name": "test.png", "mimeType": "image/png", "buffer": _png(),
     })
@@ -51,6 +72,7 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     page.locator("#imageConverterBack").click()
     expect(page.locator("#imageConverterWorkspace")).to_be_hidden()
     expect(page.locator(".composer-wrap")).to_be_visible()
+    assert not page.evaluate("document.querySelector('.app').inert")
     assert page.locator("#input").input_value() == ""
     assert agent.count("/api/runtime/chat/stream", "POST") == 0
 
