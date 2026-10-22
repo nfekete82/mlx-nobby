@@ -1248,20 +1248,18 @@ def delete_chat_images(chat):
     failed = []
 
     for image_id in collect_chat_image_ids(chat):
-        image_path = IMAGE_DIRECTORY / f"{image_id}.png"
-
-        try:
-            image_path.unlink()
+        removed = False
+        for suffix in (".webp", ".png"):
+            image_path = IMAGE_DIRECTORY / f"{image_id}{suffix}"
+            try:
+                image_path.unlink()
+                removed = True
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                failed.append({"image_id": image_id, "error": str(exc)})
+        if removed:
             deleted.append(image_id)
-        except FileNotFoundError:
-            # Another cleanup may already have removed the image.
-            # The desired final state is therefore already reached.
-            pass
-        except Exception as exc:
-            failed.append({
-                "image_id": image_id,
-                "error": str(exc),
-            })
 
     return deleted, failed
 
@@ -8620,45 +8618,41 @@ def _resolve_image_artifact_source(artifact_id):
         )
 
     image_directory = IMAGE_DIRECTORY.resolve()
-    source = (
-        image_directory / f"{match.group('image_id')}.png"
-    ).resolve()
+    image_id = match.group("image_id")
+    source = next(
+        (image_directory / f"{image_id}{suffix}"
+         for suffix in (".webp", ".png")
+         if (image_directory / f"{image_id}{suffix}").is_file()),
+        None,
+    )
+    if source is None or source.is_symlink():
+        raise HTTPException(404, "Referenziertes Bild ist nicht verfügbar")
 
+    source = source.resolve()
     if source.parent != image_directory:
-        raise HTTPException(
-            status_code=422,
-            detail="Ungültige Image-Artifact-ID",
-        )
-    if not source.is_file():
-        raise HTTPException(
-            status_code=404,
-            detail="Referenziertes Bild ist nicht verfügbar",
-        )
-
+        raise HTTPException(422, "Ungültige Image-Artifact-ID")
     try:
         with source.open("rb") as handle:
             header = handle.read(33)
     except OSError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail="Referenziertes Bild ist nicht verfügbar",
-        ) from exc
+        raise HTTPException(404, "Referenziertes Bild ist nicht verfügbar") from exc
 
-    if (
-        len(header) != 33
-        or not header.startswith(b"\x89PNG\r\n\x1a\n")
-        or header[8:12] != b"\x00\x00\x00\r"
-        or header[12:16] != b"IHDR"
-        or int.from_bytes(header[16:20], "big") <= 0
-        or int.from_bytes(header[20:24], "big") <= 0
-        or int.from_bytes(header[29:33], "big")
-        != zlib.crc32(header[12:29])
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Image-Artifact ist kein gültiges PNG",
+    if source.suffix == ".webp":
+        valid = (len(header) >= 16 and header.startswith(b"RIFF")
+                 and header[8:12] == b"WEBP"
+                 and header[12:16] in {b"VP8 ", b"VP8L", b"VP8X"})
+    else:
+        valid = (
+            len(header) == 33
+            and header.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
+            and header[8:12] == b"\\x00\\x00\\x00\\r"
+            and header[12:16] == b"IHDR"
+            and int.from_bytes(header[16:20], "big") > 0
+            and int.from_bytes(header[20:24], "big") > 0
+            and int.from_bytes(header[29:33], "big") == zlib.crc32(header[12:29])
         )
-
+    if not valid:
+        raise HTTPException(422, "Image-Artifact ist kein gültiges Bild")
     return source
 
 
@@ -9057,7 +9051,8 @@ def _image_artifact(result, action):
     if (
         not IMAGE_ID_PATTERN.fullmatch(image_id)
         or image_path.parent != IMAGE_DIRECTORY
-        or image_path.suffix != ".png"
+        or image_path.suffix not in {".png", ".webp"}
+        or image_path.name != f"{image_id}{image_path.suffix}"
     ):
         raise HTTPException(
             status_code=502,
@@ -9067,9 +9062,9 @@ def _image_artifact(result, action):
     artifact = {
         "artifact_id": f"image-{image_id}",
         "image_id": image_id,
-        "name": f"{image_id}.png",
+        "name": image_path.name,
         "path": str(image_path),
-        "mime_type": "image/png",
+        "mime_type": "image/webp" if image_path.suffix == ".webp" else "image/png",
         "width": result.get("width"),
         "height": result.get("height"),
         "prompt": result.get("prompt"),
@@ -9448,12 +9443,17 @@ def image_generate_api(request: dict):
 def image_download(image_id: str, download: bool = False):
     if not IMAGE_ID_PATTERN.fullmatch(image_id):
         raise HTTPException(status_code=404, detail="Bild nicht gefunden")
-    image_path = IMAGE_DIRECTORY / f"{image_id}.png"
-    if not image_path.is_file():
+    image_path = next(
+        (IMAGE_DIRECTORY / f"{image_id}{suffix}"
+         for suffix in (".webp", ".png")
+         if (IMAGE_DIRECTORY / f"{image_id}{suffix}").is_file()),
+        None,
+    )
+    if image_path is None or image_path.is_symlink():
         raise HTTPException(status_code=404, detail="Bild nicht gefunden")
     return FileResponse(
         image_path,
-        media_type="image/png",
+        media_type="image/webp" if image_path.suffix == ".webp" else "image/png",
         filename=image_path.name if download else None,
     )
 
