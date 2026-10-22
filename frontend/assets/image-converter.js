@@ -1,49 +1,16 @@
 (() => {
   'use strict';
 
-  const messages = {
-    de: {
-      header: 'Lokaler Bildkonverter',
-      heading: 'Bilder konvertieren & komprimieren',
-      intro: 'Bis zu 40 Bilder gleichzeitig. Keine KI, kein Cloud-Upload. Originaldateien bleiben unverändert.',
-      drop: 'Bilder hier ablegen oder auswählen',
-      format: 'Zielformat',
-      png: 'PNG (verlustfrei)',
-      quality: 'Qualität',
-      maxEdge: 'Maximale Kantenlänge',
-      original: 'Originalauflösung',
-      alpha: 'Transparenz bei JPG',
-      submit: 'Konvertieren und ZIP herunterladen',
-      footer: 'Das ZIP enthält conversion-report.json mit Dateigrößen und eventuellen Fehlern einzelner Bilder.',
-      none: 'Noch keine Dateien ausgewählt',
-      files: ' Dateien, ',
-      working: 'Bilder werden lokal konvertiert…',
-      done: ' Bild(er) fertig.',
-      error: 'Fehler: ',
-      heic: 'Hinweis: HEIC ist auf diesem Server noch nicht verfügbar.',
-      several: 'Mehrere',
-    },
-    en: {
-      header: 'Local image converter',
-      heading: 'Convert and compress images',
-      intro: 'Up to 40 images at once. No AI, no cloud upload. Originals remain unchanged.',
-      drop: 'Drop images here or choose files',
-      format: 'Output format',
-      png: 'PNG (lossless)',
-      quality: 'Quality',
-      maxEdge: 'Maximum edge length',
-      original: 'Original resolution',
-      alpha: 'Transparency for JPG',
-      submit: 'Convert and download ZIP',
-      footer: 'The ZIP includes conversion-report.json with image sizes and any per-file errors.',
-      none: 'No files selected',
-      files: ' files, ',
-      working: 'Converting images locally…',
-      done: ' image(s) converted.',
-      error: 'Error: ',
-      heic: 'HEIC support is not available on this server.',
-      several: 'Several',
-    }
+  // Keep translations in the same JSON-driven i18n system as the other studios.
+  let messages = {};
+  const fallbackEnglish = {
+    none: 'No files selected',
+    files: ' files, ',
+    working: 'Converting images locally…',
+    done: ' image(s) converted.',
+    error: 'Error: ',
+    heic: 'HEIC support is not available on this server.',
+    several: 'Several'
   };
 
   const form = document.getElementById('converterForm');
@@ -65,21 +32,14 @@
     }
   }
 
-  const enErrors = {
-    'Ungültiges Zielformat, Qualität oder Bildgröße': 'Invalid output format, quality or image size',
-    'Ungültige Hintergrundfarbe': 'Invalid background color',
-    'Maximal 40 Bilder pro Stapel': 'Maximum 40 images per batch',
-    'Upload überschreitet Größenlimit': 'Upload exceeds size limit',
-    'Keine lesbaren Bilder gefunden': 'No readable images found'
-  };
   const localizedError = detail => language === 'en'
-    ? enErrors[detail] || detail
+    ? messages.errors_en?.[detail] || detail
     : detail;
 
   let language = initialLanguage();
   let statusKey = '';
   let statusParams = {};
-  const t = key => messages[language][key] || key;
+  const t = key => messages[language]?.[key] || messages.en?.[key] || fallbackEnglish[key] || key;
 
   function updateSelected() {
     if (!input.files.length) {
@@ -109,6 +69,7 @@
     if (nextLanguage !== 'de' && nextLanguage !== 'en') return;
     language = nextLanguage;
     document.documentElement.lang = language;
+    if (!messages[language]) return;
     document.title = t('heading') + ' · MLX Nobby';
     document.querySelectorAll('[data-converter-i18n]').forEach(node => {
       node.textContent = t(node.dataset.converterI18n);
@@ -122,7 +83,24 @@
     if (event.data?.type === 'mlx-image-converter-language') setLanguage(event.data.language);
   });
 
-  setLanguage(language);
+  document.documentElement.lang = language;
+  fetch('/i18n/image-converter.json', {cache: 'no-cache'})
+    .then(response => {
+      if (!response.ok) throw new Error('Could not load converter translations');
+      return response.json();
+    })
+    .then(translations => {
+      if (!translations?.en || !translations?.de) {
+        throw new Error('Converter language dictionaries are incomplete');
+      }
+      messages = translations;
+      setLanguage(language);
+    })
+    .catch(error => {
+      console.error('[image converter i18n]', error);
+      setLanguage('en');
+    });
+
   quality.addEventListener('input', () => {
     document.getElementById('qualityText').textContent = quality.value + ' %';
   });
