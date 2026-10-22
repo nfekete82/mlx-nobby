@@ -14,7 +14,7 @@
       });
     }
   </script>
-  <link rel="stylesheet" href="/assets/image-converter.css?v=3-layered-modal">
+  <link rel="stylesheet" href="/assets/image-converter.css?v=4-file-previews">
 </head>
 <body>
   <main>
@@ -23,8 +23,11 @@
     <p data-converter-i18n="intro">Up to 40 images at once. No AI, no cloud upload. Originals remain unchanged.</p>
     <form id="converterForm">
       <label id="dropzone" for="imageFiles">
-        <span data-converter-i18n="drop">Drop images here or choose files</span>
-        <small>PNG · JPG · HEIC · WebP · TIFF · BMP</small>
+        <span id="dropzoneEmpty" class="dropzone-empty">
+          <span data-converter-i18n="drop">Drop images here or choose files</span>
+          <small>PNG · JPG · HEIC · WebP · TIFF · BMP</small>
+        </span>
+        <span id="dropzoneFiles" class="dropzone-files" aria-live="polite" hidden></span>
       </label>
       <input id="imageFiles" name="files" type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.webp,.tif,.tiff,.bmp" multiple required>
       <output id="selection" aria-live="polite">No files selected</output>
@@ -56,6 +59,6 @@
     </form>
     <p class="foot" data-converter-i18n="footer">The ZIP includes conversion-report.json with image sizes and any per-file errors.</p>
   </main>
-  <script src="/assets/image-converter.js?v=2-bilingual"></script>
+  <script src="/assets/image-converter.js?v=4-file-previews"></script>
 </body>
 </html>
