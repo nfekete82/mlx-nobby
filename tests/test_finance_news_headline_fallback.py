@@ -71,3 +71,24 @@ def test_finance_headlines_readable_sections_and_source_timestamps():
     assert "Originalartikel nicht ausreichend verifiziert" in answer
     assert "https://news.google.com/rss/articles/test" in answer
     assert len(digest["items"]) == 4
+
+
+def test_market_relevance_order_and_clean_source_labels():
+    rows = [
+        _row("Geld machen mit Megatrends - STERN.de",
+             "https://news.google.com/rss/articles/tips"),
+        _row("Aktien Frankfurt: Dax folgt Tech-Branche mit nächstem Rückschlag - boerse.de - boerse.de",
+             "https://news.google.com/rss/articles/market"),
+        _row("Maustelle des Kapitalismus: Warum Geschäftsmodelle unschlagbar sind - Finanzen.net",
+             "https://news.google.com/rss/articles/opinion"),
+        _row("DAX: KI-Aktien belasten Markt - FAZ",
+             "https://news.google.com/rss/articles/dax"),
+    ]
+    digest = grounded_news_digest("börsennews von heute", rows, now=NOW)
+    answer = digest["answer"]
+    assert digest["status"] == "headlines_only"
+    assert digest["items"][0]["title"].startswith("Aktien Frankfurt")
+    assert "boerse.de - boerse.de" not in answer
+    assert r"\n   " not in answer
+    assert "FAZ · 12:00 Uhr" in answer
+    assert "Weitere Börsenthemen" not in answer

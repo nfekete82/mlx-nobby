@@ -246,14 +246,51 @@ def _headline_subject(title):
     return "Weitere Börsenthemen"
 
 
+def _clean_headline(title):
+    """Remove repeated publisher suffixes without rewriting the headline."""
+    title = " ".join(str(title or "").split())
+    parts = re.split(r"\s+-\s+", title)
+    source_words = {"faz", "stern", "wirtschaftswoche", "manager magazin",
+                    "handelsblatt", "n-tv", "ntv", "tagesschau"}
+    while len(parts) > 1 and (
+        parts[-1].casefold() == parts[-2].casefold()
+        or (parts[-1].casefold() in source_words)
+        or (parts[-1].casefold().endswith((".de", ".com", ".net"))
+            and len(parts[-1]) < 45)
+    ):
+        parts.pop()
+    return " - ".join(parts)[:180]
+
+
+def _headline_rank(item):
+    """Promote concrete market movements over evergreen investing opinions."""
+    title = str(item.get("title") or "").casefold()
+    score = 0
+    if re.search(r"\b(?:dax|mdax|nasdaq|wall street|s&p\s*500)\b", title):
+        score += 5
+    if re.search(r"\b(?:verlust\w*|rückschlag\w*|fallen|"
+                 r"belast\w*|handelstag\w*|aktien europa)\b", title):
+        score += 3
+    if re.search(r"\b(?:sap|infineon|siemens|nvidia|ölpreis|"
+                 r"quartalszahl\w*|big.tech)\b", title):
+        score += 2
+    if re.search(r"\b(?:warum|geld machen|mautstelle|selfmade|"
+                 r"kauft|crash wird|so erkennen)\b", title):
+        score -= 5
+    return score
+
+
 def _headline_overview(items):
-    """A factual topic index, not a generated event or directional claim."""
-    topics = list(dict.fromkeys(_headline_subject(item["title"]) for item in items))
+    """Identify explicit topics only, without adding unsourced market claims."""
+    topics = list(dict.fromkeys(
+        topic for item in items
+        if (topic := _headline_subject(item["title"])) != "Weitere Börsenthemen"
+    ))
     if not topics:
-        return "Es liegen datierte Börsenschlagzeilen vor."
-    return ("In den heutigen Überschriften geht es unter anderem um "
-            + ", ".join(topics[:3]) + ". Die Themenübersicht beruht nur auf "
-            "Schlagzeilen, nicht auf geprüften Artikelinhalten.")
+        return "Die Schlagzeilen behandeln unterschiedliche Börsenthemen."
+    return ("Die Meldungen betreffen unter anderem "
+            + ", ".join(topics[:3]) + ". Details und Hintergründe "
+            "sind ohne geprüfte Originalartikel nicht bestätigt.")
 
 
 def grounded_news_digest(query, results, *, now=None, max_items=6):
@@ -333,6 +370,7 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
             if len(headline_items) >= max_items:
                 break
         if headline_items:
+            headline_items.sort(key=_headline_rank, reverse=True)
             lines = [f"## Börsenüberblick · {day}", "",
                      "**Kurzüberblick (aus Überschriften)**",
                      _safe_md(_headline_overview(headline_items)), "",
@@ -345,11 +383,11 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                     ZoneInfo("Europe/Berlin"))
                 label = _safe_md(_headline_publisher(
                     item["title"], item["publisher"]))
-                title = _safe_md(item["title"])
+                title = _safe_md(_clean_headline(item["title"]))
                 if index < 3:
                     lines.append(
                         f"{index + 1}. **[{title}]({url})**  "
-                        f"\\n   {label} · {local.strftime('%H:%M')} Uhr")
+                        f"\n   {label} · {local.strftime('%H:%M')} Uhr")
                 else:
                     lines.append(
                         f"- [{title}]({url}) — {label} · "
