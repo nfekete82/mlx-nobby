@@ -20,6 +20,7 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(shorts_jobs, "SHORTS_DIRECTORY", root)
     monkeypatch.setattr(shorts_jobs, "SHORTS_JOBS_FILE", root / "jobs.json")
     monkeypatch.setattr(shorts_jobs, "MUSIC_DIRECTORY", tmp_path / "music")
+    monkeypatch.setattr(shorts_scene_images, "image_directory", lambda: tmp_path / "images")
     with shorts_jobs._workers_lock:
         shorts_jobs._workers.clear()
     return root
