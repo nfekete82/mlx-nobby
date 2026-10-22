@@ -2223,6 +2223,7 @@ function renderVideoJobCard(message) {
     details.className = 'batch-chat-details';
     const detailLines = [
         'Phase: ' + presentation.phase,
+        job.scene_count ? (String(window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || 'en').startsWith('de') ? 'Szene ' : 'Scene ') + job.scene_number + ' / ' + job.scene_count : '',
         presentation.elapsed != null
             ? 'Verstrichen: ' + formatImageJobDuration(presentation.elapsed)
             : '',
@@ -2234,6 +2235,17 @@ function renderVideoJobCard(message) {
     details.textContent = detailLines.join('\n');
     card.appendChild(details);
     appendMediaProgress(card, job, presentation);
+    if (job.multi_image_mode === 'scenes' && ['failed', 'cancelled'].includes(job.status) && job.native_job_id) {
+        const retry = document.createElement('button');
+        retry.type = 'button'; retry.className = 'message-action-btn';
+        retry.textContent = rt('multi_video_retry', 'Reuse completed scenes · Retry');
+        retry.addEventListener('click', async () => {
+            retry.disabled = true;
+            try { await window.MLXChatGeneration.retryVideoJob(message); }
+            catch (error) { details.textContent = error.message; retry.disabled = false; }
+        });
+        card.appendChild(retry);
+    }
     if (ACTIVE_VIDEO_JOB_STATUSES.has(job.status)) {
         const controls = document.createElement('div');
         controls.className = 'batch-chat-controls';

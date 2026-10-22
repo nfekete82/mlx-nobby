@@ -4195,6 +4195,8 @@ class ChatActionRequest(BaseModel):
     active_artifact_id: str | None = None
     image_options: dict | None = None
     video_options: dict | None = None
+    multi_image_mode: Literal["keyframes", "scenes"] | None = None
+    multi_images: list[dict] | None = Field(default=None, min_length=2, max_length=5)
     quality: Literal["preview", "fast", "standard", "quality", "ultra"] | None = None
     resolved_target: Literal[
         "chat", "image", "image_edit", "video", "shorts_generate",
@@ -8799,6 +8801,21 @@ def compile_video_prompt(prompt):
 
 
 def _video_payload(request, operation):
+    multi_sources = []
+    if operation == "multi_i2v":
+        if not request.multi_image_mode or not request.multi_images:
+            raise HTTPException(422, "Multi-Image-to-Video benötigt 2–5 Bilder und einen Modus")
+        for item in request.multi_images:
+            if set(item) - {"stored_path", "artifact_id", "frame_index", "strength"}:
+                raise HTTPException(422, "Unbekannte Multi-Image-Bildparameter")
+            if bool(item.get("stored_path")) == bool(item.get("artifact_id")):
+                raise HTTPException(422, "Jedes Bild benötigt genau eine verwaltete Quelle")
+            source = (_resolve_video_upload_source(item["stored_path"]) if item.get("stored_path")
+                      else _resolve_image_artifact_source(item["artifact_id"]))
+            multi_sources.append({"path": str(source),
+                                  **{key: item[key] for key in ("frame_index", "strength") if key in item}})
+    elif request.multi_images or request.multi_image_mode:
+        raise HTTPException(422, "Multi-Image-Bilder benötigen einen Modus")
     prompt = compile_video_prompt(request.prompt)
     if len(prompt) < 3:
         raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
@@ -8816,6 +8833,8 @@ def _video_payload(request, operation):
     if options.get("profile", "standard") not in ("standard", "uncensored"):
         raise HTTPException(422, "Video profile muss standard oder uncensored sein")
     payload.update(options)
+    if operation == "multi_i2v":
+        payload.update(images=multi_sources, multi_image_mode=request.multi_image_mode)
     if operation == "i2v":
         stored_path = str((request.file_context or {}).get("stored_path") or "").strip()
         if not stored_path and not request.active_artifact_id:
@@ -8887,7 +8906,8 @@ def _start_chat_video_job(action, request):
         _file_context_is_image(request.file_context)
         or bool(request.active_artifact_id)
     )
-    operation = "i2v" if action == "video_animate" or has_bound_image else "t2v"
+    operation = ("multi_i2v" if request.multi_image_mode else
+                 "i2v" if action == "video_animate" or has_bound_image else "t2v")
     payload = _video_payload(request, operation)
     with CHATS_LOCK:
         chat_id, chat_revision = _validated_image_job_chat_identity(request)
@@ -9504,6 +9524,12 @@ def shorts_job_api(job_id: str):
 def video_job_cancel_api(job_id: str):
     job = video_api.request("POST", "/jobs/" + video_api.job_id(job_id) + "/cancel", {}, timeout=30)
     return _video_job_tool_result(job)
+
+
+@app.post("/api/video/jobs/{job_id}/retry", status_code=202)
+def video_job_retry_api(job_id: str):
+    from agent import media_queue
+    return _video_job_tool_result(media_queue.retry_video_scenes(video_api.job_id(job_id)))
 
 
 @app.get("/api/videos/{video_id}")

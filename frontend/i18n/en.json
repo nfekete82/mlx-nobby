@@ -336,6 +336,7 @@
     }
   },
   "rendering": {
+        "multi_video_retry": "Reuse completed scenes · Retry",
     "image_preview_open": "Open larger image preview",
     "region_editor_button": "Edit region",
     "image_preview_title": "Image preview",

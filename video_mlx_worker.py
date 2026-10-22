@@ -140,6 +140,13 @@ def _generate(payload):
         )
         print(f"[profile] selected={profile} loras={len(loras)}{adapters}", flush=True)
         _install_progress_hook(pipe, stage1_steps, stage2_steps)
+        conditioning = {}
+        if payload.get("images"):
+            from ltx_pipelines_mlx.utils.args import ImageConditioningInput
+            conditioning["images"] = [ImageConditioningInput(
+                path=anchor["path"], frame_idx=int(anchor["frame_index"]),
+                strength=float(anchor["strength"]),
+            ) for anchor in payload["images"]]
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),
             output_path=str(output),
@@ -151,6 +158,7 @@ def _generate(payload):
             stage1_steps=stage1_steps,
             stage2_steps=stage2_steps,
             image=str(image) if image else None,
+            **conditioning,
         )
         if not output.is_file():
             raise RuntimeError("LTX-MLX worker produced no video")

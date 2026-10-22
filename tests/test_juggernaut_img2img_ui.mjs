@@ -29,5 +29,5 @@ test('frontend cache key changes and backend routes through bounded source', () 
   assert.match(imageService, /params\["strength"\]/);
   assert.match(imageService, /"strength": params\.get\("strength"\)/);
   assert.match(rendering, /artifact\.strength != null \? 'Strength '/);
-  assert.match(html, /rendering\.js\?v=20261021-image-strength/);
+  assert.match(html, /rendering\.js\?v=20261022-multi-image-video/);
 });

@@ -3038,6 +3038,7 @@ const imageFiles =
             }
             selectedMediaQuality = normalizedMediaQuality;
             let selectedVideoProfile = 'standard';
+            let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
             )
@@ -3099,6 +3100,7 @@ const imageFiles =
                     document.getElementById('videoDuration');
                 const profileField = document.getElementById('videoProfileField');
                 const profileSelect = document.getElementById('videoProfile');
+                window.MLXMultiImageVideo?.configure(mediaQualityKind, imageFiles, prompt);
                 if (profileField && profileSelect) {
                     profileField.hidden = mediaQualityKind !== 'video';
                     profileSelect.value = 'standard';
@@ -3506,6 +3508,12 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            try {
+                                multiVideoSelection = window.MLXMultiImageVideo?.selection(choice) || null;
+                            } catch (error) {
+                                window.MLXMultiImageVideo?.showError(error.message);
+                                return;
+                            }
                             if (hasRagnarokSampling()) {
                                 const parsed = parseSamplingValues(
                                     samplingSteps?.value, samplingCfg?.value
@@ -3578,7 +3586,8 @@ const imageFiles =
                             if (
                                 acceptEnter &&
                                 event.key === 'Enter' &&
-                                !event.shiftKey
+                                !event.shiftKey &&
+                                !event.target?.closest?.('#multiImageVideo')
                             ) {
                                 event.preventDefault();
                                 onConfirm();
@@ -3712,7 +3721,8 @@ const imageFiles =
 
             const actionPayload = {
                 prompt: prompt,
-                action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
+                ...(multiVideoSelection || {}),
+                action: multiVideoSelection ? 'video_generate' : imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                 reference_mode: referenceMode,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,
@@ -5143,6 +5153,18 @@ function watchBatchJob(session, jobId) {
 
 
     window.MLXChatGeneration = {
+        async retryVideoJob(message) {
+            const session = MLXChatSessions.currentSession();
+            if (!session || !session.messages.includes(message)) return;
+            const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(message.video_job.id) + '/retry', {method: 'POST'});
+            if (!response.ok) throw new Error(await response.text());
+            const result = await response.json();
+            if (MLXChatSessions.currentSession() !== session || !session.messages.includes(message)) return;
+            updateVideoJobMessage(session, message, result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderMessages({contentUpdated: true});
+            watchVideoJob(session, message);
+        },
         isAgentRunning: () => agentRunActive,
         configure: configure,
         regenerateLastAnswer: regenerateLastAnswer,

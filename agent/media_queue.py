@@ -211,7 +211,9 @@ def enqueue(kind, request_payload):
         raise HTTPException(422, "Media-Job benötigt ein JSON-Objekt")
 
     payload = request_payload.get("payload")
-    if kind == "video" and isinstance(payload, dict) and payload.get("profile") == "uncensored":
+    if kind == "video" and isinstance(payload, dict) and (
+        payload.get("profile") == "uncensored" or request_payload.get("operation") == "multi_i2v"
+    ):
         # Ask the service owning the adapter environment before persisting a
         # queue job or waking the heavy-runtime scheduler.
         try:
@@ -294,6 +296,7 @@ def _mirror_native(job_id, native):
         "semantic_operation", "reference_mode", "reference_relation", "reference_used",
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
         "runtime_handoff", "performance_timings", "provider_timing",
+        "scene_number", "scene_count", "segments", "multi_image_mode",
     ):
         if key in native:
             copied[key] = native.get(key)
@@ -312,6 +315,22 @@ def _cancel_requested(job_id):
 def _wait(seconds=POLL_INTERVAL):
     _wake.wait(timeout=seconds)
     _wake.clear()
+
+
+def retry_video_scenes(job_id):
+    """Queue a fresh native job while retaining completed scene checkpoints."""
+    with _jobs_lock:
+        _ensure_loaded_locked()
+        previous = _jobs.get(_validated_id(job_id))
+        request = deepcopy((previous or {}).get("request") or {})
+        payload = request.get("payload") or {}
+        if (not previous or previous.get("kind") != "video"
+                or previous.get("status") not in {"failed", "cancelled"}
+                or payload.get("multi_image_mode") != "scenes" or not previous.get("native_job_id")):
+            raise HTTPException(422, "Nur fehlgeschlagene oder abgebrochene Szenenjobs können fortgesetzt werden")
+        payload["resume_from"] = previous["native_job_id"]
+        request["payload"] = payload
+    return enqueue("video", request)
 
 
 def _service_retry_delay(attempts):
