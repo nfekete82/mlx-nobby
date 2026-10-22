@@ -59,6 +59,11 @@ def test_converter_inline_zip_and_return_to_chat(ui):
     inside.locator("#imageFiles").set_input_files({
         "name": "test.png", "mimeType": "image/png", "buffer": _png(),
     })
+    expect(inside.locator("#dropzone")).to_have_class("has-files")
+    expect(inside.locator(".dropzone-file")).to_have_count(1)
+    expect(inside.locator(".dropzone-file-name")).to_have_text("test.png")
+    expect(inside.locator(".dropzone-thumb-image")).to_be_visible()
+    expect(inside.locator("#dropzoneEmpty")).to_be_hidden()
     inside.locator("#fmt").select_option("WEBP")
     with page.expect_download() as download_event:
         inside.locator("#submit").click()
@@ -103,14 +108,15 @@ def test_converter_language_matches_chat_and_keeps_uploaded_files(ui):
     inside.locator("#imageFiles").set_input_files({
         "name": "bild.png", "mimeType": "image/png", "buffer": _png(),
     })
-    expect(inside.locator("#selection")).to_contain_text("1 files")
+    expect(inside.locator("#selection")).to_contain_text("1 file")
 
     # Switching the main app language updates the iframe in place.
     page.evaluate("window.MLXI18n.setLanguage('de')")
     expect(page.locator("#imageConverterWorkspaceTitle")).to_have_text("Bildkonverter")
     expect(inside.locator('[data-converter-i18n="format"]')).to_have_text("Zielformat")
     expect(inside.locator('[data-converter-i18n="drop"]')).to_contain_text("Bilder hier")
-    expect(inside.locator("#selection")).to_contain_text("1 Dateien")
+    expect(inside.locator("#selection")).to_contain_text("1 Datei")
+    expect(inside.locator(".dropzone-file-name")).to_have_text("bild.png")
     assert inside.locator("#imageFiles").evaluate("input => input.files.length") == 1
 
     page.evaluate("window.MLXI18n.setLanguage('en')")
@@ -120,3 +126,44 @@ def test_converter_language_matches_chat_and_keeps_uploaded_files(ui):
     )
     expect(inside.locator("#selection")).to_contain_text("1 files")
     assert inside.locator("#imageFiles").evaluate("input => input.files.length") == 1
+
+
+def test_converter_dropzone_shows_dragged_batch_and_more_count(ui):
+    page, _agent, _allowed = ui
+    _ensure_sidebar(page)
+    page.locator("#imageConverterButton").click()
+    inside = page.frame_locator("#imageConverterFrame")
+    drop = inside.locator("#dropzone")
+    expect(inside.locator("#dropzoneEmpty")).to_be_visible()
+
+    # Exercise the actual HTML5 drop handler, not just file input change.
+    drop.evaluate("""element => {
+        const transfer = new DataTransfer();
+        for (let index = 1; index <= 5; index += 1) {
+            transfer.items.add(new File(['test'], 'bild-' + index + '.png', {
+                type: 'image/png'
+            }));
+        }
+        element.dispatchEvent(new DragEvent('drop', {
+            dataTransfer: transfer, bubbles: true, cancelable: true
+        }));
+    }""")
+
+    expect(drop).to_have_class("has-files")
+    expect(inside.locator("#dropzoneEmpty")).to_be_hidden()
+    expect(inside.locator(".dropzone-file")).to_have_count(3)
+    expect(inside.locator(".dropzone-file-name")).to_have_text(
+        ["bild-1.png", "bild-2.png", "bild-3.png"]
+    )
+    expect(inside.locator(".dropzone-more")).to_have_text("+2 more files")
+    expect(inside.locator("#selection")).to_contain_text("5 files")
+
+    # Changing locale should preserve selection and retranslate the overflow.
+    page.evaluate("window.MLXI18n.setLanguage('de')")
+    expect(inside.locator(".dropzone-more")).to_have_text("+2 weitere Dateien")
+    assert inside.locator("#imageFiles").evaluate("element => element.files.length") == 5
+
+    inside.locator("#imageFiles").set_input_files([])
+    expect(drop).not_to_have_class("has-files")
+    expect(inside.locator("#dropzoneEmpty")).to_be_visible()
+    expect(inside.locator(".dropzone-file")).to_have_count(0)
