@@ -8,7 +8,6 @@ import uuid
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from agent import shorts_jobs
 
 MAX_BYTES = 8 * 1024 * 1024
 MAX_PIXELS = 20_000_000
@@ -16,14 +15,15 @@ IMAGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 def image_directory():
-    return shorts_jobs.SHORTS_DIRECTORY / "scene-images"
+    # The LTX provider only accepts direct children of the managed image root.
+    return Path.home() / ".config/mlx-web/images"
 
 
 def image_path(image_id):
     """Only opaque image ids may resolve to local managed PNGs."""
     if not isinstance(image_id, str) or not IMAGE_ID_RE.fullmatch(image_id):
         raise ValueError("invalid Shorts scene image id")
-    path = image_directory() / (image_id + ".png")
+    path = image_directory() / ("shorts-scene-" + image_id + ".png")
     if not path.is_file() or path.stat().st_size == 0:
         raise ValueError("Shorts scene image missing; upload it again")
     return path
@@ -55,8 +55,8 @@ def upload_image(content_base64):
     folder = image_directory()
     folder.mkdir(parents=True, exist_ok=True)
     image_id = uuid.uuid4().hex
-    final = folder / (image_id + ".png")
-    temporary = folder / (image_id + ".tmp")
+    final = folder / ("shorts-scene-" + image_id + ".png")
+    temporary = folder / ("shorts-scene-" + image_id + ".tmp")
     try:
         temporary.write_bytes(output.getvalue())
         temporary.replace(final)
@@ -69,6 +69,8 @@ def list_images(limit=60):
     folder = image_directory()
     if not folder.is_dir():
         return []
-    images = sorted(folder.glob("*.png"), key=lambda item: item.stat().st_mtime, reverse=True)
-    return [{"id": item.stem, "url": f"/api/mlx/shorts/scene-images/{item.stem}"}
-            for item in images[:limit] if IMAGE_ID_RE.fullmatch(item.stem) and item.stat().st_size > 0]
+    images = sorted(folder.glob("shorts-scene-*.png"), key=lambda item: item.stat().st_mtime, reverse=True)
+    return [{"id": item.stem.removeprefix("shorts-scene-"),
+             "url": f"/api/mlx/shorts/scene-images/{item.stem.removeprefix('shorts-scene-')}"}
+            for item in images[:limit] if IMAGE_ID_RE.fullmatch(item.stem.removeprefix("shorts-scene-"))
+            and item.stat().st_size > 0]
