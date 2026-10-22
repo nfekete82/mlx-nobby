@@ -258,6 +258,61 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
         if len(items) >= max_items:
             break
     day = now.astimezone(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y")
+    if not items and financial_news_topic(query):
+        # An indexed headline is not a verified article. Nevertheless a dated,
+        # relevant headline can be useful when the publisher article cannot be
+        # loaded (notably Google News RSS redirects). Label this lower-evidence
+        # mode explicitly; never invent a summary or a direct publisher URL.
+        from backend.news_query import filter_financial_news_results
+        headline_pool = filter_financial_news_results(query, pool)
+        headline_items, headline_keys = [], set()
+        for candidate in headline_pool:
+            if not isinstance(candidate, dict):
+                continue
+            title = str(candidate.get("title") or "").strip()
+            link = str(candidate.get("url") or "")
+            published = publication_time(candidate.get("published_date"))
+            title_key = _title_key(title)
+            if not title_key or len(title_key) < 2 or not published:
+                continue
+            if not host(link) or not link.startswith("https://"):
+                continue
+            if title_key in headline_keys:
+                continue
+            # A current RSS publication date does not make a historical
+            # retrospective into news about today's market.
+            historical = re.search(r"\b(?:19\d{2}|20\d{2})\b", title)
+            if historical and int(historical.group()) < now.year:
+                continue
+            headline_keys.add(title_key)
+            headline_items.append({
+                "title": title[:220], "url": link[:2000],
+                "published_date": published.isoformat(),
+                "article_loaded": False, "summary": "",
+                "publisher": str(candidate.get("engine") or host(link))[:100],
+                "evidence_level": "dated_headline_only",
+            })
+            if len(headline_items) >= max_items:
+                break
+        if headline_items:
+            lines = [f"**Börsen-Schlagzeilen vom {day}**", "",
+                     "*Nur datierte Überschriften aus dem Nachrichtenindex. "
+                     "Die Originalartikel konnten nicht ausreichend verifiziert "
+                     "werden; deshalb keine inhaltlichen Zusammenfassungen "
+                     "oder daraus abgeleiteten Kursbehauptungen.*", ""]
+            for item in headline_items:
+                url = item["url"].replace("(", "%28").replace(")", "%29")
+                local = datetime.fromisoformat(item["published_date"]).astimezone(
+                    ZoneInfo("Europe/Berlin"))
+                lines.append(
+                    f"- **[{_safe_md(item['title'])}]({url})** "
+                    f"— {local.strftime('%H:%M')} Uhr "
+                    f"(Index-Zeitstempel; Originaltext ungeprüft)")
+            return {
+                "status": "headlines_only", "answer": "\n".join(lines),
+                "items": headline_items, "requested_count": max_items,
+                "report_date": day, "evidence_level": "dated_headlines_only",
+            }
     if not items:
         return {
             "status": "no_summarizable_articles",
