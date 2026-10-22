@@ -124,3 +124,101 @@ html.converter-embedded .foot { margin: 9px 2px 0; }
 @media (max-width: 400px) {
   html.converter-embedded section { grid-template-columns: 1fr; }
 }
+
+/* Selected images appear INSIDE the drag/drop target, not only below it.
+   Two short rows fit the existing modal without introducing a scrollbar. */
+#dropzone .dropzone-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+#dropzone .dropzone-empty[hidden],
+#dropzone .dropzone-files[hidden] { display: none !important; }
+#dropzone.has-files {
+  padding: 10px 12px;
+  align-items: stretch;
+  justify-content: center;
+  text-align: left;
+}
+.dropzone-files {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 12px;
+  width: 100%;
+  min-width: 0;
+}
+.dropzone-file {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(147, 185, 234, .20);
+  border-radius: 10px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, .045);
+}
+.dropzone-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  flex: 0 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: rgba(88, 121, 170, .22);
+}
+.dropzone-thumb-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: relative;
+}
+.dropzone-thumb-image[hidden] { display: none !important; }
+.dropzone-thumb-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #b1c8ed;
+  font-size: 10px;
+  letter-spacing: .04em;
+  font-weight: 700;
+}
+.dropzone-thumb-fallback[hidden] { display: none !important; }
+.dropzone-file-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+.dropzone-file-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #f0f5ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.dropzone-file-size {
+  color: #a4b9d8;
+  font-size: 11px;
+  font-weight: 400;
+}
+.dropzone-more {
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  color: #b8c9e3;
+  font-size: 12px;
+  font-weight: 500;
+}
+@media (max-width: 560px) {
+  .dropzone-files { grid-template-columns: 1fr; }
+  #dropzone.has-files { justify-content: flex-start; min-height: 135px; }
+  .dropzone-files { max-height: 190px; overflow-y: auto; }
+}
