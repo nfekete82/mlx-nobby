@@ -325,8 +325,8 @@ def test_talking_photo_selects_match_library_dark_dropdowns(ui):
     })""")
     assert abs(dimensions["field"] - dimensions["menu"]) < 2
     page.keyboard.press("Escape")
-    engine.select_option("quality")
-    expect(engine).to_have_value("quality")
+    engine.select_option("ltx")
+    expect(engine).to_have_value("ltx")
     page.locator("#talkingPhotoVoice").select_option("lisa")
     expect(page.locator("#talkingPhotoVoice")).to_have_value("lisa")
     page.locator("#talkingPhotoLanguage").select_option("en")
