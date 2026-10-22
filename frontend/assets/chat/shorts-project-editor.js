@@ -451,7 +451,7 @@
                 const image = node('img');
                 image.src = item.url;
                 image.alt = localText('Gespeichertes Szenenbild', 'Saved scene image');
-                tile.prepend(image);
+                tile.append(image);
             });
             wrap.append(gallery);
         }
