@@ -70,3 +70,57 @@ html.converter-embedded .foot { margin: 12px 2px 0; }
   html.converter-embedded section { grid-template-columns: 1fr 1fr; gap: 13px; }
   html.converter-embedded #dropzone { min-height: 120px; }
 }
+
+/* Compact embedded layout sized to fit the desktop modal without an inner scrollbar.
+   Keep natural scrolling available on smaller devices and when browser zoom is high. */
+html.converter-embedded body { padding: 0 20px 12px; }
+html.converter-embedded main > p:not(.foot) {
+  margin: 1px 0 12px;
+}
+html.converter-embedded form {
+  margin: 0;
+  padding: 15px 18px 12px;
+}
+html.converter-embedded #dropzone { min-height: 137px; }
+html.converter-embedded #imageFiles {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+html.converter-embedded #dropzone:focus-within {
+  outline: 2px solid #93bdff;
+  outline-offset: 3px;
+}
+html.converter-embedded output {
+  min-height: 18px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+html.converter-embedded section {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 15px 0 13px;
+}
+html.converter-embedded section label {
+  min-width: 0;
+  gap: 9px;
+}
+html.converter-embedded #status {
+  min-height: 20px;
+  margin: 7px 0 0;
+}
+html.converter-embedded .foot { margin: 9px 2px 0; }
+@media (max-width: 690px) {
+  html.converter-embedded body { padding: 0 13px 12px; }
+  html.converter-embedded section { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+  html.converter-embedded form { padding: 13px; }
+  html.converter-embedded #dropzone { min-height: 118px; }
+}
+@media (max-width: 400px) {
+  html.converter-embedded section { grid-template-columns: 1fr; }
+}
