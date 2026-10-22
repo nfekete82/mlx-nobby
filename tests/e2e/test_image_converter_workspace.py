@@ -136,6 +136,18 @@ def test_converter_dropzone_shows_dragged_batch_and_more_count(ui):
     drop = inside.locator("#dropzone")
     expect(inside.locator("#dropzoneEmpty")).to_be_visible()
 
+    # Element visibility alone does not mean its synchronous JS handlers
+    # are installed. On slower mobile CI the iframe may still be parsing.
+    page.wait_for_function("""() => {
+        const frame = document.getElementById('imageConverterFrame');
+        try {
+            return frame?.contentWindow?.location?.pathname === '/converter'
+                && frame.contentDocument?.readyState === 'complete';
+        } catch (_) {
+            return false;
+        }
+    }""")
+
     # Exercise the actual HTML5 drop handler, not just file input change.
     drop.evaluate("""element => {
         const transfer = new DataTransfer();
