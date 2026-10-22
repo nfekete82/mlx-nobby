@@ -18,7 +18,9 @@
     "done": " Bild(er) fertig.",
     "error": "Fehler: ",
     "heic": "Hinweis: HEIC ist auf diesem Server noch nicht verfügbar.",
-    "several": "Mehrere"
+    "several": "Mehrere",
+    "file": " Datei, ",
+    "more": "weitere Dateien"
   },
   "en": {
     "header": "Local image converter",
@@ -39,7 +41,9 @@
     "done": " image(s) converted.",
     "error": "Error: ",
     "heic": "HEIC support is not available on this server.",
-    "several": "Several"
+    "several": "Several",
+    "file": " file, ",
+    "more": "more files"
   },
   "errors_en": {
     "Ungültiges Zielformat, Qualität oder Bildgröße": "Invalid output format, quality or image size",
