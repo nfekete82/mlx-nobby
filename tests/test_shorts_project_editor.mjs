@@ -588,3 +588,18 @@ test('dialogue blocks rendering for missing text or speakers and remains availab
     assert.ok(inputFor(h, 'Dialogsprecher'));
     assert.ok(inputFor(h, 'Sprecher'));
 });
+
+
+test('Shorts editor provides scene image upload and voice selection in normal mode', async () => {
+    const h = harness();
+    await h.window.MLXShortsProjectEditor.newDraft();
+    const file = h.body.querySelectorAll('input').find(input => input.type === 'file');
+    assert.ok(file, 'scene image upload should be visible');
+    assert.match(file.accept, /image\/png/);
+    assert.ok(h.buttons().some(b => b.textContent === 'Aus Bibliothek wählen'));
+    const fields = h.body.querySelectorAll('label').map(label => label.children[0]?.textContent);
+    assert.ok(fields.includes('Standardstimme'));
+    assert.ok(fields.includes('Szenenstimme (optional)'));
+    assert.ok(fields.includes('Gesamtdauer (s)'));
+    assert.ok(fields.includes('Szenenanzahl für KI-Planung'));
+});
