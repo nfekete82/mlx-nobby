@@ -18,7 +18,7 @@
 
 Upload one PNG/JPEG/WebP image (maximum 8 MiB) per scene or choose a previously
 uploaded image from the private Shorts scene-image gallery. The agent normalizes
-uploads to PNG in `~/.config/mlx-web/shorts/scene-images`, then saves only an
+uploads to PNG in `~/.config/mlx-web/images/shorts-scene-<id>.png`, then saves only an
 opaque `ShortScene.scene_image_id` in drafts. Images remain in the gallery when
 the scene reference is removed. Replanning keeps existing selected images by
 scene position; saved drafts and revisions preserve them.
