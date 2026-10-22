@@ -125,12 +125,19 @@ def test_provider_prepares_every_anchor_and_passes_positions(managed, tmp_path):
         assert all(Path(a["path"]).is_file() for a in params["images"])
         target.write_bytes(b"video")
         return False, {}
+    def prepare(source, width, height, resize_mode, destination):
+        # This is a provider forwarding contract. Real codec integration is
+        # exercised below when ffmpeg/ffprobe are available on the host.
+        shutil.copyfile(source, destination)
+        return {}
     with mock.patch.object(mlx, "availability", return_value=(True, "ready")), \
          mock.patch.object(multi, "keyframe_capabilities", return_value={"native_keyframes": True}), \
+         mock.patch.object(mlx, "_prepare_first_frame", side_effect=prepare) as prepare_anchor, \
          mock.patch.object(mlx, "_run_warm_worker", side_effect=worker), \
          mock.patch.object(mlx, "_probe_video", return_value={"audio": True}):
         assert mlx.generate(video_registry.builtin_mlx_model(), payload, output,
                             cancel_event=threading.Event())["audio"]
+    assert [call.args[0] for call in prepare_anchor.call_args_list] == managed[:3]
     command = mlx._command(video_registry.builtin_mlx_model(), payload, output)
     assert command.count("--image") == 3
 
