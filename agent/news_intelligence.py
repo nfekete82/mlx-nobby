@@ -281,7 +281,7 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                 continue
             # A current RSS publication date does not make a historical
             # retrospective into news about today's market.
-            historical = re.search(r"\\b(?:19\\d{2}|20\\d{2})\\b", title)
+            historical = re.search(r"\b(?:19\d{2}|20\d{2})\b", title)
             if historical and int(historical.group()) < now.year:
                 continue
             headline_keys.add(title_key)
@@ -309,7 +309,7 @@ def grounded_news_digest(query, results, *, now=None, max_items=6):
                     f"— {local.strftime('%H:%M')} Uhr "
                     f"(Index-Zeitstempel; Originaltext ungeprüft)")
             return {
-                "status": "headlines_only", "answer": "\\n".join(lines),
+                "status": "headlines_only", "answer": "\n".join(lines),
                 "items": headline_items, "requested_count": max_items,
                 "report_date": day, "evidence_level": "dated_headlines_only",
             }
