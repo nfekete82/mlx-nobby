@@ -124,6 +124,8 @@ class ShortScene(BaseModel):
     transition: SceneTransition = Field(default_factory=SceneTransition)
     music: SceneMusic | None = None
     sfx: SceneSfx = Field(default_factory=SceneSfx)
+    scene_image_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    voice: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     video_prompt: str = Field(default="", max_length=4000)
 
     @field_validator("duration")
@@ -253,7 +255,7 @@ class ShortProject(BaseModel):
         return self.voice
 
     def voice_for_scene(self, scene: ShortScene) -> str | None:
-        return self.voice_for_speaker(scene.speaker)
+        return scene.voice or self.voice_for_speaker(scene.speaker)
 
 
 class ShortPlanningError(RuntimeError):
