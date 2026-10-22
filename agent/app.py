@@ -8644,8 +8644,8 @@ def _resolve_image_artifact_source(artifact_id):
     else:
         valid = (
             len(header) == 33
-            and header.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
-            and header[8:12] == b"\\x00\\x00\\x00\\r"
+            and header.startswith(b"\x89PNG\r\n\x1a\n")
+            and header[8:12] == b"\x00\x00\x00\r"
             and header[12:16] == b"IHDR"
             and int.from_bytes(header[16:20], "big") > 0
             and int.from_bytes(header[20:24], "big") > 0
