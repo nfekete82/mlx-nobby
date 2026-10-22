@@ -148,10 +148,28 @@ def estimate_memory_gb(parameter_billions: float | None, bits: float | None) -> 
 
 
 def infer_role(model_id: str, tags: list[str] | None = None, pipeline_tag: str | None = None) -> str:
-    text = " ".join([model_id, *(tags or []), pipeline_tag or ""]).lower()
-    if any(token in text for token in ("vision", "vlm", "-vl-", "multimodal", "image-text-to-text")):
+    """Suggest a workload from names/tags; do not imply runtime compatibility."""
+    name = model_id.split("/")[-1].lower()
+    text = " ".join([name, *(tags or []), pipeline_tag or ""]).lower()
+    if any(value in name for value in ("hy-memory", "hy_memory")):
+        return "memory"
+    if any(value in text for value in ("text-to-speech", "speech-synthesis", "text_to_speech", "-tts-", "-tts", "tts-", "fish-audio-drama", "fish_drama")):
+        return "tts"
+    if any(value in text for value in ("automatic-speech-recognition", "speech-to-text", "-asr-", "-asr", "asr-", "whisper-")):
+        return "asr"
+    if any(value in text for value in ("text-to-video", "image-to-video", "video-generation", "ltx-video")):
+        return "video"
+    if any(value in text for value in ("text-to-image", "image-to-image", "stable-diffusion", "sdxl", "diffusion")):
+        return "image"
+    if any(value in text for value in ("vision", "vlm", "-vl-", "multimodal", "image-text-to-text", "image-to-text", "molmo")):
         return "vision"
-    if any(token in text for token in ("coder", "coding", "code-", "devstral", "ornith")):
+    if any(value in text for value in ("reranker", "re-ranker", "cross-encoder", "text-ranking")):
+        return "reranker"
+    if any(value in text for value in ("feature-extraction", "embedding", "embed-", "bge-", "nomic-embed")):
+        return "embedding"
+    if any(value in text for value in ("audio", "speech-to-speech")):
+        return "audio"
+    if any(value in text for value in ("coder", "coding", "code-", "devstral", "ornith")):
         return "coding"
     return "chat"
 
@@ -318,6 +336,9 @@ def normalize_candidate(model: dict, profile: dict, installed) -> dict | None:
         "likes": int(model.get("likes") or 0),
         "license": _license_from(model),
         "role": role,
+        "suggested_slot": role,
+        "assignment_status": "chat_test_possible" if role in {"chat", "coding"} else "adapter_required",
+        "role_is_inferred": True,
         "pipeline_tag": model.get("pipeline_tag"),
         "library_name": model.get("library_name"),
         "parameter_billions": parameters,
@@ -922,7 +943,7 @@ def install_routes(
         @app.get("/api/model-scout/discover")
         def model_scout_discover(
             limit: int = Query(default=30, ge=1, le=100),
-            role: str = Query(default="all", pattern="^(all|chat|coding|vision)$"),
+            role: str = Query(default="all", pattern="^(all|chat|coding|vision|tts|asr|audio|memory|embedding|reranker|image|video)$"),
         ):
             return discover_models(model_provider, limit=limit, role=role)
 

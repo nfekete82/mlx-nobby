@@ -31,30 +31,25 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "natural"
-    engine: Literal["fast", "quality", "ltx", "ltx-distilled"] = "ltx-distilled"
+    engine: Literal["ltx", "ltx-distilled"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
-    person_focus: PersonFocus | None = None  # Fast composition or prompt-guided LTX
+    person_focus: PersonFocus | None = None  # Prompt-guided LTX speaker selection
 
 
 def provider_status() -> dict:
-    """Keep legacy top-level MuseTalk status while exposing Quality separately."""
-    fast = talking_photo.provider_health()
-    quality = talking_photo_quality.provider_health()
+    """Only report native LTX, without contacting the retired MuseTalk server."""
     ltx = talking_photo_quality.direct_provider_health()
     return {
-        "ready": bool(fast.get("ready")),
-        "provider": fast.get("provider"),
-        "device": fast.get("device"),
-        "setup_command": fast.get("setup_command"),
-        "detail": fast.get("detail"),
+        "ready": bool(ltx.get("ready")),
+        "provider": ltx.get("provider"),
+        "device": ltx.get("device"),
+        "setup_command": ltx.get("setup_command"),
+        "detail": ltx.get("detail"),
         "default_engine": "ltx-distilled",
         "max_longform_audio_seconds": 60,
-        "quality_available": bool(quality.get("ready")),
         "ltx_available": bool(ltx.get("ready")),
         "ltx_distilled_available": bool(ltx.get("ready")),
         "providers": {
-            "fast": fast,
-            "quality": quality,
             "ltx": ltx,
             "ltx-distilled": ltx,
         },
@@ -79,17 +74,9 @@ def install_routes(app):
         def talking_photo_create(request: TalkingPhotoRequest):
             payload = request.model_dump()
             engine = payload.pop("engine", "ltx-distilled")
-            if payload.get("person_focus") is not None and engine == "quality":
-                raise HTTPException(422, "Gezielte Personenauswahl im Hybridmodus ist noch nicht verfügbar; bitte LTX Distilled, LTX direkt oder Fast auswählen")
-            if engine == "fast" and payload["lead_in_ms"] != 0:
-                raise HTTPException(422, "Audiovorlauf ist nur für LTX direkt oder Hybrid verfügbar")
-            if engine == "quality":
-                return talking_photo_quality.create_job(payload)
             if engine == "ltx":
                 return talking_photo_quality.create_job(payload, ltx_only=True)
-            if engine == "ltx-distilled":
-                return talking_photo_quality.create_job(payload, ltx_only=True, distilled=True)
-            return talking_photo.create_job(payload)
+            return talking_photo_quality.create_job(payload, ltx_only=True, distilled=True)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:
         @app.get("/api/talking-photo/jobs/{job_id}")

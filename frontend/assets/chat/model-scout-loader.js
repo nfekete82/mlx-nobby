@@ -17,7 +17,7 @@
     function loadV3() {
         if (document.querySelector('script[data-model-scout-v3-runtime]')) return;
         const script = document.createElement('script');
-        script.src = '/assets/chat/model-scout-v3.js?v=20260929-model-scout-v3-1';
+        script.src = '/assets/chat/model-scout-v3.js?v=20261021-use-cases';
         script.async = true;
         script.dataset.modelScoutV3Runtime = 'true';
         document.head.appendChild(script);
@@ -49,7 +49,7 @@
         stopWatching();
 
         const script = document.createElement('script');
-        script.src = '/assets/chat/model-scout.js?v=20260929-model-scout-v2-tuning';
+        script.src = '/assets/chat/model-scout.js?v=20261021-use-cases';
         script.async = true;
         script.dataset.modelScoutRuntime = 'true';
         script.addEventListener('load', loadFilter, { once: true });

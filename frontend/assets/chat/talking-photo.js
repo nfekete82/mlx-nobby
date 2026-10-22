@@ -414,15 +414,10 @@
         focusReset.type = 'button';
         focusReset.hidden = true;
         function focusMessage() {
-            return document.getElementById('talkingPhotoEngine')?.value === 'fast'
-                ? localText(
-                    'Gesicht markiert: MuseTalk animiert diesen Bereich, der Rest bleibt unverändert.',
-                    'Face selected: MuseTalk animates the selected region; the rest stays unchanged.',
-                )
-                : localText(
-                    'Gesicht markiert: LTX erzeugt natürliche Bewegung für beide Personen. Die Sprecherzuordnung ist experimentell und nicht garantiert.',
-                    'Face selected: LTX animates both people naturally. Speaker targeting is experimental and not guaranteed.',
-                );
+            return localText(
+                'Gesicht markiert: LTX erzeugt natürliche Bewegung für beide Personen. Die Sprecherzuordnung ist experimentell und nicht garantiert.',
+                'Face selected: LTX animates both people naturally. Speaker targeting is experimental and not guaranteed.',
+            );
         }
 
         function positionFocusMarker() {
@@ -458,7 +453,6 @@
             const y = (event.clientY - rect.top - (rect.height - dh) / 2) / dh;
             if (x < 0 || x > 1 || y < 0 || y > 1) return;
             personFocus = {x, y};
-            if (engineSelect.value === 'quality') engineSelect.value = 'ltx-distilled';
             focusMarker.hidden = false;
             positionFocusMarker();
             focusReset.hidden = false;
@@ -481,8 +475,6 @@
         [
             ['ltx-distilled', localText('Standard · LTX Distilled (8+3)', 'Default · LTX Distilled (8+3)')],
             ['ltx', localText('Qualität · LTX direkt', 'Quality · Direct LTX')],
-            ['quality', localText('Hybrid · LTX + MuseTalk', 'Hybrid · LTX + MuseTalk')],
-            ['fast', localText('Fast · MuseTalk', 'Fast · MuseTalk')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -495,8 +487,8 @@
             'div',
             'mlx-talking-photo-hint',
             localText(
-                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. LTX direkt und Hybrid bleiben als Alternativen.',
-                'Distilled is the default: natural motion in 8+3 steps. Direct LTX and Hybrid remain available.',
+                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. LTX direkt bleibt als Qualitätsalternative.',
+                'Distilled is the default: natural motion in 8+3 steps. Direct LTX remains an alternative.',
             ),
         ));
         right.append(engineLabel);
@@ -535,8 +527,8 @@
         right.append(textLabel);
 
         const status = node('div', 'mlx-talking-photo-status', localText(
-            'MuseTalk-Status wird geprüft …',
-            'Checking MuseTalk status …',
+            'LTX-Status wird geprüft …',
+            'Checking LTX status …',
         ));
         status.id = 'talkingPhotoStatus';
         status.setAttribute('role', 'status');
@@ -619,13 +611,6 @@
         });
 
         engineSelect.addEventListener('change', () => {
-            if (personFocus && engineSelect.value === 'quality') {
-                engineSelect.value = 'ltx-distilled';
-                setStatus(localText(
-                    'Für die Personenauswahl bitte Standard-LTX, LTX direkt oder Fast verwenden. Hybrid wird noch nicht unterstützt.',
-                    'For selected-person playback use Standard LTX, Direct LTX or Fast. Hybrid is not supported yet.',
-                ));
-            }
             if (personFocus) focusHint.textContent = focusMessage();
             refreshProviderStatus();
         });
@@ -771,14 +756,10 @@
         try {
             const status = await requestJson('/api/talking-photo/status');
             if (jobIsBusy()) return;
-            const provider = status.providers?.[engine] || (
-                engine === 'fast' ? status : null
-            );
+            const provider = status.providers?.[engine] || null;
             const labels = {
-                quality: 'Hybrid · LTX + MuseTalk',
                 ltx: 'Qualität · LTX direkt',
                 'ltx-distilled': 'Standard · LTX Distilled (8+3)',
-                fast: 'MuseTalk',
             };
             const label = labels[engine] || engine;
 
@@ -897,7 +878,7 @@
                     language: selectedLanguage,
                     engine,
                     person_focus: personFocus,
-                    motion: personFocus && engine === 'fast' ? 'none' : 'natural',
+                    motion: 'natural',
                     speed: 1.0,
                 }),
             });

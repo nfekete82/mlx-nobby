@@ -167,3 +167,40 @@ def test_model_scout_script_injection_is_idempotent():
     assert MODEL_SCOUT_SCRIPT in injected
     assert injected.count(MODEL_SCOUT_SCRIPT) == 1
     assert inject_model_scout_script(injected) == injected
+
+
+def test_scout_routes_specialist_models_to_distinct_workloads():
+    expected = {
+        "mlx-community/Hy-Memory-30B-A3B-4bit": "memory",
+        "mlx-community/fish-audio-drama-3-4bit": "tts",
+        "mlx-community/Ming-3.0-tts-0.5B-8bit": "tts",
+        "mlx-community/Ming-3.0-asr-tiny-bf16": "asr",
+        "mlx-community/Ming-3.0-audio-tiny-8bit": "audio",
+        "mlx-community/Molmo2-8B-mxfp4": "vision",
+        "mlx-community/bge-m3-4bit": "embedding",
+        "mlx-community/Qwen3-4B-Instruct-4bit": "chat",
+        "mlx-community/Devstral-Small-24B-4bit": "coding",
+    }
+    for repo, role in expected.items():
+        assert infer_role(repo) == role, repo
+    assert infer_role("mlx-community/Another-Model", pipeline_tag="text-to-speech") == "tts"
+    assert infer_role("mlx-community/Another-Model", pipeline_tag="automatic-speech-recognition") == "asr"
+    assert infer_role("mlx-community/Another-Model", pipeline_tag="image-text-to-text") == "vision"
+
+
+def test_scout_does_not_treat_tts_popularity_as_chat_compatibility():
+    raw = {
+        "id": "mlx-community/Ming-3.0-tts-0.5B-8bit",
+        "pipeline_tag": "text-to-speech",
+        "downloads": 50000,
+        "likes": 100,
+        "lastModified": "2026-10-20T10:00:00Z",
+    }
+    candidate = normalize_candidate(raw, {"memory_gb": 48.0}, [])
+    assert candidate["role"] == "tts"
+    assert candidate["suggested_slot"] == "tts"
+    assert candidate["assignment_status"] == "adapter_required"
+    assert candidate["discovery_score"] >= 65
+    chat = normalize_candidate({"id": "mlx-community/Qwen3-4B-Instruct-4bit"},
+                               {"memory_gb": 48.0}, [])
+    assert chat["assignment_status"] == "chat_test_possible"
