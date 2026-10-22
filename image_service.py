@@ -1033,7 +1033,10 @@ def _edit_result_inner(
     # legitimate global edits, and never claims semantic compliance.
     quality_check = image_change_advisory(source, path) if not is_reference else None
     source_image_id = comparison_image_id(source, OUTPUT) if not is_reference else None
-    path = finalize_image(path)
+    # Exact masked-region preservation requires lossless PNG pixels outside
+    # the requested area. Ordinary edits still finalize as WebP 90.
+    if not request.region_edit:
+        path = finalize_image(path)
 
     return {
         **({"source_image_id": source_image_id} if source_image_id else {}),
