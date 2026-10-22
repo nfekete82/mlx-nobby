@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
-from backend.news_query import normalized_news_query
+from backend.news_query import financial_news_topic, normalized_news_query
 from backend.search_freshness import filter_today_news, publication_time, requires_today_news
 
 FEEDS = (
@@ -72,7 +72,8 @@ def _entries(root):
 
 def publisher_news_candidates(query, *, opener=None, now=None, per_feed=6):
     """Discover dated headlines from three fixed feeds, only for broad daily news."""
-    if not requires_today_news(query) or normalized_news_query(query) == query:
+    if (not requires_today_news(query) or financial_news_topic(query)
+            or normalized_news_query(query) == query):
         return []
     opener = opener or urlopen
     now = now or datetime.now(timezone.utc)
