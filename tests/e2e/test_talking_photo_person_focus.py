@@ -24,8 +24,6 @@ def test_talking_photo_person_selection_and_paste_keep_default_ltx(ui):
             "providers": {
                 "ltx-distilled": {"ready": True},
                 "ltx": {"ready": True},
-                "fast": {"ready": True},
-                "quality": {"ready": True},
             },
         }),
     )
@@ -49,8 +47,9 @@ def test_talking_photo_person_selection_and_paste_keep_default_ltx(ui):
     expect(page.locator("#talkingPhotoEngine")).to_have_value("ltx-distilled")
     focus = page.evaluate("window.__focusedPosition = Boolean(document.getElementById('talkingPhotoFocusMarker').style.left)")
     assert focus
-    page.locator("#talkingPhotoEngine").select_option("fast")
-    expect(page.locator("#talkingPhotoPersonFocusHint")).to_contain_text("MuseTalk")
+    page.locator("#talkingPhotoEngine").select_option("ltx")
+    expect(page.locator("#talkingPhotoPersonFocusHint")).to_contain_text("LTX")
+    expect(page.locator("#talkingPhotoEngine")).to_have_value("ltx")
 
     # Replacing the image through a paste event clears the old speaker selection.
     page.evaluate("""() => {
