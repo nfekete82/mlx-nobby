@@ -257,10 +257,11 @@ function inputFor(h,label) { const el=h.body.querySelectorAll('label').find(el=>
 
 test('fresh draft defaults to simple fields, experts toggle and preference alone is persisted', async()=>{
     const h=harness(); await h.window.MLXShortsProjectEditor.newDraft();
-    const forbidden=['Video Prompt','Kamera / Bewegung','Caption Position','Caption Größe','Caption Stil','Voice Geschwindigkeit','Voice-Profil','Soundeffekt Track','Stilstärke (0–1)','Visual Bible · Charakter'];
+    const forbidden=['Video Prompt','Kamera / Bewegung','Caption Position','Caption Größe','Caption Stil','Voice Geschwindigkeit','Soundeffekt Track','Stilstärke (0–1)','Visual Bible · Charakter'];
     assert.equal(inputFor(h,'Expertenmodus').checked,false);
     forbidden.forEach(label=>assert.ok(!labelFields(h).includes(label),label));
     assert.ok(labelFields(h).includes('Stil') && labelFields(h).includes('Was passiert?'));
+    assert.ok(labelFields(h).includes('Standardstimme') && labelFields(h).includes('Szenenstimme (optional)'));
     const musicSelection = h.window.MLXShortsProjectEditor.__test.getState().draft.project.music_selection;
     await h.expert();
     assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft.project.music_selection, musicSelection);
