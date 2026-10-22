@@ -21,6 +21,14 @@ def install_routes(app, agent_json_request):
     def capabilities():
         return agent_json_request("GET", "/api/shorts/capabilities", None, timeout=15)
 
+    @app.post("/api/mlx/shorts/scene-images", status_code=201)
+    def upload_scene_image(request: dict):
+        return agent_json_request("POST", "/api/shorts/scene-images", request, timeout=60)
+
+    @app.get("/api/mlx/shorts/scene-images")
+    def scene_images():
+        return agent_json_request("GET", "/api/shorts/scene-images", None, timeout=15)
+
     @app.get("/api/mlx/shorts/drafts")
     def drafts():
         return agent_json_request("GET", "/api/shorts/drafts", None, timeout=15)
@@ -73,6 +81,10 @@ def install_routes(app, agent_json_request):
         return StreamingResponse(chunks(), status_code=upstream.status,
                                  media_type=upstream.headers.get("Content-Type"),
                                  headers={k: upstream.headers[k] for k in ("Content-Length", "Content-Range", "Accept-Ranges") if k in upstream.headers})
+
+    @app.get("/api/mlx/shorts/scene-images/{image_id}")
+    def scene_image(image_id: str, request: Request):
+        return stream("/api/shorts/scene-images/" + urllib.parse.quote(image_id, safe=""), request)
 
     @app.get("/api/mlx/shorts/library/{kind}/{track:path}")
     def audio(kind: str, track: str, request: Request):

@@ -188,7 +188,8 @@ def scene_tts(job_id, project, request_fn):
                 if shorts_jobs.get_short_job(job_id).get("cancel_requested"):
                     raise shorts_jobs._ComposeCancelled("TTS cancelled")
                 payload = {"input": text, "language": project.language}
-                voice = project.voice_for_speaker(speaker)
+                voice = (scene.voice if not scene.dialogue and scene.voice
+                         else project.voice_for_speaker(speaker))
                 if voice:
                     payload["voice"] = voice
                 if project.voice_speed != 1:

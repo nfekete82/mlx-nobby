@@ -18,6 +18,7 @@
     let sceneCount = 4;
     let providerReadiness = null, saveTimer = null, saveState = 'saved';
     let voiceProfiles = [], voiceProfilesLoaded = false;
+    let sceneImages = [], sceneImagePickerFor = null;
     async function refreshReadiness() {
         if (!draft) return;
         providerReadiness = draft.project.consistency_mode ? await api('/drafts/' + draft.id + '/preflight') : {available: true, warnings: []};
@@ -340,7 +341,7 @@
     function reset() {
         draft = null; sourceJob = null; selected = null;
         sceneCount = 4; view = 'welcome'; draftItems = [];
-        providerReadiness = null;
+        providerReadiness = null; sceneImagePickerFor = null;
         if (saveTimer !== null) window.clearTimeout?.(saveTimer);
         saveTimer = null; saveState = 'saved';
         if (ui) { ui.timeline = null; ui.renderButton = null; }
@@ -372,6 +373,89 @@
             parent.append(hint);
         }, { once: true });
         parent.append(element);
+    }
+    async function attachSceneImage(scene, file) {
+        if (!file || file.size > 8 * 1024 * 1024 ||
+            !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+            throw new Error(localText('Bitte PNG, JPG oder WebP unter 8 MB wählen.', 'Choose PNG, JPG or WebP under 8 MB.'));
+        }
+        const encoded = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error('Could not read image'));
+            reader.onload = () => resolve(String(reader.result || '').split(',')[1]);
+            reader.readAsDataURL(file);
+        });
+        const result = await api('/scene-images', 'POST', { content_base64: encoded });
+        scene.scene_image_id = result.id;
+        draft.project.consistency_mode = true;
+        sceneImagePickerFor = null;
+        await refreshReadiness();
+        dirty();
+        await save();
+    }
+    function imageSelector(editor, scene) {
+        const wrap = node('section', 'mlx-shorts-scene-image-panel');
+        wrap.append(node('strong', '', localText('Szenenbild für LTX', 'Scene image for LTX')));
+        if (scene.scene_image_id) {
+            const img = node('img', 'mlx-shorts-scene-preview');
+            img.src = base + '/scene-images/' + encodeURIComponent(scene.scene_image_id);
+            img.alt = localText('Gewähltes Szenenbild', 'Selected scene image');
+            previewMedia(img, wrap);
+        } else {
+            wrap.append(node('p', 'mlx-shorts-studio-warning',
+                localText('Optional: eigenes Bild als Startframe für diese Szene verwenden.',
+                          'Optional: use your image as the first frame of this scene.')));
+        }
+        const actions = node('div', 'mlx-shorts-studio-actions');
+        const input = node('input');
+        input.type = 'file';
+        input.accept = 'image/png,image/jpeg,image/webp';
+        input.className = 'mlx-shorts-image-file-input';
+        input.setAttribute('aria-label', localText('Szenenbild hochladen', 'Upload scene image'));
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            run(async () => attachSceneImage(scene, file));
+        });
+        actions.append(input);
+        button(localText('Aus Bibliothek wählen', 'Choose from library'), async () => {
+            if (sceneImagePickerFor === scene.id) {
+                sceneImagePickerFor = null;
+            } else {
+                sceneImages = (await api('/scene-images')).images || [];
+                sceneImagePickerFor = scene.id;
+            }
+        }, actions);
+        if (scene.scene_image_id) button(localText('Bild entfernen', 'Remove image'), async () => {
+            scene.scene_image_id = null;
+            sceneImagePickerFor = null;
+            await refreshReadiness();
+            dirty(); await save();
+        }, actions);
+        wrap.append(actions);
+        if (sceneImagePickerFor === scene.id) {
+            const gallery = node('div', 'mlx-shorts-scene-gallery');
+            if (!sceneImages.length) gallery.append(node('p', '', localText(
+                'Noch keine Szenenbilder gespeichert. Lade zuerst eines hoch.',
+                'No saved scene images yet. Upload one first.'
+            )));
+            sceneImages.forEach(item => {
+                const tile = button(localText('Bild wählen', 'Select image'), async () => {
+                    scene.scene_image_id = item.id;
+                    draft.project.consistency_mode = true;
+                    sceneImagePickerFor = null;
+                    await refreshReadiness();
+                    dirty(); await save();
+                }, gallery);
+                tile.classList.add('mlx-shorts-scene-gallery-item');
+                const image = node('img');
+                image.src = item.url;
+                image.alt = localText('Gespeichertes Szenenbild', 'Saved scene image');
+                tile.append(image);
+            });
+            wrap.append(gallery);
+        }
+        editor.append(wrap);
     }
     async function save() {
         if (!draft) return null;
@@ -443,7 +527,7 @@
     }
     function sceneDefaults() {
         return { id: 'scene-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), title: '', duration: 5,
-            description: '', narration: '', caption: '', video_prompt: '', camera: '', voice_enabled: true, speaker: null,
+            description: '', narration: '', caption: '', video_prompt: '', camera: '', scene_image_id: null, voice: null, voice_enabled: true, speaker: null,
             transition: { type: 'cut', duration: 0 }, music: null,
             sfx: { enabled: false, track: null, volume: 0.5, offset: 0 } };
     }
@@ -513,6 +597,7 @@
         field(settings, t('editor_render_quality'), p, 'quality', 'text', [['fast', t('editor_draft')], ['standard', 'Standard'], ['quality', t('editor_publication')]]);
         field(settings, t('editor_enable_voice'), p, 'voice_enabled', 'checkbox');
         field(settings, t('editor_enable_captions'), p, 'subtitles_enabled', 'checkbox');
+        field(settings, localText('Standardstimme', 'Default voice'), p, 'voice', 'text', voiceOptions(p.voice));
         castFields(settings, p);
         const musicChoice = { value: p.music_selection === 'off' || p.music_mode === 'off' ? 'off' : 'auto' };
         const musicInput = field(settings, t('editor_music'), musicChoice, 'value', 'text', [['auto', 'Auto'], ['off', t('editor_off')]]);
@@ -530,7 +615,6 @@
             (providerReadiness.models || []).forEach(model => diagnosis.append(node('p', '', `${model.available === false ? '⚠ ' : '✓ '}${model.provider || ''} · ${model.model || ''} · ${model.model_family || ''}${model.cli_version ? ' · MFLUX ' + model.cli_version : ''}${model.reason ? ' · ' + model.reason : ''}`)));
         }
         field(projectDetails, t('editor_language'), p, 'language');
-        field(projectDetails, t('editor_voice_profile'), p, 'voice');
         field(projectDetails, t('editor_voice_speed'), p, 'voice_speed', 'number');
         const captionDetails = accordion(projectDetails, t('editor_captions'));
         field(captionDetails, t('editor_caption_position'), p.captions, 'position', 'text', ['bottom', 'center', 'top']);
@@ -566,6 +650,12 @@
             card.type = 'button'; card.draggable = true;
             const media = sourceJob?.scene_results?.find(r => r.scene_id === scene.id);
             const keyframe = sourceJob?.keyframe_results?.find(r => r.scene_id === scene.id && r.status === 'completed');
+            if (scene.scene_image_id) {
+                const thumb = node('img', 'mlx-shorts-scene-thumb');
+                thumb.alt = localText('Szenenbild', 'Scene image');
+                thumb.src = base + '/scene-images/' + encodeURIComponent(scene.scene_image_id);
+                card.append(thumb);
+            }
             if (keyframe) {
                 const thumb = node('img', 'mlx-shorts-scene-thumb'); thumb.alt = t('editor_keyframe');
                 thumb.src = base + '/jobs/' + encodeURIComponent(sourceJob.id) + '/scenes/' + encodeURIComponent(scene.id) + '/keyframe';
@@ -601,6 +691,8 @@
         field(editor, t('editor_what_happens'), scene, 'description', 'textarea');
         field(editor, t('editor_caption_visible_text'), scene, 'caption', 'textarea');
         field(editor, t('editor_narration_spoken_text'), scene, 'narration', 'textarea');
+        field(editor, localText('Szenenstimme (optional)', 'Scene voice (optional)'), scene, 'voice', 'text', voiceOptions(scene.voice));
+        imageSelector(editor, scene);
         if (p.cast.length) field(editor, localText('Sprecher', 'Speaker'), scene, 'speaker', 'text', castOptions(p, scene.speaker));
         dialogueFields(editor, p, scene);
         if (expertMode) {

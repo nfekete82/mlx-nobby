@@ -14,7 +14,16 @@ def preflight_project(project, *, request_fn=None, scene_results=None, keyframe_
               if r.get('status') == 'completed' and valid_media_file(r.get('path'))}
     frames = {r.get('scene_id') for r in keyframe_results or []
               if r.get('status') == 'completed' and valid_media_file(r.get('path'))}
-    if not project.consistency_mode or all(s.id in videos or s.id in frames for s in project.scenes):
+    from agent.shorts_scene_images import image_path
+    assets = set()
+    for scene in project.scenes:
+        if scene.scene_image_id:
+            image_path(scene.scene_image_id)  # fail early if a stored asset was removed
+            assets.add(scene.id)
+    if assets and not project.consistency_mode:
+        raise ValueError("Selected scene images require image-to-video consistency mode")
+    if not project.consistency_mode or all(s.id in videos or s.id in frames or s.id in assets
+                                           for s in project.scenes):
         return {'available': True, 'warnings': [], 'models': []}
     try:
         payload = (request_fn or image_api.request)('GET', '/models', timeout=15)

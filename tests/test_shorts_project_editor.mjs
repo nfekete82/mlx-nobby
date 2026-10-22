@@ -257,10 +257,11 @@ function inputFor(h,label) { const el=h.body.querySelectorAll('label').find(el=>
 
 test('fresh draft defaults to simple fields, experts toggle and preference alone is persisted', async()=>{
     const h=harness(); await h.window.MLXShortsProjectEditor.newDraft();
-    const forbidden=['Video Prompt','Kamera / Bewegung','Caption Position','Caption Größe','Caption Stil','Voice Geschwindigkeit','Voice-Profil','Soundeffekt Track','Stilstärke (0–1)','Visual Bible · Charakter'];
+    const forbidden=['Video Prompt','Kamera / Bewegung','Caption Position','Caption Größe','Caption Stil','Voice Geschwindigkeit','Soundeffekt Track','Stilstärke (0–1)','Visual Bible · Charakter'];
     assert.equal(inputFor(h,'Expertenmodus').checked,false);
     forbidden.forEach(label=>assert.ok(!labelFields(h).includes(label),label));
     assert.ok(labelFields(h).includes('Stil') && labelFields(h).includes('Was passiert?'));
+    assert.ok(labelFields(h).includes('Standardstimme') && labelFields(h).includes('Szenenstimme (optional)'));
     const musicSelection = h.window.MLXShortsProjectEditor.__test.getState().draft.project.music_selection;
     await h.expert();
     assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft.project.music_selection, musicSelection);
@@ -587,4 +588,19 @@ test('dialogue blocks rendering for missing text or speakers and remains availab
     await h.expert();
     assert.ok(inputFor(h, 'Dialogsprecher'));
     assert.ok(inputFor(h, 'Sprecher'));
+});
+
+
+test('Shorts editor provides scene image upload and voice selection in normal mode', async () => {
+    const h = harness();
+    await h.window.MLXShortsProjectEditor.newDraft();
+    const file = h.body.querySelectorAll('input').find(input => input.type === 'file');
+    assert.ok(file, 'scene image upload should be visible');
+    assert.match(file.accept, /image\/png/);
+    assert.ok(h.buttons().some(b => b.textContent === 'Aus Bibliothek wählen'));
+    const fields = h.body.querySelectorAll('label').map(label => label.children[0]?.textContent);
+    assert.ok(fields.includes('Standardstimme'));
+    assert.ok(fields.includes('Szenenstimme (optional)'));
+    assert.ok(fields.includes('Gesamtdauer (s)'));
+    assert.ok(fields.includes('Szenenanzahl für KI-Planung'));
 });

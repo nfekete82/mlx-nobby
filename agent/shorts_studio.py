@@ -211,7 +211,7 @@ def create_project_revision(source_job_id, project, *, force_scene_id=None, pref
     invalid_frames = set()
     for scene in project.scenes:
         old = old_scenes.get(scene.id)
-        if old is None or scene.video_prompt != old.video_prompt or scene.camera != old.camera:
+        if old is None or scene.video_prompt != old.video_prompt or scene.camera != old.camera or scene.scene_image_id != old.scene_image_id:
             invalid.add(scene.id)
             invalid_frames.add(scene.id)
         if old and scene.duration != old.duration:

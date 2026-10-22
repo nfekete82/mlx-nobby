@@ -212,10 +212,33 @@ def run_consistent_short_job(
             keyframes = _completed_keyframes(job)
             keyframe = keyframes.get(scene_model.id)
 
+            # Explicit user image overrides AI-generated keyframes for this scene.
+            if scene_model.scene_image_id and (
+                keyframe is None or keyframe.get("source_asset_id") != scene_model.scene_image_id
+            ):
+                from agent.shorts_scene_images import image_path
+                path = image_path(scene_model.scene_image_id)
+                record = {
+                    "scene_id": scene_model.id,
+                    "status": "completed",
+                    "image_id": scene_model.scene_image_id,
+                    "source_asset_id": scene_model.scene_image_id,
+                    "path": str(path),
+                    "prompt": scene_model.video_prompt,
+                }
+                result_frames = [item for item in job.get("keyframe_results", [])
+                                 if item.get("scene_id") != scene_model.id]
+                result_frames.append(record)
+                shorts_jobs._update_job(
+                    job_id, keyframe_results=result_frames,
+                    active_image_job_id=None, phase="video",
+                )
+                continue
+
             if keyframe is None:
                 anchor_path = (None if scene_model.id in job.get('anchor_fallback_scenes', [])
                                else _identity_anchor_path(project, keyframes, scene_index))
-                if scene_index > 0 and project.character_consistency and not anchor_path:
+                if scene_index > 0 and project.character_consistency and not anchor_path and not scene_model.scene_image_id:
                     warnings = list(dict.fromkeys([*(job.get('warnings') or []), 'character_anchor_fallback']))
                     shorts_jobs._update_job(job_id, warnings=warnings)
                 child_id = job.get("active_image_job_id")

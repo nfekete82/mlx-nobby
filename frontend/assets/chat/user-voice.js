@@ -258,7 +258,7 @@
             return;
         }
         const script = document.createElement('script');
-        script.src = '/assets/chat/shorts-studio.js?v=20261002-studio-ui';
+        script.src = '/assets/chat/shorts-studio.js?v=20261022-scene-images';
         script.dataset.mlxShortsStudio = '1';
         script.addEventListener('load', loadShortsConsistency, { once: true });
         script.addEventListener('error', () => {
