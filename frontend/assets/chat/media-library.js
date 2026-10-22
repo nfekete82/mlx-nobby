@@ -143,7 +143,8 @@
       if (!response.ok) throw new Error("HTTP " + response.status);
       const blob = await response.blob();
       if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error(t("Foto ist zu groß.", "Photo is too large."));
-      const file = new File([blob], "nobby-library-" + asset.id + ".png", {type: "image/png"});
+      const webp = blob.type === "image/webp";
+      const file = new File([blob], "nobby-library-" + asset.id + (webp ? ".webp" : ".png"), {type: webp ? "image/webp" : "image/png"});
       setVisible(false);
       await window.MLXTalkingPhoto.openWithImage(file, {sourceAsset: {kind: "image", id: asset.id}});
     } catch (error) {
