@@ -21,6 +21,20 @@ LTX_SCENE_DURATIONS = frozenset().union(*(
 MusicStyle = Literal["cinematic", "futuristic", "dark", "emotional", "energetic", "ambient"]
 
 
+def validate_voice_profile(value):
+    """Voice-manager IDs can contain spaces and Unicode; preserve their identity."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError("voice profile contains control characters")
+    if "/" in value or "\\" in value or value in {".", ".."}:
+        raise ValueError("voice profile must be a managed ID, not a path")
+    return value
+
+
 class SceneTransition(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     type: Literal["cut", "fade", "fadeblack", "fadewhite", "flash"] = "cut"
@@ -74,14 +88,7 @@ class CastMember(BaseModel):
     @field_validator("voice")
     @classmethod
     def valid_voice(cls, value):
-        if value is None:
-            return None
-        value = value.strip()
-        if not value:
-            return None
-        if any(ord(character) < 32 or ord(character) == 127 for character in value):
-            raise ValueError("voice profile contains control characters")
-        return value
+        return validate_voice_profile(value)
 
 
 def quality_capabilities():
@@ -125,8 +132,10 @@ class ShortScene(BaseModel):
     music: SceneMusic | None = None
     sfx: SceneSfx = Field(default_factory=SceneSfx)
     scene_image_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
-    voice: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    voice: str | None = Field(default=None, max_length=80)
     video_prompt: str = Field(default="", max_length=4000)
+
+    _valid_voice = field_validator("voice")(validate_voice_profile)
 
     @field_validator("duration")
     @classmethod
@@ -179,9 +188,9 @@ class ShortProject(BaseModel):
         default=None,
         min_length=1,
         max_length=80,
-        pattern=r"^[A-Za-z0-9_-]+$",
     )
     voice_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    _valid_voice = field_validator("voice")(validate_voice_profile)
     cast: list[CastMember] = Field(default_factory=list, max_length=16)
     music_enabled: bool = True
     music_style: Literal[

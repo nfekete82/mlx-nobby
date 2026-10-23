@@ -167,7 +167,8 @@ def test_api_planner_failure_is_safe(store, monkeypatch):
     app = FastAPI(); shorts_draft_routes.install_routes(app)
     response = TestClient(app).post('/api/shorts/plan', json={'prompt':'Office', 'chat_id':'test'})
     assert response.status_code == 502
-    assert 'Szenenplanung' in response.json()['detail']
+    assert response.json()['detail']['code'] == 'invalid_plan'
+    assert len(response.json()['detail']['error_id']) == 12
     assert 'Traceback' not in response.text and '/private/secret' not in response.text
 
 

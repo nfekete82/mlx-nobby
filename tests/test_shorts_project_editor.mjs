@@ -29,9 +29,10 @@ function harness(options = {}) {
     const fetch = async (path,init={}) => {
         calls.push({path,init});await options.beforeRequest?.(path,init);const data=init.body ? JSON.parse(init.body) : {};
         const status = options.status?.(path, init) || 200;
-        if (status !== 200) return { ok: false, status, json: async () => ({ detail: '{"detail":"Short nicht gefunden"}' }) };
+        if (status !== 200) return { ok: false, status, json: async () => ({ detail: options.detail || '{"detail":"Short nicht gefunden"}' }) };
         let result;
         if (path.endsWith('/capabilities')) result=caps;
+        else if (path.endsWith('/voices/manage')) result = {voices: options.voices || []};
         else if(path.endsWith('/preflight')) result=options.preflight || {available:true,warnings:[],models:[]};
         else if(path.endsWith('/drafts') && init.method === 'POST') {
             const id = String(drafts.size+1); const d={id,kind:'shorts_draft',version:1,project:structuredClone(data.project || project)};drafts.set(id,d);result={draft:d};
@@ -57,7 +58,12 @@ function harness(options = {}) {
         const label = body.querySelectorAll('label').find(el => el.children[0]?.textContent === 'Expertenmodus');
         const input = label.children[1]; input.checked = enabled; await input.fire('input');
     };
-    return {window,body,head,calls,drafts,buttons,click,expert,fetch,preferenceStore,timers:options.timers, document:{head,body,readyState:'loading',querySelector:()=>null,addEventListener(){},createElement:t=>new Element(t)}};
+    const plan = async () => {
+        const brief = body.querySelectorAll('label').find(el => el.children[0]?.textContent === 'Beschreibe deinen Short').children[1];
+        brief.value = 'Eine Dokumentation über die Venus'; await brief.fire('input');
+        await click('Mit KI planen');
+    };
+    return {window,body,head,calls,drafts,buttons,click,plan,expert,fetch,preferenceStore,timers:options.timers, document:{head,body,readyState:'loading',querySelector:()=>null,addEventListener(){},createElement:t=>new Element(t)}};
 }
 
 test('Studio opens without a job, creates one server draft, edits scenes and plans without rendering',async()=>{
@@ -73,7 +79,7 @@ test('Studio opens without a job, creates one server draft, edits scenes and pla
     await h.click('Draft speichern');
     assert.equal(h.drafts.get('1').project.scenes.length,5);
     await h.click('Löschen');
-    await h.click('Mit KI planen');
+    await h.plan();
     assert.equal(h.calls.some(c=>c.path.endsWith('/render')),false);
     assert.equal(h.drafts.get('1').project.scenes.length,4);
     assert.equal(h.buttons().find(b=>b.textContent==='Short rendern').disabled,false);
@@ -82,7 +88,7 @@ test('Studio opens without a job, creates one server draft, edits scenes and pla
 });
 
 test('publication duration is rejected immediately and captions do not need narration',async()=>{
-    const h=harness();await h.window.MLXShortsProjectEditor.newDraft();await h.click('Mit KI planen');
+    const h=harness();await h.window.MLXShortsProjectEditor.newDraft();await h.plan();
     const p=structuredClone(h.drafts.get('1').project);p.quality='quality';
     assert.equal(h.window.MLXShortsProjectEditor.__test.errors(p).length,0);
     p.scenes[0].duration=6;p.duration=21;
@@ -136,7 +142,7 @@ test('missing selected draft recovers to welcome and New Short remains usable', 
 test('draft list and draft selection never use source job endpoint', async () => {
     const h = harness(); await h.window.MLXShortsProjectEditor.newDraft();
     h.drafts.get('1').source_job_id = 'stale-job';
-    await h.click('Meine Entwürfe'); h.calls.length = 0;
+    await h.click('Entwürfe'); h.calls.length = 0;
     await h.click('Laden');
     assert.ok(h.calls.some(c => c.path === '/api/mlx/shorts/drafts/1'));
     assert.equal(h.calls.some(c => c.path.includes('shorts-jobs') || c.path.endsWith('stale-job')), false);
@@ -282,7 +288,7 @@ test('fresh draft defaults to simple fields, experts toggle and preference alone
 });
 
 test('complete AI plan enables simple render despite missing optional audio with a warning',async()=>{
-    const h=harness();await h.window.MLXShortsProjectEditor.newDraft();await h.click('Mit KI planen');
+    const h=harness();await h.window.MLXShortsProjectEditor.newDraft();await h.plan();
     const state=h.window.MLXShortsProjectEditor.__test.getState();
     state.draft.project.music_selection='auto';state.draft.project.music_enabled=true;
     state.draft.project.music_track='missing.wav';
@@ -302,12 +308,12 @@ test('complete AI plan enables simple render despite missing optional audio with
 
 test('provider preflight warns about anchor fallback and blocks unavailable keyframes without exposing technical controls',async()=>{
     const h=harness({preflight:{available:true,warnings:['character_anchor_fallback'],models:[]}});
-    await h.window.MLXShortsProjectEditor.newDraft();await h.click('Mit KI planen');
+    await h.window.MLXShortsProjectEditor.newDraft();await h.plan();
     assert.ok(textContent(h.body).includes('Character-Anker nicht verfügbar'));
     assert.equal(h.buttons().find(b=>b.textContent==='Short rendern').disabled,false);
     assert.ok(!labelFields(h).includes('Video Prompt'));
     const blocked=harness({preflight:{available:false,warnings:[],models:[]}});
-    await blocked.window.MLXShortsProjectEditor.newDraft();await blocked.click('Mit KI planen');
+    await blocked.window.MLXShortsProjectEditor.newDraft();await blocked.plan();
     assert.equal(blocked.buttons().find(b=>b.textContent==='Short rendern').disabled,true);
     assert.ok(textContent(blocked.body).includes('Kein kompatibler Keyframe-Generator'));
 });
@@ -401,7 +407,7 @@ test('pending autosave is flushed before History and its obsolete callback canno
     await h.window.MLXShortsProjectEditor.newDraft();
     await changeTitle(h,'Keep this title');
     const obsolete=[...timers.callbacks.values()][0];
-    await h.click('Meine Shorts / Verlauf');
+    await h.click('Verlauf');
     assert.equal(h.drafts.get('1').project.title,'Keep this title');
     assert.equal(historyOpened,1);assert.equal(timers.callbacks.size,0);
     assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft,null);
@@ -412,7 +418,7 @@ test('pending autosave is flushed before History and its obsolete callback canno
 });
 
 test('render and closing flush the newest editor state before continuing',async()=>{
-    const h=harness({timers:fakeTimers()});await h.window.MLXShortsProjectEditor.newDraft();await h.click('Mit KI planen');
+    const h=harness({timers:fakeTimers()});await h.window.MLXShortsProjectEditor.newDraft();await h.plan();
     await changeTitle(h,'Latest render title');
     let selected;h.window.MLXShortsStudio.setActiveJob=job=>selected=job;
     await h.click('Short rendern');
@@ -443,9 +449,9 @@ for (const status of [409,500]) test(`failed navigation save preserves edits and
     const h=harness({timers:fakeTimers(),status:(_path,init)=>init.method==='PUT'?status:200});let opened=0;
     h.window.MLXShortsHistory.open=()=>opened++;
     await h.window.MLXShortsProjectEditor.newDraft();await changeTitle(h,'Do not lose this');
-    await h.click('Meine Shorts / Verlauf');
+    await h.click('Verlauf');
     assert.equal(opened,0);assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft.project.title,'Do not lose this');
-    assert.ok(textContent(h.body).includes(status===500?'derzeit nicht verfügbar':'Eingaben prüfen'));
+    assert.ok(textContent(h.body).includes(status===500?'derzeit nicht verfügbar':'zwischenzeitlich verändert'));
     assert.ok(!textContent(h.body).includes('"detail"'));
 });
 
@@ -577,7 +583,7 @@ test('simple dialogue editor uses cast speakers, persists edits and removes line
 });
 
 test('dialogue blocks rendering for missing text or speakers and remains available in expert mode', async () => {
-    const h = harness(); await h.window.MLXShortsProjectEditor.newDraft(); await h.click('Mit KI planen');
+    const h = harness(); await h.window.MLXShortsProjectEditor.newDraft(); await h.plan();
     await h.click('+ Person hinzufügen'); await h.click('+ Dialogzeile hinzufügen');
     assert.equal(h.buttons().find(b => b.textContent === 'Short rendern').disabled, true);
     const text = inputFor(h, 'Dialogtext'); text.value = 'Hello'; await text.fire('input');
@@ -623,52 +629,93 @@ test('text-first Shorts Studio starts with one brief, length, scenes and voice',
     const h = harness();
     await h.window.MLXShortsProjectEditor.newDraft();
     assert.ok(textContent(h.body).includes('Deine Idee. Dein fertiger Short.'));
-    assert.ok(inputFor(h, 'Was soll dein Video zeigen?'));
+    assert.ok(inputFor(h, 'Beschreibe deinen Short'));
     assert.ok(inputFor(h, 'Länge'));
     assert.ok(inputFor(h, 'Szenen'));
     assert.ok(inputFor(h, 'Sprecherstimme'));
     const full = h.body.querySelectorAll('details').find(el => el.className === 'mlx-shorts-advanced-view');
     assert.ok(full, 'old advanced editor is preserved');
     assert.equal(full.open, false, 'advanced grid should be collapsed by default');
-    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, true);
-    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, true);
-    await h.click('Szenen und Details bearbeiten');
-    const reopened = h.body.querySelectorAll('details').find(el => el.className === 'mlx-shorts-advanced-view');
+    assert.equal(h.buttons().find(el => el.textContent === 'Mit KI planen').disabled, true);
+    assert.equal(h.buttons().find(el => el.textContent === 'Video erstellen').disabled, true);
+    full.open = true; await full.fire('toggle');
+    const reopened = full;
     assert.equal(reopened.open, true);
 });
 
 test('text-first quick workflow plans then renders without manual scene editing', async () => {
     const h = harness();
     await h.window.MLXShortsProjectEditor.newDraft();
-    const brief = inputFor(h, 'Was soll dein Video zeigen?');
+    const brief = inputFor(h, 'Beschreibe deinen Short');
     brief.value = 'Eine Mini-Doku über die Venus';
     await brief.fire('input');
-    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, false);
+    assert.equal(h.buttons().find(el => el.textContent === 'Mit KI planen').disabled, false);
     const duration = inputFor(h, 'Länge');
     duration.value = '15';
     await duration.fire('input');
-    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, true,
+    assert.equal(h.buttons().find(el => el.textContent === 'Mit KI planen').disabled, true,
                  'four scenes cannot fit into 15 seconds');
     const count = inputFor(h, 'Szenen');
     count.value = '3';
     await count.fire('input');
-    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, false);
+    assert.equal(h.buttons().find(el => el.textContent === 'Mit KI planen').disabled, false);
     // Restore the default plan settings for the fixture AI response.
     duration.value = '20';
     await duration.fire('input');
     count.value = '4';
     await count.fire('input');
-    await h.click('1. Mit KI planen');
+    await h.click('Mit KI planen');
     assert.ok(h.calls.some(c => c.path.endsWith('/plan') && c.init.method === 'POST'));
     assert.ok(textContent(h.body).includes('Dein Storyboard'));
-    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, false);
-    const changedBrief = inputFor(h, 'Was soll dein Video zeigen?');
+    assert.equal(h.buttons().find(el => el.textContent === 'Video erstellen').disabled, false);
+    const changedBrief = inputFor(h, 'Beschreibe deinen Short');
     changedBrief.value = 'Neue Version des Venus-Videos';
     await changedBrief.fire('input');
-    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, true,
+    assert.equal(h.buttons().find(el => el.textContent === 'Video erstellen').disabled, true,
                  'render stays blocked until the updated prompt is replanned');
-    await h.click('1. Mit KI planen');
-    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, false);
-    await h.click('2. Video erstellen');
+    await h.click('Mit KI planen');
+    assert.equal(h.buttons().find(el => el.textContent === 'Video erstellen').disabled, false);
+    await h.click('Video erstellen');
     assert.ok(h.calls.some(c => c.path.endsWith('/render') && c.init.method === 'POST'));
+});
+
+test('managed voice IDs with spaces enable rendering and voice-only changes keep the storyboard', async () => {
+    const h = harness({voices:[{id:'Lana Weiss',label:'Lana Weiss'}]});
+    await h.window.MLXShortsProjectEditor.newDraft();
+    await h.plan();
+    const voice = inputFor(h, 'Sprecherstimme');
+    assert.ok(voice.children.some(option => option.value === 'Lana Weiss'));
+    voice.value = 'Lana Weiss'; await voice.fire('input');
+    const state = h.window.MLXShortsProjectEditor.__test.getState();
+    assert.equal(state.draft.project.voice, 'Lana Weiss');
+    assert.equal(state.draft.project.voice_enabled, true);
+    assert.equal(h.buttons().find(b => b.textContent === 'Video erstellen').disabled, false);
+    assert.equal(h.calls.filter(c => c.path.endsWith('/plan')).length, 1);
+    voice.value = '__none__'; await voice.fire('input');
+    assert.equal(state.draft.project.voice_enabled, false);
+    assert.equal(state.draft.project.voice, 'Lana Weiss');
+});
+
+test('safe planner errors preserve the brief and can be retried', async () => {
+    let fail = true;
+    const h = harness({status:path => fail && path.endsWith('/plan') ? 502 : 200,
+        detail:{code:'invalid_plan',error_id:'safe-id',raw:'Traceback /secret TOKEN=private'}});
+    await h.window.MLXShortsProjectEditor.newDraft();
+    await h.plan();
+    assert.ok(textContent(h.body).includes('keinen gültigen Szenenplan'));
+    assert.ok(!textContent(h.body).includes('TOKEN') && !textContent(h.body).includes('/secret'));
+    assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft.project.briefing, 'Eine Dokumentation über die Venus');
+    fail = false; await h.click('Mit KI planen');
+    assert.ok(textContent(h.body).includes('Dein Storyboard'));
+    assert.ok(!textContent(h.body).includes('keinen gültigen Szenenplan'));
+});
+
+test('two immediate planning clicks submit a single request', async () => {
+    const h = harness(); await h.window.MLXShortsProjectEditor.newDraft();
+    const brief = inputFor(h, 'Beschreibe deinen Short');
+    brief.value = 'Eine Venus-Dokumentation'; await brief.fire('input');
+    const button = h.buttons().find(b => b.textContent === 'Mit KI planen');
+    await Promise.all([button.fire('click'), button.fire('click')]);
+    assert.equal(h.calls.filter(call => call.path.endsWith('/plan')).length, 1);
+    assert.equal(h.calls.filter(call => call.path.endsWith('/render')).length, 0);
 });

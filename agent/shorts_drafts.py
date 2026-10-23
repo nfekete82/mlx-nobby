@@ -51,7 +51,8 @@ def get_draft(draft_id):
 
 
 def save_draft(project=None, *, draft_id=None, chat_id="shorts-studio", source_job_id=None,
-               expected_version=None, normalization_warnings=None):
+               expected_version=None, normalization_warnings=None, planning_scene_count=None, planned=False,
+               planning_required=False):
     from agent.shorts_normalization import normalize_short_for_available_runtime
     normalized, warnings = normalize_short_for_available_runtime(project or default_project())
     # A scene reference explicitly selects image-to-video, never silently T2V.
@@ -70,12 +71,20 @@ def save_draft(project=None, *, draft_id=None, chat_id="shorts-studio", source_j
             raise KeyError("Short draft not found")
         if old and expected_version != old["version"]:
             raise ValueError("draft changed; reload before saving")
+        target_count = planning_scene_count or (old or {}).get("planning_scene_count") or len(value.scenes)
+        planning_fields = ("briefing", "duration", "quality", "style_preset")
+        needs_replan = bool(planning_required or old and (old.get("needs_replan") or
+            any(old["project"].get(key) != getattr(value, key) for key in planning_fields) or
+            old.get("planning_scene_count", len(old["project"]["scenes"])) != target_count))
+        if planned:
+            needs_replan = False
         now = time.time()
         value = {"id": draft_id or uuid.uuid4().hex[:24], "kind": "shorts_draft",
                  "project": value.model_dump(mode="json"), "chat_id": old["chat_id"] if old else chat_id,
                  "source_job_id": old["source_job_id"] if old else source_job_id,
                  "created_at": old["created_at"] if old else now, "updated_at": now,
-                 "version": old["version"] + 1 if old else 1, "warnings": warnings}
+                 "version": old["version"] + 1 if old else 1, "warnings": warnings,
+                 "planning_scene_count": target_count, "needs_replan": needs_replan}
         items[value["id"]] = value
         _save(items)
     return deepcopy(value)
@@ -93,7 +102,9 @@ def delete_draft(draft_id):
 
 def duplicate_draft(draft_id):
     source = get_draft(draft_id)
-    return save_draft(source["project"], chat_id=source["chat_id"], source_job_id=source["source_job_id"])
+    return save_draft(source["project"], chat_id=source["chat_id"], source_job_id=source["source_job_id"],
+                      planning_scene_count=source.get("planning_scene_count"),
+                      planning_required=source.get("needs_replan", False))
 
 
 def plan_draft(draft_id, provider, *, scene_count=None):
@@ -106,7 +117,7 @@ def plan_draft(draft_id, provider, *, scene_count=None):
     bible = p.get("visual_bible")
     if bible and any(bible.values()):
         constraints["visual_bible"] = bible
-    constraints["scene_count"] = scene_count or len(p["scenes"])
+    constraints["scene_count"] = scene_count or draft.get("planning_scene_count") or len(p["scenes"])
     project = plan_short(p["briefing"], provider, constraints=constraints)
     project.briefing = p["briefing"]
     # Keep explicitly selected images/voices when a user replans the script.
@@ -116,12 +127,15 @@ def plan_draft(draft_id, provider, *, scene_count=None):
         if previous.get("voice"):
             planned.voice = previous["voice"]
     return save_draft(project.model_dump(mode="json"), draft_id=draft_id,
-                      expected_version=draft["version"], normalization_warnings=project._normalization_warnings)
+                      expected_version=draft["version"], normalization_warnings=project._normalization_warnings,
+                      planning_scene_count=len(project.scenes), planned=True)
 
 
 def render_draft(draft_id, *, force_scene_id=None):
     from agent.shorts_studio import create_project_revision
     draft = get_draft(draft_id)
+    if draft.get("needs_replan"):
+        raise ValueError("draft requires replanning")
     from agent.shorts_normalization import normalize_short_for_available_runtime
     data, _ = normalize_short_for_available_runtime(draft['project'])
     project = ShortProject.model_validate(data)
