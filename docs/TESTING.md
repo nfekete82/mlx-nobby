@@ -131,15 +131,15 @@ Gateway completion and usage, real TTS generation/decoding, browser read-aloud
 with native Audio/play/pause/resume/end, a seeded small image using the already
 configured image provider, image browser preview, a standard 2-second video
 Preview, native Chromium video playback, cancellation after native dispatch,
-Uncensored capability/rejection without generation, and Shorts draft/read/preflight.
+optional video-adapter capability/rejection without generation, and Shorts draft/read/preflight.
 Only technical media quality is asserted: decoding, nonzero duration/dimensions,
 image nonuniformity, video frame rate/frames, MIME, bytes and actual playback time.
 Real playback never replaces `HTMLMediaElement.play()` or `pause()`.
 
 The optional `--full` Short uses one 5-second scene at the cheapest existing
 Shorts quality (540p); Shorts does not support the 2-second Preview contract.
-The default release gate therefore skips full Shorts. No Uncensored output is
-generated, including when its adapter becomes available.
+The default release gate therefore skips full Shorts. No optional-adapter output is
+generated, including when an adapter becomes available.
 
 Timeout options are `--chat-timeout` (90 seconds), `--tts-timeout` (90),
 `--image-timeout` (300) and `--video-timeout` (360). HTTP calls, media probes,

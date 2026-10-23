@@ -4,13 +4,6 @@ This guide keeps upgrades explicit: MLX nobby does not download large model
 weights merely because a feature exists. Download a candidate first, benchmark
 where appropriate, then opt in.
 
-## Optional Dark Scarlett 27B v2.0 for adult-roleplay (18+)
-
-See [opt-in Dark Scarlett candidate setup](DARK_SCARLETT_CANDIDATE.md).
-Register separately using `./scripts/mlx candidate dark-scarlett register`.
-No weights are downloaded or runtime configuration modified automatically;
-this MLX oQ checkpoint has not yet passed a real on-Mac compatibility test.
-
 ## Qwen3.8 speculative decoding (DFlash2)
 
 Recommended pair:

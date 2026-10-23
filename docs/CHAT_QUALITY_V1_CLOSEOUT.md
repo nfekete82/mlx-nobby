@@ -42,12 +42,11 @@ waren. Keine Score-Korrektur ohne Antwortbelege.
 3. Bei künftigen *konkreten* Modellwechseln kann `chat-quality compare`
    weiter als schnelle Regression dienen, sofern beide tatsächlichen
    Modellidentitäten in den Reports überprüft werden.
-4. Bei NSFW-/Rollenspiel-Finetunes stattdessen maßgeschneiderte,
-   menschlich zu bewertende fiktive Adult-Dialoge, Kohärenz und
-   Runtime-Kompatibilität priorisieren.
+4. Spezialisierte Modellvarianten benötigen eigene, passend bewertete
+   Testfälle und separate Kompatibilitäts- und Qualitätsprüfungen.
 5. Keine Einträge in den dauerhaften Model-Evaluations-Entscheidungen
-   erzeugen: Weder „Qwen3.6 schlechter/besser“ noch „Dark Scarlett gewinnt“
-   sind durch diese Ergebnisse begründet.
+   erzeugen: Vergleiche mit anderen Modellen sind durch diese Ergebnisse
+   nicht begründet.
 
 Die erfassten Daten sind gerundete, vom Nutzer gezeigte **Summen**.
 Private Mac-Pfade, persönliche Texte oder lokale rohe Antwortdateien werden
