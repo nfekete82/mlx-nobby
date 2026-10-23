@@ -142,7 +142,7 @@ test('missing selected draft recovers to welcome and New Short remains usable', 
 test('draft list and draft selection never use source job endpoint', async () => {
     const h = harness(); await h.window.MLXShortsProjectEditor.newDraft();
     h.drafts.get('1').source_job_id = 'stale-job';
-    await h.click('Meine Entwürfe'); h.calls.length = 0;
+    await h.click('Entwürfe'); h.calls.length = 0;
     await h.click('Laden');
     assert.ok(h.calls.some(c => c.path === '/api/mlx/shorts/drafts/1'));
     assert.equal(h.calls.some(c => c.path.includes('shorts-jobs') || c.path.endsWith('stale-job')), false);
@@ -407,7 +407,7 @@ test('pending autosave is flushed before History and its obsolete callback canno
     await h.window.MLXShortsProjectEditor.newDraft();
     await changeTitle(h,'Keep this title');
     const obsolete=[...timers.callbacks.values()][0];
-    await h.click('Meine Shorts / Verlauf');
+    await h.click('Verlauf');
     assert.equal(h.drafts.get('1').project.title,'Keep this title');
     assert.equal(historyOpened,1);assert.equal(timers.callbacks.size,0);
     assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft,null);
@@ -449,7 +449,7 @@ for (const status of [409,500]) test(`failed navigation save preserves edits and
     const h=harness({timers:fakeTimers(),status:(_path,init)=>init.method==='PUT'?status:200});let opened=0;
     h.window.MLXShortsHistory.open=()=>opened++;
     await h.window.MLXShortsProjectEditor.newDraft();await changeTitle(h,'Do not lose this');
-    await h.click('Meine Shorts / Verlauf');
+    await h.click('Verlauf');
     assert.equal(opened,0);assert.equal(h.window.MLXShortsProjectEditor.__test.getState().draft.project.title,'Do not lose this');
     assert.ok(textContent(h.body).includes(status===500?'derzeit nicht verfügbar':'zwischenzeitlich verändert'));
     assert.ok(!textContent(h.body).includes('"detail"'));

@@ -458,7 +458,7 @@
     }
     function imageSelector(editor, scene) {
         const wrap = node('section', 'mlx-shorts-scene-image-panel');
-        wrap.append(node('strong', '', localText('Szenenbild für LTX', 'Scene image for LTX')));
+        wrap.append(node('strong', '', localText('Szenenbild', 'Scene image')));
         if (scene.scene_image_id) {
             const img = node('img', 'mlx-shorts-scene-preview');
             img.src = base + '/scene-images/' + encodeURIComponent(scene.scene_image_id);
