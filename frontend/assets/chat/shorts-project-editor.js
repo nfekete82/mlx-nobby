@@ -19,6 +19,7 @@
     let providerReadiness = null, saveTimer = null, saveState = 'saved';
     let voiceProfiles = [], voiceProfilesLoaded = false;
     let sceneImages = [], sceneImagePickerFor = null;
+    let showFullEditor = false;
     async function refreshReadiness() {
         if (!draft) return;
         providerReadiness = draft.project.consistency_mode ? await api('/drafts/' + draft.id + '/preflight') : {available: true, warnings: []};
@@ -309,6 +310,21 @@
         if (p.music_selection === 'auto' && !(capabilities?.music || []).length && !warnings.length)
             warnings.push(warningText('music_unavailable'));
         (expertMode ? warnings : warnings.slice(0, 1)).forEach(text => ui.timeline.append(node('p', 'mlx-shorts-studio-warning', text)));
+        if (ui.quickHint) {
+            const feasible = canPlanDuration(p.duration, Number(sceneCount), p.quality);
+            ui.quickHint.textContent = !String(p.briefing || '').trim()
+                ? localText('Schreib deine Idee oben hinein, um zu starten.', 'Write your idea above to start.')
+                : !feasible
+                    ? localText('Länge und Szenenzahl passen bei dieser Qualität nicht zusammen. Bitte andere Werte wählen.',
+                                'Length and scene count do not fit this quality. Choose another combination.')
+                    : p.scenes.length && p.scenes.every(scene => String(scene.video_prompt || '').trim())
+                        ? localText('Storyboard bereit. Erstelle jetzt dein Video oder passe Details an.',
+                                    'Storyboard ready. Create your video or adjust details.')
+                        : localText('Bereit für die KI-Planung. Noch wird kein Video erzeugt.',
+                                    'Ready to plan with AI. No video will be generated yet.');
+            if (ui.quickPlanButton) ui.quickPlanButton.disabled = busy || !feasible || !String(p.briefing || '').trim();
+            if (ui.quickRenderButton) ui.quickRenderButton.disabled = busy || invalid.length > 0;
+        }
         ui.renderButton.disabled = busy || invalid.length > 0;
         ui.timeline.classList.toggle('is-error', invalid.length > 0);
     }
@@ -341,10 +357,10 @@
     function reset() {
         draft = null; sourceJob = null; selected = null;
         sceneCount = 4; view = 'welcome'; draftItems = [];
-        providerReadiness = null; sceneImagePickerFor = null;
+        providerReadiness = null; sceneImagePickerFor = null; showFullEditor = false;
         if (saveTimer !== null) window.clearTimeout?.(saveTimer);
         saveTimer = null; saveState = 'saved';
-        if (ui) { ui.timeline = null; ui.renderButton = null; }
+        if (ui) { ui.timeline = null; ui.renderButton = null; ui.quickRenderButton = null; ui.quickPlanButton = null; }
     }
     async function saveBeforeNavigation() {
         if (!draft) return;
@@ -536,6 +552,121 @@
         if (from < 0 || to < 0 || to >= scenes.length) return;
         scenes.splice(to, 0, scenes.splice(from, 1)[0]); dirty(); render();
     }
+    function canPlanDuration(duration, count, quality) {
+        const allowed = capabilities?.qualities?.[quality]?.durations || [];
+        if (!Number.isInteger(duration) || !Number.isInteger(count) || count < 1 || count > 60) return false;
+        let sums = new Set([0]);
+        for (let i = 0; i < count; i++) {
+            const next = new Set();
+            for (const sum of sums) for (const seconds of allowed) {
+                if (sum + seconds <= duration) next.add(sum + seconds);
+            }
+            sums = next;
+        }
+        return sums.has(duration);
+    }
+    async function planCurrentShort() {
+        await save();
+        draft = (await api('/drafts/' + draft.id + '/plan', 'POST', { scene_count: sceneCount })).draft;
+        selected = draft.project.scenes[0].id;
+        await refreshReadiness();
+    }
+    async function renderCurrentShort() {
+        await save();
+        const result = await api('/drafts/' + draft.id + '/render', 'POST', {});
+        ui.overlay.classList.remove('is-open');
+        window.MLXShortsStudio.setActiveJob(result.job);
+        window.MLXShortsStudio.openJob();
+    }
+    function quickTextStudio(project) {
+        const quick = node('section', 'mlx-shorts-simple-studio');
+        quick.append(
+            node('h2', '', localText('Deine Idee. Dein fertiger Short.', 'Your idea. Your finished Short.')),
+            node('p', 'mlx-shorts-simple-lead', localText(
+                'Schreib einfach, was im Video passieren soll. Die KI plant Szenen, Sprechertext und Untertitel.',
+                'Describe your video. AI plans scenes, narration and captions.'
+            ))
+        );
+        const prompt = field(quick, localText('Was soll dein Video zeigen?', 'What should your video show?'),
+                             project, 'briefing', 'textarea');
+        prompt.classList.add('mlx-shorts-simple-prompt');
+        prompt.placeholder = localText(
+            'Beispiel: 30-Sekunden-Weltraumdoku über die Venus, 3 Szenen: Anflug, Rotation, Oberfläche. Wissenschaftlich korrekt, mit deutschem Sprechertext.',
+            'Example: A 30-second documentary about Venus, 3 scenes: approach, rotation and surface. Accurate science with narration.'
+        );
+        const controls = node('div', 'mlx-shorts-simple-controls');
+        const durations = [10, 15, 20, 24, 30, 40, 50, 60, 80, 90, 120];
+        if (!durations.includes(project.duration)) durations.push(project.duration);
+        durations.sort((a, b) => a - b);
+        const duration = field(controls, localText('Länge', 'Length'),
+                               project, 'duration', 'text', durations.map(value => [value, String(value) + ' s']));
+        duration.addEventListener('input', () => {
+            project.duration = Number(duration.value);
+            validate();
+        });
+        const count = {value: sceneCount};
+        const choices = [1, 2, 3, 4, 5, 6, 8, 10];
+        if (!choices.includes(sceneCount)) choices.push(sceneCount);
+        choices.sort((a, b) => a - b);
+        const scenes = field(controls, localText('Szenen', 'Scenes'),
+                             count, 'value', 'text', choices.map(n => [n, String(n)]));
+        scenes.addEventListener('input', () => { sceneCount = Number(count.value); validate(); });
+        field(controls, localText('Sprecherstimme', 'Narrator voice'),
+              project, 'voice', 'text', voiceOptions(project.voice));
+        quick.append(controls);
+        const optional = node('details', 'mlx-shorts-simple-options');
+        optional.append(node('summary', '', localText('Stil & Optionen', 'Style & options')));
+        field(optional, localText('Stil', 'Style'), project, 'style_preset', 'text',
+              [['auto',localText('Automatisch','Automatic')], ['documentary',localText('Dokumentation','Documentary')],
+               ['cinematic',localText('Kino','Cinema')], ['social_viral','Social / Viral'],
+               ['funny_meme',localText('Humor','Comedy')], ['futuristic',localText('Futuristisch','Futuristic')],
+               ['product_ad',localText('Werbung','Advertising')]]);
+        field(optional, localText('Renderqualität', 'Render quality'), project, 'quality', 'text',
+              [['fast',localText('Entwurf','Draft')],['standard','Standard'],
+               ['quality',localText('Veröffentlichung','Publication')]]);
+        field(optional, localText('Sprecher an', 'Narration on'), project, 'voice_enabled', 'checkbox');
+        field(optional, localText('Untertitel an', 'Captions on'), project, 'subtitles_enabled', 'checkbox');
+        quick.append(optional);
+        const hint = node('p', 'mlx-shorts-simple-hint');
+        ui.quickHint = hint;
+        quick.append(hint);
+        const actions = node('div', 'mlx-shorts-simple-actions');
+        ui.quickPlanButton = button(localText('1. Mit KI planen', '1. Plan with AI'), planCurrentShort, actions);
+        ui.quickPlanButton.classList.add('mlx-shorts-primary');
+        ui.quickRenderButton = button(localText('2. Video erstellen', '2. Create video'), renderCurrentShort, actions);
+        ui.quickRenderButton.classList.add('mlx-shorts-simple-render');
+        quick.append(actions);
+        const planned = project.scenes.length > 0 && project.scenes.every(scene => String(scene.video_prompt || '').trim());
+        if (planned) {
+            const board = node('section', 'mlx-shorts-simple-storyboard');
+            board.append(node('h3', '', localText('Dein Storyboard', 'Your storyboard')));
+            project.scenes.forEach((scene, index) => {
+                const item = node('article', 'mlx-shorts-simple-scene');
+                item.append(node('strong', '', String(index + 1) + '. ' + (scene.title || localText('Szene','Scene'))
+                                 + ' · ' + scene.duration + ' s'));
+                item.append(node('p', '', scene.description || scene.video_prompt));
+                if (scene.narration) item.append(node('p', 'mlx-shorts-simple-narration', scene.narration));
+                if (scene.scene_image_id) {
+                    const img = node('img', 'mlx-shorts-scene-thumb');
+                    img.src = base + '/scene-images/' + encodeURIComponent(scene.scene_image_id);
+                    img.alt = localText('Szenenbild', 'Scene image');
+                    item.append(img);
+                }
+                const sceneImage = node('details', 'mlx-shorts-simple-scene-image');
+                sceneImage.append(node('summary', '', localText('Bild hinzufügen (optional)', 'Add scene image (optional)')));
+                imageSelector(sceneImage, scene);
+                item.append(sceneImage);
+                board.append(item);
+            });
+            quick.append(board);
+        }
+        const more = node('div', 'mlx-shorts-simple-edit-actions');
+        button(showFullEditor ? localText('Detailansicht schließen', 'Hide detailed editor')
+                              : localText('Szenen und Details bearbeiten', 'Edit scenes and details'),
+               () => { showFullEditor = !showFullEditor; }, more);
+        quick.append(more);
+        return quick;
+    }
     function render() {
         if (ui) ui.headerLabels().forEach((label, i) => { ui.headerActions.children[i].textContent = label; });
         if (!ui) return;
@@ -563,23 +694,14 @@
                 sourceJob = job;
             }, bar);
         }
-        const planButton = button(t('editor_plan_with_ai'), async () => {
-            await save(); draft = (await api('/drafts/' + draft.id + '/plan', 'POST', { scene_count: sceneCount })).draft;
-            selected = draft.project.scenes[0].id;
-            await refreshReadiness();
-        }, bar);
+        const planButton = button(t('editor_plan_with_ai'), planCurrentShort, bar);
         planButton.classList.add('mlx-shorts-primary');
         ui.saveStatus = node('span', 'mlx-shorts-save-status', saveState === 'saved' ? t('editor_saved') : saveState === 'saving' ? t('editor_saving') : t('editor_unsaved'));
         bar.append(ui.saveStatus);
-        ui.renderButton = button(t('editor_render_short'), async () => {
-            await save();
-            const result = await api('/drafts/' + draft.id + '/render', 'POST', {});
-            ui.overlay.classList.remove('is-open');
-            window.MLXShortsStudio.setActiveJob(result.job); window.MLXShortsStudio.openJob();
-        }, bar);
+        ui.renderButton = button(t('editor_render_short'), renderCurrentShort, bar);
         ui.renderButton.classList.add('mlx-shorts-primary');
         ui.timeline = node('div', 'mlx-shorts-studio-status');
-        ui.body.append(bar, ui.timeline);
+
         const layout = node('div', 'mlx-shorts-project-layout');
         const settings = node('section', 'mlx-shorts-studio-editor');
         settings.append(node('h3', '', t('editor_project_9_16')));
@@ -747,7 +869,14 @@
             }, editor, errors(p).length > 0);
         }
         }
-        layout.append(settings, timeline, editor); ui.body.append(layout); validate();
+        layout.append(settings, timeline, editor);
+        const detailView = node('details', 'mlx-shorts-advanced-view');
+        detailView.open = showFullEditor;
+        detailView.append(node('summary', '', localText('Vollständiger Szeneneditor', 'Full scene editor')));
+        detailView.append(bar, ui.timeline, layout);
+        detailView.addEventListener('toggle', () => { showFullEditor = detailView.open; });
+        ui.body.append(quickTextStudio(p), detailView);
+        validate();
         ui.overlay.querySelectorAll('input,textarea,select').forEach(el => { el.disabled = busy; });
     }
     async function open(existing = null) {
