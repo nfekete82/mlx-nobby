@@ -1741,7 +1741,6 @@ Modelle:
   mlx model <alias>
   mlx model <huggingface-repo>
   mlx model add <alias> <repo>
-  mlx candidate dark-scarlett status|register  # optional, ändert aktives Modell NICHT
   mlx model remove <alias>
 
 Downloads / Cache:
@@ -1761,9 +1760,6 @@ Chat-Performance (opt-in, nur Modellserver):
   mlx benchmark chat-cache-ab --confirm-restarts [--pairs 2]
   mlx benchmark chat-quality run --output /tmp/nobby-quality-baseline-1.json
   mlx benchmark chat-quality compare --baseline baseline.json --candidate candidate.json
-  mlx benchmark chat-nsfw run --expect-model Qwen3.8 --output baseline.json --review-file baseline-review.json
-  mlx benchmark chat-nsfw score --report baseline.json --review-file baseline-review.json --output baseline-scores.json
-  mlx benchmark chat-nsfw compare --baseline baseline.json --candidate candidate.json --baseline-scores baseline-scores.json --candidate-scores candidate-scores.json
       Drei aufeinander aufbauende Chat-Fragen und APC-Deltas messen
   mlx chat-profile status
       Laufendes Profil und Cache-Status anzeigen
@@ -1840,14 +1836,6 @@ if [[ "${1:-}" = test-quick || "${1:-}" = test-medium || "${1:-}" = test-e2e || 
     esac
 fi
 
-# Opt-in model candidate helper reads user alias state without requiring runtime
-# configuration, and does not select/download/start any model automatically.
-if [ "${1:-}" = "candidate" ]; then
-    shift
-    candidate_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    exec python3 "$candidate_repo/scripts/model-candidate.py" "$@"
-fi
-
 load_config
 
 case "$1" in
@@ -1860,8 +1848,7 @@ case "$1" in
             chat-cache) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache.py" "$@" ;;
             chat-cache-ab) exec python3 "$benchmark_repo/scripts/benchmark-chat-cache-ab.py" "$@" ;;
             chat-quality) exec python3 "$benchmark_repo/scripts/benchmark-chat-quality.py" "$@" ;;
-            chat-nsfw) exec python3 "$benchmark_repo/scripts/benchmark-chat-nsfw.py" "$@" ;;
-            *) die "Verwendung: mlx benchmark chat-cache|chat-cache-ab|chat-quality|chat-nsfw [Optionen]" ;;
+            *) die "Verwendung: mlx benchmark chat-cache|chat-cache-ab|chat-quality [Optionen]" ;;
         esac
         ;;
     chat-profile)
