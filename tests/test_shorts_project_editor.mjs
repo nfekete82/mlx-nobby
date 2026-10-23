@@ -662,6 +662,13 @@ test('text-first quick workflow plans then renders without manual scene editing'
     assert.ok(h.calls.some(c => c.path.endsWith('/plan') && c.init.method === 'POST'));
     assert.ok(textContent(h.body).includes('Dein Storyboard'));
     assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, false);
+    const changedBrief = inputFor(h, 'Was soll dein Video zeigen?');
+    changedBrief.value = 'Neue Version des Venus-Videos';
+    await changedBrief.fire('input');
+    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, true,
+                 'render stays blocked until the updated prompt is replanned');
+    await h.click('1. Mit KI planen');
+    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, false);
     await h.click('2. Video erstellen');
     assert.ok(h.calls.some(c => c.path.endsWith('/render') && c.init.method === 'POST'));
 });
