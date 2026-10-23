@@ -28,18 +28,15 @@
 
 - Fix personal workplace/relationship reflections with commercial context being routed to web search; restore normal local chat after irrelevant empty search while retaining factual/weather/news no-source safeguards.
 
-- Make the existing top-left chat-model picker discoverable and route selection through a chat-only, guarded model switch; persist `chat` role without rewriting agent/coding/vision roles. Model switching remains global to the shared chat runtime; optional Roleplay preset works as before.
+- Make the existing top-left chat-model picker discoverable and route selection through a chat-only, guarded model switch; persist `chat` role without rewriting agent/coding/vision roles. Model switching remains global to the shared chat runtime; existing system-prompt presets remain available.
 
-- Fix `chat-nsfw` benchmark: explicitly pin active model **and PID** inside the protected Agent stream, bypassing persistent `chat` role resolution (which previously switched Dark Scarlett back to Qwen3.8 after the first case); reject changed runtime identity, leave normal role routing intact.
 
-- New **opt-in**, local, consenting-adult NSFW/roleplay A/B benchmark (`mlx benchmark chat-nsfw`): eight privacy-protected synthetic tasks, mandatory actual-model identity check, separate owner-only answer files, interactive five-axis human scoring, and strict different-model comparison. Existing 44+4 Chat Quality suite remains unchanged.
 
 - Add privacy-safe failure diagnostics to the Chat Quality CLI (`error_code` and `error_phase` instead of opaque RuntimeError only) and `--case-id` for reproducing a single frozen task without 48 prompts; incomplete reports remain non-comparable and raw Agent errors are still hidden.
 
-- Fix native chat backend auto-detection for Hugging Face repository IDs already downloaded in the local hub cache: inspect their cached config.json just like local model directories. Prevent Qwen3.8-architecture oQ VLM checkpoints such as the opt-in Dark Scarlett candidate being incorrectly started with mlx_lm instead of mlx_vlm; reject malformed cached configs and retain existing runtime/memory guards.
+- Fix native chat backend detection for locally cached Hugging Face models by examining their cached configuration; avoid selecting an incompatible inference backend while retaining runtime and memory guards.
 
 - Document the two completed Qwen3.8 chat-quality runs (42/44 twice), confirm the second run used the same model despite its filename, and close the initial baseline phase without starting a model leaderboard.
-- Add explicitly opt-in Dark Scarlett 27B v2.0 MLX candidate status/alias registration (`mlx candidate dark-scarlett`) using the existing alias command; no downloads, model changes, runtime restarts or profile-default changes, plus CPU regressions and rollback guidance.
 
 - Add opt-in Chat Quality v1: frozen 44 exact-answer and four human-review synthetic Agent chat cases, local-only model-identity/idle preflight, owner-only reports and strict complete-run offline comparison; no changes to active runtime defaults.
 
@@ -65,7 +62,6 @@
 - Juggernaut XL Ragnarok: creator-aligned DPM++ 2M SDE Karras presets, native portrait size, adjustable Steps/CFG, and the guarded CPU-offload / VAE diagnostic. Preserve user-selected parameters and existing artwork.
 - Image region editor: precise brush and erase masks with prompt-based Qwen 2.1 editing, bounded 512px low-RAM crop, original image preservation and before/after comparison. Add zoom, keyboard shortcuts, prompt suggestions, persisted brush size, and clipped 0–12px mask feathering.
 - Exclusive heavyweight-model handoff: coordinated chat, image and video model transitions that unload other known idle model weights before inference, including a warm SDXL worker before switching image providers. Retain the cross-process lease and strict 90% admission, 20% active free-RAM floor, swap-growth watchdog and image/video load reserves.
-- Remove the superseded Lustify experiment from the active model registry without deleting any existing user media; preserve local private media jobs and progress.
 
 ## v1.18.0
 
@@ -310,7 +306,7 @@
 - Fix chat read-aloud loading and playback state, remove competing speech
   handlers, and prevent voice status updates from freezing the UI.
 
-- Validate optional Uncensored video profile availability before queueing jobs,
+- Validate optional optional video adapter profile availability before queueing jobs,
   show unavailable profiles in the dialog, and preserve launchd adapter settings.
 
 - Simplified the Models settings information hierarchy by removing repeated
@@ -406,7 +402,7 @@
   workspace polling and runtime-lock contention. Vision streaming tolerates long
   prefill and reports empty responses; read-aloud handles stalled TTS safely.
 - Added a warm native LTX 2.5 MLX video worker, promoted Q4 to the default backend,
-  and added an optional uncensored profile; removed the experimental Wan backend.
+  and added an optional optional local adapter profile; removed the experimental Wan backend.
 - Improved LTX cumulative progress, heartbeat and benchmark output, with
   cold/warm/cold isolation, macOS system/thermal telemetry and a reference baseline.
 - Repaired CI validation and tightened workflow triggers; enabled automatic
