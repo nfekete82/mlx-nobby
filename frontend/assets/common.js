@@ -358,7 +358,7 @@
                 'mlx-tts-cache'
             );
             await loadScript(
-                '/assets/chat/user-voice.js?v=20261022-scene-images',
+                '/assets/chat/user-voice.js?v=20261023-controls-top',
                 'mlx-user-voice-controls'
             );
         } catch (error) {
