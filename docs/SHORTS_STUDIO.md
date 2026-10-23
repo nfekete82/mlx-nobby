@@ -1,3 +1,20 @@
+## Einfacher Short aus Text (Standardansicht)
+
+Das Shorts Studio startet nun in einer kompakten Textansicht. Nutzer beschreiben
+ihren Short im Feld **Was soll dein Video zeigen?**, wählen Länge, Szenenanzahl
+und lokale Sprecherstimme und klicken **1. Mit KI planen**. Die vorhandene
+Planner-API erzeugt daraus ein Storyboard mit Szenentiteln, visuellen Prompts
+und Narration. Danach erzeugt **2. Video erstellen** den regulären Job.
+Pro Storyboard-Szene können weiterhin optionale Startbilder hochgeladen
+oder ausgewählt werden. Stil, Renderqualität, Sprecher und Untertitel
+bleiben über **Stil & Optionen** erreichbar.
+
+Die App prüft, ob sich die gewählte Länge aus unterstützten Szenendauern
+zusammensetzen lässt, bevor sie die Planung startet. Eine Änderung des
+Briefings oder der Planungsparameter erfordert eine erneute Planung
+vor dem Rendern. Alle vorhandenen Details bleiben im einklappbaren
+**Vollständigen Szeneneditor** erhalten; die Render-Pipeline bleibt unverändert.
+
 # Shorts Studio
 
 ## User workflow
