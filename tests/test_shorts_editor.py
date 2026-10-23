@@ -391,3 +391,118 @@ def test_incompatible_explicit_duration_count_is_not_silently_changed(store):
         shorts_drafts.plan_draft(draft['id'],provider)
     provider.complete.assert_not_called()
     assert not shorts_jobs._load_jobs()
+
+
+VENUS_BRIEF = ('Erstelle einen 30 Sekunden langen, fotorealistischen Wissenschafts-Short über die Venus. '
+               'Drei Szenen: Anflug auf den Planeten, langsame Rotation im Weltraum und die heiße Venusoberfläche. '
+               'Erkläre, dass eine Venusrotation 243 Erdtage dauert und ein Umlauf um die Sonne nur 225 Erdtage. '
+               'Deutsche Erzählstimme, spannende Dokumentationsatmosphäre und kurze Untertitel.')
+
+
+def test_venus_managed_voice_roundtrip_plan_and_render(store, monkeypatch):
+    # Real route -> store -> planner -> strict schema -> render, isolated inference only.
+    data = shorts_drafts.default_project()
+    data.update(briefing=VENUS_BRIEF, duration=30, quality='fast', voice='Lana Weiss')
+    data['scenes'][0].update(voice='Lana Weiss', scene_image_id='a' * 32)
+    response = dict(data, title='Ein Tag länger als ein Jahr', scenes=[
+        {'id': f'scene-{i}', 'duration':10, 'title': title, 'video_prompt': visual,
+         'narration': narration, 'caption': title, 'description':visual}
+        for i, title, visual, narration in [
+            (1, 'Anflug', 'Photoreal approach to Venus in space', 'Ein Venustag dauert 243 Erdtage.'),
+            (2, 'Rotation', 'Slow rotation of Venus in space', 'Ein Venusjahr dauert nur 225 Erdtage.'),
+            (3, 'Oberfläche', 'Hot rocky Venus surface', 'Ein Tag ist hier länger als ein Jahr.')]])
+    provider = SimpleNamespace(complete=Mock(return_value=SimpleNamespace(text=json.dumps(response))))
+    monkeypatch.setattr(shorts_draft_routes, 'model_provider', lambda: provider)
+    monkeypatch.setattr('agent.shorts_scene_images.image_path', Mock(return_value=store / 'reference.png'))
+    app = FastAPI(); shorts_draft_routes.install_routes(app); client = TestClient(app)
+    created = client.post('/api/shorts/drafts', json={'project':data, 'chat_id':'venus-regression'})
+    assert created.status_code == 201, created.text
+    draft = created.json()['draft']; url = '/api/shorts/drafts/' + draft['id']
+    planned = client.post(url + '/plan', json={'scene_count':3})
+    assert planned.status_code == 200, planned.text
+    saved = planned.json()['draft']
+    assert saved['project']['voice'] == 'Lana Weiss'
+    assert saved['project']['briefing'] == VENUS_BRIEF
+    assert saved['project']['duration'] == 30
+    assert [s['duration'] for s in saved['project']['scenes']] == [10,10,10]
+    assert saved['project']['scenes'][0]['scene_image_id'] == 'a' * 32
+    assert saved['project']['scenes'][0]['voice'] == 'Lana Weiss'
+    assert saved['version'] == draft['version'] + 1
+    assert provider.complete.call_count == 1
+    shorts_jobs.start_short_job.assert_not_called()
+    rendered = client.post(url + '/render', json={})
+    assert rendered.status_code == 202, rendered.text
+    job = rendered.json()['job']; p = ShortProject.model_validate(job['project'])
+    assert p.voice_for_scene(p.scenes[0]) == 'Lana Weiss'
+    assert p.scenes[0].scene_image_id == 'a' * 32
+    shorts_jobs.start_short_job.assert_called_once_with(job['id'])
+
+
+@pytest.mark.parametrize('quality,valid', [('fast',True), ('standard',True), ('quality',False)])
+def test_venus_exact_timeline_uses_real_quality_capabilities(quality, valid):
+    from agent.shorts_normalization import allocate_durations
+    allowed = quality_capabilities()[quality]['durations']
+    if valid:
+        assert allocate_durations(30, 3, allowed) == [10,10,10]
+    else:
+        with pytest.raises(ValueError, match='cannot be divided'):
+            allocate_durations(30, 3, allowed)
+
+
+def test_safe_action_errors_and_version_conflict_keep_draft(store, monkeypatch):
+    app = FastAPI(); shorts_draft_routes.install_routes(app); client = TestClient(app)
+    draft = shorts_drafts.save_draft(); url = '/api/shorts/drafts/' + draft['id']
+    for exc, status, code in [
+        (ValueError('30s cannot be divided into 3 scenes'),400,'incompatible_timeline'),
+        (ValueError('short prompt must not be empty'),400,'briefing_required'),
+        (RuntimeError('private model /secret/path TOKEN=private'),502,'invalid_plan'),
+        (ConnectionError('private endpoint'),503,'planner_unavailable'),
+        (TimeoutError('private timeout'),504,'planner_timeout'),
+    ]:
+        monkeypatch.setattr(shorts_draft_routes, 'model_provider', Mock(side_effect=exc))
+        # Errors acquiring the provider use the same safe planning response.
+        result = client.post(url + '/plan', json={'scene_count':4})
+        assert result.status_code == status, result.text
+        assert result.json()['detail']['code'] == code
+        assert len(result.json()['detail']['error_id']) == 12
+        assert 'private' not in result.text and '/secret' not in result.text
+    result = client.put(url, json={'project':draft['project'], 'expected_version':999})
+    assert result.status_code == 409 and result.json()['detail']['code'] == 'draft_conflict'
+    assert shorts_drafts.get_draft(draft['id']) == draft
+
+
+@pytest.mark.parametrize('field', ['project','scene','cast'])
+def test_managed_voice_ids_preserve_spaces_and_reject_controls(field):
+    data = project().model_dump()
+    if field == 'project': data['voice'] = 'Lana Weiss'
+    elif field == 'scene': data['scenes'][0]['voice'] = 'Lana Weiss'
+    else: data['cast'] = [{'id':'narrator','name':'Narrator','voice':'Lana Weiss'}]
+    assert 'Lana Weiss' in ShortProject.model_validate(data).model_dump_json()
+    bad = json.loads(json.dumps(data).replace('Lana Weiss', r'Lana\u0000Weiss'))
+    with pytest.raises(ValidationError, match='control characters'):
+        ShortProject.model_validate(bad)
+
+
+def test_changed_planning_settings_survive_reload_and_voice_alone_needs_no_plan(store):
+    d = shorts_drafts.save_draft(project(voice_enabled=True, voice='Lana Weiss').model_dump())
+    d['project']['voice'] = 'Laura'
+    d = shorts_drafts.save_draft(d['project'], draft_id=d['id'], expected_version=d['version'])
+    assert d['needs_replan'] is False
+    d['project']['briefing'] = 'Neue Venus-Dokumentation'
+    d = shorts_drafts.save_draft(d['project'], draft_id=d['id'], expected_version=d['version'], planning_scene_count=3)
+    restored = shorts_drafts.get_draft(d['id'])
+    assert restored['needs_replan'] and restored['planning_scene_count'] == 3
+    duplicate = shorts_drafts.duplicate_draft(d['id'])
+    assert duplicate['needs_replan'] and duplicate['planning_scene_count'] == 3
+    with pytest.raises(ValueError, match='requires replanning'):
+        shorts_drafts.render_draft(d['id'])
+    shorts_jobs.start_short_job.assert_not_called()
+
+
+def test_no_voice_plan_keeps_scene_switch_available_for_voice_only_change(store):
+    from agent.shorts_normalization import normalize_short_for_available_runtime
+    data = project(voice_enabled=False).model_dump()
+    data['scenes'][0]['narration'] = 'Ein Tag dauert 243 Erdtage.'
+    normalized, _ = normalize_short_for_available_runtime(data, planning=True)
+    assert normalized['voice_enabled'] is False
+    assert normalized['scenes'][0]['voice_enabled'] is True

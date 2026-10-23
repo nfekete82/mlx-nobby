@@ -1,10 +1,50 @@
 """Pre-production API, installed alongside the existing Shorts Studio routes."""
+import logging
+import uuid
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from agent import shorts_drafts, shorts_jobs, shorts_scene_images
 from agent.shorts_planner import quality_capabilities
 from agent.shorts_composer import library_tracks, library_path
+
+logger = logging.getLogger(__name__)
+
+
+def action_error(exc, *, planning=False):
+    """Expose stable codes, never validation inputs, paths or provider responses."""
+    detail = str(exc)
+    status, code = 400, "invalid_project"
+    provider_code = getattr(exc, "code", None)
+    if planning and provider_code:
+        status, code = (504, "planner_timeout") if provider_code == "timeout" else (503, "planner_unavailable")
+    elif isinstance(exc, KeyError):
+        status, code = 404, "draft_not_found"
+    elif "reload before saving" in detail:
+        status, code = 409, "draft_conflict"
+    elif "cannot be divided" in detail:
+        code = "incompatible_timeline"
+    elif "short prompt must not be empty" in detail:
+        code = "briefing_required"
+    elif "draft requires replanning" in detail:
+        code = "replan_required"
+    elif "voice" in detail and isinstance(exc, (ValueError, TypeError)):
+        code = "invalid_voice"
+    elif isinstance(exc, TimeoutError):
+        status, code = 504, "planner_timeout" if planning else "service_timeout"
+    elif isinstance(exc, ConnectionError):
+        status, code = 503, "planner_unavailable" if planning else "service_unavailable"
+    elif isinstance(exc, RuntimeError):
+        status, code = 502, "invalid_plan" if planning else "render_failed"
+    elif "sum exactly" in detail or "duration" in detail:
+        code = "invalid_duration"
+    elif "generator" in detail.lower() or "image-dienst" in detail.lower():
+        code = "image_unavailable"
+    elif "model" in detail.lower():
+        code = "model_unavailable"
+    error_id = uuid.uuid4().hex[:12]
+    logger.warning("Shorts action failed id=%s code=%s", error_id, code, exc_info=True)
+    return HTTPException(status, {"code": code, "error_id": error_id})
 
 
 class DraftWrite(BaseModel):
@@ -13,6 +53,7 @@ class DraftWrite(BaseModel):
     chat_id: str = Field(default="shorts-studio", min_length=1, max_length=200)
     source_job_id: str | None = None
     expected_version: int | None = Field(default=None, ge=1)
+    planning_scene_count: int | None = Field(default=None, ge=1, le=60)
 
 
 class SceneImageRequest(BaseModel):
@@ -44,10 +85,8 @@ def model_provider():
 def checked(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
-    except KeyError as exc:
-        raise HTTPException(404, "Short draft/job not found") from exc
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(409 if "reload before saving" in str(exc) else 400, str(exc)) from exc
+    except (KeyError, ValueError, TypeError, RuntimeError, ConnectionError, TimeoutError) as exc:
+        raise action_error(exc, planning=fn is shorts_drafts.plan_draft) from exc
 
 
 def install_routes(app):
@@ -62,8 +101,8 @@ def install_routes(app):
             project = plan_short(request.prompt, model_provider(), constraints={"schema_version": 2})
             project.briefing = request.prompt
             return {"draft": checked(shorts_drafts.save_draft, project.model_dump(mode="json"), chat_id=request.chat_id, normalization_warnings=project._normalization_warnings)}
-        except RuntimeError as exc:
-            raise HTTPException(502, "Die Szenenplanung konnte nicht abgeschlossen werden. Bitte erneut versuchen.") from exc
+        except (ValueError, TypeError, RuntimeError, ConnectionError, TimeoutError) as exc:
+            raise action_error(exc, planning=True) from exc
 
     @app.get("/api/shorts/capabilities")
     def capabilities():
@@ -90,7 +129,7 @@ def install_routes(app):
     @app.post("/api/shorts/drafts", status_code=201)
     def create(request: DraftWrite):
         return {"draft": checked(shorts_drafts.save_draft, request.project, chat_id=request.chat_id,
-                                  source_job_id=request.source_job_id)}
+                                  source_job_id=request.source_job_id, planning_scene_count=request.planning_scene_count)}
 
     @app.get("/api/shorts/drafts/{draft_id}")
     def get(draft_id: str):
@@ -101,7 +140,7 @@ def install_routes(app):
         if request.project is None:
             raise HTTPException(400, "project required")
         return {"draft": checked(shorts_drafts.save_draft, request.project, draft_id=draft_id,
-                                  expected_version=request.expected_version)}
+                                  expected_version=request.expected_version, planning_scene_count=request.planning_scene_count)}
 
     @app.delete("/api/shorts/drafts/{draft_id}")
     def delete(draft_id: str):
@@ -116,8 +155,8 @@ def install_routes(app):
         try:
             return {"draft": checked(shorts_drafts.plan_draft, draft_id, model_provider(),
                                      scene_count=request.scene_count)}
-        except RuntimeError as exc:
-            raise HTTPException(502, "Die Szenenplanung konnte nicht abgeschlossen werden. Bitte erneut versuchen.") from exc
+        except (ValueError, TypeError, RuntimeError, ConnectionError, TimeoutError) as exc:
+            raise action_error(exc, planning=True) from exc
 
     @app.post("/api/shorts/drafts/{draft_id}/render", status_code=202)
     def render(draft_id: str, request: RenderRequest):

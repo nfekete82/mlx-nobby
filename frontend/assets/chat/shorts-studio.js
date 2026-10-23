@@ -283,7 +283,7 @@
         if (document.querySelector('link[data-mlx-shorts-studio-style]')) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = '/assets/chat/shorts-studio.css?v=20261023-simple-text';
+        link.href = '/assets/chat/shorts-studio.css?v=20261023-studio2';
         link.dataset.mlxShortsStudioStyle = '1';
         document.head.appendChild(link);
     }
@@ -666,7 +666,7 @@
         if (window.MLXShortsProjectEditor) return Promise.resolve();
         if (!editorPromise) editorPromise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = '/assets/chat/shorts-project-editor.js?v=20261023-simple-text';
+            script.src = '/assets/chat/shorts-project-editor.js?v=20261023-studio2';
             script.onload = resolve;
             script.onerror = () => { editorPromise = null; reject(new Error(translate('error_service_unavailable'))); };
             document.head.append(script);
