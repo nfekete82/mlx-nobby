@@ -33,15 +33,6 @@ For releases follow [the release procedure](docs/RELEASING.md) and
 [the full test matrix](docs/TESTING.md). Passing GitHub CI alone does not
 replace the required local real-runtime acceptance on Apple Silicon.
 
-## Optional adult-roleplay chat candidate (18+)
-
-Dark Scarlett 27B v2.0 MLX 4-bit can be **registered as a separate model
-alias** without downloading weights, changing the default chat model, or
-restarting services. Runtime compatibility and model quality have **not** been
-validated locally. Only explicitly download and activate after reviewing
-the model's age/license terms. See
-[Dark Scarlett optional setup](docs/DARK_SCARLETT_CANDIDATE.md).
-
 ## Chat Quality v1 (opt-in)
 
 A frozen 48-case synthetic baseline and strict offline A/B comparison help
@@ -51,7 +42,6 @@ grounding/longform tasks require human review. The benchmark runs only when
 the local Agent reports an idle runtime and writes private 0600 artifacts.
 Results cannot automatically approve Hybrid, APC, DFlash2, or a model upgrade.
 See [Chat Quality v1](docs/CHAT_QUALITY_V1.md) and the [baseline closeout](docs/CHAT_QUALITY_V1_CLOSEOUT.md).
-- [NSFW-/Erwachsenen-Rollenspiel-Benchmark v1](docs/CHAT_NSFW_BENCHMARK_V1.md) – optionaler, lokaler A/B-Test mit echten Modellidentitäten und manueller Bewertung; keine Antworttexte im Hauptbericht.
 
 ## Shorts backend
 
@@ -187,9 +177,9 @@ MLX must remain native. Moving MLX into the Docker image would remove the
 intended Apple Silicon runtime path.
 
 Prompt writing, scripts and questions stay in chat, including with reference
-images. Media jobs require explicit execution intent; attachments, adult terms
-and classifier confidence cannot start them. Image chat prefers the configured
-`vision_uncensored` role, falling back to `vision` when unavailable. The Routing
+images. Media jobs require explicit execution intent; attachments or incidental
+prompt wording cannot start them. Image chat uses the configured image-analysis
+model role, with a fallback when the preferred model is unavailable. The Routing
 Observatory under **Settings → Tools** shows guarded preflight decisions and actual
 chat/vision, agent and media actions in a local in-memory buffer. Prompts stay
 redacted; only submitted feedback uses the existing local store. See [Routing Observatory](docs/ROUTING_OBSERVATORY.md) for the decision flow and
@@ -516,15 +506,10 @@ The native video dispatcher runs on port 8060 and coordinates local LTX 2.5
 text-to-video and image-to-video work while reusing the isolated image Python
 environment. Video jobs remain separate from the Docker web application.
 
-Video profile `standard` is the default and uses no request LoRA. The optional
-`uncensored` profile uses a local adapter configured exclusively on the server
-with `LTX_MLX_UNCENSORED_LORA` and `LTX_MLX_UNCENSORED_LORA_STRENGTH` (default
-`1.0`, finite number). Export these variables when running
-`scripts/install-launchd.sh` to include them in the video LaunchAgent. Subsequent
-installs preserve these values from `~/Library/LaunchAgents/de.nobby.mlx-video.plist`
-unless explicitly overridden in the installer's environment. Export an empty
-`LTX_MLX_UNCENSORED_LORA` to disable the adapter. Docker `.env` does not configure
-native launchd services. The worker inherits the service environment.
+Video generation defaults to the standard local LTX profile. Optional local
+adapter profiles can be configured separately on the native video service;
+no adapter is downloaded or activated automatically. Native service settings
+are managed outside Docker and are applied only when its worker restarts.
 
 The pinned `ltx-2-mlx 0.16.0` also accepts the optional
 `LTX2_COMPUTE_DTYPE=float16` in the native video service environment. Direct
@@ -537,12 +522,10 @@ it. Upstream checks for nonfinite DiT outputs and recomputes without the overrid
 The Runtime Coordinator's RAM ceiling remains 90%; configuration can lower it
 but cannot raise it.
 
-The video model API reports optional profile availability using a lightweight
-local file/readability check; it never loads or downloads adapters for this check.
-Missing or invalid configuration rejects explicit Uncensored requests before
-queueing or runtime acquisition, without automatic fallback. New video requests
-start with Standard; the dialog disables Uncensored when it is not configured.
-Both text-to-video and image-to-video use the existing LTX-MLX model and runtime.
+The video model API checks whether optional adapter profiles are configured
+without loading additional model weights. Invalid configurations are rejected
+before queueing; normal video requests always start with the standard profile.
+Text-to-video and image-to-video share the existing LTX-MLX runtime.
 
 The speech service uses `mlx-audio[stt,tts]` and FFmpeg. Uploaded audio is relayed
 through the web application and host agent to the loopback-only speech service.
