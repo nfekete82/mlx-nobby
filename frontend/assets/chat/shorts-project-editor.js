@@ -20,6 +20,7 @@
     let voiceProfiles = [], voiceProfilesLoaded = false;
     let sceneImages = [], sceneImagePickerFor = null;
     let showFullEditor = false, needsReplan = false;
+    let feedbackStep = 'plan';
     async function refreshReadiness() {
         if (!draft) return;
         providerReadiness = draft.project.consistency_mode ? await api('/drafts/' + draft.id + '/preflight') : {available: true, warnings: []};
@@ -613,14 +614,17 @@
         return sums.has(duration);
     }
     async function planCurrentShort() {
+        feedbackStep = 'plan';
         message(localText('Die KI plant dein Storyboard …', 'AI is planning your storyboard …'));
         await save();
         draft = (await api('/drafts/' + draft.id + '/plan', 'POST', { scene_count: sceneCount })).draft;
         selected = draft.project.scenes[0].id;
         needsReplan = false;
         await refreshReadiness();
+        message(localText('Dein Storyboard ist bereit. Prüfe die Szenen und erstelle dein Video.', 'Your storyboard is ready. Review the scenes and create your video.'));
     }
     async function renderCurrentShort() {
+        feedbackStep = 'render';
         ui.quickRenderButton?.insertAdjacentElement?.('afterend', ui.feedback);
         await save();
         const result = await api('/drafts/' + draft.id + '/render', 'POST', {});
@@ -705,7 +709,8 @@
         ui.quickPlanButton.classList.add('mlx-shorts-primary');
         ui.quickRenderButton = button(localText('Video erstellen', 'Create video'), renderCurrentShort, actions);
         ui.quickRenderButton.classList.add('mlx-shorts-simple-render');
-        quick.append(actions, ui.feedback);
+        quick.append(actions);
+        if (feedbackStep !== 'render') quick.append(ui.feedback);
         const planned = project.scenes.length > 0 && project.scenes.every(scene => String(scene.video_prompt || '').trim());
         ui.quickRenderButton.hidden = !planned;
         if (planned) {
@@ -737,6 +742,7 @@
             ui.renderHint = node('p', 'mlx-shorts-simple-hint');
             quick.append(board, ui.renderHint, ui.quickRenderButton);
         }
+        if (feedbackStep === 'render') quick.append(ui.feedback);
         return quick;
     }
     function render() {
