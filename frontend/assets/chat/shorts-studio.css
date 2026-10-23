@@ -305,3 +305,29 @@
     object-fit: cover;
     border-radius: 6px;
 }
+
+
+/* Keep scene inputs visible at the top, before the long script fields. */
+.mlx-shorts-scene-media-controls {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(145, 149, 255, .28);
+    border-radius: 12px;
+    background: rgba(145, 149, 255, .055);
+    margin: 10px 0 18px;
+}
+.mlx-shorts-scene-media-controls h4 {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.35;
+}
+.mlx-shorts-scene-media-controls .mlx-shorts-scene-image-panel {
+    margin: 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, .08);
+}
+.mlx-shorts-scene-media-controls .mlx-shorts-image-file-input {
+    min-width: 0;
+    max-width: 100%;
+}

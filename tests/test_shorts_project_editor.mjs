@@ -604,3 +604,16 @@ test('Shorts editor provides scene image upload and voice selection in normal mo
     assert.ok(fields.includes('Gesamtdauer (s)'));
     assert.ok(fields.includes('Szenenanzahl für KI-Planung'));
 });
+
+
+test('scene image and voice controls appear above long scene text fields', async () => {
+    const h = harness();
+    await h.window.MLXShortsProjectEditor.newDraft();
+    const labels = labelFields(h);
+    assert.ok(labels.indexOf('Standardstimme') >= 0);
+    assert.ok(labels.indexOf('Standardstimme') < labels.indexOf('Idee / Briefing'));
+    assert.ok(labels.indexOf('Szenenstimme (optional)') >= 0);
+    assert.ok(labels.indexOf('Szenenstimme (optional)') < labels.indexOf('Szenentitel'));
+    const fileInput = h.body.querySelectorAll('input').find(item => item.type === 'file');
+    assert.ok(fileInput, 'image upload should be visible before narration');
+});

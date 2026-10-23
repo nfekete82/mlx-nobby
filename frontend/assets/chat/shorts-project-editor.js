@@ -584,6 +584,7 @@
         const settings = node('section', 'mlx-shorts-studio-editor');
         settings.append(node('h3', '', t('editor_project_9_16')));
         field(settings, t('editor_title'), p, 'title');
+        field(settings, localText('Standardstimme', 'Default voice'), p, 'voice', 'text', voiceOptions(p.voice));
         field(settings, t('editor_idea_briefing'), p, 'briefing', 'textarea');
         field(settings, t('editor_total_duration_s'), p, 'duration', 'number');
         const count = { value: sceneCount };
@@ -597,7 +598,6 @@
         field(settings, t('editor_render_quality'), p, 'quality', 'text', [['fast', t('editor_draft')], ['standard', 'Standard'], ['quality', t('editor_publication')]]);
         field(settings, t('editor_enable_voice'), p, 'voice_enabled', 'checkbox');
         field(settings, t('editor_enable_captions'), p, 'subtitles_enabled', 'checkbox');
-        field(settings, localText('Standardstimme', 'Default voice'), p, 'voice', 'text', voiceOptions(p.voice));
         castFields(settings, p);
         const musicChoice = { value: p.music_selection === 'off' || p.music_mode === 'off' ? 'off' : 'auto' };
         const musicInput = field(settings, t('editor_music'), musicChoice, 'value', 'text', [['auto', 'Auto'], ['off', t('editor_off')]]);
@@ -687,12 +687,15 @@
         button('↓', () => move(i, i + 1), actions, i === p.scenes.length - 1);
         editor.append(actions);
         }
+        const mediaControls = node('section', 'mlx-shorts-scene-media-controls');
+        mediaControls.append(node('h4', '', localText('Bild & Stimme für diese Szene', 'Image & voice for this scene')));
+        imageSelector(mediaControls, scene);
+        field(mediaControls, localText('Szenenstimme (optional)', 'Scene voice (optional)'), scene, 'voice', 'text', voiceOptions(scene.voice));
+        editor.append(mediaControls);
         field(editor, t('editor_scene_title'), scene, 'title');
         field(editor, t('editor_what_happens'), scene, 'description', 'textarea');
         field(editor, t('editor_caption_visible_text'), scene, 'caption', 'textarea');
         field(editor, t('editor_narration_spoken_text'), scene, 'narration', 'textarea');
-        field(editor, localText('Szenenstimme (optional)', 'Scene voice (optional)'), scene, 'voice', 'text', voiceOptions(scene.voice));
-        imageSelector(editor, scene);
         if (p.cast.length) field(editor, localText('Sprecher', 'Speaker'), scene, 'speaker', 'text', castOptions(p, scene.speaker));
         dialogueFields(editor, p, scene);
         if (expertMode) {
