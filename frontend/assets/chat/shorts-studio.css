@@ -461,3 +461,10 @@
     .mlx-shorts-simple-controls > :last-child { grid-column: 1 / -1; }
     .mlx-shorts-simple-studio { padding: 18px; }
 }
+
+/* Existing Studio styles use display:grid on details; explicitly hide unopened editor bodies. */
+.mlx-shorts-advanced-view:not([open]) > :not(summary),
+.mlx-shorts-simple-options:not([open]) > :not(summary),
+.mlx-shorts-simple-scene-image:not([open]) > :not(summary) {
+    display: none !important;
+}
