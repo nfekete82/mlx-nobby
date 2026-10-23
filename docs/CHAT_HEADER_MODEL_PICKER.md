@@ -2,7 +2,7 @@
 
 In der Chat-Oberfläche ist der aktive Modellname oben links jetzt ein deutlich
 erkennbarer Button mit Pfeil. Ein Klick zeigt alle registrierten Modell-Aliase
-(z. B. Qwen3.8 und Dark Scarlett, sofern konfiguriert). Der aktive Eintrag
+(z. B. verschiedene lokal registrierte Chatmodelle). Der aktive Eintrag
 ist markiert. Bei laufender Generierung ist der Wechsel gesperrt.
 
 ## Vorgehen
@@ -11,9 +11,8 @@ ist markiert. Bei laufender Generierung ist der Wechsel gesperrt.
 2. Oben links auf den Modellnamen klicken.
 3. Ein **bereits registriertes und verfügbares** Chatmodell auswählen.
 4. Warten, bis das neu gewählte Modell im Header als bereit angezeigt wird.
-5. Für Rollenspiele kann optional der bestehende Systemprompt-Preset
-   **Roleplay** gewählt werden; der Modellwechsel setzt die Chat-Historie
-   und den Prompt-Preset nicht zurück.
+5. Bei Bedarf kann ein vorhandener Systemprompt-Preset gewählt werden;
+   der Modellwechsel setzt die Chat-Historie und den Prompt-Preset nicht zurück.
 
 **Wichtig:** Das Modell wird aktuell für die gemeinsame Chat-Runtime
 ausgewählt, nicht als separate geladene Instanz für jede Unterhaltung.
