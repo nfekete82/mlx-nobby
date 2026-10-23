@@ -106,3 +106,27 @@ def test_cancel_also_cancels_active_keyframe_child(store, monkeypatch):
     cancelled=shorts_jobs.cancel_short_job(job['id'],request_fn=Mock())
     assert cancelled['status']=='cancelled' and cancelled['active_image_job_id'] is None
     assert calls==[('POST','/jobs/'+'a'*24+'/cancel',{})]
+
+
+@pytest.mark.parametrize('suffix', ['.png', '.webp', '.jpg', '.jpeg'])
+def test_generated_managed_keyframes_reach_ltx_in_provider_format(store, monkeypatch, suffix):
+    """Image service stores WebP by default; preserve its exact managed path for I2V."""
+    job = shorts_jobs.create_short_job(project(), chat_id='venus-render-regression')
+    forwarded = []
+    def image(method, path, payload=None, timeout=15):
+        if path == '/models': return models()
+        if method == 'POST': return {'id':'a'*24}
+        return {'status':'completed','result':{'path':str(store / ('generated' + suffix)), 'id':'managed-frame'}}
+    def video(method, path, payload=None, timeout=15):
+        if method == 'POST':
+            assert payload['operation'] == 'i2v'
+            forwarded.append(payload['payload']['first_frame'])
+            return {'id':'b'*24}
+        return {'status':'completed','result':{'path':str(store / 'clip.mp4')}}
+    monkeypatch.setattr(runtime, '_image_request', image)
+    monkeypatch.setattr(runtime, '_ORIGINAL_RUN_SHORT_JOB', lambda jid, **_: shorts_jobs._update_job(jid, status='completed'))
+    result = runtime.run_consistent_short_job(job['id'], request_fn=video, poll_interval=0)
+    assert result['status'] == 'completed'
+    assert len(result['keyframe_results']) == len(result['scene_results']) == 2
+    assert forwarded == [str(store / ('generated' + suffix))] * 2
+    assert all(frame['image_id'] == 'managed-frame' for frame in result['keyframe_results'])

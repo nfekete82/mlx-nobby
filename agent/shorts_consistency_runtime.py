@@ -288,8 +288,8 @@ def run_consistent_short_job(
                     result = child.get("result") or {}
                     path = str(result.get("path") or "")
                     image_id = str(result.get("id") or "")
-                    if not path.endswith(".png") or not image_id:
-                        raise RuntimeError("completed keyframe job has no managed PNG result")
+                    if not path.lower().endswith((".png", ".webp", ".jpg", ".jpeg")) or not image_id:
+                        raise RuntimeError("completed keyframe job has no managed image result")
 
                     latest = shorts_jobs.get_short_job(job_id)
                     keyframe_results = list(latest.get("keyframe_results") or [])
