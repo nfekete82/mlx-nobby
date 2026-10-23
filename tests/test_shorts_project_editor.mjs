@@ -617,3 +617,51 @@ test('scene image and voice controls appear above long scene text fields', async
     const fileInput = h.body.querySelectorAll('input').find(item => item.type === 'file');
     assert.ok(fileInput, 'image upload should be visible before narration');
 });
+
+
+test('text-first Shorts Studio starts with one brief, length, scenes and voice', async () => {
+    const h = harness();
+    await h.window.MLXShortsProjectEditor.newDraft();
+    assert.ok(textContent(h.body).includes('Deine Idee. Dein fertiger Short.'));
+    assert.ok(inputFor(h, 'Was soll dein Video zeigen?'));
+    assert.ok(inputFor(h, 'Länge'));
+    assert.ok(inputFor(h, 'Szenen'));
+    assert.ok(inputFor(h, 'Sprecherstimme'));
+    const full = h.body.querySelectorAll('details').find(el => el.className === 'mlx-shorts-advanced-view');
+    assert.ok(full, 'old advanced editor is preserved');
+    assert.equal(full.open, false, 'advanced grid should be collapsed by default');
+    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, true);
+    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, true);
+    await h.click('Szenen und Details bearbeiten');
+    const reopened = h.body.querySelectorAll('details').find(el => el.className === 'mlx-shorts-advanced-view');
+    assert.equal(reopened.open, true);
+});
+
+test('text-first quick workflow plans then renders without manual scene editing', async () => {
+    const h = harness();
+    await h.window.MLXShortsProjectEditor.newDraft();
+    const brief = inputFor(h, 'Was soll dein Video zeigen?');
+    brief.value = 'Eine Mini-Doku über die Venus';
+    await brief.fire('input');
+    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, false);
+    const duration = inputFor(h, 'Länge');
+    duration.value = '15';
+    await duration.fire('input');
+    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, true,
+                 'four scenes cannot fit into 15 seconds');
+    const count = inputFor(h, 'Szenen');
+    count.value = '3';
+    await count.fire('input');
+    assert.equal(h.buttons().find(el => el.textContent === '1. Mit KI planen').disabled, false);
+    // Restore the default plan settings for the fixture AI response.
+    duration.value = '20';
+    await duration.fire('input');
+    count.value = '4';
+    await count.fire('input');
+    await h.click('1. Mit KI planen');
+    assert.ok(h.calls.some(c => c.path.endsWith('/plan') && c.init.method === 'POST'));
+    assert.ok(textContent(h.body).includes('Dein Storyboard'));
+    assert.equal(h.buttons().find(el => el.textContent === '2. Video erstellen').disabled, false);
+    await h.click('2. Video erstellen');
+    assert.ok(h.calls.some(c => c.path.endsWith('/render') && c.init.method === 'POST'));
+});
