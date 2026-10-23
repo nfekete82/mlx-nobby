@@ -19,7 +19,7 @@
     let providerReadiness = null, saveTimer = null, saveState = 'saved';
     let voiceProfiles = [], voiceProfilesLoaded = false;
     let sceneImages = [], sceneImagePickerFor = null;
-    let showFullEditor = false;
+    let showFullEditor = false, needsReplan = false;
     async function refreshReadiness() {
         if (!draft) return;
         providerReadiness = draft.project.consistency_mode ? await api('/drafts/' + draft.id + '/preflight') : {available: true, warnings: []};
@@ -317,13 +317,16 @@
                 : !feasible
                     ? localText('Länge und Szenenzahl passen bei dieser Qualität nicht zusammen. Bitte andere Werte wählen.',
                                 'Length and scene count do not fit this quality. Choose another combination.')
+                    : needsReplan
+                        ? localText('Einstellungen oder Briefing geändert. Bitte erneut mit KI planen.',
+                                    'Settings or brief changed. Please plan again with AI.')
                     : p.scenes.length && p.scenes.every(scene => String(scene.video_prompt || '').trim())
                         ? localText('Storyboard bereit. Erstelle jetzt dein Video oder passe Details an.',
                                     'Storyboard ready. Create your video or adjust details.')
                         : localText('Bereit für die KI-Planung. Noch wird kein Video erzeugt.',
                                     'Ready to plan with AI. No video will be generated yet.');
             if (ui.quickPlanButton) ui.quickPlanButton.disabled = busy || !feasible || !String(p.briefing || '').trim();
-            if (ui.quickRenderButton) ui.quickRenderButton.disabled = busy || invalid.length > 0;
+            if (ui.quickRenderButton) ui.quickRenderButton.disabled = busy || needsReplan || invalid.length > 0;
         }
         ui.renderButton.disabled = busy || invalid.length > 0;
         ui.timeline.classList.toggle('is-error', invalid.length > 0);
@@ -357,7 +360,7 @@
     function reset() {
         draft = null; sourceJob = null; selected = null;
         sceneCount = 4; view = 'welcome'; draftItems = [];
-        providerReadiness = null; sceneImagePickerFor = null; showFullEditor = false;
+        providerReadiness = null; sceneImagePickerFor = null; showFullEditor = false; needsReplan = false;
         if (saveTimer !== null) window.clearTimeout?.(saveTimer);
         saveTimer = null; saveState = 'saved';
         if (ui) { ui.timeline = null; ui.renderButton = null; ui.quickRenderButton = null; ui.quickPlanButton = null; }
@@ -371,7 +374,7 @@
         // A draft selection never implicitly loads its optional source job.
         if (!value || value.kind !== 'shorts_draft') throw new Error(t('editor_invalid_draft'));
         draft = value; sourceJob = null; view = 'editor';
-        selected = draft.project.scenes[0].id; sceneCount = draft.project.scenes.length;
+        selected = draft.project.scenes[0].id; sceneCount = draft.project.scenes.length; needsReplan = false;
         if (!capabilities) capabilities = await api('/capabilities');
         await loadVoiceProfiles();
         await refreshReadiness();
@@ -502,7 +505,7 @@
         draft = (await api('/drafts', 'POST', {})).draft;
         sourceJob = null; view = 'editor';
         selected = draft.project.scenes[0].id;
-        sceneCount = draft.project.scenes.length;
+        sceneCount = draft.project.scenes.length; needsReplan = false;
         await refreshReadiness();
         render();
     }
@@ -569,6 +572,7 @@
         await save();
         draft = (await api('/drafts/' + draft.id + '/plan', 'POST', { scene_count: sceneCount })).draft;
         selected = draft.project.scenes[0].id;
+        needsReplan = false;
         await refreshReadiness();
     }
     async function renderCurrentShort() {
@@ -590,6 +594,7 @@
         const prompt = field(quick, localText('Was soll dein Video zeigen?', 'What should your video show?'),
                              project, 'briefing', 'textarea');
         prompt.classList.add('mlx-shorts-simple-prompt');
+        prompt.addEventListener('input', () => { needsReplan = true; validate(); });
         prompt.placeholder = localText(
             'Beispiel: 30-Sekunden-Weltraumdoku über die Venus, 3 Szenen: Anflug, Rotation, Oberfläche. Wissenschaftlich korrekt, mit deutschem Sprechertext.',
             'Example: A 30-second documentary about Venus, 3 scenes: approach, rotation and surface. Accurate science with narration.'
@@ -602,6 +607,7 @@
                                project, 'duration', 'text', durations.map(value => [value, String(value) + ' s']));
         duration.addEventListener('input', () => {
             project.duration = Number(duration.value);
+            needsReplan = true;
             validate();
         });
         const count = {value: sceneCount};
@@ -610,20 +616,23 @@
         choices.sort((a, b) => a - b);
         const scenes = field(controls, localText('Szenen', 'Scenes'),
                              count, 'value', 'text', choices.map(n => [n, String(n)]));
-        scenes.addEventListener('input', () => { sceneCount = Number(count.value); validate(); });
+        scenes.addEventListener('input', () => { sceneCount = Number(count.value); needsReplan = true; validate(); });
         field(controls, localText('Sprecherstimme', 'Narrator voice'),
               project, 'voice', 'text', voiceOptions(project.voice));
         quick.append(controls);
         const optional = node('details', 'mlx-shorts-simple-options');
         optional.append(node('summary', '', localText('Stil & Optionen', 'Style & options')));
-        field(optional, localText('Stil', 'Style'), project, 'style_preset', 'text',
+        const styleSelect = field(optional, localText('Stil', 'Style'), project, 'style_preset', 'text',
               [['auto',localText('Automatisch','Automatic')], ['documentary',localText('Dokumentation','Documentary')],
                ['cinematic',localText('Kino','Cinema')], ['social_viral','Social / Viral'],
                ['funny_meme',localText('Humor','Comedy')], ['futuristic',localText('Futuristisch','Futuristic')],
-               ['product_ad',localText('Werbung','Advertising')]]);
-        field(optional, localText('Renderqualität', 'Render quality'), project, 'quality', 'text',
+               ['product_ad',localText('Werbung','Advertising')],
+               ['luxury_commercial',localText('Luxus','Luxury')]]);
+        styleSelect.addEventListener('input', () => { project.visual_bible = null; needsReplan = true; validate(); });
+        const qualitySelect = field(optional, localText('Renderqualität', 'Render quality'), project, 'quality', 'text',
               [['fast',localText('Entwurf','Draft')],['standard','Standard'],
                ['quality',localText('Veröffentlichung','Publication')]]);
+        qualitySelect.addEventListener('input', () => { needsReplan = true; validate(); });
         field(optional, localText('Sprecher an', 'Narration on'), project, 'voice_enabled', 'checkbox');
         field(optional, localText('Untertitel an', 'Captions on'), project, 'subtitles_enabled', 'checkbox');
         quick.append(optional);
