@@ -258,7 +258,7 @@
             return;
         }
         const script = document.createElement('script');
-        script.src = '/assets/chat/shorts-studio.js?v=20261023-controls-top';
+        script.src = '/assets/chat/shorts-studio.js?v=20261023-simple-text';
         script.dataset.mlxShortsStudio = '1';
         script.addEventListener('load', loadShortsConsistency, { once: true });
         script.addEventListener('error', () => {
