@@ -155,6 +155,8 @@ def test_opt_in_vision_uses_selected_vision_role_and_valid_stream_payload(monkey
             return {"context": ""}
         if path == "/api/runtime/vision-route":
             return {"role": "vision_uncensored", "classifications": []}
+        if path == "/api/runtime/vision-streaming/capabilities":
+            return {"version": 1, "supports_explicit_vision_role": True}
         raise AssertionError(path)
 
     def fake_relay(request, fallback, *, timeout):
@@ -184,3 +186,47 @@ def test_opt_in_vision_uses_selected_vision_role_and_valid_stream_payload(monkey
     assert payload["vision_role"] == "vision_uncensored"
     assert timeout == 60
     assert len(chunks) == 2
+
+
+
+def test_opt_in_old_agent_must_fallback_without_vision_role_stream(monkeypatch):
+    monkeypatch.setenv("MLX_CHAT_VISION_STREAM_ENABLED", "1")
+    legacy_calls = []
+
+    def agent_request(method, path, payload=None, timeout=10):
+        if path.startswith("/api/profile/context"):
+            return {"context": ""}
+        if path == "/api/runtime/vision-route":
+            return {"role": "vision", "classifications": []}
+        if path == "/api/runtime/vision-streaming/capabilities":
+            raise RuntimeError("Agent not updated")
+        raise AssertionError(path)
+
+    class LegacyReply:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self):
+            return b'{"choices":[{"message":{"content":"fallback works"}}]}'
+
+    def legacy(request, timeout):
+        legacy_calls.append(request.full_url)
+        return LegacyReply()
+
+    with (
+        mock.patch.object(web_app, "agent_json_request", side_effect=agent_request),
+        mock.patch.object(web_app, "get_json", return_value={"online": True, "model": "vision-model"}),
+        mock.patch("backend.routing_observatory.observe_vision_selection"),
+        mock.patch.object(web_app.urllib.request, "urlopen", side_effect=legacy),
+        mock.patch("backend.weather_forecast.forecast_for_question", return_value=None),
+    ):
+        result = web_app.mlx_chat_stream(web_app.ChatRequest(messages=[{
+            "role": "user", "content": [
+                {"type": "text", "text": "What do you see?"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            ],
+        }]))
+        chunks = list(result.body_iterator)
+
+    assert len(legacy_calls) == 1
+    assert legacy_calls[0].endswith("/api/bridge/mlx/v1/chat/completions")
+    assert "fallback works" in "".join(chunks)
