@@ -76,6 +76,12 @@ Without Agent restart, the feature remains safe but cannot stream.
 
 ## Tests and measurements
 
+The Agent records opt-in native Vision inference as `vision.stream`, with
+separate first-token and first-answer-text timing. The Performance Observatory
+shows these independently of text-chat TTFT so a slow image prefill cannot
+distort chat measurements. Native token counts may be estimates; no model
+speedup is implied by exposing these measurements.
+
 ```sh
 ./scripts/mlx test-quick tests/test_vision_streaming.py
 ```
