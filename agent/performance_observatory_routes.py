@@ -277,7 +277,7 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
                 # local to its isolated process and contain no user text.
                 "worker_total_ms", "model_prepare_ms", "pipeline_setup_ms",
                 "first_step_ms", "denoise_window_ms", "decode_finish_ms",
-                "image_save_ms",
+                "image_save_ms", "worker_outside_ms",
             )
         }
         edit_provider_timing["tqdm_first_step"] = (
