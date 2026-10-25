@@ -1278,43 +1278,15 @@ def mlx_chat_stream(request: ChatRequest):
     # central role-aware runtime manager on port 8010.
     # -----------------------------------------------------
 
-    last_user_prompt = ""
+    from backend.chat_route_context import route_inputs
 
-    for message in reversed(messages):
-        if not isinstance(message, dict):
-            continue
-
-        if message.get("role") != "user":
-            continue
-
-        content = message.get("content")
-
-        if isinstance(content, str):
-            last_user_prompt = content.strip()
-            break
+    # The current user prompt is already sent as `prompt` to the Agent.
+    # Putting it into `conversation_context` as well incorrectly makes a
+    # first turn look like history and disables the Agent's proven safe
+    # zero-inference fast path.
+    last_user_prompt, conversation_context = route_inputs(messages)
 
     if last_user_prompt:
-        conversation_context = []
-
-        for message in messages[-8:]:
-            if not isinstance(message, dict):
-                continue
-
-            role = str(message.get("role") or "").strip().lower()
-            content = message.get("content")
-
-            if (
-                role in {"user", "assistant"}
-                and isinstance(content, str)
-                and content.strip()
-            ):
-                conversation_context.append(
-                    {
-                        "role": role,
-                        "content": content[:2000],
-                    }
-                )
-
         local_knowledge_hint = bool(
             re.search(
                 r"\b(?:nobbymlx|embedding(?:-dienst)?|semantischer\s+router|"
