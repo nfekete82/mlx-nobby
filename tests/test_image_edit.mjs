@@ -1389,6 +1389,15 @@ assert.equal(saving.title, 'Saving image …');
 assert.match(saving.details, /Phase: Saving/);
 assert.match(saving.details, /Elapsed: 01:08/);
 
+const restoredPreview = imageJobPresentation({
+    status: 'saving',
+    phase: 'restoring_chat',
+    started_at: 1000,
+}, 1030);
+assert.equal(restoredPreview.active, true);
+assert.equal(restoredPreview.title, 'Image ready · Chat is starting …');
+assert.match(restoredPreview.details, /Image ready · Starting chat/);
+
 const completed = imageJobPresentation({
     status: 'completed',
     started_at: 1000,
@@ -1616,6 +1625,31 @@ assert.equal(
     }),
     null,
 );
+
+// A finished SDXL image can be shown while chat loads, but other image
+// actions remain disabled until the resource handoff is complete.
+const earlyPreviewCard = renderImageArtifactCard({
+    image_job: { status: 'saving', phase: 'restoring_chat' },
+    tool_result: {
+        tool: 'image_generate',
+        status: 'saving',
+        artifacts: [imageArtifact],
+    },
+});
+assert.ok(earlyPreviewCard);
+assert.equal(
+    earlyPreviewCard.children.find(child => child.tagName === 'IMG').src,
+    '/api/mlx/images/' + encodeURIComponent(imageArtifact.image_id),
+);
+assert.ok(descendants(earlyPreviewCard).some(
+    element => element.tagName === 'A' && element.textContent === 'Download'
+));
+assert.ok(!descendants(earlyPreviewCard).some(
+    element => element.className === 'image-upscale-menu'
+));
+assert.ok(!descendants(earlyPreviewCard).some(
+    element => element.textContent === 'Edit region'
+));
 
 const upscaledArtifact = {
     ...imageArtifact,
