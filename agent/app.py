@@ -11845,6 +11845,10 @@ class RuntimeChatRequest(BaseModel):
 
 
 class RuntimeChatStreamRequest(RuntimeChatRequest):
+    # Only the web bridge may select this explicitly after /api/runtime/vision-route.
+    # Leave normal chat routing unchanged.
+    vision_role: Literal["vision", "vision_uncensored"] | None = None
+
     # Opt-in benchmark mode only: keep the already running process rather
     # than resolving a persisted chat role and switching MLX mid-benchmark.
     pin_active_model: str | None = None
@@ -12058,7 +12062,12 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
     The HTTP generator itself does not hold a runtime lock.
     """
 
-    selected_role = _runtime_chat_role(request)
+    if request.vision_role is not None and (
+        request.auto_route or request.pin_active_model is not None
+        or request.pin_active_pid is not None
+    ):
+        raise HTTPException(422, "Vision streaming cannot use auto-route or pinned runtime")
+    selected_role = request.vision_role or _runtime_chat_role(request)
     trace_id = observability.ensure_trace_id(request.trace_id)
     event_queue = queue.Queue(maxsize=64)
     sentinel = object()
@@ -12099,6 +12108,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
             context_sources=request.context_sources,
         )
         output_characters = 0
+        vision_chunks = 0
         reasoning_characters = 0
         usage = None
         finish_reason = None
@@ -12248,6 +12258,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                             )
 
                             if reasoning:
+                                vision_chunks += 1
                                 mark_progress()
                                 call_metrics.mark_first_token()
                                 reasoning_characters += len(reasoning)
@@ -12263,6 +12274,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                                 )
 
                             if content:
+                                vision_chunks += 1
                                 mark_progress()
                                 call_metrics.mark_first_token()
                                 output_characters += len(content)
@@ -12281,6 +12293,15 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                             if call_metrics.metric["status"] == "running":
                                 call_metrics.fail("cancelled")
                                 put_metrics()
+                            return
+
+                        # A native server that ignores stream=True can return
+                        # a normal JSON body. Do not advertise an empty completed
+                        # vision answer; the web bridge retries the legacy path.
+                        if request.vision_role and not vision_chunks:
+                            call_metrics.fail("empty_vision_stream")
+                            put_metrics()
+                            put_error("VISION_STREAM_UNSUPPORTED")
                             return
 
                         call_metrics.finish(
