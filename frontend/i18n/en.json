@@ -73,7 +73,7 @@
     "image_generating": "Generating the image locally with the selected image model …",
     "image_upscaling": "Enhancing the image locally with Real-ESRGAN …",
     "image_enhance": "Enhance image",
-    "image_upscale_request": "Enhance image · {preset}",
+    "image_upscale_request": "Enhance image",
     "image_upscale_source_required": "Please select an image to enhance.",
     "image_upscale_unexpected_action": "The image enhancement action was not accepted.",
     "image_job_cancelled": "Image job cancelled.",
