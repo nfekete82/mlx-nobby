@@ -175,6 +175,9 @@ class MediaPerformanceTests(unittest.TestCase):
                     "performance_timings": {
                         "execution_ms": 4890,
                         "resource_wait_ms": 110,
+                        "render_setup_ms": 100, "provider_and_setup_ms": 4000,
+                        "output_finalize_ms": 150, "sdxl_unload_ms": 400,
+                        "runtime_return_ms": 240, "private_text": "hidden",
                         "negative": -5,
                         "source_path": "/private/image.png",
                     },
@@ -221,6 +224,9 @@ class MediaPerformanceTests(unittest.TestCase):
         self.assertIs(image["provider_timing"]["use_kv_cache"], True)
         self.assertNotIn("/private/model.safetensors", json.dumps(snapshot))
         self.assertEqual(image["performance_timings"]["execution_ms"], 4890)
+        self.assertEqual(image["performance_timings"]["sdxl_unload_ms"], 400)
+        self.assertEqual(image["performance_timings"]["runtime_return_ms"], 240)
+        self.assertNotIn("hidden", json.dumps(snapshot))
         self.assertEqual(image["performance_timings"]["resource_wait_ms"], 110)
         self.assertNotIn("do-not-expose-secret", json.dumps(snapshot))
         self.assertNotIn("/private/image.png", json.dumps(snapshot))

@@ -1400,6 +1400,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
 
     def prepared(model, params, path):
         nonlocal output_path
+        timings.mark("prepared")
         output_path = path
         _update_job(
             job_id,
@@ -1418,6 +1419,10 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
         _update_job(job_id, _process=process)
         if process is not None:
             _update_job(job_id, status="running")
+
+    def saving():
+        timings.mark("provider_done")
+        _update_job(job_id, status="saving", phase="saving")
 
     provider_options = {
         "cancel_event": cancel_event,
@@ -1479,17 +1484,19 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                     request,
                     provider_options=provider_options,
                     prepared_callback=prepared,
-                    saving_callback=lambda: _update_job(job_id, status="saving", phase="saving"),
+                    saving_callback=saving,
                     **({"resolved": resolved} if resolved is not None else {}),
                     **({"resolved_callback": lambda canonical: _update_job(job_id, _canonical=canonical)}
                        if operation in {"generate", "edit"} else {}),
                 )
+                timings.mark("result_ready")
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
                 # This runs before the image_runtime context restores chat.
                 if sdxl_job:
                     try:
                         shutdown_sdxl_worker()
+                        timings.mark("sdxl_released")
                     except Exception:
                         if preflight is not None:
                             preflight["suppress_chat_restore"] = True

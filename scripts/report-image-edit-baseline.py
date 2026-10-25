@@ -129,6 +129,11 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             ),
             "resource_wait_ms": safe_ms(native.get("resource_wait_ms")),
             "execution_ms": safe_ms(native.get("execution_ms")),
+            "render_setup_ms": safe_ms(native.get("render_setup_ms")),
+            "provider_and_setup_ms": safe_ms(native.get("provider_and_setup_ms")),
+            "output_finalize_ms": safe_ms(native.get("output_finalize_ms")),
+            "sdxl_unload_ms": safe_ms(native.get("sdxl_unload_ms")),
+            "runtime_return_ms": safe_ms(native.get("runtime_return_ms")),
             "fresh_process": provider.get("fresh_process")
                              if type(provider.get("fresh_process")) is bool else None,
             "provider": provider.get("provider")
@@ -154,6 +159,8 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
     metrics = (
         "total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",
         "process_spawn_ms", "first_output_ms", "resource_wait_ms", "execution_ms",
+        "render_setup_ms", "provider_and_setup_ms", "output_finalize_ms",
+        "sdxl_unload_ms", "runtime_return_ms",
         "tqdm_first_ms", "tqdm_complete_ms", "tqdm_window_ms",
         "sdxl_worker_total_ms", "sdxl_worker_outside_ms",
         "sdxl_model_prepare_ms",
@@ -184,6 +191,9 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "SDXL decode_finish_ms starts after the final denoising callback and is a best-effort VAE/finish estimate, not an isolated GPU event.",
             "SDXL worker_outside_ms is the parent-manager wall time minus reported worker time; it can include Python imports, IPC and log delivery, not just model loading.",
             "SDXL model workers are unloaded after ordinary generation for safe chat restoration.",
+            "Native timing stages are disjoint within execution_ms: render_setup + provider_and_setup + output_finalize + sdxl_unload + runtime_return. Some stages are null on old jobs or non-SDXL operations.",
+            "runtime_return_ms measures the image coordinator exiting, including any chat restoration, but does not isolate that restoration from all other coordinator work.",
+            "Quality+ is disabled in the standard production launchd template; do not attribute missing time to Real-ESRGAN without an actual enabled job.",
             "tqdm timings are timestamps when progress output was observed, not verified model-load or GPU execution phase boundaries.",
             "tqdm_window_ms is only populated when a 0/N start and N/N completion are both observed.",
             "Read-only: a single Observatory GET; does not start, cancel, delete or modify any jobs.",
