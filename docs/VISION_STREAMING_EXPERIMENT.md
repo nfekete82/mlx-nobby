@@ -51,11 +51,28 @@ model. Do **not** enable streaming globally without testing the active VLM.
      docker compose up -d --build --no-deps mlx-web
    ```
 
-No native model server or Agent restart is needed for the toggle itself, but the
-Agent must be running the new repository code for its explicit vision-role
-stream request to work. If the existing Agent was not updated, the safer
-behavior is the legacy fallback; do not restart running native processes solely
-to enable this experiment.
+The web probes `/api/runtime/vision-streaming/capabilities` before sending
+its stream request. Older, still-running Agents lack this endpoint; they
+automatically keep the legacy image-analysis path instead of selecting the
+wrong model.
+
+After merging/pulling this PR, restart **only the Agent** to load the updated
+Python code, when no chat or media job is in progress:
+
+```sh
+cd ~/mlx-web
+./scripts/mlx agent restart
+```
+
+Then verify its support via a read-only request:
+
+```sh
+curl -fsS http://127.0.0.1:8010/api/runtime/vision-streaming/capabilities
+```
+
+This should report `"supports_explicit_vision_role": true`. The MLX model
+server and unrelated image/video/speech services do not need to restart.
+Without Agent restart, the feature remains safe but cannot stream.
 
 ## Tests and measurements
 
