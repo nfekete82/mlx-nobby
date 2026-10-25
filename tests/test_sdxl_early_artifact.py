@@ -57,7 +57,7 @@ def test_generated_sdxl_image_is_previewable_only_after_worker_unload(
         # This check occurs before image_runtime exits, while the media
         # resource lease is still held and chat is being restored.
         with service._jobs_lock:
-            job = dict(service._jobs[JOB_ID])
+            job = service._job_snapshot(service._jobs[JOB_ID])
         assert marker == ["worker_unloaded"]
         assert job["status"] == "saving"
         assert job["phase"] == "restoring_chat"
@@ -81,7 +81,7 @@ def test_generated_sdxl_image_is_previewable_only_after_worker_unload(
             resolved={"model": {"provider": "sdxl"}}, release_lock=False,
         )
         with service._jobs_lock:
-            job = dict(service._jobs[JOB_ID])
+            job = service._job_snapshot(service._jobs[JOB_ID])
         if fail_restore:
             assert job["status"] == "failed"
             assert job["result"] is None
