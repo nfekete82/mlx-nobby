@@ -26,7 +26,7 @@ function node(tag = 'div') {
         appendChild(child) { this.children.push(child); return child; },
         addEventListener() {},
         querySelector(selector) {
-            const match = /^\\[data-([a-z-]+)\\]$/.exec(selector);
+            const match = /^\[data-([a-z-]+)\]$/.exec(selector);
             if (!match) return null;
             const key = match[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
             const queue = [...this.children];
