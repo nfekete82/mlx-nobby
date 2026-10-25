@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import urllib.request
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from pathlib import Path
 from typing import Literal
 
@@ -1391,7 +1391,10 @@ def _provider_progress(job_id, event):
         _update_job(job_id, **changes)
 
 
-def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=True):
+def _run_image_job(
+    job_id, operation, request, *, resolved=None, release_lock=True,
+    batched_sdxl=False, runtime_preflight=None,
+):
     global _active_job_id
 
     output_path = None
@@ -1454,11 +1457,20 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
         region_qwen_job = bool(
             operation == "edit" and getattr(request, "region_edit", False)
         )
-        with runtime_coordinator.image_runtime(
-            cancel_event,
-            force_chat_unload=(sdxl_job or region_qwen_job),
-            exclusive_models=True,
-        ) as preflight:
+        if batched_sdxl and not sdxl_job:
+            raise RuntimeError("Shared SDXL handoff requires SDXL generation")
+        # A verified SDXL variant batch already owns the exclusive runtime
+        # lease. It keeps the exact same worker between sequential variants,
+        # while the outer batch context alone restores chat at the end.
+        runtime_scope = (
+            nullcontext(runtime_preflight)
+            if batched_sdxl else runtime_coordinator.image_runtime(
+                cancel_event,
+                force_chat_unload=(sdxl_job or region_qwen_job),
+                exclusive_models=True,
+            )
+        )
+        with runtime_scope as preflight:
             # The image service retains a warm SDXL worker between SDXL
             # requests. It must not remain resident alongside a new Qwen,
             # FLUX, video-derived edit or upscaler provider within this same
@@ -1495,7 +1507,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
                 # This runs before the image_runtime context restores chat.
-                if sdxl_job:
+                if sdxl_job and not batched_sdxl:
                     try:
                         shutdown_sdxl_worker()
                         timings.mark("sdxl_released")

@@ -193,3 +193,41 @@ Safety and lifecycle details:
 Deployment requires a native Image Service restart, an Agent restart,
 and a **web container rebuild** because the chat renderer and translations
 are updated. Compare image-first-visible timing to final job completion.
+
+## Juggernaut XL multi-variant batching — single safe runtime handoff
+
+Before this optimization, `/jobs/variants` ran each Juggernaut XL image
+through its own `image_runtime` handoff. A five-variant series therefore
+repeated chat shutdown/restore, Python/torch worker startup, and checkpoint
+initialization five times.
+
+For **2 or more pending text-to-image variants of the same canonical
+SDXL model**, the batch now:
+
+1. Enters the standard exclusive `image_runtime` **once**, including the
+   existing memory admission guard, service-idle checks and chat release.
+2. Generates images sequentially with their original seed, prompt, quality
+   profile and all settings preserved. The SDXL worker is reused while the
+   lease is held. Each job retains fresh provider memory protection and
+   `ensure_model_load_allowed` checks.
+3. Publishes each completed variant and preserves normal per-image artifacts
+   and failure/cancellation semantics. The batch-wide image lock remains held;
+   no other heavyweight generation can overlap.
+4. Always shuts down the SDXL worker **before** leaving the lease or
+   attempting chat restoration, even if a variant fails or is cancelled.
+   If that shutdown fails, the batch is marked failed and chat restoration
+   is explicitly suppressed to avoid resident model overlap.
+5. Restores chat at the end through the unchanged coordinator; its existing
+   pressure/headroom checks can still skip unsafe restores.
+
+Single-image generation, single pending variants, img2img/reference edits,
+Qwen, upscaling, video jobs and local models other than SDXL follow their
+existing paths. This does not change generated pixels or model step count.
+
+**Expected but unmeasured benefit:** Removing repeated
+SDXL startup (~4s in the last measured cold generation) and
+chat handoff (~10s return in that run) could save several seconds
+per additional Juggernaut variant. Actual gain depends on memory pressure
+and the Mac's workload. Use one fixed-seed multi-variant A/B test and check
+identical settings, result count and memory guard. No claim is made about
+single-image latency (which is unchanged).
