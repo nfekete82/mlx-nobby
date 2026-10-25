@@ -36,6 +36,11 @@
 
     let copy = { ...FALLBACK };
     let copyLoaded = false;
+    let copyLanguage = null;
+    let copyRequest = null;
+    let copyRevision = 0;
+    let mountPending = null;
+    let mountScheduled = false;
     let lastData = null;
 
     function text(key, vars = {}) {
@@ -50,16 +55,34 @@
     }
 
     async function loadCopy(force = false) {
-        if (copyLoaded && !force) return;
-        copy = { ...FALLBACK };
-        try {
-            const response = await fetch('/i18n/model-scout.' + locale() + '.json', { cache: 'no-store' });
-            if (response.ok) {
-                const data = await response.json();
-                if (data && typeof data === 'object') copy = { ...FALLBACK, ...data };
+        const language = locale();
+        if (copyLoaded && copyLanguage === language && !force) return;
+        if (copyRequest?.language === language) return copyRequest.promise;
+
+        const revision = ++copyRevision;
+        const promise = (async () => {
+            let next = { ...FALLBACK };
+            try {
+                const response = await fetch('/i18n/model-scout.' + language + '.json', { cache: 'no-store' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && typeof data === 'object') next = { ...FALLBACK, ...data };
+                }
+            } catch (_) {
+                // Missing translations retain the built-in fallback.
             }
-        } catch (_) {}
-        copyLoaded = true;
+            if (revision === copyRevision && locale() === language) {
+                copy = next;
+                copyLanguage = language;
+                copyLoaded = true;
+            }
+        })();
+        copyRequest = { language, promise };
+        try {
+            await promise;
+        } finally {
+            if (copyRequest?.promise === promise) copyRequest = null;
+        }
     }
 
     function injectStyles() {
@@ -261,7 +284,26 @@
     }
 
     async function mount() {
-        const content = document.getElementById('modelConsoleContent'); if (!content) return false; injectStyles(); await loadCopy(); const panel = createPanel(content); applyPanelCopy(panel); if (lastData && !panel.querySelector('[data-scout-grid]').children.length) render(panel, lastData); return true;
+        const content = document.getElementById('modelConsoleContent');
+        if (!content) return false;
+        if (content.querySelector(':scope > .model-scout')) return true;
+        if (mountPending?.content === content) return mountPending.promise;
+
+        const promise = (async () => {
+            injectStyles();
+            await loadCopy();
+            if (document.getElementById('modelConsoleContent') !== content) return false;
+            const panel = createPanel(content);
+            applyPanelCopy(panel);
+            if (lastData && !panel.querySelector('[data-scout-grid]').children.length) render(panel, lastData);
+            return true;
+        })();
+        mountPending = { content, promise };
+        try {
+            return await promise;
+        } finally {
+            if (mountPending?.promise === promise) mountPending = null;
+        }
     }
 
     window.MLXModelScout = {
@@ -269,7 +311,14 @@
         tuningTraits
     };
 
-    function scheduleMount() { requestAnimationFrame(() => { mount(); }); }
+    function scheduleMount() {
+        if (mountScheduled) return;
+        mountScheduled = true;
+        requestAnimationFrame(() => {
+            mountScheduled = false;
+            void mount();
+        });
+    }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleMount, { once: true }); else scheduleMount();
     const observer = new MutationObserver(() => { if (!document.querySelector('#modelConsoleContent > .model-scout')) scheduleMount(); }); observer.observe(document.documentElement, { childList: true, subtree: true });
     document.addEventListener('mlx-language-changed', async () => { copyLoaded = false; await loadCopy(true); const panel = document.querySelector('#modelConsoleContent > .model-scout'); if (!panel) return; const role = panel.querySelector('[data-scout-role]')?.value || 'all'; panel.remove(); const content = document.getElementById('modelConsoleContent'); if (!content) return; const replacement = createPanel(content); replacement.querySelector('[data-scout-role]').value = role; if (lastData) render(replacement, lastData); });
