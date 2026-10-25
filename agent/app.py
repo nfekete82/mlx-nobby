@@ -9241,7 +9241,16 @@ def _image_job_tool_result(job):
     data = {"job": public_job}
     artifacts = []
 
-    if status == "completed":
+    # SDXL may finish its image before chat runtime is ready again.
+    # Publish that already-encoded artifact during restoration, but keep
+    # job status nonterminal so the queue and exclusive lease stay intact.
+    early_ready = (
+        action == "image_generate"
+        and status == "saving"
+        and job.get("phase") == "restoring_chat"
+        and isinstance(job.get("result"), dict)
+    )
+    if status == "completed" or early_ready:
         artifact = _image_artifact(job.get("result") or {}, action)
         artifact["chat_id"] = job.get("chat_id")
         artifact["run_id"] = job.get("run_id")
