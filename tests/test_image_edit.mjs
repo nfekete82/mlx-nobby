@@ -270,7 +270,8 @@ assert.deepEqual(
         window.MLXChatGeneration.__test.imageUpscalePresets(),
         item => item.preset,
     ),
-    ['photo-2x', 'photo-4x', 'anime-4x'],
+    ['photo-natural-2x', 'photo-natural-4x', 'photo-sharp-4x',
+     'anime-4x', 'photo-2x', 'photo-4x'],
 );
 
 const unrelatedError = window.MLXChatGeneration.__test.toolFailureSummary({
