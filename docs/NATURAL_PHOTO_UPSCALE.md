@@ -48,6 +48,26 @@ the chat UI defaults to `photo-natural-2x`.
 node --test tests/test_image_edit.mjs
 ```
 
+## Scoped local rollout
+
+After updating `main`, when no image jobs or chat requests are active,
+restart the Image Service LaunchAgent **only** so the native local process
+loads the new finishing code. Restart the Agent for preset validation and
+rebuild just the web Docker service for the revised menu:
+
+```sh
+cd ~/mlx-web
+launchctl kickstart -k "gui/$(id -u)/de.nobby.mlx-images"
+./scripts/mlx agent restart
+MLX_CHAT_VISION_STREAM_ENABLED=1 \
+MLX_NOBBY_BUILD_SHA="$(git rev-parse --short HEAD)" \
+docker compose up -d --build --no-deps mlx-web
+```
+
+Do not run a broad system reboot. Confirm image port 8030 and web port 8090
+after restart. If the Image LaunchAgent is not installed/loaded, check
+`./scripts/mlx services status` instead of force-installing anything.
+
 For a practical A/B test, run the *same photo* through **Foto natürlich
 2×** and **Foto scharf 4×** and inspect skin, hair, fabric textures,
 color and edges at 100% zoom. The result is judged on the Mac with the
