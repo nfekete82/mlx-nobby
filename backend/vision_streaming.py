@@ -74,7 +74,11 @@ def relay_vision_stream(stream_request, legacy_factory, *, timeout=60, opener=No
                                 and item["text"]):
                             visible = True
                             yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
-    except (Exception, OSError):
+                    elif line.startswith("event:"):
+                        event_name = line[6:].strip()
+                    elif line.startswith("data:"):
+                        data_lines.append(line[5:].lstrip(" "))
+    except Exception:
         # The stream might fail before or after the first chunk. It is only
         # safe to repeat the request if nothing was displayed to the user.
         if visible:
