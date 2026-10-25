@@ -40,6 +40,11 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
                  "use_step_cache": False, "use_kv_cache": True,
                  "prompt": "secret"},
              "performance_timings": {"execution_ms": 5500, "resource_wait_ms": 50,
+                                     "render_setup_ms": 100,
+                                     "provider_and_setup_ms": 4500,
+                                     "output_finalize_ms": 250,
+                                     "sdxl_unload_ms": 150,
+                                     "runtime_return_ms": 500,
                                      "source_path": "/private/source.png"}},
             {"id": "c" * 24, "kind": "video", "status": "completed"},
             {"id": second, "kind": "image", "status": "completed",
@@ -74,6 +79,9 @@ def test_report_collects_only_completed_image_jobs_and_omits_private_fields():
     assert result["samples"][0]["use_step_cache"] is False
     assert result["samples"][0]["use_kv_cache"] is True
     assert result["samples"][0]["execution_ms"] == 5500
+    assert result["samples"][0]["output_finalize_ms"] == 250
+    assert result["samples"][0]["runtime_return_ms"] == 500
+    assert result["median_ms"]["sdxl_unload_ms"] == 150
     assert calls == ["http://127.0.0.1:8010/api/performance/observatory?limit=100"]
     assert "private user text" not in str(result)
     assert "secret" not in str(result)
