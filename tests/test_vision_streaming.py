@@ -24,7 +24,9 @@ class FakeStream:
         for event in self.events:
             if isinstance(event, Exception):
                 raise event
-            yield event.encode("utf-8")
+            # urllib HTTPResponse is iterated line by line, not per SSE frame.
+            for line in event.splitlines(keepends=True):
+                yield line.encode("utf-8")
 
 
 def frame(event=None, data=None):
