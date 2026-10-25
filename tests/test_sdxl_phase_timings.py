@@ -55,7 +55,7 @@ def test_observatory_sanitizes_sdxl_phases_and_blocks_private_fields():
             "denoise_window_ms": 20000,
             "decode_finish_ms": 3500,
             "image_save_ms": 200,
-            "worker_total_ms": 36600,
+            "worker_total_ms": 36600, "worker_outside_ms": 15000,
             "steps": 35, "width": 1216, "height": 832,
             "guidance": 4.0,
             "prompt": "private text",
@@ -67,6 +67,7 @@ def test_observatory_sanitizes_sdxl_phases_and_blocks_private_fields():
     timing = snapshot["recent_jobs"][0]["provider_timing"]
     assert timing["provider"] == "sdxl"
     assert timing["model_prepare_ms"] == 12000.12
+    assert timing["worker_outside_ms"] == 15000.0
     assert timing["cold_model"] is True
     assert timing["steps"] == 35
     assert timing["decode_finish_ms"] == 3500
