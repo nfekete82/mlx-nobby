@@ -13,6 +13,17 @@ vision request (`chat.vision`) or router classification
 **cannot provide actual time-to-first-token or generation throughput**.
 The Observatory displays unavailable values as `—`, not `0 ms`.
 
+As of October 25, 2026, opt-in native vision streams use a distinct
+`vision.stream` purpose rather than `chat.stream`. Their timing and throughput
+now appear separately as **Vision TTFT**, **Vision first answer text** and
+**Vision throughput**. First answer text excludes earlier reasoning; TTFT
+includes the first reasoning/content token. A buffered `chat.vision` call
+cannot supply either timing, so the UI shows `—` instead of a fabricated
+zero. Both series contain only completed model calls, and all history resets
+on Agent restart. Usage-derived token rates can be estimated rather than
+native-measured; inspect the per-call count method. These are observability
+changes, **not a speedup to model inference**.
+
 Previously, reading a buffered non-streaming HTTP response after
 the provider had already finished generating was counted as generation
 duration. Dividing returned output tokens by a few milliseconds
