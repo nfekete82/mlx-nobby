@@ -8584,6 +8584,9 @@ def _image_upscale_payload(request):
     scale = options.pop("scale", None)
     preset = options.get("preset")
     preset_scales = {
+        "photo-natural-2x": 2,
+        "photo-natural-4x": 4,
+        "photo-sharp-4x": 4,
         "photo-2x": 2,
         "photo-4x": 4,
         "anime-4x": 4,

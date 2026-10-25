@@ -562,20 +562,29 @@ function chartInstructionForTurn(messages) {
 
     const IMAGE_UPSCALE_PRESETS = Object.freeze([
         Object.freeze({
-            preset: 'photo-2x',
-            labelKey: 'image_upscale_photo_2x',
-            fallback: '2× Photo'
+            preset: 'photo-natural-2x',
+            labelKey: 'image_upscale_photo_natural_2x',
+            fallback: 'Photo natural · 2×'
         }),
         Object.freeze({
-            preset: 'photo-4x',
-            labelKey: 'image_upscale_photo_4x',
-            fallback: '4× Photo'
+            preset: 'photo-natural-4x',
+            labelKey: 'image_upscale_photo_natural_4x',
+            fallback: 'Photo natural · 4×'
+        }),
+        Object.freeze({
+            preset: 'photo-sharp-4x',
+            labelKey: 'image_upscale_photo_sharp_4x',
+            fallback: 'Photo crisp · 4×'
         }),
         Object.freeze({
             preset: 'anime-4x',
             labelKey: 'image_upscale_illustration_4x',
-            fallback: '4× Illustration'
-        })
+            fallback: 'Illustration · 4×'
+        }),
+        // Hidden legacy aliases: existing cards/automation callers can still
+        // submit these values without breaking old sessions.
+        Object.freeze({ preset: 'photo-2x', legacy: true }),
+        Object.freeze({ preset: 'photo-4x', legacy: true })
     ]);
 
     const input = document.getElementById('input');
@@ -729,7 +738,7 @@ function createImageUpscaleMenu(source) {
     const choices = document.createElement('div');
     choices.className = 'image-upscale-menu-options';
 
-    for (const option of IMAGE_UPSCALE_PRESETS) {
+    for (const option of IMAGE_UPSCALE_PRESETS.filter(item => !item.legacy)) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'image-upscale-option';
@@ -749,7 +758,7 @@ function createImageUpscaleMenu(source) {
 }
 
 
-async function startImageUpscale(source, preset = 'photo-2x') {
+async function startImageUpscale(source, preset = 'photo-natural-2x') {
     if (MLXChatRuntime.isSwitching() || getGenerating()) {
         return false;
     }

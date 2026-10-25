@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 import image_registry as registry
 from image_job_timings import ImageJobTimings
 from image_output_format import finalize_image
+from image_upscale_finish import finish_photo_upscale
 from quality_profiles import dimensions_for_long_edge, resolve_image_profile
 from image_edit_precision import infer_auto_mask_target, comparison_image_id, image_change_advisory
 from image_region_edit import prepare_region, composite_region
@@ -132,10 +133,13 @@ class Upscale(BaseModel):
 
     source_path: str
     preset: Literal[
+        "photo-natural-2x",
+        "photo-natural-4x",
+        "photo-sharp-4x",
         "photo-2x",
         "photo-4x",
         "anime-4x",
-    ] = "photo-2x"
+    ] = "photo-2x"  # Keep legacy API default; UI explicitly selects natural.
     tile: int = Field(default=0, ge=0)
 
 
@@ -1220,6 +1224,13 @@ def _upscale_result(
             "Real-ESRGAN hat keine Ausgabedatei erzeugt"
         )
 
+    if cancel_event is not None and cancel_event.is_set():
+        raise ProviderCancelled("Image job was cancelled")
+
+    # Only new photo presets receive a natural finish; existing commands and
+    # illustration behavior remain unchanged for saved jobs and callers.
+    finish_photo_upscale(source, path, request.preset)
+
     if progress_callback:
         progress_callback({
             "phase": "save",
@@ -1250,8 +1261,7 @@ def _upscale_result(
         "source_path": str(source),
         "preset": request.preset,
         "scale": (
-            2
-            if request.preset == "photo-2x"
+            2 if request.preset in {"photo-2x", "photo-natural-2x"}
             else 4
         ),
         "tile": request.tile,
