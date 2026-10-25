@@ -12,7 +12,11 @@ class ImageJobTimings:
         self.events = {}
 
     def mark(self, name):
-        if name not in {"resources_acquired", "execution_started", "execution_finished"}:
+        if name not in {
+            "resources_acquired", "execution_started", "prepared",
+            "provider_done", "result_ready", "sdxl_released",
+            "execution_finished",
+        }:
             raise ValueError("Unsupported timing milestone")
         self.events.setdefault(name, self.clock())
 
@@ -21,6 +25,10 @@ class ImageJobTimings:
         resources = self.events.get("resources_acquired")
         execution_start = self.events.get("execution_started")
         execution_end = self.events.get("execution_finished")
+        prepared = self.events.get("prepared")
+        provider_done = self.events.get("provider_done")
+        result_ready = self.events.get("result_ready")
+        sdxl_released = self.events.get("sdxl_released")
         def duration(a, b):
             if a is None or b is None:
                 return None
@@ -33,5 +41,15 @@ class ImageJobTimings:
             "preparation_ms": duration(resources, execution_start),
             "execution_ms": duration(execution_start, execution_end),
             "finalization_ms": duration(execution_end, end),
-            "note": "Native image-service only; excludes agent queue and frontend; execution includes provider process and output work.",
+            # These nonoverlapping phases partition execution_ms for
+            # successful generation jobs. Null means no stage was observed.
+            "render_setup_ms": duration(execution_start, prepared),
+            "provider_and_setup_ms": duration(prepared, provider_done),
+            "output_finalize_ms": duration(provider_done, result_ready),
+            "sdxl_unload_ms": duration(result_ready, sdxl_released),
+            "runtime_return_ms": duration(
+                sdxl_released if sdxl_released is not None else result_ready,
+                execution_end,
+            ),
+            "note": "Native image-service only; excludes agent queue and frontend. Provider stage includes image validation and optional quality processing; runtime_return_ms includes coordinator exit and optional chat restoration.",
         }
