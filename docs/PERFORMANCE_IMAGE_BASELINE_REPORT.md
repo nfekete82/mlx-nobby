@@ -104,3 +104,54 @@ Changing that behavior would alter memory safety and requires a separate
 performance + memory validation. This patch only adds timing events; it
 changes neither CPU offloading, MPS watermarks, model residency, resolution,
 steps, scheduler, nor image quality.
+
+## Follow-up: Native post-provider latency (October 2026)
+
+A fresh user-run **Juggernaut XL 1216×1216 / 40 steps** image reported:
+
+- Total 36,272 ms; native execution 34,988 ms.
+- Parent SDXL provider wall time 26,618 ms.
+- Difference ~8,370 ms **not attributable to SDXL diffusion alone**.
+
+Standard production `de.nobby.mlx-images` LaunchAgent sets
+`MLX_IMAGE_QUALITY_UPSCALE=off`: the optional Real-ESRGAN Quality+
+phase is **not** the expected source of that gap.
+
+The native ImageJobTimings producer now reports an additional disjoint
+execution breakdown, exposed through the allowlisted Performance
+Observatory and existing read-only baseline script:
+
+| Field | Boundary | Interpretation |
+| --- | --- | --- |
+| `render_setup_ms` | execute entry → output preparation callback | Native request resolution and setup |
+| `provider_and_setup_ms` | preparation callback → saving callback | Provider processing, validation and optional enhancement (not pure diffusion) |
+| `output_finalize_ms` | saving callback → final result ready | Output conversion, particularly PNG → WebP |
+| `sdxl_unload_ms` | result ready → completed SDXL worker shutdown | CPU/MPS memory release before restoring chat |
+| `runtime_return_ms` | SDXL unloaded → coordinator exit | Coordinator cleanup, **including** any chat restart |
+
+For non-SDXL jobs, `sdxl_unload_ms` is null and
+`runtime_return_ms` begins at result-ready. For older jobs or failed
+jobs, absent stage values remain null.
+
+Unlike the independent timings inside `sdxl_worker.py`, these events
+measure the full native lifecycle around the provider. They partition
+`execution_ms` on normal successful SDXL jobs without assigning time
+to unverified causes. Neither job execution, routing, model settings,
+checkpoint loading, memory budgets, safe shutdown, file encoding nor
+visual image content changes.
+
+After deployment, create **one fresh** Juggernaut XL image with the same
+settings and run:
+
+```sh
+python3 scripts/report-image-edit-baseline.py \
+  --model juggernaut-xl --samples 1 \
+  --output artifacts/performance/juggernaut-baseline.json
+```
+
+If `sdxl_unload_ms` or `runtime_return_ms` accounts for most of the
+8.37s, prioritize safe teardown/handoff optimization only after
+evaluating memory-pressure constraints. If `output_finalize_ms` is
+large, test JPEG/WebP encoding tradeoffs under equal visual quality.
+If `provider_and_setup_ms` includes a large extra operation, inspect
+the provider path before changing the step count.
