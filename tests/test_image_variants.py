@@ -626,3 +626,135 @@ def test_incremental_gallery_restores_and_can_be_extended_again(runtime, simple_
     assert len(calls) == 4
     assert len({call["seed"] for call in calls}) == 4
     assert next_batch["jobs"][0]["id"] == first_batch["jobs"][0]["id"]
+
+
+def test_sdxl_multi_variant_reuses_worker_under_one_runtime_lease(runtime, monkeypatch):
+    from contextlib import contextmanager
+    events = []
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    monkeypatch.setattr(service, 'run_provider',
+                        lambda m, p, out, **kw: out.write_bytes(b'photo'))
+
+    # The original source job retains its normal single-image lifetime.
+    first, _ = base(runtime)
+    events.clear()
+
+    @contextmanager
+    def guarded_lease(*_a, **kwargs):
+        assert kwargs['force_chat_unload'] is True
+        assert kwargs['exclusive_models'] is True
+        events.append('handoff_start')
+        preflight = {}
+        try:
+            yield preflight
+        finally:
+            events.append('handoff_end')
+
+    def render(model, params, output, **kwargs):
+        events.append(('image', params['seed']))
+        output.write_bytes(b'photo')
+
+    def unload():
+        events.append('sdxl_unloaded')
+
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', guarded_lease)
+    monkeypatch.setattr(service, 'run_provider', render)
+    monkeypatch.setattr(service, 'shutdown_sdxl_worker', unload)
+    monkeypatch.setattr(service, 'sdxl_worker_running', lambda: False)
+
+    gallery = batch(runtime, first)
+    assert gallery['status'] in {'running', 'completed'}
+    images = [entry for entry in events if isinstance(entry, tuple)]
+    assert len(images) == 5
+    assert events == ['handoff_start', *images, 'sdxl_unloaded', 'handoff_end']
+    for member in gallery['jobs']:
+        assert runtime.get('/jobs/' + member['id']).json()['status'] == 'completed'
+
+
+def test_single_variant_preserves_original_runtime_handoff(runtime, monkeypatch):
+    from contextlib import contextmanager
+    events = []
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    monkeypatch.setattr(service, 'run_provider',
+                        lambda m, p, out, **kw: out.write_bytes(b'photo'))
+    first, _ = base(runtime)
+
+    @contextmanager
+    def counted_lease(*args, **kwargs):
+        events.append('lease_enter')
+        yield {}
+        events.append('lease_exit')
+
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', counted_lease)
+    monkeypatch.setattr(service, 'shutdown_sdxl_worker', lambda: events.append('sdxl_unloaded'))
+    result = runtime.post('/jobs/variants', json={
+        'base_job_id': first['id'], 'count': 2, 'include_base': True,
+        'chat_id': 'variants-test', 'chat_revision': 0,
+    })
+    assert result.status_code == 202, result.text
+    only = result.json()['jobs'][0]
+    assert wait(runtime, only['id'])['status'] == 'completed'
+    assert events == ['lease_enter', 'sdxl_unloaded', 'lease_exit']
+
+
+def test_multi_variant_unload_failure_never_restores_chat(runtime, monkeypatch):
+    from contextlib import contextmanager
+    events = []
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    monkeypatch.setattr(service, 'run_provider',
+                        lambda m, p, out, **kw: out.write_bytes(b'photo'))
+    first, _ = base(runtime)
+
+    @contextmanager
+    def guarded_lease(*_a, **_kwargs):
+        preflight = {}
+        try:
+            yield preflight
+        finally:
+            events.append(('suppress_restore', preflight.get('suppress_chat_restore')))
+
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', guarded_lease)
+
+    def broken_unload():
+        raise RuntimeError('Worker retained model memory')
+
+    monkeypatch.setattr(service, 'shutdown_sdxl_worker', broken_unload)
+    response = runtime.post('/jobs/variants', json={
+        'base_job_id': first['id'], 'count': 3, 'include_base': True,
+        'chat_id': 'variants-test', 'chat_revision': 0,
+    })
+    assert response.status_code == 202, response.text
+    members = response.json()['jobs']
+    for job in members:
+        wait(runtime, job['id'])
+    # Individual images are durable, but a failed unload never claims a
+    # successful batch or starts the chat runtime over resident SDXL.
+    summary = runtime.get(
+        '/variant-groups/' + response.json()['variant_group_id'],
+        params={'chat_id': 'variants-test', 'chat_revision': 0},
+    ).json()
+    assert summary['status'] == 'failed'
+    assert events == [('suppress_restore', True)]
+
+
+def test_multi_variant_fails_closed_on_cancel_before_batch_admission(runtime, monkeypatch):
+    from contextlib import contextmanager
+    monkeypatch.setattr(service, '_generation_model', lambda *_: model('sdxl', 'juggernaut-xl'))
+    monkeypatch.setattr(service, 'run_provider',
+                        lambda m, p, out, **kw: out.write_bytes(b'photo'))
+    first, _ = base(runtime)
+
+    @contextmanager
+    def cancelled_lease(cancel_event, **_kwargs):
+        cancel_event.set()
+        raise service.runtime_coordinator.CoordinationCancelled('Synthetic cancel')
+        yield
+
+    monkeypatch.setattr(service.runtime_coordinator, 'image_runtime', cancelled_lease)
+    response = runtime.post('/jobs/variants', json={
+        'base_job_id': first['id'], 'count': 3,
+        'chat_id': 'variants-test', 'chat_revision': 0,
+    })
+    assert response.status_code == 202
+    for job in response.json()['jobs']:
+        assert wait(runtime, job['id'])['status'] == 'cancelled'
