@@ -122,7 +122,7 @@ def _model_calls(limit=DEFAULT_LIMIT):
             # Count output throughput only for genuine streamed calls whose
             # first token was observed. Non-streamed vision and router calls
             # have no defensible generation interval, even with usage data.
-            if (str(raw.get("purpose") or "") == "chat.stream"
+            if (str(raw.get("purpose") or "") in {"chat.stream", "vision.stream"}
                     and ttft_ms is not None
                     and generation_ms is not None and generation_ms > 0
                     and output_tokens is not None and output_tokens > 0):
@@ -145,6 +145,7 @@ def _model_calls(limit=DEFAULT_LIMIT):
                     "queue_wait": _rounded(timings.get("queue_wait"), 3),
                     "upstream_connect": _rounded(timings.get("upstream_connect"), 3),
                     "ttft": _rounded(timings.get("ttft"), 3),
+                    "first_content": _rounded(timings.get("first_content"), 3),
                     "generation": _rounded(generation_ms, 3),
                 },
                 "usage": {
@@ -166,12 +167,13 @@ def model_performance_snapshot(limit=DEFAULT_LIMIT):
     calls = _model_calls(limit)
     chronological = list(reversed(calls))
     completed = [call for call in chronological if call["status"] == "completed"]
-    # Chat performance must not silently fall back to router.classify,
-    # chat.vision or other buffered/non-streaming model calls. Otherwise the
-    # top-level "Chat TTFT" / throughput cards become misleading.
+    # Separate genuinely streamed text and vision requests. Buffered vision,
+    # router and agent calls never enter either timing summary.
     measured = [
-        call for call in completed
-        if call["purpose"] == "chat.stream"
+        call for call in completed if call["purpose"] == "chat.stream"
+    ]
+    measured_vision = [
+        call for call in completed if call["purpose"] == "vision.stream"
     ]
 
     return {
@@ -187,6 +189,20 @@ def model_performance_snapshot(limit=DEFAULT_LIMIT):
             ),
             "total_ms": metric_series(
                 call["timings_ms"].get("total") for call in measured
+            ),
+        },
+        "vision_summary": {
+            "ttft_ms": metric_series(
+                call["timings_ms"].get("ttft") for call in measured_vision
+            ),
+            "first_content_ms": metric_series(
+                call["timings_ms"].get("first_content") for call in measured_vision
+            ),
+            "tokens_per_second": metric_series(
+                call.get("tokens_per_second") for call in measured_vision
+            ),
+            "total_ms": metric_series(
+                call["timings_ms"].get("total") for call in measured_vision
             ),
         },
         "recent_calls": calls,

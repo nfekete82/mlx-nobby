@@ -19,6 +19,9 @@
         no_data: 'No measurements yet',
         ttft: 'Chat TTFT',
         tokens_per_second: 'Chat throughput',
+        vision_ttft: 'Vision TTFT',
+        vision_first_content: 'Vision first answer text',
+        vision_tokens_per_second: 'Vision throughput',
         image_time: 'Image generation',
         video_time: 'Video generation',
         headroom: 'RAM headroom',
@@ -258,6 +261,7 @@
     function renderKpis(snapshot) {
         const target = root.querySelector('[data-performance-kpis]');
         const model = snapshot?.model?.summary || {};
+        const vision = snapshot?.model?.vision_summary || {};
         const media = snapshot?.media?.summary || {};
         const memory = snapshot?.system?.memory || {};
         const imageMetric = media?.image?.generation_ms || {};
@@ -274,6 +278,24 @@
                 t('tokens_per_second'),
                 metricValue(model.tokens_per_second, formatRate),
                 metricDetail(model.tokens_per_second, formatRate),
+                'metric-chat'
+            ),
+            kpiCard(
+                t('vision_ttft'),
+                metricValue(vision.ttft_ms, formatDuration),
+                metricDetail(vision.ttft_ms, formatDuration),
+                'metric-chat'
+            ),
+            kpiCard(
+                t('vision_first_content'),
+                metricValue(vision.first_content_ms, formatDuration),
+                metricDetail(vision.first_content_ms, formatDuration),
+                'metric-chat'
+            ),
+            kpiCard(
+                t('vision_tokens_per_second'),
+                metricValue(vision.tokens_per_second, formatRate),
+                metricDetail(vision.tokens_per_second, formatRate),
                 'metric-chat'
             ),
             kpiCard(

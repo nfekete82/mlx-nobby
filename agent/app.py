@@ -12109,7 +12109,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
     def worker():
         call_metrics = observability.ModelCallMetrics(
             trace_id=trace_id,
-            purpose="chat.stream",
+            purpose="vision.stream" if vision_role else "chat.stream",
             role=selected_role,
             messages=request.messages,
             context_sources=request.context_sources,
@@ -12283,7 +12283,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                             if content:
                                 vision_chunks += 1
                                 mark_progress()
-                                call_metrics.mark_first_token()
+                                call_metrics.mark_first_content()
                                 output_characters += len(content)
                                 event = json.dumps(
                                     {

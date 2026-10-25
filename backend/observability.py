@@ -286,6 +286,7 @@ class ModelCallMetrics:
             else time.monotonic()
         )
         self.first_token_at = None
+        self.first_content_at = None
         self.upstream_connected_at = None
         self.trace_id = ensure_trace_id(trace_id or current_trace_id())
         self.request_id = uuid.uuid4().hex
@@ -312,6 +313,7 @@ class ModelCallMetrics:
                 "queue_wait": None,
                 "upstream_connect": None,
                 "ttft": None,
+                "first_content": None,
                 "generation": None,
             },
             "finish_reason": None,
@@ -369,6 +371,17 @@ class ModelCallMetrics:
             self.metric["timings_ms"]["ttft"] = round(
                 (self.first_token_at - self.started) * 1000,
                 3,
+            )
+
+    def mark_first_content(self):
+        """Record the first answer-text token, independently of reasoning."""
+        self.mark_first_token()
+        if self.first_content_at is not None:
+            return
+        self.first_content_at = time.monotonic()
+        with _TRACE_LOCK:
+            self.metric["timings_ms"]["first_content"] = round(
+                (self.first_content_at - self.started) * 1000, 3
             )
 
     def finish(
