@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import threading
+from contextlib import nullcontext
 import time
 from pathlib import Path
 
@@ -142,34 +143,83 @@ def install(service):
         return "cancelled" if "cancelled" in statuses else "failed"
 
     def run(group):
+        # A true multi-image Juggernaut batch does not need to bounce the
+        # heavyweight chat model between successive, identical SDXL jobs.
+        # Keep one *exclusive* coordinator lease and one SDXL worker until
+        # the last pending variant finishes. Other providers and single
+        # variants continue to use the old per-job lifetime.
+        canonical_model = group.get("canonical", {}).get("model", {})
+        pending = [job for job in group["jobs"] if not reusable(job)]
+        batch_sdxl = (
+            group.get("operation", "generate") == "generate"
+            and canonical_model.get("provider") == "sdxl"
+            and len(pending) > 1
+        )
+        context = (
+            service.runtime_coordinator.image_runtime(
+                group["cancel"],
+                force_chat_unload=True,
+                exclusive_models=True,
+            )
+            if batch_sdxl else nullcontext()
+        )
         try:
+            with context as preflight:
+                try:
+                    for job in group["jobs"]:
+                        if reusable(job):
+                            continue
+                        if group["cancel"].is_set():
+                            service._update_job(job["id"], status="cancelled", finished_at=time.time())
+                            continue
+                        with service._jobs_lock:
+                            service._active_job_id = job["id"]
+                        operation = group.get("operation", "generate")
+                        request = (service.Edit if operation == "edit" else service.Generate).model_validate(group["request"])
+                        request.seed = job["seed"]
+                        # Ordinary edits must rebuild their temporary crop/mask from
+                        # the original source on every run. Their canonical params
+                        # contain paths which are removed when the first edit ends.
+                        reference_replay = (group.get("reference_edit") is True or
+                                            group.get("request", {}).get("semantic_operation") == "reference_generate")
+                        reusable_resolved = (None if operation == "edit" and not reference_replay
+                                             else group["canonical"])
+                        service._run_image_job(
+                            job["id"], operation, request, resolved=reusable_resolved,
+                            release_lock=False,
+                            batched_sdxl=batch_sdxl,
+                            runtime_preflight=preflight,
+                        )
+                        persist(group)
+                        if job["status"] != "completed":
+                            for missing in group["jobs"]:
+                                if missing["status"] == "queued":
+                                    service._update_job(
+                                        missing["id"],
+                                        status="cancelled" if group["cancel"].is_set() else "failed",
+                                        error="Previous variant failed",
+                                        finished_at=time.time(),
+                                    )
+                            break
+                finally:
+                    if batch_sdxl:
+                        # Must finish *before* image_runtime exits and tries
+                        # to restart chat. Fail closed if SDXL did not release.
+                        try:
+                            service.shutdown_sdxl_worker()
+                            if service.sdxl_worker_running():
+                                raise RuntimeError("SDXL worker still resident after batch")
+                        except Exception:
+                            if isinstance(preflight, dict):
+                                preflight["suppress_chat_restore"] = True
+                            raise
+        except (service.ProviderCancelled, service.runtime_coordinator.CoordinationCancelled):
             for job in group["jobs"]:
-                if reusable(job):
-                    continue
-                if group["cancel"].is_set():
-                    service._update_job(job["id"], status="cancelled", finished_at=time.time())
-                    continue
-                with service._jobs_lock:
-                    service._active_job_id = job["id"]
-                operation = group.get("operation", "generate")
-                request = (service.Edit if operation == "edit" else service.Generate).model_validate(group["request"])
-                request.seed = job["seed"]
-                # Ordinary edits must rebuild their temporary crop/mask from
-                # the original source on every run. Their canonical params
-                # contain paths which are removed when the first edit ends.
-                reference_replay = (group.get("reference_edit") is True or
-                                    group.get("request", {}).get("semantic_operation") == "reference_generate")
-                reusable_resolved = (None if operation == "edit" and not reference_replay
-                                     else group["canonical"])
-                service._run_image_job(job["id"], operation, request,
-                                       resolved=reusable_resolved, release_lock=False)
-                persist(group)
-                if job["status"] != "completed":
-                    for missing in group["jobs"]:
-                        if missing["status"] == "queued":
-                            service._update_job(missing["id"], status="cancelled" if group["cancel"].is_set() else "failed",
-                                                error="Previous variant failed", finished_at=time.time())
-                    break
+                if job["status"] not in _TERMINAL:
+                    service._update_job(
+                        job["id"], status="cancelled",
+                        error=None, finished_at=time.time(),
+                    )
         except Exception:
             for job in group["jobs"]:
                 if job["status"] not in _TERMINAL:
