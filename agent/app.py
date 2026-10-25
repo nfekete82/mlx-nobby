@@ -8584,6 +8584,9 @@ def _image_upscale_payload(request):
     scale = options.pop("scale", None)
     preset = options.get("preset")
     preset_scales = {
+        "photo-natural-2x": 2,
+        "photo-natural-4x": 4,
+        "photo-sharp-4x": 4,
         "photo-2x": 2,
         "photo-4x": 4,
         "anime-4x": 4,
@@ -8598,7 +8601,7 @@ def _image_upscale_payload(request):
         scale = int(scale)
         if preset is None:
             options["preset"] = (
-                "photo-2x" if scale == 2 else "photo-4x"
+                "photo-natural-2x" if scale == 2 else "photo-natural-4x"
             )
         elif preset_scales.get(preset) != scale:
             raise HTTPException(
