@@ -84,6 +84,12 @@ measurements in `samples` and `median_ms`:
   VAE decoding and post-denoise finishing; not a dedicated GPU benchmark.
 - `sdxl_image_save_ms`: encoding and writing the PNG.
 - `sdxl_worker_total_ms`: total native worker time after it parsed the request.
+- `sdxl_worker_outside_ms`: extra time measured by the Image Service beyond
+  the worker's own timing (process/Python imports, IPC and delivery); not
+  exclusively GPU or model-load time.
+- `process_wall_ms`: Image Service wall time starting before SDXL
+  worker subprocess start; includes `sdxl_worker_total_ms` plus overhead.
+- `fresh_process`: whether a new SDXL subprocess was spawned for the job.
 - `sdxl_cold_model`: whether the SDXL model had to be loaded in that worker.
 
 All old samples retain `null` for these fields. Do **not** mix old samples
