@@ -335,7 +335,12 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             key: _rounded(native_timing.get(key), 2)
             if _number(native_timing.get(key)) is not None
             and _number(native_timing.get(key)) >= 0 else None
-            for key in ("resource_wait_ms", "execution_ms")
+            for key in (
+                "resource_wait_ms", "execution_ms",
+                "render_setup_ms", "provider_and_setup_ms",
+                "output_finalize_ms", "sdxl_unload_ms",
+                "runtime_return_ms",
+            )
         }
         verified_image_release = (
             handoff.get("image_released")
