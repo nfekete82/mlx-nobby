@@ -139,7 +139,7 @@ class Upscale(BaseModel):
         "photo-2x",
         "photo-4x",
         "anime-4x",
-    ] = "photo-natural-2x"
+    ] = "photo-2x"  # Keep legacy API default; UI explicitly selects natural.
     tile: int = Field(default=0, ge=0)
 
 
