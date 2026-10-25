@@ -1,4 +1,5 @@
 """Opt-in native vision SSE relay: safety, fallbacks and web transport."""
+import asyncio
 import json
 from unittest import mock
 
@@ -104,6 +105,12 @@ def test_network_failure_before_first_token_uses_legacy():
     assert len(output) == 2
 
 
+def collect_stream(response):
+    async def consume():
+        return [chunk async for chunk in response.body_iterator]
+    return asyncio.run(consume())
+
+
 def test_vision_web_bridge_remains_legacy_by_default(monkeypatch):
     monkeypatch.delenv("MLX_CHAT_VISION_STREAM_ENABLED", raising=False)
     captured = []
@@ -140,7 +147,7 @@ def test_vision_web_bridge_remains_legacy_by_default(monkeypatch):
                 {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
             ],
         }]))
-        chunks = list(result.body_iterator)
+        chunks = collect_stream(result)
 
     assert isinstance(result, StreamingResponse)
     assert len(captured) == 1
@@ -179,7 +186,7 @@ def test_opt_in_vision_uses_selected_vision_role_and_valid_stream_payload(monkey
                 {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
             ],
         }]))
-        chunks = list(result.body_iterator)
+        chunks = collect_stream(result)
 
     assert len(captured) == 1
     url, payload, timeout = captured[0]
@@ -227,7 +234,7 @@ def test_opt_in_old_agent_must_fallback_without_vision_role_stream(monkeypatch):
                 {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
             ],
         }]))
-        chunks = list(result.body_iterator)
+        chunks = collect_stream(result)
 
     assert len(legacy_calls) == 1
     assert legacy_calls[0].endswith("/api/bridge/mlx/v1/chat/completions")
