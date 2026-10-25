@@ -44,6 +44,20 @@ REALESRGAN_MODELS = Path(
 )
 
 REALESRGAN_PRESETS = {
+    # Natural modes use the same already-installed ESRGAN weights, followed by
+    # source-preserving finishing in image_service. No model downloads.
+    "photo-natural-2x": {
+        "model": "realesrgan-x4plus",
+        "scale": 2,
+    },
+    "photo-natural-4x": {
+        "model": "realesrgan-x4plus",
+        "scale": 4,
+    },
+    "photo-sharp-4x": {
+        "model": "realesrgan-x4plus",
+        "scale": 4,
+    },
     "photo-2x": {
         "model": "realesrgan-x4plus",
         "scale": 2,
