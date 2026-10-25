@@ -138,6 +138,8 @@ def install(service):
         statuses = [job["status"] for job in group["jobs"]]
         if group.get("running"):
             return "running"
+        if group.get("batch_failed"):
+            return "failed"
         if all(status == "completed" for status in statuses):
             return "completed"
         return "cancelled" if "cancelled" in statuses else "failed"
@@ -210,6 +212,7 @@ def install(service):
                             if service.sdxl_worker_running():
                                 raise RuntimeError("SDXL worker still resident after batch")
                         except Exception:
+                            group["batch_failed"] = True
                             if isinstance(preflight, dict):
                                 preflight["suppress_chat_restore"] = True
                             raise
@@ -421,7 +424,10 @@ def install(service):
                         if not old.get("running"):
                             groups.pop(old_id)
                     groups[group_id] = group
-                group.update(cancel=cancel_event, running=True, persistence_available=True)
+                group.update(
+                    cancel=cancel_event, running=True,
+                    persistence_available=True, batch_failed=False,
+                )
                 thread = threading.Thread(target=run, args=(group,), name="image-variants-" + group["id"], daemon=True)
                 service._prune_jobs_locked()
                 # Protect the immutable source against eviction while the batch runs.
