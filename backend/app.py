@@ -1181,7 +1181,7 @@ def mlx_chat_stream(request: ChatRequest):
             method="POST",
         )
 
-        def generate_vision():
+        def generate_vision_legacy():
             try:
                 with urllib.request.urlopen(
                     upstream_request,
@@ -1263,6 +1263,61 @@ def mlx_chat_stream(request: ChatRequest):
                     "event: error\n"
                     f"data: {event}\n\n"
                 )
+
+        def generate_vision():
+            # An explicit opt-in: native VLM streaming support varies with
+            # model/server versions. Keep the existing nonstream bridge as
+            # the production default and as the pre-first-token fallback.
+            if os.environ.get("MLX_CHAT_VISION_STREAM_ENABLED", "0") != "1":
+                yield from generate_vision_legacy()
+                return
+
+            # Older installed Agents ignore unknown request fields. Require
+            # an explicit capability handshake before sending a vision role,
+            # otherwise an old Agent could silently route images as text chat.
+            try:
+                capabilities = agent_json_request(
+                    "GET", "/api/runtime/vision-streaming/capabilities",
+                    timeout=2,
+                )
+            except Exception:
+                capabilities = {}
+            if not isinstance(capabilities, dict) or (
+                capabilities.get("supports_explicit_vision_role") is not True
+                or capabilities.get("version") != 1
+            ):
+                yield from generate_vision_legacy()
+                return
+
+            from backend.vision_streaming import relay_vision_stream
+
+            stream_payload = {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": True,
+                "vision_role": vision_role,
+                "trace_id": trace_id,
+                "context_sources": context_sources,
+            }
+            stream_request = urllib.request.Request(
+                f"{AGENT_URL}/api/runtime/chat/stream",
+                data=json.dumps(stream_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                first_byte_timeout = max(
+                    30, min(300, int(os.environ.get(
+                        "MLX_CHAT_VISION_FIRST_BYTE_TIMEOUT", "60"
+                    )))
+                )
+            except (ValueError, TypeError):
+                first_byte_timeout = 60
+            yield from relay_vision_stream(
+                stream_request, generate_vision_legacy,
+                timeout=first_byte_timeout,
+            )
 
         return StreamingResponse(
             generate_vision(),
