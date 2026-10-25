@@ -217,6 +217,7 @@
             refining: rt('media_phase_upscaling', 'Upscaling'),
             saving: rt('media_phase_saving', 'Saving'),
             save: rt('media_phase_saving', 'Saving'),
+            restoring_chat: rt('media_phase_restoring_chat', 'Image ready · Starting chat'),
             decoding: rt('media_phase_decoding', 'Decoding'),
             muxing: rt('media_phase_muxing', 'Muxing'),
             completed: rt('media_phase_completed', 'Completed'),
@@ -326,6 +327,9 @@
             title = rt('image_job_cancelled', 'Image job cancelled');
         } else if (status === 'failed') {
             title = rt('image_job_failed', 'Image job failed');
+        } else if (status === 'saving' && job?.phase === 'restoring_chat') {
+            title = rt('image_job_restoring_chat',
+                'Image ready · Chat is starting …');
         } else if (status === 'running' && stale) {
             title = rt(
                 'image_job_status_running_stale',
@@ -1940,10 +1944,16 @@ function renderImageArtifactCard(message) {
         artifact.seed != null ? 'Seed ' + artifact.seed : ''
     ].filter(Boolean).join(' · ');
     const controls = document.createElement('div'); controls.className = 'batch-chat-controls';
+    const previewWhileRestoring =
+        message.image_job?.status === 'saving' &&
+        message.image_job?.phase === 'restoring_chat';
     const download = document.createElement('a');
     download.className = 'message-action-btn'; download.textContent = 'Download';
     download.href = '/api/mlx/images/' + encodeURIComponent(artifact.image_id) + '?download=1';
     controls.appendChild(download);
+    // Viewing and downloading are safe while chat returns; image actions
+    // would start a second heavy job before coordinator release.
+    if (!previewWhileRestoring) {
     const regionEdit = document.createElement('button');
     regionEdit.type = 'button';
     regionEdit.className = 'message-action-btn';
@@ -1979,6 +1989,7 @@ function renderImageArtifactCard(message) {
         if (enhanceMenu) controls.appendChild(enhanceMenu);
     } catch (error) {
         console.warn('Could not render image actions', error);
+    }
     }
 
     const info = document.createElement('details');

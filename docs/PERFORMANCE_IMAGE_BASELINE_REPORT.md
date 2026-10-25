@@ -155,3 +155,41 @@ evaluating memory-pressure constraints. If `output_finalize_ms` is
 large, test JPEG/WebP encoding tradeoffs under equal visual quality.
 If `provider_and_setup_ms` includes a large extra operation, inspect
 the provider path before changing the step count.
+
+## Early SDXL image preview during chat restoration
+
+A measured 40-step 1216×1216 Juggernaut job took 44.61 seconds total.
+Its native breakdown showed:
+
+- 32.62 s provider and setup
+- 0.16 s WebP finalization
+- 0.49 s safe SDXL worker shutdown
+- 10.21 s returning from runtime coordination (which includes chat restart)
+
+The native image file is **fully encoded** and SDXL is safely **unloaded**
+before the coordinator begins restoring chat. The UI may now receive an
+*early, nonterminal* artifact while the job reports
+`status=saving, phase=restoring_chat`. This makes the image viewable and
+downloadable without waiting for the chat service to finish booting.
+
+Safety and lifecycle details:
+
+- Do **not** mark the job `completed` early. Agent queue and image-service
+  locks remain active until the normal coordinator exit and all cleanup.
+- Do **not** start another image edit, upscale, or generation from the
+  early artifact while runtime handoff is in progress.
+- Only a generated SDXL image with a successful render, finalized file,
+  successful SDXL worker teardown, and no cancellation is exposed early.
+  Image edits, upscaling, Qwen/MLX-Serve, and legacy jobs are unchanged.
+- If the handoff fails or the job is cancelled, the provisional artifact
+  is withdrawn and the existing failure/cleanup rules apply. The job is
+  not presented as successful.
+- No change to generation steps, MPS memory guards, offloading, model
+  residency, task coordination, chat restart behavior, or image quality.
+- On this specific measured run, the **perceived image-view latency**
+  could improve by up to roughly 10 seconds, subject to polling/render
+  overhead. The **total job duration is not shortened**.
+
+Deployment requires a native Image Service restart, an Agent restart,
+and a **web container rebuild** because the chat renderer and translations
+are updated. Compare image-first-visible timing to final job completion.

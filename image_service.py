@@ -1479,6 +1479,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                 execute = _generate_result
 
             timings.mark("execution_started")
+            rendered_result = None
             try:
                 result = execute(
                     request,
@@ -1490,6 +1491,7 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                        if operation in {"generate", "edit"} else {}),
                 )
                 timings.mark("result_ready")
+                rendered_result = result
             finally:
                 # Do not restart chat on top of a still-resident SDXL pipeline.
                 # This runs before the image_runtime context restores chat.
@@ -1497,6 +1499,17 @@ def _run_image_job(job_id, operation, request, *, resolved=None, release_lock=Tr
                     try:
                         shutdown_sdxl_worker()
                         timings.mark("sdxl_released")
+                        # The image is encoded and its MPS worker is safely
+                        # gone. Let the UI display it while chat starts,
+                        # without marking the job terminal or releasing the
+                        # coordinator lease (which would allow unsafe overlap).
+                        if rendered_result is not None and not cancel_event.is_set():
+                            _update_job(
+                                job_id,
+                                status="saving",
+                                phase="restoring_chat",
+                                result=rendered_result,
+                            )
                     except Exception:
                         if preflight is not None:
                             preflight["suppress_chat_restore"] = True
