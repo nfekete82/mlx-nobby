@@ -52,6 +52,14 @@
     let busyBatch = false;
     let busySwitch = false;
     let rootObserver = null;
+    let copyLocale = null;
+    let copyPending = null;
+    let copyRevision = 0;
+    let mountPending = null;
+    let mountedPanel = null;
+    let mountScheduled = false;
+    let refreshPending = null;
+    let refreshRevision = 0;
 
     function locale() {
         const current = window.MLXI18n?.getLocale?.() || navigator.language || 'en';
@@ -67,14 +75,34 @@
     }
 
     async function loadCopy() {
-        copy = { ...FALLBACK };
-        try {
-            const response = await fetch('/i18n/model-scout.' + locale() + '.json', { cache: 'no-store' });
-            if (response.ok) {
-                const data = await response.json();
-                if (data && typeof data === 'object') copy = { ...FALLBACK, ...data };
+        const language = locale();
+        if (copyLocale === language) return;
+        if (copyPending?.language === language) return copyPending.promise;
+
+        const revision = ++copyRevision;
+        const promise = (async () => {
+            let next = { ...FALLBACK };
+            try {
+                const response = await fetch('/i18n/model-scout.' + language + '.json', { cache: 'no-store' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && typeof data === 'object') next = { ...FALLBACK, ...data };
+                }
+            } catch (_) {
+                // A missing translation file retains the local fallback copy.
             }
-        } catch (_) {}
+            // A slower response for the previous language must never replace newer copy.
+            if (revision === copyRevision && locale() === language) {
+                copy = next;
+                copyLocale = language;
+            }
+        })();
+        copyPending = { language, promise };
+        try {
+            await promise;
+        } finally {
+            if (copyPending?.promise === promise) copyPending = null;
+        }
     }
 
     async function requestJson(url, options) {
@@ -331,20 +359,40 @@
     }
 
     async function refreshData(panel) {
-        const role = panel?.querySelector('[data-scout-role]')?.value || 'all';
-        try {
-            const [discovery, historyData] = await Promise.all([
-                requestJson('/api/mlx/model-scout/discover?limit=36&role=' + encodeURIComponent(role), { cache: 'no-store' }),
-                requestJson('/api/mlx/model-scout/benchmarks', { cache: 'no-store' })
-            ]);
-            candidateIndex = new Map((discovery.candidates || []).map(item => [String(item.id), item]));
-            history = Array.isArray(historyData.benchmarks) ? historyData.benchmarks : [];
-        } catch (error) {
-            console.error('[model-scout-v3] refresh failed:', error);
+        if (panel !== document.querySelector('#modelConsoleContent > .model-scout')) return;
+        const role = panel.querySelector('[data-scout-role]')?.value || 'all';
+        if (refreshPending?.panel === panel && refreshPending.role === role) {
+            return refreshPending.promise;
         }
-        ensureControls(panel);
-        ensureHistory(panel);
-        enhanceCards(panel);
+
+        const revision = ++refreshRevision;
+        const promise = (async () => {
+            try {
+                const [discovery, historyData] = await Promise.all([
+                    requestJson('/api/mlx/model-scout/discover?limit=36&role=' + encodeURIComponent(role), { cache: 'no-store' }),
+                    requestJson('/api/mlx/model-scout/benchmarks', { cache: 'no-store' })
+                ]);
+                // Late results from an older panel or role may not overwrite current state.
+                if (revision !== refreshRevision ||
+                    panel !== document.querySelector('#modelConsoleContent > .model-scout') ||
+                    (panel.querySelector('[data-scout-role]')?.value || 'all') !== role) return;
+                candidateIndex = new Map((discovery.candidates || []).map(item => [String(item.id), item]));
+                history = Array.isArray(historyData.benchmarks) ? historyData.benchmarks : [];
+            } catch (error) {
+                if (revision === refreshRevision) console.error('[model-scout-v3] refresh failed:', error);
+            }
+            if (revision !== refreshRevision ||
+                panel !== document.querySelector('#modelConsoleContent > .model-scout')) return;
+            ensureControls(panel);
+            ensureHistory(panel);
+            enhanceCards(panel);
+        })();
+        refreshPending = { panel, role, promise };
+        try {
+            await promise;
+        } finally {
+            if (refreshPending?.promise === promise) refreshPending = null;
+        }
     }
 
     function scheduleRefresh(panel, delay = 120) {
@@ -500,16 +548,36 @@
     async function mount() {
         const panel = document.querySelector('#modelConsoleContent > .model-scout');
         if (!panel) return false;
-        injectStyles();
-        await loadCopy();
-        wirePanel(panel);
-        ensureControls(panel);
-        await refreshData(panel);
-        return true;
+        if (mountedPanel === panel && panel.dataset.scoutV3Wired === 'true') return true;
+        if (mountPending?.panel === panel) return mountPending.promise;
+
+        const promise = (async () => {
+            injectStyles();
+            await loadCopy();
+            // The base Model Scout can replace the panel while translation loads.
+            if (panel !== document.querySelector('#modelConsoleContent > .model-scout')) return false;
+            wirePanel(panel);
+            ensureControls(panel);
+            await refreshData(panel);
+            if (panel !== document.querySelector('#modelConsoleContent > .model-scout')) return false;
+            mountedPanel = panel;
+            return true;
+        })();
+        mountPending = { panel, promise };
+        try {
+            return await promise;
+        } finally {
+            if (mountPending?.promise === promise) mountPending = null;
+        }
     }
 
     function scheduleMount() {
-        requestAnimationFrame(() => { mount(); });
+        if (mountScheduled) return;
+        mountScheduled = true;
+        requestAnimationFrame(() => {
+            mountScheduled = false;
+            void mount();
+        });
     }
 
     window.MLXModelScoutV3 = {
