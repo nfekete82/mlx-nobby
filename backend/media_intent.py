@@ -282,6 +282,22 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
                     execution = "video_animate"
             elif has_image and set(words[command + 1:]) & MODIFIERS:
                 execution = "image_edit"
+    # The dedicated Enhance button sends `action=image_upscale` together
+    # with a generic positive "Bild verbessern" instruction. The ordinary
+    # language parser correctly treats that verb as image_edit, but the
+    # explicitly selected Upscale operation must win for *this exact* UI
+    # instruction. Never promote recoloring, negated commands, or arbitrary
+    # edits to upscale jobs; the action hint alone is not permission.
+    if (action == "image_upscale" and has_image
+            and execution == "image_edit" and not negated and not text_intent
+            and re.fullmatch(
+                r"(?:bild|foto|photo|image|picture)\\s+"
+                r"(?:verbessern|verbessere|enhance|upscale|hochskalieren)"
+                r"(?:\\s*[·:–-]\\s*(?:2|4)\\s*[×x]\\s*"
+                r"(?:photo|foto|illustration))?",
+                text,
+            )):
+        execution = "image_upscale"
     if composition and not negated and not text_intent and execution is None:
         execution = "image_edit"
     if compose_supplied_images and not negated and not text_intent and execution == "image_generate":
