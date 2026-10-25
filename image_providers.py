@@ -1099,6 +1099,15 @@ class SDXLWorkerManager:
                                     "SDXL worker failed: " + detail
                                 )
                             elif event.get("type") == "complete":
+                                # The worker reports only bounded timing
+                                # primitives, never prompts or source paths.
+                                # Preserve the existing progress/job pipeline.
+                                if progress_callback is not None and isinstance(
+                                    event.get("provider_timing"), dict
+                                ):
+                                    progress_callback({
+                                        "provider_timing": event["provider_timing"],
+                                    })
                                 succeeded = True
                                 break
                         if succeeded:
