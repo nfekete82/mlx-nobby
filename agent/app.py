@@ -12068,12 +12068,13 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
     The HTTP generator itself does not hold a runtime lock.
     """
 
-    if request.vision_role is not None and (
+    vision_role = getattr(request, "vision_role", None)
+    if vision_role is not None and (
         request.auto_route or request.pin_active_model is not None
         or request.pin_active_pid is not None
     ):
         raise HTTPException(422, "Vision streaming cannot use auto-route or pinned runtime")
-    selected_role = request.vision_role or _runtime_chat_role(request)
+    selected_role = vision_role or _runtime_chat_role(request)
     trace_id = observability.ensure_trace_id(request.trace_id)
     event_queue = queue.Queue(maxsize=64)
     sentinel = object()
@@ -12304,7 +12305,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
                         # A native server that ignores stream=True can return
                         # a normal JSON body. Do not advertise an empty completed
                         # vision answer; the web bridge retries the legacy path.
-                        if request.vision_role and not vision_chunks:
+                        if vision_role and not vision_chunks:
                             call_metrics.fail("empty_vision_stream")
                             put_metrics()
                             put_error("VISION_STREAM_UNSUPPORTED")
