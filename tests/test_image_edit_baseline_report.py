@@ -146,7 +146,7 @@ def test_juggernaut_phase_breakdown_is_visible_without_private_payload():
                 "model_prepare_ms": 10000, "pipeline_setup_ms": 1000,
                 "first_step_ms": 1700, "denoise_window_ms": 20100,
                 "decode_finish_ms": 2800, "image_save_ms": 450,
-                "worker_total_ms": 36050,
+                "worker_total_ms": 36050, "worker_outside_ms": 15000,
                 "prompt": "never disclose me", "path": "/private/file.png",
             },
         }]}}
@@ -155,6 +155,7 @@ def test_juggernaut_phase_breakdown_is_visible_without_private_payload():
     row = result["samples"][0]
     assert row["sdxl_cold_model"] is True
     assert row["sdxl_model_prepare_ms"] == 10000
+    assert row["sdxl_worker_outside_ms"] == 15000
     assert row["sdxl_denoise_window_ms"] == 20100
     assert row["sdxl_decode_finish_ms"] == 2800
     assert result["median_ms"]["sdxl_model_prepare_ms"] == 10000
