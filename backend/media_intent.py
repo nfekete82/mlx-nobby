@@ -291,9 +291,9 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     if (action == "image_upscale" and has_image
             and execution == "image_edit" and not negated and not text_intent
             and re.fullmatch(
-                r"(?:bild|foto|photo|image|picture)\\s+"
+                r"(?:bild|foto|photo|image|picture)\s+"
                 r"(?:verbessern|verbessere|enhance|upscale|hochskalieren)"
-                r"(?:\\s*[·:–-]\\s*(?:2|4)\\s*[×x]\\s*"
+                r"(?:\s*[·:–-]\s*(?:2|4)\s*[×x]\s*"
                 r"(?:photo|foto|illustration))?",
                 text,
             )):
