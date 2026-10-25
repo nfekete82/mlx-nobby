@@ -530,6 +530,30 @@ function isImageGenerationRequest(prompt) {
     );
 }
 
+// Chart instructions are opt-in per user turn. Previously they were added
+// to *every* chat and vision prompt, encouraging fabricated focus-percentages
+// in image descriptions even when the user only asked what the image shows.
+function chartInstructionForTurn(messages) {
+    if (!window.MLXCharts || !Array.isArray(messages)) return '';
+    const user = [...messages].reverse().find(message => message?.role === 'user');
+    if (!user) return '';
+    if (Array.isArray(user.content)) {
+        // Vision requests may contain raw image bytes. A photo description
+        // cannot provide measured category shares on its own.
+        return '\nDescribe the image using observable details only. Do not invent focus percentages or output nobby-chart JSON blocks.\n';
+    }
+    const prompt = String(user.content || '').trim();
+    const chartNoun = '(?:diagramm|schaubild|chart|graph|plot|visualisier)';
+    const chartVerb = '(?:zeichne|zeige|erstelle|erzeuge|visualisiere|plotte|draw|show|create|make|plot|visualize|visualise)';
+    const explicitChartRequest = new RegExp(
+        '(?:' + chartVerb + ').{0,140}(?:' + chartNoun + ')'
+        + '|(?:' + chartNoun + ').{0,100}(?:' + chartVerb + ')', 'i'
+    ).test(prompt);
+    if (!explicitChartRequest) return '';
+    if (/(?:kein|keine|keinen|nicht|ohne|do not|don\u0027t|no|without).{0,36}(?:diagramm|schaubild|chart|graph|plot)/i.test(prompt)) return '';
+    return '\nWhen the user explicitly requests a data visualization and real numeric data are available, optionally include ONE fenced nobby-chart JSON block after your explanation. Format: {"type":"auto","title":"Short title","unit":"€","data":[{"label":"2025-01","value":12.5},{"label":"2025-02","value":15.2}]}. Only use supplied or verified numeric data. Never invent focus percentages or statistics. Values must be finite JSON numbers. Use part_of_whole:true only for genuine measured portions.\n';
+}
+
 (function () {
     let getGenerating;
     let setGenerating;
@@ -819,11 +843,9 @@ async function startImageUpscale(source, preset = 'photo-2x') {
             );
         }
 
-        const prompt = gt(
-            'image_upscale_request',
-            'Enhance image · {preset}',
-            { preset: gt(option.labelKey, option.fallback) }
-        );
+        // The chosen preset is sent in image_options. Do not repeat its
+        // technical label in the visible user chat bubble.
+        const prompt = gt('image_upscale_request', 'Enhance image');
         const userMessage = {
             role: 'user',
             trace_id: newTraceId(),
@@ -1587,7 +1609,7 @@ try {
                             .getSessionSystemPrompt() +
                         (window.MLXChatResponseLength?.instructionForTurn?.(
                             session, originalInferenceMessages
-                        ) || '') + (window.MLXCharts ? '\nWhen the user asks for a data analysis or numeric comparison and real numeric data are available, optionally include ONE fenced nobby-chart JSON block after your explanation. Format: {"type":"auto","title":"Short title","unit":"€","data":[{"label":"2025-01","value":12.5},{"label":"2025-02","value":15.2}]}. Values must be finite JSON numbers, not strings. Only use measured or supplied values: never invent numbers, sources or time series. Prefer text when charts do not improve the answer. Use part_of_whole:true only for actual nonnegative parts of a whole. Never place untrusted data in code or HTML.\n' : ''),
+                        ) || '') + chartInstructionForTurn(apiMessages),
 
                     trace_id: traceId,
 
