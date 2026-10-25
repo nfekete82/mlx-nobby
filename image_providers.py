@@ -1006,6 +1006,13 @@ class SDXLWorkerManager:
                 # resident after its idle-shutdown timer was cancelled.
                 self._stop_locked()
                 raise
+            # The SDXL worker imports PyTorch/Diffusers before it reads
+            # stdin. Measure outside the worker too, or a large cold start
+            # would be invisible to its per-request timing milestones.
+            fresh_process = (
+                self._process is None or self._process.poll() is not None
+            )
+            dispatch_started = time.monotonic()
             process = self._start_locked(environment)
             request_id = secrets.token_hex(16)
             request = {
@@ -1105,9 +1112,22 @@ class SDXLWorkerManager:
                                 if progress_callback is not None and isinstance(
                                     event.get("provider_timing"), dict
                                 ):
-                                    progress_callback({
-                                        "provider_timing": event["provider_timing"],
-                                    })
+                                    phase = dict(event["provider_timing"])
+                                    dispatch_ms = round(
+                                        (time.monotonic() - dispatch_started) * 1000, 1
+                                    )
+                                    phase["fresh_process"] = fresh_process
+                                    phase["process_wall_ms"] = dispatch_ms
+                                    inner_ms = phase.get("worker_total_ms")
+                                    if type(inner_ms) in (float, int) and 0 <= inner_ms <= dispatch_ms:
+                                        # Includes pre-import cold start, IPC,
+                                        # and post-completion delivery latency.
+                                        # Not all of this is necessarily
+                                        # model loading or GPU work.
+                                        phase["worker_outside_ms"] = round(
+                                            dispatch_ms - inner_ms, 1
+                                        )
+                                    progress_callback({"provider_timing": phase})
                                 succeeded = True
                                 break
                         if succeeded:
