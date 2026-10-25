@@ -12051,6 +12051,12 @@ def runtime_chat(request: RuntimeChatRequest):
 
 
 
+@app.get("/api/runtime/vision-streaming/capabilities")
+def vision_streaming_capabilities():
+    """Explicit compatibility handshake for opt-in web Vision streaming."""
+    return {"version": 1, "supports_explicit_vision_role": True}
+
+
 @app.post("/api/runtime/chat/stream")
 def runtime_chat_stream(request: RuntimeChatStreamRequest):
     """
