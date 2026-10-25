@@ -1272,6 +1272,23 @@ def mlx_chat_stream(request: ChatRequest):
                 yield from generate_vision_legacy()
                 return
 
+            # Older installed Agents ignore unknown request fields. Require
+            # an explicit capability handshake before sending a vision role,
+            # otherwise an old Agent could silently route images as text chat.
+            try:
+                capabilities = agent_json_request(
+                    "GET", "/api/runtime/vision-streaming/capabilities",
+                    timeout=2,
+                )
+            except Exception:
+                capabilities = {}
+            if not isinstance(capabilities, dict) or (
+                capabilities.get("supports_explicit_vision_role") is not True
+                or capabilities.get("version") != 1
+            ):
+                yield from generate_vision_legacy()
+                return
+
             from backend.vision_streaming import relay_vision_stream
 
             stream_payload = {
