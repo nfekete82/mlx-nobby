@@ -59,3 +59,48 @@ The script makes one loopback HTTP GET request to the Observatory, does not touc
 and does not alter RAM admission (90%), the image process cap (24 GiB), image
 quality, backend settings, timeouts, or media lifecycle. Manual real edits still
 use Nobby's coordinator and memory admission. Reports stay local.
+
+
+## Juggernaut XL phase diagnostics
+
+After deploying this change to the **native Image Service**, generate one new
+Juggernaut XL image and run the same read-only command:
+
+```bash
+python3 scripts/report-image-edit-baseline.py \
+  --model juggernaut-xl --samples 3 \
+  --output artifacts/performance/juggernaut-baseline.json
+```
+
+New successful SDXL jobs report the following *local, best-effort* millisecond
+measurements in `samples` and `median_ms`:
+
+- `sdxl_model_prepare_ms`: model checkpoint loading, offload setup and scheduler selection.
+- `sdxl_pipeline_setup_ms`: source/image prep and inference argument setup.
+- `sdxl_first_step_ms`: inference start to first completed denoise callback.
+- `sdxl_denoise_window_ms`: first callback to final callback; **excludes
+  the first step** (not the entire denoising cost).
+- `sdxl_decode_finish_ms`: final callback to pipeline return, approximately
+  VAE decoding and post-denoise finishing; not a dedicated GPU benchmark.
+- `sdxl_image_save_ms`: encoding and writing the PNG.
+- `sdxl_worker_total_ms`: total native worker time after it parsed the request.
+- `sdxl_worker_outside_ms`: extra time measured by the Image Service beyond
+  the worker's own timing (process/Python imports, IPC and delivery); not
+  exclusively GPU or model-load time.
+- `process_wall_ms`: Image Service wall time starting before SDXL
+  worker subprocess start; includes `sdxl_worker_total_ms` plus overhead.
+- `fresh_process`: whether a new SDXL subprocess was spawned for the job.
+- `sdxl_cold_model`: whether the SDXL model had to be loaded in that worker.
+
+All old samples retain `null` for these fields. Do **not** mix old samples
+with fresh instrumented jobs when drawing conclusions. The pipeline may
+perform asynchronous MPS work, so timings are wall-clock boundaries, not
+precise GPU kernel timing.
+
+**Important safety behavior:** Normal SDXL generation deliberately shuts down
+its worker before the shared coordinator restores the chat model. The SDXL
+idle timeout by itself does not create warm reuse for these requests.
+Changing that behavior would alter memory safety and requires a separate
+performance + memory validation. This patch only adds timing events; it
+changes neither CPU offloading, MPS watermarks, model residency, resolution,
+steps, scheduler, nor image quality.

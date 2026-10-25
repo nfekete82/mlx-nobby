@@ -133,3 +133,31 @@ def test_unknown_timing_is_not_zero():
         "count": 0, "median": None, "p95": None, "average": None}
     assert report.time_series([100, 300]) == {
         "count": 2, "median": 200, "p95": 290, "average": 200}
+
+
+def test_juggernaut_phase_breakdown_is_visible_without_private_payload():
+    def getter(_url):
+        return {"media": {"recent_jobs": [{
+            "id": "e" * 24, "kind": "image", "status": "completed",
+            "model": "juggernaut-xl",
+            "total_ms": 36300, "generation_ms": 36250, "queue_wait_ms": 50,
+            "provider_timing": {
+                "provider": "sdxl", "cold_model": True,
+                "model_prepare_ms": 10000, "pipeline_setup_ms": 1000,
+                "first_step_ms": 1700, "denoise_window_ms": 20100,
+                "decode_finish_ms": 2800, "image_save_ms": 450,
+                "worker_total_ms": 36050, "worker_outside_ms": 15000,
+                "prompt": "never disclose me", "path": "/private/file.png",
+            },
+        }]}}
+    result = report.collect("http://127.0.0.1:8010",
+                            model="juggernaut-xl", getter=getter)
+    row = result["samples"][0]
+    assert row["sdxl_cold_model"] is True
+    assert row["sdxl_model_prepare_ms"] == 10000
+    assert row["sdxl_worker_outside_ms"] == 15000
+    assert row["sdxl_denoise_window_ms"] == 20100
+    assert row["sdxl_decode_finish_ms"] == 2800
+    assert result["median_ms"]["sdxl_model_prepare_ms"] == 10000
+    assert "never disclose" not in str(result)
+    assert "/private/" not in str(result)

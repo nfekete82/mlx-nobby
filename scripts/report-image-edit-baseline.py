@@ -112,6 +112,16 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "tqdm_first_ms": safe_ms(provider.get("tqdm_first_ms")),
             "tqdm_complete_ms": safe_ms(provider.get("tqdm_complete_ms")),
             "tqdm_window_ms": safe_ms(provider.get("tqdm_window_ms")),
+            "sdxl_worker_total_ms": safe_ms(provider.get("worker_total_ms")),
+            "sdxl_worker_outside_ms": safe_ms(provider.get("worker_outside_ms")),
+            "sdxl_model_prepare_ms": safe_ms(provider.get("model_prepare_ms")),
+            "sdxl_pipeline_setup_ms": safe_ms(provider.get("pipeline_setup_ms")),
+            "sdxl_first_step_ms": safe_ms(provider.get("first_step_ms")),
+            "sdxl_denoise_window_ms": safe_ms(provider.get("denoise_window_ms")),
+            "sdxl_decode_finish_ms": safe_ms(provider.get("decode_finish_ms")),
+            "sdxl_image_save_ms": safe_ms(provider.get("image_save_ms")),
+            "sdxl_cold_model": provider.get("cold_model")
+                               if type(provider.get("cold_model")) is bool else None,
             "tqdm_first_step": (
                 provider.get("tqdm_first_step")
                 if type(provider.get("tqdm_first_step")) is int
@@ -122,7 +132,7 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "fresh_process": provider.get("fresh_process")
                              if type(provider.get("fresh_process")) is bool else None,
             "provider": provider.get("provider")
-                        if provider.get("provider") in ("mflux", "mlxgen") else None,
+                        if provider.get("provider") in ("mflux", "mlxgen", "sdxl") else None,
             "low_ram": provider.get("low_ram")
                        if type(provider.get("low_ram")) is bool else None,
             "mflux_cache_limit_gb": safe_ms(provider.get("mflux_cache_limit_gb")),
@@ -145,6 +155,11 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
         "total_ms", "queue_wait_ms", "generation_ms", "process_wall_ms",
         "process_spawn_ms", "first_output_ms", "resource_wait_ms", "execution_ms",
         "tqdm_first_ms", "tqdm_complete_ms", "tqdm_window_ms",
+        "sdxl_worker_total_ms", "sdxl_worker_outside_ms",
+        "sdxl_model_prepare_ms",
+        "sdxl_pipeline_setup_ms", "sdxl_first_step_ms",
+        "sdxl_denoise_window_ms", "sdxl_decode_finish_ms",
+        "sdxl_image_save_ms",
     )
     return {
         "schema": 2,
@@ -165,6 +180,10 @@ def collect(origin: str, *, samples=3, model=None, getter=fetch_json) -> dict:
             "Use three sequential identical image edits for a controlled comparison; this tool does not verify prompts or dimensions.",
             "Missing measurements are null, not zero. Jobs must run with the new instrumentation to include startup timings.",
             "First output is log activity, not model loading or first GPU step.",
+            "SDXL model_prepare_ms includes checkpoint loading/CPU offload and scheduler setup; denoise_window_ms excludes the first step.",
+            "SDXL decode_finish_ms starts after the final denoising callback and is a best-effort VAE/finish estimate, not an isolated GPU event.",
+            "SDXL worker_outside_ms is the parent-manager wall time minus reported worker time; it can include Python imports, IPC and log delivery, not just model loading.",
+            "SDXL model workers are unloaded after ordinary generation for safe chat restoration.",
             "tqdm timings are timestamps when progress output was observed, not verified model-load or GPU execution phase boundaries.",
             "tqdm_window_ms is only populated when a 0/N start and N/N completion are both observed.",
             "Read-only: a single Observatory GET; does not start, cancel, delete or modify any jobs.",

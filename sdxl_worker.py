@@ -3,6 +3,8 @@ import gc
 import json
 import sys
 
+from sdxl_phase_timings import SDXLPhaseTimer
+
 
 DEFAULT_SCHEDULER = "dpmpp-2m-karras"
 SCHEDULER_PRESETS = {
@@ -80,10 +82,12 @@ def main():
         request_id = None
         try:
             request = json.loads(line)
+            phase_timer = SDXLPhaseTimer()
             request_id = request["request_id"]
             params = request["params"]
             model_key = (request["checkpoint"], request["config"])
-            if pipeline is None or loaded_model != model_key:
+            cold_model = pipeline is None or loaded_model != model_key
+            if cold_model:
                 if pipeline is not None:
                     # The img2img wrapper shares the already-offloaded
                     # SDXL components and does not own a second weight copy.
@@ -131,6 +135,7 @@ def main():
                 if img2img_pipeline is not None:
                     img2img_pipeline.scheduler = pipeline.scheduler
                 loaded_scheduler = scheduler_name
+            phase_timer.mark("model_ready")
 
             # Prewarm loads the exact production pipeline and scheduler into
             # the persistent worker without spending any denoising/decoding
@@ -180,6 +185,9 @@ def main():
             generator = torch.Generator(device="cpu").manual_seed(params["seed"])
 
             def report_step(_pipeline, step, _timestep, callback_kwargs):
+                phase_timer.mark("first_step")
+                if step + 1 == effective_steps:
+                    phase_timer.mark("last_step")
                 print(json.dumps({
                     "type": "runtime",
                     "request_id": request_id,
@@ -203,13 +211,23 @@ def main():
                 arguments.update(image=reference, strength=strength)
             else:
                 arguments.update(width=params["width"], height=params["height"])
+            phase_timer.mark("inference_started")
             result = render_pipeline(**arguments)
+            phase_timer.mark("inference_finished")
             result.images[0].save(request["output"], format="PNG")
+            phase_timer.mark("saved")
             del result
             print(json.dumps({
                 "type": "complete",
                 "request_id": request_id,
                 "scheduler": scheduler_name,
+                "provider_timing": phase_timer.report(
+                    cold_model=cold_model,
+                    steps=params["steps"],
+                    width=params.get("width"),
+                    height=params.get("height"),
+                    guidance=params.get("guidance"),
+                ),
             }), flush=True)
         except Exception as exc:
             message = str(exc).replace("\n", " ").replace("\r", " ").strip()

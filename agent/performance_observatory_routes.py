@@ -273,6 +273,11 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             for key in (
                 "process_wall_ms", "process_spawn_ms", "first_output_ms",
                 "tqdm_first_ms", "tqdm_complete_ms", "tqdm_window_ms",
+                # SDXL/Juggernaut worker phase boundaries. These clocks are
+                # local to its isolated process and contain no user text.
+                "worker_total_ms", "model_prepare_ms", "pipeline_setup_ms",
+                "first_step_ms", "denoise_window_ms", "decode_finish_ms",
+                "image_save_ms", "worker_outside_ms",
             )
         }
         edit_provider_timing["tqdm_first_step"] = (
@@ -304,6 +309,10 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
             edit_provider_timing[key] = (
                 value if type(value) is bool else None
             )
+        edit_provider_timing["cold_model"] = (
+            provider_timing.get("cold_model")
+            if type(provider_timing.get("cold_model")) is bool else None
+        )
         edit_provider_timing["fresh_process"] = (
             provider_timing.get("fresh_process")
             if type(provider_timing.get("fresh_process")) is bool else None
@@ -314,7 +323,7 @@ def media_performance_snapshot(queue_snapshot=None, limit=DEFAULT_LIMIT):
         )
         edit_provider_timing["provider"] = (
             provider_timing.get("provider")
-            if provider_timing.get("provider") in {"mflux", "mlxgen"} else None
+            if provider_timing.get("provider") in {"mflux", "mlxgen", "sdxl"} else None
         )
         edit_provider_timing["mflux_cache_limit_gb"] = (
             _rounded(provider_timing.get("mflux_cache_limit_gb"), 2)
