@@ -1,0 +1,8 @@
+.eml-chat-tray{margin:4px 10px 10px;padding:10px 12px;border:1px solid var(--border-color, #536071);border-radius:9px;background:var(--surface,rgba(100,120,145,.08));font-size:12px;line-height:1.5;max-width:100%;box-sizing:border-box}
+.eml-chat-tray[hidden]{display:none!important}
+.eml-chat-main{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.eml-chat-main button{font:inherit;cursor:pointer;border:1px solid currentColor;border-radius:5px;padding:3px 6px;background:transparent;color:inherit}
+.eml-chat-ai{display:flex;gap:6px;align-items:center;margin-top:6px;cursor:pointer}
+.eml-chat-ai input{width:14px;height:14px;flex-shrink:0}
+.eml-chat-status{opacity:.8;margin:5px 0;overflow-wrap:anywhere}
+.eml-chat-tray a{font-size:12px;color:inherit;text-decoration:underline}
