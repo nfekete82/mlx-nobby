@@ -3167,6 +3167,10 @@ const imageFiles =
                             )
                         ]
                         : [];
+                const ragnarokStepPresets =
+                    typeof document.querySelectorAll === 'function'
+                        ? [...document.querySelectorAll('[data-ragnarok-step-preset]')]
+                        : [];
 
                 const imageModelSelectable =
                     mediaQualityKind === 'image' &&
@@ -3451,6 +3455,9 @@ const imageFiles =
                                     onQuality
                                 );
                             }
+                            for (const button of ragnarokStepPresets) {
+                                button.removeEventListener('click', onRagnarokStepPreset);
+                            }
 
                             for (const preset of negativePromptPresets) {
                                 preset.removeEventListener(
@@ -3502,6 +3509,21 @@ const imageFiles =
                             // Changing the preset resets manual overrides to
                             // the exact values shown for the new preset.
                             samplingCustom = null;
+                            renderChoice();
+                        };
+
+                        const onRagnarokStepPreset = event => {
+                            if (!hasRagnarokSampling()) return;
+                            const steps = Number(
+                                event.currentTarget.dataset.ragnarokStepPreset
+                            );
+                            if (![30, 35, 40].includes(steps)) return;
+                            // Every shortcut keeps Quality's 1216 px long edge.
+                            // Only the user-requested step count changes.
+                            choice = 'quality';
+                            samplingCustom = { steps, guidance: 4.0 };
+                            samplingSteps.value = String(steps);
+                            samplingCfg.value = '4.0';
                             renderChoice();
                         };
 
@@ -3630,6 +3652,9 @@ const imageFiles =
                                 'click',
                                 onQuality
                             );
+                        }
+                        for (const button of ragnarokStepPresets) {
+                            button.addEventListener('click', onRagnarokStepPreset);
                         }
 
                         for (const preset of negativePromptPresets) {

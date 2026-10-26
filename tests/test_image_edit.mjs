@@ -87,6 +87,11 @@ const qualityButtons = [
     new ModalTestElement({ quality: 'preview' }),
 ];
 const modalBackdrop = new ModalTestElement();
+const quickStepButtons = [30, 35, 40].map(steps => {
+    const button = new ModalTestElement();
+    button.dataset = { ragnarokStepPreset: String(steps) };
+    return button;
+});
 const modalElements = new Map([
     ['mediaQualityModal', new ModalTestElement({ id: 'mediaQualityModal' })],
     ['mediaQualityModalTitle', new ModalTestElement({ id: 'mediaQualityModalTitle' })],
@@ -100,6 +105,10 @@ const modalElements = new Map([
     ['videoDurationField', new ModalTestElement({ id: 'videoDurationField' })],
     ['videoDuration', new ModalTestElement({ id: 'videoDuration' })],
     ['mediaQuality', new ModalTestElement({ id: 'mediaQuality' })],
+    ['imageSamplingField', new ModalTestElement({ id: 'imageSamplingField' })],
+    ['imageSamplingSteps', new ModalTestElement({ id: 'imageSamplingSteps' })],
+    ['imageSamplingCfg', new ModalTestElement({ id: 'imageSamplingCfg' })],
+    ['imageSamplingHint', new ModalTestElement({ id: 'imageSamplingHint' })],
 ]);
 
 class TestFormData {
@@ -169,9 +178,9 @@ const context = {
                 : modalElements.get(id) || { querySelector() { return null; } };
         },
         querySelectorAll(selector) {
-            return selector === '[data-media-quality]'
-                ? qualityButtons
-                : [];
+            if (selector === '[data-media-quality]') return qualityButtons;
+            if (selector === '[data-ragnarok-step-preset]') return quickStepButtons;
+            return [];
         },
         createElement() {
             return new ModalTestElement();
@@ -2130,6 +2139,38 @@ for (const sourceKind of ['t2v', 'upload', 'artifact']) {
 }
 context.requestAnimationFrame = originalAnimationFrame;
 
+// Opt-in 30/35/40 steps must preserve 1216px Quality and never persist across jobs.
+// The actual modal click exercises model selection, preset, validation and payload.
+selectedAttachments = [];
+session.messages = [];
+session.workspace = {};
+sessionQuality = 'standard';
+for (const steps of [30, 35, 40]) {
+    const prompt = 'Create an image of a detailed fox portrait with ' + steps + ' steps';
+    routeTargets.set(prompt, 'image');
+    context.requestAnimationFrame = callback => {
+        const select = modalElements.get('imageModel');
+        select.value = 'juggernaut-xl';
+        select.listeners.get('change')?.();
+        const quick = quickStepButtons.find(button =>
+            button.dataset.ragnarokStepPreset === String(steps));
+        quick.click();
+        assert.equal(modalElements.get('imageSamplingField').hidden, false);
+        assert.equal(modalElements.get('imageSamplingSteps').value, String(steps));
+        assert.equal(modalElements.get('imageSamplingCfg').value, '4.0');
+        callback();
+        modalElements.get('mediaQualityModalConfirm').click();
+    };
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    const payload = routedActionPayloads.at(-1);
+    assert.equal(payload.resolved_target, 'image');
+    assert.equal(payload.quality, 'quality');
+    assert.equal(payload.image_options.model, 'juggernaut-xl');
+    assert.equal(payload.image_options.steps, steps);
+    assert.equal(payload.image_options.guidance, 4);
+}
+context.requestAnimationFrame = originalAnimationFrame;
 
 // Reference routing uses the current upload or explicit workspace selection.
 // An old historical image and ambiguous attachments cannot authorize a source.

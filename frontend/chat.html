@@ -17,7 +17,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
 
-<link rel="stylesheet" href="/assets/chat.css?v=20261020-juggernaut-img2img">
+<link rel="stylesheet" href="/assets/chat.css?v=20261026-juggernaut-hq-steps">
 <link rel="stylesheet" href="/assets/chat/charts.css?v=1-11-0">
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
 <link rel="stylesheet" href="/assets/chat/media-library.css?v=1-18-shared-pickers&amp;gallery=20261021-compact-card-actions">
@@ -1594,7 +1594,7 @@
 <script src="/assets/chat/charts.js?v=2-0-cpi-precision"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
-<script src="/assets/chat/generation.js?v=20261025-natural-upscale"></script>
+<script src="/assets/chat/generation.js?v=20261026-juggernaut-hq-steps"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
@@ -2064,6 +2064,17 @@
                            step="0.1" inputmode="decimal" value="4.0" required>
                 </label>
             </div>
+            <div class="media-sampling-presets" role="group" aria-label="Juggernaut Steps">
+                <button type="button" data-ragnarok-step-preset="30"
+                        data-i18n="ui.ragnarok_30_steps">30 · Schnell</button>
+                <button type="button" data-ragnarok-step-preset="35"
+                        data-i18n="ui.ragnarok_35_steps">35 · Ausgewogen</button>
+                <button type="button" data-ragnarok-step-preset="40"
+                        data-i18n="ui.ragnarok_40_steps">40 · Qualität</button>
+            </div>
+            <p class="media-sampling-hint" data-i18n="ui.ragnarok_steps_note">
+                Alle drei Varianten bleiben bei gleicher hoher Auflösung. Weniger Schritte können Details verändern.
+            </p>
             <p id="imageSamplingHint" class="media-sampling-hint" role="status" aria-live="polite"></p>
         </div>
 
