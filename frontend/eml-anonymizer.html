@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EML-Anonymisierung · MLX-Nobby</title>
+<style>
+:root{color-scheme:dark;font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{background:#10151f;color:#e9edf5;margin:0;line-height:1.5}
+main{max-width:880px;margin:42px auto;padding:0 20px}
+a{color:#a3c9fa}h1{font-size:27px;margin:12px 0 4px}h2{font-size:19px}
+p{color:#b5bdcb}section{background:#192331;border:1px solid #344151;border-radius:13px;padding:22px;margin:20px 0}
+button,.file-button{appearance:none;border:1px solid #718bab;border-radius:9px;background:#273e5b;color:white;display:inline-block;padding:10px 14px;font:inherit;cursor:pointer;margin:3px}
+button.primary,.file-button.primary{background:#3075bf;border-color:#529ae2}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{position:absolute;left:-10000px}
+label{cursor:pointer}.hint{font-size:13px;color:#aab5c2}
+.drop{border:2px dashed #70809a;background:#1c2a3b;border-radius:12px;padding:30px;text-align:center}
+.drop.drag{border-color:#89bfff;background:#293f5d}
+.stat{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat div{background:#233043;border-radius:9px;padding:12px}
+.stat strong{display:block;font-size:23px}
+progress{width:100%;height:16px;accent-color:#62b48b}
+#info{white-space:pre-wrap;font-family:inherit}
+.warn{border-left:3px solid #e9b56b;padding-left:12px;color:#e2ceaa}
+@media(max-width:550px){.stat{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<main>
+<a href="/chat">← Zurück zu MLX-Nobby</a>
+<h1>E-Mail-Anonymisierung</h1>
+<p>EML-Dateien lokal speichern, seriell verarbeiten und anonymisierte Kopien als ZIP herunterladen. Keine FAQ-Erstellung.</p>
+<section>
+<h2>1. E-Mails importieren</h2>
+<div class="drop" id="drop" tabindex="0">
+<p>EML-Dateien hier ablegen oder auswählen</p>
+<label class="file-button primary">Dateien auswählen <input id="files" type="file" multiple accept=".eml,message/rfc822"></label>
+<label class="file-button">Ordner auswählen <input id="folder" type="file" multiple webkitdirectory></label>
+</div>
+<p class="hint">Einzelne Dateien werden nacheinander übertragen (max. 30 MiB pro Datei, insgesamt 20 GiB). Daten bleiben in deiner lokalen MLX-Nobby-Installation. Originale werden nicht verändert.</p>
+<div id="uploadInfo" role="status"></div>
+</section>
+<section>
+<h2>2. Anonymisierung</h2>
+<label><input id="ai" type="checkbox"> Lokales Chatmodell zusätzlich auf Namen/Orte prüfen (deutlich langsamer)</label>
+<p class="hint">Regelbasiert werden Kontakte, Adressen und typische Identifikatoren ersetzt. Mit dem optionalen lokalen KI-Modell werden weitere Namen vorgeschlagen. Original-Header, HTML-Code und Anhänge werden niemals in die Ausgabe übernommen.</p>
+<div>
+<button id="start" class="primary" type="button">Verarbeitung starten / fortsetzen</button>
+<button id="pause" type="button">Nach aktueller E-Mail pausieren</button>
+<button id="refresh" type="button">Aktualisieren</button>
+<button id="retry" type="button">Fehler erneut versuchen</button>
+</div>
+<h2>Fortschritt</h2>
+<div class="stat">
+<div><strong id="queued">0</strong>Wartend</div>
+<div><strong id="processing">0</strong>Aktiv</div>
+<div><strong id="review">0</strong>Zur Prüfung</div>
+<div><strong id="failed">0</strong>Fehler</div>
+</div>
+<p id="storage" class="hint"></p>
+<progress id="progress" value="0" max="1"></progress>
+<p id="state" role="status"></p>
+</section>
+<section>
+<h2>3. Export & Datenschutz</h2>
+<p class="warn">Automatisches Entfernen personenbezogener Daten ist nicht vollständig zuverlässig. Jeder Export ist als <strong>manuell zu prüfen</strong> gekennzeichnet. Die ZIP enthält keine Originale oder Anhänge.</p>
+<button id="export" class="primary" type="button">Anonymisierte EML als ZIP herunterladen</button>
+<button id="purge" type="button">Alle importierten E-Mails und Ergebnisse löschen</button>
+<p class="hint">Der Export benötigt eine pausierte Warteschlange. Beim Löschen werden die Dateien und die Warteschlangen-Einträge aus dem lokalen Anonymisierungs-Volume entfernt.</p>
+</section>
+<pre id="info" role="status" aria-live="polite"></pre>
+</main>
+<script type="application/json" id="emlUiText">{"storageUnit":"E-Mails · ","storageSuffix":" MiB importiert","running":"Verarbeitung läuft (immer nur eine E-Mail gleichzeitig)","paused":"Pausiert / keine aktive Verarbeitung","statusPrefix":"Status: ","noFiles":"Keine EML-Dateien ausgewählt.","uploadPrefix":"Import: ","uploadFailed":"Upload fehlgeschlagen","uploadError":"Importfehler bei Datei ","uploadSummary":" Dateien geprüft, ","imported":" importiert, ","failed":" fehlgeschlagen","started":"Warteschlange gestartet.","pauseRequested":"Pausierung angefordert.","retryMessage":" fehlgeschlagene E-Mails erneut angestellt.","confirmPurge":"Alle importierten Originale UND Ergebnisse unwiderruflich löschen?","purged":"Lokale Daten gelöscht."}</script>
+<script src="/assets/eml-anonymizer.js?v=2"></script>
+</body>
+</html>

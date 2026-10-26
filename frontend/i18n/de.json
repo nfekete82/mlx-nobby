@@ -607,6 +607,8 @@
   "ui.current_datetime": "Aktuelles Datum und Uhrzeit",
   "ui.open_chat_navigation": "Chat-Navigation öffnen",
   "ui.close_dialog": "Dialog schließen",
+  "ui.eml_anonymizer": "E-Mail-Anonymisierung",
+  "ui.eml_anonymizer_hint": "Lokale EML-Stapelverarbeitung öffnen",
   "ui.settings": "Einstellungen",
   "ui.close_settings": "Einstellungen schließen",
   "ui.configuration": "Konfiguration",

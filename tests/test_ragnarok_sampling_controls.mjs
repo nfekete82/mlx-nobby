@@ -19,7 +19,7 @@ const preset = q => JSON.parse(JSON.stringify(env.ragnarokSamplingForQuality(q))
 test('Ragnarok quality presets expose exact steps and CFG', () => {
     assert.deepEqual(preset('fast'), {steps: 20, guidance: 4});
     assert.deepEqual(preset('standard'), {steps: 35, guidance: 4});
-    assert.deepEqual(preset('quality'), {steps: 40, guidance: 4});
+    assert.deepEqual(preset('quality'), {steps: 30, guidance: 4});
     assert.deepEqual(preset('ultra'), {steps: 40, guidance: 4});
     assert.deepEqual(preset('invalid'), preset('standard'));
 });

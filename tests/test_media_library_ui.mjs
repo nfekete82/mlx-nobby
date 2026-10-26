@@ -73,7 +73,7 @@ assert.match(js, /fetch\("\/api\/library\/workflows"/);
 assert.match(js, /nobby-library-parent-link/);
 assert.match(js, /mediaLineage\(asset/);
 assert.match(css, /\.nobby-library-parent-link/);
-assert.match(html, /generation\.js\?v=20261026-juggernaut-hq-steps/);
+assert.match(html, /generation\.js\?v=20261026-juggernaut-quality-30/);
 console.log("Media Studio 1.16: source-to-video composer and provenance UI contracts passed.");
 
 assert.match(html,/id="nobbyLibraryDateFilter"/);

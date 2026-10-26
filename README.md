@@ -13,6 +13,10 @@ Run LLMs and AI services locally on your Mac with MLX and Metal acceleration whi
 
 Native inference services run directly on macOS for efficient Apple Silicon acceleration. Only the web application runs in Docker, with a loopback-only local agent providing a controlled bridge between the container and host resources.
 
+## Local EML anonymization
+
+The separate /eml-anonymizer screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).
+
 ## Recent updates (v1.19.0)
 
 **v1.19.0** adds a local, prompt-driven image region editor with low-RAM mask cropping, natural feathered edges and zoom; adds selected-speaker Talking Photo for two-person photos with native LTX Distilled motion; and strengthens coordinated model handoffs across chat, images and video. Juggernaut XL Ragnarok has creator-aligned quality presets and user-editable sampling controls. The Talking Photo speaker selection is prompt-guided (not guaranteed face tracking); existing private media and the strict RAM/swap watchdog remain protected.

@@ -20,7 +20,9 @@ RUN find /app/frontend -maxdepth 1 -name '*.html' -type f \
         -exec sed -i "s|/assets/common.js|/assets/common.js?v=${MLX_NOBBY_BUILD_SHA}|g" {} + \
     && printf '%s\n' "$MLX_NOBBY_BUILD_SHA" > /app/.mlx-nobby-build-revision
 
-RUN useradd --create-home --uid 10001 app
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /app/eml-data \
+    && chown app:app /app/eml-data
 USER app
 
 CMD ["uvicorn", "backend.entrypoint:app", "--host", "0.0.0.0", "--port", "8000"]
