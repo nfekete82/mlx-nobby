@@ -102,9 +102,10 @@ window.MLXChatEml = (() => {
                 })
             });
 
-            // Poll only this batch, not totals from previously imported jobs.
-            // The worker survives navigation and browser restarts, but progress
-            // shown inside this message is live only while this tab stays open.
+            // Per-batch progress only. Once redaction and per-message drafting
+            // have finished, consolidate related FAQs into ONE document.
+            let mergeStarted = false;
+            let mergeError = '';
             for (;;) {
                 const state = await request('/batch/' + batchId + '/status');
                 const completed = state.completed || 0;
@@ -115,14 +116,41 @@ window.MLXChatEml = (() => {
                             faqReady: state.faq_ready || 0,
                             faqFailed: state.faq_failed || 0,
                             faqEmpty: state.faq_empty || 0});
+
                 if (state.finished) {
+                    const faqReady = state.faq_ready || 0;
+                    if (createFAQ && faqReady > 0 && !mergeStarted) {
+                        onProgress({phase: 'merging', imported, total,
+                                    completed, faqReady, faqFailed: state.faq_failed || 0});
+                        try {
+                            await request('/batch/' + batchId + '/consolidate',
+                                          {method: 'POST'});
+                            mergeStarted = true;
+                        } catch (error) {
+                            mergeError = String(error?.message || error);
+                        }
+                        if (!mergeError) {
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            continue;
+                        }
+                    }
+                    if (createFAQ && mergeStarted &&
+                            (state.faq_merge_state === 'processing' ||
+                             state.faq_merge_state === 'not_started')) {
+                        onProgress({phase: 'merging', imported, total,
+                                    completed, faqReady, faqFailed: state.faq_failed || 0});
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        continue;
+                    }
+                    const consolidated = createFAQ && state.faq_merge_state === 'ready';
                     return {
                         handled: true, success: true, imported, total,
                         completed, failed, batchId, useLocalAI: localAI,
                         faqRequested: createFAQ,
-                        faqReady: state.faq_ready || 0,
-                        faqFailed: state.faq_failed || 0,
-                        faqUrl: createFAQ && state.faq_ready
+                        faqReady, faqFailed: state.faq_failed || 0,
+                        faqMergeError: mergeError || (createFAQ && faqReady > 0 &&
+                            !consolidated ? 'FAQ consolidation failed.' : ''),
+                        faqUrl: consolidated
                             ? '/api/eml-anonymizer/batch/' + batchId + '/faq'
                             : '',
                         finished: true,

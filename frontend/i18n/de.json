@@ -81,8 +81,11 @@
     "preview_message": "So sieht deine Nachricht aus."
   },
   "generation": {
+    "eml_merging_faq": "⏳ {count} FAQ-Entwürfe werden zu einer gemeinsamen FAQ zusammengefasst …",
+    "eml_sources_optional": "Optional: anonymisierte Quell-E-Mails herunterladen",
+    "eml_merge_failed": "Die FAQ-Entwürfe konnten nicht zu einer gemeinsamen FAQ zusammengefasst werden.",
     "eml_processing_faq": "⏳ Anonymisieren und FAQ erstellen: {done}/{total} EMLs · {ready} FAQ-Entwürfe · {faqFailed} FAQ-Fehler",
-    "eml_download_faq": "FAQ-Entwurf (Markdown) herunterladen",
+    "eml_download_faq": "Eine zusammengefasste FAQ (Markdown) herunterladen",
     "eml_faq_unavailable": "Die FAQ konnte nicht erstellt werden. Prüfe, ob das lokale Chatmodell erreichbar ist; es wurden keine unbelegten Antworten erzeugt.",
     "eml_faq_incomplete": "Bei {count} E-Mails ist die FAQ-Erstellung fehlgeschlagen. Ergebnisse bitte prüfen.",
     "eml_prompt_required": "Bitte fordere die Anonymisierung der angehängten EML-Dateien an.",

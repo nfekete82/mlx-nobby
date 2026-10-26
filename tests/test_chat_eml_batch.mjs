@@ -8,7 +8,7 @@ const html = fs.readFileSync(new URL('../frontend/chat.html', import.meta.url), 
 const attachments = fs.readFileSync(new URL('../frontend/assets/chat/attachments.js', import.meta.url), 'utf8');
 const generation = fs.readFileSync(new URL('../frontend/assets/chat/generation.js', import.meta.url), 'utf8');
 
-function harness(failAt = 0) {
+function harness(failAt = 0, mergeFails = false) {
     const controls = new Map();
     const control = id => {
         if (!controls.has(id)) controls.set(id, {
@@ -23,6 +23,7 @@ function harness(failAt = 0) {
     const events = [];
     let uploads = 0;
     let faqEnabled = false;
+    let mergeStarted = false;
     const fixedId = '11223344556677889900aabbccddeeff';
     const sandbox = {
         window: {
@@ -57,11 +58,18 @@ function harness(failAt = 0) {
                 faqEnabled = JSON.parse(args.body).create_faq === true;
                 return {ok: true, json: async () => ({running: true})};
             }
+            if (url.endsWith('/batch/' + fixedId + '/consolidate')) {
+                if (mergeFails) return {ok: false, status: 503,
+                    json: async () => ({detail: 'Local model unavailable'})};
+                mergeStarted = true;
+                return {ok: true, json: async () => ({state: 'processing'})};
+            }
             if (url.endsWith('/batch/' + fixedId + '/status')) {
                 return {ok: true, json: async () => ({
                     total: uploads, completed: uploads, failed: 0,
                     running: false, finished: true, faq_requested: faqEnabled,
-                    faq_ready: faqEnabled ? uploads : 0, faq_failed: 0
+                    faq_ready: faqEnabled ? uploads : 0, faq_failed: 0,
+                    faq_merge_state: mergeStarted ? 'ready' : 'not_started'
                 })};
             }
             throw Error('Unexpected endpoint ' + url);
@@ -174,6 +182,7 @@ test('a single FAQ prompt requests redaction followed by local FAQ generation', 
     assert.equal(result.faqRequested, true);
     assert.equal(result.faqReady, 1);
     assert.equal(result.faqUrl, '/api/eml-anonymizer/batch/' + h.fixedId + '/faq');
+    assert.equal(h.calls.filter(x => x.url.endsWith('/consolidate')).length, 1);
     assert.equal(result.downloadUrl, '/api/eml-anonymizer/batch/' + h.fixedId + '/result');
     const request = h.calls.find(x => x.url.endsWith('/start'));
     const data = JSON.parse(request.args.body);
@@ -183,4 +192,20 @@ test('a single FAQ prompt requests redaction followed by local FAQ generation', 
     assert.match(generation, /result\.faqUrl/);
     assert.match(generation, /eml_processing_faq/);
     assert.match(generation, /eml_faq_unavailable/);
+});
+
+
+test('FAQ consolidation error preserves anonymized source files and explains missing FAQ', async () => {
+    const h = harness(0, true);
+    h.addEml('case.eml');
+    const result = await h.eml.submit('Erstelle eine anonymisierte FAQ', h.pending);
+    assert.equal(result.success, true);
+    assert.equal(result.finished, true);
+    assert.equal(result.faqUrl, '');
+    assert.match(result.faqMergeError, /Local model unavailable/);
+    assert.equal(result.downloadUrl, '/api/eml-anonymizer/batch/' + h.fixedId + '/result');
+    assert.equal(h.calls.filter(x => x.url.endsWith('/consolidate')).length, 1);
+    assert.match(generation, /result\.faqMergeError/);
+    assert.match(generation, /eml_sources_optional/);
+    assert.match(generation, /eml_merging_faq/);
 });
