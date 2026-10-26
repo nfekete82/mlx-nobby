@@ -60,7 +60,7 @@ Eine oder mehrere `.eml` über **Datei hinzufügen** hochladen, einen Ordner auf
 
 `Anonymisiere diese E-Mails, entferne Signaturen und erstelle aus den fachlichen Fragen und Antworten eine FAQ.`
 
-Der Chat erkennt den FAQ-Wunsch auch ohne das Wort „anonymisieren“ und führt aus Datenschutzgründen **immer zuerst die lokale EML-Anonymisierung aus**. Anschließend erzeugt ausschließlich das **lokale** MLX-Chatmodell bis zu zwei FAQ-Entwürfe pro EML, maximal aus den ersten 10.000 Zeichen des bereits anonymisierten Textes. Es darf keine nicht belegte Lösung behaupten: Reklamationen ohne nachgewiesenen Abschluss werden als „offen“ gekennzeichnet. Reine Höflichkeitsnachrichten erzeugen keine FAQ.
+Der Chat erkennt den FAQ-Wunsch auch ohne das Wort „anonymisieren“ und führt aus Datenschutzgründen **immer zuerst die lokale EML-Anonymisierung einschließlich lokaler KI-Namenserkennung aus**. Anschließend erzeugt ausschließlich das **lokale** MLX-Chatmodell bis zu zwei FAQ-Entwürfe pro EML, maximal aus den ersten 10.000 Zeichen des bereits anonymisierten Textes. Es darf keine nicht belegte Lösung behaupten: Reklamationen ohne nachgewiesenen Abschluss werden als „offen“ gekennzeichnet. Reine Höflichkeitsnachrichten erzeugen keine FAQ.
 
 Im Chat werden Fortschritt, bestehender EML-/ZIP-Download und bei verfügbaren Einträgen zusätzlich **FAQ-Entwurf (Markdown) herunterladen** angezeigt. Die UTF-8-Datei enthält Kategorie, Frage, Antwort und Bearbeitungsstatus. Doppelte identische Frage-Antwort-Paare werden beim Export zusammengeführt. Nicht erreichbare Modelle oder ungültige Antworten führen zu sichtbaren FAQ-Fehlern, **nicht zu erfundenen Antworten**. Die anonymisierten EML-Dateien stehen weiterhin zum Download.
 
