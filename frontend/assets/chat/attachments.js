@@ -793,19 +793,15 @@ function attachmentT(key, fallback = '', variables = {}) {
                         'At most 10,000 EML files per chat batch.'));
                     continue;
                 }
-                const duplicate = existing.some(item =>
-                    item.name === file.name &&
-                    item.size === file.size &&
-                    item.file?.lastModified === file.lastModified
-                );
-                if (!duplicate) {
-                    attachments.push({
-                        id: uid(), name: file.name, size: file.size,
-                        type: file.type || 'message/rfc822',
-                        extension: 'eml', kind: 'eml',
-                        file, context_omitted: true
-                    });
-                }
+                // Separate emails may share a filename, byte size and
+                // modification time (especially MailStore folder exports).
+                // Never silently discard one based on metadata equality.
+                attachments.push({
+                    id: uid(), name: file.name, size: file.size,
+                    type: file.type || 'message/rfc822',
+                    extension: 'eml', kind: 'eml',
+                    file, context_omitted: true
+                });
                 continue;
             }
 
