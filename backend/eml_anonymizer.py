@@ -445,6 +445,16 @@ def pause():
     return status()
 
 
+@router.post("/retry")
+def retry():
+    setup()
+    with db() as con:
+        updated = con.execute("UPDATE jobs SET state='queued', warnings='[]', "
+                              "updated=? WHERE state='failed'", (time(),)).rowcount
+    launch()
+    return {"requeued": updated}
+
+
 @router.get("/export")
 def export():
     setup()
