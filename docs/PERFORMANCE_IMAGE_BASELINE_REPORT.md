@@ -231,3 +231,47 @@ per additional Juggernaut variant. Actual gain depends on memory pressure
 and the Mac's workload. Use one fixed-seed multi-variant A/B test and check
 identical settings, result count and memory guard. No claim is made about
 single-image latency (which is unchanged).
+
+## Same-resolution Juggernaut 30 / 35 / 40-step A/B
+
+The local chat quality modal now offers 30, 35 and 40 sampling-step
+shortcuts **only** for Juggernaut XL. Clicking one picks the existing
+`quality` resolution profile (long edge **1216 px**) and explicitly
+sets `steps` to that chosen number, with the original CFG 4.0 and the
+same DPM++ 2M SDE Karras scheduler. The original `fast` quality at
+768 px, `standard` at 35 steps, and `quality` at 40 steps are
+unchanged. Explicit sampling values remain per-request; they do not
+persist across models or subsequent requests.
+
+For a fair, repeatable speed and visual-quality comparison, run:
+
+```sh
+python3 scripts/benchmark-juggernaut-steps.py
+# Preview only; no jobs submitted.
+python3 scripts/benchmark-juggernaut-steps.py --run
+```
+
+The opt-in `--run` submits exactly **three sequential local** jobs on
+127.0.0.1:8030, each at **1216×1216**, using the same fixed demonstration
+prompt and seed 31337, with **30, 35, 40 steps**. It checks image-service
+idle status before starting, uses all normal native coordinator/memory
+admission rules, and aborts on any failed or wrong-size job.
+The local output is `artifacts/performance/juggernaut-steps-*.json`
+plus a `*.jpg` three-column visual comparison if Pillow and the files
+are available. The JSON contains **no prompt or source paths**. The
+original generated image artifacts remain in the local image library.
+
+You can opt into another prompt without putting its text in shell history:
+
+```sh
+python3 scripts/benchmark-juggernaut-steps.py --run \
+  --prompt-file ~/my-juggernaut-test-prompt.txt --seed 31337
+```
+
+The benchmark is **not** a background job; invoking `--run` starts three
+real, potentially expensive local generations. Do not run it while
+other image or video jobs are active. A measured improvement cannot be
+inferred from step count alone: Diffusion step cost is only a portion
+of total time; the chat handoff is paid separately for each of these
+three controlled runs. Review eyes, hair, skin/texture and small details
+at equal zoom before choosing a faster setting.
