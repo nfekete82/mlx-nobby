@@ -1225,6 +1225,20 @@
             id="attachmentBar"
             class="attachment-bar"
         ></div>
+        <div id="emlChatTray" class="eml-chat-tray" hidden>
+            <div class="eml-chat-main">
+                <span id="emlChatSelected" aria-live="polite"></span>
+                <button id="emlChatClear" type="button" data-i18n="eml_chat.clear">Auswahl entfernen</button>
+            </div>
+            <label class="eml-chat-ai">
+                <input id="emlChatAI" type="checkbox">
+                <span data-i18n="eml_chat.local_ai">Lokale KI zur zusätzlichen Namenserkennung (langsamer)</span>
+            </label>
+            <div id="emlChatStatus" class="eml-chat-status" role="status" aria-live="polite"></div>
+            <a href="/eml-anonymizer" data-i18n="eml_chat.workspace">Fortschritt und ZIP-Export</a>
+        </div>
+        <input id="emlChatFiles" type="file" accept=".eml,message/rfc822" multiple hidden>
+        <input id="emlChatFolder" type="file" webkitdirectory multiple hidden>
 
         <div class="composer-bottom">
 
@@ -1306,6 +1320,21 @@
                             <span class="composer-plus-copy">
                                 <strong data-i18n="ui.open_folder">Ordner öffnen</strong>
                                 <small data-i18n="ui.coding_workspace">Coding-Workspace auswählen</small>
+                            </span>
+                        </button>
+
+                        <button id="emlChatPickFiles" class="composer-plus-item" type="button" role="menuitem">
+                            <span class="composer-plus-icon">✉</span>
+                            <span class="composer-plus-copy">
+                                <strong data-i18n="eml_chat.pick_files">EML-Dateien hinzufügen</strong>
+                                <small data-i18n="eml_chat.pick_files_hint">Im Chat anonymisieren</small>
+                            </span>
+                        </button>
+                        <button id="emlChatPickFolder" class="composer-plus-item" type="button" role="menuitem">
+                            <span class="composer-plus-icon">▣</span>
+                            <span class="composer-plus-copy">
+                                <strong data-i18n="eml_chat.pick_folder">EML-Ordner hinzufügen</strong>
+                                <small data-i18n="eml_chat.pick_folder_hint">Alle EML-Dateien im Ordner</small>
                             </span>
                         </button>
 
@@ -1397,7 +1426,7 @@
                     type="file"
                     multiple
                     hidden
-                    accept="image/jpeg,image/png,image/webp,image/gif,.txt,.md,.json,.php,.js,.ts,.html,.css,.py,.sh,.sql,.xml,.yml,.yaml,.ini,.conf,.log,.csv,.pdf"
+                    accept="image/jpeg,image/png,image/webp,image/gif,.txt,.md,.json,.php,.js,.ts,.html,.css,.py,.sh,.sql,.xml,.yml,.yaml,.ini,.conf,.log,.csv,.pdf,.eml"
                 >
 
                 <span
@@ -1589,7 +1618,9 @@
 
 <script src="/assets/common.js?v=20261023-studio2"></script>
 <script src="/assets/chat/sessions.js?v=20260914-image-ui-final"></script>
-<script src="/assets/chat/attachments.js?v=20261021-qwen-pose-preference"></script>
+<script src="/assets/chat/attachments.js?v=20261026-eml-batch"></script>
+<link rel="stylesheet" href="/assets/chat/eml-batch.css?v=1">
+<script src="/assets/chat/eml-batch.js?v=1"></script>
 <script src="/assets/chat/i18n.js"></script>
 <script src="/assets/chat/rendering.js?v=20261025-image-preview-during-chat-restore"></script>
 <script src="/assets/chat/image-preview.js?v=20261002-pending-preview"></script>
@@ -1602,7 +1633,7 @@
 <script src="/assets/chat/charts.js?v=2-0-cpi-precision"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
-<script src="/assets/chat/generation.js?v=20261026-juggernaut-quality-30"></script>
+<script src="/assets/chat/generation.js?v=20261026-eml-batch"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
