@@ -435,7 +435,8 @@ def anonymize(raw, use_ai=False):
     output["To"] = "anonymisiert@invalid.example"
     output["Subject"] = clean_subject or "[BETREFF ENTFERNT]"
     output["X-MLX-Nobby-Review"] = "required"
-    output.set_content(clean_body, charset="utf-8")
+    # Human-readable UTF-8 in locally exported EML files (not quoted-printable).
+    output.set_content(clean_body, charset="utf-8", cte="8bit")
     return output.as_bytes(policy=policy.SMTP), warnings
 
 
