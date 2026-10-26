@@ -21,7 +21,7 @@ window.MLXChatEml = (() => {
         return label;
     };
     const isEml = file => file && /\.eml$/i.test(String(file.name || ''));
-    const wantsRedaction = prompt => /anonymisier|anonymisier|anonymiz|pseudonymisier|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(prompt || '');
+    const wantsRedaction = prompt => /anonymisier|anonymis|anonymiz|pseudonymisier|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(prompt || '');
     const fileKey = file => [file.webkitRelativePath || file.name, file.size, file.lastModified || 0].join('\u0000');
 
     function render(message = '') {
@@ -52,6 +52,7 @@ window.MLXChatEml = (() => {
     }
 
     function stageFiles(files) {
+        if (uploading) return {accepted: 0, rejected: Array.from(files || []).length};
         let accepted = 0;
         let rejected = 0;
         for (const file of Array.from(files || [])) {
@@ -172,3 +173,5 @@ window.MLXChatEml = (() => {
         __test: {isEml, wantsRedaction, clear, pendingCount: () => selected.length}
     };
 })();
+
+window.MLXChatEml.init();
