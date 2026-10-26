@@ -42,6 +42,7 @@ _READY = False
 _THREAD = None
 _UPLOAD_LOCK = Lock()
 _FAQ_MERGE_LOCK = Lock()
+_FAQ_MERGE_THREAD = None
 
 
 class HtmlText(HTMLParser):
@@ -109,7 +110,27 @@ def setup():
                 batch_id TEXT PRIMARY KEY, state TEXT NOT NULL,
                 updated REAL NOT NULL
             )""")
-            con.execute("UPDATE faq_summaries SET state='failed' WHERE state='processing'")
+            summary_cols = {row["name"] for row in con.execute("PRAGMA table_info(faq_summaries)")}
+            for name, sql_type, default in (
+                ("started", "REAL", "0"),
+                ("last_progress", "REAL", "0"),
+                ("step_started", "REAL", "0"),
+                ("completed_steps", "INTEGER", "0"),
+                ("total_steps", "INTEGER", "0"),
+                ("work_seconds", "REAL", "0")
+            ):
+                if name not in summary_cols:
+                    con.execute(f"ALTER TABLE faq_summaries ADD COLUMN {name} {sql_type} NOT NULL DEFAULT {default}")
+            con.execute("""CREATE TABLE IF NOT EXISTS faq_merge_steps (
+                batch_id TEXT NOT NULL, phase INTEGER NOT NULL,
+                group_key TEXT NOT NULL, chunk_index INTEGER NOT NULL,
+                output TEXT NOT NULL, seconds REAL NOT NULL,
+                PRIMARY KEY (batch_id,phase,group_key,chunk_index)
+            )""")
+            # A previous worker died when its container shut down. Its finished
+            # steps survive and will be reused by the new worker.
+            con.execute("UPDATE faq_summaries SET state='queued',step_started=0 "
+                        "WHERE state='processing'")
             con.execute("UPDATE jobs SET state='queued' WHERE state='processing'")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('running', '0')")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('ai', '0')")
@@ -661,7 +682,7 @@ def batch_status(batch_id: str):
         faq_rows = con.execute("SELECT faq_state,COUNT(*) AS count FROM jobs "
                                "WHERE batch_id=? AND faq_requested=1 "
                                "GROUP BY faq_state", (batch_id,)).fetchall()
-        merged_row = con.execute("SELECT state FROM faq_summaries WHERE batch_id=?",
+        merged_row = con.execute("SELECT * FROM faq_summaries WHERE batch_id=?",
                                  (batch_id,)).fetchone()
     counts = {row["state"]: row["count"] for row in rows}
     faq_counts = {row["faq_state"]: row["count"] for row in faq_rows}
@@ -669,6 +690,23 @@ def batch_status(batch_id: str):
     if not total:
         raise HTTPException(404, "Batch not found")
     pending = counts.get("queued", 0) + counts.get("processing", 0)
+    # Picking up a queued merge is safe after server/container restart; it
+    # never restarts completed groups or uploads customer email again.
+    launch_faq_merges()
+    merge_state = merged_row["state"] if merged_row else "not_started"
+    completed_steps = merged_row["completed_steps"] if merged_row else 0
+    total_steps = merged_row["total_steps"] if merged_row else 0
+    work_seconds = merged_row["work_seconds"] if merged_row else 0
+    remaining_steps = max(0, total_steps - completed_steps)
+    eta = (round(remaining_steps * work_seconds / completed_steps)
+           if merge_state == "processing" and completed_steps >= 2
+           and total_steps > completed_steps and work_seconds > 0 else None)
+    elapsed = (round(time() - merged_row["started"])
+               if merged_row and merged_row["started"] else 0)
+    since_update = (round(time() - merged_row["last_progress"])
+                    if merged_row and merged_row["last_progress"] else 0)
+    step_age = (round(time() - merged_row["step_started"])
+                if merged_row and merged_row["step_started"] else 0)
     return {"total": total, "counts": counts,
             "completed": counts.get("review", 0),
             "failed": counts.get("failed", 0),
@@ -678,7 +716,16 @@ def batch_status(batch_id: str):
             "faq_ready": faq_counts.get("ready", 0),
             "faq_empty": faq_counts.get("empty", 0),
             "faq_failed": faq_counts.get("failed", 0),
-            "faq_merge_state": merged_row["state"] if merged_row else "not_started",
+            "faq_merge_state": merge_state,
+            "faq_merge_completed": completed_steps,
+            "faq_merge_total": total_steps,
+            "faq_merge_percent": round(100 * completed_steps / total_steps, 1)
+                if total_steps else 0,
+            "faq_merge_eta_seconds": eta,
+            "faq_merge_elapsed_seconds": elapsed,
+            "faq_merge_since_progress_seconds": since_update,
+            "faq_merge_current_step_seconds": step_age,
+            "faq_merge_slow": merge_state == "processing" and step_age > 240,
             "review_required": True}
 
 
