@@ -70,8 +70,10 @@ window.MLXChatEml = (() => {
         let imported = 0;
         const total = emls.length;
         const uploaded = [];
-        const localAI = useLocalAI(prompt);
         const createFAQ = wantsFAQ(prompt);
+        // FAQ generation requires the local model. Run its local name/place
+        // detection before drafting to reduce residual personal information.
+        const localAI = useLocalAI(prompt) || createFAQ;
         try {
             onProgress({phase: 'upload', imported, total});
             for (const item of emls) {
