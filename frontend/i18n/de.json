@@ -81,6 +81,14 @@
     "preview_message": "So sieht deine Nachricht aus."
   },
   "generation": {
+    "eml_prompt_required": "Bitte fordere die Anonymisierung der angehängten EML-Dateien an.",
+    "eml_uploading": "⏳ EML-Dateien hochladen: {done}/{total}",
+    "eml_processing": "⏳ Anonymisierung läuft: {done}/{total} zur Prüfung bereit · {failed} fehlgeschlagen",
+    "eml_completed": "✓ Fertig: {done}/{total} EML-Dateien zur Prüfung bereit · {failed} fehlgeschlagen.",
+    "eml_download_single": "Anonymisierte EML herunterladen",
+    "eml_download_zip": "Anonymisierte EML-Dateien als ZIP herunterladen",
+    "eml_review_warning": "Automatische Anonymisierung ist nicht garantiert. Ergebnisse vor einer Weitergabe sorgfältig prüfen.",
+    "eml_paused": "Verarbeitung pausiert. {done}/{total} fertig. Im EML-Arbeitsbereich fortsetzen.",
     "title": "Generation",
     "description": "Parameter des aktuellen Chats und Vorgaben für neue Unterhaltungen.",
     "error": "Fehler: {message}",
@@ -577,6 +585,7 @@
   "knowledge.folder_opened": "Ordnerauswahl geöffnet …",
   "knowledge.folder_selected": "✓ Ordner ausgewählt",
   "knowledge.error": "Fehler: {message}",
+  "attachments.eml_folder_failed": "Der abgelegte Ordner konnte nicht gelesen werden.",
   "attachments.eml_more": "… und {count} weitere EML-Dateien",
   "attachments.eml_empty": "EML-Datei ist leer oder ungültig.",
   "attachments.eml_limit": "Maximal 10.000 EML-Dateien pro Stapel.",
