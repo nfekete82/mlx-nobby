@@ -222,6 +222,48 @@ def redact(text, *, headers=(), ai_spans=(), replace=None):
     return text
 
 
+def repair_mojibake(text):
+    """Repair common UTF-8-as-Latin1/CP1252 text, but only with strong evidence."""
+    if not isinstance(text, str) or not re.search(r"Ã.|Â.|â[€œ€™]", text):
+        return text
+    original_score = sum(text.count(marker) for marker in ("Ã", "Â", "â€", "�"))
+    for encoding in ("cp1252", "latin-1"):
+        try:
+            repaired = text.encode(encoding).decode("utf-8")
+        except (UnicodeError, LookupError):
+            continue
+        repaired_score = sum(repaired.count(marker) for marker in ("Ã", "Â", "â€", "�"))
+        if repaired_score < original_score:
+            return repaired
+    return text
+
+
+def decode_text_part(part):
+    """Prefer valid UTF-8 over incorrectly advertised Western single-byte charsets."""
+    raw = part.get_payload(decode=True)
+    if raw is None:
+        value = part.get_content()
+        return repair_mojibake(value) if isinstance(value, str) else ""
+    charset = (part.get_content_charset() or "").strip().lower()
+    western = {"", "iso-8859-1", "latin-1", "latin1", "windows-1252",
+               "cp1252", "iso-8859-15", "windows-1250"}
+    if charset in western:
+        try:
+            return repair_mojibake(raw.decode("utf-8", errors="strict"))
+        except UnicodeDecodeError:
+            pass
+    candidates = [charset, "utf-8", "cp1252", "iso-8859-15", "latin-1"]
+    for encoding in dict.fromkeys(candidates):
+        if not encoding:
+            continue
+        try:
+            return repair_mojibake(raw.decode(encoding, errors="strict"))
+        except (UnicodeError, LookupError):
+            continue
+    # Never silently discard bytes: preserve warning-level replacement chars.
+    return raw.decode("utf-8", errors="replace")
+
+
 def get_content(raw):
     try:
         original = BytesParser(policy=policy.default).parsebytes(raw)
@@ -246,8 +288,8 @@ def get_content(raw):
             attachment_count += 1
             continue
         try:
-            body = part.get_content()
-            if not isinstance(body, str):
+            body = decode_text_part(part)
+            if not body:
                 continue
             if typ == "text/plain":
                 plain.append(body)
@@ -260,7 +302,8 @@ def get_content(raw):
     body = "\n\n".join(plain if plain else html).strip()
     if not body:
         raise ValueError("Kein lesbarer Text; Anhänge werden nicht verarbeitet")
-    return str(original.get("Subject") or ""), body, names, attachment_count
+    subject = repair_mojibake(str(original.get("Subject") or ""))
+    return subject, repair_mojibake(body), names, attachment_count
 
 
 def local_ai_spans(text):
