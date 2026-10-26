@@ -215,7 +215,7 @@ test('FAQ consolidation error preserves anonymized source files and explains mis
     assert.equal(h.calls.filter(x => x.url.endsWith('/consolidate')).length, 1);
     assert.match(generation, /result\.faqMergeError/);
     assert.match(generation, /eml_sources_optional/);
-    assert.match(generation, /eml_merging_faq/);
+    assert.match(generation, /eml_merging_progress/);
 });
 
 
