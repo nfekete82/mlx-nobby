@@ -2308,8 +2308,8 @@ return;
         return;
     }
 
-    // EMLs appear as normal chat attachment chips. Their bytes must never
-    // enter model routing or stored chat context; dispatch only to local queue.
+    // EML bytes stay outside LLM context and chat persistence. The ordinary
+    // assistant bubble shows live progress and a scoped file download link.
     const emlAttachments = currentAttachments.filter(file => file.kind === 'eml');
     if (emlAttachments.length) {
         if (emlAttachments.length !== currentAttachments.length) {
@@ -2317,37 +2317,76 @@ return;
                 'Please send EML files separately from other attachments.'));
             return;
         }
-        const result = await window.MLXChatEml.submit(prompt, emlAttachments);
-        if (result.handled) {
-            if (!result.success && !result.imported) {
-                alert(result.error);
-                return;
-            }
-            session.messages.push({
-                role: 'user',
-                content: prompt,
-                display_content: prompt
-            });
-            const outcome = (result.success
-                ? gt('eml_started',
-                    '{count} EML files imported. Local anonymization started; all results require review.',
-                    {count: result.imported})
-                : gt('eml_partial',
-                    '{count} EML files imported. Import/start failed: {error}. Remaining files stay selected; use the EML workspace to resume.',
-                    {count: result.imported, error: result.error}))
-                + (result.success && result.useLocalAI
-                    ? '\n\n' + gt('eml_local_ai', 'Additional local AI name detection enabled.')
-                    : '')
-                + '\n\n[EML-Warteschlange, Fortschritt und ZIP-Export](/eml-anonymizer)';
-            session.messages.push({role: 'assistant', content: outcome});
-            MLXChatSessions.updateTitle(session);
-            session.updated = Date.now();
-            MLXChatSessions.saveSessions();
-            if (result.success) input.value = '';
-            MLXChatRuntime.autoResize();
-            MLXChatRendering.renderAll({contentUpdated: true});
+        if (!window.MLXChatEml?.wantsRedaction?.(prompt)) {
+            alert(gt('eml_prompt_required',
+                'Please ask to anonymize the attached EML files.'));
             return;
         }
+        if (window.MLXChatEml.isBusy()) return;
+        const progressMessage = {
+            role: 'assistant',
+            content: gt('eml_uploading', '⏳ Uploading EML files: {done}/{total}', {
+                done: 0, total: emlAttachments.length
+            })
+        };
+        session.messages.push({role: 'user', content: prompt, display_content: prompt});
+        session.messages.push(progressMessage);
+        MLXChatSessions.updateTitle(session);
+        session.updated = Date.now();
+        MLXChatSessions.saveSessions();
+        input.value = '';
+        MLXChatRuntime.autoResize();
+        MLXChatRendering.renderAll({contentUpdated: true});
+
+        const updateMessage = content => {
+            progressMessage.content = content;
+            if (MLXChatSessions.currentSession()?.id === session.id) {
+                MLXChatRendering.renderAll({contentUpdated: true});
+            }
+        };
+        const onProgress = state => {
+            if (state.phase === 'upload') {
+                updateMessage(gt('eml_uploading',
+                    '⏳ Uploading EML files: {done}/{total}', {
+                        done: state.imported, total: state.total
+                    }));
+            } else {
+                updateMessage(gt('eml_processing',
+                    '⏳ Anonymizing: {done}/{total} ready for review · {failed} failed', {
+                        done: state.completed, total: state.total,
+                        failed: state.failed
+                    }));
+            }
+        };
+        const result = await window.MLXChatEml.submit(prompt, emlAttachments, onProgress);
+        if (result.success && result.finished) {
+            let message = gt('eml_completed',
+                '✓ Completed: {done}/{total} EML files ready for review · {failed} failed.', {
+                    done: result.completed, total: result.total, failed: result.failed
+                });
+            if (result.downloadUrl) {
+                const name = result.total === 1
+                    ? gt('eml_download_single', 'Download anonymized EML')
+                    : gt('eml_download_zip', 'Download anonymized EMLs as ZIP');
+                message += '\n\n[' + name + '](' + result.downloadUrl + ')';
+            }
+            message += '\n\n' + gt('eml_review_warning',
+                'Automatic anonymization is not guaranteed. Review the output before sharing.');
+            updateMessage(message);
+        } else if (result.success && result.paused) {
+            updateMessage(gt('eml_paused',
+                'Processing paused. {done}/{total} ready. Resume in the EML workspace.', {
+                    done: result.completed, total: result.total
+                }) + '\n\n[EML workspace](/eml-anonymizer)');
+        } else {
+            updateMessage(gt('eml_partial',
+                '{count} EML files imported. Import/start failed: {error}. Remaining files stay selected; use the EML workspace to resume.', {
+                    count: result.imported || 0, error: result.error || 'Unknown error'
+                }) + '\n\n[EML workspace](/eml-anonymizer)');
+        }
+        session.updated = Date.now();
+        MLXChatSessions.saveSessions();
+        return;
     }
 
 const imageFiles =
