@@ -365,3 +365,110 @@ def test_faq_rejects_missing_batch_and_preserves_legacy_jobs(isolated, monkeypat
         row = con.execute("SELECT faq_requested,faq_state FROM jobs WHERE id='legacy'").fetchone()
         assert row["faq_requested"] == 0
         assert row["faq_state"] == "off"
+
+
+
+def test_semantic_consolidation_outputs_one_file_from_multiple_emails(isolated, monkeypatch):
+    """Two related FAQ drafts become one source-covered entry, not an EML ZIP."""
+    prompts = []
+    def summarize(prompt, max_tokens=3500):
+        prompts.append(prompt)
+        assert "Private Customer" not in prompt
+        assert "kunde@example.org" not in prompt
+        return json.dumps({"items": [{
+            "frage": "Wie beantrage ich eine Gutschrift?",
+            "antwort": "Die Gutschrift muss beim Service geprüft werden.",
+            "kategorie": "Mobilfunk",
+            "status": "gelöst",
+            "sources": [1, 2]
+        }]}, ensure_ascii=False)
+    monkeypatch.setattr(isolated, "local_chat_reply", summarize)
+    batch = "a" * 32
+    unrelated = "b" * 32
+    isolated.setup()
+    with isolated.db() as con:
+        for i, (bid, state) in enumerate([
+            (batch, "offen"), (batch, "gelöst"), (unrelated, "offen")
+        ], start=1):
+            identifier = f"case{i}"
+            con.execute(
+                "INSERT INTO jobs (id,ordinal,size,state,faq_requested,faq_state,"
+                "batch_id,created,updated) VALUES(?,?,?,'review',1,'ready',?,1,1)",
+                (identifier, i, 100, bid)
+            )
+            (isolated.ROOT / "faq" / (identifier + ".json")).write_text(
+                json.dumps([{
+                    "frage": "Wie erfolgt die Gutschrift?" if i == 1 else
+                             ("Wie kann eine Gutschrift beantragt werden?" if i == 2
+                              else "Wie wird eine SIM-Karte bestellt?"),
+                    "antwort": "Gutschrift wird geprüft." if i < 3
+                               else "Bitte Bestellweg prüfen.",
+                    "kategorie": "Mobilfunk",
+                    "status": state
+                }], ensure_ascii=False), encoding="utf-8"
+            )
+    app = FastAPI()
+    app.include_router(isolated.router)
+    with TestClient(app) as client:
+        start = client.post(f"/api/eml-anonymizer/batch/{batch}/consolidate")
+        assert start.status_code == 200
+        assert start.json()["state"] in ("ready", "processing")
+        import time
+        for _ in range(100):
+            state = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
+            if state["faq_merge_state"] in ("ready", "failed"):
+                break
+            time.sleep(.05)
+        assert state["faq_merge_state"] == "ready"
+        assert len(prompts) == 1
+        assert '"source_id": 1' in prompts[0]
+        assert '"source_id": 2' in prompts[0]
+        assert "SIM-Karte" not in prompts[0]
+        document = client.get(f"/api/eml-anonymizer/batch/{batch}/faq")
+        assert document.status_code == 200
+        text = document.content.decode("utf-8")
+        assert text.count("## 1.") == 1
+        assert "## 2." not in text
+        assert "Gutschrift" in text
+        assert "SIM-Karte" not in text
+        assert "**Status:** unklar" in text
+        assert "Ausgangsbasis:** 2" in text
+        assert document.headers["content-disposition"].endswith('"FAQ-Gemeinsam-Entwurf.md"')
+        again = client.post(f"/api/eml-anonymizer/batch/{batch}/consolidate")
+        assert again.json()["state"] == "ready"
+        assert len(prompts) == 1
+
+
+def test_failed_consolidation_shows_failure_without_fabricating_faq(isolated, monkeypatch):
+    def broken(*args, **kwargs):
+        raise ConnectionError("local model unavailable")
+    monkeypatch.setattr(isolated, "local_chat_reply", broken)
+    batch = "c" * 32
+    isolated.setup()
+    with isolated.db() as con:
+        for i in range(2):
+            identifier = f"f{i}"
+            con.execute(
+                "INSERT INTO jobs (id,ordinal,size,state,faq_requested,faq_state,"
+                "batch_id,created,updated) VALUES(?,?,?,'review',1,'ready',?,1,1)",
+                (identifier, i + 1, 100, batch)
+            )
+            (isolated.ROOT / "faq" / (identifier + ".json")).write_text(
+                json.dumps([{"frage": f"Wie läuft Fall {i}?",
+                             "antwort": f"Fall {i} ist ungeklärt.",
+                             "kategorie": "Test", "status": "offen"}]),
+                encoding="utf-8"
+            )
+    app = FastAPI()
+    app.include_router(isolated.router)
+    with TestClient(app) as client:
+        assert client.post(f"/api/eml-anonymizer/batch/{batch}/consolidate").status_code == 200
+        import time
+        for _ in range(100):
+            response = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
+            if response["faq_merge_state"] == "failed":
+                break
+            time.sleep(.05)
+        assert response["faq_merge_state"] == "failed"
+        assert client.get(f"/api/eml-anonymizer/batch/{batch}/faq").status_code == 409
+        assert not (isolated.ROOT / "faq" / (batch + "-gemeinsam.md")).exists()
