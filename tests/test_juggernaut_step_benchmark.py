@@ -123,3 +123,38 @@ def test_benchmark_stops_and_cancels_only_its_own_failed_job():
         ("GET", "/jobs/" + job_id),
         ("POST", "/jobs/" + job_id + "/cancel"),
     ]
+
+
+def test_backend_applies_requested_30_35_40_without_reducing_resolution(monkeypatch):
+    import image_service as service
+
+    monkeypatch.setattr(service, "_generation_model", lambda *_args: {
+        "id": "juggernaut-xl", "model_family": "sdxl", "base_model": "sdxl",
+        "provider": "sdxl", "default_steps": 35, "default_guidance": 4.0,
+    })
+    params = []
+    for step in benchmark.STEPS:
+        resolved = service._resolve_generation(service.Generate(
+            prompt="A detailed realistic fox", model="juggernaut-xl",
+            quality="quality", width=512, height=512,
+            steps=step, guidance=4.0, seed=31337, auto_size=True,
+        ))
+        p = resolved["params"]
+        assert (p["width"], p["height"]) == (1216, 1216)
+        assert p["steps"] == step
+        assert p["guidance"] == 4.0
+        assert p["scheduler"] == "dpmpp-2m-sde-karras"
+        assert p["seed"] == 31337
+        params.append(p)
+    assert all(params[0][key] == item[key]
+               for item in params[1:]
+               for key in params[0] if key != "steps")
+    # The original quality and standard profiles must retain their defaults.
+    assert service._resolve_generation(service.Generate(
+        prompt="A detailed realistic fox", model="juggernaut-xl",
+        quality="quality", width=512, height=512, auto_size=True,
+    ))["params"]["steps"] == 40
+    assert service._resolve_generation(service.Generate(
+        prompt="A detailed realistic fox", model="juggernaut-xl",
+        quality="standard", width=512, height=512, auto_size=True,
+    ))["params"]["steps"] == 35
