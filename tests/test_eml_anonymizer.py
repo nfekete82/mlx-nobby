@@ -267,6 +267,9 @@ def test_legacy_and_mislabeled_charsets_keep_german_umlauts(isolated):
     final = BytesParser(policy=policy.default).parsebytes(clean)
     assert "Grüße" in final.get_content()
     assert "Änderung" in final.get_content()
+    assert final["Content-Transfer-Encoding"] == "8bit"
+    assert "Grüße" in clean.decode("utf-8")
+    assert "Änderung" in clean.decode("utf-8")
 
 
 def test_faq_is_grounded_in_redacted_eml_and_downloadable(isolated, monkeypatch):
