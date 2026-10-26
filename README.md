@@ -15,7 +15,7 @@ Native inference services run directly on macOS for efficient Apple Silicon acce
 
 ## Local EML anonymization
 
-The separate [/eml-anonymizer](/eml-anonymizer) screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).
+The separate /eml-anonymizer screen imports EML messages into a persistent local processing queue and exports review-required text-only anonymized EML files as ZIP. No FAQ generation or original attachments are included. See [privacy and deployment details](docs/EML_ANONYMIZER.md).
 
 ## Recent updates (v1.19.0)
 
