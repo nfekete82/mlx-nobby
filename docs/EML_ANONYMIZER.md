@@ -38,3 +38,18 @@ Im Browser http://127.0.0.1:8090/eml-anonymizer öffnen.
 ## Datenschutz
 
 RegEx und LLM können Namen, indirekte Identifikatoren und andere personenbezogene Informationen übersehen. Ergebnisse vor externer Verwendung manuell prüfen. Anhänge werden nicht anonymisiert, sondern komplett ausgelassen. Vor einem Docker-Rebuild die Batch-Verarbeitung pausieren.
+
+## EML-Anonymisierung aus dem normalen Chat
+
+Auch direkt im Chat möglich (die bestehende Seite `/eml-anonymizer` bleibt erhalten):
+
+1. Im Plus-Menü `EML-Dateien hinzufügen` oder `EML-Ordner hinzufügen` wählen. Alternativ `.eml`-Dateien mit der normalen Büroklammer auswählen oder auf den Composer ziehen.
+2. Im Eingabefeld `Anonymisiere diese EML-Dateien.` absenden. Ohne ausdrücklichen Anonymisierungswunsch startet **kein** EML-Auftrag.
+3. Die Dateien werden sequentiell an `/api/eml-anonymizer/upload` übertragen, anschließend startet `/api/eml-anonymizer/start` die vorhandene lokale Warteschlange.
+4. Wartestatus und einen Link zur ZIP-Ausgabe zeigt Nobby direkt im Chat an. Für Details, Pause, Retry, Löschung und ZIP-Export bleibt `/eml-anonymizer` nutzbar.
+
+Die normalen Chat-/LLM-Endpunkte erhalten **keinen EML-Inhalt** und die Dateien werden **nicht** im Chatverlauf oder im Browser-Storage gespeichert. Das Protokoll enthält nur den Prompt und eine zusammenfassende Rückmeldung, keine Dateinamen oder E-Mail-Texte. Ein fehlerhafter Upload lässt noch nicht hochgeladene Dateien ausgewählt und überspringt beim erneuten Absenden bereits erfolgreiche Uploads. Die manuelle Qualitätsprüfung bleibt zwingend, vor allem bei freien Namen, Zitaten und indirekten Personenbezügen.
+
+Max. 30 MiB je Datei; die bestehende EML-Pipeline begrenzt den gespeicherten Gesamtbestand auf 20 GiB. Originale und Ergebnisse liegen im persistenten lokalen Docker-Volume. Lokale KI-Prüfung optional per Checkbox; bei großen Beständen langsamer.
+
+Tests: `node --test tests/test_chat_eml_batch.mjs` sowie `./scripts/mlx test-quick tests/test_eml_anonymizer.py`.
