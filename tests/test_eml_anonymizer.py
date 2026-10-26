@@ -162,3 +162,75 @@ def test_footer_removal_preserves_quoted_email(isolated):
     assert "Uwe Muster" not in stripped
     assert "Die Gebühr wurde reklamiert" in stripped
     assert "Die Anschlussgebühr wurde berechnet" in stripped
+
+
+
+def test_chat_batches_have_private_progress_and_scoped_downloads(isolated):
+    app = FastAPI()
+    app.include_router(isolated.router)
+    batch_a = "a" * 32
+    batch_b = "b" * 32
+    with TestClient(app) as client:
+        for batch in (batch_a, batch_b):
+            res = client.post("/api/eml-anonymizer/upload",
+                data={"batch_id": batch},
+                files={"file": ("private.eml", io.BytesIO(example_mail().as_bytes()),
+                                "message/rfc822")})
+            assert res.status_code == 201
+            assert res.json()["batch_id"] == batch
+        assert client.get("/api/eml-anonymizer/batch/" + batch_a + "/status").json()["total"] == 1
+        assert client.get("/api/eml-anonymizer/batch/" + batch_b + "/status").json()["total"] == 1
+        assert client.get("/api/eml-anonymizer/batch/" + ("0" * 32) + "/status").status_code == 404
+        assert client.get("/api/eml-anonymizer/batch/" + batch_a + "/export").status_code == 409
+        assert client.post("/api/eml-anonymizer/start", json={"use_local_ai": False}).status_code == 200
+        import time
+        for _ in range(80):
+            state = client.get("/api/eml-anonymizer/batch/" + batch_a + "/status").json()
+            if state["finished"]:
+                break
+            time.sleep(.05)
+        assert state["finished"]
+        assert state["completed"] == 1
+        for _ in range(80):
+            state_b = client.get("/api/eml-anonymizer/batch/" + batch_b + "/status").json()
+            if state_b["finished"]:
+                break
+            time.sleep(.05)
+        assert state_b["completed"] == 1
+        single = client.get("/api/eml-anonymizer/batch/" + batch_a + "/result")
+        assert single.status_code == 200
+        assert b"Max Mustermann" not in single.content
+        assert "attachment;" in single.headers.get("content-disposition", "").lower()
+        archive = client.get("/api/eml-anonymizer/batch/" + batch_a + "/export")
+        assert archive.status_code == 200
+        from zipfile import ZipFile
+        with ZipFile(io.BytesIO(archive.content)) as zipfile:
+            files = [name for name in zipfile.namelist() if name.endswith(".eml")]
+            assert len(files) == 1
+            assert b"Max Mustermann" not in zipfile.read(files[0])
+        assert client.post("/api/eml-anonymizer/upload",
+                data={"batch_id": "../../invalid"},
+                files={"file": ("private.eml", b"some mail content", "message/rfc822")}).status_code == 400
+
+
+def test_existing_queue_db_migrates_without_dropping_jobs(isolated, monkeypatch):
+    with isolated.db() as con:
+        con.execute("INSERT INTO jobs (id,ordinal,size,state,created,updated) "
+                    "VALUES ('existing',1,100,'queued',1,1)")
+        con.execute("ALTER TABLE jobs RENAME TO jobs_with_batch")
+        con.execute("""CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL,
+            size INTEGER NOT NULL, state TEXT NOT NULL,
+            warnings TEXT NOT NULL DEFAULT '[]',
+            created REAL NOT NULL, updated REAL NOT NULL)""")
+        con.execute("INSERT INTO jobs(id,ordinal,size,state,warnings,created,updated) "
+                    "SELECT id,ordinal,size,state,warnings,created,updated FROM jobs_with_batch")
+        con.execute("DROP TABLE jobs_with_batch")
+    monkeypatch.setattr(isolated, "_READY", False)
+    isolated.setup()
+    with isolated.db() as con:
+        columns = {row["name"] for row in con.execute("PRAGMA table_info(jobs)")}
+        assert "batch_id" in columns
+        row = con.execute("SELECT id,batch_id FROM jobs").fetchone()
+        assert row["id"] == "existing"
+        assert row["batch_id"] == ""
