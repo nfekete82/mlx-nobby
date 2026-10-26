@@ -12,13 +12,12 @@ window.MLXChatEml = (() => {
     }
 
     function useLocalAI(prompt) {
-        const text = String(prompt || '');
-        const localAdjective = 'lokal(?:e|en|er|es)?';
-        const model = '(?:ki|qwen|llm|sprachmodell)';
-        const negation = new RegExp('\\b(?:ohne|kein(?:e|en|er|es)?)\\s+(?:(?:die|der|dem)\\s+)?(?:' + localAdjective + '\\s+)?' + model + '\\b', 'i');
-        if (negation.test(text)) return false;
-        const activation = new RegExp('\\b(?:mit|durch|per)\\s+(?:(?:der|dem)\\s+)?(?:' + localAdjective + '\\s+)?' + model + '\\b', 'i');
-        return activation.test(text) || /\bki[- ]?(?:prüfung|erkennung)\b/i.test(text);
+        const value = String(prompt || '');
+        // Regular expression literals are logic, not untranslated UI strings.
+        if (/\b(?:ohne|kein(?:e|en|er|es)?)\s+(?:(?:die|der|dem)\s+)?(?:lokal(?:e|en|er|es)?\s+)?(?:ki|qwen|llm|sprachmodell)\b/i.test(value)) {
+            return false;
+        }
+        return /\b(?:mit|durch|per)\s+(?:(?:der|dem)\s+)?(?:lokal(?:e|en|er|es)?\s+)?(?:ki|qwen|llm|sprachmodell)\b|\bki[- ]?(?:prüfung|erkennung)\b/i.test(value);
     }
 
     async function request(path, options) {
