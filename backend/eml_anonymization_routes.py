@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import email
+from contextlib import contextmanager
 from email import policy
 from email.utils import getaddresses
 from html.parser import HTMLParser
@@ -58,6 +59,7 @@ class TextFromHTML(HTMLParser):
             self.parts.append(data)
 
 
+@contextmanager
 def database():
     ROOT.mkdir(parents=True, exist_ok=True)
     INBOX.mkdir(parents=True, exist_ok=True)
@@ -65,7 +67,11 @@ def database():
     db = sqlite3.connect(ROOT / "jobs.sqlite3", timeout=30)
     db.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL, error TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP)")
     db.commit()
-    return db
+    try:
+        with db:
+            yield db
+    finally:
+        db.close()
 
 
 def replace_identifiers(text, people=()):
