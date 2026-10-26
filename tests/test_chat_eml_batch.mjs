@@ -179,7 +179,7 @@ test('a single FAQ prompt requests redaction followed by local FAQ generation', 
     const data = JSON.parse(request.args.body);
     assert.equal(data.create_faq, true);
     assert.equal(data.batch_id, h.fixedId);
-    assert.equal(data.use_local_ai, false);
+    assert.equal(data.use_local_ai, true);
     assert.match(generation, /result\.faqUrl/);
     assert.match(generation, /eml_processing_faq/);
     assert.match(generation, /eml_faq_unavailable/);
