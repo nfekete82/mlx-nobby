@@ -18,12 +18,19 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "ROOT", tmp_path / "eml-store")
     monkeypatch.setattr(mod, "_READY", False)
     monkeypatch.setattr(mod, "_THREAD", None)
+    previous_merge = mod._FAQ_MERGE_THREAD
+    if previous_merge and previous_merge.is_alive():
+        previous_merge.join(timeout=5)
+    monkeypatch.setattr(mod, "_FAQ_MERGE_THREAD", None)
     mod.setup()
     yield mod
     thread = mod._THREAD
     if thread and thread.is_alive():
         mod.set_setting("running", "0")
         thread.join(timeout=3)
+    merge_thread = mod._FAQ_MERGE_THREAD
+    if merge_thread and merge_thread.is_alive():
+        merge_thread.join(timeout=5)
 
 
 def example_mail():
@@ -412,7 +419,7 @@ def test_semantic_consolidation_outputs_one_file_from_multiple_emails(isolated, 
     with TestClient(app) as client:
         start = client.post(f"/api/eml-anonymizer/batch/{batch}/consolidate")
         assert start.status_code == 200
-        assert start.json()["state"] in ("ready", "processing")
+        assert start.json()["state"] in ("ready", "processing", "queued")
         import time
         for _ in range(100):
             state = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
@@ -472,3 +479,106 @@ def test_failed_consolidation_shows_failure_without_fabricating_faq(isolated, mo
         assert response["faq_merge_state"] == "failed"
         assert client.get(f"/api/eml-anonymizer/batch/{batch}/faq").status_code == 409
         assert not (isolated.ROOT / "faq" / (batch + "-gemeinsam.md")).exists()
+
+
+
+def test_durable_merge_checkpoints_resume_after_failures_and_restart(isolated, monkeypatch):
+    """Never repeat completed local AI calls, even when restarting a server."""
+    batch = "d" * 32
+    isolated.setup()
+    with isolated.db() as con:
+        for i in range(16):
+            ident = f"checkpoint-{i:02d}"
+            con.execute(
+                "INSERT INTO jobs(id,ordinal,size,state,faq_requested,faq_state,"
+                "batch_id,created,updated) VALUES(?,?,?,'review',1,'ready',?,1,1)",
+                (ident, i + 1, 100, batch))
+            (isolated.ROOT / "faq" / (ident + ".json")).write_text(
+                json.dumps([{
+                    "frage": f"Wie wird Vorgang {i} bearbeitet?",
+                    "antwort": f"Vorgang {i} muss überprüft werden.",
+                    "kategorie": "Service", "status": "offen"}],
+                    ensure_ascii=False), encoding="utf-8")
+
+    called = []
+    fail_second = {"on": True}
+
+    def model(prompt, max_tokens=3500):
+        source_list = json.loads(prompt[prompt.index("[{"):])
+        called.append(tuple(x["frage"] for x in source_list))
+        if fail_second["on"] and len(called) == 2:
+            raise ConnectionError("simulated timeout")
+        return json.dumps({"items": [{
+            "frage": source_list[0]["frage"],
+            "antwort": source_list[0]["antwort"],
+            "kategorie": "Service",
+            "status": "offen",
+            "sources": [x["source_id"] for x in source_list]
+        }]}, ensure_ascii=False)
+
+    monkeypatch.setattr(isolated, "local_chat_reply", model)
+    app = FastAPI()
+    app.include_router(isolated.router)
+    import time
+    with TestClient(app) as client:
+        assert client.post(f"/api/eml-anonymizer/batch/{batch}/consolidate").status_code == 200
+        for _ in range(100):
+            state = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
+            if state["faq_merge_state"] == "failed":
+                break
+            time.sleep(.05)
+        assert state["faq_merge_state"] == "failed"
+        assert state["faq_merge_completed"] == 1
+        assert state["faq_merge_total"] == 4
+        with isolated.db() as con:
+            assert con.execute("SELECT COUNT(*) FROM faq_merge_steps WHERE batch_id=?",
+                               (batch,)).fetchone()[0] == 1
+        assert client.get(f"/api/eml-anonymizer/batch/{batch}/faq").status_code == 409
+
+        # Simulate migration after a container died during the next model step.
+        # A real restart resumes via the first /status API request.
+        with isolated.db() as con:
+            con.execute("UPDATE faq_summaries SET state='processing' WHERE batch_id=?",
+                        (batch,))
+        monkeypatch.setattr(isolated, "_READY", False)
+        isolated.setup()
+        with isolated.db() as con:
+            assert con.execute("SELECT state FROM faq_summaries WHERE batch_id=?",
+                               (batch,)).fetchone()[0] == "queued"
+        fail_second["on"] = False
+        client.get("/api/eml-anonymizer/status")
+        for _ in range(100):
+            state = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
+            if state["faq_merge_state"] in ("ready", "failed"):
+                break
+            time.sleep(.05)
+        assert state["faq_merge_state"] == "ready"
+        assert state["faq_merge_completed"] == state["faq_merge_total"] == 3
+        assert state["faq_merge_percent"] == 100
+        assert state["faq_merge_eta_seconds"] is None
+        assert state["faq_merge_elapsed_seconds"] >= 0
+        assert len(called) == 4  # one completed, one failure, two further requests
+        with isolated.db() as con:
+            assert con.execute("SELECT COUNT(*) FROM faq_merge_steps WHERE batch_id=?",
+                               (batch,)).fetchone()[0] == 3
+        assert client.get(f"/api/eml-anonymizer/batch/{batch}/faq").status_code == 200
+
+
+def test_faq_eta_reports_only_measured_work_and_purge_protects_active_jobs(isolated):
+    batch = "e" * 32
+    with isolated.db() as con:
+        con.execute(
+            "INSERT INTO jobs(id,ordinal,size,state,faq_requested,faq_state,"
+            "batch_id,created,updated) VALUES('existing',1,100,'review',1,'ready',?,1,1)",
+            (batch,))
+        con.execute(
+            "INSERT INTO faq_summaries(batch_id,state,updated,started,last_progress,"
+            "completed_steps,total_steps,work_seconds) "
+            "VALUES(?,'processing',1,1,1,3,9,45)", (batch,))
+    app = FastAPI()
+    app.include_router(isolated.router)
+    with TestClient(app) as client:
+        state = client.get(f"/api/eml-anonymizer/batch/{batch}/status").json()
+        assert state["faq_merge_eta_seconds"] == 90
+        assert state["faq_merge_percent"] == 33.3
+        assert client.post("/api/eml-anonymizer/purge").status_code == 409
