@@ -235,7 +235,14 @@ def repair_mojibake(text):
         repaired_score = sum(repaired.count(marker) for marker in ("Ã", "Â", "â€", "�"))
         if repaired_score < original_score:
             return repaired
-    return text
+    # Mixed encodings in quoted conversation history: repair only known
+    # two-byte UTF-8 mojibake sequences, leaving genuine Unicode intact.
+    def fix_sequence(match):
+        try:
+            return match.group().encode("cp1252").decode("utf-8")
+        except UnicodeError:
+            return match.group()
+    return re.sub(r"Ã[\\x80-\\xffŸ]|Â[\\x80-\\xff€]", fix_sequence, text)
 
 
 def decode_text_part(part):
