@@ -13,20 +13,29 @@ function harness(failAt = 0) {
     const control = id => {
         if (!controls.has(id)) {
             controls.set(id, {
-                hidden: true, value: '', disabled: false, checked: false,
-                textContent: '', listeners: {},
+                value: '', listeners: {}, clickCount: 0,
                 addEventListener(name, fn) { this.listeners[name] = fn; },
-                dispatchEvent() {}, click() {}
+                click() { this.clickCount++; },
             });
         }
         return controls.get(id);
     };
-    let uploads = 0;
+    const pending = [];
+    const removed = [];
     const calls = [];
+    let uploads = 0;
     const sandbox = {
-        window: {MLXI18n: {t: (_key, fallback) => fallback}},
+        window: {MLXChatAttachments: {
+            addFiles: files => {pending.push(...files);},
+            removeAttachments: files => {
+                for (const file of files) {
+                    const index = pending.indexOf(file);
+                    if (index >= 0) pending.splice(index, 1);
+                    removed.push(file);
+                }
+            },
+        }},
         document: {getElementById: control},
-        Event: class { constructor(name) {this.type = name;} },
         FormData: class {
             append(field, file, filename) {this.field = field; this.file = file; this.filename = filename;}
         },
@@ -34,87 +43,117 @@ function harness(failAt = 0) {
             calls.push({url, args});
             if (url.endsWith('/upload')) {
                 uploads++;
-                if (uploads === failAt) return {ok: false, status: 500, json: async () => ({detail: 'test failure'})};
+                if (uploads === failAt) return {
+                    ok: false, status: 500, json: async () => ({detail: 'test failure'})
+                };
                 return {ok: true, json: async () => ({accepted: true})};
             }
-            if (url.endsWith('/status')) return {ok: true, json: async () => ({
-                counts: {queued: uploads, processing: 0, review: 0, failed: 0}
-            })};
             if (url.endsWith('/start')) return {ok: true, json: async () => ({running: true})};
             throw Error('Unexpected endpoint ' + url);
         },
-        setInterval() {},
     };
     vm.runInNewContext(code, sandbox, {filename: 'eml-batch.js'});
-    return {eml: sandbox.window.MLXChatEml, controls: control, calls,
-        file: (name, size = 1024) => ({name, size, lastModified: 42})};
+    const file = (name, size = 1024) => ({
+        name, size, lastModified: 42
+    });
+    function addEml(name) {
+        const f = file(name);
+        const item = {name, size: f.size, kind: 'eml', file: f};
+        pending.push(item);
+        return item;
+    }
+    return {eml: sandbox.window.MLXChatEml, controls: control, calls, pending, removed, file, addEml};
 }
 
-test('normal chat boot makes no EML API requests', () => {
+test('ordinary chat loads with no EML API requests', () => {
     const h = harness();
     assert.equal(h.calls.length, 0);
-    assert.equal(h.controls('emlChatTray').hidden, true);
+    assert.ok(!html.includes('emlChatTray'));
+    assert.ok(!html.includes('emlChatPickFiles'));
+    assert.ok(!html.includes('emlChatPickFolder'));
+    assert.ok(!html.includes('href="/eml-anonymizer" role="menuitem"'));
 });
 
-test('regular chat picker and drop handler pass EMLs only to queue staging', () => {
-    assert.match(html, /id="emlChatPickFiles"/);
-    assert.match(html, /id="emlChatPickFolder"/);
-    assert.match(html, /id="emlChatFolder"[^>]*webkitdirectory/);
+test('standard chat file picker and drop create normal EML attachment chips', () => {
     assert.match(html, /id="fileInput"[\s\S]*?accept="[^"]*\.eml"/);
-    assert.match(attachments, /window\.MLXChatEml\?\.stageFiles\(emls\)/);
-    assert.match(generation, /window\.MLXChatEml\?\.hasStaged\?\.\(\)/);
-    assert.ok(generation.indexOf('window.MLXChatEml?.hasStaged?.()') <
+    assert.match(attachments, /'pdf',\s*'eml'/);
+    assert.match(attachments, /kind: 'eml',/);
+    assert.match(attachments, /file, context_omitted: true/);
+    assert.match(attachments, /attachments\.filter\(\s*file => file\.kind !== 'image' && file\.kind !== 'eml'/);
+    assert.match(attachments, /renderAttachments\(\)/);
+    assert.match(html, /id="chatPickFolder"/);
+    assert.match(html, /id="chatFolderFiles"[^>]*webkitdirectory/);
+    assert.match(generation, /currentAttachments\.filter\(file => file\.kind === 'eml'\)/);
+    assert.ok(generation.indexOf('const emlAttachments =') <
         generation.indexOf('const imageFiles =', generation.indexOf('async function sendMessage')));
 });
 
-test('100 EMLs upload one request at a time after explicit prompt, no model calls', async () => {
+test('100 ordinary EML file attachments dispatch to local batch without model requests', async () => {
     const h = harness();
-    const files = Array.from({length: 100}, (_, i) => h.file('mail-' + i + '.eml'));
-    const stats = h.eml.stageFiles(files);
-    assert.equal(stats.accepted, 100);
-    assert.equal(h.controls('input').value, 'Anonymisiere diese EML-Dateien.');
-    assert.equal(h.controls('emlChatTray').hidden, false);
-    let result = await h.eml.submit('Bitte beantworte diese Mail');
+    for (let i = 0; i < 100; i++) h.addEml('mail-' + i + '.eml');
+    let result = await h.eml.submit('Bitte fasse diese E-Mails zusammen.', h.pending);
     assert.equal(result.success, false);
-    assert.equal(h.calls.filter(x => x.url.endsWith('/upload')).length, 0);
-    h.controls('emlChatAI').checked = true;
-    result = await h.eml.submit('Anonymisiere diese 100 EML-Dateien.');
+    assert.equal(result.imported, 0);
+    assert.equal(h.calls.length, 0);
+    result = await h.eml.submit('Anonymisiere diese 100 EML-Dateien.', h.pending);
     assert.equal(result.success, true);
     assert.equal(result.imported, 100);
-    assert.equal(h.eml.hasStaged(), false);
+    assert.equal(h.pending.length, 0);
+    assert.equal(h.removed.length, 100);
     assert.equal(h.calls.filter(x => x.url.endsWith('/upload')).length, 100);
     assert.equal(h.calls.filter(x => x.url.endsWith('/start')).length, 1);
-    const started = h.calls.find(x => x.url.endsWith('/start'));
-    assert.equal(JSON.parse(started.args.body).use_local_ai, true);
-    assert.equal(h.calls.some(x => /\/chat|\/route|\/mlx/.test(x.url)), false);
+    assert.equal(h.calls.some(x => /\/chat|\/mlx|\/route/.test(x.url)), false);
+    const start = h.calls.find(x => x.url.endsWith('/start'));
+    assert.equal(JSON.parse(start.args.body).use_local_ai, false);
 });
 
-test('unsupported, duplicate and oversized files never enter queue', () => {
+test('optional local AI is inferred from user prompt, not separate checkbox', async () => {
     const h = harness();
-    const stats = h.eml.stageFiles([
-        h.file('ok.EML'), h.file('ok.EML'), h.file('not.pdf'),
-        h.file('large.eml', 31 * 1024 * 1024)
-    ]);
-    assert.equal(stats.accepted, 1);
-    assert.equal(stats.rejected, 2);
-    assert.equal(h.eml.__test.pendingCount(), 1);
-    h.eml.__test.clear();
-    assert.equal(h.eml.hasStaged(), false);
+    h.addEml('one.eml');
+    const result = await h.eml.submit('Bitte anonymisiere die EML mit lokaler KI.', h.pending);
+    assert.equal(result.success, true);
+    const start = h.calls.find(x => x.url.endsWith('/start'));
+    assert.equal(JSON.parse(start.args.body).use_local_ai, true);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisieren ohne KI'), false);
 });
 
-test('partial upload failure retains remaining files and never retries imported files', async () => {
+test('folder option stages only EMLs into ordinary chat attachments', () => {
+    const h = harness();
+    const input = h.controls('chatFolderFiles');
+    h.controls('chatPickFolder').listeners.click();
+    assert.equal(input.clickCount, 1);
+    input.listeners.change({target: {
+        files: [h.file('a.eml'), h.file('secret.pdf'), h.file('b.EML')],
+        value: 'previous'
+    }});
+    assert.equal(h.pending.length, 2);
+    assert.equal(h.pending[0].name, 'a.eml');
+    assert.equal(h.pending[1].name, 'b.EML');
+});
+
+test('partial upload failure keeps only unimported attachments for retry', async () => {
     const h = harness(2);
-    h.eml.stageFiles([h.file('first.eml'), h.file('second.eml'), h.file('third.eml')]);
-    const result = await h.eml.submit('Anonymisiere diese E-Mails');
+    h.addEml('first.eml');
+    h.addEml('second.eml');
+    h.addEml('third.eml');
+    const result = await h.eml.submit('Anonymisiere diese E-Mails.', h.pending);
     assert.equal(result.success, false);
     assert.equal(result.imported, 1);
     assert.equal(result.total, 3);
-    assert.equal(h.eml.__test.pendingCount(), 2);
+    assert.equal(h.pending.length, 2);
+    assert.equal(h.pending[0].name, 'second.eml');
     assert.equal(h.calls.filter(x => x.url.endsWith('/start')).length, 0);
-    const retry = await h.eml.submit('Anonymisiere die übrigen E-Mails');
+    const retry = await h.eml.submit('Anonymisiere die verbleibenden Dateien.', h.pending);
     assert.equal(retry.success, true);
     assert.equal(retry.imported, 2);
-    assert.equal(h.eml.__test.pendingCount(), 0);
+    assert.equal(h.pending.length, 0);
     assert.deepEqual(h.calls.filter(x => x.url.endsWith('/upload'))
-        .map(x => x.args.body.filename), ['first.eml', 'second.eml', 'second.eml', 'third.eml']);
+        .map(x => x.args.body.filename),
+        ['first.eml', 'second.eml', 'second.eml', 'third.eml']);
+});
+
+test('mixed attachments are rejected before file or model routing', () => {
+    assert.match(generation, /emlAttachments\.length !== currentAttachments\.length/);
+    assert.match(generation, /window\.MLXChatEml\.submit\(prompt, emlAttachments\)/);
+    assert.ok(!generation.includes('window.MLXChatEml?.hasStaged?.()'));
 });
