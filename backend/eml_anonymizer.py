@@ -246,7 +246,7 @@ def repair_mojibake(text):
             return match.group().encode("cp1252").decode("utf-8")
         except UnicodeError:
             return match.group()
-    return re.sub(r"Ã[\\x80-\\xffŸ]|Â[\\x80-\\xff€]", fix_sequence, text)
+    return re.sub(r"Ã[\x80-\xffŸ]|Â[\x80-\xff€]", fix_sequence, text)
 
 
 def decode_text_part(part):
