@@ -131,5 +131,5 @@ window.MLXChatEml = (() => {
         }
     }
 
-    return {submit, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
+    return {submit, wantsRedaction, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
 })();
