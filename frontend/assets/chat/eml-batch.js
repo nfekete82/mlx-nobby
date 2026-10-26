@@ -1,178 +1,89 @@
 'use strict';
 
-// Chat composer integration for the existing local EML queue.
-// File bytes are never copied into chat history, prompt context, or localStorage.
+// Existing local EML batch service, invoked by the ordinary chat attachments.
+// EML bytes never enter model context, chat history or browser storage.
 window.MLXChatEml = (() => {
     const API = '/api/eml-anonymizer';
-    const MAX_FILE = 30 * 1024 * 1024;
-    const MAX_BATCH = 10000;
-    const selected = [];
-    const seen = new Set();
-    let uploading = false;
-    let queueVisible = false;
-    let lastStatus = null;
+    let busy = false;
 
-    const el = id => document.getElementById(id);
-    const t = (key, fallback, params = {}) => {
-        let label = window.MLXI18n?.t('eml_chat.' + key, fallback) ?? fallback;
-        for (const [name, value] of Object.entries(params)) {
-            label = label.replaceAll('{' + name + '}', String(value));
-        }
-        return label;
-    };
-    const isEml = file => file && /\.eml$/i.test(String(file.name || ''));
-    const wantsRedaction = prompt => /anonymisier|anonymis|anonymiz|pseudonymisier|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(prompt || '');
-    const fileKey = file => [file.webkitRelativePath || file.name, file.size, file.lastModified || 0].join('\u0000');
-
-    function render(message = '') {
-        const tray = el('emlChatTray');
-        if (!tray) return;
-        tray.hidden = !selected.length && !uploading && !queueVisible;
-        const stage = el('emlChatSelected');
-        if (stage) {
-            stage.textContent = selected.length
-                ? t('selected', '{count} EML-Dateien vorgemerkt', {count: selected.length})
-                : t('no_selection', 'Keine neuen EML-Dateien vorgemerkt');
-        }
-        const note = el('emlChatStatus');
-        if (note) {
-            const c = lastStatus?.counts || {};
-            const counts = queueVisible
-                ? t('counts', 'Wartend {queued} · In Arbeit {active} · Zur Prüfung {review} · Fehler {failed}', {
-                    queued: c.queued || 0, active: c.processing || 0,
-                    review: c.review || 0, failed: c.failed || 0
-                })
-                : '';
-            note.textContent = message || counts;
-        }
-        const remove = el('emlChatClear');
-        if (remove) remove.disabled = uploading || !selected.length;
-        const pick = el('emlChatAI');
-        if (pick) pick.disabled = uploading;
+    function wantsRedaction(prompt) {
+        return /anonymis|anonymiz|pseudonymis|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(prompt || '') &&
+            !/\b(?:nicht|kein(?:e|en|er)?|ohne)\s+(?:die\s+)?(?:eml[- ]?)?(?:dateien\s+)?anonymis/i.test(prompt || '');
     }
 
-    function stageFiles(files) {
-        if (uploading) return {accepted: 0, rejected: Array.from(files || []).length};
-        let accepted = 0;
-        let rejected = 0;
-        for (const file of Array.from(files || [])) {
-            if (!isEml(file) || file.size < 10 || file.size > MAX_FILE || selected.length >= MAX_BATCH) {
-                rejected++;
-                continue;
-            }
-            const key = fileKey(file);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            selected.push(file);
-            accepted++;
-        }
-        if (accepted && el('input') && !el('input').value.trim()) {
-            el('input').value = t('suggested_prompt', 'Anonymisiere diese EML-Dateien.');
-            el('input').dispatchEvent(new Event('input', {bubbles: true}));
-        }
-        render(rejected ? t('rejected', '{count} Dateien übersprungen (nur gültige EML bis 30 MiB)', {count: rejected}) : '');
-        return {accepted, rejected};
-    }
-
-    function clear() {
-        if (uploading) return;
-        selected.length = 0;
-        seen.clear();
-        render();
+    function useLocalAI(prompt) {
+        const text = String(prompt || '');
+        if (/\b(?:ohne|keine|kein)\s+(?:lokale(?:s|r)?\s+)?(?:ki|qwen|llm|sprachmodell)\b/i.test(text)) return false;
+        return /\b(?:mit|durch|per)\s+(?:der\s+)?(?:lokalen?\s+)?(?:ki|qwen|llm|sprachmodell)\b|\bki[- ]?(?:prüfung|erkennung)\b/i.test(text);
     }
 
     async function request(path, options) {
         const response = await fetch(API + path, {cache: 'no-store', ...options});
         if (!response.ok) {
-            const details = await response.json().catch(() => ({}));
-            throw new Error(details.detail || ('HTTP ' + response.status));
+            const info = await response.json().catch(() => ({}));
+            throw new Error(info.detail || ('HTTP ' + response.status));
         }
         return response.json();
     }
 
-    async function refresh() {
-        try {
-            lastStatus = await request('/status');
-            const c = lastStatus.counts || {};
-            queueVisible = queueVisible ||
-                !!(c.queued || c.processing || c.review || c.failed);
-            render();
-            return lastStatus;
-        } catch (_) {
-            // Unavailable status should not interrupt ordinary chat.
-            return null;
-        }
-    }
-
-    async function submit(prompt) {
-        if (!selected.length) return {handled: false};
-        if (uploading) return {handled: true, success: false, error: t('busy', 'Der EML-Import läuft bereits.')};
+    async function submit(prompt, files) {
+        const emls = Array.from(files || []).filter(item => item.kind === 'eml' && item.file);
+        if (!emls.length) return {handled: false};
+        if (busy) return {handled: true, success: false, imported: 0, error: 'EML-Import läuft bereits.'};
         if (!wantsRedaction(prompt)) {
-            return {handled: true, success: false, error: t('intent_required', 'Bitte ausdrücklich „Anonymisiere diese E-Mails“ schreiben.')};
+            return {
+                handled: true, success: false, imported: 0,
+                error: 'Bitte beschreibe die gewünschte Anonymisierung im Chat. Andere EML-Aktionen werden derzeit noch nicht unterstützt.'
+            };
         }
-        uploading = true;
+
+        busy = true;
         let imported = 0;
-        let error = '';
-        const total = selected.length;
+        const total = emls.length;
+        const uploaded = [];
         try {
-            // Upload one file per request: no large multipart requests and no
-            // file bytes in the chat model's context.
-            for (const file of [...selected]) {
-                render(t('import_progress', 'EML-Import: {done}/{total}', {done: imported + 1, total}));
+            for (const item of emls) {
                 const data = new FormData();
-                data.append('file', file, file.name);
+                data.append('file', item.file, item.name);
                 await request('/upload', {method: 'POST', body: data});
+                uploaded.push(item);
                 imported++;
-                // Do not upload successfully stored EMLs twice after an error.
-                selected.shift();
-                seen.delete(fileKey(file));
+                if (uploaded.length === 20) {
+                    window.MLXChatAttachments.removeAttachments(uploaded.splice(0));
+                }
             }
-            const useLocalAI = !!el('emlChatAI')?.checked;
+            window.MLXChatAttachments.removeAttachments(uploaded.splice(0));
+            const ai = useLocalAI(prompt);
             await request('/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({use_local_ai: useLocalAI})
+                body: JSON.stringify({use_local_ai: ai})
             });
-            queueVisible = true;
+            return {handled: true, success: true, imported, total, useLocalAI: ai};
+        } catch (error) {
             return {
-                handled: true, success: true, imported, total,
-                useLocalAI
-            };
-        } catch (cause) {
-            error = cause?.message || String(cause);
-            return {
-                handled: true, success: false, imported, total, error
+                handled: true, success: false, imported, total,
+                error: String(error?.message || error)
             };
         } finally {
-            uploading = false;
-            render(error
-                ? t('import_error', 'Import/Start fehlgeschlagen: {error}', {error})
-                : '');
-            if (imported) await refresh();
+            if (uploaded.length) window.MLXChatAttachments.removeAttachments(uploaded);
+            busy = false;
         }
     }
 
-    function init() {
-        el('emlChatFiles')?.addEventListener('change', event => {
-            stageFiles(event.target.files);
+    function initFolderPicker() {
+        document.getElementById('chatFolderFiles')?.addEventListener('change', event => {
+            const emls = Array.from(event.target.files || []).filter(file =>
+                /\.eml$/i.test(file.name)
+            );
+            window.MLXChatAttachments?.addFiles(emls);
             event.target.value = '';
         });
-        el('emlChatFolder')?.addEventListener('change', event => {
-            stageFiles(event.target.files);
-            event.target.value = '';
+        document.getElementById('chatPickFolder')?.addEventListener('click', () => {
+            document.getElementById('chatFolderFiles')?.click();
         });
-        el('emlChatPickFiles')?.addEventListener('click', () => el('emlChatFiles')?.click());
-        el('emlChatPickFolder')?.addEventListener('click', () => el('emlChatFolder')?.click());
-        el('emlChatClear')?.addEventListener('click', clear);
-        // No EML API request during ordinary chat startup. The backend may
-        // intentionally be unavailable in isolated chat-only environments.
-        setInterval(() => { if (queueVisible) refresh(); }, 5000);
     }
 
-    return {
-        init, stageFiles, hasStaged: () => selected.length > 0, submit, refresh,
-        __test: {isEml, wantsRedaction, clear, pendingCount: () => selected.length}
-    };
+    initFolderPicker();
+    return {submit, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
 })();
-
-window.MLXChatEml.init();
