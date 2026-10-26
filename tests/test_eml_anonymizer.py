@@ -105,7 +105,7 @@ def test_upload_status_queue_export_and_purge(isolated):
         import time
         state = client.get("/api/eml-anonymizer/status").json()
         for _ in range(80):
-            if state["counts"].get("review") == 1:
+            if state["counts"].get("review") == 1 and not state["running"]:
                 break
             time.sleep(0.05)
             state = client.get("/api/eml-anonymizer/status").json()
