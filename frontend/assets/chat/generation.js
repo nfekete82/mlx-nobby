@@ -107,7 +107,7 @@ const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
 const RAGNAROK_SAMPLING_PRESETS = Object.freeze({
     fast: Object.freeze({steps: 20, guidance: 4.0}),
     standard: Object.freeze({steps: 35, guidance: 4.0}),
-    quality: Object.freeze({steps: 40, guidance: 4.0}),
+    quality: Object.freeze({steps: 30, guidance: 4.0}),
     ultra: Object.freeze({steps: 40, guidance: 4.0})
 });
 

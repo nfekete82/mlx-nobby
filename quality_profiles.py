@@ -15,7 +15,7 @@ IMAGE_PROFILES = {
         # Fast remains a deliberate lower-resolution / fewer-step tradeoff.
         "fast": {"steps": 20, "guidance": 4.0, "long_edge": 768},
         "standard": {"steps": 35, "guidance": 4.0, "long_edge": 1216},
-        "quality": {"steps": 40, "guidance": 4.0, "long_edge": 1216},
+        "quality": {"steps": 30, "guidance": 4.0, "long_edge": 1216},
     },
     "qwen-image21": {
         "fast": {"steps": 20, "guidance": 0.0, "long_edge": 768},
@@ -119,6 +119,9 @@ def resolve_image_profile(model, quality):
             "steps": int(model["default_steps"]),
             "guidance": float(model["default_guidance"]),
         }
+        if image_profile_key(model) == "juggernaut-xl":
+            # Keep the high-detail Ultra profile independent of faster Quality.
+            base["steps"] = 40
         base["long_edge"] = 1536
         return base
     if profiles and quality in profiles:

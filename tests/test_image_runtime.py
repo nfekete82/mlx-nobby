@@ -5486,7 +5486,7 @@ def test_image_quality_profiles_and_legacy_default():
         "steps": 20, "guidance": 4.0, "long_edge": 768,
     }
     assert service._resolved_steps(juggernaut, None, "standard") == 35
-    assert service._resolved_steps(juggernaut, None, "quality") == 40
+    assert service._resolved_steps(juggernaut, None, "quality") == 30
     assert resolve_image_profile(juggernaut, "standard")["guidance"] == 4.0
     assert resolve_image_profile(juggernaut, "quality")["guidance"] == 4.0
     assert resolve_image_profile(juggernaut, "standard")["long_edge"] == 1216
@@ -5603,7 +5603,7 @@ def test_sdxl_quality_size_and_explicit_parameters_win(tmp_path):
         service.OUTPUT = old_output
 
     assert (quality["width"], quality["height"]) == (832, 1216)
-    assert (quality["steps"], quality["guidance"]) == (40, 4.0)
+    assert (quality["steps"], quality["guidance"]) == (30, 4.0)
     assert (explicit["width"], explicit["height"]) == (896, 1152)
     assert (explicit["steps"], explicit["guidance"]) == (42, 4.25)
 

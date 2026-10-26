@@ -149,11 +149,11 @@ def test_backend_applies_requested_30_35_40_without_reducing_resolution(monkeypa
     assert all(params[0][key] == item[key]
                for item in params[1:]
                for key in params[0] if key != "steps")
-    # The original quality and standard profiles must retain their defaults.
+    # The updated quality and unchanged standard profiles retain their defaults.
     assert service._resolve_generation(service.Generate(
         prompt="A detailed realistic fox", model="juggernaut-xl",
         quality="quality", width=512, height=512, auto_size=True,
-    ))["params"]["steps"] == 40
+    ))["params"]["steps"] == 30
     assert service._resolve_generation(service.Generate(
         prompt="A detailed realistic fox", model="juggernaut-xl",
         quality="standard", width=512, height=512, auto_size=True,

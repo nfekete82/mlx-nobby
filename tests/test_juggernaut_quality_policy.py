@@ -6,7 +6,7 @@ from quality_profiles import resolve_image_profile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_juggernaut_quality_uses_native_1216_with_40_steps():
+def test_juggernaut_quality_uses_native_1216_with_30_steps():
     model = {
         "id": "juggernaut-xl",
         "model_family": "sdxl",
@@ -18,7 +18,7 @@ def test_juggernaut_quality_uses_native_1216_with_40_steps():
     profile = resolve_image_profile(model, "quality")
 
     assert profile == {
-        "steps": 40,
+        "steps": 30,
         "guidance": 4.0,
         "long_edge": 1216,
     }
