@@ -636,7 +636,7 @@ function attachmentT(key, fallback = '', variables = {}) {
             summary.className = 'attachment-chip';
             summary.textContent = attachmentT(
                 'attachments.eml_more',
-                '… und {count} weitere EML-Dateien',
+                '… and {count} more EML files',
                 {count: emlCount - 20}
             );
             bar.appendChild(summary);
