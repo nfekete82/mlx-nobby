@@ -77,3 +77,19 @@ Tests: `./scripts/mlx test-quick tests/test_eml_anonymizer.py` und `node --test 
 ### Gemeinsame FAQ und Fehlerbehandlung
 
 Die Chat-Verarbeitung startet nach der Anonymisierung per `/api/eml-anonymizer/batch/{batch_id}/consolidate` einen Hintergrund-Zusammenfassungsauftrag. Über den Batch-Status steht `faq_merge_state` bereit. Bei `ready` bietet `/batch/{batch_id}/faq` die Datei `FAQ-Gemeinsam-Entwurf.md`. Kein erneuter Upload der ursprünglichen Dateien ist nötig. Startaufrufe sind idempotent, der Download bleibt im lokalen Daten-Volume. Bei KI-Fehlern entsteht keine vermeintlich fertige FAQ; der Chat zeigt die Störung an, die einzeln anonymisierten EMLs bleiben zugänglich. Alle FAQ-Entwürfe sind weiterhin fachlich und datenschutzrechtlich prüfpflichtig.
+
+
+## Verlässlicher FAQ-Fortschritt und Wiederaufnahme
+
+Die gemeinsame FAQ-Erstellung arbeitet jetzt mit **dauerhaft gespeicherten Modellschritten** in `faq_merge_steps` (SQLite im lokalen EML-Volume). Nach jedem Modellaufruf werden Ergebnis und gemessene Verarbeitungsdauer gemeinsam transaktional gespeichert. Bei Unterbrechung, Docker-Neustart oder fehlgeschlagenem Modellaufruf bleiben diese Teilresultate erhalten. Der gerade unterbrochene Aufruf wird neu durchgeführt, fertige Schritte werden aus dem Checkpoint übernommen. Nach Neustart ändert `setup()` ein zuvor laufendes FAQ-Merge auf `queued`. Beim nächsten Aufruf von `GET /api/eml-anonymizer/status` oder der Batch-Statusroute fährt der Server die Warteschlange automatisch wieder hoch. Mehrere FAQ-Merges werden lokal **nacheinander** ausgeführt. Ein fehlgeschlagener Batch kann über `POST /api/eml-anonymizer/batch/{batch_id}/consolidate` ohne neue EML-Uploads fortgesetzt werden. Der Aufruf liefert `queued`, `processing` oder `ready`. Bestehende fertige FAQ-Downloads werden wiederverwendet.
+
+Während der Verarbeitung liefert `GET /api/eml-anonymizer/batch/{batch_id}/status` zusätzlich:
+- `faq_merge_completed`, `faq_merge_total`, `faq_merge_percent`: tatsächlich dauerhaft gespeicherte Teilverarbeitung
+- `faq_merge_eta_seconds`: **geschätzte** Restzeit aus den gemessenen Laufzeiten fertiger Schritte, zunächst `null`; wird bei Beginn der zweiten Runde an deren tatsächlichen Umfang angepasst
+- `faq_merge_elapsed_seconds`: verstrichene Zeit seit Start (einschließlich Unterbrechungen)
+- `faq_merge_current_step_seconds`: Dauer des aktuellen Modellaufrufs; `faq_merge_slow` meldet auffällig lange Laufzeit, beweist keinen Hänger
+- `faq_merge_state`: `not_started`, `queued`, `processing`, `ready`, `failed`
+
+Der normale Chat zeigt während der FAQ-Zusammenfassung Fortschrittsbalken, Prozent, X/Y, Laufzeit, geschätzte Restzeit und Hinweise auf langsame Schritte. Die Anzeige wird beim aktiven Chat alle zwei Sekunden aktualisiert. Schließt man den Tab, läuft der Backend-Auftrag weiter, aber die alte Chat-Nachricht lädt ihren Fortschritt derzeit nicht automatisch nach; der Status kann direkt über die Batch-Status-URL eingesehen werden.
+
+**Migration bestehender Langläufer:** Einen noch laufenden Auftrag aus einer Version *ohne* Checkpoints zuerst abschließen lassen. Ein Docker-Rebuild beendet dessen bisherige ungesicherte Modellarbeit; das neue System kann alte, während der Verarbeitung nicht gespeicherte Schritte nicht rückwirkend rekonstruieren. Die bereits erzeugten anonymisierten EMLs und einzelnen FAQ-Entwürfe bleiben erhalten, sodass nach dem Update kein erneuter EML-Upload nötig ist. Das Zusammenführen kann für diesen Batch über `/consolidate` neu gestartet werden. Einträge können weiterhin personenbezogene Informationen enthalten; FAQ-Ausgaben bleiben strikt prüfpflichtig.

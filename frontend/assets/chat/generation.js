@@ -2344,6 +2344,19 @@ return;
                 MLXChatRendering.renderAll({contentUpdated: true});
             }
         };
+        const formatDuration = seconds => {
+            const value = Math.max(0, Math.round(Number(seconds) || 0));
+            if (value < 60) return value + ' s';
+            const min = Math.floor(value / 60);
+            if (min < 60) return min + ' min';
+            const hours = Math.floor(min / 60);
+            return hours + ' h ' + (min % 60) + ' min';
+        };
+        const statusBar = (done, total) => {
+            const percent = total > 0 ? Math.min(100, Math.round(100 * done / total)) : 0;
+            const cells = Math.round(percent / 5);
+            return '▰'.repeat(cells) + '▱'.repeat(20 - cells) + ' ' + percent + '%';
+        };
         const onProgress = state => {
             if (state.phase === 'upload') {
                 updateMessage(gt('eml_uploading',
@@ -2351,10 +2364,36 @@ return;
                         done: state.imported, total: state.total
                     }));
             } else if (state.phase === 'merging') {
-                updateMessage(gt('eml_merging_faq',
-                    '⏳ Combining {count} FAQ drafts into one document…', {
-                        count: state.faqReady
-                    }));
+                const completed = state.mergeCompleted || 0;
+                const totalSteps = state.mergeTotal || 0;
+                const eta = state.mergeEtaSeconds == null
+                    ? gt('eml_eta_pending', 'calculating after the first steps')
+                    : formatDuration(state.mergeEtaSeconds);
+                let info = gt('eml_merging_progress',
+                    '⏳ Combining {count} FAQ drafts into one file. Step {done}/{total}', {
+                        count: state.faqReady, done: completed,
+                        total: totalSteps || '?'
+                    });
+                info += '\n\n' + statusBar(completed, totalSteps);
+                info += '\n\n' + gt('eml_merging_time',
+                    'Estimated remaining: {eta} · Elapsed: {elapsed}', {
+                        eta, elapsed: formatDuration(state.mergeElapsedSeconds)
+                    });
+                if (state.mergeState === 'queued') {
+                    info += '\n\n' + gt('eml_merging_queued',
+                        'Waiting for earlier local FAQ work to finish.');
+                }
+                if (state.mergeCurrentStepSeconds > 0) {
+                    info += '\n\n' + gt('eml_merging_step_age',
+                        'Current model step running for {age}', {
+                            age: formatDuration(state.mergeCurrentStepSeconds)
+                        });
+                }
+                if (state.mergeSlow) {
+                    info += '\n\n' + gt('eml_merging_slow',
+                        'This model step is unusually slow. The estimate may change; a stalled connection is possible.');
+                }
+                updateMessage(info);
             } else {
                 const status = state.faqRequested
                     ? gt('eml_processing_faq',

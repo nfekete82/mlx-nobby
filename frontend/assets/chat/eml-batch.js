@@ -136,9 +136,18 @@ window.MLXChatEml = (() => {
                     }
                     if (createFAQ && mergeStarted &&
                             (state.faq_merge_state === 'processing' ||
+                             state.faq_merge_state === 'queued' ||
                              state.faq_merge_state === 'not_started')) {
                         onProgress({phase: 'merging', imported, total,
-                                    completed, faqReady, faqFailed: state.faq_failed || 0});
+                                    completed, faqReady, faqFailed: state.faq_failed || 0,
+                                    mergeCompleted: state.faq_merge_completed || 0,
+                                    mergeTotal: state.faq_merge_total || 0,
+                                    mergePercent: state.faq_merge_percent || 0,
+                                    mergeEtaSeconds: state.faq_merge_eta_seconds,
+                                    mergeElapsedSeconds: state.faq_merge_elapsed_seconds || 0,
+                                    mergeCurrentStepSeconds: state.faq_merge_current_step_seconds || 0,
+                                    mergeSlow: Boolean(state.faq_merge_slow),
+                                    mergeState: state.faq_merge_state});
                         await new Promise(resolve => setTimeout(resolve, 2000));
                         continue;
                     }

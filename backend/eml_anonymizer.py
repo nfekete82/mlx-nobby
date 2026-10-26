@@ -42,6 +42,7 @@ _READY = False
 _THREAD = None
 _UPLOAD_LOCK = Lock()
 _FAQ_MERGE_LOCK = Lock()
+_FAQ_MERGE_THREAD = None
 
 
 class HtmlText(HTMLParser):
@@ -109,7 +110,27 @@ def setup():
                 batch_id TEXT PRIMARY KEY, state TEXT NOT NULL,
                 updated REAL NOT NULL
             )""")
-            con.execute("UPDATE faq_summaries SET state='failed' WHERE state='processing'")
+            summary_cols = {row["name"] for row in con.execute("PRAGMA table_info(faq_summaries)")}
+            for name, sql_type, default in (
+                ("started", "REAL", "0"),
+                ("last_progress", "REAL", "0"),
+                ("step_started", "REAL", "0"),
+                ("completed_steps", "INTEGER", "0"),
+                ("total_steps", "INTEGER", "0"),
+                ("work_seconds", "REAL", "0")
+            ):
+                if name not in summary_cols:
+                    con.execute(f"ALTER TABLE faq_summaries ADD COLUMN {name} {sql_type} NOT NULL DEFAULT {default}")
+            con.execute("""CREATE TABLE IF NOT EXISTS faq_merge_steps (
+                batch_id TEXT NOT NULL, phase INTEGER NOT NULL,
+                group_key TEXT NOT NULL, chunk_index INTEGER NOT NULL,
+                output TEXT NOT NULL, seconds REAL NOT NULL,
+                PRIMARY KEY (batch_id,phase,group_key,chunk_index)
+            )""")
+            # A previous worker died when its container shut down. Its finished
+            # steps survive and will be reused by the new worker.
+            con.execute("UPDATE faq_summaries SET state='queued',step_started=0 "
+                        "WHERE state='processing'")
             con.execute("UPDATE jobs SET state='queued' WHERE state='processing'")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('running', '0')")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('ai', '0')")
@@ -517,6 +538,7 @@ class StartOptions(BaseModel):
 def status():
     setup()
     launch()
+    launch_faq_merges()
     with db() as con:
         rows = con.execute("SELECT state, COUNT(*) AS count FROM jobs "
                            "GROUP BY state").fetchall()
@@ -661,7 +683,7 @@ def batch_status(batch_id: str):
         faq_rows = con.execute("SELECT faq_state,COUNT(*) AS count FROM jobs "
                                "WHERE batch_id=? AND faq_requested=1 "
                                "GROUP BY faq_state", (batch_id,)).fetchall()
-        merged_row = con.execute("SELECT state FROM faq_summaries WHERE batch_id=?",
+        merged_row = con.execute("SELECT * FROM faq_summaries WHERE batch_id=?",
                                  (batch_id,)).fetchone()
     counts = {row["state"]: row["count"] for row in rows}
     faq_counts = {row["faq_state"]: row["count"] for row in faq_rows}
@@ -669,6 +691,23 @@ def batch_status(batch_id: str):
     if not total:
         raise HTTPException(404, "Batch not found")
     pending = counts.get("queued", 0) + counts.get("processing", 0)
+    # Picking up a queued merge is safe after server/container restart; it
+    # never restarts completed groups or uploads customer email again.
+    launch_faq_merges()
+    merge_state = merged_row["state"] if merged_row else "not_started"
+    completed_steps = merged_row["completed_steps"] if merged_row else 0
+    total_steps = merged_row["total_steps"] if merged_row else 0
+    work_seconds = merged_row["work_seconds"] if merged_row else 0
+    remaining_steps = max(0, total_steps - completed_steps)
+    eta = (round(remaining_steps * work_seconds / completed_steps)
+           if merge_state == "processing" and completed_steps >= 2
+           and total_steps > completed_steps and work_seconds > 0 else None)
+    elapsed = (round(time() - merged_row["started"])
+               if merged_row and merged_row["started"] else 0)
+    since_update = (round(time() - merged_row["last_progress"])
+                    if merged_row and merged_row["last_progress"] else 0)
+    step_age = (round(time() - merged_row["step_started"])
+                if merged_row and merged_row["step_started"] else 0)
     return {"total": total, "counts": counts,
             "completed": counts.get("review", 0),
             "failed": counts.get("failed", 0),
@@ -678,7 +717,16 @@ def batch_status(batch_id: str):
             "faq_ready": faq_counts.get("ready", 0),
             "faq_empty": faq_counts.get("empty", 0),
             "faq_failed": faq_counts.get("failed", 0),
-            "faq_merge_state": merged_row["state"] if merged_row else "not_started",
+            "faq_merge_state": merge_state,
+            "faq_merge_completed": completed_steps,
+            "faq_merge_total": total_steps,
+            "faq_merge_percent": round(100 * completed_steps / total_steps, 1)
+                if total_steps else 0,
+            "faq_merge_eta_seconds": eta,
+            "faq_merge_elapsed_seconds": elapsed,
+            "faq_merge_since_progress_seconds": since_update,
+            "faq_merge_current_step_seconds": step_age,
+            "faq_merge_slow": merge_state == "processing" and step_age > 240,
             "review_required": True}
 
 
@@ -847,36 +895,76 @@ def _faq_merge_chunk(items):
     return merged
 
 
+def _merge_phase(batch_id, phase, groups, base_steps, total_steps):
+    """Each bounded model call is an atomic, durable checkpoint."""
+    result = {}
+    completed = base_steps
+    for group_key in sorted(groups):
+        items = groups[group_key]
+        result[group_key] = []
+        for index, start in enumerate(range(0, len(items), 8)):
+            part = items[start:start + 8]
+            with db() as con:
+                row = con.execute(
+                    "SELECT output FROM faq_merge_steps WHERE "
+                    "batch_id=? AND phase=? AND group_key=? AND chunk_index=?",
+                    (batch_id, phase, group_key, index)).fetchone()
+            if row:
+                output = json.loads(row["output"])
+            else:
+                started = time()
+                with db() as con:
+                    con.execute(
+                        "UPDATE faq_summaries SET step_started=?,updated=? "
+                        "WHERE batch_id=?", (started, started, batch_id))
+                output = _faq_merge_chunk(part)
+                if not isinstance(output, list) or not output:
+                    raise ValueError("Empty FAQ merge result")
+                seconds = max(0.001, time() - started)
+                with db() as con:
+                    con.execute(
+                        "INSERT OR IGNORE INTO faq_merge_steps "
+                        "(batch_id,phase,group_key,chunk_index,output,seconds) "
+                        "VALUES (?,?,?,?,?,?)",
+                        (batch_id, phase, group_key, index,
+                         json.dumps(output, ensure_ascii=False), seconds))
+                    # Update counters and last-progress only in the same
+                    # transaction as the step. Crash/restart cannot double-count.
+                    con.execute(
+                        "UPDATE faq_summaries SET "
+                        "completed_steps=(SELECT COUNT(*) FROM faq_merge_steps WHERE batch_id=?),"
+                        "work_seconds=(SELECT COALESCE(SUM(seconds),0) FROM "
+                        "faq_merge_steps WHERE batch_id=?),"
+                        "total_steps=?,last_progress=?,step_started=0,updated=? "
+                        "WHERE batch_id=?",
+                        (batch_id, batch_id, total_steps, time(), time(), batch_id))
+            result[group_key].extend(output)
+            completed += 1
+    return result, completed
+
+
 def _consolidated_faq_markdown(batch_id):
     drafts, failures = _faq_items_for_batch(batch_id)
     if not drafts:
         raise ValueError("No FAQ source drafts in batch")
-    # Bound every model request to at most eight short, already-redacted
-    # FAQ items. This handles large folders without overflowing context.
     groups = defaultdict(list)
     for item in drafts:
         groups[item["kategorie"].strip().casefold()].append(item)
-    merged = []
-    for key in sorted(groups):
-        group = groups[key]
-        if len(group) == 1:
-            merged.extend(group)
-            continue
-        # The second round also compares results across the first round's
-        # chunks. Stop after two rounds to keep local processing bounded.
-        for _ in range(2):
-            chunks = [group[i:i + 8] for i in range(0, len(group), 8)]
-            updated = []
-            for part in chunks:
-                updated.extend(_faq_merge_chunk(part))
-            if len(updated) == len(group) and len(group) <= 8:
-                group = updated
-                break
-            group = updated
-            if len(group) <= 8:
-                group = _faq_merge_chunk(group)
-                break
-        merged.extend(group)
+
+    count_first = sum((len(items) + 7) // 8 for items in groups.values())
+    with db() as con:
+        con.execute(
+            "UPDATE faq_summaries SET total_steps=?,updated=? WHERE batch_id=?",
+            (count_first * 2, time(), batch_id))
+    first, _ = _merge_phase(batch_id, 1, groups, 0, count_first * 2)
+    count_second = sum((len(items) + 7) // 8 for items in first.values())
+    exact_total = count_first + count_second
+    with db() as con:
+        con.execute("UPDATE faq_summaries SET total_steps=?,updated=? WHERE batch_id=?",
+                    (exact_total, time(), batch_id))
+    second, _ = _merge_phase(batch_id, 2, first, count_first, exact_total)
+    merged = [entry for key in sorted(second) for entry in second[key]]
+
     lines = [
         "# Gemeinsame FAQ – anonymisierter Entwurf", "",
         "**Nur zur fachlichen und datenschutzrechtlichen Prüfung.** "
@@ -907,45 +995,82 @@ def _consolidation_worker(batch_id):
         os.replace(temp, path)
         state = "ready"
     except Exception:
-        # Do not log source customer text or model replies.
+        # Never log customer text or model output. Durable checkpoints remain
+        # available to the user for a safe and efficient retry.
         state = "failed"
     finally:
         temp.unlink(missing_ok=True)
         with db() as con:
-            con.execute("UPDATE faq_summaries SET state=?, updated=? WHERE batch_id=?",
-                        (state, time(), batch_id))
+            con.execute(
+                "UPDATE faq_summaries SET state=?,step_started=0,updated=? "
+                "WHERE batch_id=?", (state, time(), batch_id))
+
+
+def _faq_merge_dispatcher():
+    global _FAQ_MERGE_THREAD
+    try:
+        while True:
+            with db() as con:
+                row = con.execute(
+                    "SELECT batch_id FROM faq_summaries WHERE state='queued' "
+                    "ORDER BY updated LIMIT 1").fetchone()
+                if row:
+                    batch_id = row["batch_id"]
+                    con.execute(
+                        "UPDATE faq_summaries SET state='processing',"
+                        "started=CASE WHEN started=0 THEN ? ELSE started END,"
+                        "updated=? WHERE batch_id=?",
+                        (time(), time(), batch_id))
+            if not row:
+                break
+            _consolidation_worker(batch_id)
+    finally:
+        with _FAQ_MERGE_LOCK:
+            _FAQ_MERGE_THREAD = None
+
+
+def launch_faq_merges():
+    """Resume queued batch merges after restart; serialize local model usage."""
+    global _FAQ_MERGE_THREAD
+    with _FAQ_MERGE_LOCK:
+        if _FAQ_MERGE_THREAD is not None and _FAQ_MERGE_THREAD.is_alive():
+            return
+        with db() as con:
+            pending = con.execute(
+                "SELECT 1 FROM faq_summaries WHERE state='queued' LIMIT 1").fetchone()
+        if pending:
+            _FAQ_MERGE_THREAD = threading.Thread(
+                target=_faq_merge_dispatcher, daemon=True, name="eml-faq-merge")
+            _FAQ_MERGE_THREAD.start()
 
 
 @router.post("/batch/{batch_id}/consolidate")
 def consolidate_faq(batch_id: str):
-    """Launch once; return immediately and expose status via batch status."""
+    """Start, or retry failed work from durable per-step checkpoints."""
     validate_batch_id(batch_id)
     setup()
-    with _FAQ_MERGE_LOCK:
-        with db() as con:
-            rows = con.execute(
-                "SELECT state,faq_requested,faq_state FROM jobs WHERE batch_id=?",
-                (batch_id,)).fetchall()
-            if not rows or not any(row["faq_requested"] for row in rows):
-                raise HTTPException(404, "No FAQ requested for batch")
-            if any(row["state"] in ("queued", "processing") for row in rows):
-                raise HTTPException(409, "Anonymization not finished")
-            if not any(row["faq_state"] == "ready" for row in rows):
-                raise HTTPException(503, "No usable FAQ drafts; check local model")
-            existing = con.execute("SELECT state FROM faq_summaries WHERE batch_id=?",
-                                   (batch_id,)).fetchone()
-            output = ROOT / "faq" / (batch_id + "-gemeinsam.md")
-            if existing and existing["state"] == "ready" and output.is_file():
-                return {"state": "ready"}
-            if existing and existing["state"] == "processing":
-                return {"state": "processing"}
-            con.execute("INSERT INTO faq_summaries(batch_id,state,updated) "
-                        "VALUES(?,?,?) ON CONFLICT(batch_id) DO UPDATE SET "
-                        "state=excluded.state,updated=excluded.updated",
-                        (batch_id, "processing", time()))
-        threading.Thread(target=_consolidation_worker, args=(batch_id,),
-                         daemon=True, name="eml-faq-merge").start()
-    return {"state": "processing"}
+    with db() as con:
+        rows = con.execute(
+            "SELECT state,faq_requested,faq_state FROM jobs WHERE batch_id=?",
+            (batch_id,)).fetchall()
+        if not rows or not any(row["faq_requested"] for row in rows):
+            raise HTTPException(404, "No FAQ requested for batch")
+        if any(row["state"] in ("queued", "processing") for row in rows):
+            raise HTTPException(409, "Anonymization not finished")
+        if not any(row["faq_state"] == "ready" for row in rows):
+            raise HTTPException(503, "No usable FAQ drafts; check local model")
+        existing = con.execute(
+            "SELECT state FROM faq_summaries WHERE batch_id=?", (batch_id,)).fetchone()
+        output = ROOT / "faq" / (batch_id + "-gemeinsam.md")
+        if existing and existing["state"] == "ready" and output.is_file():
+            return {"state": "ready"}
+        if not existing or existing["state"] not in ("queued", "processing"):
+            con.execute(
+                "INSERT INTO faq_summaries(batch_id,state,updated) VALUES(?,?,?) "
+                "ON CONFLICT(batch_id) DO UPDATE SET state='queued',updated=excluded.updated",
+                (batch_id, "queued", time()))
+    launch_faq_merges()
+    return {"state": "queued"}
 
 
 @router.get("/batch/{batch_id}/faq")
@@ -1035,6 +1160,9 @@ def purge():
     if setting("running") == "1":
         raise HTTPException(409, "Verarbeitung zuerst pausieren")
     with db() as con:
+        if con.execute("SELECT COUNT(*) FROM faq_summaries WHERE state IN "
+                       "('processing','queued')").fetchone()[0]:
+            raise HTTPException(409, "FAQ-Zusammenfassung zuerst abschließen")
         if con.execute("SELECT COUNT(*) FROM jobs WHERE state='processing'").fetchone()[0]:
             raise HTTPException(409, "Verarbeitung noch nicht abgeschlossen")
         # Disk artifacts first; database is then cleared. Never touch other folders.
@@ -1044,4 +1172,5 @@ def purge():
                     item.unlink()
         con.execute("DELETE FROM jobs")
         con.execute("DELETE FROM faq_summaries")
+        con.execute("DELETE FROM faq_merge_steps")
     return {"ok": True}

@@ -1,5 +1,11 @@
 {
   "eml_chat": {
+    "eml_merging_progress": "⏳ Consolidating {count} FAQ drafts into one file. Step {done}/{total}",
+    "eml_merging_time": "Estimated remaining: {eta} · Elapsed: {elapsed}",
+    "eml_merging_step_age": "Current model step has run for {age}",
+    "eml_merging_queued": "Queued: waiting for another FAQ batch to finish.",
+    "eml_merging_slow": "This model step is unusually slow. The estimate may change; a connection may be stalled.",
+    "eml_eta_pending": "calculating after the first steps",
     "pick_folder_generic": "Attach folder",
     "pick_files": "Add EML files",
     "pick_files_hint": "Anonymize directly in chat",

@@ -8,7 +8,7 @@ const html = fs.readFileSync(new URL('../frontend/chat.html', import.meta.url), 
 const attachments = fs.readFileSync(new URL('../frontend/assets/chat/attachments.js', import.meta.url), 'utf8');
 const generation = fs.readFileSync(new URL('../frontend/assets/chat/generation.js', import.meta.url), 'utf8');
 
-function harness(failAt = 0, mergeFails = false) {
+function harness(failAt = 0, mergeFails = false, mergingSamples = false) {
     const controls = new Map();
     const control = id => {
         if (!controls.has(id)) controls.set(id, {
@@ -24,6 +24,7 @@ function harness(failAt = 0, mergeFails = false) {
     let uploads = 0;
     let faqEnabled = false;
     let mergeStarted = false;
+    let mergePolls = 0;
     const fixedId = '11223344556677889900aabbccddeeff';
     const sandbox = {
         window: {
@@ -65,11 +66,18 @@ function harness(failAt = 0, mergeFails = false) {
                 return {ok: true, json: async () => ({state: 'processing'})};
             }
             if (url.endsWith('/batch/' + fixedId + '/status')) {
+                const phase = mergeStarted && mergingSamples && mergePolls++ < 2
+                    ? 'processing' : (mergeStarted ? 'ready' : 'not_started');
                 return {ok: true, json: async () => ({
                     total: uploads, completed: uploads, failed: 0,
                     running: false, finished: true, faq_requested: faqEnabled,
                     faq_ready: faqEnabled ? uploads : 0, faq_failed: 0,
-                    faq_merge_state: mergeStarted ? 'ready' : 'not_started'
+                    faq_merge_state: phase,
+                    faq_merge_completed: phase === 'processing' ? mergePolls : 3,
+                    faq_merge_total: 3, faq_merge_percent: 100 * mergePolls / 3,
+                    faq_merge_eta_seconds: phase === 'processing' ? 120 : null,
+                    faq_merge_elapsed_seconds: 30,
+                    faq_merge_current_step_seconds: 12
                 })};
             }
             throw Error('Unexpected endpoint ' + url);
@@ -207,5 +215,22 @@ test('FAQ consolidation error preserves anonymized source files and explains mis
     assert.equal(h.calls.filter(x => x.url.endsWith('/consolidate')).length, 1);
     assert.match(generation, /result\.faqMergeError/);
     assert.match(generation, /eml_sources_optional/);
-    assert.match(generation, /eml_merging_faq/);
+    assert.match(generation, /eml_merging_progress/);
+});
+
+
+test('FAQ progress shows measured ETA and active checkpoint steps', async () => {
+    const h = harness(0, false, true);
+    h.addEml('one.eml');
+    const result = await h.eml.submit('Erstelle eine anonymisierte FAQ', h.pending,
+        progress => h.events.push(progress));
+    assert.equal(result.success, true);
+    assert.ok(h.events.some(event =>
+        event.phase === 'merging' && event.mergeCompleted > 0 &&
+        event.mergeTotal === 3 && event.mergeEtaSeconds === 120));
+    assert.ok(h.calls.filter(x => x.url.endsWith('/status')).length > 2);
+    assert.match(generation, /eml_merging_progress/);
+    assert.match(generation, /eml_merging_time/);
+    assert.match(generation, /statusBar\(completed, totalSteps\)/);
+    assert.match(generation, /eml_merging_slow/);
 });
