@@ -50,6 +50,12 @@ function harness(failAt = 0) {
         file: (name, size = 1024) => ({name, size, lastModified: 42})};
 }
 
+test('normal chat boot makes no EML API requests', () => {
+    const h = harness();
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.controls('emlChatTray').hidden, true);
+});
+
 test('regular chat picker and drop handler pass EMLs only to queue staging', () => {
     assert.match(html, /id="emlChatPickFiles"/);
     assert.match(html, /id="emlChatPickFolder"/);
