@@ -81,6 +81,10 @@
     "preview_message": "This is what your message looks like."
   },
   "generation": {
+    "eml_processing_faq": "⏳ Anonymizing and preparing FAQ: {done}/{total} EMLs · {ready} FAQ drafts · {faqFailed} FAQ errors",
+    "eml_download_faq": "Download FAQ draft (Markdown)",
+    "eml_faq_unavailable": "FAQ could not be created. Check whether the local model is available; no unverified FAQ was generated.",
+    "eml_faq_incomplete": "{count} FAQ drafts failed. Check all generated results.",
     "eml_prompt_required": "Please ask to anonymize the attached EML files.",
     "eml_uploading": "⏳ Uploading EML files: {done}/{total}",
     "eml_processing": "⏳ Anonymizing: {done}/{total} ready for review · {failed} failed",

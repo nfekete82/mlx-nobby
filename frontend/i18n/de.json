@@ -81,6 +81,10 @@
     "preview_message": "So sieht deine Nachricht aus."
   },
   "generation": {
+    "eml_processing_faq": "⏳ Anonymisieren und FAQ erstellen: {done}/{total} EMLs · {ready} FAQ-Entwürfe · {faqFailed} FAQ-Fehler",
+    "eml_download_faq": "FAQ-Entwurf (Markdown) herunterladen",
+    "eml_faq_unavailable": "Die FAQ konnte nicht erstellt werden. Prüfe, ob das lokale Chatmodell erreichbar ist; es wurden keine unbelegten Antworten erzeugt.",
+    "eml_faq_incomplete": "Bei {count} E-Mails ist die FAQ-Erstellung fehlgeschlagen. Ergebnisse bitte prüfen.",
     "eml_prompt_required": "Bitte fordere die Anonymisierung der angehängten EML-Dateien an.",
     "eml_uploading": "⏳ EML-Dateien hochladen: {done}/{total}",
     "eml_processing": "⏳ Anonymisierung läuft: {done}/{total} zur Prüfung bereit · {failed} fehlgeschlagen",

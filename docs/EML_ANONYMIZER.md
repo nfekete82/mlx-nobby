@@ -1,6 +1,6 @@
 # Lokale EML-Stapel-Anonymisierung
 
-MLX-Nobby bietet unter /eml-anonymizer (Chat-Plusmenü: E-Mail-Anonymisierung) einen eigenständigen Import für einzelne und viele EML-Dateien. FAQ-Erstellung ist nicht enthalten.
+MLX-Nobby bietet unter /eml-anonymizer (Chat-Plusmenü: E-Mail-Anonymisierung) einen eigenständigen Import für einzelne und viele EML-Dateien. FAQ-Entwürfe können jetzt per kombiniertem Prompt aus den anonymisierten E-Mails erzeugt werden.
 
 ## Ablauf
 
@@ -52,3 +52,24 @@ Technik: Uploads erhalten eine zufällige Stapel-ID. `/api/eml-anonymizer/batch/
 Verarbeitung: maximal 30 MiB pro EML, 10.000 gleichzeitig angehängte EML-Dateien, maximal 20 GiB Gesamtspeicher des Bestands. Die Inhalte werden nur zum lokalen Anonymisierer hochgeladen, nicht als Text an das LLM gesendet oder im Chatverlauf abgelegt. Im gespeicherten Chat stehen nur Prompt, Fortschritt und Download-Link. Bei Importfehlern bleiben die noch nicht hochgeladenen EML-Anhänge zur Wiederholung erhalten.
 
 Tests: `node --test tests/test_chat_eml_batch.mjs`, `./scripts/mlx test-quick tests/test_eml_anonymizer.py` und Browser-CI.
+
+
+## FAQ direkt im Chat erstellen
+
+Eine oder mehrere `.eml` über **Datei hinzufügen** hochladen, einen Ordner auf den Chat ziehen und zum Beispiel schreiben:
+
+`Anonymisiere diese E-Mails, entferne Signaturen und erstelle aus den fachlichen Fragen und Antworten eine FAQ.`
+
+Der Chat erkennt den FAQ-Wunsch auch ohne das Wort „anonymisieren“ und führt aus Datenschutzgründen **immer zuerst die lokale EML-Anonymisierung einschließlich lokaler KI-Namenserkennung aus**. Anschließend erzeugt ausschließlich das **lokale** MLX-Chatmodell bis zu zwei FAQ-Entwürfe pro EML, maximal aus den ersten 10.000 Zeichen des bereits anonymisierten Textes. Es darf keine nicht belegte Lösung behaupten: Reklamationen ohne nachgewiesenen Abschluss werden als „offen“ gekennzeichnet. Reine Höflichkeitsnachrichten erzeugen keine FAQ.
+
+Im Chat werden Fortschritt, bestehender EML-/ZIP-Download und bei verfügbaren Einträgen zusätzlich **FAQ-Entwurf (Markdown) herunterladen** angezeigt. Die UTF-8-Datei enthält Kategorie, Frage, Antwort und Bearbeitungsstatus. Doppelte identische Frage-Antwort-Paare werden beim Export zusammengeführt. Nicht erreichbare Modelle oder ungültige Antworten führen zu sichtbaren FAQ-Fehlern, **nicht zu erfundenen Antworten**. Die anonymisierten EML-Dateien stehen weiterhin zum Download.
+
+Der FAQ-Prozess ist für größere Bestände rechenintensiv; pro E-Mail wird eine weitere lokale Modellanfrage benötigt. Der Nutzer-Prompt dient derzeit zur Wahl des EML-Anonymisierungs- und optionalen FAQ-Modus, nicht zur beliebigen Neu-Definition sämtlicher Filterregeln. FAQ-Ausgaben bleiben **Entwürfe mit zwingender fachlicher und Datenschutzprüfung**. Die lokale KI kann versehentlich noch identifizierende Angaben übernehmen. Vor externer Nutzung prüfen.
+
+### Umlaute und Zeichencodierung
+
+Der MIME-Parser bevorzugt korrektes UTF-8 auch dann, wenn ein älterer Client den Body als ISO-8859-1 oder CP1252 bezeichnet. Für Legacy-Bytes werden deklarierte und gängige westliche Zeichensätze ausprobiert. Erkennbar falsch dekodierte Folgen wie `GrÃ¼ße` werden vorsichtig repariert. Die exportierten EMLs verwenden MIME-konformes UTF-8 mit lesbarem 8bit-Textkörper (nicht mehr Quoted-Printable), der FAQ-Entwurf ist UTF-8-Markdown. Sehr stark beschädigte oder gemischt kodierte Originale müssen weiterhin manuell kontrolliert werden.
+
+FAQ-Status und Daten sind pro Chat-Auftrag im lokalen SQLite-Bestand gespeichert und werden bei `/api/eml-anonymizer/batch/{batch_id}/faq` ausgegeben. Bei `purge` werden auch die FAQ-Zwischenstände gelöscht.
+
+Tests: `./scripts/mlx test-quick tests/test_eml_anonymizer.py` und `node --test tests/test_chat_eml_batch.mjs`.
