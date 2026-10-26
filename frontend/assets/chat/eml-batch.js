@@ -6,9 +6,15 @@ window.MLXChatEml = (() => {
     const API = '/api/eml-anonymizer';
     let busy = false;
 
+    function wantsFAQ(prompt) {
+        return /\bfaq\b|wissensdatenbank|frage[- ]?antwort[- ]?sammlung|häufig(?:e|en)\s+fragen/i.test(prompt || '');
+    }
+
     function wantsRedaction(prompt) {
-        return /anonymis|anonymiz|pseudonymis|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(prompt || '') &&
-            !/\b(?:nicht|kein(?:e|en|er)?|ohne)\s+(?:die\s+)?(?:eml[- ]?)?(?:dateien\s+)?anonymis/i.test(prompt || '');
+        const value = String(prompt || '');
+        if (wantsFAQ(value)) return true; // FAQ always follows local redaction.
+        return /anonymis|anonymiz|pseudonymis|pseudonymiz|redact|personenbezogene\s+daten\s+entfern/i.test(value) &&
+            !/\b(?:nicht|kein(?:e|en|er)?|ohne)\s+(?:die\s+)?(?:eml[- ]?)?(?:dateien\s+)?anonymis/i.test(value);
     }
 
     function useLocalAI(prompt) {
@@ -65,6 +71,7 @@ window.MLXChatEml = (() => {
         const total = emls.length;
         const uploaded = [];
         const localAI = useLocalAI(prompt);
+        const createFAQ = wantsFAQ(prompt);
         try {
             onProgress({phase: 'upload', imported, total});
             for (const item of emls) {
@@ -87,7 +94,10 @@ window.MLXChatEml = (() => {
             await request('/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({use_local_ai: localAI})
+                body: JSON.stringify({
+                    use_local_ai: localAI, create_faq: createFAQ,
+                    batch_id: createFAQ ? batchId : ""
+                })
             });
 
             // Poll only this batch, not totals from previously imported jobs.
@@ -98,11 +108,21 @@ window.MLXChatEml = (() => {
                 const completed = state.completed || 0;
                 const failed = state.failed || 0;
                 onProgress({phase: 'processing', imported, total,
-                            completed, failed, running: state.running});
+                            completed, failed, running: state.running,
+                            faqRequested: createFAQ,
+                            faqReady: state.faq_ready || 0,
+                            faqFailed: state.faq_failed || 0,
+                            faqEmpty: state.faq_empty || 0});
                 if (state.finished) {
                     return {
                         handled: true, success: true, imported, total,
                         completed, failed, batchId, useLocalAI: localAI,
+                        faqRequested: createFAQ,
+                        faqReady: state.faq_ready || 0,
+                        faqFailed: state.faq_failed || 0,
+                        faqUrl: createFAQ && state.faq_ready
+                            ? '/api/eml-anonymizer/batch/' + batchId + '/faq'
+                            : '',
                         finished: true,
                         downloadUrl: completed
                             ? '/api/eml-anonymizer/batch/' + batchId +
@@ -131,5 +151,6 @@ window.MLXChatEml = (() => {
         }
     }
 
-    return {submit, wantsRedaction, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
+    return {submit, wantsRedaction, isBusy: () => busy,
+            __test: {wantsRedaction, wantsFAQ, useLocalAI}};
 })();
