@@ -18,4 +18,9 @@ services:
       MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-250}"
       MLX_ALLOWED_HOSTS: "${MLX_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}"
       MLX_NOBBY_BUILD_SHA: "${MLX_NOBBY_BUILD_SHA:-unknown}"
+    volumes:
+      - nobby-eml-data:/app-data/eml
     restart: unless-stopped
+
+volumes:
+  nobby-eml-data:
