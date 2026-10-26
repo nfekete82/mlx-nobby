@@ -2350,6 +2350,11 @@ return;
                     '⏳ Uploading EML files: {done}/{total}', {
                         done: state.imported, total: state.total
                     }));
+            } else if (state.phase === 'merging') {
+                updateMessage(gt('eml_merging_faq',
+                    '⏳ Combining {count} FAQ drafts into one document…', {
+                        count: state.faqReady
+                    }));
             } else {
                 const status = state.faqRequested
                     ? gt('eml_processing_faq',
@@ -2371,24 +2376,34 @@ return;
                 '✓ Completed: {done}/{total} EML files ready for review · {failed} failed.', {
                     done: result.completed, total: result.total, failed: result.failed
                 });
-            if (result.downloadUrl) {
-                const name = result.total === 1
-                    ? gt('eml_download_single', 'Download anonymized EML')
-                    : gt('eml_download_zip', 'Download anonymized EMLs as ZIP');
-                message += '\n\n[' + name + '](' + result.downloadUrl + ')';
-            }
             if (result.faqRequested) {
-                message += result.faqUrl
-                    ? '\n\n[' + gt('eml_download_faq', 'Download FAQ draft (Markdown)') + '](' +
-                      result.faqUrl + ')'
-                    : '\n\n' + gt('eml_faq_unavailable',
-                        'FAQ could not be created. Check whether the local model is available; no unverified FAQ was generated.');
+                if (result.faqUrl) {
+                    message += '\n\n[' + gt('eml_download_faq',
+                        'Download one consolidated FAQ (Markdown)') + '](' +
+                        result.faqUrl + ')';
+                } else {
+                    message += '\n\n' + gt('eml_faq_unavailable',
+                        'The FAQ could not be created. Please verify the local model.');
+                }
                 if (result.faqFailed) {
                     message += '\n\n' + gt('eml_faq_incomplete',
                         '{count} FAQ drafts failed. Check all generated results.', {
                             count: result.faqFailed
                         });
                 }
+                if (result.faqMergeError) {
+                    message += '\n\n' + gt('eml_merge_failed',
+                        'The FAQ drafts could not be combined automatically.');
+                }
+            }
+            if (result.downloadUrl) {
+                const name = result.faqRequested
+                    ? gt('eml_sources_optional',
+                        'Optional: Download anonymized source EML files')
+                    : (result.total === 1
+                        ? gt('eml_download_single', 'Download anonymized EML')
+                        : gt('eml_download_zip', 'Download anonymized EMLs as ZIP'));
+                message += '\n\n[' + name + '](' + result.downloadUrl + ')';
             }
             message += '\n\n' + gt('eml_review_warning',
                 'Automatic anonymization is not guaranteed. Review the output before sharing.');
