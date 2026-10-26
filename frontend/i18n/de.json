@@ -1,5 +1,6 @@
 {
   "eml_chat": {
+    "pick_folder_generic": "Dateiordner anhängen",
     "pick_files": "EML-Dateien hinzufügen",
     "pick_files_hint": "Hier im Chat anonymisieren",
     "pick_folder": "EML-Ordner hinzufügen",
@@ -576,6 +577,9 @@
   "knowledge.folder_opened": "Ordnerauswahl geöffnet …",
   "knowledge.folder_selected": "✓ Ordner ausgewählt",
   "knowledge.error": "Fehler: {message}",
+  "attachments.eml_more": "… und {count} weitere EML-Dateien",
+  "attachments.eml_empty": "EML-Datei ist leer oder ungültig.",
+  "attachments.eml_limit": "Maximal 10.000 EML-Dateien pro Stapel.",
   "attachments.unsupported_type": "Dateityp nicht unterstützt: {name}",
   "attachments.unknown_error": "Unbekannter Fehler",
   "attachments.pdf_processing_failed": "PDF konnte nicht verarbeitet werden.",
