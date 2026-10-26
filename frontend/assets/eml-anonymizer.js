@@ -88,6 +88,13 @@
         catch (error) { message(error.message); }
     });
     $('refresh').addEventListener('click', status);
+    $('retry').addEventListener('click', async () => {
+        try {
+            const result = await request('/retry', {method:'POST'});
+            message(result.requeued + ' fehlgeschlagene E-Mails erneut angestellt.');
+            await status();
+        } catch (error) { message(error.message); }
+    });
     $('export').addEventListener('click', () => {
         window.location.assign(api + '/export');
     });
