@@ -135,7 +135,7 @@ RE_PHONE = re.compile(r"(?<![\w])(?:\+49|0049|0)[\s()\/.-]*(?:\d[\s()\/.-]*){7,1
 RE_IP = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 RE_DATE = re.compile(r"\b(?:[0-3]?\d[./-][01]?\d[./-](?:19|20)?\d{2}|(?:19|20)\d{2}-[01]\d-[0-3]\d)\b")
 RE_TIME = re.compile(r"\b(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\b")
-RE_POST = re.compile(r"\b\d{5}\s+[\wÄÖÜäöüß\- ]{3,35}(?=\n|,|$)")
+RE_POST = re.compile(r"\b\d{5}\s+[\wÄÖÜäöüß\- ]{3,35}(?=[\n,.;!?]|$)")
 RE_STREET = re.compile(r"(?im)\b[A-ZÄÖÜ][\wÄÖÜäöüß\- ]{2,55}"
                        r"(?:straße|strasse|weg|allee|platz|gasse|ring|str\.)\s*\d+[a-zA-Z]?\b")
 RE_REGISTER = re.compile(r"(?i)\b(?:HRB|HRA|USt[- .]?IdNr\.?|Steuernummer|Kundennummer|"
