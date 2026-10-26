@@ -164,7 +164,8 @@ window.MLXChatEml = (() => {
         el('emlChatPickFiles')?.addEventListener('click', () => el('emlChatFiles')?.click());
         el('emlChatPickFolder')?.addEventListener('click', () => el('emlChatFolder')?.click());
         el('emlChatClear')?.addEventListener('click', clear);
-        refresh();
+        // No EML API request during ordinary chat startup. The backend may
+        // intentionally be unavailable in isolated chat-only environments.
         setInterval(() => { if (queueVisible) refresh(); }, 5000);
     }
 
