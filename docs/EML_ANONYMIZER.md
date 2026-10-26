@@ -68,7 +68,7 @@ Der FAQ-Prozess ist für größere Bestände rechenintensiv; pro E-Mail wird ein
 
 ### Umlaute und Zeichencodierung
 
-Der MIME-Parser bevorzugt korrektes UTF-8 auch dann, wenn ein älterer Client den Body als ISO-8859-1 oder CP1252 bezeichnet. Für Legacy-Bytes werden deklarierte und gängige westliche Zeichensätze ausprobiert. Erkennbar falsch dekodierte Folgen wie `GrÃ¼ße` werden vorsichtig repariert. Die exportierten EMLs sind MIME-konform mit UTF-8, der FAQ-Entwurf ist UTF-8-Markdown. Sehr stark beschädigte oder gemischt kodierte Originale müssen weiterhin manuell kontrolliert werden.
+Der MIME-Parser bevorzugt korrektes UTF-8 auch dann, wenn ein älterer Client den Body als ISO-8859-1 oder CP1252 bezeichnet. Für Legacy-Bytes werden deklarierte und gängige westliche Zeichensätze ausprobiert. Erkennbar falsch dekodierte Folgen wie `GrÃ¼ße` werden vorsichtig repariert. Die exportierten EMLs verwenden MIME-konformes UTF-8 mit lesbarem 8bit-Textkörper (nicht mehr Quoted-Printable), der FAQ-Entwurf ist UTF-8-Markdown. Sehr stark beschädigte oder gemischt kodierte Originale müssen weiterhin manuell kontrolliert werden.
 
 FAQ-Status und Daten sind pro Chat-Auftrag im lokalen SQLite-Bestand gespeichert und werden bei `/api/eml-anonymizer/batch/{batch_id}/faq` ausgegeben. Bei `purge` werden auch die FAQ-Zwischenstände gelöscht.
 
