@@ -22,6 +22,7 @@ function harness(failAt = 0) {
     const calls = [];
     const events = [];
     let uploads = 0;
+    let faqEnabled = false;
     const fixedId = '11223344556677889900aabbccddeeff';
     const sandbox = {
         window: {
@@ -52,11 +53,15 @@ function harness(failAt = 0) {
                 };
                 return {ok: true, json: async () => ({accepted: true})};
             }
-            if (url.endsWith('/start')) return {ok: true, json: async () => ({running: true})};
+            if (url.endsWith('/start')) {
+                faqEnabled = JSON.parse(args.body).create_faq === true;
+                return {ok: true, json: async () => ({running: true})};
+            }
             if (url.endsWith('/batch/' + fixedId + '/status')) {
                 return {ok: true, json: async () => ({
                     total: uploads, completed: uploads, failed: 0,
-                    running: false, finished: true
+                    running: false, finished: true, faq_requested: faqEnabled,
+                    faq_ready: faqEnabled ? uploads : 0, faq_failed: 0
                 })};
             }
             throw Error('Unexpected endpoint ' + url);
@@ -156,4 +161,26 @@ test('chat displays inline in-progress message and renders downloadable link', (
     assert.match(generation, /MLXChatRendering\.renderAll\(\{contentUpdated: true\}\)/);
     assert.match(generation, /eml_review_warning/);
     assert.match(generation, /window\.MLXChatEml\.submit\(prompt, emlAttachments, onProgress\)/);
+});
+
+
+test('a single FAQ prompt requests redaction followed by local FAQ generation', async () => {
+    const h = harness();
+    h.addEml('support.eml');
+    assert.equal(h.eml.__test.wantsFAQ('Erstelle daraus eine FAQ'), true);
+    assert.equal(h.eml.__test.wantsRedaction('Fasse die EML-Dateien als FAQ zusammen'), true);
+    const result = await h.eml.submit('Bitte E-Mails anonymisieren und als FAQ zusammenfassen', h.pending);
+    assert.equal(result.success, true);
+    assert.equal(result.faqRequested, true);
+    assert.equal(result.faqReady, 1);
+    assert.equal(result.faqUrl, '/api/eml-anonymizer/batch/' + h.fixedId + '/faq');
+    assert.equal(result.downloadUrl, '/api/eml-anonymizer/batch/' + h.fixedId + '/result');
+    const request = h.calls.find(x => x.url.endsWith('/start'));
+    const data = JSON.parse(request.args.body);
+    assert.equal(data.create_faq, true);
+    assert.equal(data.batch_id, h.fixedId);
+    assert.equal(data.use_local_ai, false);
+    assert.match(generation, /result\.faqUrl/);
+    assert.match(generation, /eml_processing_faq/);
+    assert.match(generation, /eml_faq_unavailable/);
 });
