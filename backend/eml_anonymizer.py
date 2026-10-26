@@ -538,6 +538,7 @@ class StartOptions(BaseModel):
 def status():
     setup()
     launch()
+    launch_faq_merges()
     with db() as con:
         rows = con.execute("SELECT state, COUNT(*) AS count FROM jobs "
                            "GROUP BY state").fetchall()
@@ -1159,6 +1160,9 @@ def purge():
     if setting("running") == "1":
         raise HTTPException(409, "Verarbeitung zuerst pausieren")
     with db() as con:
+        if con.execute("SELECT COUNT(*) FROM faq_summaries WHERE state IN "
+                       "('processing','queued')").fetchone()[0]:
+            raise HTTPException(409, "FAQ-Zusammenfassung zuerst abschließen")
         if con.execute("SELECT COUNT(*) FROM jobs WHERE state='processing'").fetchone()[0]:
             raise HTTPException(409, "Verarbeitung noch nicht abgeschlossen")
         # Disk artifacts first; database is then cleared. Never touch other folders.
@@ -1168,4 +1172,5 @@ def purge():
                     item.unlink()
         con.execute("DELETE FROM jobs")
         con.execute("DELETE FROM faq_summaries")
+        con.execute("DELETE FROM faq_merge_steps")
     return {"ok": True}
