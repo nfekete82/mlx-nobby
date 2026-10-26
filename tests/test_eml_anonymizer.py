@@ -234,3 +234,131 @@ def test_existing_queue_db_migrates_without_dropping_jobs(isolated, monkeypatch)
         row = con.execute("SELECT id,batch_id FROM jobs").fetchone()
         assert row["id"] == "existing"
         assert row["batch_id"] == ""
+
+
+
+def test_legacy_and_mislabeled_charsets_keep_german_umlauts(isolated):
+    base = (b"From: Info <info@example.org>\r\n"
+            b"Subject: =?utf-8?Q?R=C3=BCckfrage_zur_Geb=C3=BChr?=\r\n"
+            b"MIME-Version: 1.0\r\n")
+    utf8_wrongly_latin1 = (base +
+        b"Content-Type: text/plain; charset=iso-8859-1\r\n"
+        b"Content-Transfer-Encoding: 8bit\r\n\r\n" +
+        "Viele Grüße, bitte für die Änderung prüfen.".encode("utf-8"))
+    subject, text, _, _ = isolated.get_content(utf8_wrongly_latin1)
+    assert "Rückfrage" in subject
+    assert "Gebühr" in subject
+    assert "Grüße" in text
+    assert "Änderung" in text
+    assert "Ã" not in text
+
+    legacy_wrongly_utf8 = (base +
+        b"Content-Type: text/plain; charset=utf-8\r\n"
+        b"Content-Transfer-Encoding: 8bit\r\n\r\n" +
+        "Für die Gebühr sind 12 € gutgeschrieben.".encode("cp1252"))
+    _, text, _, _ = isolated.get_content(legacy_wrongly_utf8)
+    assert "Für die Gebühr" in text
+    assert "€" in text
+    assert "\ufffd" not in text
+    assert isolated.repair_mojibake("Viele GrÃ¼ße, Größe und Ã„nderung") == \
+        "Viele Grüße, Größe und Änderung"
+
+    clean, _ = isolated.anonymize(utf8_wrongly_latin1)
+    final = BytesParser(policy=policy.default).parsebytes(clean)
+    assert "Grüße" in final.get_content()
+    assert "Änderung" in final.get_content()
+
+
+def test_faq_is_grounded_in_redacted_eml_and_downloadable(isolated, monkeypatch):
+    observed = []
+    def local_draft(prompt, max_tokens=850):
+        observed.append(prompt)
+        assert "Max Mustermann" not in prompt
+        assert "Erika Musterfrau" not in prompt
+        assert "erika@example.com" not in prompt
+        return json.dumps({"items": [{
+            "frage": "Wie wird die Anschlussgebühr gutgeschrieben?",
+            "antwort": "Die Gutschrift wurde reklamiert; die Bestätigung steht noch aus.",
+            "kategorie": "Mobilfunk",
+            "status": "offen"
+        }]}, ensure_ascii=False)
+    monkeypatch.setattr(isolated, "local_chat_reply", local_draft)
+    app = FastAPI()
+    app.include_router(isolated.router)
+    batch = "a" * 32
+    with TestClient(app) as client:
+        response = client.post("/api/eml-anonymizer/upload",
+            data={"batch_id": batch},
+            files={"file": ("private.eml", io.BytesIO(example_mail().as_bytes()),
+                             "message/rfc822")})
+        assert response.status_code == 201
+        result = client.post("/api/eml-anonymizer/start", json={
+            "use_local_ai": False, "create_faq": True, "batch_id": batch})
+        assert result.status_code == 200
+        import time
+        for _ in range(100):
+            state = client.get("/api/eml-anonymizer/batch/" + batch + "/status").json()
+            if state["finished"]:
+                break
+            time.sleep(.05)
+        assert state["finished"]
+        assert state["faq_requested"]
+        assert state["faq_ready"] == 1
+        assert state["faq_failed"] == 0
+        assert observed
+        faq = client.get("/api/eml-anonymizer/batch/" + batch + "/faq")
+        assert faq.status_code == 200
+        markdown = faq.content.decode("utf-8")
+        assert "Anschlussgebühr" in markdown
+        assert "Mobilfunk" in markdown
+        assert "Bestätigung steht noch aus" in markdown
+        assert "Max Mustermann" not in markdown
+        assert "Prüfpflichtig" in markdown
+        assert "charset=utf-8" in faq.headers["content-type"]
+
+
+def test_unavailable_faq_model_does_not_block_redacted_eml(isolated, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise ConnectionError("local model not available")
+    monkeypatch.setattr(isolated, "local_chat_reply", unavailable)
+    app = FastAPI()
+    app.include_router(isolated.router)
+    batch = "b" * 32
+    with TestClient(app) as client:
+        assert client.post("/api/eml-anonymizer/upload",
+            data={"batch_id": batch},
+            files={"file": ("private.eml", io.BytesIO(example_mail().as_bytes()),
+                            "message/rfc822")}).status_code == 201
+        assert client.post("/api/eml-anonymizer/start", json={
+            "use_local_ai": False, "create_faq": True, "batch_id": batch}).status_code == 200
+        import time
+        for _ in range(100):
+            state = client.get("/api/eml-anonymizer/batch/" + batch + "/status").json()
+            if state["finished"]:
+                break
+            time.sleep(.05)
+        assert state["finished"]
+        assert state["completed"] == 1
+        assert state["faq_failed"] == 1
+        assert client.get("/api/eml-anonymizer/batch/" + batch + "/result").status_code == 200
+        assert client.get("/api/eml-anonymizer/batch/" + batch + "/faq").status_code == 503
+
+
+def test_faq_rejects_missing_batch_and_preserves_legacy_jobs(isolated, monkeypatch):
+    app = FastAPI()
+    app.include_router(isolated.router)
+    with TestClient(app) as client:
+        response = client.post("/api/eml-anonymizer/start", json={
+            "create_faq": True, "batch_id": ""})
+        assert response.status_code == 404
+        response = client.get("/api/eml-anonymizer/batch/" + ("f" * 32) + "/faq")
+        assert response.status_code == 404
+    with isolated.db() as con:
+        con.execute("INSERT INTO jobs(id,ordinal,size,state,created,updated) "
+                    "VALUES('legacy', 5, 123, 'queued', 1, 1)")
+    monkeypatch.setattr(isolated, "_READY", False)
+    isolated.setup()
+    with isolated.db() as con:
+        row = con.execute("SELECT faq_requested,faq_state FROM jobs WHERE id='legacy'").fetchone()
+        assert row["faq_requested"] == 0
+        assert row["faq_state"] == "off"
