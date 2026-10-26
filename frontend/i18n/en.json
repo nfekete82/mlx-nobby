@@ -1,4 +1,22 @@
 {
+  "eml_chat": {
+    "pick_files": "Add EML files",
+    "pick_files_hint": "Anonymize directly in chat",
+    "pick_folder": "Add EML folder",
+    "pick_folder_hint": "All .eml files in the folder",
+    "clear": "Remove selection",
+    "local_ai": "Use local AI to detect additional names (slower)",
+    "workspace": "Progress and ZIP export",
+    "selected": "{count} EML files staged",
+    "no_selection": "No new EML files staged",
+    "counts": "Queued {queued} · Active {active} · Review {review} · Failed {failed}",
+    "suggested_prompt": "Anonymize these EML files.",
+    "rejected": "{count} files skipped (only valid EML up to 30 MiB)",
+    "busy": "An EML import is already running.",
+    "intent_required": "Please explicitly request anonymization of these EML files.",
+    "import_progress": "EML import: {done}/{total}",
+    "import_error": "Import/start failed: {error}"
+  },
   "language": {
     "title": "Language",
     "label": "Interface language",

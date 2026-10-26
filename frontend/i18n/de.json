@@ -1,4 +1,22 @@
 {
+  "eml_chat": {
+    "pick_files": "EML-Dateien hinzufügen",
+    "pick_files_hint": "Hier im Chat anonymisieren",
+    "pick_folder": "EML-Ordner hinzufügen",
+    "pick_folder_hint": "Alle .eml im gewählten Ordner",
+    "clear": "Auswahl entfernen",
+    "local_ai": "Lokale KI zur zusätzlichen Namenserkennung (langsamer)",
+    "workspace": "Fortschritt und ZIP-Export",
+    "selected": "{count} EML-Dateien vorgemerkt",
+    "no_selection": "Keine neuen EML-Dateien vorgemerkt",
+    "counts": "Wartend {queued} · In Arbeit {active} · Zur Prüfung {review} · Fehler {failed}",
+    "suggested_prompt": "Anonymisiere diese EML-Dateien.",
+    "rejected": "{count} Dateien übersprungen (nur gültige EML bis 30 MiB)",
+    "busy": "Der EML-Import läuft bereits.",
+    "intent_required": "Bitte ausdrücklich „Anonymisiere diese E-Mails“ schreiben.",
+    "import_progress": "EML-Import: {done}/{total}",
+    "import_error": "Import/Start fehlgeschlagen: {error}"
+  },
   "language": {
     "title": "Sprache",
     "label": "Oberflächensprache",

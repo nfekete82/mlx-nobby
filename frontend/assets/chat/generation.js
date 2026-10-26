@@ -2307,6 +2307,45 @@ return;
 
         return;
     }
+
+    // Explicit local EML redaction stays outside model routing and chat
+    // context. Only counts and the user's instruction reach chat history.
+    if (window.MLXChatEml?.hasStaged?.()) {
+        if (currentAttachments.length) {
+            alert(gt('eml_separate_files',
+                'EML anonymization and other attachments must be sent separately.'));
+            return;
+        }
+        const result = await window.MLXChatEml.submit(prompt);
+        if (result.handled) {
+            if (!result.success && !result.imported) {
+                alert(result.error);
+                return;
+            }
+            session.messages.push({
+                role: 'user',
+                content: prompt,
+                display_content: prompt
+            });
+            let outcome = result.success
+                ? gt('eml_started',
+                    '{count} EML files imported. Local anonymization started; all results require review.',
+                    {count: result.imported})
+                : gt('eml_partial',
+                    '{count} EML files imported. Import/start failed: {error}. Remaining files stay selected; use the EML workspace to resume.',
+                    {count: result.imported, error: result.error});
+            outcome += '\n\n[EML-Warteschlange, Fortschritt und ZIP-Export](/eml-anonymizer)';
+            session.messages.push({role: 'assistant', content: outcome});
+            MLXChatSessions.updateTitle(session);
+            session.updated = Date.now();
+            MLXChatSessions.saveSessions();
+            if (result.success) input.value = '';
+            MLXChatRuntime.autoResize();
+            MLXChatRendering.renderAll({contentUpdated: true});
+            return;
+        }
+    }
+
 const imageFiles =
         currentAttachments.filter(
             file => file.kind === 'image'

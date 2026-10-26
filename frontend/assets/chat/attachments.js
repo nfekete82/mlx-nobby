@@ -718,7 +718,12 @@ function attachmentT(key, fallback = '', variables = {}) {
     let addingFiles = Promise.resolve();
     function addFiles(files) {
         const list = Array.from(files);
-        addingFiles = addingFiles.catch(() => {}).then(() => addFilesSequential(list));
+        const emls = list.filter(file => fileExtension(file.name) === 'eml');
+        if (emls.length) {
+            window.MLXChatEml?.stageFiles(emls);
+        }
+        const ordinary = list.filter(file => fileExtension(file.name) !== 'eml');
+        addingFiles = addingFiles.catch(() => {}).then(() => addFilesSequential(ordinary));
         return addingFiles;
     }
 
