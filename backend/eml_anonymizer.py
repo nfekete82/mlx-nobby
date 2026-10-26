@@ -15,6 +15,8 @@ import threading
 import uuid
 import zipfile
 from collections import defaultdict
+from contextlib import contextmanager
+from urllib.parse import urlsplit
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -38,6 +40,7 @@ CHUNK = 1024 * 1024
 _LOCK = Lock()
 _READY = False
 _THREAD = None
+_UPLOAD_LOCK = Lock()
 
 
 class HtmlText(HTMLParser):
@@ -63,10 +66,15 @@ class HtmlText(HTMLParser):
             self.parts.append(data)
 
 
+@contextmanager
 def db():
     connection = sqlite3.connect(ROOT / "queue.sqlite3", timeout=30)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def setup():
@@ -148,8 +156,8 @@ RE_SIGNATURE = re.compile(r"(?im)^.*(?:Amtsgericht|Geschäftsführer:|Prokurist:
                           r"Diese E-Mail enthält vertraulich).*$")
 
 
-def redact(text, *, headers=(), ai_spans=()):
-    replace = placeholders()
+def redact(text, *, headers=(), ai_spans=(), replace=None):
+    replace = replace or placeholders()
     text = text.replace("\x00", "")
     candidates = []
     for name in headers:
@@ -227,8 +235,11 @@ def local_ai_spans(text):
     import urllib.error
     agent = os.environ.get("AGENT_URL", "http://host.docker.internal:8010").rstrip("/")
     # Route must remain inside the existing host-agent bridge.
-    if not (agent.startswith("http://host.docker.internal:8010")
-            or agent.startswith("http://127.0.0.1:8010")):
+    parsed = urlsplit(agent)
+    if (parsed.scheme != "http" or parsed.hostname not in
+            {"host.docker.internal", "127.0.0.1", "localhost"}
+            or parsed.port != 8010 or parsed.username or parsed.password
+            or parsed.path or parsed.query or parsed.fragment):
         raise RuntimeError("Lokaler MLX-Agent nicht konfiguriert")
     with urlopen(agent + "/api/status", timeout=5) as response:
         model = json.load(response).get("model")
@@ -269,8 +280,9 @@ def anonymize(raw, use_ai=False):
                 warnings.append("KI-Prüfung nur für erste 12000 Zeichen")
         except Exception:
             warnings.append("Lokale KI nicht verfügbar; nur regelbasierte Erkennung")
-    clean_subject = redact(subject, headers=names, ai_spans=suggested)
-    clean_body = redact(body, headers=names, ai_spans=suggested)
+    replace = placeholders()
+    clean_subject = redact(subject, headers=names, ai_spans=suggested, replace=replace)
+    clean_body = redact(body, headers=names, ai_spans=suggested, replace=replace)
     output = EmailMessage()
     output["From"] = "anonymisiert@invalid.example"
     output["To"] = "anonymisiert@invalid.example"
@@ -288,12 +300,13 @@ def worker():
                 item = con.execute(
                     "SELECT id FROM jobs WHERE state='queued' ORDER BY ordinal LIMIT 1"
                 ).fetchone()
-                if not item:
-                    set_setting("running", "0")
-                    return
-                identifier = item["id"]
-                con.execute("UPDATE jobs SET state='processing', updated=? WHERE id=?",
-                            (time(), identifier))
+                if item:
+                    identifier = item["id"]
+                    con.execute("UPDATE jobs SET state='processing', updated=? WHERE id=?",
+                                (time(), identifier))
+            if not item:
+                set_setting("running", "0")
+                return
             source = ROOT / "incoming" / (identifier + ".eml")
             target = ROOT / "outgoing" / (identifier + ".eml")
             try:
@@ -352,10 +365,8 @@ async def upload(file: UploadFile = File(...)):
     setup()
     if not (file.filename or "").lower().endswith(".eml"):
         raise HTTPException(415, "Nur .eml-Dateien erlaubt")
-    with db() as con:
-        aggregate = con.execute("SELECT COALESCE(SUM(size),0) FROM jobs").fetchone()[0]
-    if aggregate >= MAX_TOTAL:
-        raise HTTPException(413, "Speicherlimit für diesen Import erreicht (20 GiB)")
+    if (ROOT / "queue.sqlite3").is_symlink():
+        raise HTTPException(500, "Ungültiger Speicherpfad")
     identifier = uuid.uuid4().hex
     temporary = ROOT / "temporary" / (identifier + ".upload")
     size = 0
@@ -364,18 +375,23 @@ async def upload(file: UploadFile = File(...)):
             os.chmod(temporary, 0o600)
             while data := await file.read(CHUNK):
                 size += len(data)
-                if size > MAX_FILE or size + aggregate > MAX_TOTAL:
-                    raise HTTPException(413, "EML-Datei oder Gesamtimport zu groß")
+                if size > MAX_FILE:
+                    raise HTTPException(413, "EML-Datei größer als 30 MiB")
                 target.write(data)
         if size < 10:
             raise HTTPException(422, "Leere oder ungültige EML")
-        with db() as con:
-            ordinal = con.execute(
-                "SELECT COALESCE(MAX(ordinal),0)+1 FROM jobs").fetchone()[0]
-            os.replace(temporary, ROOT / "incoming" / (identifier + ".eml"))
-            con.execute("INSERT INTO jobs(id,ordinal,size,state,created,updated) "
-                        "VALUES(?,?,?,?,?,?)",
-                        (identifier, ordinal, size, "queued", time(), time()))
+        with _UPLOAD_LOCK:
+            with db() as con:
+                aggregate = con.execute(
+                    "SELECT COALESCE(SUM(size),0) FROM jobs").fetchone()[0]
+                if aggregate + size > MAX_TOTAL:
+                    raise HTTPException(413, "Gesamtimport größer als 20 GiB")
+                ordinal = con.execute(
+                    "SELECT COALESCE(MAX(ordinal),0)+1 FROM jobs").fetchone()[0]
+                os.replace(temporary, ROOT / "incoming" / (identifier + ".eml"))
+                con.execute("INSERT INTO jobs(id,ordinal,size,state,created,updated) "
+                            "VALUES(?,?,?,?,?,?)",
+                            (identifier, ordinal, size, "queued", time(), time()))
     finally:
         temporary.unlink(missing_ok=True)
         await file.close()
@@ -405,6 +421,8 @@ def export():
     if setting("running") == "1":
         raise HTTPException(409, "Verarbeitung vor ZIP-Export pausieren")
     with db() as con:
+        if con.execute("SELECT COUNT(*) FROM jobs WHERE state='processing'").fetchone()[0]:
+            raise HTTPException(409, "Aktuelle E-Mail wird noch verarbeitet")
         rows = con.execute("SELECT ordinal,id,warnings FROM jobs WHERE state='review' "
                            "ORDER BY ordinal").fetchall()
     if not rows:
