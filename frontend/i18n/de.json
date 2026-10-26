@@ -1,5 +1,11 @@
 {
   "eml_chat": {
+    "eml_merging_progress": "⏳ {count} FAQ-Entwürfe zu einer gemeinsamen Datei zusammenführen. Schritt {done}/{total}",
+    "eml_merging_time": "Geschätzte Restzeit: {eta} · Bisher: {elapsed}",
+    "eml_merging_step_age": "Aktueller Modellschritt läuft seit {age}",
+    "eml_merging_queued": "In Warteschlange: Vorheriger FAQ-Auftrag wird zuerst verarbeitet.",
+    "eml_merging_slow": "Dieser Modellschritt dauert ungewöhnlich lange. Die Prognose kann sich ändern; eventuell wartet eine Verbindung.",
+    "eml_eta_pending": "wird nach den ersten Schritten berechnet",
     "pick_folder_generic": "Dateiordner anhängen",
     "pick_files": "EML-Dateien hinzufügen",
     "pick_files_hint": "Hier im Chat anonymisieren",
