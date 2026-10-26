@@ -26,6 +26,18 @@ window.MLXChatEml = (() => {
         return response.json();
     }
 
+    function progress(done, total) {
+        const indicator = document.getElementById('emlUploadStatus');
+        if (!indicator) return;
+        indicator.hidden = done === null;
+        indicator.textContent = done === null
+            ? ''
+            : (window.MLXI18n?.t('eml_chat.import_progress', 'EML-Import: {done}/{total}') ||
+                'EML-Import: {done}/{total}')
+                .replaceAll('{done}', String(done))
+                .replaceAll('{total}', String(total));
+    }
+
     async function submit(prompt, files) {
         const emls = Array.from(files || []).filter(item => item.kind === 'eml' && item.file);
         if (!emls.length) return {handled: false};
@@ -41,6 +53,7 @@ window.MLXChatEml = (() => {
         let imported = 0;
         const total = emls.length;
         const uploaded = [];
+        progress(0, total);
         try {
             for (const item of emls) {
                 const data = new FormData();
@@ -48,6 +61,7 @@ window.MLXChatEml = (() => {
                 await request('/upload', {method: 'POST', body: data});
                 uploaded.push(item);
                 imported++;
+                progress(imported, total);
                 if (uploaded.length === 20) {
                     window.MLXChatAttachments.removeAttachments(uploaded.splice(0));
                 }
@@ -67,6 +81,7 @@ window.MLXChatEml = (() => {
             };
         } finally {
             if (uploaded.length) window.MLXChatAttachments.removeAttachments(uploaded);
+            progress(null, total);
             busy = false;
         }
     }
