@@ -2351,11 +2351,18 @@ return;
                         done: state.imported, total: state.total
                     }));
             } else {
-                updateMessage(gt('eml_processing',
-                    '⏳ Anonymizing: {done}/{total} ready for review · {failed} failed', {
-                        done: state.completed, total: state.total,
-                        failed: state.failed
-                    }));
+                const status = state.faqRequested
+                    ? gt('eml_processing_faq',
+                        '⏳ Anonymizing and preparing FAQ: {done}/{total} EMLs · {ready} FAQ drafts · {faqFailed} FAQ errors', {
+                            done: state.completed, total: state.total,
+                            ready: state.faqReady, faqFailed: state.faqFailed
+                        })
+                    : gt('eml_processing',
+                        '⏳ Anonymizing: {done}/{total} ready for review · {failed} failed', {
+                            done: state.completed, total: state.total,
+                            failed: state.failed
+                        });
+                updateMessage(status);
             }
         };
         const result = await window.MLXChatEml.submit(prompt, emlAttachments, onProgress);
@@ -2369,6 +2376,19 @@ return;
                     ? gt('eml_download_single', 'Download anonymized EML')
                     : gt('eml_download_zip', 'Download anonymized EMLs as ZIP');
                 message += '\n\n[' + name + '](' + result.downloadUrl + ')';
+            }
+            if (result.faqRequested) {
+                message += result.faqUrl
+                    ? '\n\n[' + gt('eml_download_faq', 'Download FAQ draft (Markdown)') + '](' +
+                      result.faqUrl + ')'
+                    : '\n\n' + gt('eml_faq_unavailable',
+                        'FAQ could not be created. Check whether the local model is available; no unverified FAQ was generated.');
+                if (result.faqFailed) {
+                    message += '\n\n' + gt('eml_faq_incomplete',
+                        '{count} FAQ drafts failed. Check all generated results.', {
+                            count: result.faqFailed
+                        });
+                }
             }
             message += '\n\n' + gt('eml_review_warning',
                 'Automatic anonymization is not guaranteed. Review the output before sharing.');
