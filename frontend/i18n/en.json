@@ -81,6 +81,14 @@
     "preview_message": "This is what your message looks like."
   },
   "generation": {
+    "eml_prompt_required": "Please ask to anonymize the attached EML files.",
+    "eml_uploading": "⏳ Uploading EML files: {done}/{total}",
+    "eml_processing": "⏳ Anonymizing: {done}/{total} ready for review · {failed} failed",
+    "eml_completed": "✓ Completed: {done}/{total} EML files ready for review · {failed} failed.",
+    "eml_download_single": "Download anonymized EML",
+    "eml_download_zip": "Download anonymized EMLs as ZIP",
+    "eml_review_warning": "Automatic anonymization is not guaranteed. Review the output before sharing.",
+    "eml_paused": "Processing paused. {done}/{total} ready. Resume in the EML workspace.",
     "title": "Generation",
     "description": "Parameters for the current chat and defaults for new conversations.",
     "error": "Error: {message}",
@@ -577,6 +585,7 @@
   "knowledge.folder_opened": "Folder picker opened …",
   "knowledge.folder_selected": "✓ Folder selected",
   "knowledge.error": "Error: {message}",
+  "attachments.eml_folder_failed": "Could not read the dropped folder.",
   "attachments.eml_more": "… and {count} more EML files",
   "attachments.eml_empty": "EML file is empty or invalid.",
   "attachments.eml_limit": "At most 10,000 EML files per batch.",

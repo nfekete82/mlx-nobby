@@ -41,10 +41,10 @@ window.MLXChatEml = (() => {
                 .replaceAll('{total}', String(total));
     }
 
-    async function submit(prompt, files) {
+    async function submit(prompt, files, onProgress = () => {}) {
         const emls = Array.from(files || []).filter(item => item.kind === 'eml' && item.file);
         if (!emls.length) return {handled: false};
-        if (busy) return {handled: true, success: false, imported: 0, error: 'EML-Import läuft bereits.'};
+        if (busy) return {handled: true, success: false, imported: 0, error: 'EML import already running.'};
         if (!wantsRedaction(prompt)) {
             return {
                 handled: true, success: false, imported: 0,
@@ -55,35 +55,74 @@ window.MLXChatEml = (() => {
             };
         }
 
+        const batchId = window.crypto?.randomUUID?.().replaceAll('-', '');
+        if (!/^[a-f0-9]{32}$/.test(batchId || '')) {
+            return {handled: true, success: false, imported: 0,
+                    error: 'Secure batch identifier is unavailable.'};
+        }
         busy = true;
         let imported = 0;
         const total = emls.length;
         const uploaded = [];
-        progress(0, total);
+        const localAI = useLocalAI(prompt);
         try {
+            onProgress({phase: 'upload', imported, total});
             for (const item of emls) {
                 const data = new FormData();
                 data.append('file', item.file, item.name);
+                data.append('batch_id', batchId);
                 await request('/upload', {method: 'POST', body: data});
                 uploaded.push(item);
                 imported++;
                 progress(imported, total);
+                if (imported === total || imported % 5 === 0) {
+                    onProgress({phase: 'upload', imported, total});
+                }
                 if (uploaded.length === 20) {
                     window.MLXChatAttachments.removeAttachments(uploaded.splice(0));
                 }
             }
             window.MLXChatAttachments.removeAttachments(uploaded.splice(0));
-            const ai = useLocalAI(prompt);
+            onProgress({phase: 'processing', imported, total, completed: 0, failed: 0});
             await request('/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({use_local_ai: ai})
+                body: JSON.stringify({use_local_ai: localAI})
             });
-            return {handled: true, success: true, imported, total, useLocalAI: ai};
+
+            // Poll only this batch, not totals from previously imported jobs.
+            // The worker survives navigation and browser restarts, but progress
+            // shown inside this message is live only while this tab stays open.
+            for (;;) {
+                const state = await request('/batch/' + batchId + '/status');
+                const completed = state.completed || 0;
+                const failed = state.failed || 0;
+                onProgress({phase: 'processing', imported, total,
+                            completed, failed, running: state.running});
+                if (state.finished) {
+                    return {
+                        handled: true, success: true, imported, total,
+                        completed, failed, batchId, useLocalAI: localAI,
+                        finished: true,
+                        downloadUrl: completed
+                            ? '/api/eml-anonymizer/batch/' + batchId +
+                              (total === 1 ? '/result' : '/export')
+                            : ''
+                    };
+                }
+                if (!state.running) {
+                    return {handled: true, success: true, imported, total,
+                            completed, failed, batchId, finished: false,
+                            paused: true, useLocalAI: localAI};
+                }
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
         } catch (error) {
             return {
                 handled: true, success: false, imported, total,
-                error: String(error?.message || error)
+                error: String(error?.message || error),
+                batchId: imported ? batchId : '',
+                useLocalAI: localAI
             };
         } finally {
             if (uploaded.length) window.MLXChatAttachments.removeAttachments(uploaded);
@@ -92,19 +131,5 @@ window.MLXChatEml = (() => {
         }
     }
 
-    function initFolderPicker() {
-        document.getElementById('chatFolderFiles')?.addEventListener('change', event => {
-            const emls = Array.from(event.target.files || []).filter(file =>
-                /\.eml$/i.test(file.name)
-            );
-            window.MLXChatAttachments?.addFiles(emls);
-            event.target.value = '';
-        });
-        document.getElementById('chatPickFolder')?.addEventListener('click', () => {
-            document.getElementById('chatFolderFiles')?.click();
-        });
-    }
-
-    initFolderPicker();
-    return {submit, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
+    return {submit, wantsRedaction, isBusy: () => busy, __test: {wantsRedaction, useLocalAI}};
 })();

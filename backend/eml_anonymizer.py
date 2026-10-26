@@ -27,7 +27,7 @@ from threading import Lock
 from time import time
 from urllib.request import Request, urlopen
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -96,6 +96,10 @@ def setup():
             con.execute("""CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY, value TEXT NOT NULL
             )""")
+            columns = {row["name"] for row in con.execute("PRAGMA table_info(jobs)")}
+            if "batch_id" not in columns:
+                con.execute("ALTER TABLE jobs ADD COLUMN batch_id TEXT NOT NULL DEFAULT ''")
+            con.execute("CREATE INDEX IF NOT EXISTS jobs_batch_state ON jobs(batch_id,state)")
             con.execute("UPDATE jobs SET state='queued' WHERE state='processing'")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('running', '0')")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('ai', '0')")
@@ -391,8 +395,10 @@ def status():
 
 
 @router.post("/upload", status_code=201)
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), batch_id: str = Form("")):
     setup()
+    if batch_id and not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise HTTPException(400, "Invalid batch identifier")
     if not (file.filename or "").lower().endswith(".eml"):
         raise HTTPException(415, "Nur .eml-Dateien erlaubt")
     if (ROOT / "queue.sqlite3").is_symlink():
@@ -419,14 +425,14 @@ async def upload(file: UploadFile = File(...)):
                 ordinal = con.execute(
                     "SELECT COALESCE(MAX(ordinal),0)+1 FROM jobs").fetchone()[0]
                 os.replace(temporary, ROOT / "incoming" / (identifier + ".eml"))
-                con.execute("INSERT INTO jobs(id,ordinal,size,state,created,updated) "
-                            "VALUES(?,?,?,?,?,?)",
-                            (identifier, ordinal, size, "queued", time(), time()))
+                con.execute("INSERT INTO jobs(id,ordinal,size,state,created,updated,batch_id) "
+                            "VALUES(?,?,?,?,?,?,?)",
+                            (identifier, ordinal, size, "queued", time(), time(), batch_id))
     finally:
         temporary.unlink(missing_ok=True)
         await file.close()
     launch()
-    return {"accepted": True, "number": ordinal, "bytes": size}
+    return {"accepted": True, "number": ordinal, "bytes": size, "batch_id": batch_id}
 
 
 @router.post("/start")
@@ -485,6 +491,98 @@ def export():
                                "warnings": json.loads(row["warnings"])})
             z.writestr("ANONYMIZATION-REVIEW.json",
                        json.dumps(report, ensure_ascii=False, indent=2))
+        return FileResponse(path, media_type="application/zip",
+                            filename="mlx-nobby-eml-review-required.zip",
+                            background=BackgroundTask(lambda: path.unlink(missing_ok=True)),
+                            headers={"Cache-Control": "no-store"})
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+
+
+def validate_batch_id(batch_id: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise HTTPException(404, "Batch not found")
+
+
+@router.get("/batch/{batch_id}/status")
+def batch_status(batch_id: str):
+    validate_batch_id(batch_id)
+    setup()
+    launch()
+    with db() as con:
+        rows = con.execute("SELECT state, COUNT(*) AS count FROM jobs "
+                           "WHERE batch_id=? GROUP BY state", (batch_id,)).fetchall()
+    counts = {row["state"]: row["count"] for row in rows}
+    total = sum(counts.values())
+    if not total:
+        raise HTTPException(404, "Batch not found")
+    pending = counts.get("queued", 0) + counts.get("processing", 0)
+    return {"total": total, "counts": counts,
+            "completed": counts.get("review", 0),
+            "failed": counts.get("failed", 0),
+            "finished": pending == 0,
+            "running": setting("running") == "1",
+            "review_required": True}
+
+
+@router.get("/batch/{batch_id}/result")
+def batch_result(batch_id: str):
+    validate_batch_id(batch_id)
+    setup()
+    with db() as con:
+        rows = con.execute("SELECT id,state FROM jobs WHERE batch_id=?",
+                           (batch_id,)).fetchall()
+    if len(rows) != 1:
+        raise HTTPException(404, "Single EML result not found")
+    if rows[0]["state"] != "review":
+        raise HTTPException(409, "Result is not ready for review")
+    path = ROOT / "outgoing" / (rows[0]["id"] + ".eml")
+    if not path.is_file():
+        raise HTTPException(404, "Result file missing")
+    return FileResponse(path, media_type="message/rfc822",
+                        filename="anonymized-review-required.eml",
+                        headers={"Cache-Control": "no-store",
+                                 "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/batch/{batch_id}/export")
+def batch_export(batch_id: str):
+    validate_batch_id(batch_id)
+    setup()
+    with db() as con:
+        rows = con.execute("SELECT ordinal,id,state,warnings FROM jobs "
+                           "WHERE batch_id=? ORDER BY ordinal", (batch_id,)).fetchall()
+    if not rows:
+        raise HTTPException(404, "Batch not found")
+    if any(row["state"] in ("queued", "processing") for row in rows):
+        raise HTTPException(409, "Batch is still processing")
+    if not any(row["state"] == "review" for row in rows):
+        raise HTTPException(404, "No completed EMLs to export")
+    tmp = tempfile.NamedTemporaryFile(prefix="eml-batch-", suffix=".zip",
+                                       dir=ROOT / "temporary", delete=False)
+    path = Path(tmp.name)
+    tmp.close()
+    try:
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED,
+                             compresslevel=3, allowZip64=True) as archive:
+            report = []
+            for row in rows:
+                if row["state"] != "review":
+                    report.append({"state": "failed", "review_required": True})
+                    continue
+                output = ROOT / "outgoing" / (row["id"] + ".eml")
+                if not output.is_file():
+                    report.append({"state": "missing", "review_required": True})
+                    continue
+                name = f"email-{row['ordinal']:06d}.eml"
+                archive.write(output, name)
+                report.append({"file": name, "state": "review",
+                               "review_required": True,
+                               "warnings": json.loads(row["warnings"])})
+            archive.writestr("ANONYMIZATION-REVIEW.json",
+                             json.dumps(report, ensure_ascii=False, indent=2))
         return FileResponse(path, media_type="application/zip",
                             filename="mlx-nobby-eml-review-required.zip",
                             background=BackgroundTask(lambda: path.unlink(missing_ok=True)),

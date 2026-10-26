@@ -1192,6 +1192,41 @@ function attachmentT(key, fallback = '', variables = {}) {
         return uploaded;
     }
 
+    async function collectDroppedEntries(dataTransfer) {
+        const all = Array.from(dataTransfer?.items || []);
+        // Capture directory entry handles synchronously inside the drop event.
+        const entries = all.filter(item => item.kind === 'file')
+            .map(item => item.webkitGetAsEntry?.()).filter(Boolean);
+        if (!entries.some(entry => entry.isDirectory)) {
+            return Array.from(dataTransfer?.files || []);
+        }
+        const found = [];
+        const LIMIT = 10000;
+        async function collect(entry) {
+            if (found.length >= LIMIT) return;
+            if (entry.isFile) {
+                if (!/\.eml$/i.test(entry.name)) return;
+                const file = await new Promise((resolve, reject) =>
+                    entry.file(resolve, reject));
+                found.push(file);
+                return;
+            }
+            if (!entry.isDirectory) return;
+            const reader = entry.createReader();
+            while (found.length < LIMIT) {
+                const children = await new Promise((resolve, reject) =>
+                    reader.readEntries(resolve, reject));
+                if (!children.length) break;
+                for (const child of children) {
+                    await collect(child);
+                    if (found.length >= LIMIT) break;
+                }
+            }
+        }
+        for (const entry of entries) await collect(entry);
+        return found;
+    }
+
     function init() {
 
         document.addEventListener(
@@ -1337,9 +1372,13 @@ function attachmentT(key, fallback = '', variables = {}) {
                     'dragging'
                 );
 
-                await addFiles(
-                    event.dataTransfer.files
-                );
+                try {
+                    await addFiles(await collectDroppedEntries(event.dataTransfer));
+                } catch (error) {
+                    console.error('[MLX EML] Folder import failed:', error?.name || 'unknown');
+                    alert(attachmentT('attachments.eml_folder_failed',
+                        'Could not read the dropped folder.'));
+                }
             }
         );
     }

@@ -39,18 +39,16 @@ Im Browser http://127.0.0.1:8090/eml-anonymizer öffnen.
 
 RegEx und LLM können Namen, indirekte Identifikatoren und andere personenbezogene Informationen übersehen. Ergebnisse vor externer Verwendung manuell prüfen. Anhänge werden nicht anonymisiert, sondern komplett ausgelassen. Vor einem Docker-Rebuild die Batch-Verarbeitung pausieren.
 
-## Anonymisierung über normale Chat-Anhänge
+## EML im normalen Chat bearbeiten
 
-Die EML-Dateien werden genauso angehängt wie andere Dateien. `/eml-anonymizer` bleibt nur für Fortschritt, Pause, Wiederholung, Export und gezieltes Löschen erhalten.
+1. Auf `+ → Datei hinzufügen` klicken und eine oder mehrere `.eml`-Dateien auswählen. Einen **ganzen Ordner per Drag & Drop auf den Chat-Composer ziehen**. Der Browser-Dateidialog selbst kann nicht gleichzeitig Dateien und Ordner als gleichartige Auswahl anbieten; deshalb ist für ganze Ordner das Ziehen vorgesehen. Der gesonderte Ordner-Menüpunkt entfällt.
+2. Die EML-Dateien erscheinen als normale Chat-Anhänge, der Chat-Prompt bleibt frei. Eingabe: `Anonymisiere diese E-Mails und entferne unnötige Signaturen.` Optional: `mit lokaler KI`.
+3. Nobby zeigt im Chat während des Uploads `x/y`, anschließend während der tatsächlichen sequentiellen Anonymisierung `x/y fertig`. Bei Einzeldateien erscheint nach Fertigstellung ein direkter EML-Download-Link; bei Stapeln ein **nur auf diesen Auftrag begrenzter ZIP-Download-Link**.
+4. Es handelt sich weiterhin um denselben bestehenden regelbasierten Anonymisierer (mit optionaler lokaler Namen-/Orte-KI). **Der freie Prompt wird derzeit nicht als frei konfigurierbare Redaktionsanweisung ausgeführt.** Standardmäßig werden Signaturen und unnötige Fußtexte nach bestehenden Regeln entfernt. Weitere Einzelanweisungen wirken nur, wenn der Anonymisierer sie bereits unterstützt.
+5. Alle Ergebnisse sind als `review_required` markiert. Vor Weitergabe ist eine menschliche Prüfung erforderlich. Die ZIP enthält eine Prüfdatei, kann keine Garantie der Unidentifizierbarkeit liefern und lässt Originalanhänge weg.
 
-1. Im normalen Chat auf `+ → Datei hinzufügen` klicken und eine oder viele `.eml` auswählen. Auch Drag & Drop funktioniert. Mit `+ → Dateiordner anhängen` können alle EML-Dateien aus einem lokalen Ordner ausgewählt werden.
-2. Die Dateien erscheinen als **gewöhnliche Anhang-Chips** mit Name, Größe und Entfernen-Schaltfläche. Bei mehr als 20 EMLs wird nur eine Vorschau mit Gesamtzähler gerendert.
-3. Danach den **eigenen Prompt** eintippen, z. B. `Anonymisiere diese E-Mails.` oder `Anonymisiere diese E-Mails mit lokaler KI.`. Nobby startet nicht automatisch beim Anhängen.
-4. Bei einem expliziten Anonymisierungswunsch werden die Originaldateien einzeln an die lokale `/api/eml-anonymizer/upload`-API gesendet; anschließend wird `/api/eml-anonymizer/start` aufgerufen. Einfache Anonymisierung ist Standard, `mit lokaler KI` aktiviert die ergänzende Namen- und Orte-Erkennung. **Andere frei formulierte EML-Aufträge werden derzeit noch nicht ausgeführt.** Individuelle Redaktionsregeln im Prompt werden derzeit nicht interpretiert.
-5. Nobby bestätigt den Import im Chat und bietet einen Link zur vorhandenen Status- und ZIP-Export-Seite. Bei einem teilweisen Upload-Fehler verbleiben die nicht hochgeladenen Anhänge zur erneuten Übertragung. Erfolgreich importierte Dateien werden nicht doppelt hochgeladen.
+Technik: Uploads erhalten eine zufällige Stapel-ID. `/api/eml-anonymizer/batch/{batch_id}/status`, `/result` und `/export` grenzen Status, EML und ZIP auf exakt diesen Stapel ein. Alte Daten bleiben separat im persistenten Docker-Volume. Ein späteres Nachladen eines anderen Chats oder das Schließen der Browserseite stoppt den serverseitigen Worker nicht; die **Live-Anzeige** ist dagegen nur in der aktiven Seite aktuell. Weitere Steuerung, Fehler und Löschung sind unter `/eml-anonymizer` möglich.
 
-Aus Datenschutzgründen werden Dateiinhalte und Dateinamen **nicht in den Chatverlauf oder den LLM-Prompt übernommen**; sie sind lediglich während der Auswahl als Anhang-Chips im aktuellen Browserfenster sichtbar. Die Chat-Historie enthält nur den eingegebenen Prompt und eine abstrakte Rückmeldung mit Dateianzahl. Keine EML-Bytes im Browser-Storage.
+Verarbeitung: maximal 30 MiB pro EML, 10.000 gleichzeitig angehängte EML-Dateien, maximal 20 GiB Gesamtspeicher des Bestands. Die Inhalte werden nur zum lokalen Anonymisierer hochgeladen, nicht als Text an das LLM gesendet oder im Chatverlauf abgelegt. Im gespeicherten Chat stehen nur Prompt, Fortschritt und Download-Link. Bei Importfehlern bleiben die noch nicht hochgeladenen EML-Anhänge zur Wiederholung erhalten.
 
-Die normale Chat-Nachrichtenverarbeitung mit Bildern, PDF und Textdateien bleibt unverändert. EMLs dürfen derzeit nicht zusammen mit anderen Anhangstypen in derselben Nachricht verarbeitet werden. Max. 30 MiB pro Datei, 20 GiB gespeicherter Gesamtbestand im vorhandenen lokalen Docker-Volume. Auch nach KI-Nachprüfung ist das Ergebnis **prüfpflichtige Pseudonymisierung, nicht garantierte Anonymisierung**. Vor externem Teilen jede Ausgabe kontrollieren; Anhänge werden aus dem Export entfernt.
-
-Tests: `node --test tests/test_chat_eml_batch.mjs` und `./scripts/mlx test-quick tests/test_eml_anonymizer.py`.
+Tests: `node --test tests/test_chat_eml_batch.mjs`, `./scripts/mlx test-quick tests/test_eml_anonymizer.py` und Browser-CI.
