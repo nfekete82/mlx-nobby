@@ -3,11 +3,8 @@ from __future__ import annotations
 
 import email
 from email import policy
-from email.headerregistry import Address
 from email.utils import getaddresses
 from html.parser import HTMLParser
-import io
-import json
 import os
 from pathlib import Path
 import re
@@ -17,7 +14,7 @@ import uuid
 import zipfile
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 ROOT = Path(os.environ.get("NOBBY_EML_DIR", "/app-data/eml"))
 INBOX, OUTBOX = ROOT / "inbox", ROOT / "redacted"
@@ -29,6 +26,8 @@ PATTERNS = [
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[ ]?(?:[A-Z0-9][ ]?){11,30}\b")),
     ("WEB", re.compile(r"https?://[^\s<>\"']+|\bwww\.[^\s<>\"']+", re.I)),
     ("TELEFON", re.compile(r"(?<!\w)(?:\+\d{1,3}[ /-]?|0)[\d /()-]{7,}\d(?!\w)")),
+    ("HRB", re.compile(r"(?i)\\bHRB\\s*:?\\s*\\d{3,}\\b")),
+    ("STEUERNR", re.compile(r"(?i)\\b(?:DE[0-9]{9}|USt-IdNr\\.?\\s*:?\\s*[A-Z]{2}[0-9]{9})\\b")),
     ("IP", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
     ("PLZ_ORT", re.compile(r"\b\d{5}\s+[A-ZÄÖÜ][a-zäöüß]+(?:[ -][A-ZÄÖÜ][a-zäöüß]+)*")),
     ("ADRESSE", re.compile(r"\b[A-ZÄÖÜ][\wäöüß.-]*(?:straße|strasse|weg|platz|allee|gasse)\s+\d+[a-z]?\b", re.I)),
@@ -81,6 +80,7 @@ def replace_identifiers(text, people=()):
     for name in sorted(set(people), key=len, reverse=True):
         if len(name) >= 4:
             text = re.sub(r"(?<!\w)" + re.escape(name) + r"(?!\w)", lambda m: sub("NAME", m.group()), text, flags=re.I)
+    text = re.sub(r"(?im)^(Von|From|An|To|Cc):\\s*([^<\\n]{4,80})(?=\\s*<)", lambda m: m.group(1) + ": " + sub("NAME", m.group(2).strip()) + " ", text)
     for label, pattern in PATTERNS:
         text = pattern.sub(lambda m: sub(label, m.group()), text)
     text = SALUTATION.sub(lambda m: m.group(0).replace(m.group(1), sub("NAME", m.group(1))), text)
@@ -121,15 +121,13 @@ def redact(raw):
             html_parts.append("".join(parser.parts))
     body = "\n".join(fragments or html_parts)
     # Signatures and long legal footer text have no support value.
-    match = SIGNOFF.search(body)
-    if match:
-        body = body[:match.start()]
     if not body.strip():
         raise ValueError("No readable text/plain or text/html body")
     subject = replace_identifiers(str(message.get("Subject", "")), names)
     clean = replace_identifiers(body, names)
     # Emit a new minimal email: no original MIME tree, addresses, dates or IDs.
-    result = email.message.EmailMessage(policy=policy.default)
+    from email.message import EmailMessage
+    result = EmailMessage(policy=policy.default)
     result["Subject"] = subject
     result.set_content(clean)
     return result.as_bytes(), stripped_attachments
