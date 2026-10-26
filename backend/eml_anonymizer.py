@@ -445,7 +445,7 @@ def worker():
         while setting("running") == "1":
             with db() as con:
                 item = con.execute(
-                    "SELECT id FROM jobs WHERE state='queued' ORDER BY ordinal LIMIT 1"
+                    "SELECT id, faq_requested FROM jobs WHERE state='queued' ORDER BY ordinal LIMIT 1"
                 ).fetchone()
                 if item:
                     identifier = item["id"]
@@ -463,14 +463,27 @@ def worker():
                 temporary.write_bytes(output)
                 os.replace(temporary, target)
                 state = "review"
+                faq_state = "off"
+                if item["faq_requested"]:
+                    try:
+                        entries = local_faq_draft(output)
+                        faq_data = json.dumps(entries, ensure_ascii=False).encode("utf-8")
+                        faq_tmp = ROOT / "temporary" / (identifier + ".faq.tmp")
+                        faq_tmp.write_bytes(faq_data)
+                        os.replace(faq_tmp, ROOT / "faq" / (identifier + ".json"))
+                        faq_state = "ready" if entries else "empty"
+                    except Exception:
+                        faq_state = "failed"
+                        warnings.append("FAQ konnte lokal nicht erzeugt werden; bitte separat prüfen")
             except Exception:
                 # Do not record raw email, original filename or exception content.
                 warnings = ["E-Mail nicht verarbeitet; Quelldatei zur Prüfung behalten"]
                 state = "failed"
+                faq_state = "failed" if item["faq_requested"] else "off"
             with db() as con:
-                con.execute("UPDATE jobs SET state=?,warnings=?,updated=? WHERE id=?",
-                            (state, json.dumps(warnings, ensure_ascii=False), time(),
-                             identifier))
+                con.execute("UPDATE jobs SET state=?,warnings=?,faq_state=?,updated=? WHERE id=?",
+                            (state, json.dumps(warnings, ensure_ascii=False), faq_state,
+                             time(), identifier))
     finally:
         with _LOCK:
             _THREAD = None
@@ -489,6 +502,8 @@ def launch():
 
 class StartOptions(BaseModel):
     use_local_ai: bool = False
+    create_faq: bool = False
+    batch_id: str = ""
 
 
 @router.get("/status")
@@ -551,6 +566,15 @@ async def upload(file: UploadFile = File(...), batch_id: str = Form("")):
 @router.post("/start")
 def start(options: StartOptions):
     setup()
+    if options.create_faq:
+        validate_batch_id(options.batch_id)
+        with db() as con:
+            count = con.execute(
+                "UPDATE jobs SET faq_requested=1,faq_state='queued' "
+                "WHERE batch_id=? AND state='queued'",
+                (options.batch_id,)).rowcount
+        if count == 0:
+            raise HTTPException(409, "No queued messages for FAQ generation")
     set_setting("ai", "1" if options.use_local_ai else "0")
     set_setting("running", "1")
     launch()
@@ -627,7 +651,11 @@ def batch_status(batch_id: str):
     with db() as con:
         rows = con.execute("SELECT state, COUNT(*) AS count FROM jobs "
                            "WHERE batch_id=? GROUP BY state", (batch_id,)).fetchall()
+        faq_rows = con.execute("SELECT faq_state,COUNT(*) AS count FROM jobs "
+                               "WHERE batch_id=? AND faq_requested=1 "
+                               "GROUP BY faq_state", (batch_id,)).fetchall()
     counts = {row["state"]: row["count"] for row in rows}
+    faq_counts = {row["faq_state"]: row["count"] for row in faq_rows}
     total = sum(counts.values())
     if not total:
         raise HTTPException(404, "Batch not found")
@@ -637,6 +665,10 @@ def batch_status(batch_id: str):
             "failed": counts.get("failed", 0),
             "finished": pending == 0,
             "running": setting("running") == "1",
+            "faq_requested": bool(faq_rows),
+            "faq_ready": faq_counts.get("ready", 0),
+            "faq_empty": faq_counts.get("empty", 0),
+            "faq_failed": faq_counts.get("failed", 0),
             "review_required": True}
 
 
@@ -705,6 +737,74 @@ def batch_export(batch_id: str):
         raise
 
 
+@router.get("/batch/{batch_id}/faq")
+def batch_faq(batch_id: str):
+    """Download one UTF-8 Markdown FAQ draft limited to a single import batch."""
+    validate_batch_id(batch_id)
+    setup()
+    with db() as con:
+        rows = con.execute(
+            "SELECT id,state,faq_requested,faq_state FROM jobs "
+            "WHERE batch_id=? ORDER BY ordinal", (batch_id,)
+        ).fetchall()
+    if not rows or not any(row["faq_requested"] for row in rows):
+        raise HTTPException(404, "No FAQ was requested for this batch")
+    if any(row["state"] in ("queued", "processing") for row in rows):
+        raise HTTPException(409, "FAQ processing is not finished")
+    drafts = []
+    seen = set()
+    failures = 0
+    for row in rows:
+        if row["faq_state"] == "failed":
+            failures += 1
+            continue
+        if row["faq_state"] != "ready":
+            continue
+        path = ROOT / "faq" / (row["id"] + ".json")
+        if not path.is_file():
+            failures += 1
+            continue
+        for entry in json.loads(path.read_text(encoding="utf-8")):
+            key = (entry["frage"].strip().casefold(),
+                   entry["antwort"].strip().casefold())
+            if key not in seen:
+                seen.add(key)
+                drafts.append(entry)
+    if not drafts:
+        raise HTTPException(503, "No FAQ drafts available; review failed/empty jobs")
+    lines = [
+        "# FAQ-Entwurf aus anonymisierten E-Mails", "",
+        "**Prüfpflichtig:** KI-Ausgaben können Fehler oder identifizierende "
+        "Informationen enthalten. Vor Freigabe fachlich und datenschutzrechtlich prüfen.",
+        ""
+    ]
+    if failures:
+        lines.extend([f"**Warnung:** Bei {failures} E-Mails konnte keine FAQ erstellt werden.", ""])
+    for number, entry in enumerate(drafts, start=1):
+        question = entry["frage"].replace("\n", " ").strip()
+        answer = entry["antwort"].strip()
+        category = entry["kategorie"].replace("\n", " ").strip()
+        state = entry["status"]
+        lines.extend([f"## {number}. {question}", "",
+                      f"**Kategorie:** {category} · **Status:** {state}", "",
+                      answer, ""])
+    temporary = tempfile.NamedTemporaryFile(prefix="eml-faq-", suffix=".md",
+                                             dir=ROOT / "temporary", delete=False)
+    target = Path(temporary.name)
+    temporary.close()
+    try:
+        target.write_text("\n".join(lines), encoding="utf-8")
+        return FileResponse(
+            target, media_type="text/markdown; charset=utf-8",
+            filename="mlx-nobby-faq-entwurf-pruefung-erforderlich.md",
+            background=BackgroundTask(lambda: target.unlink(missing_ok=True)),
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+        )
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+
+
 @router.post("/purge")
 def purge():
     setup()
@@ -714,7 +814,7 @@ def purge():
         if con.execute("SELECT COUNT(*) FROM jobs WHERE state='processing'").fetchone()[0]:
             raise HTTPException(409, "Verarbeitung noch nicht abgeschlossen")
         # Disk artifacts first; database is then cleared. Never touch other folders.
-        for folder in ("incoming", "outgoing", "temporary"):
+        for folder in ("incoming", "outgoing", "temporary", "faq"):
             for item in (ROOT / folder).iterdir():
                 if item.is_file():
                     item.unlink()
