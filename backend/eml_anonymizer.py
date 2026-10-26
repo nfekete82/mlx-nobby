@@ -41,6 +41,7 @@ _LOCK = Lock()
 _READY = False
 _THREAD = None
 _UPLOAD_LOCK = Lock()
+_FAQ_MERGE_LOCK = Lock()
 
 
 class HtmlText(HTMLParser):
@@ -104,6 +105,11 @@ def setup():
             if "faq_state" not in columns:
                 con.execute("ALTER TABLE jobs ADD COLUMN faq_state TEXT NOT NULL DEFAULT 'off'")
             con.execute("CREATE INDEX IF NOT EXISTS jobs_batch_state ON jobs(batch_id,state)")
+            con.execute("""CREATE TABLE IF NOT EXISTS faq_summaries (
+                batch_id TEXT PRIMARY KEY, state TEXT NOT NULL,
+                updated REAL NOT NULL
+            )""")
+            con.execute("UPDATE faq_summaries SET state='failed' WHERE state='processing'")
             con.execute("UPDATE jobs SET state='queued' WHERE state='processing'")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('running', '0')")
             con.execute("INSERT OR IGNORE INTO settings VALUES ('ai', '0')")
@@ -655,6 +661,8 @@ def batch_status(batch_id: str):
         faq_rows = con.execute("SELECT faq_state,COUNT(*) AS count FROM jobs "
                                "WHERE batch_id=? AND faq_requested=1 "
                                "GROUP BY faq_state", (batch_id,)).fetchall()
+        merged_row = con.execute("SELECT state FROM faq_summaries WHERE batch_id=?",
+                                 (batch_id,)).fetchone()
     counts = {row["state"]: row["count"] for row in rows}
     faq_counts = {row["faq_state"]: row["count"] for row in faq_rows}
     total = sum(counts.values())
@@ -670,6 +678,7 @@ def batch_status(batch_id: str):
             "faq_ready": faq_counts.get("ready", 0),
             "faq_empty": faq_counts.get("empty", 0),
             "faq_failed": faq_counts.get("failed", 0),
+            "faq_merge_state": merged_row["state"] if merged_row else "not_started",
             "review_required": True}
 
 
@@ -820,4 +829,5 @@ def purge():
                 if item.is_file():
                     item.unlink()
         con.execute("DELETE FROM jobs")
+        con.execute("DELETE FROM faq_summaries")
     return {"ok": True}
