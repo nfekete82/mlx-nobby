@@ -45,7 +45,10 @@ window.MLXChatEml = (() => {
         if (!wantsRedaction(prompt)) {
             return {
                 handled: true, success: false, imported: 0,
-                error: 'Bitte beschreibe die gewünschte Anonymisierung im Chat. Andere EML-Aktionen werden derzeit noch nicht unterstützt.'
+                error: window.MLXI18n?.t(
+                    'eml_chat.intent_required',
+                    'Please explicitly request anonymization of these EML files.'
+                ) || 'Please explicitly request anonymization of these EML files.'
             };
         }
 
