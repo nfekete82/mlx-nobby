@@ -115,6 +115,13 @@ test('optional local AI is inferred from user prompt, not separate checkbox', as
     const start = h.calls.find(x => x.url.endsWith('/start'));
     assert.equal(JSON.parse(start.args.body).use_local_ai, true);
     assert.equal(h.eml.__test.useLocalAI('Anonymisieren ohne KI'), false);
+    assert.equal(h.eml.__test.useLocalAI('Bitte anonymisiere mit lokaler KI'), true);
+    assert.equal(h.eml.__test.useLocalAI('Bitte anonymisiere mit der lokalen KI'), true);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisiere mit KI'), true);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisiere mit Qwen'), true);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisiere ohne lokale KI'), false);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisiere ohne die lokale KI'), false);
+    assert.equal(h.eml.__test.useLocalAI('Anonymisiere diese EML-Dateien'), false);
 });
 
 test('folder option stages only EMLs into ordinary chat attachments', () => {
