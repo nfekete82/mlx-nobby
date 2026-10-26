@@ -15,7 +15,7 @@ def test_ragnarok_factory_defaults_match_creator_range():
         "steps": 35, "guidance": 4.0, "long_edge": 1216,
     }
     assert resolve_image_profile(model, "quality") == {
-        "steps": 40, "guidance": 4.0, "long_edge": 1216,
+        "steps": 30, "guidance": 4.0, "long_edge": 1216,
     }
 
 
