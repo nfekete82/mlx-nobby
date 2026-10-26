@@ -102,11 +102,13 @@ def test_upload_status_queue_export_and_purge(isolated):
         result = client.post("/api/eml-anonymizer/start",
                              json={"use_local_ai": False})
         assert result.status_code == 200
-        thread = isolated._THREAD
-        assert thread is not None
-        thread.join(timeout=8)
-        assert not thread.is_alive()
+        import time
         state = client.get("/api/eml-anonymizer/status").json()
+        for _ in range(80):
+            if state["counts"].get("review") == 1:
+                break
+            time.sleep(0.05)
+            state = client.get("/api/eml-anonymizer/status").json()
         assert state["counts"]["review"] == 1
         assert not state["running"]
         with client.stream("GET", "/api/eml-anonymizer/export") as download:
@@ -146,3 +148,17 @@ def test_upload_rejects_other_types_and_does_not_log_name(isolated):
         assert "person.pdf" not in str(response.json())
         with isolated.db() as con:
             assert con.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+
+
+def test_footer_removal_preserves_quoted_email(isolated):
+    text = (
+        "Die Gebühr wurde reklamiert.\n\nMit freundlichen Grüßen\n"
+        "Max Mustermann\nFirma Beispiel GmbH\nGeschäftsführer: Uwe Muster\n"
+        "Vertraulich und geheim.\n\nVon: Erika Musterfrau <erika@example.com>\n"
+        "Die Anschlussgebühr wurde berechnet.\n"
+    )
+    stripped = isolated.strip_signature_blocks(text)
+    assert "Firma Beispiel" not in stripped
+    assert "Uwe Muster" not in stripped
+    assert "Die Gebühr wurde reklamiert" in stripped
+    assert "Die Anschlussgebühr wurde berechnet" in stripped
