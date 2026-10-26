@@ -156,6 +156,35 @@ RE_SIGNATURE = re.compile(r"(?im)^.*(?:Amtsgericht|Geschäftsführer:|Prokurist:
                           r"Diese E-Mail enthält vertraulich).*$")
 
 
+RE_FOOTER_BEGIN = re.compile(
+    r"(?i)^(?:--\s*|Mit freundlichen Gr(?:ü|ue)ßen[,!]?|Viele Gr(?:ü|ue)ße[,!]?|"
+    r"Beste Gr(?:ü|ue)ße[,!]?|Freundliche Gr(?:ü|ue)ße[,!]?|"
+    r"Kind regards[,]?|Best regards[,]?)\s*$"
+)
+RE_QUOTED_MESSAGE = re.compile(
+    r"(?i)^(?:Von:|From:|-----Original Message-----|"
+    r"Am\s+.+\s+schrieb\b|On\s+.+\s+wrote:)"
+)
+
+
+def strip_signature_blocks(text):
+    """Drop footer bodies, but keep subsequent quoted customer correspondence."""
+    result = []
+    skipping = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if skipping:
+            if not RE_QUOTED_MESSAGE.search(stripped):
+                continue
+            skipping = False
+        if RE_FOOTER_BEGIN.fullmatch(stripped):
+            result.append("[SIGNATUR ENTFERNT]")
+            skipping = True
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
 def redact(text, *, headers=(), ai_spans=(), replace=None):
     replace = replace or placeholders()
     text = text.replace("\x00", "")
@@ -269,6 +298,7 @@ def local_ai_spans(text):
 
 def anonymize(raw, use_ai=False):
     subject, body, names, attachment_count = get_content(raw)
+    body = strip_signature_blocks(body)
     warnings = ["Automatische Anonymisierung: manuelle Datenschutzprüfung erforderlich"]
     if attachment_count:
         warnings.append(f"{attachment_count} Anhänge/andere MIME-Teile ausgelassen")
