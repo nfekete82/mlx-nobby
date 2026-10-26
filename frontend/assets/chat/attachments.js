@@ -137,7 +137,8 @@ function attachmentT(key, fallback = '', variables = {}) {
         'png',
         'webp',
         'gif',
-        'pdf'
+        'pdf',
+        'eml'
     ]);
 
     const IMAGE_EXTENSIONS = new Set([
@@ -150,6 +151,8 @@ function attachmentT(key, fallback = '', variables = {}) {
 
     const MAX_FILE_SIZE = 250 * 1024 * 1024;
     const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
+    const MAX_EML_SIZE = 30 * 1024 * 1024;
+    const MAX_EML_COUNT = 10000;
     // Text files beyond this size are uploaded for batch processing and are
     // deliberately never copied into the ordinary chat prompt.
     const MAX_CONTEXT_FILE_CHARS = 100000;
@@ -506,7 +509,12 @@ function attachmentT(key, fallback = '', variables = {}) {
 
         bar.classList.add('visible');
 
-        attachments.forEach((file, index) => {
+        let visibleEml = 0;
+        const emlCount = attachments.filter(file => file.kind === 'eml').length;
+        const visible = attachments.filter(file =>
+            file.kind !== 'eml' || ++visibleEml <= 20
+        );
+        visible.forEach(file => {
             const chip = document.createElement('div');
             chip.className = 'attachment-chip';
             chip.dataset.attachmentId = file.id;
@@ -603,8 +611,8 @@ function attachmentT(key, fallback = '', variables = {}) {
             remove.textContent = '×';
 
             remove.addEventListener('click', () => {
-                attachments.splice(index, 1);
-                renderAttachments();
+                if (file.kind === 'eml' && window.MLXChatEml?.isBusy?.()) return;
+                removeAttachment(file);
             });
 
             chip.appendChild(name);
@@ -623,6 +631,16 @@ function attachmentT(key, fallback = '', variables = {}) {
 
             bar.appendChild(chip);
         });
+        if (emlCount > 20) {
+            const summary = document.createElement('span');
+            summary.className = 'attachment-chip';
+            summary.textContent = attachmentT(
+                'attachments.eml_more',
+                '… and {count} more EML files',
+                {count: emlCount - 20}
+            );
+            bar.appendChild(summary);
+        }
         renderEditControls(bar);
     }
 
@@ -718,12 +736,7 @@ function attachmentT(key, fallback = '', variables = {}) {
     let addingFiles = Promise.resolve();
     function addFiles(files) {
         const list = Array.from(files);
-        const emls = list.filter(file => fileExtension(file.name) === 'eml');
-        if (emls.length) {
-            window.MLXChatEml?.stageFiles(emls);
-        }
-        const ordinary = list.filter(file => fileExtension(file.name) !== 'eml');
-        addingFiles = addingFiles.catch(() => {}).then(() => addFilesSequential(ordinary));
+        addingFiles = addingFiles.catch(() => {}).then(() => addFilesSequential(list));
         return addingFiles;
     }
 
@@ -747,9 +760,10 @@ function attachmentT(key, fallback = '', variables = {}) {
 
             const isImage = isImageExtension(ext);
 
-            const sizeLimit =
-                isImage
-                    ? MAX_IMAGE_SIZE
+            const sizeLimit = isImage
+                ? MAX_IMAGE_SIZE
+                : ext === 'eml'
+                    ? MAX_EML_SIZE
                     : MAX_FILE_SIZE;
 
             if (file.size > sizeLimit) {
@@ -759,13 +773,35 @@ function attachmentT(key, fallback = '', variables = {}) {
                     '{name} is larger than {size} MB.',
                     {
                         name: file.name,
-                        size: isImage
-                            ? (MAX_IMAGE_SIZE / 1024 / 1024)
-                            : (MAX_FILE_SIZE / 1024 / 1024)
+                        size: sizeLimit / 1024 / 1024
                     }
                 )
                 );
 
+                continue;
+            }
+
+            if (ext === 'eml') {
+                if (file.size < 10) {
+                    alert(attachmentT('attachments.eml_empty',
+                        'This EML file is empty or invalid.'));
+                    continue;
+                }
+                const existing = attachments.filter(item => item.kind === 'eml');
+                if (existing.length >= MAX_EML_COUNT) {
+                    alert(attachmentT('attachments.eml_limit',
+                        'At most 10,000 EML files per chat batch.'));
+                    continue;
+                }
+                // Separate emails may share a filename, byte size and
+                // modification time (especially MailStore folder exports).
+                // Never silently discard one based on metadata equality.
+                attachments.push({
+                    id: uid(), name: file.name, size: file.size,
+                    type: file.type || 'message/rfc822',
+                    extension: 'eml', kind: 'eml',
+                    file, context_omitted: true
+                });
                 continue;
             }
 
@@ -1047,7 +1083,7 @@ function attachmentT(key, fallback = '', variables = {}) {
 
         const textFiles =
             attachments.filter(
-                file => file.kind !== 'image'
+                file => file.kind !== 'image' && file.kind !== 'eml'
             );
 
         if (!textFiles.length) {
@@ -1088,6 +1124,12 @@ function attachmentT(key, fallback = '', variables = {}) {
         manualEditModel = false;
         autoSelectedEditModel = null;
         manualEditFields = new Set();
+        renderAttachments();
+    }
+
+    function removeAttachments(items) {
+        const removal = new Set(items);
+        attachments = attachments.filter(item => !removal.has(item));
         renderAttachments();
     }
 
@@ -1320,6 +1362,7 @@ function attachmentT(key, fallback = '', variables = {}) {
         uploadTextAttachments: uploadTextAttachments,
         uploadImageAttachments: uploadImageAttachments,
         removeAttachment: removeAttachment,
+        removeAttachments: removeAttachments,
         clearAttachments:
             clearAttachments
     };

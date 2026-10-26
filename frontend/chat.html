@@ -1225,20 +1225,9 @@
             id="attachmentBar"
             class="attachment-bar"
         ></div>
-        <div id="emlChatTray" class="eml-chat-tray" hidden>
-            <div class="eml-chat-main">
-                <span id="emlChatSelected" aria-live="polite"></span>
-                <button id="emlChatClear" type="button" data-i18n="eml_chat.clear">Auswahl entfernen</button>
-            </div>
-            <label class="eml-chat-ai">
-                <input id="emlChatAI" type="checkbox">
-                <span data-i18n="eml_chat.local_ai">Lokale KI zur zusätzlichen Namenserkennung (langsamer)</span>
-            </label>
-            <div id="emlChatStatus" class="eml-chat-status" role="status" aria-live="polite"></div>
-            <a href="/eml-anonymizer" data-i18n="eml_chat.workspace">Fortschritt und ZIP-Export</a>
-        </div>
-        <input id="emlChatFiles" type="file" accept=".eml,message/rfc822" multiple hidden>
-        <input id="emlChatFolder" type="file" webkitdirectory multiple hidden>
+        <span id="emlUploadStatus" role="status" aria-live="polite" hidden
+              style="font-size:12px;opacity:.85;padding:4px 12px"></span>
+        <input id="chatFolderFiles" type="file" webkitdirectory multiple hidden>
 
         <div class="composer-bottom">
 
@@ -1323,28 +1312,18 @@
                             </span>
                         </button>
 
-                        <button id="emlChatPickFiles" class="composer-plus-item" type="button" role="menuitem">
-                            <span class="composer-plus-icon">✉</span>
-                            <span class="composer-plus-copy">
-                                <strong data-i18n="eml_chat.pick_files">EML-Dateien hinzufügen</strong>
-                                <small data-i18n="eml_chat.pick_files_hint">Im Chat anonymisieren</small>
-                            </span>
-                        </button>
-                        <button id="emlChatPickFolder" class="composer-plus-item" type="button" role="menuitem">
+                        <button
+                            id="chatPickFolder"
+                            class="composer-plus-item"
+                            type="button"
+                            role="menuitem"
+                        >
                             <span class="composer-plus-icon">▣</span>
                             <span class="composer-plus-copy">
-                                <strong data-i18n="eml_chat.pick_folder">EML-Ordner hinzufügen</strong>
-                                <small data-i18n="eml_chat.pick_folder_hint">Alle EML-Dateien im Ordner</small>
+                                <strong data-i18n="eml_chat.pick_folder_generic">Dateiordner anhängen</strong>
+                                <small data-i18n="eml_chat.pick_folder_hint">EML-Dateien aus einem Ordner auswählen</small>
                             </span>
                         </button>
-
-                        <a class="composer-plus-item" href="/eml-anonymizer" role="menuitem" style="text-decoration:none;color:inherit">
-                            <span class="composer-plus-icon">✉</span>
-                            <span class="composer-plus-copy">
-                                <strong data-i18n="ui.eml_anonymizer">E-Mail-Anonymisierung</strong>
-                                <small data-i18n="ui.eml_anonymizer_hint">Lokale EML-Stapelverarbeitung öffnen</small>
-                            </span>
-                        </a>
 
                         <!-- MLX-NOBBY-COMPOSER-META-START -->
                         <div class="composer-plus-divider"></div>
@@ -1618,9 +1597,8 @@
 
 <script src="/assets/common.js?v=20261023-studio2"></script>
 <script src="/assets/chat/sessions.js?v=20260914-image-ui-final"></script>
-<script src="/assets/chat/attachments.js?v=20261026-eml-batch"></script>
-<link rel="stylesheet" href="/assets/chat/eml-batch.css?v=1">
-<script src="/assets/chat/eml-batch.js?v=1"></script>
+<script src="/assets/chat/attachments.js?v=20261026-eml-normal-files"></script>
+<script src="/assets/chat/eml-batch.js?v=2"></script>
 <script src="/assets/chat/i18n.js"></script>
 <script src="/assets/chat/rendering.js?v=20261025-image-preview-during-chat-restore"></script>
 <script src="/assets/chat/image-preview.js?v=20261002-pending-preview"></script>
@@ -1633,7 +1611,7 @@
 <script src="/assets/chat/charts.js?v=2-0-cpi-precision"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
-<script src="/assets/chat/generation.js?v=20261026-eml-batch"></script>
+<script src="/assets/chat/generation.js?v=20261026-eml-normal-files"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>

@@ -1,5 +1,6 @@
 {
   "eml_chat": {
+    "pick_folder_generic": "Attach folder",
     "pick_files": "Add EML files",
     "pick_files_hint": "Anonymize directly in chat",
     "pick_folder": "Add EML folder",
@@ -576,6 +577,9 @@
   "knowledge.folder_opened": "Folder picker opened …",
   "knowledge.folder_selected": "✓ Folder selected",
   "knowledge.error": "Error: {message}",
+  "attachments.eml_more": "… and {count} more EML files",
+  "attachments.eml_empty": "EML file is empty or invalid.",
+  "attachments.eml_limit": "At most 10,000 EML files per batch.",
   "attachments.unsupported_type": "Unsupported file type: {name}",
   "attachments.unknown_error": "Unknown error",
   "attachments.pdf_processing_failed": "Could not process the PDF.",
