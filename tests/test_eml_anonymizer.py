@@ -504,7 +504,7 @@ def test_durable_merge_checkpoints_resume_after_failures_and_restart(isolated, m
     fail_second = {"on": True}
 
     def model(prompt, max_tokens=3500):
-        source_list = json.loads(prompt[prompt.index("[{"):])
+        source_list = json.loads(prompt.rsplit("\n", 1)[-1])
         called.append(tuple(x["frage"] for x in source_list))
         if fail_second["on"] and len(called) == 2:
             raise ConnectionError("simulated timeout")
