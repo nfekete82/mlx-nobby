@@ -13,8 +13,12 @@ window.MLXChatEml = (() => {
 
     function useLocalAI(prompt) {
         const text = String(prompt || '');
-        if (/\b(?:ohne|keine|kein)\s+(?:lokale(?:s|r)?\s+)?(?:ki|qwen|llm|sprachmodell)\b/i.test(text)) return false;
-        return /\b(?:mit|durch|per)\s+(?:der\s+)?(?:lokalen?\s+)?(?:ki|qwen|llm|sprachmodell)\b|\bki[- ]?(?:prüfung|erkennung)\b/i.test(text);
+        const localAdjective = 'lokal(?:e|en|er|es)?';
+        const model = '(?:ki|qwen|llm|sprachmodell)';
+        const negation = new RegExp('\\b(?:ohne|kein(?:e|en|er|es)?)\\s+(?:(?:die|der|dem)\\s+)?(?:' + localAdjective + '\\s+)?' + model + '\\b', 'i');
+        if (negation.test(text)) return false;
+        const activation = new RegExp('\\b(?:mit|durch|per)\\s+(?:(?:der|dem)\\s+)?(?:' + localAdjective + '\\s+)?' + model + '\\b', 'i');
+        return activation.test(text) || /\bki[- ]?(?:prüfung|erkennung)\b/i.test(text);
     }
 
     async function request(path, options) {
