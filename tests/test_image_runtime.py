@@ -1758,36 +1758,31 @@ class ImageRuntimeTests(unittest.TestCase):
         # Juggernaut remains the fallback when Qwen is unavailable below.
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "A photorealistic studio portrait of a woman",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "A realistic person in natural light",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "A poster with clear typography and text",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "Create a quick preview of a red apple",
                 )["id"],
                 registry.Z_IMAGE_TURBO_ID,
             )
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "A generic landscape",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
@@ -1808,8 +1803,7 @@ class ImageRuntimeTests(unittest.TestCase):
 
         with patch.object(service, "availability", side_effect=without_qwen):
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "A photorealistic studio portrait of a woman",
                 )["id"],
                 registry.JUGGERNAUT_XL_ID,
@@ -1823,8 +1817,7 @@ class ImageRuntimeTests(unittest.TestCase):
 
         with patch.object(service, "availability", side_effect=without_turbo):
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "Create a fast preview of a landscape",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
@@ -1834,8 +1827,7 @@ class ImageRuntimeTests(unittest.TestCase):
 
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
-                service._generation_model(
-                    "auto",
+                service._auto_generation_model(
                     "Create a fast preview of a landscape",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
