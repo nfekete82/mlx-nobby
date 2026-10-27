@@ -244,6 +244,7 @@
     function applySavedDefaultWhenEmpty() {
         const ui = ensureControls();
         if (!ui || ui.field.hidden || ui.input.value.trim()) return;
+        if (ui.input.dataset.imageCreationRestored === 'true') return;
 
         const saved = readDefault();
         if (saved) setInputValue(ui.input, saved);

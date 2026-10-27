@@ -102,6 +102,54 @@ const IMAGE_FORMATS = Object.freeze([
 ]);
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
+const IMAGE_CREATION_PREFERENCES_KEY = 'mlx-nobby-image-creation-preferences-v1';
+const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra']);
+
+// Only confirmed Generate choices are stored; never store media prompts.
+function normalizeImageCreationPreferences(value) {
+    const data = value && typeof value === 'object' && !Array.isArray(value)
+        ? value : {};
+    return {
+        quality: IMAGE_CREATION_QUALITIES.includes(data.quality)
+            ? data.quality : 'standard',
+        format: IMAGE_FORMATS.includes(data.format)
+            ? data.format : 'square',
+        model: typeof data.model === 'string' && data.model.trim().length <= 160
+            ? (data.model.trim() || 'auto') : 'auto',
+        negative_prompt: typeof data.negative_prompt === 'string'
+            ? data.negative_prompt.slice(0, 2000) : ''
+    };
+}
+
+function storedImageCreationPreferences() {
+    try {
+        const value = window.localStorage?.getItem?.(
+            IMAGE_CREATION_PREFERENCES_KEY
+        );
+        if (!value) return null;
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return null;
+        }
+        return normalizeImageCreationPreferences(parsed);
+    } catch (_) {
+        return null;
+    }
+}
+
+function storeImageCreationPreferences(settings) {
+    const normalized = normalizeImageCreationPreferences(settings);
+    try {
+        window.localStorage?.setItem?.(
+            IMAGE_CREATION_PREFERENCES_KEY,
+            JSON.stringify(normalized)
+        );
+    } catch (_) {
+        // Private browsing or disabled storage must not block generation.
+    }
+    return normalized;
+}
+
 
 // Model-specific expert inputs; quality presets stay the convenient default.
 const RAGNAROK_SAMPLING_PRESETS = Object.freeze({
@@ -3207,7 +3255,11 @@ const imageFiles =
                 );
             }
 
+            const savedImageCreation = resolvedTarget === 'image'
+                ? storedImageCreationPreferences()
+                : null;
             let selectedMediaQuality =
+                savedImageCreation?.quality ||
                 MLXChatRuntime.getSessionMediaQuality?.() ||
                 'standard';
             const previewAvailable = mediaPreviewAvailable(
@@ -3233,6 +3285,7 @@ const imageFiles =
                 : 5;
             let selectedNegativePrompt = String(
                 options?.image?.negative_prompt ??
+                savedImageCreation?.negative_prompt ??
                 MLXChatRuntime.getSessionNegativePrompt?.() ??
                 ''
             ).trim();
@@ -3245,7 +3298,8 @@ const imageFiles =
             let selectedImageModel = String(
                 (hasAttachmentEditModelPicker
                     ? (options?.referenceEdit?.model || 'auto')
-                    : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
+                    : (options?.image?.model || options?.referenceEdit?.model ||
+                        savedImageCreation?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
 
@@ -3260,7 +3314,7 @@ const imageFiles =
                             ? 'portrait'
                             : 'landscape'
                     )
-                    : 'square';
+                    : (savedImageCreation?.format || 'square');
 
             if (mediaQualityKind) {
                 const modal =
@@ -3567,6 +3621,14 @@ const imageFiles =
                         }
                     };
 
+                    // A remembered empty negative prompt must not silently
+                    // be replaced by the separate optional global default.
+                    if (negativePromptInput) {
+                        negativePromptInput.dataset.imageCreationRestored =
+                            resolvedTarget === 'image' && savedImageCreation
+                                ? 'true' : 'false';
+                    }
+
                     title.textContent =
                         mediaQualityKind === 'video'
                             ? gt(
@@ -3656,7 +3718,18 @@ const imageFiles =
                             resolve(value);
                         };
 
+                        const captureImageSelections = () => {
+                            if (mediaQualityKind !== 'image') return;
+                            if (formatSelect && formatField && !formatField.hidden) {
+                                selectedMediaFormat = formatSelect.value;
+                            }
+                            if (resolvedTarget === 'image' && negativePromptInput) {
+                                selectedNegativePrompt = negativePromptInput.value;
+                            }
+                        };
+
                         const onQuality = event => {
+                            captureImageSelections();
                             choice = normalizeMediaPreviewQuality(
                                 event.currentTarget
                                     .dataset.mediaQuality ||
@@ -3670,6 +3743,7 @@ const imageFiles =
 
                         const onRagnarokStepPreset = event => {
                             if (!hasRagnarokSampling()) return;
+                            captureImageSelections();
                             const steps = Number(
                                 event.currentTarget.dataset.ragnarokStepPreset
                             );
@@ -3689,6 +3763,7 @@ const imageFiles =
 
                         const onImageModelChange = () => {
                             if (!imageModelSelectable) return;
+                            captureImageSelections();
                             selectedImageModel = String(
                                 imageModelSelect?.value || 'auto'
                             ).trim() || 'auto';
@@ -3782,6 +3857,14 @@ const imageFiles =
                                     .setSessionNegativePrompt?.(
                                         selectedNegativePrompt
                                     );
+                            }
+                            if (resolvedTarget === 'image') {
+                                storeImageCreationPreferences({
+                                    quality: choice,
+                                    format: selectedMediaFormat,
+                                    model: selectedImageModel,
+                                    negative_prompt: selectedNegativePrompt
+                                });
                             }
                             finish(choice);
                         };
