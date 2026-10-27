@@ -233,6 +233,8 @@ def test_no_image_does_not_authorize_composition():
 
 @pytest.mark.parametrize("prompt", [
     "Create an image: edit the hair in the attached picture",
+    "Create an image resembling this person.",
+    "Erstelle ein Bild der Frau aus dem Bild.",
     "  CREATE AN IMAGE: change the background of the previous image",
     "Create an image of a red car. Edit the existing photo afterwards",
     "Erstelle ein Bild: Bearbeite das hochgeladene Foto und ändere die Farbe",

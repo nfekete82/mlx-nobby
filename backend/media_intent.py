@@ -323,7 +323,7 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     prefix = _IMAGE_CREATE_PREFIX.match(text)
     if prefix and not _IMAGE_CREATE_CANCEL.search(text[prefix.end():]):
         return RoutingDecision("image_generate", "image", True, media_context,
-                               1.0, "Leading text-to-image command")
+                               1.0, "Explicit command bound to media output")
     if execution and not negated:
         # A composition using multiple supplied images is an edit operation
         # executed with reference-generation semantics, not a text-to-image job.

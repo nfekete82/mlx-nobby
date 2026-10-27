@@ -242,7 +242,7 @@ def test_auto_edit_skips_unavailable_osaurus(monkeypatch):
 
 @pytest.mark.parametrize("prompt", [
     "Erstelle ein gemeinsames fotorealistisches Bild der beiden Frauen aus den Referenzfotos, wie sie zusammen auf einem Bett liegen.",
-    "Create an image with both people together on a bench",
+    "Create a photo with both people together on a bench",
     "Setz beide Personen gemeinsam auf eine Parkbank",
 ])
 def test_auto_composition_payload_without_redundant_single_source(edit_runtime, prompt):

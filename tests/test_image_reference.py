@@ -25,7 +25,7 @@ import image_providers
     ('Generate another photo of the same person.', 'same_identity'),
     ('Show this person standing outside.', 'same_identity'),
     ('Keep the same face but change the setting.', 'same_identity'),
-    ('Erstelle ein Bild der Frau aus dem Bild.', 'same_identity'),
+    ('Erstelle ein Foto der Frau aus dem Bild.', 'same_identity'),
     ('Make a photo similar to this person.', 'resemblance'),
     ('Behalte dieselbe Person und das Gesicht möglichst ähnlich. Neue Pose: Ganzkörperaufnahme.', 'same_identity'),
     ('Erstelle die gleiche Person, Gesicht möglichst ähnlich, jetzt stehend.', 'same_identity'),
@@ -258,7 +258,7 @@ def test_selected_artifact_without_current_upload(runtime, monkeypatch):
 def test_optimizer_cannot_remove_reference_semantics(runtime, monkeypatch):
     native, client, source, calls = runtime
     monkeypatch.setattr(agent, 'translate_media_prompt_to_english', lambda _: 'A person in an office')
-    result = client.post('/api/chat/actions', json=request(source, prompt='Create an image resembling this person.')).json()
+    result = client.post('/api/chat/actions', json=request(source, prompt='Create a photo resembling this person.')).json()
     job = wait(native, result['data']['job']['id'])
     assert job['result']['reference_mode'] == 'resemblance'
     assert 'visual reference for recognizable resemblance' in calls[0][1]['prompt']
