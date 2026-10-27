@@ -198,6 +198,8 @@ def main():
                 }), flush=True)
                 return callback_kwargs
 
+            # SDXL already uses hidden_states[-2] (Pony's UI Clip Skip 2).
+            # Leave clip_skip unset: Diffusers interprets it as extra skipping.
             arguments = {
                 "prompt": params["prompt"],
                 "negative_prompt": params.get("negative_prompt") or None,

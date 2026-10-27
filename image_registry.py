@@ -40,6 +40,8 @@ JUGGERNAUT_RAGNAROK_NAME = "Juggernaut XL Ragnarok"
 JUGGERNAUT_RAGNAROK_MODEL_VERSION = "1759168"
 JUGGERNAUT_RAGNAROK_CHECKPOINT = "juggernautXL_ragnarok.safetensors"
 JUGGERNAUT_RAGNAROK_SHA256 = "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a"
+CYBERREALISTIC_PONY_V18_ID = "cyberrealistic-pony-v18"
+CYBERREALISTIC_PONY_V18_DIRECTORY = Path.home() / "Models" / "CyberRealisticPonyV18"
 # No longer offer the retired experimental SDXL model in persisted registries.
 RETIRED_MODEL_IDS = {"lustify-endgame-sdxl"}
 LEGACY_KREA_MODEL_IDS = {"mflux-krea2-turbo"}
@@ -413,6 +415,18 @@ def builtin_models():
         enabled=False,
         default_steps=35,
         default_guidance=4.0,
+    ).model_dump())
+    models.append(ImageModel(
+        id=CYBERREALISTIC_PONY_V18_ID,
+        name="CyberRealistic Pony v18 CoreShift",
+        provider="sdxl",
+        local_path=str(CYBERREALISTIC_PONY_V18_DIRECTORY),
+        model_family="sdxl",
+        base_model="sdxl",
+        quantization="none",
+        enabled=False,
+        default_steps=35,
+        default_guidance=5.0,
     ).model_dump())
     return models
 

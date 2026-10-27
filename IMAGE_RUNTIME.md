@@ -40,6 +40,27 @@ default, controlled by `MLX_IMAGE_SDXL_IDLE_TIMEOUT`). Real-ESRGAN upscaling
 uses a separately installed native binary and local model files; it supports
 photo 2x/4x and anime 4x presets. Neither path downloads model weights.
 
+**CyberRealistic Pony v18 CoreShift** (`cyberrealistic-pony-v18`) is an additional,
+disabled-by-default SDXL built-in alongside Juggernaut XL. It uses the same
+offline SDXL worker, with exactly one local `.safetensors` checkpoint in
+`~/Models/CyberRealisticPonyV18/` and the complete local Diffusers configuration
+under `~/Models/CyberRealisticPonyV18/config/` (including `model_index.json`).
+Supply these files manually, then explicitly enable/select the model in the
+image registry. Registration does not download files, enable Pony or change
+the current default. Fast / Standard / Quality presets use 20/35/35 steps,
+CFG 5.0/5.0/5.5 and long edges 768/1216/1216. Pony uses the existing
+DPM++ 2M SDE Karras preset. Diffusers SDXL's default penultimate CLIP layer
+already corresponds to the model's recommended UI Clip Skip 2; do not pass
+`clip_skip=2`, which skips additional layers in Diffusers.
+
+The local installation and one successful Metal render were verified on
+2026-10-27; built-in defaults still remain opt-in. See the
+[Pony installation and GPU test report](docs/CYBERREALISTIC_PONY_V18.md) for the
+checkpoint hash, comparison with Juggernaut and limited visual assessment.
+
+Maintain model-test dates, results and planned comparisons in the
+[image model test matrix](docs/image-model-test-matrix.md).
+
 The registry is persisted at `~/.config/mlx-web/image-models.json`. Built-in
 entries are migrated into an existing registry without overwriting user
 choices. The `image` model role in `model-roles.json` stores an image-registry

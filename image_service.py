@@ -763,9 +763,8 @@ def _resolve_generation(request):
             request.width, request.height, profile["long_edge"],
         )
     params["seed"] = request.seed if request.seed is not None else secrets.randbelow(2**31 - 1)
-    if model["id"] == registry.JUGGERNAUT_XL_ID:
-        # Ragnarok sampler recommended by its creator (SDE variant);
-        # the available Diffusers preset uses Karras sigmas.
+    if model["id"] in {registry.JUGGERNAUT_XL_ID, registry.CYBERREALISTIC_PONY_V18_ID}:
+        # Both opt-in checkpoints use the existing DPM++ 2M SDE Karras preset.
         params["scheduler"] = "dpmpp-2m-sde-karras"
     if model["provider"] == "diffusionkit" and params["steps"] > 8:
         raise HTTPException(422, "FLUX.1-schnell/DiffusionKit unterstützt maximal 8 Steps")
