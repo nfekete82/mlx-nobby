@@ -1754,20 +1754,22 @@ class ImageRuntimeTests(unittest.TestCase):
 
         registry.set_default(registry.MLXSERVE_QWEN_IMAGE21_ID)
 
+        # Auto generation has preferred Qwen 2.1 for portraits since b9acecf3.
+        # Juggernaut remains the fallback when Qwen is unavailable below.
         with patch.object(service, "availability", return_value=(True, "ready")):
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A photorealistic studio portrait of a woman",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
                     "auto",
                     "A realistic person in natural light",
                 )["id"],
-                registry.JUGGERNAUT_XL_ID,
+                registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
             self.assertEqual(
                 service._generation_model(
@@ -4929,24 +4931,13 @@ def test_image_upscale_endpoint_returns_png_metadata(
             str(output_path),
         ]
 
-    class FakeStdout:
-        def __init__(self):
-            self.lines = iter([
-                "0.00%\n",
-                "50.00%\n",
-                "100.00%\n",
-            ])
-
-        def readline(self):
-            return next(self.lines, "")
-
-        def read(self):
-            return ""
-
     class FakeProcess:
         def __init__(self, command):
             self.command = command
-            self.stdout = FakeStdout()
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, b"0.00%\n50.00%\n100.00%\n")
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
             self.returncode = None
             self.pid = 12345
             self._polls = 0
@@ -4962,7 +4953,7 @@ def test_image_upscale_endpoint_returns_png_metadata(
         def poll(self):
             self._polls += 1
 
-            if self._polls >= 3:
+            if self._polls >= 1:
                 self.returncode = 0
 
             return self.returncode

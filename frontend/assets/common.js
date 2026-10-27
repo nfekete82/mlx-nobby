@@ -354,7 +354,7 @@
                 );
             }
             await loadScript(
-                '/assets/chat/tts-cache.js?v=20260926-tts-cache',
+                '/assets/chat/tts-cache.js?v=20261027-tts-cache-budget',
                 'mlx-tts-cache'
             );
             await loadScript(

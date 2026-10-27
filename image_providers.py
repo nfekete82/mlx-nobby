@@ -1201,6 +1201,52 @@ def _quality_progress_callback(progress_callback, percent):
     })
 
 
+def iter_process_lines(process, *, cancel_event, deadline, timeout_message):
+    """Drain progress output without blocking cancellation on a silent child.
+
+    Read raw pipe bytes after readiness; TextIOWrapper.readline() can still
+    block on partial lines. Bound unterminated diagnostic lines to 64 KiB.
+    """
+    pending = b""
+    stream_open = True
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ProviderCancelled("Image job was cancelled")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(timeout_message)
+                delay = min(PROVIDER_POLL_INTERVAL, remaining)
+                if not stream_open:
+                    if process.poll() is not None:
+                        break
+                    if cancel_event is not None:
+                        cancel_event.wait(delay)
+                    else:
+                        time.sleep(delay)
+                    continue
+                if not selector.select(delay):
+                    continue
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(process.stdout)
+                    stream_open = False
+                    continue
+                parts = re.split(rb"[\r\n]", pending + chunk)
+                pending = parts.pop()
+                for line in parts:
+                    yield line.decode("utf-8", errors="replace")
+                if len(pending) >= 65536:
+                    yield pending[:65536].decode("utf-8", errors="replace")
+                    pending = pending[65536:]
+        if pending:
+            yield pending.decode("utf-8", errors="replace")
+    finally:
+        process.stdout.close()
+
+
 def _maybe_quality_upscale(
     params,
     output,
@@ -1249,11 +1295,10 @@ def _maybe_quality_upscale(
         if progress_callback is not None:
             progress_callback({"phase": "upscaling", "progress": 0.9})
 
-        while True:
-            if cancel_event is not None and cancel_event.is_set():
-                raise ProviderCancelled("Image job was cancelled")
-
-            line = process.stdout.readline()
+        for line in iter_process_lines(
+            process, cancel_event=cancel_event, deadline=deadline,
+            timeout_message="Quality+ Upscaling hat das Zeitlimit überschritten",
+        ):
             if line:
                 clean = line.strip()
                 lines.append(clean)
@@ -1265,23 +1310,6 @@ def _maybe_quality_upscale(
                         progress_callback,
                         min(100.0, max(0.0, float(match.group(1)))),
                     )
-
-            returncode = process.poll()
-            if returncode is not None:
-                if process.stdout is not None:
-                    remainder = process.stdout.read()
-                    if remainder:
-                        lines.extend(
-                            item.strip()
-                            for item in remainder.splitlines()
-                            if item.strip()
-                        )
-                break
-
-            if time.monotonic() >= deadline:
-                raise RuntimeError("Quality+ Upscaling hat das Zeitlimit überschritten")
-            if not line:
-                time.sleep(0.05)
 
         if process.returncode != 0 or not temporary.is_file():
             detail = "\n".join(lines[-50:]).strip()
@@ -1310,9 +1338,9 @@ def _maybe_quality_upscale(
         )
         return False
     finally:
-        temporary.unlink(missing_ok=True)
         if process is not None and process.poll() is None:
             terminate_process_tree(process)
+        temporary.unlink(missing_ok=True)
         if process_callback is not None:
             process_callback(None)
 

@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from backend.upload_work import upload_slot, run_upload_work
 from pypdf import PdfReader
 from backend import observability
 from local_security import LocalRequestGuard, read_upload
@@ -521,20 +522,29 @@ async def parse_document(file: UploadFile = File(...)):
             detail="Aktuell werden nur PDF-Dateien unterstützt",
         )
 
-    data = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
+    async with upload_slot:
+        data = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
 
-    if not data:
-        raise HTTPException(
-            status_code=400,
-            detail="Leere PDF-Datei",
+        if not data:
+            raise HTTPException(
+                status_code=400,
+                detail="Leere PDF-Datei",
+            )
+
+        if len(data) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"PDF ist größer als {MAX_UPLOAD_SIZE_MB} MB",
+            )
+
+        return await run_upload_work(
+            _parse_document_sync, data, filename, file.content_type
         )
 
-    if len(data) > MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"PDF ist größer als {MAX_UPLOAD_SIZE_MB} MB",
-        )
 
+def _parse_document_sync(data, filename, content_type):
+    # PDF parsing and the Agent indexing request both block. Keep the entire
+    # operation in one worker so concurrent chat streams/health remain live.
     try:
         reader = PdfReader(io.BytesIO(data))
     except Exception as exc:
@@ -635,7 +645,7 @@ async def parse_document(file: UploadFile = File(...)):
         "name": filename,
         "kind": "document",
         "extension": "pdf",
-        "type": file.content_type or "application/pdf",
+        "type": content_type or "application/pdf",
         "pages": len(reader.pages),
         "page_texts": pages,
         "characters": len(extracted_text),
@@ -732,12 +742,17 @@ def speech_synthesis(request: dict):
 
 @app.post("/api/mlx/audio/transcriptions")
 async def speech_transcription(file: UploadFile = File(...)):
-    audio = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
+    async with upload_slot:
+        audio = await read_upload(file, MAX_UPLOAD_SIZE_BYTES)
 
-    if not audio:
-        raise HTTPException(status_code=400, detail="Leere Audiodatei")
+        if not audio:
+            raise HTTPException(status_code=400, detail="Leere Audiodatei")
 
-    suffix = Path(file.filename or "recording.webm").suffix.lower()
+        return await run_upload_work(_speech_transcription_sync, audio, file.filename)
+
+
+def _speech_transcription_sync(audio, upload_filename):
+    suffix = Path(upload_filename or "recording.webm").suffix.lower()
     if suffix not in {".webm", ".wav", ".mp3", ".mp4", ".m4a", ".ogg", ".oga", ".flac", ".aac"}:
         raise HTTPException(415, "Nicht unterstütztes Audioformat")
     filename = "recording" + suffix

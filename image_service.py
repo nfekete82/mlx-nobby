@@ -34,6 +34,7 @@ from image_providers import (
     shutdown_sdxl_worker,
     terminate_process_tree,
     realesrgan_command,
+    iter_process_lines,
 )
 from local_security import LocalRequestGuard
 from image_variants import install as install_image_variants
@@ -1142,11 +1143,10 @@ def _upscale_result(
         deadline = time.monotonic() + 840
         output_lines = []
 
-        while True:
-            if cancel_event is not None and cancel_event.is_set():
-                raise ProviderCancelled("Image job was cancelled")
-
-            line = process.stdout.readline()
+        for line in iter_process_lines(
+            process, cancel_event=cancel_event, deadline=deadline,
+            timeout_message="Real-ESRGAN-Auftrag hat das Zeitlimit überschritten",
+        ):
 
             if line:
                 line = line.strip()
@@ -1173,26 +1173,6 @@ def _upscale_result(
                             ),
                             "total_steps": 1000,
                         })
-
-            returncode = process.poll()
-
-            if returncode is not None:
-                remainder = process.stdout.read()
-                if remainder:
-                    output_lines.extend(
-                        line.strip()
-                        for line in remainder.splitlines()
-                        if line.strip()
-                    )
-                break
-
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    "Real-ESRGAN-Auftrag hat das Zeitlimit überschritten"
-                )
-
-            if not line:
-                time.sleep(0.05)
 
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelled("Image job was cancelled")

@@ -162,7 +162,10 @@ class QualityPlusTests(unittest.TestCase):
                 returncode = 0
 
                 def __init__(self):
-                    self.stdout = io.StringIO("100%\n")
+                    read_fd, write_fd = os.pipe()
+                    os.write(write_fd, b"100%\n")
+                    os.close(write_fd)
+                    self.stdout = os.fdopen(read_fd, "rb")
 
                 def poll(self):
                     return 0

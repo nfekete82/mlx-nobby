@@ -2,6 +2,7 @@
     'use strict';
 
     const MAX_ENTRIES = 40;
+    const MAX_CACHE_BYTES = 32 * 1024 * 1024;
     const cache = new Map();
     const inFlight = new Map();
     const wrappedFetch = window.fetch.bind(window);
@@ -47,10 +48,15 @@
     }
 
     function remember(key, entry) {
+        // Entry count alone does not bound memory for long speech responses.
+        if (entry.blob.size > MAX_CACHE_BYTES) return;
         if (cache.has(key)) cache.delete(key);
         cache.set(key, entry);
-        while (cache.size > MAX_ENTRIES) {
-            cache.delete(cache.keys().next().value);
+        let bytes = [...cache.values()].reduce((total, item) => total + item.blob.size, 0);
+        while (cache.size > MAX_ENTRIES || bytes > MAX_CACHE_BYTES) {
+            const oldest = cache.keys().next().value;
+            bytes -= cache.get(oldest).blob.size;
+            cache.delete(oldest);
         }
     }
 

@@ -27,6 +27,7 @@ from agent import profile
 from agent import code_workspaces
 from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
 from agent import disk_usage
+from agent.log_tail import read_log_tail
 from agent import image_api
 from image_variants import VariantBatch, load_record
 from agent import video_api
@@ -1727,21 +1728,11 @@ def collect_log_sources(limit=200):
             return
 
         try:
-            content = log_file.read_text(
-                encoding="utf-8",
-                errors="replace",
-            )
-
-            # Remove null bytes from old or malformed logs.
-            content = content.replace("\x00", "")
-
-            lines = content.splitlines()
-
             sources.append({
                 "id": source_id,
                 "name": name,
                 "file": str(log_file),
-                "lines": lines[-limit:],
+                "lines": read_log_tail(log_file, limit, strip_nulls=True),
             })
 
         except Exception as exc:
@@ -1840,14 +1831,9 @@ def mlx_log_lines(limit=150):
             continue
 
         try:
-            lines = log_file.read_text(
-                encoding="utf-8",
-                errors="replace",
-            ).splitlines()
-
             found.append({
                 "file": str(log_file),
-                "lines": lines[-limit:],
+                "lines": read_log_tail(log_file, limit),
             })
 
         except Exception:
