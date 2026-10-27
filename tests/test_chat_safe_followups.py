@@ -40,6 +40,46 @@ def test_multi_turn_benign_continuation_can_stay_fast():
 
 
 @pytest.mark.parametrize("prompt", [
+    "Nenne die Zahlen von 1 bis 12, getrennt durch Kommas.",
+    "Was sind Primzahlen?",
+    "Explain rainbows in simple words.",
+])
+def test_independent_safe_questions_reuse_verified_benign_conversation(prompt):
+    context = BENIGN + [
+        {"role": "user", "content": "Was sind Primzahlen?"},
+        {"role": "assistant", "content": "Zahlen mit genau zwei positiven Teilern."},
+    ]
+    assert safe_followup_chat_fast_path(prompt, context)
+    with (
+        mock.patch.object(app.code_workspaces, "active_workspace", return_value=None),
+        mock.patch.object(app, "semantic_intent_classifier", side_effect=AssertionError("unnecessary router")),
+        mock.patch.object(app, "semantic_manager_classifier", side_effect=AssertionError("unnecessary manager")),
+    ):
+        result = app.classify_chat_action_details(prompt, conversation_context=context)
+    assert result["intent"] == "normal_chat" and result["requires_tools"] is False
+
+
+@pytest.mark.parametrize("prompt", [
+    "OK", "Danke.", "Alles klar.",
+    "Explain rainbows and save the answer to Desktop.",
+    "Schreibe ein kurzes Gedicht und speichere es auf dem Desktop.",
+    "Explain the attached file.",
+    "Explain rainbows and fetch current sources.",
+])
+def test_benign_history_never_authorizes_acknowledgments_or_actions(prompt):
+    assert not safe_followup_chat_fast_path(prompt, BENIGN)
+
+
+def test_safe_question_does_not_hide_prior_tool_context_or_workspace():
+    prompt = "Was sind Primzahlen?"
+    assert not safe_followup_chat_fast_path(prompt, BENIGN, workspace_active=True)
+    assert not safe_followup_chat_fast_path(prompt, [
+        {"role": "user", "content": "Prüfe meine Dateien."},
+        {"role": "assistant", "content": "Welche Datei?"},
+    ])
+
+
+@pytest.mark.parametrize("prompt", [
     "Ok, dann los!",
     "Mach das bitte!",
     "Ja, bitte umsetzen.",

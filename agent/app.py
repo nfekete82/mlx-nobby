@@ -26,6 +26,7 @@ from agent import knowledge
 from agent import profile
 from agent import code_workspaces
 from agent.chat_fast_path import simple_chat_fast_path, safe_followup_chat_fast_path
+from agent.router_turn_cache import turn_classifier_cache
 from agent import disk_usage
 from agent.log_tail import read_log_tail
 from agent import image_api
@@ -5749,13 +5750,16 @@ Erlaubte Intents: {', '.join(sorted(SEMANTIC_ROUTER_INTENTS))}
             _router_context_text(conversation_context)
         ),
     }
-    response=router_llm(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-        ],
-        max_tokens=320,
-        temperature=0.0,
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+    ]
+    response = turn_classifier_cache.classify(
+        observability.current_trace_id(),
+        {"model": ROUTER_MODEL, "url": ROUTER_URL, "messages": messages,
+         "max_tokens": 320, "temperature": 0.0},
+        lambda: router_llm(messages, max_tokens=320, temperature=0.0),
+        validate=lambda output: isinstance(parse_agent_json(output), dict),
     )
     parsed=parse_agent_json(response)
     intent=str(parsed.get("intent") or "").strip().lower()

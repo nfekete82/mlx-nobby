@@ -59,7 +59,8 @@ _UNSAFE_CONTEXT = re.compile(
     r"lösche|delete|remove|run|execute|"
     r"zeige|zeig|schau\w*|lade|download\w*|sende\w*|send\w*|verschick\w*|schick\w*|poste\w*|veröffentlich\w*|"
     r"tool\w*|quelle\w*|source\w*|link\w*|"
-    r"datei\w*|ordner\w*|anhang|attachment\w*|"
+    r"datei\w*|ordner\w*|anhang|attachment\w*|files?|folders?|"
+    r"speicher\w*|save\w*|fetch\w*|upload\w*|update\w*|"
     r"workspace|projekt\w*|repository|repo|git|"
     r"nobby|mlx|docker|localhost|api|server|modell\w*|model\w*|"
     r"mac|rechner|computer|ram|speicher|prozess\w*|port|"
@@ -144,7 +145,7 @@ def safe_followup_chat_fast_path(
     *,
     workspace_active: bool = False,
 ) -> bool:
-    """Admit only explanation follow-ups in fully benign recent conversations.
+    """Admit explanations or standalone safe questions in benign conversations.
 
     No history metadata or validated route is available from the frontend, so
     every visible recent user turn must have qualified for our local allowlist.
@@ -153,9 +154,13 @@ def safe_followup_chat_fast_path(
     if workspace_active or not isinstance(prompt, str):
         return False
     message = " ".join(prompt.split())
-    if not (4 <= len(message) <= 110):
+    if not (2 <= len(message) <= 240):
         return False
-    if _UNSAFE_CONTEXT.search(message) or not _EXPLANATION_FOLLOWUP.fullmatch(message):
+    explanation = len(message) <= 110 and _EXPLANATION_FOLLOWUP.fullmatch(message)
+    standalone = simple_chat_fast_path(message) and not _SIMPLE_EXCHANGES.fullmatch(message)
+    if _UNSAFE_CONTEXT.search(message) or not (
+        standalone or explanation
+    ):
         return False
     if not isinstance(conversation_context, list):
         return False
@@ -179,14 +184,16 @@ def safe_followup_chat_fast_path(
             return False
         if _UNTRUSTED_ASSISTANT_HISTORY.search(reply):
             return False
-        if index == 0:
-            # Honor the global opt-out, and prove the original prompt was safe.
-            if not simple_chat_fast_path(earlier):
-                return False
-        else:
+        # Every standalone question must qualify independently. Context is
+        # retained for generation; this shortcut changes classification only.
+        standalone_history = simple_chat_fast_path(earlier) and (
+            index == 0 or not _SIMPLE_EXCHANGES.fullmatch(" ".join(earlier.split()))
+        )
+        if not standalone_history:
             earlier = " ".join(earlier.split())
             if (
-                len(earlier) > 110
+                index == 0
+                or len(earlier) > 110
                 or _UNSAFE_CONTEXT.search(earlier)
                 or not _EXPLANATION_FOLLOWUP.fullmatch(earlier)
             ):
