@@ -101,5 +101,6 @@ test('only confirmed new image generation updates the saved preference', () => {
         startConfirm
     );
     assert.doesNotMatch(onCancel, /storeImageCreationPreferences/);
+    assert.match(source, /if \(negativePromptInput\?\.dataset\)/);
     assert.match(negativeEditor, /imageCreationRestored === 'true'/);
 });

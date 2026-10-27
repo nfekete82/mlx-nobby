@@ -3623,7 +3623,7 @@ const imageFiles =
 
                     // A remembered empty negative prompt must not silently
                     // be replaced by the separate optional global default.
-                    if (negativePromptInput) {
+                    if (negativePromptInput?.dataset) {
                         negativePromptInput.dataset.imageCreationRestored =
                             resolvedTarget === 'image' && savedImageCreation
                                 ? 'true' : 'false';
