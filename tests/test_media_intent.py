@@ -229,27 +229,85 @@ def test_no_image_does_not_authorize_composition():
     assert not decision.execution_requested
 
 
+
+
 @pytest.mark.parametrize("prompt", [
-    "erstelle ein bild mit beiden frauen auf einem bett",
-    "Erstelle ein Foto von beiden Personen gemeinsam auf einer Parkbank",
-    "Create an image with both women sitting on a bed",
-    "Generate a photo of both people together on a bench",
+    "Create an image: edit the hair in the attached picture",
+    "  CREATE AN IMAGE: change the background of the previous image",
+    "Create an image of a red car. Edit the existing photo afterwards",
+    "Erstelle ein Bild: Bearbeite das hochgeladene Foto und ändere die Farbe",
+    "Generiere ein Bild: Ändere den Hintergrund dieses Fotos",
+    "Generate an image: edit both uploaded images together",
+    "Make an image: change the image from earlier",
+    "Erstelle ein Bild: Bitte das vorhandene Foto nicht bearbeiten",
 ])
-def test_explicit_two_image_creation_uses_edit_route_at_preflight_and_execution(prompt):
+@pytest.mark.parametrize("binding", [
+    {},
+    {"file_context": IMAGE},
+    {"file_context": {**IMAGE, "image_count": 2, "references": [
+        {"kind": "image", "stored_path": "/tmp/first.png"},
+        {"kind": "image", "stored_path": "/tmp/second.png"},
+    ]}},
+    {"active_artifact_id": "previous-image"},
+])
+def test_leading_image_creation_always_uses_new_generation(prompt, binding):
+    request = app.ChatActionRequest(
+        prompt=prompt, action="image_edit", resolved_target="image_edit", **binding
+    )
+    decision = decide_media_intent(
+        prompt,
+        has_image=bool(binding),
+        image_count=2 if (binding.get("file_context") or {}).get("image_count") == 2 else 1,
+        action="image_edit",
+    )
+    assert decision.intent == "image_generate"
+    assert decision.target == "image"
+    assert decision.reference_mode is None
+
+    preflight = app.preflight_chat_action(request)
+    assert preflight["intent"] == "image_generate"
+    assert preflight["target"] == "image"
+    with patch.object(app, "_start_chat_image_job", return_value={
+        "id": "a" * 24, "status": "queued",
+    }) as start:
+        result = app.run_chat_action(request)
+    assert result["tool"] == "image_generate"
+    assert start.call_args.args[0] == "image_generate"
+
+
+@pytest.mark.parametrize("prompt,expected", [
+    ("Create an image prompt for a video", "prompt_writing"),
+    ("Erstelle ein Bild-Prompt für LTX", "prompt_writing"),
+    ("Create an image: don't generate an image", "discussion"),
+    ("Erstelle ein Bild: bitte nicht generieren", "discussion"),
+    ("Edit this picture", "image_edit"),
+])
+def test_generation_prefix_does_not_override_text_or_cancelled_commands(prompt, expected):
+    decision = decide_media_intent(prompt, has_image=True)
+    assert decision.intent == expected
+
+@pytest.mark.parametrize("prompt,expected", [
+    ("erstelle ein bild mit beiden frauen auf einem bett", "image_generate"),
+    ("Erstelle ein Foto von beiden Personen gemeinsam auf einer Parkbank", "image_edit"),
+    ("Create an image with both women sitting on a bed", "image_generate"),
+    ("Generate a photo of both people together on a bench", "image_edit"),
+])
+def test_two_image_creation_respects_leading_generation_prefix(prompt, expected):
     context = {**IMAGE, "image_count": 2, "references": [
         {"kind": "image", "stored_path": "/tmp/first.png"},
         {"kind": "image", "stored_path": "/tmp/second.png"},
     ]}
     decision = decide_media_intent(prompt, has_image=True, image_count=2)
-    assert decision.intent == decision.target == "image_edit"
+    assert decision.intent == expected
+    assert decision.target == ("image" if expected == "image_generate" else "image_edit")
 
     request = app.ChatActionRequest(prompt=prompt, file_context=context, resolved_target="image_edit")
     preflight = app.preflight_chat_action(request)
-    assert preflight["target"] == "image_edit"
+    assert preflight["target"] == ("image" if expected == "image_generate" else "image_edit")
     with patch.object(app, "_start_chat_image_job", return_value={"id": "a" * 24, "status": "queued"}) as start:
         result = app.run_chat_action(request)
-    assert result["tool"] == "image_edit"
-    assert start.call_args.args[0] == "image_edit"
+    assert result["tool"] == expected
+    assert start.call_args.args[0] == expected
 
 
 @pytest.mark.parametrize("prompt,expected", [

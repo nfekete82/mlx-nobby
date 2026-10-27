@@ -91,6 +91,21 @@ CONTENT_CONSTRAINTS = {
 CONTENT_QUALIFIERS = {"generierter", "generierte", "generierten", "generiertes", "generated"}
 
 
+# A leading text-to-image command requests a new image, even if an attachment
+# or later edit/composition wording would otherwise route to image editing.
+_IMAGE_CREATE_PREFIX = re.compile(
+    r"^(?:create\s+an?\s+image|generate\s+an?\s+image|make\s+an?\s+image"
+    r"|erstelle\s+ein\s+bild|generiere\s+ein\s+bild|erzeuge\s+ein\s+bild)"
+    r"(?=$|[\s:,.!?;])(?![\s-]+(?:prompt|prompts|script|skript|beschreibung|description)\b)"
+)
+# Do not execute a later explicit withdrawal of the creation instruction.
+_IMAGE_CREATE_CANCEL = re.compile(
+    r"\b(?:do\s+not|don't|dont|never)\s+(?:create|generate|make|render)\b"
+    r"|\b(?:nicht|niemals)\s+(?:erstell\w*|generier\w*|erzeug\w*)\b"
+    r"|\b(?:kein|keine|keinen)\s+bild\b"
+)
+
+
 def _negates_execution(words, command):
     """Bind negation to the command or to the following appearance property."""
     for index, word in enumerate(words):
@@ -302,6 +317,13 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
         execution = "image_edit"
     if compose_supplied_images and not negated and not text_intent and execution == "image_generate":
         execution = "image_edit"
+    # Leading image-creation wording outranks later edit verbs, attached
+    # references, UI action hints and the multi-image composition heuristic.
+    # "Don't edit" is not a withdrawal of image creation.
+    prefix = _IMAGE_CREATE_PREFIX.match(text)
+    if prefix and not _IMAGE_CREATE_CANCEL.search(text[prefix.end():]):
+        return RoutingDecision("image_generate", "image", True, media_context,
+                               1.0, "Leading text-to-image command")
     if execution and not negated:
         # A composition using multiple supplied images is an edit operation
         # executed with reference-generation semantics, not a text-to-image job.
