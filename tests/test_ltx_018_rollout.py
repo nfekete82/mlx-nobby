@@ -112,3 +112,27 @@ def test_opt_in_switch_requires_idle_service_and_explicit_apply():
     assert "check_checkout(target_root, args.to)" in switch
     assert "shutil.copy2(plist, backup)" in switch
     assert 'service_command("bootstrap", plist)' in switch
+
+
+def test_isolated_worker_smoke_has_authenticated_random_port_and_safe_cleanup():
+    import ast
+
+    script = Path("scripts/smoke-ltx-mlx-018-worker.py").read_text()
+    ast.parse(script)
+    assert "secrets.token_hex(24)" in script
+    assert 'sock.bind(("127.0.0.1", 0))' in script
+    assert '"LTX_MLX_MODEL_DIR": str(MODEL_ROOT)' in script
+    assert '"LTX_MLX_PARENT_PID": str(os.getpid())' in script
+    assert 'request(url + "/generate", token, data, timeout=900)' in script
+    assert "ensure_idle()" in script
+    assert "process.terminate()" in script
+    assert "scripts/switch-ltx-video-runtime" not in script
+
+
+def test_talking_photo_018_api_matches_existing_runner_without_runtime_loading():
+    # This is a static source-level guard; the staged installer checks the
+    # real Python signatures on the user's macOS machine.
+    runner = Path("scripts/ltx-talking-photo-a2v.py").read_text()
+    assert "A2VidPipelineTwoStage" in runner
+    assert "A2VidDistilledPipeline" in runner
+    assert "inspect.signature(pipe.generate_and_save).bind(**parameters)" in runner
