@@ -234,9 +234,13 @@ def generate(
     debug_dir: Path | None = None,
     lead_in_ms: int = 0,
     distilled: bool = False,
+    stage1_steps: int | None = None,
     person_focus: dict | None = None,
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
+    if stage1_steps not in (None, 15, 30) or (distilled and stage1_steps is not None):
+        raise ValueError("Ungültige LTX-Qualitätsstufe; direkt erlaubt nur 15 oder 30 Schritte")
+    effective_stage1_steps = 8 if distilled else (stage1_steps or 15)
     health = provider_health()
     if not health["ready"]:
         raise RuntimeError(health["detail"] or "LTX Quality ist nicht bereit")
@@ -299,7 +303,7 @@ def generate(
         "--frames", str(frames),
         "--fps", str(FPS),
         "--seed", str(seed),
-        "--stage1-steps", "8" if distilled else "15",
+        "--stage1-steps", str(effective_stage1_steps),
         "--stage2-steps", "3",
         "--diagnostics", str(runner_diagnostics.resolve()),
     ]
@@ -323,7 +327,7 @@ def generate(
         "conditioning_audio_sha256": hashlib.sha256(padded_audio.read_bytes()).hexdigest(),
         "image_sha256": hashlib.sha256(image).hexdigest(),
         "width": target_width, "height": target_height,
-        "stage_1_steps": 8 if distilled else 15, "stage_2_steps": 3,
+        "stage_1_steps": effective_stage1_steps, "stage_2_steps": 3,
         "cfg_scale": None if distilled else 3.0,
         "stg_scale": None if distilled else 1.0,
         "low_ram": True, "low_memory": True, "command": command,
