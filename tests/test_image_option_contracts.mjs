@@ -119,6 +119,9 @@ const catalogue = {
 const modelContext = vm.createContext({
     document: {createElement() {return {value: '', textContent: ''};}},
     window: {}, storedImageModel: () => 'auto',
+    generationText(_key, fallback, values = {}) {
+        return fallback.replaceAll('{model}', values.model || '');
+    },
     storeImageModel: value => {savedChoices.push(value); return value;},
     fetch: async () => ({ok: true, async json() {return catalogue;}}),
 });
@@ -135,31 +138,29 @@ assert.equal(elements[0].textContent, 'Automatic (Juggernaut Ragnarok)');
 assert.equal(select.disabled, false);
 assert.equal(savedChoices.length, 0);
 
-// A formerly installed model or an edit-only checkpoint cannot be selected
-// from the Generate dialog, regardless of the previous browser preference.
+// An unavailable or edit-only model cannot silently replace a manual
+// generation preference with Auto/Qwen.
 for (const stale of ['mflux-osaurus-qwen-image-2.1-edit', 'missing-weights',
                      'disabled-model', 'edit-ready', 'unknown-status', 'manual-missing']) {
-    assert.equal(await modelContext.updateImageModelOptions(select, stale), 'auto');
+    await assert.rejects(modelContext.updateImageModelOptions(select, stale), /unavailable/);
     assert.deepEqual(options(), ['auto', 'juggernaut-xl', 'mlxserve-qwen-image-2.1']);
-    assert.equal(select.value, 'auto');
     assert.equal(select.disabled, false);
 }
-assert.equal(savedChoices.length, 6);
-assert.ok(savedChoices.every(choice => choice === 'auto'));
+assert.equal(savedChoices.length, 0);
 
 // Image editing has a separate capability-filtered list, and only ready
 // image-edit checkpoints are shown there.
 assert.equal(await modelContext.updateImageModelOptions(select, 'edit-ready', 'image_edit'), 'edit-ready');
 assert.deepEqual(options(), ['auto', 'edit-ready']);
-assert.equal(await modelContext.updateImageModelOptions(select, 'juggernaut-xl', 'image_edit'), 'auto');
+await assert.rejects(modelContext.updateImageModelOptions(select, 'juggernaut-xl', 'image_edit'), /unavailable/);
 assert.deepEqual(options(), ['auto', 'edit-ready']);
 
 // A service outage should never surface a stale option or overwrite the saved
 // preference, and an automatic entry remains selectable.
 const savedBeforeOutage = savedChoices.length;
 modelContext.fetch = async () => {throw new Error('offline');};
-assert.equal(await modelContext.updateImageModelOptions(select, 'manual-offline'), 'auto');
+await assert.rejects(modelContext.updateImageModelOptions(select, 'manual-offline'), /offline/);
 assert.deepEqual(options(), ['auto']);
 assert.equal(select.disabled, false);
 assert.equal(savedChoices.length, savedBeforeOutage);
-console.log('Image model picker hides unavailable models and resets stale choices.');
+console.log('Image model picker hides unavailable models without changing manual choices.');
