@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Install ltx-2-mlx 0.18.0 alongside the current 0.16.3 runtime.
+# No activation, model download, mutable symlinks, or service restarts.
+set -Eeuo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+UPSTREAM_REPO="https://github.com/dgrauet/ltx-2-mlx.git"
+UPSTREAM_COMMIT="b82b97e3d000e01361f8cfcb745244b15b89a521"
+UPSTREAM_VERSION="0.18.0"
+LEGACY_ROOT="$HOME/.local/share/mlx-nobby/ltx-2-mlx"
+RUNTIME_ROOT="${LTX_MLX_STAGE_ROOT:-$HOME/.local/share/mlx-nobby/ltx-2-mlx-v0.18.0}"
+MODEL_ROOT="${LTX_MLX_MODEL_ROOT:-$HOME/.local/share/mlx-nobby/models}"
+MODEL_VARIANT="${LTX_MLX_MODEL_VARIANT:-q4}"
+MODEL_DIR="$MODEL_ROOT/ltx-2.5-mlx-$MODEL_VARIANT"
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || fail "Nur macOS auf Apple Silicon wird unterstützt."
+for program in git uv python3; do command -v "$program" >/dev/null || fail "$program fehlt"; done
+case "$MODEL_VARIANT" in q4|q8) ;; *) fail "LTX_MLX_MODEL_VARIANT muss q4 oder q8 sein" ;; esac
+
+# Resolve both paths without requiring the target to already exist.
+resolved() { python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).expanduser().resolve())' "$1"; }
+RUNTIME_ROOT="$(resolved "$RUNTIME_ROOT")"
+LEGACY_ROOT="$(resolved "$LEGACY_ROOT")"
+[[ "$RUNTIME_ROOT" != "$LEGACY_ROOT" ]] || fail "Staging darf die stabile Runtime niemals überschreiben"
+[[ "$RUNTIME_ROOT" != "$ROOT" ]] || fail "Runtime darf nicht mit dem Projekt-Repository übereinstimmen"
+[[ -f "$MODEL_DIR/.mlx-nobby-ready" ]] || fail "Bereites Modellpaket fehlt: $MODEL_DIR (nichts wird heruntergeladen)"
+for required in embedded_config.json text_encoder.safetensors text_encoder_config.json; do
+    [[ -f "$MODEL_DIR/$required" ]] || fail "Unvollständiges Modell: $MODEL_DIR/$required"
+done
+
+echo "=== LTX-MLX $UPSTREAM_VERSION, isolierte Staging-Runtime ==="
+echo "Stabil:  $LEGACY_ROOT"
+echo "Staging: $RUNTIME_ROOT"
+echo "Modell:  $MODEL_DIR (wird nur gelesen)"
+
+if [[ -e "$RUNTIME_ROOT" && ! -d "$RUNTIME_ROOT/.git" ]]; then
+    fail "Staging-Ziel existiert ohne Git-Checkout: $RUNTIME_ROOT"
+fi
+if [[ ! -d "$RUNTIME_ROOT/.git" ]]; then
+    mkdir -p "$(dirname "$RUNTIME_ROOT")"
+    git clone --no-checkout "$UPSTREAM_REPO" "$RUNTIME_ROOT"
+fi
+[[ -z "$(git -C "$RUNTIME_ROOT" status --porcelain --untracked-files=all)" ]] \
+    || fail "Unerwartete Änderungen in der Staging-Runtime; kein automatisches Zurücksetzen"
+git -C "$RUNTIME_ROOT" fetch --quiet origin "$UPSTREAM_COMMIT"
+git -C "$RUNTIME_ROOT" checkout --quiet --detach "$UPSTREAM_COMMIT"
+[[ "$(git -C "$RUNTIME_ROOT" rev-parse HEAD)" == "$UPSTREAM_COMMIT" ]] \
+    || fail "Upstream-Commit stimmt nicht überein"
+
+(
+    cd "$RUNTIME_ROOT"
+    uv sync --frozen
+)
+
+PYTHON="$RUNTIME_ROOT/.venv/bin/python"
+CLI="$RUNTIME_ROOT/.venv/bin/ltx-2-mlx"
+[[ -x "$PYTHON" && -x "$CLI" ]] || fail "Runtime-Installation unvollständig"
+"$CLI" --help >/dev/null
+"$CLI" generate --help >/dev/null
+"$CLI" a2v --help >/dev/null
+"$CLI" extend --help >/dev/null
+"$CLI" retake --help >/dev/null
+
+"$PYTHON" - <<'PY'
+import inspect
+from ltx_pipelines_mlx.utils.args import ImageConditioningInput
+from ltx_pipelines_mlx.distilled import DistilledPipeline
+from ltx_pipelines_mlx.a2vid_distilled import A2VidDistilledPipeline
+from ltx_pipelines_mlx.a2vid_two_stage import A2VidPipelineTwoStage
+
+sample = ImageConditioningInput.at("source.png", 0, 1.0)
+assert sample.path == "source.png"
+for pipeline in (DistilledPipeline, A2VidDistilledPipeline, A2VidPipelineTwoStage):
+    signature = inspect.signature(pipeline.generate_and_save)
+    for field in ("image", "images", "num_frames", "frame_rate"):
+        assert field in signature.parameters, (pipeline.__name__, field)
+print("LTX-MLX 0.18.0 API smoke checks: OK")
+PY
+
+echo
+echo "Staging bereit: $RUNTIME_ROOT"
+echo "Die vorhandene 0.16.3 Runtime, Q4/Q8-Gewichte und der laufende Video-Dienst wurden nicht verändert."
+echo "Aktivierung erst nach separatem Test: siehe docs/LTX_MLX_018_ROLLOUT.md"
