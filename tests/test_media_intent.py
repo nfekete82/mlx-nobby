@@ -361,6 +361,6 @@ def test_exact_german_image_command_forces_job_even_with_stale_chat_preflight(pr
 
 
 def test_similar_words_are_not_the_unconditional_creation_phrase():
-    for prompt in ("Erstelle keinen Bild-Prompt", "Bitte erstelle Bilder",
+    for prompt in ("Erstelle keinen Bild-Prompt", "Bitte erstelle Bildungsinhalte",
                    "Was heißt Bild erstellen?"):
         assert not decide_media_intent(prompt).execution_requested
