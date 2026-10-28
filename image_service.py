@@ -493,68 +493,34 @@ def _provider_failure(exc):
 
 
 def _auto_generation_model(prompt):
+    """Auto uses the configured registry default, never prompt-keyword heuristics.
+
+    If the configured default cannot generate images, fail explicitly instead
+    of silently substituting Qwen or another potentially slow model.
+    """
     data = registry_call(registry.load_registry)
-    value = str(prompt or "").lower()
-
-    def candidate(model_id):
-        model = next(
-            (item for item in data["models"] if item["id"] == model_id),
-            None,
+    model_id = data["default_model"]
+    model = next(
+        (item for item in data["models"] if item["id"] == model_id),
+        None,
+    )
+    if (
+        not model
+        or not model.get("enabled")
+        or "text_to_image" not in model.get("capabilities", [])
+    ):
+        raise HTTPException(
+            503,
+            f"Das konfigurierte Standardbildmodell '{model_id}' ist nicht für die Bilderstellung aktiviert.",
         )
-        if (
-            not model
-            or not model["enabled"]
-            or "text_to_image" not in model.get("capabilities", [])
-        ):
-            return None
-        ready, _ = availability(model)
-        return model if ready else None
-
-    text_image = re.search(
-        r"\b(?:poster|typography|text|lettering|logo|ui|interface|schrift|typografie)\b",
-        value,
-    )
-    realistic_style = re.search(
-        r"\b(?:photorealistic|photo-realistic|realistic(?: photo)?|photograph|fotorealistisch|realistisch(?:es foto)?)\b",
-        value,
-    )
-    human_subject = re.search(
-        r"\b(?:portrait|porträt|person|people|human|menschen?|woman|man|frau|mann|fashion|modefoto)\b",
-        value,
-    )
-    complex_prompt = re.search(
-        r"\b(?:complex prompt|high prompt fidelity|komplexer prompt|hohe prompttreue)\b",
-        value,
-    )
-    fast_request = re.search(
-        r"\b(?:fast|quick|preview|draft|schnell|vorschau|entwurf)\b",
-        value,
-    )
-
-    preferred_ids = []
-    if fast_request:
-        preferred_ids.append(registry.Z_IMAGE_TURBO_ID)
-        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
-    elif text_image:
-        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
-    elif realistic_style and human_subject:
-        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
-        preferred_ids.append(registry.JUGGERNAUT_XL_ID)
-    elif complex_prompt:
-        preferred_ids.append(registry.MLXSERVE_QWEN_IMAGE21_ID)
-
-    for model_id in preferred_ids:
-        model = candidate(model_id)
-        if model:
-            return model
-    default_model = candidate(data["default_model"])
-    if default_model:
-        return default_model
-    for model in data["models"]:
-        fallback = candidate(model["id"])
-        if fallback:
-            return fallback
-    raise HTTPException(503, "Kein kompatibler lokaler Bildgenerator verfügbar")
+    ready, _ = availability(model)
+    if not ready:
+        raise HTTPException(
+            503,
+            f"Das konfigurierte Standardbildmodell '{model_id}' ist nicht verfügbar. "
+            "Bitte das Modell aktivieren oder das Standardbildmodell ändern.",
+        )
+    return model
 
 
 def _generation_model(model_id, prompt):
