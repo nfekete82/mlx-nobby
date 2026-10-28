@@ -289,6 +289,20 @@
         );
       });
       actions.append(reuse, animate, regionEdit);
+    } else if (asset.kind === "video" || asset.kind === "talking_photo") {
+      const extend = previewAction(t("Video verlängern", "Extend video"), previewIcons.video);
+      extend.addEventListener("click", () => {
+        closePreview();
+        setVisible(false);
+        void window.MLXVideoEdit?.open?.(asset, "extend");
+      });
+      const retake = previewAction(t("Bereich neu erstellen", "Retake segment"), previewIcons.edit);
+      retake.addEventListener("click", () => {
+        closePreview();
+        setVisible(false);
+        void window.MLXVideoEdit?.open?.(asset, "retake");
+      });
+      actions.append(extend, retake);
     }
 
     const detailsButton = previewAction(t("Details anzeigen", "Show details"), previewIcons.info,
