@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="/assets/chat/finance.css?v=20261008-finance-speed">
 <link rel="stylesheet" href="/assets/chat/media-library.css?v=1-18-shared-pickers&amp;gallery=20261021-compact-card-actions">
 <link rel="stylesheet" href="/assets/chat/ui-controls.css?v=1-18-ui-consistency">
+  <link rel="stylesheet" href="/assets/chat/interactive-questions.css?v=20261028">
 <link rel="stylesheet" href="/assets/chat/image-converter-workspace.css?v=3-layered-modal">
     <link rel="icon" href="/assets/mlx-nobby.svg" type="image/svg+xml">
 </head>
@@ -509,6 +510,15 @@
             </div>
             <label class="settings-toggle"><input id="autoScroll" type="checkbox" checked> <span data-i18n="ui.auto_scroll_streaming">Auto-Scroll während Streaming</span></label>
             <label class="settings-toggle"><input id="showRuntimeThinking" type="checkbox" checked> <span data-i18n="ui.show_runtime_thinking">Runtime-/Thinking-Infos anzeigen</span></label>
+            <div class="field">
+                <label for="interactiveQuestionsMode">Interaktive Rückfragen</label>
+                <select id="interactiveQuestionsMode">
+                    <option value="auto">Automatisch (empfohlen)</option>
+                    <option value="always">Bevorzugt nachfragen</option>
+                    <option value="off">Aus</option>
+                </select>
+                <p class="settings-hint">MLX-Nobby stellt gezielte Fragen, wenn fehlende Angaben die Antwort verbessern. Die Auswahl wird lokal gespeichert.</p>
+            </div>
         </section>
 
 
@@ -1598,6 +1608,7 @@
 <script src="/assets/chat/charts.js?v=2-0-cpi-precision"></script>
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
+<script src="/assets/chat/interactive-questions.js?v=20261028"></script>
 <script src="/assets/chat/generation.js?v=20261028-configured-image-default"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
