@@ -75,15 +75,22 @@ def test_family_contracts_use_only_supported_flags(family, tmp_path, monkeypatch
     else: assert '--base-model' in command
 
 
-def test_auto_generation_skips_incompatible_models_and_refuses_unavailable_default(monkeypatch):
+def test_auto_generation_uses_only_default_and_refuses_unavailable_default(monkeypatch):
     bad=model();bad.update(id='bad',enabled=True,capabilities=['text_to_image'])
     good=bad | {'id':'good'}
-    monkeypatch.setattr(service.registry, 'load_registry', lambda:{'models':[bad,good],'default_model':'bad'})
-    monkeypatch.setattr(service, 'availability', lambda m:(m['id']=='good','reason'))
-    assert service._auto_generation_model('Office')['id']=='good'
-    monkeypatch.setattr(service, 'availability', lambda m:(False,'incompatible'))
-    with pytest.raises(service.HTTPException, match='kompatibler'):
+    data={'models':[bad,good],'default_model':'bad'}
+    monkeypatch.setattr(service.registry,'load_registry',lambda:data)
+    monkeypatch.setattr(service,'availability',lambda m:(m['id']=='good','reason'))
+    with pytest.raises(service.HTTPException, match='Standardbildmodell'):
         service._auto_generation_model('Office')
+
+    data['default_model']='good'
+    assert service._auto_generation_model('Office')['id']=='good'
+
+    monkeypatch.setattr(service,'availability',lambda m:(False,'incompatible'))
+    with pytest.raises(service.HTTPException, match='Standardbildmodell'):
+        service._auto_generation_model('Office')
+
 
 @pytest.mark.parametrize('family,missing', [('flux1','--base-model'),('qwen-image','--guidance'),('z-image-turbo','--width')])
 def test_generate_family_missing_required_flag_fails_preflight(family, missing, tmp_path, monkeypatch):
@@ -103,7 +110,7 @@ def test_actual_pipeline_router_also_refuses_incompatible_default(monkeypatch):
     bad=model('z-image-turbo') | {'id':'bad','enabled':True,'capabilities':['text_to_image']}
     monkeypatch.setattr(service.registry,'load_registry',lambda: {'models':[bad],'default_model':'bad'})
     monkeypatch.setattr(service,'availability',lambda _: (False,'incompatible'))
-    with pytest.raises(service.HTTPException,match='kompatibler'):
+    with pytest.raises(service.HTTPException,match='Standardbildmodell'):
         pipeline._route_generation_model('auto','Office')
 
 
