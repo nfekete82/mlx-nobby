@@ -97,29 +97,46 @@ def test_probe_rejects_incompatible_sources(tmp_path, frames, size, fps):
 
 def test_routes_use_verified_sources_and_job_status_does_not_leak_private_data(tmp_path):
     sourcefile, ident = source(tmp_path)
-    fake = {"frames":97,"fps":24,"latent_frames":12,"duration_seconds":4,
-            "width":704,"height":448}
-    app = FastAPI()
-    edit.install_routes(app)
-    with TestClient(app) as client,          mock.patch.object(edit, "_runtime_ready", return_value=True),          mock.patch.object(edit, "source_path", return_value=sourcefile),          mock.patch.object(edit, "probe", return_value=fake),          mock.patch.object(edit, "_video_idle"),          mock.patch.object(edit, "JOB_DIR", tmp_path / "jobs"),          mock.patch.object(edit, "OUTPUT", tmp_path / "out"),          mock.patch.object(edit.threading, "Thread") as thread:
-        r = client.get("/api/video/edit/status", params={"source_kind":"video","source_id":ident})
-        assert r.status_code == 200 and r.json()["source"]["latent_frames"] == 12
-        r = client.post("/api/video/edit/jobs", json={
-            "source_kind":"video", "source_id":ident, "operation":"extend",
-            "prompt":"A desert fortress"
-        })
-        assert r.status_code == 202, r.text
-        job = r.json()
+    fake = {"frames": 97, "fps": 24, "latent_frames": 12, "duration_seconds": 4,
+            "width": 704, "height": 448}
+    handlers = {}
+    class FakeApp:
+        def get(self, path, **kwargs):
+            def register(fn):
+                handlers[("GET", path)] = fn
+                return fn
+            return register
+
+        def post(self, path, **kwargs):
+            def register(fn):
+                handlers[("POST", path)] = fn
+                return fn
+            return register
+    edit.install_routes(FakeApp())
+    with mock.patch.object(edit, "_runtime_ready", return_value=True), \
+         mock.patch.object(edit, "source_path", return_value=sourcefile), \
+         mock.patch.object(edit, "probe", return_value=fake), \
+         mock.patch.object(edit, "_video_idle"), \
+         mock.patch.object(edit, "JOB_DIR", tmp_path / "jobs"), \
+         mock.patch.object(edit, "OUTPUT", tmp_path / "out"), \
+         mock.patch.object(edit.threading, "Thread") as thread:
+        payload = edit.EditRequest(source_kind="video", source_id=ident,
+                                   operation="extend", prompt="A desert fortress")
+        capabilities = handlers[("GET", "/api/video/edit/status")](
+            source_kind="video", source_id=ident)
+        assert capabilities["ready"] and capabilities["source"]["latent_frames"] == 12
+        job = handlers[("POST", "/api/video/edit/jobs")](payload)
         assert job["status"] == "queued"
         assert not any(k.startswith("_") for k in job)
         assert "prompt" not in job
         thread.return_value.start.assert_called_once_with()
-        status = client.get("/api/video/edit/jobs/" + job["id"])
-        assert status.status_code == 200
-        cancelled = client.post("/api/video/edit/jobs/" + job["id"] + "/cancel")
-        assert cancelled.status_code == 200
+        status = handlers[("GET", "/api/video/edit/jobs/{job_id}")](job["id"])
+        assert status["id"] == job["id"]
+        handlers[("POST", "/api/video/edit/jobs/{job_id}/cancel")](job["id"])
         assert edit._jobs[job["id"]]["_cancel_event"].is_set()
-        assert client.get("/api/video/edit/jobs/../../etc/passwd").status_code in {404,422}
+        with pytest.raises(HTTPException) as exc:
+            handlers[("GET", "/api/video/edit/jobs/{job_id}")]("../etc/passwd")
+        assert exc.value.status_code == 422
     # No real worker started; release the slot and clear mock job state.
     if edit._generation_lock.locked():
         edit._generation_lock.release()
