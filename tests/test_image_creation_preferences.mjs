@@ -93,7 +93,8 @@ test('only confirmed new image generation updates the saved preference', () => {
     const confirm = source.slice(startConfirm, endConfirm);
     assert.match(confirm, /if \(resolvedTarget === 'image'\) \{\s*storeImageCreationPreferences\(\{/);
     assert.match(confirm, /negative_prompt: selectedNegativePrompt/);
-    assert.ok(source.includes('savedImageCreation?.model || options?.image?.model'));
+    assert.ok(source.includes("options?.image?.model && options.image.model !== 'auto'"));
+    assert.ok(source.includes('savedImageCreation?.model || storedImageModel()'));
     assert.match(source, /savedImageCreation\?\.format/);
     assert.match(source, /savedImageCreation\?\.negative_prompt/);
     const onCancel = source.slice(
