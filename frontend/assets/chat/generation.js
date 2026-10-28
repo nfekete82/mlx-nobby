@@ -1679,7 +1679,8 @@ try {
                             .getSessionSystemPrompt() +
                         (window.MLXChatResponseLength?.instructionForTurn?.(
                             session, originalInferenceMessages
-                        ) || '') + chartInstructionForTurn(apiMessages),
+                        ) || '') + chartInstructionForTurn(apiMessages) +
+                         (window.MLXInteractiveQuestions?.instructionForTurn?.(originalInferenceMessages) || ''),
 
                     trace_id: traceId,
 
@@ -5485,6 +5486,7 @@ function watchBatchJob(session, jobId) {
         regenerateLastAnswer: regenerateLastAnswer,
         generateAssistant: generateAssistant,
         sendMessage: sendMessage,
+        isBusy: () => getGenerating() || agentRunActive,
         startImageUpscale: startImageUpscale,
         startRegionImageEdit: startRegionImageEdit,
         createImageUpscaleMenu: createImageUpscaleMenu,

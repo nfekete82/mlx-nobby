@@ -376,7 +376,7 @@
     }
   },
   "rendering": {
-        "multi_video_retry": "Reuse completed scenes · Retry",
+    "multi_video_retry": "Reuse completed scenes · Retry",
     "image_preview_open": "Open larger image preview",
     "region_editor_button": "Edit region",
     "image_preview_title": "Image preview",
@@ -1163,5 +1163,12 @@
   "attachments.img2img_steps": "Steps (optional)",
   "attachments.img2img_cfg": "CFG / Guidance (optional)",
   "attachments.img2img_seed": "Seed (optional)",
-  "attachments.img2img_default": "Default"
+  "attachments.img2img_default": "Default",
+  "interactive_questions": {
+    "settings_label": "Interactive follow-up questions",
+    "mode_auto": "Automatic (recommended)",
+    "mode_always": "Prefer asking questions",
+    "mode_off": "Off",
+    "hint": "MLX-Nobby asks targeted questions when missing details would improve the answer. Your selection is stored locally."
+  }
 }

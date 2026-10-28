@@ -2544,6 +2544,10 @@ function renderMessages(options = {}) {
                     Array.isArray(message.news_digest.items)) {
                     answer.classList.add('message-news-digest');
                     renderGroundedNewsDigest(answer, message.news_digest);
+                } else if (window.MLXInteractiveQuestions?.enhance?.(
+                    answer, message, session, index, markdownHtml
+                )) {
+                    // Structured question cards are rendered as safe DOM controls.
                 } else {
                     answer.innerHTML = markdownHtml(message.content);
                 }
