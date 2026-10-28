@@ -6,6 +6,8 @@
     const STYLE_ID = 'talkingPhotoStyles';
     const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
     const JOB_STORAGE_KEY = 'mlxTalkingPhotoCurrentJob';
+    const QUALITY_STORAGE_KEY = 'mlxTalkingPhotoQualityEngine';
+    const QUALITY_ENGINES = new Set(['ltx-distilled', 'ltx']);
     const LINK_STORAGE_PREFIX = 'mlxTalkingPhotoMediaSource:';
     let selectedLibrarySource = null;
     const HEX24 = /^[a-f0-9]{24}$/;
@@ -80,6 +82,25 @@
 
     function localText(de, en) {
         return language().startsWith('de') ? de : en;
+    }
+
+    function savedQualityEngine() {
+        try {
+            const saved = localStorage.getItem(QUALITY_STORAGE_KEY);
+            if (QUALITY_ENGINES.has(saved)) return saved;
+        } catch (_error) {
+            // Private browsing/storage restrictions must never block Talking Photo.
+        }
+        return 'ltx-distilled';
+    }
+
+    function rememberQualityEngine(value) {
+        if (!QUALITY_ENGINES.has(value)) return;
+        try {
+            localStorage.setItem(QUALITY_STORAGE_KEY, value);
+        } catch (_error) {
+            // The current selection still works if browser storage is disabled.
+        }
     }
 
     function node(tag, className, text) {
@@ -171,6 +192,14 @@
             .mlx-talking-photo-field { display: grid; gap: 7px; margin-bottom: 13px; }
             .mlx-talking-photo-field[hidden] { display: none; }
             .mlx-talking-photo-field > span { font-size: .82rem; opacity: .78; }
+            .mlx-talking-photo-quality {
+                padding: 12px 14px; border: 1px solid rgba(96,165,250,.32);
+                border-radius: 12px; background: rgba(37,99,235,.09);
+            }
+            .mlx-talking-photo-quality > span {
+                font-size: .92rem; font-weight: 650; opacity: 1;
+            }
+            .mlx-talking-photo-quality .mlx-talking-photo-hint { line-height: 1.45; }
             .mlx-talking-photo-field input,
             .mlx-talking-photo-field select,
             .mlx-talking-photo-field textarea {
@@ -468,29 +497,37 @@
         ));
 
 
-        const engineLabel = node('label', 'mlx-talking-photo-field');
-        engineLabel.append(node('span', '', localText('Engine', 'Engine')));
+        const engineLabel = node('label', 'mlx-talking-photo-field mlx-talking-photo-quality');
+        engineLabel.append(node('span', '', localText('Videoqualität', 'Video quality')));
         const engineSelect = document.createElement('select');
         engineSelect.id = 'talkingPhotoEngine';
+        engineSelect.setAttribute('aria-describedby', 'talkingPhotoQualityHint');
         [
-            ['ltx-distilled', localText('Standard · LTX Distilled (8+3)', 'Default · LTX Distilled (8+3)')],
-            ['ltx', localText('Qualität · LTX direkt', 'Quality · Direct LTX')],
+            ['ltx-distilled', localText('Schnell · LTX Distilled (8+3 Schritte)', 'Fast · LTX Distilled (8+3 steps)')],
+            ['ltx', localText('Hohe Qualität · LTX direkt (15+3 Schritte)', 'High quality · Direct LTX (15+3 steps)')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
             option.textContent = label;
             engineSelect.append(option);
         });
-        engineSelect.value = 'ltx-distilled';
+        engineSelect.value = savedQualityEngine();
         engineLabel.append(engineSelect);
-        engineLabel.append(node(
-            'div',
-            'mlx-talking-photo-hint',
-            localText(
-                'Distilled ist Standard: natürliche Bewegung mit 8+3 Schritten. LTX direkt bleibt als Qualitätsalternative.',
-                'Distilled is the default: natural motion in 8+3 steps. Direct LTX remains an alternative.',
-            ),
-        ));
+        const qualityHint = node('div', 'mlx-talking-photo-hint');
+        qualityHint.id = 'talkingPhotoQualityHint';
+        function refreshQualityHint() {
+            qualityHint.textContent = engineSelect.value === 'ltx'
+                ? localText(
+                    'Aufwendigere Generierung mit 15+3 Schritten. Benötigt meist mehr Zeit; ein sichtbarer Qualitätsgewinn ist nicht garantiert.',
+                    'More intensive generation with 15+3 steps. Usually slower; a visible quality improvement is not guaranteed.',
+                )
+                : localText(
+                    'Schnellere Generierung mit 8+3 Schritten. Empfohlen für den Alltag.',
+                    'Faster generation with 8+3 steps. Recommended for everyday use.',
+                );
+        }
+        refreshQualityHint();
+        engineLabel.append(qualityHint);
         right.append(engineLabel);
 
         const voiceLabel = node('label', 'mlx-talking-photo-field');
@@ -611,6 +648,8 @@
         });
 
         engineSelect.addEventListener('change', () => {
+            rememberQualityEngine(engineSelect.value);
+            refreshQualityHint();
             if (personFocus) focusHint.textContent = focusMessage();
             refreshProviderStatus();
         });
@@ -757,11 +796,8 @@
             const status = await requestJson('/api/talking-photo/status');
             if (jobIsBusy()) return;
             const provider = status.providers?.[engine] || null;
-            const labels = {
-                ltx: 'Qualität · LTX direkt',
-                'ltx-distilled': 'Standard · LTX Distilled (8+3)',
-            };
-            const label = labels[engine] || engine;
+            const label = document.getElementById('talkingPhotoEngine')
+                ?.selectedOptions?.[0]?.textContent || engine;
 
             if (provider?.ready) {
                 setStatus(localText(
