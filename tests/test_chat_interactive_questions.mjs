@@ -129,6 +129,8 @@ test('modes persist locally and follow-up submissions are not questioned again',
     assert.match(api.instructionForTurn([
         {role:'user',content:'Meine Antworten auf deine Rückfragen:\n1. Ja'}
     ]), /Do not ask the same questions again/);
+    assert.match(api.instructionForTurn([{role:'user',content:'Bitte beantworte meine ursprüngliche Frage ohne weitere Rückfragen.'}]), /without further questions/);
+    assert.match(api.instructionForTurn([{role:'user',content:'My answers to your follow-up questions:\n1. Yes'}]), /Do not ask the same questions again/);
     selector.value = 'off'; selector.fire('change');
     assert.equal(api.instructionForTurn(message), '');
 });
