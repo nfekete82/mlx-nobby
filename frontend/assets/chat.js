@@ -1717,6 +1717,7 @@ MLXChatRuntime.initRuntimeInfoPopover();
 
 MLXChatSessions.loadSessions();
 MLXChatRuntime.loadSettings();
+window.MLXInteractiveQuestions?.init?.();
 
 MLXChatRendering.renderAll();
 MLXChatGeneration.resumeImageJobsForSession(
