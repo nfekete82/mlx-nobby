@@ -185,12 +185,12 @@
         const after = lines.slice(last + 1).join('\n').trim();
         if (before.length > 1200 || after.length > 600) return null;
         const context = before + '\n' + after;
-        if (!/(?:fragen|punkte|bräucht|brauch|benötig|beantwort|sag mir|gib mir|antwort|priorit|questions|tell me|let me know|need (?:to know|a few|some details))/i.test(context)) {
+        if (!/(?:fragen|punkte|bräucht|brauch|benötig|beantwort|sag mir|gib mir|questions|tell me|let me know|need (?:to know|a few|some details))/i.test(context)) {
             return null;
         }
 
         const questions = entries.map((entry, index) => {
-            let label = entry.replace(/\*\*/g, '').replace(/(?<!\w)_(?!\s)/g, '');
+            let label = entry.replace(/\*\*|__/g, '');
             let sample = '';
             const example = /\((?:z\.\s*B\.?|e\.g\.?|zum Beispiel|beispielsweise)\s*:?\s*([^)]+)\)\s*\??$/i.exec(label);
             const parenthesis = /\(([^)]+)\)\s*\??$/.exec(label);
