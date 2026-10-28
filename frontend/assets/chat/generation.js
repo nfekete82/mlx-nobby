@@ -2366,7 +2366,8 @@ return;
 
     // EML bytes stay outside LLM context and chat persistence. The ordinary
     // assistant bubble shows live progress and a scoped file download link.
-    const emlAttachments = currentAttachments.filter(file => file.kind === 'eml');
+    const emlAttachments = ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt)
+        ? [] : currentAttachments.filter(file => file.kind === 'eml');
     if (emlAttachments.length) {
         if (emlAttachments.length !== currentAttachments.length) {
             alert(gt('eml_separate_files',
@@ -2994,7 +2995,7 @@ const imageFiles =
         contentUpdated: true
     });
 
-    if (ambiguousArtifactReference) {
+    if (ambiguousArtifactReference && !alwaysGenerateImage) {
         session.messages.push({
             role: 'assistant',
             content: 'Welches Ergebnis meinst du?',
@@ -3007,7 +3008,7 @@ const imageFiles =
         return;
     }
 
-    if (!routesFileOperation && !textFiles.length) {
+    if (alwaysGenerateImage || (!routesFileOperation && !textFiles.length)) {
         let pendingImageMessage = null;
         try {
             let currentImageContext = null;
