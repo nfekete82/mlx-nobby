@@ -279,12 +279,12 @@ def test_leading_image_creation_always_uses_new_generation(prompt, binding):
 
 @pytest.mark.parametrize("prompt,expected", [
     ("Create an image prompt for a video", "prompt_writing"),
-    ("Erstelle ein Bild-Prompt für LTX", "prompt_writing"),
+    ("Erstelle ein Bild-Prompt für LTX", "image_generate"),
     ("Create an image: don't generate an image", "discussion"),
-    ("Erstelle ein Bild: bitte nicht generieren", "discussion"),
+    ("Erstelle ein Bild: bitte nicht generieren", "image_generate"),
     ("Edit this picture", "image_edit"),
 ])
-def test_generation_prefix_does_not_override_text_or_cancelled_commands(prompt, expected):
+def test_exact_german_image_command_overrides_old_text_or_cancelled_routes(prompt, expected):
     decision = decide_media_intent(prompt, has_image=True)
     assert decision.intent == expected
 
@@ -324,3 +324,43 @@ def test_multi_image_context_does_not_override_other_intents(prompt, expected):
     count = 1 if prompt == "erstelle ein bild mit beiden frauen auf einem bett" else 2
     decision = decide_media_intent(prompt, has_image=True, image_count=count)
     assert decision.intent == expected
+
+
+@pytest.mark.parametrize("prompt", [
+    "Bitte erstelle ein Bild von einem Leuchtturm.",
+    "Ich möchte Folgendes: ERSTELLE EIN BILD von einem Wald.",
+    "Könntest du zuerst überlegen und dann erstelle ein Bild von einer Stadt?",
+    "Erstelle\t ein\nBild im Querformat.",
+    'Das Stichwort lautet "erstelle ein Bild" und du sollst es ausführen.',
+    "Erstelle ein Bild-Prompt für LTX",
+    "Erstelle ein Bild: bitte nicht generieren",
+])
+@pytest.mark.parametrize("binding", [
+    {},
+    {"file_context": IMAGE},
+    {"file_context": {**IMAGE, "image_count": 2, "references": [
+        {"kind": "image", "stored_path": "/tmp/a.png"},
+        {"kind": "image", "stored_path": "/tmp/b.png"},
+    ]}},
+    {"active_artifact_id": "old-image"},
+])
+def test_exact_german_image_command_forces_job_even_with_stale_chat_preflight(prompt, binding):
+    request = app.ChatActionRequest(
+        prompt=prompt, action="image_edit", resolved_target="chat", **binding
+    )
+    decision = app.preflight_chat_action(request)
+    assert decision["intent"] == "image_generate"
+    assert decision["target"] == "image"
+    with patch.object(app, "_start_chat_image_job", return_value={
+        "id": "a" * 24, "status": "queued",
+    }) as start:
+        result = app.run_chat_action(request)
+    assert result["tool"] == "image_generate"
+    assert result["data"]["routing"]["target"] == "image"
+    assert start.call_args.args[0] == "image_generate"
+
+
+def test_similar_words_are_not_the_unconditional_creation_phrase():
+    for prompt in ("Erstelle keinen Bild-Prompt", "Bitte erstelle Bilder",
+                   "Was heißt Bild erstellen?"):
+        assert not decide_media_intent(prompt).execution_requested
