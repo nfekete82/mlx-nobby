@@ -2102,6 +2102,18 @@ await window.MLXChatGeneration.sendMessage();
 assert.equal(routedActionPayloads.at(-1).resolved_target, 'image');
 assert.equal(routedActionPayloads.at(-1).image_options.model, 'auto');
 
+// Text/EML attachments and old file workspace state cannot steal an explicit
+// new-image request. They are not read as image references.
+for (const attachment of [ignoredTextAttachment, {kind: 'eml', name: 'message.eml'}]) {
+    const prompt = 'Erkläre zuerst etwas und erstelle ein Bild von einem Turm';
+    routeTargets.set(prompt, 'chat');
+    selectedAttachments = [attachment];
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    assert.equal(routedActionPayloads.at(-1).resolved_target, 'image');
+    assert.equal(routedActionPayloads.at(-1).image_options.model, 'auto');
+}
+
 for (const [prompt, target] of [
     ['Describe both images', 'chat'],
     ['Create a portrait', 'image'],
