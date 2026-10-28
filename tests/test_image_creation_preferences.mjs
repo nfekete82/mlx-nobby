@@ -117,6 +117,9 @@ test('manual model choice remains authoritative and unavailable models never dow
     const saved = new Map([['mlx-nobby-image-model', 'juggernaut-xl']]);
     const context = vm.createContext({
         IMAGE_MODEL_STORAGE_KEY: 'mlx-nobby-image-model',
+        generationText(_key, fallback, values = {}) {
+            return fallback.replaceAll('{model}', values.model || '');
+        },
         window: {
             localStorage: {
                 getItem: key => saved.get(key) ?? null,
