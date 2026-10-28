@@ -115,8 +115,11 @@ def main():
 
     if sys.platform != "darwin":
         fail("Nur macOS wird unterstützt")
-    plist = args.plist.expanduser().resolve()
-    if not plist.is_file() or plist.is_symlink():
+    requested_plist = args.plist.expanduser()
+    if requested_plist.is_symlink():
+        fail(f"LaunchAgent darf kein Symlink sein: {requested_plist}")
+    plist = requested_plist.resolve()
+    if not plist.is_file():
         fail(f"LaunchAgent fehlt oder ist Symlink: {plist}")
     current = plistlib.loads(plist.read_bytes())
     if current.get("Label") != LABEL:
