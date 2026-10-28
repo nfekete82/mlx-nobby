@@ -1,0 +1,30 @@
+/* Native interactive questionnaires inside assistant messages. */
+.nobby-question-form {
+  margin: 14px 0 8px;
+  padding: 18px;
+  border: 1px solid var(--nobby-ui-control-border, rgba(140, 160, 180, .28));
+  border-radius: 16px;
+  background: rgba(127, 145, 168, .055);
+  color: inherit;
+  max-width: 100%;
+}
+.nobby-question-title { font-size: 1.04rem; margin: 0 0 8px; font-weight: 650; }
+.nobby-question-description, .nobby-question-footer { opacity: .82; margin: 0 0 16px; line-height: 1.5; }
+.nobby-question-field { padding: 14px 0 16px; margin: 0; border: 0; min-inline-size: 0; border-bottom: 1px solid rgba(140, 160, 180, .20); }
+.nobby-question-field legend { font-size: .95rem; font-weight: 580; padding: 0; margin-bottom: 10px; width: 100%; line-height: 1.5; }
+.nobby-question-options { display: grid; gap: 8px; }
+.nobby-question-option { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; line-height: 1.4; padding: 5px 2px; }
+.nobby-question-option input { flex: none; accent-color: var(--nobby-ui-focus, #82b4ff); width: 17px; height: 17px; margin: 2px 0 0; cursor: pointer; }
+.nobby-question-option span { overflow-wrap: anywhere; }
+.nobby-question-textarea { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-height: 76px; resize: vertical; background: rgba(127,145,168,.08); border: 1px solid rgba(140,160,180,.32); border-radius: 9px; padding: 10px; font: inherit; color: inherit; }
+.nobby-question-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 16px; }
+.nobby-question-submit, .nobby-question-skip { border-radius: 11px; padding: 10px 16px; font: inherit; cursor: pointer; border: 1px solid rgba(140,160,180,.3); }
+.nobby-question-submit { background: #2563eb; color: #fff; border-color: transparent; font-weight: 600; }
+.nobby-question-skip { background: transparent; color: inherit; }
+.nobby-question-submit:hover { background: #1d4ed8; }
+.nobby-question-skip:hover { background: rgba(140,160,180,.12); }
+.nobby-question-form :focus-visible { outline: 2px solid var(--nobby-ui-focus,#82b4ff); outline-offset: 3px; }
+.nobby-question-status, .nobby-question-loading { color: inherit; opacity: .8; font-size: .85rem; margin: 10px 0 0; }
+.nobby-question-done { color: inherit; opacity: .9; font-weight: 600; margin: 16px 0 0; }
+.nobby-question-completed .nobby-question-option, .nobby-question-completed textarea { opacity: .70; cursor: default; }
+@media (max-width: 600px) { .nobby-question-form { padding: 12px; border-radius: 12px; } .nobby-question-submit, .nobby-question-skip { flex: 1; } }
