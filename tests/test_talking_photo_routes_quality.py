@@ -38,6 +38,11 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
             text="Hallo", engine="ltx-distilled",
         )
         self.assertEqual(beta.engine, "ltx-distilled")
+        maximum = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo", engine="ltx-max",
+        )
+        self.assertEqual(maximum.engine, "ltx-max")
 
     def test_route_dispatches_distilled_as_direct_ltx_default(self):
         handlers = {}
@@ -65,6 +70,16 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
         payload = req.model_dump()
         payload.pop("engine")
         create.assert_called_once_with(payload, ltx_only=True, distilled=True)
+        maximum = talking_photo_routes.TalkingPhotoRequest(
+            image_data_url="data:image/png;base64," + "A" * 32,
+            text="Hallo", engine="ltx-max",
+        )
+        with mock.patch.object(talking_photo_quality, "create_job", return_value={"id": "max"}) as max_create:
+            response = handlers[("POST", "/api/talking-photo/jobs")](maximum)
+        self.assertEqual(response["id"], "max")
+        max_payload = maximum.model_dump()
+        max_payload.pop("engine")
+        max_create.assert_called_once_with(max_payload, ltx_only=True, stage1_steps=30)
 
     def test_audio_lead_in_is_opt_in_and_strictly_validated(self):
         base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Guten Morgen!"}
@@ -113,9 +128,10 @@ class TalkingPhotoRouteQualityTests(unittest.TestCase):
         self.assertTrue(status["ready"])
         self.assertEqual(status["provider"], "ltx-2.5-mlx-a2v")
         self.assertEqual(status["default_engine"], "ltx-distilled")
-        self.assertEqual(set(status["providers"]), {"ltx", "ltx-distilled"})
+        self.assertEqual(set(status["providers"]), {"ltx", "ltx-distilled", "ltx-max"})
         self.assertTrue(status["ltx_available"])
         self.assertTrue(status["ltx_distilled_available"])
+        self.assertTrue(status["ltx_max_available"])
 
     def test_legacy_musetalk_engines_rejected(self):
         base = {"image_data_url": "data:image/png;base64," + "A" * 32, "text": "Hallo"}
