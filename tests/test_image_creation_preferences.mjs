@@ -93,7 +93,7 @@ test('only confirmed new image generation updates the saved preference', () => {
     const confirm = source.slice(startConfirm, endConfirm);
     assert.match(confirm, /if \(resolvedTarget === 'image'\) \{\s*storeImageCreationPreferences\(\{/);
     assert.match(confirm, /negative_prompt: selectedNegativePrompt/);
-    assert.match(source, /savedImageCreation\?\.quality/);
+    assert.ok(source.includes('savedImageCreation?.model || options?.image?.model'));
     assert.match(source, /savedImageCreation\?\.format/);
     assert.match(source, /savedImageCreation\?\.negative_prompt/);
     const onCancel = source.slice(
@@ -108,7 +108,7 @@ test('only confirmed new image generation updates the saved preference', () => {
 
 test('manual model choice remains authoritative and unavailable models never downgrade to Auto', async () => {
     assert.match(source, /savedImageCreation\\?\\.model \\|\\| options\\?\\.image\\?\\.model/);
-    assert.match(source, /merged\\.model = normalizedModel/);
+    assert.ok(source.includes('merged.model = normalizedModel'));
 
     const selectionStart = source.indexOf('function storedImageModel()');
     const selectionEnd = source.indexOf('const IMAGE_OPTION_KEYS', selectionStart);
