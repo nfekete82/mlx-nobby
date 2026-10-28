@@ -172,7 +172,7 @@ test('draft text is protected and skipped forms cannot submit twice', () => {
     f.setSession(session);
     const parent = new Element('div');
     f.api.enhance(parent,message,session,0,x=>x);
-    const skip = find(parent,n=>n.tag==='button'&&n.type==='button')[0];
+    const skip = find(parent,n=>n.className==='nobby-question-skip')[0];
     f.input.value = 'Unsent draft';
     skip.fire('click');
     assert.equal(f.sent, '');
