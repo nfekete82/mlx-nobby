@@ -434,6 +434,27 @@ def video_job_retry(job_id: str):
     return agent_json_request('POST', '/api/video/jobs/' + urllib.parse.quote(job_id, safe='') + '/retry', {}, timeout=35)
 
 
+@app.get('/api/mlx/video/edit/status')
+def video_edit_status(source_kind: str, source_id: str):
+    params = urllib.parse.urlencode({"source_kind": source_kind, "source_id": source_id})
+    return agent_json_request("GET", "/api/video/edit/status?" + params, timeout=30)
+
+
+@app.post('/api/mlx/video/edit/jobs', status_code=202)
+def video_edit_create(request: dict):
+    return agent_json_request("POST", "/api/video/edit/jobs", request, timeout=60)
+
+
+@app.get('/api/mlx/video/edit/jobs/{job_id}')
+def video_edit_job(job_id: str):
+    return agent_json_request("GET", "/api/video/edit/jobs/" + urllib.parse.quote(job_id, safe=""), timeout=15)
+
+
+@app.post('/api/mlx/video/edit/jobs/{job_id}/cancel')
+def video_edit_cancel(job_id: str):
+    return agent_json_request("POST", "/api/video/edit/jobs/" + urllib.parse.quote(job_id, safe="") + "/cancel", {}, timeout=15)
+
+
 @app.get('/api/mlx/shorts-jobs/{job_id}')
 def shorts_job(job_id: str):
     return agent_json_request(

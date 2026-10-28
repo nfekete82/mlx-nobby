@@ -32,6 +32,7 @@ from agent.log_tail import read_log_tail
 from agent import image_api
 from image_variants import VariantBatch, load_record
 from agent import video_api
+from agent.video_edit_routes import install_routes as install_video_edit_routes
 from agent import shorts_jobs
 from agent.shorts_planner import plan_short
 from agent import model_cleanup
@@ -174,6 +175,7 @@ JOBS_LOCK = threading.Lock()
 CHATS_LOCK = threading.RLock()
 MODEL_RUNTIME_LOCK = threading.RLock()
 install_service_routes(app, lambda: int(load_config().get("PORT", 8000)), MODEL_RUNTIME_LOCK)
+install_video_edit_routes(app)
 JOB_PERSISTENCE_LOCK = threading.Lock()
 
 

@@ -118,10 +118,16 @@ test('closing during pending details request ignores stale network results', asy
   assert.equal(requests, 1);
 });
 
-test('video preview retains one accessible details action', async () => {
+test('video preview has two LTX edit actions and one accessible details action', async () => {
   const f = createFixture(async () => ({ok: true, json: async () => ({...metadata, kind: 'video'})}));
   f.show({...asset, kind: 'video'});
-  assert.equal(f.actions().children.length, 1);
-  await f.actions().children[0].click();
+  const actions = f.actions().children;
+  assert.equal(actions.length, 3);
+  assert.equal(actions[0].children[1].textContent, 'Video verlängern');
+  assert.equal(actions[1].children[1].textContent, 'Bereich neu erstellen');
+  assert.equal(actions[2].getAttribute('aria-expanded'), 'false');
+  assert.equal(actions.filter(button => button.getAttribute('aria-controls') ===
+    'nobby-library-preview-details').length, 1);
+  await actions[2].click();
   assert.equal(f.details().hidden, false);
 });

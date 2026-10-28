@@ -1,0 +1,295 @@
+"""Local, opt-in LTX-MLX 0.18 Extend/Retake jobs for Nobby's own media library.
+
+No uploads, arbitrary source paths, remote model IDs or free-form CLI arguments.
+The existing source remains unchanged; edits create new managed video assets.
+"""
+from __future__ import annotations
+
+import json
+import math
+import os
+from pathlib import Path
+import re
+import secrets
+import shutil
+import subprocess
+import threading
+import time
+import urllib.request
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from agent import media_lifecycle
+import runtime_coordinator
+
+BASE = Path.home() / ".config/mlx-web"
+JOB_DIR = BASE / "video-edits" / "jobs"
+OUTPUT = BASE / "videos"
+RUNTIME = Path.home() / ".local/share/mlx-nobby/ltx-2-mlx-v0.18.0"
+MODEL = Path.home() / ".local/share/mlx-nobby/models/ltx-2.5-mlx-q4"
+PROJECT = Path(__file__).resolve().parents[1]
+VIDEO_HEALTH = "http://127.0.0.1:8060/health"
+SERVER_LABEL = "de.nobby.mlx-server"
+EXPECTED_HEAD = "b82b97e3d000e01361f8cfcb745244b15b89a521"
+ACTIVE = {"queued", "preparing", "generating", "decoding"}
+_jlock = threading.RLock()
+_generation_lock = threading.Lock()
+_jobs = {}
+
+
+class EditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    source_kind: str = Field(pattern=r"^(video|talking_photo)$")
+    source_id: str = Field(pattern=r"^[a-f0-9]{24}$")
+    operation: str = Field(pattern=r"^(extend|retake)$")
+    prompt: str = Field(min_length=3, max_length=2000)
+    seed: int = Field(default=42, ge=0, le=2147483647)
+    distilled: bool = True
+    extend_frames: int = Field(default=4, ge=1, le=12)
+    start_seconds: float = Field(default=0.0, ge=0, le=60)
+    end_seconds: float = Field(default=1.0, gt=0, le=60)
+
+    @model_validator(mode="after")
+    def valid_options(self):
+        if self.operation == "retake" and self.start_seconds >= self.end_seconds:
+            raise ValueError("Ende muss hinter dem Start liegen")
+        return self
+
+
+def source_path(kind, asset_id):
+    try:
+        path = media_lifecycle._expected_path(kind, asset_id)
+        # The pathname itself must exist under the canonical managed root.
+        raw = media_lifecycle._root_for(kind) / f"{asset_id}.mp4"
+        if raw.is_symlink() or not raw.is_file() or raw.resolve() != path:
+            raise ValueError("Quelle fehlt oder ist ein Symlink")
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, "Videoquelle nicht gefunden") from exc
+    return path
+
+
+def probe(path):
+    try:
+        result = subprocess.run([
+            "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
+            "-show_entries", "stream=nb_read_frames,nb_frames,r_frame_rate,width,height",
+            "-of", "json", str(path),
+        ], capture_output=True, text=True, check=True, timeout=40)
+        streams = json.loads(result.stdout).get("streams") or []
+        stream = streams[0]
+        count = int(stream.get("nb_read_frames") or stream.get("nb_frames") or 0)
+        fps = stream["r_frame_rate"]
+        numerator, denominator = map(int, fps.split("/"))
+        rate = numerator / denominator
+        width, height = int(stream["width"]), int(stream["height"])
+    except (OSError, ValueError, KeyError, IndexError, subprocess.CalledProcessError, ZeroDivisionError) as exc:
+        raise HTTPException(422, "Video-Metadaten konnten nicht gelesen werden") from exc
+    if not (25 <= count <= 1441 and (count - 1) % 8 == 0 and abs(rate - 24.0) < 0.01):
+        raise HTTPException(422, "Extend/Retake erfordert LTX-kompatible Videos mit 8k+1 Frames und 24 fps")
+    if width % 64 or height % 64:
+        raise HTTPException(422, "Extend/Retake benötigt Videoabmessungen als Vielfache von 64")
+    return {"frames": count, "fps": rate, "duration_seconds": (count - 1) / rate,
+            "latent_frames": (count - 1) // 8, "width": width, "height": height}
+
+
+def build_command(request, source, destination, info):
+    cmd = [str(RUNTIME / ".venv/bin/ltx-2-mlx"), request.operation,
+           "--model", str(MODEL), "--video", str(source),
+           "--prompt", request.prompt, "--seed", str(request.seed),
+           "--low-ram", "--output", str(destination)]
+    if request.distilled:
+        cmd.append("--distilled")
+    if request.operation == "extend":
+        cmd += ["--extend-frames", str(request.extend_frames), "--direction", "after"]
+    else:
+        start = math.floor(request.start_seconds * info["fps"] / 8)
+        end = math.ceil(request.end_seconds * info["fps"] / 8)
+        if not 0 <= start < end <= info["latent_frames"]:
+            raise HTTPException(422, "Retake-Zeitbereich liegt außerhalb des Quellvideos")
+        # Keep original speech/audio rather than silently replacing the voice.
+        cmd += ["--start", str(start), "--end", str(end), "--no-regen-audio"]
+    return cmd
+
+
+def _runtime_ready():
+    cli = RUNTIME / ".venv/bin/ltx-2-mlx"
+    if not cli.is_file() or not (MODEL / "embedded_config.json").is_file():
+        raise HTTPException(503, "LTX 0.18 oder das lokale Q4-Modell fehlt")
+    try:
+        sha = subprocess.check_output(["git", "-C", str(RUNTIME), "rev-parse", "HEAD"], text=True, timeout=5).strip()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        raise HTTPException(503, "LTX 0.18 konnte nicht verifiziert werden") from None
+    if sha != EXPECTED_HEAD:
+        raise HTTPException(503, "LTX 0.18 hat eine unerwartete Version")
+    return True
+
+
+def _video_idle():
+    try:
+        with urllib.request.urlopen(VIDEO_HEALTH, timeout=5) as response:
+            status = json.load(response)
+    except Exception:
+        raise HTTPException(503, "Videodienst 8060 nicht erreichbar") from None
+    if not status.get("ok") or status.get("status") != "ready" or status.get("active_job_id"):
+        raise HTTPException(409, "Ein anderer Videoauftrag läuft bereits")
+
+
+def _write(job):
+    JOB_DIR.mkdir(parents=True, exist_ok=True)
+    path = JOB_DIR / f"{job['id']}.json"
+    scratch = JOB_DIR / f".{job['id']}.tmp"
+    scratch.write_text(json.dumps({k: v for k, v in job.items() if not k.startswith("_")},
+                                  ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(scratch, path)
+
+
+def _update(job_id, **fields):
+    with _jlock:
+        job = _jobs[job_id]
+        job.update(fields)
+        _write(job)
+
+
+def _chat_loaded():
+    return subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{SERVER_LABEL}"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def _chat_command(action):
+    done = subprocess.run(["/bin/bash", str(PROJECT / "scripts/mlx"), action],
+                          cwd=PROJECT, stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT, text=True, timeout=180)
+    if done.returncode:
+        raise RuntimeError((done.stdout or f"mlx {action} failed")[-2000:])
+
+
+def _run(job_id, request, source, info, cmd, output):
+    cancel = _jobs[job_id]["_cancel_event"]
+    proc = None
+    try:
+        _update(job_id, status="preparing", started_at=time.time())
+        with runtime_coordinator.video_runtime(
+            cancel, chat_loaded=_chat_loaded, chat_command=_chat_command,
+            exclusive_models=True,
+        ):
+            if cancel.is_set():
+                raise runtime_coordinator.CoordinationCancelled()
+            # Re-check source after the coordinator's potentially lengthy admission.
+            source_path(request.source_kind, request.source_id)
+            JOB_DIR.mkdir(parents=True, exist_ok=True)
+            log = JOB_DIR / f"{job_id}.log"
+            _update(job_id, status="generating")
+            with log.open("xb") as stream:
+                proc = subprocess.Popen(cmd, cwd=RUNTIME, stdout=stream,
+                                        stderr=subprocess.STDOUT)
+                while proc.poll() is None:
+                    if cancel.wait(0.5):
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=12)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait(timeout=10)
+                        raise runtime_coordinator.CoordinationCancelled()
+            if proc.returncode:
+                tail = log.read_text(encoding="utf-8", errors="replace")[-1500:]
+                raise RuntimeError(f"LTX {request.operation} fehlgeschlagen: {tail}")
+            if not output.is_file() or output.stat().st_size < 32:
+                raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
+            with output.open("rb") as generated:
+                if b"ftyp" not in generated.read(32):
+                    raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
+            media_lifecycle.register("video", job_id, output, owner="adhoc", persistent=False)
+            _update(job_id, status="completed", progress=1.0, finished_at=time.time(),
+                    result={"id": job_id, "kind": "video", "video_url": f"/api/mlx/videos/{job_id}",
+                            "source_kind": request.source_kind, "source_id": request.source_id,
+                            "operation": request.operation, "bytes": output.stat().st_size})
+    except runtime_coordinator.CoordinationCancelled:
+        output.unlink(missing_ok=True)
+        _update(job_id, status="cancelled", finished_at=time.time())
+    except Exception as exc:
+        output.unlink(missing_ok=True)
+        _update(job_id, status="cancelled" if cancel.is_set() else "failed",
+                error=None if cancel.is_set() else str(exc)[-2000:], finished_at=time.time())
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        _generation_lock.release()
+
+
+def _public(job):
+    return {k: v for k, v in job.items() if not k.startswith("_")}
+
+
+def install_routes(app: FastAPI):
+    @app.get("/api/video/edit/status")
+    def edit_status(source_kind: str = "video", source_id: str = ""):
+        _runtime_ready()
+        source = source_path(source_kind, source_id)
+        return {"ready": True, "source": probe(source),
+                "modes": ["extend", "retake"], "runtime": "ltx-mlx-0.18.0"}
+
+    @app.post("/api/video/edit/jobs", status_code=202)
+    def create_edit(request: EditRequest):
+        _runtime_ready()
+        source = source_path(request.source_kind, request.source_id)
+        info = probe(source)
+        dest = OUTPUT / ("pending.mp4")
+        cmd = build_command(request, source, dest, info)  # Validate before acquiring the slot.
+        _video_idle()
+        if not _generation_lock.acquire(blocking=False):
+            raise HTTPException(409, "Ein LTX-Edit läuft bereits")
+        try:
+            job_id = secrets.token_hex(12)
+            OUTPUT.mkdir(parents=True, exist_ok=True)
+            dest = OUTPUT / f"{job_id}.mp4"
+            cmd[cmd.index("--output") + 1] = str(dest)
+            job = {"id": job_id, "operation": request.operation, "source_kind": request.source_kind,
+                   "source_id": request.source_id, "status": "queued", "progress": 0.0,
+                   "error": None, "result": None, "created_at": time.time(),
+                   "started_at": None, "finished_at": None,
+                   "_cancel_event": threading.Event()}
+            with _jlock:
+                _jobs[job_id] = job
+                _write(job)
+            thread = threading.Thread(target=_run, args=(job_id, request, source, info, cmd, dest),
+                                      daemon=True, name=f"nobby-ltx-edit-{job_id}")
+            thread.start()
+            return _public(job)
+        except Exception:
+            _generation_lock.release()
+            raise
+
+    @app.get("/api/video/edit/jobs/{job_id}")
+    def edit_job(job_id: str):
+        if not re.fullmatch(r"[a-f0-9]{24}", job_id):
+            raise HTTPException(422, "Ungültige Edit-ID")
+        with _jlock:
+            job = _jobs.get(job_id)
+            if job is None:
+                try:
+                    job = json.loads((JOB_DIR / f"{job_id}.json").read_text(encoding="utf-8"))
+                    if job.get("status") in ACTIVE:
+                        job.update(status="failed", error="Agent wurde während des Edits neu gestartet")
+                except (OSError, ValueError):
+                    raise HTTPException(404, "Edit-Job nicht gefunden") from None
+            return _public(job)
+
+    @app.post("/api/video/edit/jobs/{job_id}/cancel")
+    def cancel_edit(job_id: str):
+        if not re.fullmatch(r"[a-f0-9]{24}", job_id):
+            raise HTTPException(422, "Ungültige Edit-ID")
+        with _jlock:
+            job = _jobs.get(job_id)
+            if job is None:
+                raise HTTPException(404, "Edit-Job nicht gefunden")
+            if job["status"] not in ACTIVE:
+                raise HTTPException(409, "Job ist nicht mehr aktiv")
+            job["_cancel_event"].set()
+            return _public(job)
