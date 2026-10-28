@@ -146,3 +146,10 @@ def test_leading_auto_create_uses_juggernaut_without_overriding_manual_choice(mo
         image_options={"model": "auto"},
     )
     assert agent._image_generate_payload(other)["model"] == "auto"
+
+    # Legacy clients without an explicit selector still use the configured
+    # global image role, which _start_chat_image_job resolves later.
+    unspecified = agent.ChatActionRequest(
+        prompt="Erstelle ein Bild von einer Frau",
+    )
+    assert agent._image_generate_payload(unspecified)["model"] == "auto"
