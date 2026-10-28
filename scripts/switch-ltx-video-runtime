@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Opt-in local LTX-MLX rollout/rollback for the launchd video service.
+
+Dry-run by default. Requires an idle service and a verified staged checkout.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+EXPECTED_018 = "b82b97e3d000e01361f8cfcb745244b15b89a521"
+DEFAULT_AGENT = Path.home() / "Library/LaunchAgents/de.nobby.mlx-video.plist"
+DEFAULT_ROOT = Path.home() / ".local/share/mlx-nobby"
+LABEL = "de.nobby.mlx-video"
+HEALTH = "http://127.0.0.1:8060/health"
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"STOP: {message}")
+
+
+def root_for(target: str) -> Path:
+    return (DEFAULT_ROOT / ("ltx-2-mlx-v0.18.0" if target == "018" else "ltx-2-mlx")).resolve()
+
+
+def check_checkout(root: Path, target: str) -> None:
+    if not (root / ".git").is_dir():
+        fail(f"Checkout fehlt: {root}")
+    if not (root / ".venv/bin/ltx-2-mlx").is_file():
+        fail(f"CLI fehlt: {root}")
+    if not (root / ".venv/bin/python").is_file():
+        fail(f"Python fehlt: {root}")
+    if target == "018":
+        actual = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+        if actual != EXPECTED_018:
+            fail(f"0.18.0 Pin stimmt nicht überein: {actual}")
+
+
+def idle_service() -> None:
+    try:
+        with urllib.request.urlopen(HEALTH, timeout=4) as response:
+            data = json.load(response)
+    except Exception as exc:
+        fail(f"Video-Dienst nicht erreichbar; kein automatischer Neustart: {exc}")
+    if not data.get("ok") or data.get("status") != "ready" or data.get("active_job_id"):
+        fail("Video-Dienst ist beschäftigt; laufende Jobs dürfen nicht abgebrochen werden")
+
+
+def service_command(verb: str, plist: Path) -> None:
+    subprocess.run(
+        ["launchctl", verb, f"gui/{os.getuid()}", str(plist)],
+        check=True, capture_output=True, text=True,
+    )
+
+
+def wait_healthy() -> bool:
+    for _ in range(30):
+        try:
+            with urllib.request.urlopen(HEALTH, timeout=1) as response:
+                if json.load(response).get("ok"):
+                    return True
+        except Exception:
+            time.sleep(1)
+    return False
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--to", required=True, choices=("018", "stable"))
+    parser.add_argument("--apply", action="store_true", help="Execute the change; default is dry-run")
+    parser.add_argument("--plist", type=Path, default=DEFAULT_AGENT)
+    args = parser.parse_args()
+
+    if sys.platform != "darwin":
+        fail("LaunchAgent-Umschaltung ist nur unter macOS verfügbar")
+
+    plist = args.plist.expanduser().resolve()
+    if not plist.is_file() or plist.is_symlink():
+        fail(f"LaunchAgent fehlt oder ist ein Symlink: {plist}")
+    target_root = root_for(args.to)
+    check_checkout(target_root, args.to)
+    original_bytes = plist.read_bytes()
+    config = plistlib.loads(original_bytes)
+    if config.get("Label") != LABEL:
+        fail("Unerwarteter LaunchAgent")
+    environment = config.get("EnvironmentVariables", {})
+    if "LTX_MLX_PYTHON" in environment or "LTX_MLX_CLI" in environment:
+        fail("Explizite Python-/CLI-Overrides erkannt; bitte manuell prüfen")
+    previous = environment.get("LTX_MLX_RUNTIME_ROOT")
+    if not previous:
+        fail("LTX_MLX_RUNTIME_ROOT fehlt im LaunchAgent")
+    if not args.apply:
+        print(f"DRY RUN: {LABEL}")
+        print(f"  Vorher: {previous}")
+        print(f"  Ziel:   {target_root}")
+        print("Keine Änderungen. Zum Aktivieren mit --apply wiederholen.")
+        return
+    if Path(previous).expanduser().resolve() == target_root:
+        print(f"Bereits aktiv: {target_root}")
+        return
+
+    idle_service()
+    backup = plist.with_name(plist.name + f".before-ltx-{args.to}-{int(time.time())}.bak")
+    shutil.copy2(plist, backup)
+    config["EnvironmentVariables"]["LTX_MLX_RUNTIME_ROOT"] = str(target_root)
+    fd, temp_name = tempfile.mkstemp(prefix=".mlx-video-", suffix=".plist", dir=plist.parent)
+    os.close(fd)
+    temporary = Path(temp_name)
+    try:
+        temporary.write_bytes(plistlib.dumps(config, fmt=plistlib.FMT_XML))
+        temporary.chmod(plist.stat().st_mode & 0o777)
+        # bootout is required before bootstrap to reload EnvironmentVariables.
+        service_command("bootout", plist)
+        os.replace(temporary, plist)
+        service_command("bootstrap", plist)
+        if not wait_healthy():
+            raise RuntimeError("Video-Dienst blieb nach Umstellung nicht erreichbar")
+    except Exception as exc:
+        shutil.copy2(backup, plist)
+        try:
+            service_command("bootout", plist)
+        except subprocess.CalledProcessError:
+            pass
+        try:
+            service_command("bootstrap", plist)
+        except subprocess.CalledProcessError as rollback_error:
+            fail(f"Umschaltung fehlgeschlagen: {exc}; ROLLBACK fehlgeschlagen: {rollback_error}; Backup {backup}")
+        fail(f"Umschaltung fehlgeschlagen; vorheriger LaunchAgent wiederhergestellt: {exc}")
+    finally:
+        temporary.unlink(missing_ok=True)
+    print(f"Video-Runtime aktiv: {target_root}")
+    print(f"Backup: {backup}")
+    print("Talking Photo über den Agent-Prozess benötigt ggf. dessen separaten Neustart;" 
+          " dieser wird hier bewusst nicht automatisch ausgelöst.")
+
+
+if __name__ == "__main__":
+    main()
