@@ -46,14 +46,22 @@ def test_agent_enqueues_exactly_the_explicit_user_model(monkeypatch):
 
 
 
-def test_agent_auto_leading_create_queues_juggernaut_not_qwen(monkeypatch):
-    monkeypatch.setattr(agent, "translate_image_prompt_to_english", lambda _: "photorealistic woman portrait")
-    monkeypatch.setattr(agent, "_validated_image_job_chat_identity", lambda _request: ("chat-test", 0))
+def test_agent_auto_passes_image_role_to_service_without_prompt_override(monkeypatch):
+    monkeypatch.setattr(
+        agent, "translate_image_prompt_to_english",
+        lambda _: "photorealistic woman portrait",
+    )
+    monkeypatch.setattr(
+        agent, "_validated_image_job_chat_identity",
+        lambda _request: ("chat-test", 0),
+    )
+    roles = []
 
-    def reject_role(*_args, **_kwargs):
-        raise AssertionError("Leading Auto must not fall through to the Qwen/role selector")
+    def configured_role(*_args, **_kwargs):
+        roles.append(True)
+        return "auto", None
 
-    monkeypatch.setattr(agent, "validated_image_role", reject_role)
+    monkeypatch.setattr(agent, "validated_image_role", configured_role)
     sent = []
 
     def fake_image_request(method, path, data, **_kwargs):
@@ -68,5 +76,35 @@ def test_agent_auto_leading_create_queues_juggernaut_not_qwen(monkeypatch):
     )
     agent._start_chat_image_job("image_generate", request)
     assert sent[0][0:2] == ("POST", "/jobs")
-    assert sent[0][2]["payload"]["model"] == "juggernaut-xl"
+    assert sent[0][2]["payload"]["model"] == "auto"
     assert sent[0][2]["payload"]["original_prompt"] == request.prompt
+    assert len(roles) == 1
+
+
+def test_agent_auto_respects_configured_image_role(monkeypatch):
+    monkeypatch.setattr(
+        agent, "translate_image_prompt_to_english",
+        lambda _: "photorealistic portrait",
+    )
+    monkeypatch.setattr(
+        agent, "_validated_image_job_chat_identity",
+        lambda _request: ("chat-test", 0),
+    )
+    monkeypatch.setattr(
+        agent, "validated_image_role",
+        lambda: ("juggernaut-xl", None),
+    )
+    sent = []
+
+    def fake_image_request(method, path, data, **_kwargs):
+        sent.append(data["payload"]["model"])
+        return {"id": "a" * 24, "status": "queued"}
+
+    monkeypatch.setattr(agent.image_api, "request", fake_image_request)
+    request = agent.ChatActionRequest(
+        prompt="Create a poster with text",
+        image_options={"model": "auto"},
+        chat_id="chat-test", chat_revision=0,
+    )
+    agent._start_chat_image_job("image_generate", request)
+    assert sent == ["juggernaut-xl"]
