@@ -51,8 +51,11 @@
             ? [...messages].reverse().find(message => message?.role === 'user')
             : null;
         const userText = typeof last?.content === 'string' ? last.content : '';
-        if (/^Meine Antworten auf deine Rückfragen:/i.test(userText)) {
+        if (/^(?:Meine Antworten auf deine Rückfragen:|My answers to your follow-up questions:)/i.test(userText)) {
             return '\nThe user just completed your follow-up questionnaire. Use the answers to address their original request now. Do not ask the same questions again.\n';
+        }
+        if (/^(?:Bitte beantworte meine ursprüngliche Frage ohne weitere Rückfragen\.|Please answer my original question without further follow-up questions\.)/i.test(userText)) {
+            return '\nThe user skipped the questionnaire. Answer their original request directly without further questions.\n';
         }
         const policy = mode === 'always'
             ? 'For substantial open-ended requests with missing individual preferences, prefer asking concise follow-up questions before a final recommendation.'
@@ -63,6 +66,7 @@
             + 'Do not delay explicit implementation, coding, quick facts, image generation or other already actionable tasks. '
             + 'If the user has already supplied the necessary details, give the answer instead. '
             + 'Ask at most three questions and do not ask for information already in the conversation.\n'
+            + 'Write every question, answer choice and explanation in the same language as the user.\n'
             + 'When and only when a short questionnaire is useful, return a brief introduction followed by EXACTLY ONE fenced JSON block:\n'
             + FENCE + 'nobby-questions\n'
             + '{"title":"Short heading","description":"Optional one-sentence explanation",'
