@@ -1744,7 +1744,7 @@ class ImageRuntimeTests(unittest.TestCase):
             )
         self.assertNotIn("negative_prompt", payload)
 
-    def test_auto_generation_uses_capabilities_and_availability(self):
+    def test_auto_generation_uses_configured_default_without_keyword_routing(self):
         for model_id in (
             registry.JUGGERNAUT_XL_ID,
             registry.Z_IMAGE_TURBO_ID,
@@ -1752,86 +1752,49 @@ class ImageRuntimeTests(unittest.TestCase):
         ):
             registry.update_model(model_id, {"enabled": True})
 
-        registry.set_default(registry.MLXSERVE_QWEN_IMAGE21_ID)
+        prompts = (
+            "A photorealistic studio portrait of a woman",
+            "A realistic person in natural light",
+            "A poster with clear typography and text",
+            "Create a quick preview of a red apple",
+            "A complex prompt with high prompt fidelity",
+            "A generic landscape",
+        )
 
-        # Auto generation has preferred Qwen 2.1 for portraits since b9acecf3.
-        # Juggernaut remains the fallback when Qwen is unavailable below.
         with patch.object(service, "availability", return_value=(True, "ready")):
-            self.assertEqual(
-                service._auto_generation_model(
-                    "A photorealistic studio portrait of a woman",
-                )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
-            self.assertEqual(
-                service._auto_generation_model(
-                    "A realistic person in natural light",
-                )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
-            self.assertEqual(
-                service._auto_generation_model(
-                    "A poster with clear typography and text",
-                )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
-            self.assertEqual(
-                service._auto_generation_model(
-                    "Create a quick preview of a red apple",
-                )["id"],
+            for model_id in (
+                registry.JUGGERNAUT_XL_ID,
                 registry.Z_IMAGE_TURBO_ID,
-            )
-            self.assertEqual(
-                service._auto_generation_model(
-                    "A generic landscape",
-                )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
+            ):
+                registry.set_default(model_id)
+                for prompt in prompts:
+                    with self.subTest(default=model_id, prompt=prompt):
+                        self.assertEqual(
+                            service._auto_generation_model(prompt)["id"],
+                            model_id,
+                        )
+
+            # Explicit selection is independent of the configured default.
+            registry.set_default(registry.JUGGERNAUT_XL_ID)
             self.assertEqual(
                 service._generation_model(
                     registry.MLXSERVE_QWEN_IMAGE21_ID,
-                    "A photorealistic portrait",
+                    "A photorealistic portrait of a woman",
                 )["id"],
                 registry.MLXSERVE_QWEN_IMAGE21_ID,
             )
 
-        def without_qwen(model):
-            return (
-                model["id"] != registry.MLXSERVE_QWEN_IMAGE21_ID,
-                "test",
-            )
+        # A missing default must raise, not fall back to enabled Qwen.
+        registry.set_default(registry.JUGGERNAUT_XL_ID)
+        def unavailable_default(model):
+            return (model["id"] != registry.JUGGERNAUT_XL_ID, "not ready")
 
-        with patch.object(service, "availability", side_effect=without_qwen):
-            self.assertEqual(
-                service._auto_generation_model(
-                    "A photorealistic studio portrait of a woman",
-                )["id"],
-                registry.JUGGERNAUT_XL_ID,
-            )
-
-        def without_turbo(model):
-            return (
-                model["id"] != registry.Z_IMAGE_TURBO_ID,
-                "test",
-            )
-
-        with patch.object(service, "availability", side_effect=without_turbo):
-            self.assertEqual(
-                service._auto_generation_model(
-                    "Create a fast preview of a landscape",
-                )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
-
-        registry.update_model(registry.Z_IMAGE_TURBO_ID, {"enabled": False})
-
-        with patch.object(service, "availability", return_value=(True, "ready")):
-            self.assertEqual(
-                service._auto_generation_model(
-                    "Create a fast preview of a landscape",
-                )["id"],
-                registry.MLXSERVE_QWEN_IMAGE21_ID,
-            )
+        with patch.object(service, "availability", side_effect=unavailable_default):
+            with self.assertRaises(HTTPException) as unavailable:
+                service._auto_generation_model("A photorealistic portrait")
+            self.assertEqual(unavailable.exception.status_code, 503)
+            self.assertIn(registry.JUGGERNAUT_XL_ID, str(unavailable.exception.detail))
 
     def test_stale_image_role_falls_back_to_auto_and_persists(self):
         agent.save_model_roles({

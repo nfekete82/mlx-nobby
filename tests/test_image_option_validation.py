@@ -72,7 +72,7 @@ def test_generate_accepts_negative_prompt_and_rejects_stale_ui_parameters(monkey
     )
     payload = agent._image_generate_payload(request)
     assert payload["negative_prompt"] == "blurry"
-    assert payload["model"] == "juggernaut-xl"
+    assert payload["model"] == "auto"
 
     request.image_options["format"] = "landscape"
     with pytest.raises(HTTPException, match="Nicht unterstützte Bildparameter") as exc:
@@ -128,28 +128,31 @@ def test_chat_actions_accept_native_ultra_quality():
     assert payload["auto_size"] is True
 
 
-def test_leading_auto_create_uses_juggernaut_without_overriding_manual_choice(monkeypatch):
-    monkeypatch.setattr(agent, "translate_image_prompt_to_english", lambda _: "photorealistic portrait of a woman")
+def test_auto_generation_preserves_selected_model_independent_of_prompt(monkeypatch):
+    monkeypatch.setattr(
+        agent,
+        "translate_image_prompt_to_english",
+        lambda _: "photorealistic portrait of a woman",
+    )
     for prompt in (
         "Erstelle ein Bild von einer Frau",
         "  ERSTELLE ein BILD eines Sonnenuntergangs",
         "erstelle   ein   bild von einer Stadt",
+        "Bitte erstelle ein Bild von einer Frau",
+        "Create a poster with typography",
     ):
         auto = agent.ChatActionRequest(prompt=prompt, image_options={"model": "auto"})
-        assert agent._image_generate_payload(auto)["model"] == "juggernaut-xl"
+        assert agent._image_generate_payload(auto)["model"] == "auto"
 
-        manual = agent.ChatActionRequest(prompt=prompt, image_options={"model": "mlxserve-qwen-image-2.1"})
+        manual = agent.ChatActionRequest(
+            prompt=prompt, image_options={"model": "mlxserve-qwen-image-2.1"}
+        )
         assert agent._image_generate_payload(manual)["model"] == "mlxserve-qwen-image-2.1"
 
-    other = agent.ChatActionRequest(
-        prompt="Bitte erstelle ein Bild von einer Frau",
-        image_options={"model": "auto"},
-    )
-    assert agent._image_generate_payload(other)["model"] == "auto"
+        manual_juggernaut = agent.ChatActionRequest(
+            prompt=prompt, image_options={"model": "juggernaut-xl"}
+        )
+        assert agent._image_generate_payload(manual_juggernaut)["model"] == "juggernaut-xl"
 
-    # Legacy clients without an explicit selector still use the configured
-    # global image role, which _start_chat_image_job resolves later.
-    unspecified = agent.ChatActionRequest(
-        prompt="Erstelle ein Bild von einer Frau",
-    )
+    unspecified = agent.ChatActionRequest(prompt="Erstelle ein Bild von einer Frau")
     assert agent._image_generate_payload(unspecified)["model"] == "auto"

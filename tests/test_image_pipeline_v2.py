@@ -7,50 +7,28 @@ import image_registry as registry
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_photoreal_people_prefer_juggernaut():
-    plan = pipeline.route_plan(
-        "Photorealistic portrait of a woman in soft window light",
-        "FLUX.1-schnell",
-    )
-    assert plan["intent"] == "photoreal_person"
-    assert plan["candidates"][0] == registry.JUGGERNAUT_XL_ID
-    assert registry.MLXSERVE_QWEN_IMAGE21_ID in plan["candidates"]
+def test_auto_candidates_are_only_configured_default_for_every_intent():
+    cases = {
+        "Photorealistic portrait of a woman in soft window light": "photoreal_person",
+        "Porträt einer Frau": "photoreal_person",
+        "watercolor illustration portrait of a woman": "illustration",
+        "Create a poster with readable typography and a logo": "text_layout",
+        "quick preview draft image of a city": "fast_draft",
+        "a highly complex prompt with high prompt fidelity": "complex_prompt",
+        "blue geometric shapes": "generic",
+    }
+    for configured in (registry.JUGGERNAUT_XL_ID, registry.MLXSERVE_QWEN_IMAGE21_ID, "FLUX.1-schnell"):
+        for prompt, intent in cases.items():
+            plan = pipeline.route_plan(prompt, configured)
+            assert plan["intent"] == intent
+            assert plan["reason"] == "configured-default"
+            assert plan["candidates"] == [configured]
+    assert pipeline.route_plan("photo", None)["candidates"] == []
 
 
-def test_plain_portrait_prefers_juggernaut_but_illustration_does_not():
-    portrait = pipeline.route_plan("Porträt einer Frau", "FLUX.1-schnell")
-    assert portrait["intent"] == "photoreal_person"
-    assert portrait["candidates"][0] == registry.JUGGERNAUT_XL_ID
-
-    illustration = pipeline.route_plan(
-        "watercolor illustration portrait of a woman",
-        "FLUX.1-schnell",
-    )
-    assert illustration["intent"] == "illustration"
-    assert illustration["candidates"][0] == registry.MLXSERVE_QWEN_IMAGE21_ID
-
-
-def test_text_and_fast_routes_use_specialized_models():
-    text = pipeline.route_plan(
-        "Create a poster with readable typography and a logo",
-        "FLUX.1-schnell",
-    )
-    assert text["intent"] == "text_layout"
-    assert text["candidates"][0] == registry.MLXSERVE_QWEN_IMAGE21_ID
-
-    fast = pipeline.route_plan(
-        "quick preview draft image of a city",
-        "FLUX.1-schnell",
-    )
-    assert fast["intent"] == "fast_draft"
-    assert fast["candidates"][0] == registry.Z_IMAGE_TURBO_ID
-
-
-def test_generic_route_respects_default_and_never_retains_prompt():
+def test_routes_do_not_retaina_prompt():
     secret_prompt = "blue geometric shapes with private-marker-123"
     plan = pipeline.route_plan(secret_prompt, "FLUX.1-schnell")
-    assert plan["intent"] == "generic"
-    assert plan["candidates"][0] == "FLUX.1-schnell"
     assert secret_prompt not in repr(plan)
     assert "prompt" not in plan
 

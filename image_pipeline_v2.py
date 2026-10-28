@@ -105,37 +105,8 @@ def classify_image_intent(prompt):
 
 
 def routing_candidates(intent, default_model=None):
-    """Return model ids in priority order for one classified image intent."""
-    mapping = {
-        "fast_draft": [
-            registry.Z_IMAGE_TURBO_ID,
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-        ],
-        "text_layout": [
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-        ],
-        "photoreal_person": [
-            registry.JUGGERNAUT_XL_ID,
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-        ],
-        "product_photo": [
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-            registry.JUGGERNAUT_XL_ID,
-        ],
-        "illustration": [
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-        ],
-        "complex_prompt": [
-            registry.MLXSERVE_QWEN_IMAGE21_ID,
-        ],
-        "generic": [],
-    }
-    return _unique([
-        *mapping.get(str(intent or "generic"), []),
-        default_model,
-        registry.MLXSERVE_QWEN_IMAGE21_ID,
-        registry.JUGGERNAUT_XL_ID,
-    ])
+    """Report the configured default only; intent never changes model choice."""
+    return _unique([default_model])
 
 
 def route_plan(prompt, default_model=None):
@@ -144,7 +115,7 @@ def route_plan(prompt, default_model=None):
     return {
         "version": 2,
         "intent": classification["intent"],
-        "reason": classification["reason"],
+        "reason": "configured-default",
         "signals": classification["signals"],
         "candidates": routing_candidates(
             classification["intent"],

@@ -163,24 +163,27 @@ test('manual model choice remains authoritative and unavailable models never dow
 });
 
 
-test('leading image command shows Juggernaut for Auto even when registry defaults to Qwen', async () => {
+test('Auto label reflects configured image role or registry default without prompt overrides', async () => {
     const modelStart = source.indexOf('async function updateImageModelOptions(');
     const modelEnd = source.indexOf('const IMAGE_OPTION_KEYS', modelStart);
     assert.ok(modelStart >= 0 && modelEnd > modelStart);
-    assert.match(source, /LEADING_AUTO_JUGGERNAUT_PATTERN\.test\(prompt\)/);
-    assert.match(source, /resolvedTarget === 'image' &&[\s\S]*?LEADING_AUTO_JUGGERNAUT_PATTERN\.test\(prompt\)/);
+    assert.doesNotMatch(source, /LEADING_AUTO_JUGGERNAUT_PATTERN/);
+    assert.match(source, /data\?\.effective_model \|\| data\?\.default_model/);
 
+    let configuredRole = 'juggernaut-xl';
     const context = vm.createContext({
         window: {MLXI18n: {t(_key, fallback) {return fallback;}}},
         document: {createElement() {return {value: '', textContent: ''};}},
         storedImageModel: () => 'auto',
         fetch: async () => ({ok: true, async json() {
-            return {default_model: 'mlxserve-qwen-image-2.1', models: [
-                {id: 'juggernaut-xl', name: 'Juggernaut XL Ragnarok', enabled: true,
-                 available: true, capabilities: ['text_to_image']},
-                {id: 'mlxserve-qwen-image-2.1', name: 'Qwen Image', enabled: true,
-                 available: true, capabilities: ['text_to_image']},
-            ]};
+            return {default_model: 'mlxserve-qwen-image-2.1',
+                effective_model: configuredRole,
+                models: [
+                    {id: 'juggernaut-xl', name: 'Juggernaut XL Ragnarok', enabled: true,
+                     available: true, capabilities: ['text_to_image']},
+                    {id: 'mlxserve-qwen-image-2.1', name: 'Qwen Image', enabled: true,
+                     available: true, capabilities: ['text_to_image']},
+                ]};
         }})
     });
     vm.runInContext(source.slice(modelStart, modelEnd), context);
@@ -189,14 +192,16 @@ test('leading image command shows Juggernaut for Auto even when registry default
         replaceChildren(...options) {this.children = options;},
         appendChild(option) {this.children.push(option);}
     };
-    assert.equal(await context.updateImageModelOptions(
-        select, 'auto', 'text_to_image', 'juggernaut-xl'
-    ), 'auto');
+    assert.equal(await context.updateImageModelOptions(select, 'auto'), 'auto');
     assert.equal(select.value, 'auto');
     assert.equal(select.children[0].textContent, 'Automatic (Juggernaut XL Ragnarok)');
 
+    configuredRole = 'mlxserve-qwen-image-2.1';
+    assert.equal(await context.updateImageModelOptions(select, 'auto'), 'auto');
+    assert.equal(select.children[0].textContent, 'Automatic (Qwen Image)');
+
     assert.equal(await context.updateImageModelOptions(
-        select, 'mlxserve-qwen-image-2.1', 'text_to_image', 'juggernaut-xl'
-    ), 'mlxserve-qwen-image-2.1');
-    assert.equal(select.value, 'mlxserve-qwen-image-2.1');
+        select, 'juggernaut-xl'
+    ), 'juggernaut-xl');
+    assert.equal(select.value, 'juggernaut-xl');
 });

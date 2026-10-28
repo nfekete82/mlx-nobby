@@ -53,7 +53,6 @@ const IMAGE_QUESTION_PATTERN =
 // This explicit German instruction always means a NEW image job, regardless
 // of position in the sentence or whether a previous image is attached.
 const ALWAYS_GENERATE_IMAGE_PATTERN = /(?:^|[^\p{L}\p{N}_])erstelle\s+ein\s+bild(?=$|[^\p{L}\p{N}_])/iu;
-const LEADING_AUTO_JUGGERNAUT_PATTERN = /^\s*erstelle\s+ein\s+bild\b/iu;
 
 const IMAGE_CREATION_VERB_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|zeichne|zeichnen|mach|mache|create|generate|draw|make)(?=$|[^\p{L}\p{N}_])/iu;
@@ -347,8 +346,7 @@ function storeImageModel(model) {
 async function updateImageModelOptions(
     select,
     preferred = 'auto',
-    capability = 'text_to_image',
-    automaticModelId = null
+    capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
     const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
@@ -386,7 +384,9 @@ async function updateImageModelOptions(
         );
 
         const defaultModel = models.find(
-            model => model.id === (automaticModelId || data?.default_model)
+            model => model.id === (capability === 'text_to_image'
+                ? (data?.effective_model || data?.default_model)
+                : data?.default_model)
         );
         if (defaultModel?.name) {
             automatic.textContent +=
@@ -3421,10 +3421,7 @@ const imageFiles =
                         await updateImageModelOptions(
                             imageModelSelect,
                             selectedImageModel,
-                            imageModelCapability,
-                            resolvedTarget === 'image' &&
-                                LEADING_AUTO_JUGGERNAUT_PATTERN.test(prompt)
-                                ? 'juggernaut-xl' : null
+                            imageModelCapability
                         );
                 }
 
