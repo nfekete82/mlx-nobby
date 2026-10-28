@@ -25,7 +25,7 @@ def padded_wav(source, target, duration):
     with wave.open(str(source), "rb") as wav:
         audio = wav.readframes(wav.getnframes())
     length = int(round(duration * 16000))
-    audio = audio[:length * 2].ljust(length * 2, b"\\0")
+    audio = audio[:length * 2].ljust(length * 2, b"\0")
     with wave.open(str(target), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
@@ -40,7 +40,7 @@ def padded_wav(source, target, duration):
 ])
 def test_max_quality_really_changes_ltx_renderer_steps(distilled, steps, expected):
     commands = []
-    mp4 = b"\\0\\0\\0\\x18ftyp" + b"0" * 48
+    mp4 = b"\0\0\0\x18ftyp" + b"0" * 48
 
     def fake_popen(command, **kwargs):
         commands.append(command)
@@ -117,7 +117,7 @@ def test_create_job_records_max_engine_and_only_passes_validated_steps():
 def test_max_quality_reaches_short_and_longform_jobs_with_metadata(longform, tmp_path):
     root = tmp_path / "state"
     original = wav_bytes()
-    rendered = b"\\0\\0\\0\\x18ftyp" + b"0" * 48
+    rendered = b"\0\0\0\x18ftyp" + b"0" * 48
     results = []
 
     def record_job(_id, **changes):
