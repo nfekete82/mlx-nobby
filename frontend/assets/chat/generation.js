@@ -3310,7 +3310,9 @@ const imageFiles =
                 (hasAttachmentEditModelPicker
                     ? (options?.referenceEdit?.model || 'auto')
                     : resolvedTarget === 'image'
-                        ? (savedImageCreation?.model || options?.image?.model || storedImageModel())
+                        ? (options?.image?.model && options.image.model !== 'auto'
+                            ? options.image.model
+                            : savedImageCreation?.model || storedImageModel())
                         : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
