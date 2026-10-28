@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Dry-run-first LTX-MLX 0.18 Talking Photo agent rollout with rollback.
+
+Only modifies the agent's launchd EnvironmentVariables.LTX_MLX_RUNTIME_ROOT.
+The video service's already-working 0.18 runtime is never touched.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+AGENT = Path.home() / "Library/LaunchAgents/de.nobby.mlx-agent.plist"
+ROOT = Path.home() / ".local/share/mlx-nobby"
+JOBS = Path.home() / ".config/mlx-web/talking-photo/jobs"
+LABEL = "de.nobby.mlx-agent"
+EXPECTED_018 = "b82b97e3d000e01361f8cfcb745244b15b89a521"
+AGENT_HEALTH = "http://127.0.0.1:8010/api/talking-photo/status"
+VIDEO_HEALTH = "http://127.0.0.1:8060/health"
+ACTIVE = {"queued", "preparing", "tts", "motion", "quality", "lipsync", "rendering", "generating"}
+
+
+def fail(message):
+    raise SystemExit(f"STOP: {message}")
+
+
+def target_root(name):
+    return (ROOT / ("ltx-2-mlx-v0.18.0" if name == "018" else "ltx-2-mlx")).resolve()
+
+
+def verify_checkout(path, name):
+    if not (path / ".git").is_dir() or not (path / ".venv/bin/python").is_file():
+        fail(f"LTX-Runtime fehlt: {path}")
+    if name == "018":
+        sha = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
+        if sha != EXPECTED_018:
+            fail(f"Unerwartete LTX-0.18-Version: {sha}")
+    verify = subprocess.run(
+        [str(path / ".venv/bin/python"), "-c",
+         "from ltx_pipelines_mlx.a2vid_two_stage import A2VidPipelineTwoStage; "
+         "from ltx_pipelines_mlx.a2vid_distilled import A2VidDistilledPipeline; "
+         "print('Talking Photo A2V imports OK')"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=45,
+    )
+    if verify.returncode:
+        fail(f"A2V-Pipeline nicht importierbar: {verify.stdout[-1000:]}")
+    print(verify.stdout.strip())
+
+
+def get_json(url):
+    with urllib.request.urlopen(url, timeout=5) as response:
+        return json.load(response)
+
+
+def ensure_idle():
+    try:
+        video = get_json(VIDEO_HEALTH)
+        status = get_json(AGENT_HEALTH)
+    except Exception as exc:
+        fail(f"Dienste nicht erreichbar: {exc}")
+    if not video.get("ok") or video.get("status") != "ready" or video.get("active_job_id"):
+        fail("Video-Dienst beschäftigt; keinen Agent-Neustart ausführen")
+    if not status.get("ready"):
+        fail("Talking Photo ist vor der Umstellung nicht bereit")
+    # The lifecycle persists job JSON under this managed root.
+    if JOBS.exists():
+        for path in JOBS.glob("*.json"):
+            if path.is_symlink():
+                fail(f"Unerwarteter Talking-Photo-Job-Symlink: {path}")
+            try:
+                job = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, OSError) as exc:
+                fail(f"Talking-Photo-Jobstatus nicht lesbar: {path}: {exc}")
+            if str(job.get("status") or "").lower() in ACTIVE:
+                fail(f"Talking-Photo-Job noch aktiv: {job.get('id') or path.stem}")
+    return status
+
+
+def launchctl(command, plist):
+    return subprocess.run(
+        ["launchctl", command, f"gui/{os.getuid()}", str(plist)],
+        capture_output=True, text=True, check=True,
+    )
+
+
+def healthy():
+    for _ in range(30):
+        try:
+            status = get_json(AGENT_HEALTH)
+            if status.get("ready") and all(
+                status.get("providers", {}).get(x, {}).get("ready")
+                for x in ("ltx", "ltx-distilled", "ltx-max")
+            ):
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--to", choices=["018", "stable"], required=True)
+    parser.add_argument("--apply", action="store_true", help="Explicitly apply; default is dry-run")
+    parser.add_argument("--plist", type=Path, default=AGENT)
+    args = parser.parse_args()
+
+    if sys.platform != "darwin":
+        fail("Nur macOS wird unterstützt")
+    plist = args.plist.expanduser().resolve()
+    if not plist.is_file() or plist.is_symlink():
+        fail(f"LaunchAgent fehlt oder ist Symlink: {plist}")
+    current = plistlib.loads(plist.read_bytes())
+    if current.get("Label") != LABEL:
+        fail("Unerwartetes LaunchAgent-Label")
+    environment = dict(current.get("EnvironmentVariables") or {})
+    if "LTX_MLX_PYTHON" in environment:
+        fail("Explizites LTX_MLX_PYTHON Override erkannt")
+    source = Path(environment.get("LTX_MLX_RUNTIME_ROOT") or ROOT / "ltx-2-mlx").expanduser().resolve()
+    target = target_root(args.to)
+    if not args.apply:
+        print(f"DRY RUN: {LABEL}\n  Aktuell: {source}\n  Ziel:    {target}")
+        print("Video-Dienst 8060 wird nicht umgeschaltet. Talking Photo braucht Agent-Neustart.")
+        return
+    verify_checkout(target, args.to)
+    ensure_idle()
+    if source == target:
+        print(f"Bereits konfiguriert: {target}")
+        return
+
+    backup = plist.with_name(plist.name + f".before-talking-photo-{args.to}-{int(time.time())}.bak")
+    shutil.copy2(plist, backup)
+    current.setdefault("EnvironmentVariables", {})["LTX_MLX_RUNTIME_ROOT"] = str(target)
+    fd, tempname = tempfile.mkstemp(prefix=".mlx-agent-", suffix=".plist", dir=plist.parent)
+    os.close(fd)
+    temp = Path(tempname)
+    try:
+        temp.write_bytes(plistlib.dumps(current, fmt=plistlib.FMT_XML))
+        temp.chmod(plist.stat().st_mode & 0o777)
+        launchctl("bootout", plist)
+        os.replace(temp, plist)
+        launchctl("bootstrap", plist)
+        if not healthy():
+            raise RuntimeError("Talking Photo nach der Umschaltung nicht bereit")
+    except Exception as exc:
+        shutil.copy2(backup, plist)
+        try:
+            launchctl("bootout", plist)
+        except subprocess.CalledProcessError:
+            pass
+        try:
+            launchctl("bootstrap", plist)
+        except subprocess.CalledProcessError as restore:
+            fail(f"ROLLBACK fehlgeschlagen: {restore}; Backup: {backup}")
+        fail(f"Umschaltung zurückgerollt: {exc}")
+    finally:
+        temp.unlink(missing_ok=True)
+    print(f"Talking Photo Runtime aktiv: {target}")
+    print(f"Rollback: python3 scripts/switch-ltx-talking-photo-runtime --to stable --apply")
+    print(f"LaunchAgent Backup: {backup}")
+
+
+if __name__ == "__main__":
+    main()
