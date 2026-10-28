@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ltx_pipelines_mlx.distilled import DistilledPipeline
 from video_profiles import prepare_uncensored_loras, request_loras
+from video_mlx_compat import image_conditioning_inputs
 
 HOST = os.environ.get("LTX_MLX_WORKER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LTX_MLX_WORKER_PORT", "18061"))
@@ -143,10 +144,9 @@ def _generate(payload):
         conditioning = {}
         if payload.get("images"):
             from ltx_pipelines_mlx.utils.args import ImageConditioningInput
-            conditioning["images"] = [ImageConditioningInput(
-                path=anchor["path"], frame_idx=int(anchor["frame_index"]),
-                strength=float(anchor["strength"]),
-            ) for anchor in payload["images"]]
+            conditioning["images"] = image_conditioning_inputs(
+                payload["images"], ImageConditioningInput,
+            )
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),
             output_path=str(output),
