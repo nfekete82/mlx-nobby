@@ -8771,7 +8771,9 @@ def _image_generate_payload(request):
     # Resolve before role routing and before translating the prompt to English,
     # so the image service cannot silently select Qwen for portrait keywords.
     if (
-        payload.get("model", "auto") == "auto"
+        request.image_options
+        and request.image_options.get("model") == "auto"
+        and payload.get("model", "auto") == "auto"
         and re.match(r"^\s*erstelle\s+ein\s+bild\b", source_prompt, re.IGNORECASE)
     ):
         payload["model"] = "juggernaut-xl"
