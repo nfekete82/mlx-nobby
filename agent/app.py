@@ -8768,8 +8768,9 @@ def _image_generate_payload(request):
 
     # In the chat, "Auto" prefers the fast SDXL checkpoint for an explicit
     # leading "Erstelle ein Bild" command. A manually selected model always wins.
-    # Resolve before role routing and before translating the prompt to English,
-    # so the image service cannot silently select Qwen for portrait keywords.
+    # Use the original German prompt, not its English translation, so
+    # portrait heuristics in the image service cannot silently select Qwen.
+    # An omitted model keeps the existing configured global image role.
     if (
         request.image_options
         and request.image_options.get("model") == "auto"
