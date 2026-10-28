@@ -75,20 +75,6 @@ def _safe_route(plan, selected=None, explicit=False):
     }
 
 
-def _candidate(data, model_id):
-    model = next(
-        (item for item in data["models"] if item["id"] == model_id),
-        None,
-    )
-    if (
-        not model
-        or not model.get("enabled")
-        or "text_to_image" not in model.get("capabilities", [])
-    ):
-        return None
-    ready, _ = core.availability(model)
-    return model if ready else None
-
 
 def _route_generation_model(model_id, prompt):
     if model_id != "auto":
@@ -98,28 +84,15 @@ def _route_generation_model(model_id, prompt):
         _set_state("last_route", route)
         return model
 
-    data = core.registry_call(registry.load_registry)
-    plan = pipeline_v2.route_plan(prompt, data.get("default_model"))
-
-    selected = None
-    for candidate_id in plan["candidates"]:
-        selected = _candidate(data, candidate_id)
-        if selected:
-            break
-
-    if selected is None:
-        for model in data["models"]:
-            selected = _candidate(data, model["id"])
-            if selected:
-                break
-
-    if selected is None:
-        raise HTTPException(503, 'Kein kompatibler lokaler Bildgenerator verfügbar')
-
-    route = _safe_route(plan, selected=selected["id"])
+    # Launchd serves this V2 wrapper in production. Reuse the authoritative
+    # image-service default resolution so V2 cannot secretly route Auto to
+    # Qwen, Z-Image or a fallback model based on prompt keywords.
+    model = core._auto_generation_model(prompt)
+    plan = pipeline_v2.route_plan(prompt, model["id"])
+    route = _safe_route(plan, selected=model["id"])
     _route_local.last = route
     _set_state("last_route", route)
-    return selected
+    return model
 
 
 _original_generate_result = core._generate_result
