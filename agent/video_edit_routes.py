@@ -182,7 +182,7 @@ def _run(job_id, request, source, info, cmd, output):
             _update(job_id, status="generating")
             with log.open("xb") as stream:
                 proc = subprocess.Popen(cmd, cwd=RUNTIME, stdout=stream,
-                                        stderr=subprocess.STDOUT, start_new_session=True)
+                                        stderr=subprocess.STDOUT)
                 while proc.poll() is None:
                     if cancel.wait(0.5):
                         proc.terminate()
@@ -195,8 +195,11 @@ def _run(job_id, request, source, info, cmd, output):
             if proc.returncode:
                 tail = log.read_text(encoding="utf-8", errors="replace")[-1500:]
                 raise RuntimeError(f"LTX {request.operation} fehlgeschlagen: {tail}")
-            if not output.is_file() or output.stat().st_size < 32 or b"ftyp" not in output.open("rb").read(32):
+            if not output.is_file() or output.stat().st_size < 32:
                 raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
+            with output.open("rb") as generated:
+                if b"ftyp" not in generated.read(32):
+                    raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
             media_lifecycle.register("video", job_id, output, owner="adhoc", persistent=False)
             _update(job_id, status="completed", progress=1.0, finished_at=time.time(),
                     result={"id": job_id, "kind": "video", "video_url": f"/api/mlx/videos/{job_id}",
@@ -272,6 +275,8 @@ def install_routes(app: FastAPI):
             if job is None:
                 try:
                     job = json.loads((JOB_DIR / f"{job_id}.json").read_text(encoding="utf-8"))
+                    if job.get("status") in ACTIVE:
+                        job.update(status="failed", error="Agent wurde während des Edits neu gestartet")
                 except (OSError, ValueError):
                     raise HTTPException(404, "Edit-Job nicht gefunden") from None
             return _public(job)
