@@ -70,6 +70,40 @@ Optional Talking Photo direkt mit dem Staging-Python und eigenen kurzen WAV-/Bil
 
 Dieser Smoke-Test startet keine Generierung. Einen echten A2V-Vergleich erst mit gültigem Quellbild und passendem WAV (16 kHz) durchführen.
 
+## 3b. Nobby-Worker mit 0.18.0 isoliert prüfen (nach erfolgreichem CLI-Test)
+
+Der CLI-Test zeigt noch **nicht**, dass Nobbys persistenter Video-Worker funktioniert.
+Das isolierte Smoke-Skript startet den tatsächlichen `video_mlx_worker.py` mit dem
+0.18.0-Python-Interpreter, einem zufällig gewählten lokalen Port und einem separaten
+Auth-Token. Es verwendet weder den produktiven Worker-Port `18061` noch Port `8060`.
+Der Prozess wird danach beendet; vorhandene Gewichte bleiben unverändert.
+
+```bash
+cd ~/mlx-web
+OUT="$HOME/Downloads/LTX-2.5-Vergleich-20261028-230121"
+python3 scripts/smoke-ltx-mlx-018-worker.py \
+  --start-image "$OUT/start.png" \
+  --end-image "$OUT/end.png" \
+  --output "$OUT/ltx-018-nobby-worker.mp4" \
+  --frames 49
+```
+
+Der Test startet **einen echten GPU-Job** und darf nicht gleichzeitig mit einer
+anderen Bild-/Video-Generierung laufen. Die Ausgabedatei wird nicht überschrieben.
+Bei einem Fehler im Backend liefert die Logdatei
+`ltx-018-nobby-worker.worker.log` eine Diagnose. Für einen erneuten Test einen
+neuen Ausgabepfad verwenden.
+
+### Talking Photo: API geprüft, A2V-Qualität noch offen
+
+Beide 0.18.0-Backends `A2VidPipelineTwoStage` und `A2VidDistilledPipeline`
+besitzen die bestehenden für Nobby erforderlichen Parameter. Ein echter
+Talking-Photo-Test benötigt **gültiges gesprochenes Audio und ein eigenes
+Portrait**, damit Lip-Sync und Identität überprüft werden können. Den
+bestehenden Agent (`8010`) bis dahin auf der stabilen Runtime lassen.
+Dazu nur den Staging-Python-Runner unabhängig vom Agent testen, ohne Dienste
+neu zu starten.
+
 ## 4. Umschalten — nur nach bestandenen GPU-/Browser-Tests
 
 Der Video-LaunchAgent wird **nur bei explizitem** `--apply` geändert.
