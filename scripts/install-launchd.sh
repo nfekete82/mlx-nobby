@@ -118,7 +118,8 @@ if os.path.isfile(sys.argv[2]):
     with open(sys.argv[2], "rb") as handle:
         previous = plistlib.load(handle).get("EnvironmentVariables", {})
 environment = data.setdefault("EnvironmentVariables", {})
-for name in ("LTX_TALKING_PHOTO_SEED", "LTX_TALKING_PHOTO_DEBUG", "LTX_TALKING_PHOTO_DEBUG_ROOT"):
+for name in ("LTX_TALKING_PHOTO_SEED", "LTX_TALKING_PHOTO_DEBUG", "LTX_TALKING_PHOTO_DEBUG_ROOT",
+             "LTX_MLX_RUNTIME_ROOT", "LTX_MLX_MODEL_ROOT"):
     if name in os.environ:
         environment[name] = os.environ[name]
     elif name in previous:
