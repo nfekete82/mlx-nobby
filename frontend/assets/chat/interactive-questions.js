@@ -278,10 +278,51 @@
         const completed = message.interactive_answers;
         const selected = completed?.answers || draftAnswers.get(key) || {};
         const fields = [];
+        const requiredCount = spec.questions.filter(question => question.required).length;
+        const progress = el('div', 'nobby-question-progress');
+        progress.setAttribute('role', 'status');
+        progress.setAttribute('aria-live', 'polite');
+        const progressLabel = el('span', 'nobby-question-progress-label');
+        const progressBar = el('div', 'nobby-question-progress-bar');
+        const progressFill = el('div', 'nobby-question-progress-fill');
+        progressBar.setAttribute('aria-hidden', 'true');
+        progressBar.appendChild(progressFill);
+        progress.append(progressLabel, progressBar);
+        if (requiredCount && !completed) form.appendChild(progress);
+
+        function fieldValue(field) {
+            if (field.input) return field.input.value.trim();
+            const chosen = field.inputs.filter(node => node.checked).map(node => node.value);
+            const custom = field.customInput.value.trim();
+            if (field.question.type === 'multiple') {
+                return custom ? [...chosen, custom] : chosen;
+            }
+            return custom || chosen[0] || '';
+        }
+
+        function updateProgress() {
+            if (!requiredCount || completed) return;
+            const answered = fields.filter(field => field.question.required &&
+                (Array.isArray(fieldValue(field))
+                    ? fieldValue(field).length > 0
+                    : Boolean(fieldValue(field)))).length;
+            progressLabel.textContent = localText(
+                'Pflichtfragen beantwortet: ', 'Required questions answered: '
+            ) + answered + '/' + requiredCount;
+            progressFill.style.width = (100 * answered / requiredCount) + '%';
+        }
 
         spec.questions.forEach((question, qIndex) => {
             const field = el('fieldset', 'nobby-question-field');
             const legend = el('legend', '', (qIndex + 1) + '. ' + question.label);
+            if (!question.required || question.type === 'multiple') {
+                const meta = el('span', 'nobby-question-field-meta',
+                    !question.required
+                        ? localText(' · optional', ' · optional')
+                        : localText(' · Mehrfachauswahl', ' · multiple choices')
+                );
+                legend.appendChild(meta);
+            }
             field.appendChild(legend);
             if (question.type === 'text') {
                 const input = el('textarea', 'nobby-question-textarea');
@@ -290,37 +331,86 @@
                 input.value = typeof selected[qIndex] === 'string' ? selected[qIndex] : '';
                 input.placeholder = localText('Deine Antwort …', 'Your answer …');
                 input.disabled = Boolean(completed);
-                input.addEventListener('input', () => remember(qIndex, input.value));
+                input.addEventListener('input', () => {
+                    remember(qIndex, input.value);
+                });
                 field.appendChild(input);
                 fields.push({question, input});
             } else {
                 const group = el('div', 'nobby-question-options');
                 const inputs = [];
-                question.options.forEach((option, optionIndex) => {
+                const saved = selected[qIndex];
+                const customSaved = question.type === 'multiple'
+                    ? (Array.isArray(saved)
+                        ? saved.find(value => !question.options.includes(value)) || ''
+                        : '')
+                    : (typeof saved === 'string' && !question.options.includes(saved)
+                        ? saved : '');
+
+                const custom = el('div', 'nobby-question-custom');
+                const customToggle = el('button', 'nobby-question-custom-toggle',
+                    localText('+ Eigene Antwort', '+ Other answer')
+                );
+                customToggle.type = 'button';
+                customToggle.disabled = Boolean(completed);
+                customToggle.setAttribute('aria-expanded', customSaved ? 'true' : 'false');
+                const customInput = el('input', 'nobby-question-custom-input');
+                customInput.type = 'text';
+                customInput.maxLength = 500;
+                customInput.value = customSaved;
+                customInput.placeholder = localText(
+                    'Eigene Antwort eingeben …', 'Enter your own answer …'
+                );
+                customInput.setAttribute('aria-label', localText(
+                    'Eigene Antwort auf Frage ', 'Custom answer to question '
+                ) + (qIndex + 1));
+                customInput.disabled = Boolean(completed);
+                customInput.hidden = !customSaved;
+                customToggle.addEventListener('click', () => {
+                    customInput.hidden = !customInput.hidden;
+                    customToggle.setAttribute('aria-expanded', customInput.hidden ? 'false' : 'true');
+                    if (!customInput.hidden) customInput.focus();
+                });
+                customInput.addEventListener('input', () => {
+                    if (question.type === 'single' && customInput.value.trim()) {
+                        inputs.forEach(node => { node.checked = false; });
+                    }
+                    remember(qIndex, fieldValue(fields[qIndex]));
+                });
+
+                question.options.forEach(option => {
                     const label = el('label', 'nobby-question-option');
                     const control = el('input');
                     control.type = question.type === 'multiple' ? 'checkbox' : 'radio';
                     control.name = 'nobby-question-' + index + '-' + qIndex;
                     control.value = option;
                     control.checked = question.type === 'multiple'
-                        ? Array.isArray(selected[qIndex]) && selected[qIndex].includes(option)
-                        : selected[qIndex] === option;
+                        ? Array.isArray(saved) && saved.includes(option)
+                        : saved === option;
                     control.disabled = Boolean(completed);
                     control.addEventListener('change', () => {
-                        remember(qIndex, question.type === 'multiple'
-                            ? inputs.filter(node => node.checked).map(node => node.value)
-                            : option);
+                        if (question.type === 'single') {
+                            customInput.value = '';
+                            customInput.hidden = true;
+                            customToggle.setAttribute('aria-expanded', 'false');
+                        }
+                        remember(qIndex, fieldValue(fields[qIndex]));
                     });
                     inputs.push(control);
                     label.append(control, el('span', '', option));
                     group.appendChild(label);
                 });
                 field.appendChild(group);
-                fields.push({question, inputs});
+                if (!completed || customSaved) {
+                    if (!completed) custom.appendChild(customToggle);
+                    custom.appendChild(customInput);
+                    field.appendChild(custom);
+                }
+                fields.push({question, inputs, customInput});
             }
             form.appendChild(field);
         });
-
+        updateProgress();
         if (spec.footer) form.appendChild(el('p', 'nobby-question-footer', spec.footer));
         const status = el('p', 'nobby-question-status');
         status.setAttribute('role', 'status');
@@ -330,6 +420,7 @@
             const stored = {...(draftAnswers.get(key) || selected)};
             stored[questionIndex] = value;
             draftAnswers.set(key, stored);
+            updateProgress();
         }
 
         function validTurn() {
@@ -398,14 +489,12 @@
                 event.preventDefault();
                 const answers = {};
                 let invalid = null;
-                fields.forEach(({question, input, inputs}, i) => {
-                    const value = input ? input.value.trim() : question.type === 'multiple'
-                        ? inputs.filter(node => node.checked).map(node => node.value)
-                        : (inputs.find(node => node.checked)?.value || '');
+                fields.forEach((field, i) => {
+                    const value = fieldValue(field);
                     answers[i] = value;
-                    if (question.required && !invalid
+                    if (field.question.required && !invalid
                         && (!value || (Array.isArray(value) && !value.length))) {
-                        invalid = input || inputs[0];
+                        invalid = field.input || field.customInput || field.inputs[0];
                     }
                 });
                 if (invalid) {
