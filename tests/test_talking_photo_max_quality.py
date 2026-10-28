@@ -49,7 +49,8 @@ def test_max_quality_really_changes_ltx_renderer_steps(distilled, steps, expecte
         process.communicate.return_value = ("ok", None)
         return process
 
-    with tempfile.TemporaryDirectory() as directory, (
+    with (
+        tempfile.TemporaryDirectory() as directory,
         mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
         mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
         mock.patch.object(talking_photo_ltx, "_pad_audio", side_effect=padded_wav),
