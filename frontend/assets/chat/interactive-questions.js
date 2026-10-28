@@ -77,6 +77,7 @@
             + '"footer":"Optional one-sentence note"}\n'
             + FENCE + '\n'
             + 'Types: single (radio options), multiple (checkbox options), text (free text). '
+            + 'Use multiple for questions where several choices can be true (such as interests or job deal-breakers), single for one clear priority, and text for open explanations. Make contextual questions optional when practical. Avoid irrelevant or leading choices.\n'
             + 'Use valid JSON only, no comments or trailing commas. '
             + 'Each option must be meaningful; do not assume the answers or draw a diagnosis from them. '
             + 'If a form is not necessary, never output a nobby-questions block.\n';
