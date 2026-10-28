@@ -26,10 +26,25 @@ def keyframe_capabilities(runtime_root):
                 and argument in {a.arg for a in node.args.args + node.args.kwonlyargs}
                 for node in ast.walk(tree)
             )
+        args_source = (package / "utils/args.py").read_text()
+        # Upstream v0.18 moves the dataclass to utils/types.py while keeping
+        # the public import from utils.args. Probe both versions without MLX.
+        try:
+            types_source = (package / "utils/types.py").read_text()
+        except OSError:
+            types_source = ""
+        image_contract = (
+            "class ImageConditioningInput" in args_source
+            or (
+                "ImageConditioningInput" in args_source
+                and "class ImageConditioningInput" in types_source
+                and "def at(" in types_source
+            )
+        )
         supported = (
             accepts("distilled.py", "generate_two_stage", "images")
             and accepts("ti2vid_two_stages.py", "generate_and_save", "images")
-            and "class ImageConditioningInput" in (package / "utils/args.py").read_text()
+            and image_contract
         )
     except (OSError, SyntaxError, ValueError):
         supported = False
