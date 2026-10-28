@@ -104,3 +104,56 @@ test('only confirmed new image generation updates the saved preference', () => {
     assert.match(source, /if \(negativePromptInput\?\.dataset\)/);
     assert.match(negativeEditor, /imageCreationRestored === 'true'/);
 });
+
+
+test('manual model choice remains authoritative and unavailable models never downgrade to Auto', async () => {
+    assert.match(source, /savedImageCreation\\?\\.model \\|\\| options\\?\\.image\\?\\.model/);
+    assert.match(source, /merged\\.model = normalizedModel/);
+
+    const selectionStart = source.indexOf('function storedImageModel()');
+    const selectionEnd = source.indexOf('const IMAGE_OPTION_KEYS', selectionStart);
+    assert.ok(selectionStart >= 0 && selectionEnd > selectionStart);
+    const saved = new Map([['mlx-nobby-image-model', 'juggernaut-xl']]);
+    const context = vm.createContext({
+        IMAGE_MODEL_STORAGE_KEY: 'mlx-nobby-image-model',
+        window: {
+            localStorage: {
+                getItem: key => saved.get(key) ?? null,
+                setItem: (key, value) => saved.set(key, value),
+            },
+            MLXI18n: {t(_key, fallback) {return fallback;}}
+        },
+        document: {createElement() {return {value: '', textContent: ''};}},
+        fetch: async () => ({ok: true, async json() {
+            return {default_model: 'mlxserve-qwen-image-2.1', models: [
+                {id: 'mlxserve-qwen-image-2.1', name: 'Qwen', enabled: true,
+                 available: true, capabilities: ['text_to_image']},
+                {id: 'juggernaut-xl', name: 'Ragnarok', enabled: true,
+                 available: true, capabilities: ['text_to_image']},
+            ]};
+        }})
+    });
+    vm.runInContext(source.slice(selectionStart, selectionEnd), context);
+    const select = {
+        disabled: false, children: [],
+        replaceChildren(...options) {this.children = options;},
+        appendChild(option) {this.children.push(option);}
+    };
+    assert.equal(await context.updateImageModelOptions(select, 'juggernaut-xl'), 'juggernaut-xl');
+    assert.equal(select.value, 'juggernaut-xl');
+
+    // A temporarily unavailable or disabled model must never become Qwen via Auto.
+    context.fetch = async () => ({ok: true, async json() {
+        return {default_model: 'mlxserve-qwen-image-2.1', models: [
+            {id: 'mlxserve-qwen-image-2.1', name: 'Qwen', enabled: true,
+             available: true, capabilities: ['text_to_image']},
+            {id: 'juggernaut-xl', name: 'Ragnarok', enabled: false,
+             available: false, capabilities: ['text_to_image']},
+        ]};
+    }});
+    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /nicht verfügbar/);
+    assert.equal(saved.get('mlx-nobby-image-model'), 'juggernaut-xl');
+    context.fetch = async () => {throw new Error('image service offline');};
+    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /offline/);
+    assert.equal(saved.get('mlx-nobby-image-model'), 'juggernaut-xl');
+});
