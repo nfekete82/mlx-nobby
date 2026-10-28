@@ -31,7 +31,7 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "natural"
-    engine: Literal["ltx", "ltx-distilled"] = "ltx-distilled"
+    engine: Literal["ltx", "ltx-distilled", "ltx-max"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
     person_focus: PersonFocus | None = None  # Prompt-guided LTX speaker selection
 
@@ -49,9 +49,11 @@ def provider_status() -> dict:
         "max_longform_audio_seconds": 60,
         "ltx_available": bool(ltx.get("ready")),
         "ltx_distilled_available": bool(ltx.get("ready")),
+        "ltx_max_available": bool(ltx.get("ready")),
         "providers": {
             "ltx": ltx,
             "ltx-distilled": ltx,
+            "ltx-max": ltx,
         },
     }
 
@@ -76,6 +78,8 @@ def install_routes(app):
             engine = payload.pop("engine", "ltx-distilled")
             if engine == "ltx":
                 return talking_photo_quality.create_job(payload, ltx_only=True)
+            if engine == "ltx-max":
+                return talking_photo_quality.create_job(payload, ltx_only=True, stage1_steps=30)
             return talking_photo_quality.create_job(payload, ltx_only=True, distilled=True)
 
     if ("/api/talking-photo/jobs/{job_id}", "GET") not in methods_by_path:

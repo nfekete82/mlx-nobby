@@ -47,7 +47,8 @@ def generate(
     video, details = talking_photo_ltx.generate(job_id, *args, **kwargs)
     if not apply_lipsync:
         details["lipsync"] = None
-        details["engine"] = "ltx-distilled" if details.get("a2v_mode") == "distilled" else "ltx"
+        details["engine"] = ("ltx-distilled" if details.get("a2v_mode") == "distilled"
+                             else "ltx-max" if details.get("stage_1_steps") == 30 else "ltx")
         return video, details
 
     bundle = Path(details["debug_dir"]) if details.get("debug_dir") else None
@@ -160,6 +161,7 @@ def _generate_longform(
     update,
     apply_lipsync: bool,
     distilled: bool,
+    stage1_steps: int | None = None,
     person_focus: dict | None = None,
 ) -> tuple[bytes, dict]:
     """Render <=18-second speech pieces sequentially and mux the uncut source.
@@ -214,7 +216,7 @@ def _generate_longform(
             job_id, segment_image, segment_suffix, segment.wav, segment.duration_seconds,
             part_work, debug_dir=part_debug, cancelled=cancelled,
             update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
-            person_focus=person_focus,
+            stage1_steps=stage1_steps, person_focus=person_focus,
         )
         if cancelled():
             raise talking_photo_ltx.QualityCancelled()
@@ -230,6 +232,7 @@ def _generate_longform(
             "seed": details.get("seed"),
             "elapsed_seconds": details.get("elapsed_seconds"),
             "mode": details.get("a2v_mode"),
+            "stage_1_steps": details.get("stage_1_steps"),
             "reference": reference,
         })
         update(phase="quality", progress=0.20 + 0.69 * len(rendered_files) / len(segments))
@@ -244,8 +247,11 @@ def _generate_longform(
         raise talking_photo_ltx.QualityCancelled()
     summary = {
         "provider": "ltx-2.5-mlx-a2v",
-        "engine": "ltx-distilled" if distilled else ("ltx" if not apply_lipsync else "quality"),
+        "engine": ("ltx-distilled" if distilled else "ltx-max" if stage1_steps == 30
+                   else "ltx" if not apply_lipsync else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
+        "stage_1_steps": 8 if distilled else (stage1_steps or 15),
+        "stage_2_steps": 3,
         "longform": True,
         "continuity": {
             "enabled": continuity_enabled,
@@ -278,7 +284,8 @@ def _generate_longform(
 def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_payload: dict) -> None:
     ltx_only = bool(request_payload.pop("_ltx_only", False))
     distilled = bool(request_payload.pop("_distilled", False))
-    engine = "ltx-distilled" if distilled else ("ltx" if ltx_only else "quality")
+    stage1_steps = request_payload.pop("_stage1_steps", None)
+    engine = "ltx-distilled" if distilled else ("ltx-max" if stage1_steps == 30 else "ltx" if ltx_only else "quality")
     work = talking_photo.ROOT / "work" / job_id
     output = talking_photo.OUTPUT / f"{job_id}.mp4"
     work.mkdir(parents=True, exist_ok=True)
@@ -359,6 +366,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         update=lambda **changes: talking_photo._update_job(job_id, **changes),
                         apply_lipsync=not ltx_only,
                         distilled=distilled,
+                        stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
                     )
                 else:
@@ -375,6 +383,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         apply_lipsync=not ltx_only,
                         lead_in_ms=request_payload.get("lead_in_ms", 0),
                         distilled=distilled,
+                        stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
                     )
             except talking_photo_ltx.QualityCancelled as exc:
@@ -401,6 +410,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "person_focus": request_payload.get("person_focus"),
                     "speaker_selection": "prompt-guided" if request_payload.get("person_focus") else None,
                     "a2v_mode": "distilled" if distilled else "classic",
+                    "stage_1_steps": 8 if distilled else (stage1_steps or 15),
+                    "stage_2_steps": 3,
                     "motion": "audio-conditioned",
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
@@ -437,9 +448,12 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
         shutil.rmtree(work, ignore_errors=True)
 
 
-def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False) -> dict:
+def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False,
+               stage1_steps: int | None = None) -> dict:
     if distilled and not ltx_only:
         raise ValueError("Distilled ist derzeit nur mit LTX direkt verfügbar")
+    if stage1_steps not in (None, 30) or (stage1_steps is not None and (distilled or not ltx_only)):
+        raise ValueError("Maximale Qualität ist nur mit LTX direkt und 30 Schritten verfügbar")
     health = direct_provider_health() if ltx_only else provider_health()
     if not health["ready"]:
         raise HTTPException(
@@ -464,8 +478,10 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
-        "engine": "ltx-distilled" if distilled else ("ltx" if ltx_only else "quality"),
+        "engine": "ltx-distilled" if distilled else ("ltx-max" if stage1_steps == 30 else "ltx" if ltx_only else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
+        "stage_1_steps": 8 if distilled else (stage1_steps or 15),
+        "stage_2_steps": 3,
         "person_focus": payload.get("person_focus"),
         "speaker_selection": "prompt-guided" if payload.get("person_focus") else None,
         "lead_in_ms": payload.get("lead_in_ms", 0),
@@ -483,6 +499,8 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
     request_payload = dict(payload)
     request_payload["_ltx_only"] = ltx_only
     request_payload["_distilled"] = distilled
+    if stage1_steps is not None:
+        request_payload["_stage1_steps"] = stage1_steps
     thread = threading.Thread(
         target=_run_quality_job,
         args=(job_id, image, extension, request_payload),

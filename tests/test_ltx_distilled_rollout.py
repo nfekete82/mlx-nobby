@@ -29,7 +29,9 @@ def test_runner_preserves_classic_default_and_accepts_distilled():
 def test_distilled_is_explicit_and_does_not_change_classic_defaults():
     source = (ROOT / "agent/talking_photo_ltx.py").read_text(encoding="utf-8")
     assert '"distilled" if distilled else "classic"' in source
-    assert '"8" if distilled else "15"' in source
+    assert "effective_stage1_steps = 8 if distilled else (stage1_steps or 15)" in source
+    assert '"--stage1-steps", str(effective_stage1_steps)' in source
+    assert "if stage1_steps not in (None, 15, 30)" in source
     assert 'if not distilled:' in source
     assert 'command.extend(["--negative-prompt", NEGATIVE_PROMPT,' in source
     assert 'runtime_coordinator.video_runtime(' in source
