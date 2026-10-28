@@ -22,6 +22,8 @@ class Element {
         this.checked = false;
         this.disabled = false;
         this.className = '';
+        this.style = {};
+        this.hidden = false;
         this._html = '';
         this._text = '';
         this.classList = {add: name => {this.className += ' ' + name;}};
@@ -242,6 +244,72 @@ test('interactive question settings ship German and English keys', () => {
         assert.ok(en.interactive_questions?.[key]);
     }
     assert.match(html, /data-i18n="interactive_questions\.mode_auto"/);
+});
+
+
+test('progress and radio choice cards accept custom answers', () => {
+    const f = fixture();
+    const msg = {role:'assistant',content:block(spec),response_pending:false};
+    const session = {id:'progress-test',messages:[msg]};
+    f.setSession(session);
+    const root = new Element('div');
+    f.api.enhance(root,msg,session,0,x=>x);
+    const form = find(root,n=>n.tag==='form')[0];
+    const progress = find(root,n=>n.className==='nobby-question-progress-label')[0];
+    assert.match(progress.textContent, /0\/2/);
+    const radios = find(root,n=>n.tag==='input' && n.type==='radio');
+    radios[0].checked=true; radios[0].fire('change');
+    assert.match(progress.textContent, /1\/2/);
+    const custom = find(root,n=>n.className==='nobby-question-custom-input')[0];
+    const toggle = find(root,n=>n.className==='nobby-question-custom-toggle')[0];
+    assert.equal(custom.hidden, true);
+    toggle.fire('click');
+    assert.equal(custom.hidden, false);
+    custom.value = 'Eigene berufliche Priorität';
+    custom.fire('input');
+    assert.equal(radios[0].checked, false);
+    assert.match(progress.textContent, /1\/2/);
+    const checks = find(root,n=>n.tag==='input' && n.type==='checkbox');
+    checks[0].checked=true; checks[0].fire('change');
+    assert.match(progress.textContent, /2\/2/);
+    form.fire('submit');
+    assert.equal(msg.interactive_answers.answers[0], 'Eigene berufliche Priorität');
+    assert.equal(msg.interactive_answers.answers[1][0], 'A');
+});
+
+test('multiple choice custom answer combines with selection and survives rerender', () => {
+    const f=fixture();
+    const msg={role:'assistant',content:block(spec),response_pending:false};
+    const session={id:'multiple-test',messages:[msg]};
+    f.setSession(session);
+    let root=new Element('div');
+    f.api.enhance(root,msg,session,0,x=>x);
+    const checks=find(root,n=>n.tag==='input'&&n.type==='checkbox');
+    checks[1].checked=true; checks[1].fire('change');
+    const customs=find(root,n=>n.className==='nobby-question-custom-input');
+    const toggles=find(root,n=>n.className==='nobby-question-custom-toggle');
+    toggles[1].fire('click');
+    customs[1].value='Noch etwas';
+    customs[1].fire('input');
+    root=new Element('div');
+    f.api.enhance(root,msg,session,0,x=>x);
+    const restored=find(root,n=>n.className==='nobby-question-custom-input');
+    const selected=find(root,n=>n.tag==='input'&&n.type==='checkbox');
+    assert.equal(restored[1].value,'Noch etwas');
+    assert.equal(restored[1].hidden,false);
+    assert.equal(selected[1].checked,true);
+    const radios=find(root,n=>n.tag==='input'&&n.type==='radio');
+    radios[0].checked=true; radios[0].fire('change');
+    find(root,n=>n.tag==='form')[0].fire('submit');
+    assert.deepEqual(Array.from(msg.interactive_answers.answers[1]),['B','Noch etwas']);
+});
+
+test('styles hide background and provide adaptive selection cards', () => {
+    const css=fs.readFileSync('frontend/assets/chat/interactive-questions.css','utf8');
+    assert.ok(css.includes('background: #111827'));
+    assert.ok(css.includes('.nobby-question-option:has(input:checked)'));
+    assert.ok(css.includes('grid-template-columns: repeat(2'));
+    assert.ok(css.includes('prefers-reduced-motion'));
 });
 
 test('UI is mounted in the normal chat flow and does not execute model markup', () => {
