@@ -196,6 +196,12 @@
         !/^[a-f0-9]{24}$/.test(String(source.id || ""))) {
       throw new Error(t("Ungültige Videoquelle", "Invalid video source"));
     }
+    if (running) {
+      overlay.hidden = false;
+      setStatus(t("Ein Edit läuft noch. Du kannst ihn hier verfolgen oder abbrechen.",
+                  "An edit is still running. Track or cancel it here."));
+      return;
+    }
     lastFocus = document.activeElement;
     const token = ++version;
     asset = {kind: source.kind, id: source.id};
