@@ -7,7 +7,7 @@
     const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
     const JOB_STORAGE_KEY = 'mlxTalkingPhotoCurrentJob';
     const QUALITY_STORAGE_KEY = 'mlxTalkingPhotoQualityEngine';
-    const QUALITY_ENGINES = new Set(['ltx-distilled', 'ltx']);
+    const QUALITY_ENGINES = new Set(['ltx-distilled', 'ltx', 'ltx-max']);
     const LINK_STORAGE_PREFIX = 'mlxTalkingPhotoMediaSource:';
     let selectedLibrarySource = null;
     const HEX24 = /^[a-f0-9]{24}$/;
@@ -505,6 +505,7 @@
         [
             ['ltx-distilled', localText('Schnell · LTX Distilled (8+3 Schritte)', 'Fast · LTX Distilled (8+3 steps)')],
             ['ltx', localText('Hohe Qualität · LTX direkt (15+3 Schritte)', 'High quality · Direct LTX (15+3 steps)')],
+            ['ltx-max', localText('Maximal · LTX direkt (30+3 Schritte)', 'Maximum · Direct LTX (30+3 steps)')],
         ].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
@@ -516,15 +517,20 @@
         const qualityHint = node('div', 'mlx-talking-photo-hint');
         qualityHint.id = 'talkingPhotoQualityHint';
         function refreshQualityHint() {
-            qualityHint.textContent = engineSelect.value === 'ltx'
+            qualityHint.textContent = engineSelect.value === 'ltx-max'
                 ? localText(
-                    'Aufwendigere Generierung mit 15+3 Schritten. Benötigt meist mehr Zeit; ein sichtbarer Qualitätsgewinn ist nicht garantiert.',
-                    'More intensive generation with 15+3 steps. Usually slower; a visible quality improvement is not guaranteed.',
+                    'Experimentell: 30+3 Schritte, deutlich längere Berechnung und höhere Belastung. Höhere Schärfe oder besserer Lip-Sync sind nicht garantiert.',
+                    'Experimental: 30+3 steps, substantially longer rendering and greater load. Sharper results or better lip sync are not guaranteed.',
                 )
-                : localText(
-                    'Schnellere Generierung mit 8+3 Schritten. Empfohlen für den Alltag.',
-                    'Faster generation with 8+3 steps. Recommended for everyday use.',
-                );
+                : engineSelect.value === 'ltx'
+                    ? localText(
+                        'Aufwendigere Generierung mit 15+3 Schritten. Benötigt meist mehr Zeit; ein sichtbarer Qualitätsgewinn ist nicht garantiert.',
+                        'More intensive generation with 15+3 steps. Usually slower; a visible quality improvement is not guaranteed.',
+                    )
+                    : localText(
+                        'Schnellere Generierung mit 8+3 Schritten. Empfohlen für den Alltag.',
+                        'Faster generation with 8+3 steps. Recommended for everyday use.',
+                    );
         }
         refreshQualityHint();
         engineLabel.append(qualityHint);
