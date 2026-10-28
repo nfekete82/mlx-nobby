@@ -403,8 +403,11 @@ async function updateImageModelOptions(
         const selected = models.some(model => model.id === requested)
             ? requested : 'auto';
         if (requested !== 'auto' && selected !== requested) {
-            throw new Error('Das ausgewählte Bildmodell "' + requested +
-                '" ist nicht verfügbar. Bitte Modell aktivieren oder bewusst ein anderes wählen.');
+            throw new Error(generationText(
+                'ui.image_model_unavailable',
+                'Selected image model "{model}" is unavailable. Enable it or choose a different model.',
+                {model: requested}
+            ));
         }
         select.value = selected;
         return selected;
