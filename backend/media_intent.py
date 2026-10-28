@@ -91,6 +91,16 @@ CONTENT_CONSTRAINTS = {
 CONTENT_QUALIFIERS = {"generierter", "generierte", "generierten", "generiertes", "generated"}
 
 
+# The user's exact German instruction is an unconditional new-image command,
+# regardless of position, quoted text, attachments, subsequent edits or UI hints.
+# This must be evaluated on the RAW prompt before quote stripping/negation.
+_ALWAYS_GENERATE_IMAGE = re.compile(r"(?<!\w)erstelle\s+ein\s+bild\b", re.IGNORECASE)
+
+
+def always_generate_image_requested(prompt):
+    return bool(_ALWAYS_GENERATE_IMAGE.search(str(prompt or "")))
+
+
 # A leading text-to-image command requests a new image, even if an attachment
 # or later edit/composition wording would otherwise route to image editing.
 _IMAGE_CREATE_PREFIX = re.compile(
@@ -198,6 +208,11 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     a text request or negation. Quoted examples are not execution instructions.
     Independent clauses allow 'improve the prompt and generate the image'.
     """
+    if always_generate_image_requested(prompt):
+        return RoutingDecision("image_generate", "image", True,
+                               "image" if has_image else None,
+                               1.0, "Explicit command bound to media output")
+
     text = str(prompt or "").casefold().strip()
     # Drop quoted payloads; preserve the surrounding user's instruction.
     text = re.sub(r'```[\s\S]*?```|"[^"\n]*"|„[^“]*“|“[^”]*”', ' ', text)

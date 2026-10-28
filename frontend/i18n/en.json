@@ -703,6 +703,7 @@
     "media_format": "Format",
     "image_model": "Image model",
     "image_model_auto": "Automatic",
+    "image_model_unavailable": "Selected image model \"{model}\" is unavailable. Enable it or choose a different model.",
     "negative_prompt_optional": "Negative prompt (optional)",
     "negative_prompt_placeholder": "What should not appear in the image?",
     "negative_prompt_clean_faces_hands": "Clean face / hands",

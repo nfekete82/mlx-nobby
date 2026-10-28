@@ -2079,7 +2079,41 @@ for (const prompt of ['Create an image', 'Create a video', 'Improve this prompt 
     assert.equal(routedActionPayloads.at(-1).resolved_target, 'chat', prompt);
 }
 
+// The exact German request must produce an image, even if preflight fails.
+// Do not accidentally turn an attached-image 'edit' action into an edit job.
+const explicitGermanImagePrompt = 'Bitte erstelle ein Bild einer roten Berglandschaft';
+selectedAttachments = [imageAttachment];
+selectedImageMode = 'edit';
+input.value = explicitGermanImagePrompt;
+const exactModalCount = modalOpenEvents.length;
+await window.MLXChatGeneration.sendMessage();
+assert.equal(modalOpenEvents.length, exactModalCount + 1);
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'image');
+assert.equal(routedActionPayloads.at(-1).action, undefined);
+assert.equal(routedActionPayloads.at(-1).image_options.model, 'auto');
+selectedImageMode = 'auto';
+
 context.fetch = workingFetch;
+// The central router's stale 'chat' answer cannot demote this literal phrase.
+routeTargets.set('Und nun ERSTELLE EIN BILD von einem roten Zug', 'chat');
+selectedAttachments = [];
+input.value = 'Und nun ERSTELLE EIN BILD von einem roten Zug';
+await window.MLXChatGeneration.sendMessage();
+assert.equal(routedActionPayloads.at(-1).resolved_target, 'image');
+assert.equal(routedActionPayloads.at(-1).image_options.model, 'auto');
+
+// Text/EML attachments and old file workspace state cannot steal an explicit
+// new-image request. They are not read as image references.
+for (const attachment of [ignoredTextAttachment, {kind: 'eml', name: 'message.eml'}]) {
+    const prompt = 'Erkläre zuerst etwas und erstelle ein Bild von einem Turm';
+    routeTargets.set(prompt, 'chat');
+    selectedAttachments = [attachment];
+    input.value = prompt;
+    await window.MLXChatGeneration.sendMessage();
+    assert.equal(routedActionPayloads.at(-1).resolved_target, 'image');
+    assert.equal(routedActionPayloads.at(-1).image_options.model, 'auto');
+}
+
 for (const [prompt, target] of [
     ['Describe both images', 'chat'],
     ['Create a portrait', 'image'],

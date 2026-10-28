@@ -1,4 +1,4 @@
-from backend.media_intent import decide_media_intent, has_image_context, MEDIA_ACTIONS
+from backend.media_intent import decide_media_intent, has_image_context, MEDIA_ACTIONS, always_generate_image_requested
 from backend.image_reference import reference_mode, reference_instruction
 import asyncio
 from copy import deepcopy
@@ -10053,7 +10053,11 @@ def run_chat_action(request: ChatActionRequest):
                 data["context_resolution"] = "explicit_weather_followup"
             return chat_tool_result("web_search", "completed", data)
 
-    if request.resolved_target == "chat" and media.execution_requested:
+    # The exact user command is authoritative even after a stale/failed
+    # browser preflight set resolved_target=chat. Other media requests retain
+    # the existing guarded chat fallback.
+    if (request.resolved_target == "chat" and media.execution_requested
+            and not always_generate_image_requested(request.prompt)):
         routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
         routing["guard"] = "preflight_chat_fallback"
     elif media.handles_turn or request.resolved_target in {"image", "image_edit", "video", "shorts_generate"}:

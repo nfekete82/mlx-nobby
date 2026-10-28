@@ -50,6 +50,10 @@ const IMAGE_EDIT_FOLLOWUP_PATTERN =
 const IMAGE_QUESTION_PATTERN =
     /^\s*(?:was|wie|welche|welcher|welches|wer|wo|wann|warum|ist|sind|hat|haben|what|how|which|who|where|when|why|is|are|does|do|has|have)(?=$|[^\p{L}\p{N}_])/iu;
 
+// This explicit German instruction always means a NEW image job, regardless
+// of position in the sentence or whether a previous image is attached.
+const ALWAYS_GENERATE_IMAGE_PATTERN = /(?:^|[^\p{L}\p{N}_])erstelle\s+ein\s+bild(?=$|[^\p{L}\p{N}_])/iu;
+
 const IMAGE_CREATION_VERB_PATTERN =
     /(?:^|[^\p{L}\p{N}_])(?:erstelle|erstellen|generiere|generieren|erzeuge|erzeugen|zeichne|zeichnen|mach|mache|create|generate|draw|make)(?=$|[^\p{L}\p{N}_])/iu;
 
@@ -398,12 +402,19 @@ async function updateImageModelOptions(
         // Also prevent an edit-only checkpoint from leaking into Generate.
         const selected = models.some(model => model.id === requested)
             ? requested : 'auto';
+        if (requested !== 'auto' && selected !== requested) {
+            throw new Error(generationText(
+                'ui.image_model_unavailable',
+                'Selected image model "{model}" is unavailable. Enable it or choose a different model.',
+                {model: requested}
+            ));
+        }
         select.value = selected;
-        if (selected !== requested) storeImageModel('auto');
         return selected;
-    } catch (_) {
-        // If the model service is offline, show only Automatic. Do not
-        // permanently clear preferences until the catalogue is authoritative.
+    } catch (error) {
+        // Never replace a manually chosen model with Auto/Qwen because the
+        // catalogue is temporarily unreachable or the model was disabled.
+        if (requested !== 'auto') throw error;
         select.value = 'auto';
         return 'auto';
     } finally {
@@ -572,7 +583,7 @@ function isImageComparisonRequest(prompt, hasParentImage) {
 function isImageGenerationRequest(prompt) {
     const value = String(prompt || '').trim();
 
-    return IMAGE_NOUN_OF_PATTERN.test(value) || (
+    return ALWAYS_GENERATE_IMAGE_PATTERN.test(value) || IMAGE_NOUN_OF_PATTERN.test(value) || (
         IMAGE_CREATION_VERB_PATTERN.test(value) &&
         IMAGE_NOUN_PATTERN.test(value)
     );
@@ -2359,7 +2370,7 @@ return;
     // EML bytes stay outside LLM context and chat persistence. The ordinary
     // assistant bubble shows live progress and a scoped file download link.
     const emlAttachments = currentAttachments.filter(file => file.kind === 'eml');
-    if (emlAttachments.length) {
+    if (emlAttachments.length && !ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt)) {
         if (emlAttachments.length !== currentAttachments.length) {
             alert(gt('eml_separate_files',
                 'Please send EML files separately from other attachments.'));
@@ -2542,6 +2553,7 @@ const imageFiles =
     const activeImageArtifact =
         imageState.active;
 
+    const alwaysGenerateImage = ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt);
     const explicitImageEditRequest =
         isImageEditRequest(
             prompt,
@@ -2985,7 +2997,7 @@ const imageFiles =
         contentUpdated: true
     });
 
-    if (ambiguousArtifactReference) {
+    if (ambiguousArtifactReference && !alwaysGenerateImage) {
         session.messages.push({
             role: 'assistant',
             content: 'Welches Ergebnis meinst du?',
@@ -2998,7 +3010,7 @@ const imageFiles =
         return;
     }
 
-    if (!routesFileOperation && !textFiles.length) {
+    if (alwaysGenerateImage || (!routesFileOperation && !textFiles.length)) {
         let pendingImageMessage = null;
         try {
             let currentImageContext = null;
@@ -3178,9 +3190,9 @@ const imageFiles =
                     );
                 }
 
-                resolvedTarget = imageAttachmentMode === 'describe'
-                    ? 'chat'
-                    : serverTarget;
+                resolvedTarget = alwaysGenerateImage
+                    ? 'image'
+                    : imageAttachmentMode === 'describe' ? 'chat' : serverTarget;
                 if (
                     imageAttachmentMode !== 'describe' &&
                     route.intent === 'image_reference_generate' ||
@@ -3201,8 +3213,10 @@ const imageFiles =
                 }
             } catch (error) {
                 if (referenceMode) throw error;
-                console.warn('[MLX Router] Preflight failed; continuing in chat', error);
-                resolvedTarget = 'chat';
+                console.warn('[MLX Router] Preflight failed', error);
+                // An explicit, deterministic new-image command needs no
+                // semantic-model approval; still use the guarded image API.
+                resolvedTarget = alwaysGenerateImage ? 'image' : 'chat';
             }
 
             if (resolvedTarget === 'shorts_generate') {
@@ -3298,8 +3312,11 @@ const imageFiles =
             let selectedImageModel = String(
                 (hasAttachmentEditModelPicker
                     ? (options?.referenceEdit?.model || 'auto')
-                    : (options?.image?.model || options?.referenceEdit?.model ||
-                        savedImageCreation?.model || storedImageModel())) ||
+                    : resolvedTarget === 'image'
+                        ? (options?.image?.model && options.image.model !== 'auto'
+                            ? options.image.model
+                            : savedImageCreation?.model || storedImageModel())
+                        : (options?.image?.model || options?.referenceEdit?.model || storedImageModel())) ||
                 'auto'
             ).trim() || 'auto';
 
@@ -4017,7 +4034,8 @@ const imageFiles =
             const actionPayload = {
                 prompt: prompt,
                 ...(multiVideoSelection || {}),
-                action: multiVideoSelection ? 'video_generate' : imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
+                action: multiVideoSelection ? 'video_generate' :
+                    imageAttachmentMode === 'edit' && resolvedTarget === 'image_edit' ? 'image_edit' : undefined,
                 reference_mode: referenceMode,
                 file_context: fileContext,
                 active_artifact_id: activeArtifactIdForEdit,

@@ -93,7 +93,8 @@ test('only confirmed new image generation updates the saved preference', () => {
     const confirm = source.slice(startConfirm, endConfirm);
     assert.match(confirm, /if \(resolvedTarget === 'image'\) \{\s*storeImageCreationPreferences\(\{/);
     assert.match(confirm, /negative_prompt: selectedNegativePrompt/);
-    assert.match(source, /savedImageCreation\?\.quality/);
+    assert.ok(source.includes("options?.image?.model && options.image.model !== 'auto'"));
+    assert.ok(source.includes('savedImageCreation?.model || storedImageModel()'));
     assert.match(source, /savedImageCreation\?\.format/);
     assert.match(source, /savedImageCreation\?\.negative_prompt/);
     const onCancel = source.slice(
@@ -103,4 +104,60 @@ test('only confirmed new image generation updates the saved preference', () => {
     assert.doesNotMatch(onCancel, /storeImageCreationPreferences/);
     assert.match(source, /if \(negativePromptInput\?\.dataset\)/);
     assert.match(negativeEditor, /imageCreationRestored === 'true'/);
+});
+
+
+test('manual model choice remains authoritative and unavailable models never downgrade to Auto', async () => {
+    assert.match(source, /savedImageCreation\\?\\.model \\|\\| options\\?\\.image\\?\\.model/);
+    assert.ok(source.includes('merged.model = normalizedModel'));
+
+    const selectionStart = source.indexOf('function storedImageModel()');
+    const selectionEnd = source.indexOf('const IMAGE_OPTION_KEYS', selectionStart);
+    assert.ok(selectionStart >= 0 && selectionEnd > selectionStart);
+    const saved = new Map([['mlx-nobby-image-model', 'juggernaut-xl']]);
+    const context = vm.createContext({
+        IMAGE_MODEL_STORAGE_KEY: 'mlx-nobby-image-model',
+        generationText(_key, fallback, values = {}) {
+            return fallback.replaceAll('{model}', values.model || '');
+        },
+        window: {
+            localStorage: {
+                getItem: key => saved.get(key) ?? null,
+                setItem: (key, value) => saved.set(key, value),
+            },
+            MLXI18n: {t(_key, fallback) {return fallback;}}
+        },
+        document: {createElement() {return {value: '', textContent: ''};}},
+        fetch: async () => ({ok: true, async json() {
+            return {default_model: 'mlxserve-qwen-image-2.1', models: [
+                {id: 'mlxserve-qwen-image-2.1', name: 'Qwen', enabled: true,
+                 available: true, capabilities: ['text_to_image']},
+                {id: 'juggernaut-xl', name: 'Ragnarok', enabled: true,
+                 available: true, capabilities: ['text_to_image']},
+            ]};
+        }})
+    });
+    vm.runInContext(source.slice(selectionStart, selectionEnd), context);
+    const select = {
+        disabled: false, children: [],
+        replaceChildren(...options) {this.children = options;},
+        appendChild(option) {this.children.push(option);}
+    };
+    assert.equal(await context.updateImageModelOptions(select, 'juggernaut-xl'), 'juggernaut-xl');
+    assert.equal(select.value, 'juggernaut-xl');
+
+    // A temporarily unavailable or disabled model must never become Qwen via Auto.
+    context.fetch = async () => ({ok: true, async json() {
+        return {default_model: 'mlxserve-qwen-image-2.1', models: [
+            {id: 'mlxserve-qwen-image-2.1', name: 'Qwen', enabled: true,
+             available: true, capabilities: ['text_to_image']},
+            {id: 'juggernaut-xl', name: 'Ragnarok', enabled: false,
+             available: false, capabilities: ['text_to_image']},
+        ]};
+    }});
+    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /unavailable/);
+    assert.equal(saved.get('mlx-nobby-image-model'), 'juggernaut-xl');
+    context.fetch = async () => {throw new Error('image service offline');};
+    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /offline/);
+    assert.equal(saved.get('mlx-nobby-image-model'), 'juggernaut-xl');
 });
