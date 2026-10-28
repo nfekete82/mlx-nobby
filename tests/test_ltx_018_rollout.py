@@ -88,7 +88,7 @@ def test_staged_setup_uses_exact_tag_commit_existing_weights_and_separate_root()
     assert 'UPSTREAM_VERSION="0.18.0"' in script
     assert 'UPSTREAM_COMMIT="b82b97e3d000e01361f8cfcb745244b15b89a521"' in script
     assert "ltx-2-mlx-v0.18.0" in script
-    assert "ltx-2-mlx\"\n" not in script  # Staging does not use the existing root.
+    assert '[[ "$RUNTIME_ROOT" != "$LEGACY_ROOT" ]]' in script
     assert "MODEL_DIR" in script and ".mlx-nobby-ready" in script
     assert "snapshot_download" not in script
     assert "hf download" not in script
