@@ -32,3 +32,17 @@ def test_agent_installer_preserves_seed_and_explicit_environment_overrides():
         assert rendered['EnvironmentVariables']['LTX_TALKING_PHOTO_SEED'] == '42'
         assert rendered['EnvironmentVariables']['LTX_TALKING_PHOTO_DEBUG_ROOT'] == '/tmp/ltx-debug'
         assert rendered['EnvironmentVariables']['PATH'] == '/usr/bin'
+        # An explicit 0.18 Talking Photo switch must survive future launchd installs.
+        previous.write_bytes(plistlib.dumps({'EnvironmentVariables': {
+            'LTX_MLX_RUNTIME_ROOT': '/home/test/ltx-2-mlx-v0.18.0',
+            'LTX_MLX_MODEL_ROOT': '/home/test/models',
+        }}))
+        candidate.write_bytes(plistlib.dumps(baseline))
+        env.pop('LTX_MLX_RUNTIME_ROOT', None)
+        env.pop('LTX_MLX_MODEL_ROOT', None)
+        subprocess.run([sys.executable, '-', str(candidate), str(previous)], input=code,
+                       text=True, env=env, check=True)
+        migrated = plistlib.loads(candidate.read_bytes())['EnvironmentVariables']
+        assert migrated['LTX_MLX_RUNTIME_ROOT'] == '/home/test/ltx-2-mlx-v0.18.0'
+        assert migrated['LTX_MLX_MODEL_ROOT'] == '/home/test/models'
+        assert migrated['PATH'] == '/usr/bin'
