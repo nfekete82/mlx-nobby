@@ -152,7 +152,7 @@ test('manual model choice remains authoritative and unavailable models never dow
              available: false, capabilities: ['text_to_image']},
         ]};
     }});
-    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /nicht verfügbar/);
+    await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /unavailable/);
     assert.equal(saved.get('mlx-nobby-image-model'), 'juggernaut-xl');
     context.fetch = async () => {throw new Error('image service offline');};
     await assert.rejects(context.updateImageModelOptions(select, 'juggernaut-xl'), /offline/);
