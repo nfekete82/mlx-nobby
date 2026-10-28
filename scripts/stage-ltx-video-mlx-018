@@ -40,7 +40,7 @@ if [[ -e "$RUNTIME_ROOT" && ! -d "$RUNTIME_ROOT/.git" ]]; then
 fi
 if [[ ! -d "$RUNTIME_ROOT/.git" ]]; then
     mkdir -p "$(dirname "$RUNTIME_ROOT")"
-    git clone --no-checkout "$UPSTREAM_REPO" "$RUNTIME_ROOT"
+    git clone "$UPSTREAM_REPO" "$RUNTIME_ROOT"
 fi
 [[ -z "$(git -C "$RUNTIME_ROOT" status --porcelain --untracked-files=all)" ]] \
     || fail "Unerwartete Änderungen in der Staging-Runtime; kein automatisches Zurücksetzen"
