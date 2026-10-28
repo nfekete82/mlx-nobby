@@ -2369,9 +2369,8 @@ return;
 
     // EML bytes stay outside LLM context and chat persistence. The ordinary
     // assistant bubble shows live progress and a scoped file download link.
-    const emlAttachments = ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt)
-        ? [] : currentAttachments.filter(file => file.kind === 'eml');
-    if (emlAttachments.length) {
+    const emlAttachments = currentAttachments.filter(file => file.kind === 'eml');
+    if (emlAttachments.length && !ALWAYS_GENERATE_IMAGE_PATTERN.test(prompt)) {
         if (emlAttachments.length !== currentAttachments.length) {
             alert(gt('eml_separate_files',
                 'Please send EML files separately from other attachments.'));
