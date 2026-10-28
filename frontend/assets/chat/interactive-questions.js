@@ -12,7 +12,7 @@
             .toLowerCase().startsWith('de');
     }
 
-    function wording(de, en) {
+    function localText(de, en) {
         return localeDe() ? de : en;
     }
 
@@ -59,7 +59,7 @@
         }
         const policy = mode === 'always'
             ? 'For substantial open-ended requests with missing individual preferences, prefer asking concise follow-up questions before a final recommendation.'
-            : 'Only ask follow-up questions if at least two independent missing details would materially improve the result; otherwise answer directly or ask a single normal text question.';
+            : 'Ask follow-up questions only when at least two independent missing details would materially improve the result; otherwise answer directly or ask one normal text question.';
         return '\nINTERACTIVE FOLLOW-UP QUESTIONS (optional feature):\n'
             + policy + '\n'
             + 'Never ask repetitive, speculative, purely engagement-driven, or unsolicited sensitive questions. '
@@ -67,6 +67,7 @@
             + 'If the user has already supplied the necessary details, give the answer instead. '
             + 'Ask at most three questions and do not ask for information already in the conversation.\n'
             + 'Write every question, answer choice and explanation in the same language as the user.\n'
+            + 'IMPORTANT FORMAT RULE: If your answer would mainly ask the user two or more numbered or bulleted questions, ALWAYS use the interactive nobby-questions JSON format below INSTEAD of a plain text numbered list. Make all missing-preference questions clickable, with 3-6 realistic choices and a free-text question when options would be misleading. This is a UI contract, not optional formatting. Do NOT output the same questions both in prose and in the JSON block.\n'
             + 'When and only when a short questionnaire is useful, return a brief introduction followed by EXACTLY ONE fenced JSON block:\n'
             + FENCE + 'nobby-questions\n'
             + '{"title":"Short heading","description":"Optional one-sentence explanation",'
@@ -99,7 +100,7 @@
             let options = [];
             if (type !== 'text') {
                 if (!Array.isArray(item.options) || item.options.length < 2
-                    || item.options.length > 8) return null;
+                    || item.options.length > 10) return null;
                 options = item.options.map(value => clean(value, 120));
                 if (options.some(value => !value)
                     || new Set(options).size !== options.length) return null;
@@ -148,8 +149,84 @@
         };
     }
 
+
+    // Conservative compatibility fallback for local models that ask several
+    // numbered questions in prose despite receiving the structured format rule.
+    // It only applies to completed question-first answers, never to regular lists.
+    function extractProseQuestions(value) {
+        const content = typeof value === 'string' ? value : '';
+        if (getMode() === 'off' || !content.trim() || content.length > 4500
+            || content.includes(FENCE)) return null;
+
+        const lines = content.split(/\r?\n/);
+        const entries = [];
+        let first = -1;
+        let last = -1;
+        let expected = 1;
+        for (let i = 0; i < lines.length; i++) {
+            const match = lines[i].match(/^\s*(\d+)[.)]\s+(.{10,})\s*$/);
+            if (!match) {
+                if (first >= 0 && last === i - 1 && lines[i].trim()) break;
+                continue;
+            }
+            const number = Number(match[1]);
+            if (first < 0 && number !== 1) continue;
+            if (first >= 0 && number !== expected) return null;
+            if (expected > 4) return null;
+            const raw = match[2].trim();
+            if (!raw.includes('?')) return null;
+            entries.push(raw);
+            if (first < 0) first = i;
+            last = i;
+            expected += 1;
+        }
+        if (entries.length < 2 || entries.length > 4) return null;
+        const before = lines.slice(0, first).join('\n').trim();
+        const after = lines.slice(last + 1).join('\n').trim();
+        if (before.length > 1200 || after.length > 600) return null;
+        const context = before + '\n' + after;
+        if (!/(?:fragen|punkte|bräucht|brauch|benötig|beantwort|sag mir|gib mir|antwort|priorit|questions|tell me|let me know|need (?:to know|a few|some details))/i.test(context)) {
+            return null;
+        }
+
+        const questions = entries.map((entry, index) => {
+            let label = entry.replace(/\*\*/g, '').replace(/(?<!\w)_(?!\s)/g, '');
+            let sample = '';
+            const example = /\((?:z\.\s*B\.?|e\.g\.?|zum Beispiel|beispielsweise)\s*:?\s*([^)]+)\)\s*\??$/i.exec(label);
+            const parenthesis = /\(([^)]+)\)\s*\??$/.exec(label);
+            if (example) {
+                sample = example[1];
+                label = label.slice(0, example.index).trim();
+            } else if (parenthesis && parenthesis[1].includes(',')) {
+                sample = parenthesis[1];
+                label = label.slice(0, parenthesis.index).trim();
+            }
+            const options = sample
+                ? sample.split(/\s*[,;]\s*/).map(part => part.replace(/[?.!]+$/g, '').trim())
+                    .filter(Boolean)
+                : [];
+            const usable = options.length >= 2 && options.length <= 10
+                && options.every(option => option.length <= 120)
+                && new Set(options).size === options.length;
+            const multiple = /(?:welche\s+(?:interessen|bereiche|themen)|was\s+(?:genau\s+)?(?:frustriert|stört)|which (?:interests|areas))/i.test(label);
+            return {
+                id: 'q' + (index + 1),
+                label: clean(label, 240),
+                type: usable ? (multiple ? 'multiple' : 'single') : 'text',
+                options: usable ? options : [],
+                required: true
+            };
+        });
+        const spec = normalize({
+            title: localeDe() ? 'Ein paar Fragen vorab' : 'A few questions first',
+            questions
+        });
+        if (!spec) return null;
+        return {spec, text: [before, after].filter(Boolean).join('\n\n'), loading: false};
+    }
+
     function formatAnswers(spec, answers) {
-        const lines = [wording(
+        const lines = [localText(
             'Meine Antworten auf deine Rückfragen:',
             'My answers to your follow-up questions:'
         )];
@@ -157,10 +234,10 @@
             const value = answers[index];
             const answer = Array.isArray(value) ? value.join(', ') : String(value || '');
             lines.push((index + 1) + '. ' + question.label + '\n' + (
-                answer || wording('(übersprungen)', '(skipped)')
+                answer || localText('(übersprungen)', '(skipped)')
             ));
         });
-        lines.push(wording(
+        lines.push(localText(
             'Bitte berücksichtige diese Angaben und beantworte nun meine ursprüngliche Frage.',
             'Please use these answers to address my original request now.'
         ));
@@ -175,12 +252,15 @@
     }
 
     function enhance(container, message, session, index, markdownHtml) {
-        const parsed = extract(message?.content, message?.response_pending === true);
+        const parsed = extract(message?.content, message?.response_pending === true)
+            || (!message?.response_pending && message?.role === 'assistant'
+                && session?.messages?.[session.messages.length - 1] === message
+                ? extractProseQuestions(message?.content) : null);
         if (!parsed) return false;
 
         container.innerHTML = markdownHtml(parsed.text);
         if (parsed.loading) {
-            container.appendChild(el('p', 'nobby-question-loading', wording(
+            container.appendChild(el('p', 'nobby-question-loading', localText(
                 'Fragen werden vorbereitet …', 'Preparing questions …'
             )));
             return true;
@@ -188,7 +268,7 @@
 
         const spec = parsed.spec;
         const form = el('form', 'nobby-question-form');
-        form.setAttribute('aria-label', wording('Interaktive Rückfragen', 'Interactive questions'));
+        form.setAttribute('aria-label', localText('Interaktive Rückfragen', 'Interactive questions'));
         if (spec.title) form.appendChild(el('h3', 'nobby-question-title', spec.title));
         if (spec.description) {
             form.appendChild(el('p', 'nobby-question-description', spec.description));
@@ -208,7 +288,7 @@
                 input.rows = 3;
                 input.maxLength = 1000;
                 input.value = typeof selected[qIndex] === 'string' ? selected[qIndex] : '';
-                input.placeholder = wording('Deine Antwort …', 'Your answer …');
+                input.placeholder = localText('Deine Antwort …', 'Your answer …');
                 input.disabled = Boolean(completed);
                 input.addEventListener('input', () => remember(qIndex, input.value));
                 field.appendChild(input);
@@ -264,7 +344,7 @@
 
         function send(answers, skipped = false) {
             if (!validTurn()) {
-                status.textContent = wording(
+                status.textContent = localText(
                     'Bitte zuerst die aktuelle Antwort abschließen.',
                     'Please finish the current response first.'
                 );
@@ -273,14 +353,14 @@
             const composer = document.getElementById('input');
             if (!composer || composer.value.trim()
                 || (window.MLXChatAttachments?.getAttachments?.() || []).length) {
-                status.textContent = wording(
+                status.textContent = localText(
                     'Bitte zuerst den Chat-Entwurf oder Anhänge absenden bzw. entfernen.',
                     'Please send or remove your chat draft and attachments first.'
                 );
                 return;
             }
             const text = skipped
-                ? wording(
+                ? localText(
                     'Bitte beantworte meine ursprüngliche Frage ohne weitere Rückfragen.',
                     'Please answer my original question without further follow-up questions.'
                 )
@@ -299,15 +379,15 @@
         if (completed) {
             form.classList.add('nobby-question-completed');
             form.appendChild(el('p', 'nobby-question-done', completed.skipped
-                ? wording('Rückfragen übersprungen', 'Questions skipped')
-                : wording('Antworten gesendet', 'Answers submitted')));
+                ? localText('Rückfragen übersprungen', 'Questions skipped')
+                : localText('Antworten gesendet', 'Answers submitted')));
         } else {
             const actions = el('div', 'nobby-question-actions');
-            const submit = el('button', 'nobby-question-submit', wording(
+            const submit = el('button', 'nobby-question-submit', localText(
                 'Antworten auswerten →', 'Submit answers →'
             ));
             submit.type = 'submit';
-            const skip = el('button', 'nobby-question-skip', wording(
+            const skip = el('button', 'nobby-question-skip', localText(
                 'Überspringen', 'Skip'
             ));
             skip.type = 'button';
@@ -329,7 +409,7 @@
                     }
                 });
                 if (invalid) {
-                    status.textContent = wording(
+                    status.textContent = localText(
                         'Bitte beantworte die Pflichtfragen.', 'Please answer the required questions.'
                     );
                     invalid.focus();
@@ -344,6 +424,7 @@
 
     window.MLXInteractiveQuestions = {
         init, getMode, setMode, instructionForTurn, normalize, extract,
+        extractProseQuestions,
         formatAnswers, enhance
     };
 })();
