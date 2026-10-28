@@ -82,7 +82,7 @@ def test_talking_photo_dropdown_styles_share_the_library_theme():
 def test_talking_photo_asset_cache_is_busted_and_markup_is_fresh():
     from backend.talking_photo_ui import _SCRIPTS, TalkingPhotoUiMiddleware
 
-    assert b"talking-photo.js?v=20261028-quality-picker" in _SCRIPTS
+    assert b"talking-photo.js?v=20261028-max-quality" in _SCRIPTS
     assert b"talking-photo.js?v=1-14-library-reuse" not in _SCRIPTS
     assert b"cache-control" in TalkingPhotoUiMiddleware.__call__.__code__.co_consts or True
     module = Path("backend/talking_photo_ui.py").read_text(encoding="utf-8")
@@ -104,7 +104,7 @@ def test_talking_photo_quality_picker_is_clear_persistent_and_backwards_compatib
     assert "localText('Videoqualität', 'Video quality')" in source
     assert "mlx-talking-photo-quality" in source
     assert "QUALITY_STORAGE_KEY = 'mlxTalkingPhotoQualityEngine'" in source
-    assert "QUALITY_ENGINES = new Set(['ltx-distilled', 'ltx'])" in source
+    assert "QUALITY_ENGINES = new Set(['ltx-distilled', 'ltx', 'ltx-max'])" in source
     assert "function savedQualityEngine()" in source
     assert "if (QUALITY_ENGINES.has(saved)) return saved;" in source
     assert "return 'ltx-distilled';" in source
@@ -113,7 +113,9 @@ def test_talking_photo_quality_picker_is_clear_persistent_and_backwards_compatib
     assert "refreshQualityHint()" in source
     assert "talkingPhotoQualityHint" in source
     assert "Qualitätsgewinn ist nicht garantiert" in source
+    assert "Maximal · LTX direkt (30+3 Schritte)" in source
+    assert "Höhere Schärfe oder besserer Lip-Sync sind nicht garantiert" in source
     assert "engine," in source
     routes = Path("agent/talking_photo_routes.py").read_text(encoding="utf-8")
-    assert 'Literal["ltx", "ltx-distilled"]' in routes
+    assert 'Literal["ltx", "ltx-distilled", "ltx-max"]' in routes
     assert 'engine = payload.pop("engine", "ltx-distilled")' in routes
