@@ -211,7 +211,7 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
     if always_generate_image_requested(prompt):
         return RoutingDecision("image_generate", "image", True,
                                "image" if has_image else None,
-                               1.0, "Explicit 'erstelle ein Bild' instruction")
+                               1.0, "Explicit command bound to media output")
 
     text = str(prompt or "").casefold().strip()
     # Drop quoted payloads; preserve the surrounding user's instruction.
