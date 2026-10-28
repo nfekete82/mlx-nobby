@@ -43,3 +43,30 @@ def test_agent_enqueues_exactly_the_explicit_user_model(monkeypatch):
     agent._start_chat_image_job("image_generate", request)
     assert sent[0][0:2] == ("POST", "/jobs")
     assert sent[0][2]["payload"]["model"] == "juggernaut-xl"
+
+
+
+def test_agent_auto_leading_create_queues_juggernaut_not_qwen(monkeypatch):
+    monkeypatch.setattr(agent, "translate_image_prompt_to_english", lambda _: "photorealistic woman portrait")
+    monkeypatch.setattr(agent, "_validated_image_job_chat_identity", lambda _request: ("chat-test", 0))
+
+    def reject_role(*_args, **_kwargs):
+        raise AssertionError("Leading Auto must not fall through to the Qwen/role selector")
+
+    monkeypatch.setattr(agent, "validated_image_role", reject_role)
+    sent = []
+
+    def fake_image_request(method, path, data, **_kwargs):
+        sent.append((method, path, data))
+        return {"id": "a" * 24, "status": "queued"}
+
+    monkeypatch.setattr(agent.image_api, "request", fake_image_request)
+    request = agent.ChatActionRequest(
+        prompt="Erstelle ein Bild von einer fotorealistischen Frau",
+        image_options={"model": "auto", "auto_size": True},
+        chat_id="chat-test", chat_revision=0,
+    )
+    agent._start_chat_image_job("image_generate", request)
+    assert sent[0][0:2] == ("POST", "/jobs")
+    assert sent[0][2]["payload"]["model"] == "juggernaut-xl"
+    assert sent[0][2]["payload"]["original_prompt"] == request.prompt

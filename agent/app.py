@@ -8766,6 +8766,19 @@ def _image_generate_payload(request):
         ):
             payload["auto_size"] = False
 
+    # In the chat, "Auto" prefers the fast SDXL checkpoint for an explicit
+    # leading "Erstelle ein Bild" command. A manually selected model always wins.
+    # Use the original German prompt, not its English translation, so
+    # portrait heuristics in the image service cannot silently select Qwen.
+    # An omitted model keeps the existing configured global image role.
+    if (
+        request.image_options
+        and request.image_options.get("model") == "auto"
+        and payload.get("model", "auto") == "auto"
+        and re.match(r"^\s*erstelle\s+ein\s+bild\b", source_prompt, re.IGNORECASE)
+    ):
+        payload["model"] = "juggernaut-xl"
+
     return payload
 
 
