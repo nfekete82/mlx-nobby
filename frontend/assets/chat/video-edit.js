@@ -198,8 +198,7 @@
     }
     if (running) {
       overlay.hidden = false;
-      setStatus(t("Ein Edit läuft noch. Du kannst ihn hier verfolgen oder abbrechen.",
-                  "An edit is still running. Track or cancel it here."));
+      setStatus(t("Ein Edit läuft noch. Du kannst ihn hier verfolgen oder abbrechen.", "An edit is still running. Track or cancel it here."));
       return;
     }
     lastFocus = document.activeElement;
@@ -223,8 +222,7 @@
       start.max = String(duration);
       end.max = String(duration);
       end.value = String(Math.min(1, duration));
-      setStatus(t(`Bereit · Quelle: ${duration.toFixed(2)} s · LTX 0.18`,
-                  `Ready · source: ${duration.toFixed(2)} s · LTX 0.18`));
+      setStatus(t(`Bereit · Quelle: ${duration.toFixed(2)} s · LTX 0.18`, `Ready · source: ${duration.toFixed(2)} s · LTX 0.18`));
       create.disabled = running;
     } catch (error) {
       if (token === version) setStatus(error.message);
