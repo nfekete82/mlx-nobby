@@ -183,6 +183,67 @@ test('draft text is protected and skipped forms cannot submit twice', () => {
     assert.equal(f.saves, 1);
 });
 
+
+test('Qwen four numbered career questions become clickable choices and text fields', () => {
+    const f = fixture();
+    const prose = [
+        'Klar, lass uns das angehen. Um dir eine konkrete Richtung zu geben, bräuchte ich von dir kurz 4 Punkte:',
+        '',
+        '1. **Was genau frustriert dich am aktuellen IT-Job?** (z. B. zu viel Coding, zu viele Meetings, zu wenig Kundenkontakt, schlechte Work-Life-Balance, fehlende Sinnhaftigkeit?)',
+        '2. **Welche Interessen sprechen dich an?** (z. B. KI, Daten, Security, Produktentwicklung, Lehre, Nachhaltigkeit, Handwerk, Beratung, Unternehmertum?)',
+        '3. **Prioritäten für die nächsten 2–3 Jahre: Was ist das Wichtigste?** (z. B. Gehalt, Selbstbestimmung, Flexibilität, soziale Arbeit, geringe Komplexität?)',
+        '4. **Wann ist dein „Go“?** (Sofort, in 6 Monaten, in 1–2 Jahren mit Umqualifizierung?)',
+        '',
+        'Gib mir die Stichpunkte dazu – dann kann ich Wege skizzieren.'
+    ].join('\n');
+    const parsed = f.api.extractProseQuestions(prose);
+    assert.equal(parsed.spec.questions.length, 4);
+    assert.equal(parsed.spec.questions[0].type, 'multiple');
+    assert.equal(parsed.spec.questions[1].type, 'multiple');
+    assert.equal(parsed.spec.questions[1].options.length, 9);
+    assert.equal(parsed.spec.questions[2].type, 'single');
+    assert.equal(parsed.spec.questions[3].options.length, 3);
+    assert.match(parsed.text, /Klar, lass uns/);
+    assert.match(parsed.text, /Gib mir die Stichpunkte/);
+    assert.doesNotMatch(parsed.text, /1\. \*\*Was genau/);
+    const msg = {role:'assistant',content:prose,response_pending:false};
+    const session = {id:'qwen-test',messages:[{role:'user',content:'Berufliche Neuorientierung'},msg]};
+    f.setSession(session);
+    const parent = new Element('div');
+    assert.equal(f.api.enhance(parent,msg,session,1,x=>x), true);
+    const controls = find(parent,n=>n.tag==='input' && n.type==='checkbox');
+    assert.equal(controls.length, 14);
+    assert.equal(find(parent,n=>n.tag==='input' && n.type==='radio').length, 8);
+});
+
+test('prose fallback is conservative and disabled with mode off', () => {
+    const f = fixture();
+    assert.equal(f.api.extractProseQuestions('1. Was ist los?\n2. Wie geht es weiter?'), null);
+    assert.equal(f.api.extractProseQuestions(
+        'Die Antworten sind:\n1. Frage A?\n2. Frage B?\nAuswertung zu Ende.'
+    ), null);
+    const prose = 'Um dir zu helfen, brauche ich drei Antworten:\n1. **Welche Option?** (A, B?)\n2. **Wann?** (Sofort, später?)';
+    assert.equal(f.api.extractProseQuestions(prose).spec.questions.length, 2);
+    f.api.setMode('off');
+    assert.equal(f.api.extractProseQuestions(prose), null);
+    f.api.setMode('auto');
+    const msg = {role:'assistant',content:prose,response_pending:true};
+    const session = {id:'pending',messages:[msg]};
+    f.setSession(session);
+    const parent = new Element('div');
+    assert.equal(f.api.enhance(parent,msg,session,0,x=>x), false);
+});
+
+test('interactive question settings ship German and English keys', () => {
+    const de = JSON.parse(fs.readFileSync('frontend/i18n/de.json', 'utf8'));
+    const en = JSON.parse(fs.readFileSync('frontend/i18n/en.json', 'utf8'));
+    for (const key of ['settings_label','mode_auto','mode_always','mode_off','hint']) {
+        assert.ok(de.interactive_questions?.[key]);
+        assert.ok(en.interactive_questions?.[key]);
+    }
+    assert.match(html, /data-i18n="interactive_questions\.mode_auto"/);
+});
+
 test('UI is mounted in the normal chat flow and does not execute model markup', () => {
     assert.match(html, /interactive-questions\.js\?v=20261028/);
     assert.match(html, /interactive-questions\.css\?v=20261028/);
