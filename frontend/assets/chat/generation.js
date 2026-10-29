@@ -106,6 +106,8 @@ const IMAGE_FORMATS = Object.freeze([
 ]);
 
 const IMAGE_MODEL_STORAGE_KEY = 'mlx-nobby-image-model';
+// Retired from the user-facing pickers; keep existing registry and files intact.
+const HIDDEN_IMAGE_MODEL_ID = 'cyberrealistic-pony-v18';
 const IMAGE_CREATION_PREFERENCES_KEY = 'mlx-nobby-image-creation-preferences-v1';
 const IMAGE_CREATION_QUALITIES = Object.freeze(['fast', 'standard', 'quality', 'ultra']);
 
@@ -380,17 +382,19 @@ async function updateVideoProfileAvailability(select) {
 
 function storedImageModel() {
     try {
-        return String(
+        const saved = String(
             window.localStorage?.getItem?.(IMAGE_MODEL_STORAGE_KEY) ||
             'auto'
         ).trim() || 'auto';
+        return saved === HIDDEN_IMAGE_MODEL_ID ? 'auto' : saved;
     } catch (_) {
         return 'auto';
     }
 }
 
 function storeImageModel(model) {
-    const value = String(model || 'auto').trim() || 'auto';
+    const requested = String(model || 'auto').trim() || 'auto';
+    const value = requested === HIDDEN_IMAGE_MODEL_ID ? 'auto' : requested;
     try {
         window.localStorage?.setItem?.(
             IMAGE_MODEL_STORAGE_KEY,
@@ -406,7 +410,8 @@ async function updateImageModelOptions(
     capability = 'text_to_image'
 ) {
     if (!select) return 'auto';
-    const requested = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const saved = String(preferred || storedImageModel() || 'auto').trim() || 'auto';
+    const requested = saved === HIDDEN_IMAGE_MODEL_ID ? 'auto' : saved;
 
     const automatic = document.createElement('option');
     automatic.value = 'auto';
@@ -434,6 +439,7 @@ async function updateImageModelOptions(
                 ? data.models
                 : []
         ).filter(model =>
+            model?.id !== HIDDEN_IMAGE_MODEL_ID &&
             model?.enabled === true &&
             model?.available === true &&
             Array.isArray(model?.capabilities) &&
