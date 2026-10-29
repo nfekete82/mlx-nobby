@@ -12,6 +12,7 @@ const negativeEditor = fs.readFileSync(
 const start = source.indexOf('const IMAGE_CREATION_PREFERENCES_KEY =');
 const end = source.indexOf('// Model-specific expert inputs', start);
 assert.ok(start >= 0 && end > start);
+const hiddenModelConstant = source.match(/^const HIDDEN_IMAGE_MODEL_ID = .*;$/m)[0];
 
 function preferenceContext(storage) {
     const context = vm.createContext({
@@ -137,7 +138,7 @@ test('manual model choice remains authoritative and unavailable models never dow
             ]};
         }})
     });
-    vm.runInContext(source.slice(selectionStart, selectionEnd), context);
+    vm.runInContext(hiddenModelConstant + '\n' + source.slice(selectionStart, selectionEnd), context);
     const select = {
         disabled: false, children: [],
         replaceChildren(...options) {this.children = options;},
@@ -186,7 +187,7 @@ test('Auto label reflects configured image role or registry default without prom
                 ]};
         }})
     });
-    vm.runInContext(source.slice(modelStart, modelEnd), context);
+    vm.runInContext(hiddenModelConstant + '\n' + source.slice(modelStart, modelEnd), context);
     const select = {
         disabled: false, children: [],
         replaceChildren(...options) {this.children = options;},

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "status": "blocked_pending_compatible_noct_weights_and_provider",
+  "width": 832,
+  "height": 1216,
+  "seeds": [27102026, 27102027, 27102028],
+  "negative_prompt": "",
+  "juggernaut": {
+    "model_id": "juggernaut-xl",
+    "checkpoint": "juggernautXL_ragnarok.safetensors",
+    "checkpoint_version": "1759168",
+    "checkpoint_sha256": "dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a",
+    "provider": "sdxl",
+    "quality": "standard",
+    "steps": 35,
+    "guidance": 4.0,
+    "sampler": "dpmpp-2m-sde-karras",
+    "schedule": "karras"
+  },
+  "noct": {
+    "repository": "Noctaluna/Krea2-Noct-Uncensored",
+    "revision": "d93fbcb45e6f6995f2ecdd4edfdb1ef12db6e6e4",
+    "checkpoint": "KreaNoct_V4_int8_convrot.safetensors",
+    "publisher_lfs_sha256": "03622b92c5631870c40426c0dfd3c98b1db33b662140b1e4000210d62f518e2a",
+    "registered_model_id": null,
+    "runnable_in_mlx_nobby": false,
+    "reference_runtime": "ComfyUI >= 0.37; not installed or validated by this change",
+    "steps": 8,
+    "guidance": 1.0,
+    "sampler": "euler",
+    "schedule": "simple",
+    "blocked_reason": "Krea Noct V4 verwendet ComfyUI INT8-ConvRot. Für dieses Gewichtsformat ist in MLX-Nobby kein korrekter Ladepfad konfiguriert."
+  },
+  "cases": [
+    {
+      "id": "portrait",
+      "label": "Fotorealistisches Porträt",
+      "prompt": "An unretouched photograph of a fictional 35-year-old woman with shoulder-length brown hair, brown eyes and light freckles, wearing a plain grey cotton shirt. Head and shoulders, looking at the camera, neutral expression. Soft daylight from a window on her left, natural skin texture, a simple beige wall behind her."
+    },
+    {
+      "id": "full-body",
+      "label": "Fotorealistischer Ganzkörper",
+      "prompt": "An unretouched full-body photograph of a fictional 35-year-old woman with shoulder-length brown hair, brown eyes and light freckles, wearing a plain grey cotton shirt, blue jeans and white shoes. Standing on a garden path, both hands visible with relaxed open fingers, both feet fully in frame. Overcast daylight, natural proportions and skin texture."
+    },
+    {
+      "id": "mixed-light",
+      "label": "Schwierige Haut- und Lichtsituation",
+      "prompt": "An unretouched close-up photograph of a fictional 35-year-old woman with shoulder-length brown hair, brown eyes and light freckles, wearing a plain grey cotton shirt. Warm lamplight falls on the right side of her face and cool window light on the left. Visible pores, subtle under-eye shadows, a few natural skin blemishes and fine loose hairs, no beauty filter."
+    },
+    {
+      "id": "sofa-daylight",
+      "label": "Innenraum, Sofa, natürliches Licht",
+      "prompt": "An unretouched photograph of a fictional 35-year-old woman with shoulder-length brown hair, brown eyes and light freckles, wearing a plain grey cotton shirt and blue jeans. Sitting sideways on a beige linen sofa, one hand resting on a cushion and the other holding a white ceramic cup. Morning daylight from a large window on the left, a wooden side table and two books, natural skin texture."
+    },
+    {
+      "id": "bed-daylight",
+      "label": "Innenraum, Bett, natürliches Licht",
+      "prompt": "An unretouched photograph of a fictional 35-year-old woman with shoulder-length brown hair, brown eyes and light freckles, wearing a plain grey cotton shirt and loose blue cotton trousers. Sitting on the edge of a neatly made bed with white linen, both feet on the floor and both hands resting on her knees. Soft morning window light, a wooden bedside table and a folded blanket, natural skin texture."
+    }
+  ],
+  "rating_dimensions": ["photorealism", "skin", "face", "anatomy", "prompt_adherence", "consistency"],
+  "rating_scale": {"1": "poor", "3": "usable_with_visible_issues", "5": "convincing_no_obvious_issue"},
+  "measurement_fields": ["run_kind", "wall_seconds", "load_seconds", "generation_seconds", "peak_process_rss_gib", "peak_device_memory_gib", "swap_delta_gib", "memory_measurement_source", "output_path", "output_sha256", "notes"]
+}

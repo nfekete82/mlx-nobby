@@ -125,7 +125,8 @@ const modelContext = vm.createContext({
     storeImageModel: value => {savedChoices.push(value); return value;},
     fetch: async () => ({ok: true, async json() {return catalogue;}}),
 });
-vm.runInContext(source.slice(modelStart, modelEnd), modelContext);
+const hiddenModelConstant = source.match(/^const HIDDEN_IMAGE_MODEL_ID = .*;$/m)[0];
+vm.runInContext(hiddenModelConstant + '\n' + source.slice(modelStart, modelEnd), modelContext);
 const select = {
     value: '', disabled: false,
     replaceChildren(...items) {elements.splice(0, elements.length, ...items);},

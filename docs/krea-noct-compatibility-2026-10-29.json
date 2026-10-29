@@ -1,0 +1,175 @@
+{
+  "model": "Noctaluna/Krea2-Noct-Uncensored",
+  "revision": "d93fbcb45e6f6995f2ecdd4edfdb1ef12db6e6e4",
+  "file": "KreaNoct_V4_int8_convrot.safetensors",
+  "file_bytes": 13492706520,
+  "publisher_lfs_sha256": "03622b92c5631870c40426c0dfd3c98b1db33b662140b1e4000210d62f518e2a",
+  "inspection": "HTTP-206 Range: 8-byte length and JSON header only; no tensor data",
+  "bytes_read": 88360,
+  "header_sha256": "7018ef481fb47ea99d3a5bdd3813193b51ab1ef6f2a126dd172dbfce2614411d",
+  "tensor_count": 878,
+  "dtype_counts": {
+    "F32": 355,
+    "BF16": 75,
+    "I8": 224,
+    "U8": 224
+  },
+  "marker_keys_sample": [
+    "blocks.0.attn.gate.weight_scale",
+    "blocks.0.attn.wk.weight_scale",
+    "blocks.0.attn.wo.weight_scale",
+    "blocks.0.attn.wq.weight_scale",
+    "blocks.0.attn.wv.weight_scale",
+    "blocks.0.mlp.down.weight_scale",
+    "blocks.0.mlp.gate.weight_scale",
+    "blocks.0.mlp.up.weight_scale"
+  ],
+  "tensor_sample": {
+    "blocks.0.attn.gate.weight_scale": {
+      "dtype": "F32",
+      "shape": [
+        6144,
+        1
+      ],
+      "data_offsets": [
+        0,
+        24576
+      ]
+    },
+    "blocks.0.attn.qknorm.knorm.scale": {
+      "dtype": "F32",
+      "shape": [
+        128
+      ],
+      "data_offsets": [
+        24576,
+        25088
+      ]
+    },
+    "blocks.0.attn.qknorm.qnorm.scale": {
+      "dtype": "F32",
+      "shape": [
+        128
+      ],
+      "data_offsets": [
+        25088,
+        25600
+      ]
+    },
+    "blocks.0.attn.wk.weight_scale": {
+      "dtype": "F32",
+      "shape": [
+        1536,
+        1
+      ],
+      "data_offsets": [
+        25600,
+        31744
+      ]
+    }
+  },
+  "metadata": {
+    "krea2_svdquant_rank_map": "",
+    "krea2_svdquant_branched_layers": "0",
+    "krea2_svdquant_groupsize": "256",
+    "krea2_svdquant_rank_alloc": "uniform",
+    "krea2_svdquant_device": "cuda",
+    "krea2_svdquant_format": "int8_tensorwise",
+    "krea2_svdquant_source_bytes": "26283333880",
+    "krea2_svdquant_source_name": "KreaNoct_V4a_bf16.safetensors",
+    "krea2_svdquant_variant": "turbo",
+    "krea2_svdquant_seed": "0",
+    "krea2_svdquant_rank": "0",
+    "krea2_svdquant_refine_iters": "0",
+    "krea2_svdquant_quantized_layers": "224",
+    "krea2_svdquant_tool_version": "0.2.0",
+    "krea2_svdquant_act_stats": ""
+  },
+  "inspection_date": "2026-10-29",
+  "decision": "blocked_no_direct_integration; retest compatible export",
+  "installation_state": "No Krea/Noct directory in ~/Models or ~/.cache/huggingface/hub; no weights installed",
+  "gpu_load_result": "not attempted",
+  "render_seconds": null,
+  "render_resolution": null,
+  "render_steps": null,
+  "render_cfg": null,
+  "render_scheduler": null,
+  "render_seed": null,
+  "observed_quality": "not assessed",
+  "host_unified_memory_bytes": 51539607552,
+  "installed_stack": {
+    "mflux": "0.22.0",
+    "mflux_mlx": "0.32.3",
+    "image_diffusers": "0.40.0",
+    "image_torch": "2.14.0",
+    "image_transformers": "5.16.1",
+    "mflux_krea2_cli_present": true,
+    "diffusers_krea2_pipeline_present": true,
+    "mflux_krea2_convrot_dequantization_present": false,
+    "image_service_krea2_provider_configured": false
+  },
+  "registry_before_sha256": "288df2ad42cfe82310fd6c4011cf7681a1ec68802633aa0b7df1036eedd41404",
+  "base_commit": "bf6db09e7dcdf3798498fcffbcf30efa41d5377c",
+  "main_commit": "66615faaf2b27709a9c59e867f378cfbc13e32b3",
+  "sources": [
+    "https://huggingface.co/Noctaluna/Krea2-Noct-Uncensored/tree/d93fbcb45e6f6995f2ecdd4edfdb1ef12db6e6e4",
+    "https://huggingface.co/krea/Krea-2-Turbo",
+    "https://github.com/mflux-community/mflux/blob/main/src/mflux/models/krea2/README.md",
+    "https://github.com/Comfy-Org/comfy-quants/blob/main/docs/formats/int8_tensorwise.md",
+    "https://huggingface.co/docs/diffusers/api/pipelines/krea2"
+  ],
+  "earlier_probe": "Public metadata request blocked by sandbox DNS; authorized read-only retry succeeded. No model/GPU attempt.",
+  "installed_mflux_source_sha256": {
+    "mflux/models/krea2/cli/krea2_generate.py": "ae0bbd70e03af3584b12f94a1e67351c065ec496d5a26c03bf8a87396717bc0e",
+    "mflux/models/krea2/weights/krea2_weight_definition.py": "6c31cbdae85bc767cc3dd85143c702088bcc215332501368cfb4b4affc658eb2",
+    "mflux/models/common/weights/loading/weight_loader.py": "d40c118bf91a1c5aac624579776dfe2519441231099d76e4c2ab80169e113199",
+    "mflux/models/common/weights/loading/weight_applier.py": "88d56572c99cd6f5da905f5e1f0ba25b147dd5a16a5afaf8cb6e4ebe38b9a0be"
+  },
+  "registry_after_sha256": "288df2ad42cfe82310fd6c4011cf7681a1ec68802633aa0b7df1036eedd41404",
+  "validation": {
+    "backend": {
+      "passed": 224,
+      "subtests_passed": 52,
+      "failed": 0,
+      "seconds": 11.9,
+      "files": [
+        "tests/test_krea_noct_comparison.py",
+        "tests/test_mflux_020_models.py",
+        "tests/test_mflux_capabilities.py",
+        "tests/test_image_runtime.py",
+        "tests/test_image_quality_v2.py",
+        "tests/test_osaurus_step_cache_default.py",
+        "tests/test_juggernaut_quality_policy.py",
+        "tests/test_juggernaut_img2img.py",
+        "tests/test_juggernaut_ragnarok_setup.py",
+        "tests/test_mlxgen_image_edit_provider.py"
+      ]
+    },
+    "frontend": {
+      "passed": 12,
+      "failed": 0,
+      "files": [
+        "tests/test_krea_noct_picker.mjs",
+        "tests/test_image_creation_preferences.mjs",
+        "tests/test_image_edit_single_model_picker.mjs",
+        "tests/test_juggernaut_img2img_ui.mjs",
+        "tests/test_image_edit.mjs",
+        "tests/test_image_option_contracts.mjs",
+        "tests/test_image_count_picker.mjs"
+      ]
+    },
+    "initial_frontend_failures": "Pre-existing sliced-picker fixtures omitted HIDDEN_IMAGE_MODEL_ID from preceding branch; stale attachments.js version expectation. Test-only fixes; production code unchanged.",
+    "prepared_bundle_smoke": {
+      "comparison_rows": 30,
+      "juggernaut_request_files": 15,
+      "noct_request_files": 0,
+      "scores": "empty",
+      "jobs_submitted": 0
+    },
+    "gpu_render": false,
+    "model_load": false,
+    "production_restart": false,
+    "reboot": false,
+    "warning": "Existing Starlette TestClient/httpx deprecation warning"
+  }
+}

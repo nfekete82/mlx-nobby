@@ -24,7 +24,7 @@ test('img2img is an explicit edit model, not a global text-to-image setting', ()
 });
 
 test('frontend cache key changes and backend routes through bounded source', () => {
-  assert.match(html, /attachments\.js\?v=20261026-eml-consolidated-faq/);
+  assert.match(html, /attachments\.js\?v=20261029-hide-cyberrealistic/);
   assert.match(imageService, /prepare_sdxl_img2img_source/);
   assert.match(imageService, /params\["strength"\]/);
   assert.match(imageService, /"strength": params\.get\("strength"\)/);
