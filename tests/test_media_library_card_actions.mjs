@@ -122,7 +122,7 @@ test('a click toggles a card menu and opening another automatically closes it', 
   assert.equal(f.menu(second).hidden, true, 'choosing a menu item closes the disclosure');
 });
 
-test('Escape restores focus; outside clicks dismiss; video cards retain both actions', () => {
+test('Escape restores focus; outside clicks dismiss; video card exposes editor actions', () => {
   const f = setup(), image = f.make(), video = f.make('video');
   f.toggle(image).fire('click');
   const key = f.actions(image).fire('keydown', {key: 'Escape'});
@@ -133,6 +133,9 @@ test('Escape restores focus; outside clicks dismiss; video cards retain both act
   f.toggle(image).fire('click');
   for (const onClick of f.listeners.click || []) onClick({target: new f.Element('outside')});
   assert.equal(f.menu(image).hidden, true);
-  assert.equal(f.menu(video).children.length, 2);
-  assert.equal(f.menu(video).children[1].children[1].textContent, 'Löschen');
+  assert.equal(f.menu(video).children.length, 4);
+  assert.equal(f.menu(video).children[0].children[1].textContent, 'Video verlängern');
+  assert.equal(f.menu(video).children[1].children[1].textContent, 'Bereich neu erstellen');
+  assert.equal(f.menu(video).children[2].children[1].textContent, 'Details');
+  assert.equal(f.menu(video).children[3].children[1].textContent, 'Löschen');
 });
