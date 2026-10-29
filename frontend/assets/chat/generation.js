@@ -3209,13 +3209,12 @@ const imageFiles =
                     ? null
                     : documentFiles[0] || priorFileAttachments[0] || null);
 
-            // Always expose the active image artifact to the semantic
-            // router. This lets the router resolve natural image follow-ups
-            // from conversation context even when the deterministic edit
-            // patterns do not recognize the wording.
+            // A prior image in the conversation must never authorize an edit
+            // from a text-only turn. Only an explicit image-to-video command
+            // may bind a previously generated image without a new upload.
             let activeArtifactIdForEdit =
                 !imageFiles.length && !currentImageContext && !historicalVideoUpload &&
-                (refersToExistingImage || explicitImageEditRequest || explicitVideoAnimateRequest || Boolean(activeWorkspaceImageArtifact))
+                explicitVideoAnimateRequest
                     ? (
                         (preferredVideoSource?.origin === 'active_artifact'
                             ? preferredVideoSource.source?.artifact_id
@@ -3229,7 +3228,7 @@ const imageFiles =
             const conversationContext = buildAgentConversationContext(session, userMessage);
             let resolvedTarget = null;
             let referenceMode = null;
-            if (!imageFiles.length && activeWorkspaceImageArtifact?.semantic_operation === 'reference_generate') {
+            if (imageFiles.length && activeWorkspaceImageArtifact?.semantic_operation === 'reference_generate') {
                 fileContext = { kind: 'image', artifact_id: activeWorkspaceImageArtifact.artifact_id,
                     reference_source_job_id: activeWorkspaceImageArtifact.reference_source_job_id ||
                         activeWorkspaceImageArtifact.generation_job_id,
@@ -3306,9 +3305,23 @@ const imageFiles =
             } catch (error) {
                 if (referenceMode) throw error;
                 console.warn('[MLX Router] Preflight failed', error);
-                // An explicit, deterministic new-image command needs no
-                // semantic-model approval; still use the guarded image API.
+                // An explicit video request must never silently become chat
+                // when the preflight endpoint is unavailable.
+                if (isVideoRequest(prompt)) {
+                    throw new Error(gt('video_routing_unavailable',
+                        'Video routing is unavailable. Please retry the video request.'));
+                }
+                // An explicit new-image command can still use the guarded API.
                 resolvedTarget = alwaysGenerateImage ? 'image' : 'chat';
+            }
+
+            // Never edit a historical image from text alone. An edit needs a
+            // real image uploaded in this turn; old workspace state is not one.
+            if (resolvedTarget === 'image_edit' && !imageFiles.length) {
+                console.warn('[MLX Router] Text-only image edit rejected');
+                resolvedTarget = 'chat';
+                activeArtifactIdForEdit = null;
+                referenceMode = null;
             }
 
             if (resolvedTarget === 'shorts_generate') {
