@@ -3228,13 +3228,8 @@ const imageFiles =
             const conversationContext = buildAgentConversationContext(session, userMessage);
             let resolvedTarget = null;
             let referenceMode = null;
-            if (imageFiles.length && activeWorkspaceImageArtifact?.semantic_operation === 'reference_generate') {
-                fileContext = { kind: 'image', artifact_id: activeWorkspaceImageArtifact.artifact_id,
-                    reference_source_job_id: activeWorkspaceImageArtifact.reference_source_job_id ||
-                        activeWorkspaceImageArtifact.generation_job_id,
-                    reference_artifact_id: activeWorkspaceImageArtifact.reference_artifact_id,
-                    reference_mode: activeWorkspaceImageArtifact.reference_mode };
-            }
+            // A stored reference from an earlier turn must not replace the
+            // source context of a newly attached image or a text-only video.
 
             try {
                 const routeResponse = await fetch(
