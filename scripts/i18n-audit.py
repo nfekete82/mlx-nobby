@@ -26,6 +26,15 @@ ALLOWLIST = {
     "Deutsch knapp",
     "Deutsch",
     "Antworte auf Deutsch, präzise, knapp und ohne unnötige Wiederholungen.",
+    # Public video validation contracts intentionally remain German. These
+    # fixed allowlisted responses must also survive English UI/reloaded jobs.
+    "Die Videoanfrage ist ungültig. Bitte Dauer, Qualität, Profil und Startbild prüfen.",
+    "Die Bildanfrage ist ungültig. Bitte Modell, Bildgröße, Parameter und Referenzbild prüfen.",
+    "Ungültige Image-Job-ID",
+    "Ungültige Image-Modell-ID",
+    "Das Profil „Uncensored“ unterstützt keine automatische Fortsetzung. Wähle Standard für längere Videos oder verkürze die Dauer (maximale Qualität: 5 s, Standard: 10 s, Schnell: 20 s).",
+    "Das Profil „Uncensored“ ist nicht eingerichtet. Bitte Standard wählen.",
+    "Die Videoanfrage konnte nicht verarbeitet werden. Bitte erneut versuchen.",
 }
 
 GERMAN_PATTERN = re.compile(
@@ -114,12 +123,20 @@ def html_line_is_translated(line: str) -> bool:
 
 def js_line_is_translated(line: str) -> bool:
     """Recognize one-line bilingual helpers as translated UI."""
+    # The editor's phase table stores [German, English], then passes the pair
+    # to tr(). Do not accept single strings or pairs of German labels.
+    pair = re.search(r"\b\w+\s*:\s*\[\s*(?P<de>['\"`]).*?(?P=de)\s*,\s*(?P<en>['\"`])(?P<english>.*?)(?P=en)\s*\]", line)
+    if pair and not GERMAN_PATTERN.search(pair.group("english")):
+        return True
     return bool(
         re.search(
             r"\b(?:t|localText)\(\s*(?P<q1>['\"`]).*?(?P=q1)\s*,\s*(?P<q2>['\"`])",
             line,
         )
-    )
+    ) or bool(re.search(
+        r"\btr\(\s*(?P<key>['\"`]).*?(?P=key)\s*,\s*(?P<de>['\"`]).*?(?P=de)\s*,\s*(?P<en>['\"`]).*?(?P=en)",
+        line,
+    ))
 
 
 def js_multiline_translated_lines(source: str) -> set[int]:

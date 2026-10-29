@@ -49,11 +49,15 @@ def main():
             temporary.write_text(json.dumps({"token": sys.argv[1], "members": values}))
             os.replace(temporary, members_path)
             known = values
-    child = subprocess.Popen(sys.argv[3:])
-    remember()
-    selector = selectors.DefaultSelector()
-    selector.register(control, selectors.EVENT_READ)
+    child = None
+    selector = None
     try:
+        if os.getpgrp() != os.getpid() or os.getsid(0) != os.getpid():
+            raise RuntimeError("Prozesswächter benötigt eine eigene Sitzung und Prozessgruppe")
+        child = subprocess.Popen(sys.argv[3:])
+        remember()
+        selector = selectors.DefaultSelector()
+        selector.register(control, selectors.EVENT_READ)
         while child.poll() is None and not stopping:
             remember()
             if selector.select(0.2) and not os.read(control.fileno(), 256):
@@ -82,8 +86,16 @@ def main():
             time.sleep(0.1)
         os.killpg(os.getpgrp(), signal.SIGKILL)
         return 137
+    except BaseException:
+        # A failed first/periodic identity scan must not orphan the model.
+        # spawn() makes us a session/group leader before GO. While that leader
+        # is alive the group cannot be reused; never signal a caller's group.
+        if child is not None and os.getpgrp() == os.getpid():
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+        raise
     finally:
-        selector.close()
+        if selector is not None:
+            selector.close()
         control.close()
 
 

@@ -32,8 +32,11 @@ def _raw_request(method, path, payload=None, timeout=10):
     except urllib.error.HTTPError as exc:
         try:
             detail = json.loads(exc.read()).get("detail", "Image-Service-Fehler")
-        except ValueError:
+        except (ValueError, AttributeError, UnicodeError):
             detail = "Image-Service-Fehler"
+        if exc.code in {400, 422}:
+            from backend.media_errors import image_validation_message
+            detail = image_validation_message(detail)
         raise HTTPException(exc.code, detail) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
         raise HTTPException(503, "Image-Service nicht erreichbar oder Zeitlimit überschritten") from exc

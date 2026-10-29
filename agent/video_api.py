@@ -32,7 +32,7 @@ def _raw_request(method, path, payload=None, timeout=15):
     except urllib.error.HTTPError as exc:
         try:
             detail = json.loads(exc.read()).get("detail", "Video-Service-Fehler")
-        except ValueError:
+        except (ValueError, AttributeError, UnicodeError):
             detail = "Video-Service-Fehler"
         if exc.code in {400, 422}:
             detail = video_validation_message(detail)

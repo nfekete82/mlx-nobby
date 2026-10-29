@@ -69,7 +69,7 @@ def test_new_schema_caption_without_voice_and_legacy_mapping():
         project(unrecognized=True)
 
 
-@pytest.mark.parametrize('quality,duration,valid', [('fast',20,True), ('standard',20,False), ('quality',6,False), ('quality',5,True)])
+@pytest.mark.parametrize('quality,duration,valid', [('fast',20,True), ('standard',20,True), ('quality',6,False), ('quality',5,True), ('quality',20,True)])
 def test_quality_durations(quality, duration, valid):
     data = project().model_dump()
     data.update(quality=quality, duration=duration, scenes=[{**data['scenes'][0], 'duration':duration}])
@@ -438,7 +438,7 @@ def test_venus_managed_voice_roundtrip_plan_and_render(store, monkeypatch):
     shorts_jobs.start_short_job.assert_called_once_with(job['id'])
 
 
-@pytest.mark.parametrize('quality,valid', [('fast',True), ('standard',True), ('quality',False)])
+@pytest.mark.parametrize('quality,valid', [('fast',True), ('standard',True), ('quality',True)])
 def test_venus_exact_timeline_uses_real_quality_capabilities(quality, valid):
     from agent.shorts_normalization import allocate_durations
     allowed = quality_capabilities()[quality]['durations']

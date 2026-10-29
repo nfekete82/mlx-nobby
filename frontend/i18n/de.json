@@ -87,6 +87,9 @@
     "preview_message": "So sieht deine Nachricht aus."
   },
   "generation": {
+    "image_request_busy": "Ein Bildauftrag läuft bereits. Bitte dessen Abschluss abwarten.",
+    "image_service_not_ready": "Der Bilddienst ist derzeit nicht bereit. Bitte erneut versuchen.",
+    "image_request_failed": "Die Bildanfrage konnte nicht verarbeitet werden. Bitte erneut versuchen.",
     "eml_merging_faq": "⏳ {count} FAQ-Entwürfe werden zu einer gemeinsamen FAQ zusammengefasst …",
     "eml_sources_optional": "Optional: anonymisierte Quell-E-Mails herunterladen",
     "eml_merge_failed": "Die FAQ-Entwürfe konnten nicht zu einer gemeinsamen FAQ zusammengefasst werden.",

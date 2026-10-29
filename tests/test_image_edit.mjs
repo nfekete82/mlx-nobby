@@ -2308,6 +2308,22 @@ context.document.addEventListener = originalDocumentAddListener;
 context.document.removeEventListener = originalDocumentRemoveListener;
 context.fetch = videoDialogFetch;
 
+// Exercise the actual image action's HTTP-422 privacy boundary as well.
+const imageValidationFetch = context.fetch;
+context.fetch = async (url, options) => url === '/api/mlx/chat/actions'
+    ? {ok: false, status: 422, text: async () => {throw Error('Raw validator body must not be read');}}
+    : imageValidationFetch(url, options);
+selectedAttachments = [];
+session.messages = [];
+session.workspace = {};
+sessionQuality = 'standard';
+input.value = 'Erstelle ein Bild von einer roten Kugel';
+routeTargets.set(input.value, 'image');
+await window.MLXChatGeneration.sendMessage();
+assert.match(session.messages.at(-1).content, /Die Bildanfrage ist ungültig/);
+assert.doesNotMatch(session.messages.at(-1).content, /Raw validator|\/Users|input_value/);
+context.fetch = imageValidationFetch;
+
 // Opt-in 30/35/40 steps must preserve 1216px Quality and never persist across jobs.
 // The actual modal click exercises model selection, preset, validation and payload.
 selectedAttachments = [];

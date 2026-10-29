@@ -163,6 +163,8 @@ class AgentFixture:
             return self.result(job)
         if path == '/api/video/models':
             return {'models': [], 'preview_available': True, 'profiles': {'uncensored_available': self.uncensored}}
+        if path == '/api/video/edit/jobs' and request.method == 'GET':
+            return {'jobs': []}
         if path == '/api/chats':
             return {'chats': list(self.chats.values()), 'deleted_ids': []}
         if path.startswith('/api/chats/'):

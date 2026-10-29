@@ -163,8 +163,9 @@ def _members(record):
 
 
 def remaining(record, table):
+    members = _members(record)
     return [value for value in table.values() if not value["zombie"] and (
-        value["pgid"] == record["pid"] or any(identities.same(saved, value) for saved in _members(record)))]
+        value["pgid"] == record["pid"] or any(identities.same(saved, value) for saved in members))]
 
 
 def _remove_record(path, process=None):

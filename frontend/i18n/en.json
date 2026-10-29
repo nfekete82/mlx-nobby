@@ -87,6 +87,9 @@
     "preview_message": "This is what your message looks like."
   },
   "generation": {
+    "image_request_busy": "An image job is already running. Please wait for it to finish.",
+    "image_service_not_ready": "The image service is not ready. Please try again.",
+    "image_request_failed": "The image request could not be processed. Please try again.",
     "eml_merging_faq": "⏳ Combining {count} FAQ drafts into one document …",
     "eml_sources_optional": "Optional: download anonymized source emails",
     "eml_merge_failed": "The FAQ drafts could not be combined into one document.",

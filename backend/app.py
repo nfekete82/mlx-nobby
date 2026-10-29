@@ -156,13 +156,22 @@ def agent_json_request(method, path, payload=None, timeout=10):
         is_video = path.startswith("/api/video") or (
             path == "/api/chat/actions" and isinstance(payload, dict) and (
                 payload.get("resolved_target") == "video"
-                or payload.get("action") in {"video_generate", "video_animate"}
+                or payload.get("action") in ("video_generate", "video_animate")
                 or payload.get("video_options") is not None
             )
         )
         if is_video and exc.code in {400, 422}:
             from backend.video_errors import video_validation_message
             detail = video_validation_message(detail)
+        elif exc.code in {400, 422} and (path.startswith("/api/image") or (
+            path == "/api/chat/actions" and isinstance(payload, dict) and (
+                payload.get("resolved_target") in ("image", "image_edit")
+                or payload.get("action") in ("image_generate", "image_edit", "image_reference_generate", "image_upscale")
+                or payload.get("image_options") is not None
+            )
+        )):
+            from backend.media_errors import image_validation_message
+            detail = image_validation_message(detail)
         raise HTTPException(status_code=exc.code, detail=detail)
 
     except (urllib.error.URLError, TimeoutError) as exc:

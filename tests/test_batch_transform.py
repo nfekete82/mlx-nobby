@@ -1,5 +1,4 @@
 import contextlib
-import importlib.util
 import io
 import json
 import re
@@ -10,11 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 
-SPEC = importlib.util.spec_from_file_location(
-    "mlx_agent", Path(__file__).resolve().parents[1] / "agent" / "app.py"
-)
-agent = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(agent)
+from agent import app as agent
 
 
 class BatchTransformTests(unittest.TestCase):

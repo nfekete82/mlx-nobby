@@ -9,6 +9,7 @@ from functools import partial, wraps
 from typing import Literal
 import hashlib
 import json
+import math
 import logging
 import queue
 import os
@@ -101,7 +102,7 @@ from backend import observability
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from agent.batch_state import atomic_write_text, atomic_write_with
 from agent import finance
 from backend.finance_intent import non_financial_rating_request
@@ -1013,6 +1014,28 @@ def _set_system_lifecycle_state(
 
 def _get_system_lifecycle_state():
     with _SYSTEM_LIFECYCLE_LOCK:
+        if "updated_at" not in _SYSTEM_LIFECYCLE_STATE:
+            try:
+                saved = json.loads((ai_gate.ROOT / "lifecycle.json").read_text())
+                if (not isinstance(saved, dict)
+                        or saved.get("state") not in {"idle", "accepted", "running", "completed", "failed"}
+                        or type(saved.get("updated_at")) not in {int, float}
+                        or not math.isfinite(saved["updated_at"])
+                        or any(type(saved.get(key, 0)) is not int or saved.get(key, 0) < 0 for key in ("current", "total"))
+                        or any(saved.get(key) is not None and not isinstance(saved[key], str)
+                               for key in ("action", "phase", "message", "error"))):
+                    raise ValueError("Invalid saved lifecycle state")
+                _SYSTEM_LIFECYCLE_STATE.update({key: saved[key] for key in _SYSTEM_LIFECYCLE_STATE if key in saved})
+                _SYSTEM_LIFECYCLE_STATE["updated_at"] = saved["updated_at"]
+            except FileNotFoundError:
+                _SYSTEM_LIFECYCLE_STATE["updated_at"] = time.time()
+            except (OSError, ValueError, TypeError):
+                ai_gate.set_blocked(True, "Lifecycle-Status beschädigt")
+                _SYSTEM_LIFECYCLE_STATE.update(
+                    state="failed", phase="failed", updated_at=time.time(),
+                    message="Gespeicherter Lifecycle-Zustand ist unlesbar; Dienste erneut prüfen",
+                    error="Lifecycle-Zustand konnte nicht wiederhergestellt werden",
+                )
         return dict(_SYSTEM_LIFECYCLE_STATE)
 
 
@@ -1062,7 +1085,7 @@ def system_lifecycle_progress(payload: dict):
 
     state = payload.get("state")
 
-    if state not in allowed_states:
+    if not isinstance(state, str) or state not in allowed_states:
         raise HTTPException(
             status_code=422,
             detail="Invalid lifecycle state.",
@@ -1072,6 +1095,9 @@ def system_lifecycle_progress(payload: dict):
     phase = payload.get("phase")
     message = payload.get("message")
     error = payload.get("error")
+    for key, value in (("action", action), ("phase", phase), ("message", message), ("error", error)):
+        if value is not None and (not isinstance(value, str) or len(value) > 4096):
+            raise HTTPException(422, f"{key} muss ein Text mit höchstens 4096 Zeichen sein")
     if state == "failed" and not error:
         previous = _get_system_lifecycle_state()
         if previous.get("state") == "failed" and previous.get("error"):
@@ -1139,6 +1165,7 @@ def _start_lifecycle(action, script):
                 return {"status": "accepted", "action": action}
             if live:
                 raise HTTPException(409, "Eine Lifecycle-Aktion läuft bereits")
+        (ai_gate.ROOT / "shutdown-verified.json").unlink(missing_ok=True)
         ai_gate.set_blocked(True, action)
         _set_system_lifecycle_state(state="accepted", action=action, phase="blocking",
                                     message="Neue KI-Aufträge werden angehalten")
@@ -10213,12 +10240,21 @@ def run_chat_action(request: ChatActionRequest):
         except HTTPException as exc:
             if exc.status_code == 409:
                 raise
+            detail = exc.detail
+            data = {"routing": routing}
+            if exc.status_code in {400, 422}:
+                from backend.media_errors import image_validation_message
+                detail = image_validation_message(detail)
+                data["error_code"] = "image_validation_error"
             return chat_tool_result(
                 action,
                 "failed",
-                {"routing": routing},
-                error=str(exc.detail),
+                data,
+                error=str(detail),
             )
+        except ValidationError:
+            from backend.media_errors import INVALID_IMAGE_REQUEST
+            return chat_tool_result(action, "failed", {"routing": routing, "error_code": "image_validation_error"}, error=INVALID_IMAGE_REQUEST)
         except Exception as exc:
             return chat_tool_result(
                 action,
@@ -16316,13 +16352,9 @@ def search_uploaded_document_api(request: DocumentSearchRequest):
         ) from exc
 
 
-# Restore the detached helper's status across Agent reloads.
-try:
-    _SYSTEM_LIFECYCLE_STATE.update(json.loads((ai_gate.ROOT / "lifecycle.json").read_text()))
-except FileNotFoundError:
-    pass
-except (OSError, ValueError):
-    ai_gate.set_blocked(True, "Lifecycle-Status beschädigt")
+# Restore through the same validation used by status reads. Invalid persisted
+# types must fail closed rather than enter the UI or lifecycle arithmetic.
+_get_system_lifecycle_state()
 
 from agent.ai_lifecycle import install_routes as install_ai_lifecycle_routes
 install_ai_lifecycle_routes(app, sys.modules[__name__])

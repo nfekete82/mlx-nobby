@@ -1,0 +1,246 @@
+{
+  "audit_date": "2026-10-29",
+  "branch": "fix/mlx-nobby-full-stability-audit-20261029",
+  "base_commit": "a71f595382d75f7bb3f876f001a8e81a8c7b393f",
+  "main_commit_unchanged": "66615faaf2b27709a9c59e867f378cfbc13e32b3",
+  "status": "local_regression_passed_manual_gpu_acceptance_pending",
+  "report": "MLX_NOBBY_FULL_STABILITY_AUDIT_2026-10-29.md",
+  "baseline": {
+    "tracked_worktree": "clean",
+    "captured_at": "2026-10-29T19:47:40Z",
+    "service_http": {
+      "chat": 200,
+      "agent": 404,
+      "embeddings": 200,
+      "images": 200,
+      "router": 200,
+      "speech": 200,
+      "video": 200,
+      "web": 200,
+      "mlxserve": 200
+    },
+    "agent_probe_correction": "/health is not implemented; /api/system/lifecycle succeeded",
+    "live_web": {
+      "version": "1.19.0",
+      "commit": "bf6db09e7dcd"
+    },
+    "compose_config": "passed",
+    "dependencies_all_six_environments": "compatible",
+    "model_registry_changed": false,
+    "managed_registry": {
+      "blocked": false,
+      "record_count": 0,
+      "live_members": 0
+    },
+    "memory_snapshot": {
+      "total_gb": 48.0,
+      "available_estimate_gb": 20.64,
+      "used_estimate_gb": 27.36,
+      "free_percent": 43.0,
+      "reserve_gb": 6.0,
+      "headroom_gb": 14.64,
+      "swap_total_gb": 13.0,
+      "swap_used_gb": 12.5,
+      "pressure": "normal"
+    }
+  },
+  "findings_fixed": [
+    {
+      "id": "L1",
+      "priority": "P1",
+      "issue": "Concurrent resume erased pending shutdown intent"
+    },
+    {
+      "id": "L2",
+      "priority": "P1",
+      "issue": "Guardian scan failure could orphan child"
+    },
+    {
+      "id": "L3",
+      "priority": "P1",
+      "issue": "Second-resolution service identities, PID reuse and zombies"
+    },
+    {
+      "id": "L4",
+      "priority": "P1",
+      "issue": "Stale shutdown proof and changed lifecycle during readiness"
+    },
+    {
+      "id": "L5",
+      "priority": "P1",
+      "issue": "Transient bootout/startup failures and unverified probe exit codes"
+    },
+    {
+      "id": "L6",
+      "priority": "P1",
+      "issue": "Invalid persisted lifecycle fields and malformed progress/readiness data"
+    },
+    {
+      "id": "L7",
+      "priority": "P1",
+      "issue": "Private image validator inputs leaked through HTTP/tool/job errors; malformed action shapes broke sanitization"
+    },
+    {
+      "id": "F1",
+      "priority": "P2",
+      "issue": "Repeated JSON reads per process status scan"
+    },
+    {
+      "id": "T1-T4",
+      "priority": "P2",
+      "issue": "Collection, test isolation, stale assertions, i18n false positives and incomplete/destructive E2E fixtures"
+    }
+  ],
+  "tests": {
+    "full_python": {
+      "passed": 3859,
+      "failed": 0,
+      "subtests_passed": 462,
+      "duration_seconds": 114.28,
+      "command": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 test-venv/bin/python -m pytest -q $(git ls-files 'tests/test_*.py')"
+    },
+    "node": {
+      "passed": 373,
+      "failed": 0,
+      "duration_seconds": 0.72843775,
+      "command": "node --test $(git ls-files 'tests/*.mjs')"
+    },
+    "complete_browser": {
+      "passed": 118,
+      "failed": 0,
+      "duration_seconds": 183.27,
+      "command": "PYTHONDONTWRITEBYTECODE=1 test-venv/bin/python -m pytest --e2e -q tests/e2e --maxfail=1",
+      "services": "isolated web and simulated Agent"
+    }
+  },
+  "initial_failures": {
+    "python_collection": "unregistered mlx_agent alias",
+    "first_complete_python": {
+      "passed": 3795,
+      "failed": 6,
+      "subtests_passed": 462,
+      "causes": "test directory pollution; stale long-video expectations"
+    },
+    "initial_node": {
+      "passed": 368,
+      "failed": 2,
+      "cause": "stale generation.js asset-version assertions"
+    },
+    "red_lifecycle_reproductions": 6,
+    "browser": {
+      "passed_ui_assertions": 14,
+      "teardown_errors": 14,
+      "cause": "missing existing video editor GET route in fake Agent"
+    },
+    "i18n": {
+      "problems": 14,
+      "cause": "bilingual helpers/phase table and intentionally German public errors"
+    },
+    "image_validation_filter": "Existing precise public image job-ID message initially over-sanitized; fixed exact allowlist and full regression passed"
+  },
+  "performance": {
+    "scenario": "synthetic process rows with actual temporary JSON reads; no live services",
+    "samples": 20,
+    "warmup_pairs": 1,
+    "rows": 1000,
+    "before_median_ms": 18.1292705,
+    "after_median_ms": 0.460625,
+    "before_min_ms": 17.77725,
+    "before_max_ms": 19.204416,
+    "after_min_ms": 0.423458,
+    "after_max_ms": 0.493,
+    "member_file_reads_per_scan_before": 1000,
+    "member_file_reads_per_scan_after": 1
+  },
+  "existing_web_image_smoke": {
+    "image": "sha256:4c90dfa34e0a9c282238d1fced148aee50a0b6b361bc88075d52c91658324800",
+    "exit_code": 0,
+    "summary": "isolated web imports passed",
+    "network": "none",
+    "host_ports": "none",
+    "readonly": true,
+    "new_build": false
+  },
+  "static_checks": {
+    "python_syntax": {
+      "status": "passed",
+      "files": 641
+    },
+    "javascript_syntax": {
+      "status": "passed",
+      "files": 83
+    },
+    "tracked_json": {
+      "status": "passed",
+      "files": 46
+    },
+    "shell_syntax": {
+      "status": "passed",
+      "files": 19
+    },
+    "launchd_plists": {
+      "status": "passed",
+      "files": 9
+    },
+    "i18n": {
+      "status": "passed",
+      "exit_code": 0
+    }
+  },
+  "production_actions": {
+    "model_load": false,
+    "gpu_job": false,
+    "model_download": false,
+    "package_update": false,
+    "service_restart": false,
+    "reboot": false,
+    "deployment": false
+  },
+  "limits": [
+    "No new GPU quality/performance/cancellation acceptance",
+    "No new TTFT or tokens-per-second measurement",
+    "No new web-image build/deployment",
+    "No PR workflow runs returned for base commit; branch push does not trigger main-only CI"
+  ],
+  "warning": "Existing Starlette/httpx TestClient deprecation warning",
+  "preservation_checks": {
+    "user_configurations_unchanged": 3,
+    "original_untracked_paths_preserved": 106,
+    "main_unchanged": true
+  },
+  "changed_files": [
+    "agent/ai_lifecycle.py",
+    "agent/app.py",
+    "agent/image_api.py",
+    "agent/media_queue.py",
+    "agent/process_guard.py",
+    "agent/video_api.py",
+    "ai_lifecycle_gate.py",
+    "backend/app.py",
+    "backend/media_errors.py",
+    "docs/MLX_NOBBY_FULL_STABILITY_AUDIT_2026-10-29.md",
+    "docs/image-model-test-matrix.md",
+    "docs/mlx-nobby-full-stability-audit-2026-10-29.json",
+    "frontend/assets/chat/generation.js",
+    "frontend/chat.html",
+    "frontend/i18n/de.json",
+    "frontend/i18n/en.json",
+    "managed_process.py",
+    "scripts/ai-lifecycle.py",
+    "scripts/benchmark-managed-process-status.py",
+    "scripts/i18n-audit.py",
+    "tests/conftest.py",
+    "tests/e2e/conftest.py",
+    "tests/e2e/harness.py",
+    "tests/test_ai_lifecycle_reliability.py",
+    "tests/test_batch_transform.py",
+    "tests/test_i18n_audit_helpers.py",
+    "tests/test_image_edit.mjs",
+    "tests/test_lifecycle_audit.py",
+    "tests/test_media_library_ui.mjs",
+    "tests/test_media_validation_privacy.mjs",
+    "tests/test_media_validation_privacy.py",
+    "tests/test_shorts_editor.py",
+    "tests/test_video_job.mjs"
+  ]
+}

@@ -203,7 +203,7 @@ def test_reload_recovery_is_persistent_and_keeps_completed_media(tmp_path, monke
 
 def test_failed_readiness_keeps_admission_closed(monkeypatch):
     gate.set_blocked(True)
-    (gate.ROOT / "shutdown-verified.json").write_text("{}")
+    (gate.ROOT / "shutdown-verified.json").write_text(json.dumps({"verified_at": time.time(), "gate_state": gate.state()}))
     agent = mock.Mock()
     with mock.patch.object(ai_lifecycle.urllib.request, "urlopen", side_effect=OSError("offline")):
         with pytest.raises(OSError):
@@ -214,7 +214,7 @@ def test_failed_readiness_keeps_admission_closed(monkeypatch):
 def test_successful_readiness_reopens_admission():
     import io
     gate.set_blocked(True)
-    (gate.ROOT / "shutdown-verified.json").write_text("{}")
+    (gate.ROOT / "shutdown-verified.json").write_text(json.dumps({"verified_at": time.time(), "gate_state": gate.state()}))
     def response(url, **kwargs):
         return io.BytesIO(json.dumps({"data": [{"id": "local"}], "ok": True, "status": "ready"}).encode())
     with mock.patch.object(ai_lifecycle.urllib.request, "urlopen", side_effect=response) as probe:
@@ -237,12 +237,12 @@ def test_empty_shutdown_verified_and_foreign_listener_is_never_killed(monkeypatc
     monkeypatch.setattr(edit, "_generation_lock", threading.Lock())
     monkeypatch.setattr(ai_lifecycle.media_queue, "_jobs", {})
     monkeypatch.setattr(ai_lifecycle.talking_photo, "JOBS", gate.ROOT / "no-jobs")
-    with mock.patch.object(ai_lifecycle.subprocess, "run", return_value=mock.Mock(returncode=1, stdout=b"")):
+    with mock.patch.object(ai_lifecycle.subprocess, "run", side_effect=lambda command, **kwargs: mock.Mock(returncode=113 if command[0] == "launchctl" else 1, stdout=b"")):
         assert ai_lifecycle.verify_stopped(agent)["verified"]
     assert (gate.ROOT / "shutdown-verified.json").exists()
     (gate.ROOT / "shutdown-verified.json").unlink()
     def run(command, **kwargs):
-        return mock.Mock(returncode=1, stdout=b"12345" if command[0] == "lsof" else b"")
+        return mock.Mock(returncode=113 if command[0] == "launchctl" else 1, stdout=b"12345" if command[0] == "lsof" else b"")
     with mock.patch.object(ai_lifecycle.subprocess, "run", side_effect=run), \
          mock.patch.object(ai_lifecycle.os, "kill") as kill:
         with pytest.raises(RuntimeError, match="weiterhin belegt"):
@@ -256,12 +256,16 @@ def test_migration_snapshot_requires_agent_ancestry_and_executable_path(monkeypa
     values = {10: "Thu Oct 29 12:00:00 2026 python agent", 11: "Thu Oct 29 12:00:00 2026 " + cli + " extend",
               12: "Thu Oct 29 12:00:00 2026 ffmpeg child", 21: "Thu Oct 29 12:00:00 2026 " + cli + " extend",
               13: "Thu Oct 29 12:00:00 2026 echo " + cli}
+    parents = {10: 1, 11: 10, 12: 11, 13: 10, 21: 1}
+    table = {pid: {"pid": pid, "ppid": parent, "pgid": pid, "birth": str(pid), "zombie": False}
+             for pid, parent in parents.items()}
     def run(command, **kwargs):
         if command[-1].endswith("mlx-agent"):
             return mock.Mock(returncode=0, stdout="  pid = 10\n")
-        return mock.Mock(returncode=1, stdout="")
+        return mock.Mock(returncode=113, stdout="")
     with mock.patch.object(ai_lifecycle.subprocess, "run", side_effect=run), \
-         mock.patch.object(ai_lifecycle.subprocess, "check_output", return_value="10 1\n11 10\n12 11\n13 10\n21 1\n"), \
+         mock.patch.object(processes.identities, "table", return_value=table), \
+         mock.patch.object(processes.identities, "snapshot", side_effect=table.__getitem__), \
          mock.patch.object(processes, "identity", side_effect=values.get):
         records = ai_lifecycle._snapshot_service_processes()
     assert {record["pid"] for record in records} == {11, 12}

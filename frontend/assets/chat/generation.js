@@ -315,6 +315,7 @@ function videoOptionsForRequest(
 }
 
 const INVALID_VIDEO_MESSAGE = 'Die Videoanfrage ist ungültig. Bitte Dauer, Qualität, Profil und Startbild prüfen.';
+const INVALID_IMAGE_MESSAGE = 'Die Bildanfrage ist ungültig. Bitte Modell, Bildgröße, Parameter und Referenzbild prüfen.';
 const UNCENSORED_CONTINUATION_MESSAGE = 'Das Profil „Uncensored“ unterstützt keine automatische Fortsetzung. Wähle Standard für längere Videos oder verkürze die Dauer (maximale Qualität: 5 s, Standard: 10 s, Schnell: 20 s).';
 
 function videoValidationMessage(detail) {
@@ -349,7 +350,32 @@ function publicVideoJobError(detail) {
             return videoValidationMessage(parsed.detail ?? parsed);
         } catch (_) { return INVALID_VIDEO_MESSAGE; }
     }
-    if (/Traceback|ValidationError|\b(?:400|422):/.test(detail)) return INVALID_VIDEO_MESSAGE;
+    if (/Traceback|ValidationError|\bvalidation errors?\b|\b(?:400|422):/i.test(detail)) return INVALID_VIDEO_MESSAGE;
+    return detail;
+}
+
+async function imageResponseError(response) {
+    if ([400, 422].includes(response.status)) {
+        let body;
+        try { body = await response.json(); } catch (_) { /* No raw response body. */ }
+        return new Error(imageValidationMessage(body?.detail));
+    }
+    const messages = {
+        400: INVALID_IMAGE_MESSAGE, 422: INVALID_IMAGE_MESSAGE,
+        409: gt('image_request_busy', 'An image job is already running. Please wait for it to finish.'),
+        503: gt('image_service_not_ready', 'The image service is not ready. Please try again.')
+    };
+    return new Error(messages[response.status] || gt('image_request_failed', 'The image request could not be processed. Please try again.'));
+}
+
+function imageValidationMessage(detail) {
+    return [INVALID_IMAGE_MESSAGE, 'Ungültige Image-Job-ID', 'Ungültige Image-Modell-ID'].includes(detail)
+        ? detail : INVALID_IMAGE_MESSAGE;
+}
+
+function publicImageJobError(detail) {
+    if (typeof detail !== 'string' || /^\s*[\[{]/.test(detail) ||
+        /Traceback|ValidationError|\bvalidation errors?\b|\b(?:400|422):/i.test(detail)) return INVALID_IMAGE_MESSAGE;
     return detail;
 }
 
@@ -4181,7 +4207,8 @@ const imageFiles =
                 body: JSON.stringify(actionPayload)
             });
             if (!actionResponse.ok) throw mediaQualityKind === 'video'
-                ? await videoResponseError(actionResponse) : new Error(await actionResponse.text());
+                ? await videoResponseError(actionResponse) : mediaQualityKind === 'image'
+                    ? await imageResponseError(actionResponse) : new Error(await actionResponse.text());
             const toolResult = await actionResponse.json();
             if (mediaQualityKind === 'video' && toolResult.data?.error_code === 'video_validation_error') {
                 toolResult.error = videoValidationMessage(toolResult.error);
@@ -4794,6 +4821,9 @@ function toolSummary(result) {
 
 function toolFailureSummary(result) {
     if (result.tool?.startsWith("finance_")) return window.MLXFinance.failure(result);
+    if (result.data?.error_code === 'image_validation_error') {
+        return gt('tool_error', '**Tool error:** {message}', {message: imageValidationMessage(result.error)});
+    }
     if (['video_generate', 'video_animate'].includes(result?.tool) && result.error) {
         return gt('tool_error', '**Tool error:** {message}', {message: publicVideoJobError(result.error)});
     }
@@ -4804,7 +4834,7 @@ function toolFailureSummary(result) {
         return gt(
             'tool_error',
             '**Tool error:** {message}',
-            { message: result.error }
+            { message: isImageJobTool(result.tool) ? publicImageJobError(result.error) : result.error }
         );
     }
 
@@ -4881,6 +4911,9 @@ function updateImageJobMessage(
     nowSeconds = Date.now() / 1000
 ) {
     const job = toolResult?.data?.job;
+
+    if (toolResult?.error) toolResult.error = publicImageJobError(toolResult.error);
+    if (job?.error) job.error = publicImageJobError(job.error);
 
     if (!job?.id) {
         message.tool_result = toolResult;
@@ -5615,6 +5648,8 @@ resetSessionRuntime: resetSessionRuntime,
             videoValidationMessage,
             videoResponseError,
             publicVideoJobError,
+            publicImageJobError,
+            imageResponseError,
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
             readSseEvents: readSseEvents,

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import urllib.request
 
 import pytest
@@ -37,7 +38,7 @@ def web(tmp_path_factory):
     thread.start()
     log_path = tmp_path_factory.mktemp('e2e-web') / 'server.log'
     env = dict(os.environ, AGENT_URL=agent_url, MLX_ALLOWED_HOSTS='127.0.0.1,localhost',
-               PYTHONDONTWRITEBYTECODE='1')
+               PYTHONDONTWRITEBYTECODE='1', NOBBY_EML_DATA_DIR=str(tmp_path_factory.mktemp('e2e-eml')))
     with log_path.open('w') as log:
         process = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'backend.entrypoint:app',
                                     '--fd', str(web_socket.fileno()), '--log-level', 'warning'],
@@ -120,10 +121,10 @@ def ui(request, browser, web):
     url, agent = web
     agent.reset()
     width, height = request.param
-    artifact = ROOT / 'test-results' / re.sub(r'[^A-Za-z0-9_.-]+', '_', request.node.name)
-    artifact.mkdir(parents=True, exist_ok=True)
-    for file in artifact.iterdir():
-        file.unlink()
+    artifact_root = ROOT / 'test-results'
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    artifact = Path(tempfile.mkdtemp(
+        prefix=re.sub(r'[^A-Za-z0-9_.-]+', '_', request.node.name) + '-', dir=artifact_root))
     print(f'E2E PHASE {request.node.nodeid}: context.create', flush=True)
     video_enabled = os.environ.get('MLX_E2E_VIDEO', '0') != '0'
     tracing_enabled = os.environ.get('MLX_E2E_TRACING', '1') != '0'

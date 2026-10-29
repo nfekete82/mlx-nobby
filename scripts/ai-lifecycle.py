@@ -35,6 +35,7 @@ def main():
     if operation not in {"quiesce", "verify-stopped", "resume"}:
         raise ValueError("Unsupported lifecycle operation")
     if operation == "quiesce":
+        (gate.ROOT / "shutdown-verified.json").unlink(missing_ok=True)
         gate.set_blocked(True, "Terminal shutdown")
     request = urllib.request.Request(
         os.environ.get("MLX_NOBBY_AGENT_URL", "http://127.0.0.1:8010").rstrip("/")

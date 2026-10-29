@@ -90,6 +90,9 @@ def _service_request(kind, method, path, payload=None, timeout=20):
         if kind == "video" and exc.code in {400, 422}:
             from backend.video_errors import video_validation_message
             detail = video_validation_message(detail)
+        elif kind == "image" and exc.code in {400, 422}:
+            from backend.media_errors import image_validation_message
+            detail = image_validation_message(detail)
         raise ServiceError(exc.code, detail) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ServiceError(

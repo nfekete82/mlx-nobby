@@ -15,6 +15,27 @@ Configured does not imply installed weights, an enabled model or a GPU test.
 Catalog reviewed: **2026-10-29**. Historical feedback below is distinguished
 from measurements made with matched settings.
 
+### 2026-10-29: full stability audit, CPU regressions only
+
+The audit retains Juggernaut XL Ragnarok (`juggernautXL_ragnarok.safetensors`,
+version 1759168, SDXL / Diffusers-MPS), Osaurus Qwen Image 2.1
+(`OsaurusAI/Qwen-Image-2.1-mflux-4bit`, Qwen-Image 2.1 / MFLUX), and Qwen
+Image Edit (`AbstractFramework/qwen-image-edit-2511-4bit`, Qwen-Image Edit / MLX-Gen).
+Installed registry/default settings and checkpoint files are unchanged.
+Actual test date: 2026-10-29. GPU/load result: not exercised. Render time,
+resolution, steps, CFG, scheduler, seed and observed image quality: N/A for
+these mocked CPU regressions. No model gains a new `tested` designation.
+Initial full-suite collection failed because a test imported the Agent under
+an unregistered alias. After correcting that fixture, 3795 tests and 462
+subtests passed; six regressions exposed fixture-directory pollution and stale
+long-video expectations. These are test/runtime-contract issues, not failed
+checkpoint renders. The final full regression passed 3859 Python tests plus
+462 subtests, 373 Node tests and 118 isolated browser cases. The image validation
+privacy fix preserves the existing public job-ID error contract; no checkpoint
+regression was observed or measured. Retain all current models; real render/cancellation and
+memory release require separate controlled acceptance. Final audit evidence:
+[stability report](MLX_NOBBY_FULL_STABILITY_AUDIT_2026-10-29.md).
+
 | Model | ID | Provider | Status | Last test / date | Result / short conclusion | Notes / evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Juggernaut XL Ragnarok | `juggernaut-xl` | `sdxl` / Diffusers MPS | `tested` | 2026-10-27, 11:26 CET | Installed, enabled, default retained. Actual Metal load/render passed; valid RGB PNG, 832×1216. Worker 16.378 s; service job 29.901 s. | 35 steps, CFG 5, DPM++ 2M SDE Karras, seed 27102026; retain as default. [Matched smoke comparison and quality observations](CYBERREALISTIC_PONY_V18.md). Existing persisted settings remain 30 steps / CFG 5; this request explicitly used 35. Historical [46 XL jobs](PERFORMANCE_MFLUX_QWEN21_EDIT.md) are a separate, unmatched family-level sample. |
