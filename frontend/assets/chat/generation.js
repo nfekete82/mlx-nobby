@@ -296,6 +296,9 @@ function videoOptionsForRequest(
     if (mediaKind !== 'video') {
         return existing;
     }
+    if (!['standard', 'uncensored'].includes(profile)) {
+        throw new Error('Bitte das Videoprofil erneut bestätigen.');
+    }
 
     return {
         ...(existing || {}),
@@ -307,6 +310,53 @@ function videoOptionsForRequest(
         aspect_ratio:
             videoAspectRatioForFormat(format)
     };
+}
+
+const INVALID_VIDEO_MESSAGE = 'Die Videoanfrage ist ungültig. Bitte Dauer, Qualität, Profil und Startbild prüfen.';
+const UNCENSORED_CONTINUATION_MESSAGE = 'Das Profil „Uncensored“ unterstützt keine automatische Fortsetzung. Wähle Standard für längere Videos oder verkürze die Dauer (maximale Qualität: 5 s, Standard: 10 s, Schnell: 20 s).';
+
+function videoValidationMessage(detail) {
+    const messages = {
+        uncensored_video_continuation_unsupported: UNCENSORED_CONTINUATION_MESSAGE,
+        video_profile_unavailable: 'Das Profil „Uncensored“ ist nicht eingerichtet. Bitte Standard wählen.'
+    };
+    if (Array.isArray(detail)) {
+        return detail.map(videoValidationMessage).find(value => value !== INVALID_VIDEO_MESSAGE) || INVALID_VIDEO_MESSAGE;
+    }
+    if (detail && typeof detail === 'object') {
+        const code = detail.code || detail.type;
+        return Object.hasOwn(messages, code) ? messages[code] : INVALID_VIDEO_MESSAGE;
+    }
+    return [INVALID_VIDEO_MESSAGE, ...Object.values(messages)].includes(detail) ? detail : INVALID_VIDEO_MESSAGE;
+}
+
+async function videoResponseError(response) {
+    if ([400, 422].includes(response.status)) {
+        let body;
+        try { body = await response.json(); } catch (_) { /* Untrusted response body. */ }
+        return new Error(videoValidationMessage(body?.detail));
+    }
+    return new Error('Die Videoanfrage konnte nicht verarbeitet werden. Bitte erneut versuchen.');
+}
+
+function publicVideoJobError(detail) {
+    if (typeof detail !== 'string') return videoValidationMessage(detail);
+    if (/^\s*[\[{]/.test(detail)) {
+        try {
+            const parsed = JSON.parse(detail);
+            return videoValidationMessage(parsed.detail ?? parsed);
+        } catch (_) { return INVALID_VIDEO_MESSAGE; }
+    }
+    if (/Traceback|ValidationError|\b(?:400|422):/.test(detail)) return INVALID_VIDEO_MESSAGE;
+    return detail;
+}
+
+function videoProfileConstraint(quality, duration, profile) {
+    if (!['standard', 'uncensored'].includes(profile) ||
+        !videoDurationsForQuality(quality).includes(Number(duration))) return INVALID_VIDEO_MESSAGE;
+    const directMax = {preview: 2, fast: 20, standard: 10, quality: 5};
+    return profile === 'uncensored' && Number(duration) > directMax[quality]
+        ? UNCENSORED_CONTINUATION_MESSAGE : '';
 }
 
 async function updateVideoProfileAvailability(select) {
@@ -3301,7 +3351,7 @@ const imageFiles =
                 }
             }
             selectedMediaQuality = normalizedMediaQuality;
-            let selectedVideoProfile = 'standard';
+            let confirmedVideoSelection = null;
             let multiVideoSelection = null;
             let selectedVideoDuration = VIDEO_DURATIONS.has(
                 Number(options?.video?.duration)
@@ -3369,14 +3419,16 @@ const imageFiles =
                     document.getElementById('videoDuration');
                 const profileField = document.getElementById('videoProfileField');
                 const profileSelect = document.getElementById('videoProfile');
+                const profileHint = document.getElementById('videoProfileHint');
                 window.MLXMultiImageVideo?.configure(mediaQualityKind, imageFiles, prompt);
                 if (profileField && profileSelect) {
                     profileField.hidden = mediaQualityKind !== 'video';
                     profileSelect.value = 'standard';
                     if (mediaQualityKind === 'video') {
-                        updateVideoProfileAvailability(profileSelect);
+                        await updateVideoProfileAvailability(profileSelect);
                     }
                 }
+                if (profileHint) profileHint.hidden = true;
                 const samplingField =
                     document.getElementById('imageSamplingField');
                 const samplingSteps =
@@ -3601,6 +3653,24 @@ const imageFiles =
                             String(selectedVideoDuration);
                     };
 
+                    const renderVideoConstraint = () => {
+                        if (mediaQualityKind !== 'video') return '';
+                        const profile = profileSelect?.value ?? 'standard';
+                        const unavailable = profile === 'uncensored' &&
+                            profileSelect?.querySelector('option[value="uncensored"]')?.disabled !== false;
+                        const error = unavailable ? videoValidationMessage({code: 'video_profile_unavailable'}) :
+                            videoProfileConstraint(choice, durationSelect?.value || selectedVideoDuration, profile);
+                        for (const option of durationSelect?.children || []) {
+                            option.disabled = Boolean(videoProfileConstraint(choice, option.value, profile));
+                        }
+                        if (profileHint) {
+                            profileHint.hidden = !error && profile !== 'uncensored';
+                            profileHint.textContent = error || (profile === 'uncensored' ? UNCENSORED_CONTINUATION_MESSAGE : '');
+                        }
+                        confirm.disabled = Boolean(error);
+                        return error;
+                    };
+
                     const renderChoice = () => {
                         // The native SDXL worker cannot accept Ultra's 1536 px:
                         // its hard bound is 1216. Avoid presenting a broken mode.
@@ -3634,6 +3704,7 @@ const imageFiles =
                         renderFormatOptions();
                         renderDurationOptions();
                         renderSampling();
+                        renderVideoConstraint();
 
                         if (negativePromptField) {
                             negativePromptField.hidden =
@@ -3718,6 +3789,8 @@ const imageFiles =
                             );
                             samplingSteps?.removeEventListener?.('input', onSamplingInput);
                             samplingCfg?.removeEventListener?.('input', onSamplingInput);
+                            profileSelect?.removeEventListener?.('change', renderVideoConstraint);
+                            durationSelect?.removeEventListener?.('change', renderVideoConstraint);
 
                             cancel.removeEventListener(
                                 'click',
@@ -3758,6 +3831,10 @@ const imageFiles =
 
                         const onQuality = event => {
                             captureImageSelections();
+                            if (mediaQualityKind === 'video' && durationSelect) {
+                                selectedVideoDuration = Number(durationSelect.value);
+                                selectedMediaFormat = formatSelect?.value || selectedMediaFormat;
+                            }
                             choice = normalizeMediaPreviewQuality(
                                 event.currentTarget
                                     .dataset.mediaQuality ||
@@ -3820,6 +3897,7 @@ const imageFiles =
                         };
 
                         const onConfirm = () => {
+                            if (renderVideoConstraint()) return;
                             try {
                                 multiVideoSelection = window.MLXMultiImageVideo?.selection(choice) || null;
                             } catch (error) {
@@ -3861,8 +3939,13 @@ const imageFiles =
                                         choice
                                     );
                             }
-                            if (mediaQualityKind === 'video' && profileSelect) {
-                                selectedVideoProfile = profileSelect.value;
+                            if (mediaQualityKind === 'video') {
+                                confirmedVideoSelection = Object.freeze({
+                                    profile: profileSelect?.value ?? 'standard',
+                                    duration: selectedVideoDuration,
+                                    quality: choice,
+                                    format: selectedMediaFormat
+                                });
                             }
 
                             if (
@@ -3942,6 +4025,8 @@ const imageFiles =
                         }
                         samplingSteps?.addEventListener?.('input', onSamplingInput);
                         samplingCfg?.addEventListener?.('input', onSamplingInput);
+                        profileSelect?.addEventListener?.('change', renderVideoConstraint);
+                        durationSelect?.addEventListener?.('change', renderVideoConstraint);
 
                         cancel.addEventListener(
                             'click',
@@ -4042,6 +4127,9 @@ const imageFiles =
                 });
             }
 
+            if (mediaQualityKind === 'video' && !confirmedVideoSelection) {
+                throw new Error('Bitte die Videoeinstellungen erneut bestätigen.');
+            }
             const actionPayload = {
                 prompt: prompt,
                 ...(multiVideoSelection || {}),
@@ -4067,10 +4155,10 @@ const imageFiles =
                 video_options: videoOptionsForRequest(
                     options,
                     mediaQualityKind,
-                    selectedVideoDuration,
-                    selectedMediaQuality,
-                    selectedMediaFormat,
-                    selectedVideoProfile
+                    confirmedVideoSelection?.duration,
+                    confirmedVideoSelection?.quality,
+                    confirmedVideoSelection?.format,
+                    confirmedVideoSelection?.profile
                 ),
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,
@@ -4086,8 +4174,12 @@ const imageFiles =
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(actionPayload)
             });
-            if (!actionResponse.ok) throw new Error(await actionResponse.text());
+            if (!actionResponse.ok) throw mediaQualityKind === 'video'
+                ? await videoResponseError(actionResponse) : new Error(await actionResponse.text());
             const toolResult = await actionResponse.json();
+            if (mediaQualityKind === 'video' && toolResult.data?.error_code === 'video_validation_error') {
+                toolResult.error = videoValidationMessage(toolResult.error);
+            }
 
             // The request may have finished after "Chat leeren".
             // Never let an old turn repopulate the fresh conversation.
@@ -4696,6 +4788,9 @@ function toolSummary(result) {
 
 function toolFailureSummary(result) {
     if (result.tool?.startsWith("finance_")) return window.MLXFinance.failure(result);
+    if (['video_generate', 'video_animate'].includes(result?.tool) && result.error) {
+        return gt('tool_error', '**Tool error:** {message}', {message: publicVideoJobError(result.error)});
+    }
     if (
         ['image_edit', 'image_upscale', 'video_generate', 'video_animate', 'shorts_generate'].includes(result?.tool) &&
         result.error
@@ -5244,6 +5339,8 @@ async function linkVideoSource(message) {
 function updateVideoJobMessage(session, message, toolResult, nowSeconds = Date.now() / 1000) {
     const job = toolResult?.data?.job;
     if (!job?.id) return true;
+    if (job.error) job.error = publicVideoJobError(job.error);
+    if (toolResult.error) toolResult.error = publicVideoJobError(toolResult.error);
     const previous = message.video_job;
     const next = { ...job };
     if (
@@ -5293,7 +5390,7 @@ function watchVideoJob(session, message) {
         }
         try {
             const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(jobId));
-            if (!response.ok) throw new Error(await response.text());
+            if (!response.ok) throw await videoResponseError(response);
             const result = await response.json();
             const terminal = updateVideoJobMessage(session, message, result);
             MLXChatSessions.saveSessions();
@@ -5481,7 +5578,7 @@ function watchBatchJob(session, jobId) {
             const session = MLXChatSessions.currentSession();
             if (!session || !session.messages.includes(message)) return;
             const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(message.video_job.id) + '/retry', {method: 'POST'});
-            if (!response.ok) throw new Error(await response.text());
+            if (!response.ok) throw await videoResponseError(response);
             const result = await response.json();
             if (MLXChatSessions.currentSession() !== session || !session.messages.includes(message)) return;
             updateVideoJobMessage(session, message, result);
@@ -5508,6 +5605,10 @@ resetSessionRuntime: resetSessionRuntime,
         resumeVideoJobsForSession: resumeVideoJobsForSession,
         resumeShortsJobsForSession: resumeShortsJobsForSession,
         __test: {
+            videoProfileConstraint,
+            videoValidationMessage,
+            videoResponseError,
+            publicVideoJobError,
             buildApiMessages: buildApiMessages,
             buildContextSources: buildContextSources,
             readSseEvents: readSseEvents,

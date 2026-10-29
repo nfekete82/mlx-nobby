@@ -28,6 +28,7 @@ class ModalTestElement {
             : {};
         this.hidden = true;
         this.value = '';
+        if (id === 'videoProfile') this.uncensoredOption = {value: 'uncensored'};
         this.listeners = new Map();
         this.classList = { toggle() {} };
     }
@@ -67,6 +68,7 @@ class ModalTestElement {
     }
     focus() {}
     querySelector(selector) {
+        if (selector === 'option[value="uncensored"]') return this.uncensoredOption || null;
         if (selector === '[data-media-quality="standard"]') {
             return qualityButtons[1];
         }
@@ -2131,6 +2133,10 @@ for (const [prompt, target] of [
 // Exercise the actual modal and outgoing payload with a stale preview choice.
 const previewButton = qualityButtons.find(button => button.dataset.mediaQuality === 'preview');
 const originalAnimationFrame = context.requestAnimationFrame;
+const videoDialogFetch = context.fetch;
+context.fetch = async (url, options) => url === '/api/mlx/video/models'
+    ? {ok: true, json: async () => ({profiles: {uncensored_available: true}})}
+    : videoDialogFetch(url, options);
 let sessionQuality = 'preview';
 context.MLXChatRuntime.getSessionMediaQuality = () => sessionQuality;
 context.MLXChatRuntime.handleMediaQualityChange = () => {
@@ -2172,6 +2178,135 @@ for (const sourceKind of ['t2v', 'upload', 'artifact']) {
     }
 }
 context.requestAnimationFrame = originalAnimationFrame;
+
+// Full quality-dialog matrix: incompatible selections stay visible and cannot
+// submit via clicks or Enter. A deliberate switch to Standard retains duration.
+const dialogKeys = new Map();
+const originalDocumentAddListener = context.document.addEventListener;
+const originalDocumentRemoveListener = context.document.removeEventListener;
+context.document.addEventListener = (type, handler) => dialogKeys.set(type, handler);
+context.document.removeEventListener = (type, handler) => {
+    if (dialogKeys.get(type) === handler) dialogKeys.delete(type);
+};
+modalElements.set('videoProfileHint', new ModalTestElement({id: 'videoProfileHint'}));
+for (const sourceKind of ['t2v', 'upload']) {
+    for (const profile of ['standard', 'uncensored']) {
+        for (const duration of [5, 10, 20]) {
+            selectedAttachments = sourceKind === 'upload' ? [imageAttachment] : [];
+            session.messages = [];
+            session.workspace = {};
+            sessionQuality = 'quality';
+            const prompt = sourceKind === 'upload' ? 'Animiere dieses Bild' : 'Erstelle ein Video von einer Meeresküste';
+            routeTargets.set(prompt, 'video');
+            let confirmedProfile = profile;
+            context.requestAnimationFrame = callback => {
+                const select = modalElements.get('videoProfile');
+                assert.equal(select.value, 'standard');
+                assert.equal(select.uncensoredOption.disabled, false);
+                select.value = profile;
+                const durations = modalElements.get('videoDuration');
+                durations.value = String(duration);
+                durations.listeners.get('change')?.();
+                select.listeners.get('change')?.();
+                modalElements.get('mediaFormat').value = 'portrait';
+                const confirm = modalElements.get('mediaQualityModalConfirm');
+                callback();
+                if (profile === 'uncensored' && duration > 5) {
+                    assert.equal(confirm.disabled, true);
+                    assert.match(modalElements.get('videoProfileHint').textContent, /keine automatische Fortsetzung/);
+                    const count = routedActionPayloads.length;
+                    confirm.click(); // Synthetic clicks cannot bypass disabled.
+                    dialogKeys.get('keydown')({key: 'Enter', preventDefault() {}});
+                    assert.equal(modalElements.get('mediaQualityModal').hidden, false);
+                    assert.equal(routedActionPayloads.length, count);
+                    assert.equal(durations.value, String(duration));
+                    select.value = 'standard';
+                    select.listeners.get('change')();
+                    confirmedProfile = 'standard';
+                    assert.equal(confirm.disabled, false);
+                } else {
+                    assert.equal(confirm.disabled, false);
+                    if (profile === 'uncensored') {
+                        assert.equal(modalElements.get('videoProfileHint').hidden, false);
+                        assert.match(modalElements.get('videoProfileHint').textContent, /maximale Qualität: 5 s/);
+                    }
+                }
+                confirm.click();
+                // Shared controls and old options may change after confirmation.
+                select.value = confirmedProfile === 'standard' ? 'uncensored' : 'standard';
+            };
+            input.value = prompt;
+            await window.MLXChatGeneration.sendMessage({video: {
+                profile: profile === 'standard' ? 'uncensored' : 'standard', duration,
+            }});
+            const payload = routedActionPayloads.at(-1);
+            assert.equal(payload.quality, 'quality');
+            assert.equal(payload.video_options.profile, confirmedProfile);
+            assert.equal(payload.video_options.duration, duration);
+            assert.equal(payload.video_options.aspect_ratio, '9:16');
+        }
+    }
+}
+assert.equal(dialogKeys.has('keydown'), false);
+assert.equal(modalElements.get('videoProfile').listeners.has('change'), false);
+assert.equal(modalElements.get('videoDuration').listeners.has('change'), false);
+
+// Cancelling an incompatible selection never creates a job.
+selectedAttachments = [];
+sessionQuality = 'quality';
+const beforeCancelledVideo = routedActionPayloads.length;
+context.requestAnimationFrame = callback => {
+    const select = modalElements.get('videoProfile');
+    select.value = 'uncensored';
+    select.listeners.get('change')();
+    assert.equal(modalElements.get('mediaQualityModalConfirm').disabled, true);
+    callback();
+    modalElements.get('mediaQualityModalCancel').click();
+};
+input.value = 'Erstelle ein Video von einer Meeresküste';
+await window.MLXChatGeneration.sendMessage({video: {duration: 10}});
+assert.equal(routedActionPayloads.length, beforeCancelledVideo);
+
+// A delayed capability response must settle before showing the profile dialog.
+let finishCapabilities;
+const configuredVideoFetch = context.fetch;
+context.fetch = (url, options) => url === '/api/mlx/video/models'
+    ? new Promise(resolve => {finishCapabilities = resolve;}) : configuredVideoFetch(url, options);
+context.requestAnimationFrame = callback => {
+    callback();
+    modalElements.get('mediaQualityModalConfirm').click();
+};
+input.value = 'Erstelle ein Video von einer Meeresküste';
+const pendingVideoDialog = window.MLXChatGeneration.sendMessage({video: {duration: 5}});
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(typeof finishCapabilities, 'function');
+assert.equal(modalElements.get('mediaQualityModal').hidden, true);
+finishCapabilities({ok: true, json: async () => ({profiles: {uncensored_available: true}})});
+await pendingVideoDialog;
+assert.equal(routedActionPayloads.at(-1).video_options.profile, 'standard');
+
+// HTTP validation and HTTP-200 tool failures never expose validator inputs.
+for (const envelope of ['http', 'tool']) {
+    context.fetch = async (url, options) => {
+        if (url !== '/api/mlx/chat/actions') return configuredVideoFetch(url, options);
+        const detail = [{type: 'value_error', msg: 'Traceback /Users/private/source.png',
+            input: {first_frame: '/private/uploads/source.png', metadata: 'secret metadata'}}];
+        return envelope === 'http'
+            ? {ok: false, status: 422, json: async () => ({detail}), text: async () => {throw Error('Raw body must not be read');}}
+            : {ok: true, json: async () => ({tool: 'video_generate', status: 'failed',
+                data: {error_code: 'video_validation_error'}, error: detail})};
+    };
+    input.value = 'Erstelle ein Video von einer Meeresküste';
+    await window.MLXChatGeneration.sendMessage({video: {duration: 5}});
+    const content = session.messages.at(-1).content;
+    assert.match(content, /Die Videoanfrage ist ungültig/);
+    assert.doesNotMatch(content, /Traceback|\/Users|\/private|metadata|first_frame/);
+    assert.ok(content.length < 200);
+}
+context.requestAnimationFrame = originalAnimationFrame;
+context.document.addEventListener = originalDocumentAddListener;
+context.document.removeEventListener = originalDocumentRemoveListener;
+context.fetch = videoDialogFetch;
 
 // Opt-in 30/35/40 steps must preserve 1216px Quality and never persist across jobs.
 // The actual modal click exercises model selection, preset, validation and payload.

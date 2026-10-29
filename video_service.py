@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
+from backend.video_errors import UNCENSORED_CONTINUATION, video_validation_message
 
 import video_registry as registry
 from video_profiles import preflight_profile, profile_capabilities
@@ -166,7 +171,9 @@ class JobCreate(BaseModel):
         elif self.payload.images or self.payload.multi_image_mode:
             raise ValueError("Multi-Image-Parameter benötigen multi_i2v")
         long_video = video_long.needed({"duration": self.payload.duration, "resolution": self.payload.resolution or profile["resolution"], "fps": self.payload.fps})
-        if long_video and (multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx"):
+        if long_video and self.payload.profile == "uncensored":
+            raise PydanticCustomError("uncensored_video_continuation_unsupported", UNCENSORED_CONTINUATION)
+        if long_video and (multi or registry.get_model(self.payload.model).get("provider") != "ltx-mlx"):
             raise ValueError("Automatische Fortsetzung benötigt natives Standard-LTX-MLX und ein einzelnes Ausgangsvideo")
         if self.payload.resume_from and self.payload.multi_image_mode != "scenes" and not long_video:
             raise ValueError("Nur Szenenjobs und automatische Langvideos können fortgesetzt werden")
@@ -343,6 +350,18 @@ async def lifespan(_app):
 app = FastAPI(title="MLX Nobby Video", lifespan=lifespan)
 app.add_middleware(AIAdmissionGuard)
 app.add_middleware(LocalRequestGuard)
+
+
+@app.exception_handler(RequestValidationError)
+async def public_validation_error(_request, exc):
+    return JSONResponse(status_code=422, content={"detail": video_validation_message(exc.errors())})
+
+
+@app.exception_handler(HTTPException)
+async def public_http_error(request, exc):
+    if exc.status_code in {400, 422}:
+        return JSONResponse(status_code=exc.status_code, content={"detail": video_validation_message(exc.detail)})
+    return await http_exception_handler(request, exc)
 
 
 def _chat_loaded():
@@ -684,7 +703,10 @@ def models():
         described.append(model | {"available": ready, "availability_note": reason, "local_path": str(registry.model_path(model))})
     default = next((m for m in described if m["id"] == data["default_model"]), {})
     return data | {"models": described, "offline": True, "multi_image": _multi_capabilities(),
-                   "profiles": profile_capabilities(default)}
+                   "profiles": profile_capabilities(default) | {
+                       "uncensored_continuation_available": False,
+                       "uncensored_direct_max_seconds": {key: max(value) for key, value in video_long.DIRECT.items()},
+                   }}
 
 
 @app.post("/preflight")

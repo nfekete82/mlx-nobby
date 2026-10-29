@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 
 from fastapi import HTTPException
+from backend.video_errors import video_validation_message
 
 
 VIDEO_URL = os.environ.get("VIDEO_SERVICE_URL", "http://127.0.0.1:8060").rstrip("/")
@@ -33,6 +34,8 @@ def _raw_request(method, path, payload=None, timeout=15):
             detail = json.loads(exc.read()).get("detail", "Video-Service-Fehler")
         except ValueError:
             detail = "Video-Service-Fehler"
+        if exc.code in {400, 422}:
+            detail = video_validation_message(detail)
         raise HTTPException(exc.code, detail) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
         raise HTTPException(503, "Video-Service nicht erreichbar") from exc

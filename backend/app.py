@@ -153,10 +153,17 @@ def agent_json_request(method, path, payload=None, timeout=10):
         except Exception:
             detail = body
 
-        raise HTTPException(
-            status_code=exc.code,
-            detail=detail,
+        is_video = path.startswith("/api/video") or (
+            path == "/api/chat/actions" and isinstance(payload, dict) and (
+                payload.get("resolved_target") == "video"
+                or payload.get("action") in {"video_generate", "video_animate"}
+                or payload.get("video_options") is not None
+            )
         )
+        if is_video and exc.code in {400, 422}:
+            from backend.video_errors import video_validation_message
+            detail = video_validation_message(detail)
+        raise HTTPException(status_code=exc.code, detail=detail)
 
     except (urllib.error.URLError, TimeoutError) as exc:
         raise HTTPException(503, "Agent nicht erreichbar oder Zeitlimit überschritten") from exc

@@ -10236,9 +10236,10 @@ def run_chat_action(request: ChatActionRequest):
                 raise
             detail = exc.detail
             data = {"routing": routing}
-            if isinstance(detail, dict) and detail.get("code") == "video_profile_unavailable":
-                data["profile_availability"] = detail
-                detail = detail["message"]
+            if exc.status_code in {400, 422}:
+                from backend.video_errors import video_validation_message
+                detail = video_validation_message(detail)
+                data["error_code"] = "video_validation_error"
             return chat_tool_result(action, "failed", data, error=str(detail))
         except Exception as exc:
             return chat_tool_result(action, "failed", {"routing": routing}, error=str(exc))

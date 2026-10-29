@@ -68,7 +68,7 @@ const uncensoredOptions = api.__test.videoOptionsForRequest(
 assert.equal(uncensoredOptions.profile, 'uncensored');
 assert.deepEqual(Object.keys(uncensoredOptions).sort(), ['aspect_ratio', 'duration', 'profile']);
 assert.match(chatHtml, /id="videoProfile"[\s\S]*?<option value="standard" selected>Standard<\/option>[\s\S]*?<option value="uncensored">Uncensored<\/option>/);
-assert.match(source, /selectedVideoProfile = profileSelect.value/);
+assert.match(source, /confirmedVideoSelection = Object.freeze/);
 assert.equal(
     api.__test.videoOptionsForRequest(
         { video: { seed: 9 } },
@@ -258,7 +258,7 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261029-long-video-sdxl/);
+assert.match(chatHtml, /chat\/generation\.js\?v=20261029-video-profile-confirmation/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=[a-z0-9-]+/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
@@ -280,6 +280,33 @@ for (const available of [false, true]) {
 context.fetch = async () => { throw Error('offline'); };
 await api.__test.updateVideoProfileAvailability(profileSelect);
 assert.equal(profileOption.disabled, true);
+
+for (const [quality, directMax] of [['quality', 5], ['standard', 10], ['fast', 20]]) {
+    for (const duration of [5, 10, 20]) {
+        assert.equal(api.__test.videoProfileConstraint(quality, duration, 'standard'), '');
+        assert.equal(Boolean(api.__test.videoProfileConstraint(quality, duration, 'uncensored')), duration > directMax);
+    }
+}
+assert.throws(() => api.__test.videoOptionsForRequest({}, 'video', 5, 'quality', 'portrait', 'stale-profile'));
+const invalidVideo = 'Die Videoanfrage ist ungültig. Bitte Dauer, Qualität, Profil und Startbild prüfen.';
+const privateDetail = [{type: 'value_error', msg: 'Traceback /Users/private/source.png',
+    input: {first_frame: '/private/uploads/source.png', metadata: 'secret'}}];
+for (const detail of [privateDetail, '/Users/private/source.png', {message: 'Traceback secret'}]) {
+    assert.equal(api.__test.videoValidationMessage(detail), invalidVideo);
+    const error = await api.__test.videoResponseError({status: 422, json: async () => ({detail})});
+    assert.equal(error.message, invalidVideo);
+}
+assert.match(api.__test.videoValidationMessage([{type: 'uncensored_video_continuation_unsupported', input: 'secret'}]), /keine automatische Fortsetzung/);
+assert.equal((await api.__test.videoResponseError({status: 400, json: async () => {throw Error('raw body');}})).message, invalidVideo);
+for (const error of [privateDetail, JSON.stringify({detail: privateDetail}), "[{'input': '/private/source.png'}]", 'Traceback /Users/private']) {
+    assert.equal(api.__test.publicVideoJobError(error), invalidVideo);
+    const message = {video_job: {id: 'd'.repeat(24)}};
+    api.updateVideoJobMessage({}, message, {tool: 'video_generate', status: 'failed', error,
+        data: {job: {id: 'd'.repeat(24), status: 'failed', error}}});
+    assert.equal(message.video_job.error, invalidVideo);
+    assert.doesNotMatch(message.content, /\/private|\/Users|Traceback|input/);
+}
+assert.equal(api.__test.publicVideoJobError('Video wurde abgebrochen'), 'Video wurde abgebrochen');
 
 // Long videos preserve confirmed partial progress across regular chat reload/polling.
 assert.equal(api.__test.promptVideoPreferences('Kameraflug, 20 Sekunden, maximale Qualität').duration, 20);

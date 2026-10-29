@@ -1610,7 +1610,7 @@
 <script src="/assets/chat/finance.js?v=20261008-finance-speed"></script>
 <script src="/assets/chat/response-length.js?v=20261020-auto-conversation"></script>
 <script src="/assets/chat/interactive-questions.js?v=20261028-forms-v3"></script>
-<script src="/assets/chat/generation.js?v=20261029-long-video-sdxl"></script>
+<script src="/assets/chat/generation.js?v=20261029-video-profile-confirmation"></script>
 <link rel="stylesheet" href="/assets/chat/multi-image-video.css?v=20261022">
 <script src="/assets/chat/multi-image-video.js?v=20261022" defer></script>
 <script src="/assets/history-cleanup.js?v=20260909-cleanup"></script>
@@ -2100,11 +2100,13 @@
             hidden
         >
             <span data-i18n="rendering.video_profile">Profil</span>
-            <select id="videoProfile" aria-label="Videoprofil">
+            <select id="videoProfile" aria-label="Videoprofil" aria-describedby="videoProfileHint">
                 <option value="standard" selected>Standard</option>
                 <option value="uncensored">Uncensored</option>
             </select>
         </label>
+
+        <p id="videoProfileHint" class="media-sampling-hint" role="status" aria-live="polite" hidden></p>
 
         <label
             id="videoDurationField"
@@ -2112,7 +2114,7 @@
             hidden
         >
             <span>Videodauer</span>
-            <select id="videoDuration" aria-label="Videodauer">
+            <select id="videoDuration" aria-label="Videodauer" aria-describedby="videoProfileHint">
                 <option value="5" selected>5 s</option>
                 <option value="6">6 s</option>
                 <option value="8">8 s</option>
