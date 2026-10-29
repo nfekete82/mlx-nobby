@@ -1,4 +1,5 @@
 """Fixed provider adapters with isolated native model processes."""
+import logging
 import managed_process
 
 import importlib.util
@@ -906,8 +907,12 @@ class SDXLWorkerManager:
             try:
                 terminate_process_tree(process)
             except Exception as exc:
+                import ai_lifecycle_gate
+                ai_lifecycle_gate.set_blocked(True, f"SDXL cleanup failed: {type(exc).__name__}")
+                logging.getLogger(__name__).exception("SDXL cleanup failed pid=%s pgid=%s owner=image:sdxl", process.pid, process.pid)
                 raise RuntimeError(
-                    "SDXL worker could not be terminated"
+                    f"SDXL worker could not be terminated: pid={process.pid} pgid={process.pid} "
+                    f"owner=image:sdxl cause={type(exc).__name__}: {exc}"
                 ) from exc
 
             self._process = None
@@ -934,6 +939,7 @@ class SDXLWorkerManager:
         if self._process is not None and self._process.poll() is None:
             return self._process
         self._stop_locked()
+        managed_process.prune_stale()
         # Overrides unsafe inherited values (including a disabled high
         # watermark). PyTorch reads these before the worker imports torch.
         environment = dict(environment)
@@ -942,7 +948,7 @@ class SDXLWorkerManager:
         diagnostics = tempfile.TemporaryFile()
         try:
             process = managed_process.spawn(
-                [sys.executable, str(self.worker_path)],
+                [sys.executable, str(self.worker_path)], owner="image:sdxl",
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=diagnostics,
@@ -1149,7 +1155,9 @@ class SDXLWorkerManager:
         with self._lock:
             return (
                 self._process is not None
-                and self._process.poll() is None
+                and (managed_process.is_active(self._process)
+                     if isinstance(self._process, managed_process._ManagedPopen)
+                     else self._process.poll() is None)
             )
 
     def close(self):

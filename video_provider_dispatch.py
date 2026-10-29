@@ -66,7 +66,7 @@ def generate(model, params, output, **kwargs):
         callback = kwargs.get("progress_callback")
         if callback is not None:
             def progress_callback(event):
-                callback(_mlx_progress_event(params, event))
+                callback(event if params.get("_truthful_progress") else _mlx_progress_event(params, event))
 
             kwargs = dict(kwargs)
             kwargs["progress_callback"] = progress_callback

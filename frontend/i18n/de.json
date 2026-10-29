@@ -166,7 +166,8 @@
     "image_variants_display_failed": "Der Bild-Batch wurde gestartet, aber die Anzeige konnte nicht aktualisiert werden. Lade den Chat neu, um ihn wiederherzustellen.",
     "image_variants_failed": "Die Varianten konnten nicht gestartet werden. Bitte erneut versuchen.",
     "video_uncensored_unavailable": "Uncensored — nicht eingerichtet",
-    "news_no_verified_today": "Für heute konnte ich keine verifizierten Nachrichten abrufen. Versuche es später erneut oder frage nach einem konkreten Thema."
+    "news_no_verified_today": "Für heute konnte ich keine verifizierten Nachrichten abrufen. Versuche es später erneut oder frage nach einem konkreten Thema.",
+    "long_video_auto": "Automatische Fortsetzung"
   },
   "models": {
     "unnamed": "Unbenanntes Modell",
@@ -505,7 +506,18 @@
     "news_briefing_heading": "Nachrichtenüberblick",
     "news_briefing_partial": "Nur {actual} von {requested} Meldungen hatten ausreichend belegte Kurztexte.",
     "news_briefing_ai_note": "Grundlage sind abgerufene Originalartikel; einige Kurztexte wurden lokal von der KI umformuliert. Keine unabhängige Faktenprüfung.",
-    "news_briefing_source_note": "Kurztexte stammen aus lesbaren Originalartikeln. Veröffentlichungszeiten aus Anbieter-Feeds oder Suchindex; keine unabhängige Faktenprüfung."
+    "news_briefing_source_note": "Kurztexte stammen aus lesbaren Originalartikeln. Veröffentlichungszeiten aus Anbieter-Feeds oder Suchindex; keine unabhängige Faktenprüfung.",
+    "long_video_phase_progress": "Fortschritt der Teilphase",
+    "long_video_indeterminate": "In Bearbeitung · noch keine bestätigten Schritte",
+    "long_video_active": "Automatische Fortsetzung aktiv",
+    "long_video_confirmed": "Validierte Videodauer",
+    "long_video_activity": "Letzte bestätigte Aktivität",
+    "long_video_continuity": "LTX rekodiert den bisherigen Clip; Bild- und Audiokontinuität bitte prüfen.",
+    "long_video_retry": "Ab sicherem Checkpoint fortsetzen",
+    "long_video_stopping": "Wird beendet …",
+    "service_retry_wait": "Dienst nicht verfügbar · wartet",
+    "service_next_retry": "Nächster Versuch",
+    "long_video_duplicate": "Identische Übergangsframes erkannt; bitte prüfen, ob der Stillstand beabsichtigt ist."
   },
   "runtime_ui": {
     "error": "Fehler:",

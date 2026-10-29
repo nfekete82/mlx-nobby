@@ -77,6 +77,7 @@
     }
 
     function progressValue(job) {
+        if (job.progress == null) return null;
         const value = Number(job.progress);
         if (!Number.isFinite(value)) return null;
         return Math.max(0, Math.min(1, value));
@@ -166,6 +167,13 @@
                 item.appendChild(track);
             }
 
+            if (job.last_service_error) {
+                item.appendChild(element('div', 'mlx-queue-error', String(job.last_service_error)));
+                item.appendChild(element('div', 'mlx-queue-meta', t('Wartezeit', 'Waiting') + `: ${Math.floor(job.waiting_seconds || 0)} s · ` + t('Versuche', 'Retries') + `: ${job.retry_count || 0}` + (job.next_retry_at ? ' · ' + new Date(job.next_retry_at * 1000).toLocaleTimeString() : '')));
+            }
+            if (job.automatic_continuation) {
+                item.appendChild(element('div', 'mlx-queue-meta', t('Automatische Fortsetzung', 'Automatic continuation') + `: ${job.stage_number || 1}/${job.stage_count} · ${job.confirmed_duration || 0}/${job.target_duration} s`));
+            }
             if (job.error) {
                 item.appendChild(element('div', 'mlx-queue-error', String(job.error)));
             }

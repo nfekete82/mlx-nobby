@@ -41,3 +41,27 @@ retest. Initial test failures involved provider mock boundaries after adding
 process supervision and were corrected; they are not checkpoint failures.
 See [implementation, evidence and limitations](LIFECYCLE_VIDEO_EDIT_RELIABILITY_2026-10-29.md)
 and [automated results](lifecycle-video-edit-validation.json).
+
+### 2026-10-29: SDXL guardian/orphan regression (no GPU render)
+
+- Checkpoint under repair: Juggernaut XL Ragnarok, registry ID `juggernaut-xl`,
+  version `1759168`, `juggernautXL_ragnarok.safetensors`; expected registry SHA256
+  `dd08fa32f98d05a2443ca1419e46df1575a0811f6e3b246d9dd47ff20f5eb66a`.
+  Architecture: SDXL; provider: Diffusers/MPS with the existing SDXL worker.
+- Installation: local checkpoint presence verified, 7,105,350,162 bytes;
+  weights were not read into a model, changed or newly checksummed. Existing
+  installation/profile/status are retained.
+- Actual test date: 2026-10-29. GPU/model-load result: **not exercised**;
+  worker/process tests use isolated CPU processes and mocks. Render time,
+  resolution, steps, CFG, scheduler and seed: N/A for this CPU regression.
+  Image quality: not assessed; there is no new successful model-render evidence.
+- Known issues tested: dead guardian with live child, SIGTERM/SIGKILL, zombies,
+  PID reuse, missing/invalid identity evidence, stale registry files, concurrent
+  timer/cancel and preservation of the underlying cleanup exception. An initial
+  stale-identity expectation was updated to require fail-closed behavior; a
+  later queue test needed isolation from an existing scheduler.
+- Decision: retain the existing checkpoint, profiles and historical `tested`
+  status; **retest real Metal render/cancellation/memory release** before claiming
+  production reliability. No model is newly marked `tested` by these regressions.
+  [Implementation, observed live-state limits and manual acceptance commands](AUTOMATIC_LONG_VIDEO_SDXL_2026-10-29.md)
+  · [CPU regression evidence](automatic-long-video-validation.json).

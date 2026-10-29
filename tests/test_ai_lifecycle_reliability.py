@@ -160,8 +160,9 @@ def test_parent_pipe_eof_stops_owned_cli(tmp_path):
 
 def test_stale_pid_identity_never_receives_signal():
     record = {"pid": os.getpid(), "token": "not-our-process", "identity": "stale identity"}
-    with mock.patch.object(processes.os, "killpg") as kill:
-        processes.terminate_record(record)
+    with mock.patch.object(processes.os, "kill") as kill:
+        with pytest.raises(RuntimeError, match="nicht verifiziert"):
+            processes.terminate_record(record, term_timeout=0, kill_timeout=0)
     kill.assert_not_called()
 
 

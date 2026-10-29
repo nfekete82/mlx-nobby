@@ -166,7 +166,8 @@
     "image_variants_display_failed": "The image batch has started, but its display could not be updated. Reload the chat to recover it.",
     "image_variants_failed": "The variants could not be started. Please try again.",
     "video_uncensored_unavailable": "Uncensored — not configured",
-    "news_no_verified_today": "No verified news could be retrieved for today. Try again later or ask about a specific topic."
+    "news_no_verified_today": "No verified news could be retrieved for today. Try again later or ask about a specific topic.",
+    "long_video_auto": "Automatic continuation"
   },
   "models": {
     "unnamed": "Unnamed model",
@@ -505,7 +506,18 @@
     "news_briefing_heading": "News briefing",
     "news_briefing_partial": "Only {actual} of {requested} stories had enough verified source text.",
     "news_briefing_ai_note": "Based on retrieved original articles; some briefs were rewritten by local AI. Not independently fact-checked.",
-    "news_briefing_source_note": "Briefs come from readable original articles. Timestamps are from publisher feeds or search indexes; not independently fact-checked."
+    "news_briefing_source_note": "Briefs come from readable original articles. Timestamps are from publisher feeds or search indexes; not independently fact-checked.",
+    "long_video_phase_progress": "Current phase progress",
+    "long_video_indeterminate": "Working · no confirmed step count",
+    "long_video_active": "Automatic continuation active",
+    "long_video_confirmed": "Validated duration",
+    "long_video_activity": "Last confirmed activity",
+    "long_video_continuity": "LTX re-encodes the source; visual and audio continuity require review.",
+    "long_video_retry": "Resume from validated checkpoint",
+    "long_video_stopping": "Stopping …",
+    "service_retry_wait": "Service unavailable · waiting",
+    "service_next_retry": "Next retry",
+    "long_video_duplicate": "Identical boundary frames detected; check whether the still frame is intentional."
   },
   "runtime_ui": {
     "error": "Error:",

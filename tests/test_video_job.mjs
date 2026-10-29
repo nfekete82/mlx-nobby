@@ -50,15 +50,15 @@ assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ba
 assert.equal(api.__test.isImageGenerationRequest('Wie wird das Wetter?'), false);
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('fast')),
-    [5, 6, 8, 10, 20]
+    [5, 6, 8, 10, 20, 30]
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('standard')),
-    [5, 6, 8, 10]
+    [5, 6, 8, 10, 20, 30]
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('quality')),
-    [5]
+    [5, 10, 20, 30]
 );
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').profile, 'standard');
@@ -85,7 +85,7 @@ assert.equal(
         20,
         'standard'
     ).duration,
-    10
+    20
 );
 assert.equal(
     api.__test.videoOptionsForRequest(
@@ -94,7 +94,7 @@ assert.equal(
         10,
         'quality'
     ).duration,
-    5
+    10
 );
 assert.equal(
     api.__test.videoOptionsForRequest(
@@ -258,7 +258,7 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261028-configured-image-default/);
+assert.match(chatHtml, /chat\/generation\.js\?v=20261029-long-video-sdxl/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=[a-z0-9-]+/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
@@ -280,3 +280,28 @@ for (const available of [false, true]) {
 context.fetch = async () => { throw Error('offline'); };
 await api.__test.updateVideoProfileAvailability(profileSelect);
 assert.equal(profileOption.disabled, true);
+
+// Long videos preserve confirmed partial progress across regular chat reload/polling.
+assert.equal(api.__test.promptVideoPreferences('Kameraflug, 20 Sekunden, maximale Qualität').duration, 20);
+assert.equal(api.__test.promptVideoPreferences('Kameraflug, 20 Sekunden, maximale Qualität').quality, 'quality');
+assert.equal(api.__test.promptVideoPreferences('A camera flight, 30 seconds, maximum quality').duration, 30);
+assert.equal(api.__test.promptVideoPreferences('A camera flight').duration, null);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video', 20, 'quality').duration, 20);
+const longJob = {id: 'e'.repeat(24), status: 'generating', phase: 'generating', automatic_continuation: true,
+    stage_number: 3, stage_count: 5, target_duration: 20, confirmed_duration: 9,
+    current_step: 2, total_steps: 8, phase_progress: .25, progress: null, started_at: Date.now()/1000-12,
+    long_plan: {resolution:'1080p'}, last_activity_at:Date.now()/1000};
+const longCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:longJob});
+assert.match(longCard.children[1].textContent, /20 s.*1080p.*3\/5/);
+assert.match(longCard.children[1].textContent, /Validated duration: 9 s/);
+const longProgress = longCard.children.find(node=>node.tagName==='progress');
+assert.equal(longProgress.value, .25);
+const unknownCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,phase_progress:null}});
+assert.equal(unknownCard.children.find(node=>node.tagName==='progress').value, undefined);
+const failedCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,status:'failed',resumable:true,native_job_id:'f'.repeat(24)}});
+assert.ok(failedCard.children.some(node=>node.textContent==='Resume from validated checkpoint'));
+const cancelledCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,status:'cancelled',cancel_requested:true,resumable:true,native_job_id:'f'.repeat(24)}});
+assert.ok(!cancelledCard.children.some(node=>node.textContent==='Resume from validated checkpoint'));
+const busyLong = {video_job:longJob};
+api.updateVideoJobMessage({},busyLong,{status:'generating',data:{job:longJob}});
+assert.equal(busyLong.video_job.confirmed_duration,9);

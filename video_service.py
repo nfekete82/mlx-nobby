@@ -1,6 +1,8 @@
 """Persistent local video jobs backed by the official headless LTX 2.5 runtime."""
 from ai_lifecycle_gate import AIAdmissionGuard
 
+import video_long
+import ai_lifecycle_gate as gate
 import json
 import os
 import re
@@ -54,12 +56,8 @@ RESOLUTION_SIZES = {
         "9:16": (1088, 1920),
     },
 }
-SUPPORTED_DURATIONS_BY_RESOLUTION = {
-    "preview": {2},
-    "540p": {5, 6, 8, 10, 20},
-    "720p": {5, 6, 8, 10},
-    "1080p": {5},
-}
+SUPPORTED_DURATIONS_BY_RESOLUTION = {key: set(values) for key, values in video_long.SUPPORTED.items()}
+
 _lock = threading.Lock()
 _jobs_lock = threading.RLock()
 _jobs = {}
@@ -71,7 +69,7 @@ PROGRESS_PERSIST_INTERVAL_SECONDS = max(
 )
 MEMORY_SAMPLE_INTERVAL_SECONDS = 2.0
 _VOLATILE_PROGRESS_FIELDS = frozenset({
-    "progress", "current_step", "total_steps", "memory_peak",
+    "progress", "current_step", "total_steps", "memory_peak", "last_activity_at", "phase_progress",
 })
 
 
@@ -165,10 +163,13 @@ class JobCreate(BaseModel):
                 raise ValueError("Die installierte LTX-MLX-Version unterstützt keine nativen Keyframes; Szenen verbinden verwenden")
             for image in self.payload.images:
                 validate_first_frame(image.path)
-        elif self.payload.images or self.payload.multi_image_mode or self.payload.resume_from:
+        elif self.payload.images or self.payload.multi_image_mode:
             raise ValueError("Multi-Image-Parameter benötigen multi_i2v")
-        if self.payload.resume_from and self.payload.multi_image_mode != "scenes":
-            raise ValueError("Nur Szenenjobs können fortgesetzt werden")
+        long_video = video_long.needed({"duration": self.payload.duration, "resolution": self.payload.resolution or profile["resolution"], "fps": self.payload.fps})
+        if long_video and (multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx"):
+            raise ValueError("Automatische Fortsetzung benötigt natives Standard-LTX-MLX und ein einzelnes Ausgangsvideo")
+        if self.payload.resume_from and self.payload.multi_image_mode != "scenes" and not long_video:
+            raise ValueError("Nur Szenenjobs und automatische Langvideos können fortgesetzt werden")
 
         if quality == "preview" and self.operation != "t2v":
             raise ValueError(
@@ -222,6 +223,8 @@ class JobCreate(BaseModel):
                 self.payload.width, self.payload.height = width, height
             self.payload.aspect_ratio = "9:16" if self.payload.height > self.payload.width else "16:9"
         self.payload.frames = self.payload.duration * self.payload.fps + 1
+        if long_video and (self.payload.width, self.payload.height) != _video_dimensions(self.payload.resolution, self.payload.aspect_ratio):
+            raise ValueError("Automatische Fortsetzung erhält die volle Profilauflösung; abweichende Dimensionen sind nicht erlaubt")
         if multi:
             positions = video_multi_image.frame_positions(len(self.payload.images), self.payload.frames)
             for index, image in enumerate(self.payload.images):
@@ -292,6 +295,17 @@ def _load_jobs():
         for path in JOBS.glob("*.json"):
             try:
                 job = json.loads(path.read_text(encoding="utf-8"))
+                checkpoint = JOBS / "long" / str(job.get("id", "")) / "checkpoint.json"
+                if job.get("status") in ACTIVE and checkpoint.is_file():
+                    import managed_process
+                    managed_process.stop_all(owner="video:long:" + job["id"])
+                    for partial in checkpoint.parent.glob("*.partial.mp4"):
+                        partial.unlink(missing_ok=True)
+                if checkpoint.is_file() and (not job.get("cancel_requested") or job.get("cancel_reason") == "lifecycle"):
+                    saved = json.loads(checkpoint.read_text())
+                    stages = saved.get("stages") or []
+                    job.update(automatic_continuation=True, resumable=bool(stages), checkpoint_count=len(stages),
+                               confirmed_duration=stages[-1]["info"]["timeline_seconds"] if stages else 0)
                 if job.get("status") in ACTIVE:
                     job.update(status="failed", error="Video-Service wurde während des Jobs neu gestartet", finished_at=time.time())
                     _persist(job)
@@ -387,7 +401,7 @@ def _update(job_id, **changes):
         if not changed:
             return
 
-        job.update(changed)
+        job.update(changed, updated_at=time.time())
         now = time.monotonic()
         # Persist lifecycle/phase/errors immediately. Pure progress and
         # sampled memory peaks can be reconstructed after a service restart;
@@ -496,7 +510,8 @@ def _run(job_id, request):
             if cancel.is_set():
                 raise ProviderCancelled("Video job was cancelled")
             video_id = secrets.token_hex(12)
-            output = OUTPUT / f"{video_id}.mp4"
+            OUTPUT.mkdir(parents=True, exist_ok=True)
+            output = OUTPUT / f".{video_id}.partial.mp4"
 
             def runtime_changed(runtime):
                 with _jobs_lock:
@@ -509,6 +524,8 @@ def _run(job_id, request):
                 for key in peak:
                     if current.get(key) is not None:
                         peak[key] = max(peak.get(key) or 0, current[key])
+
+            is_long = video_long.needed(request.payload.model_dump())
 
             def progress_changed(event):
                 nonlocal last_memory_sample_at
@@ -532,6 +549,11 @@ def _run(job_id, request):
                     changes["progress"] = progress
                 elif isinstance(step, int) and isinstance(total, int) and 0 < step <= total:
                     changes["progress"] = step / total
+                if is_long:
+                    changes.pop("progress", None)
+                    changes["phase_progress"] = step / total if isinstance(step, int) and isinstance(total, int) and 0 <= step <= total and total > 0 else None
+                    changes["progress"] = None
+                    changes["last_activity_at"] = time.time()
                 _update(job_id, **changes)
 
             def phase_changed(phase):
@@ -543,7 +565,13 @@ def _run(job_id, request):
 
             callbacks = dict(cancel_event=cancel, response_callback=runtime_changed,
                              progress_callback=progress_changed, phase_callback=phase_changed)
-            if request.payload.multi_image_mode == "scenes":
+            if is_long:
+                media = video_long.run(
+                    model, request.payload.model_dump(), output, job_id=job_id,
+                    checkpoints=JOBS / "long", resume_job=_jobs.get(request.payload.resume_from), generate=generate,
+                    update=lambda **changes: _update(job_id, **changes), **callbacks,
+                )
+            elif request.payload.multi_image_mode == "scenes":
                 media = video_multi_image.generate_scenes(
                     model, request.payload.model_dump(), output, job_id=job_id,
                     checkpoints=JOBS / "segments",
@@ -556,6 +584,13 @@ def _run(job_id, request):
                 raise ProviderCancelled("Video job was cancelled")
             after = _memory_snapshot()
             sample_peak(after)
+            with gate.barrier(), _jobs_lock:
+                gate.check()
+                if cancel.is_set():
+                    raise ProviderCancelled("Video job was cancelled")
+                published = OUTPUT / f"{video_id}.mp4"
+                os.replace(output, published)
+                output = published
             result = {
                 "id": video_id, "path": str(output), "mime_type": "video/mp4",
                 "prompt": request.payload.prompt, "model": model["id"],
@@ -578,19 +613,30 @@ def _run(job_id, request):
                 "created_at": time.time(), "memory_before": before, "memory_peak": dict(peak),
                 "memory_after": after, **media,
             }
-            _update(
-                job_id, status="completed", phase="completed",
-                current_step=_job_total_steps(request.payload),
-                total_steps=_job_total_steps(request.payload),
-                progress=1.0, result=result, error=None,
-                finished_at=time.time(), memory_after=after,
-                memory_peak=dict(peak),
-            )
+            with _jobs_lock:
+                if cancel.is_set():
+                    raise ProviderCancelled("Video job was cancelled")
+                _update(
+                    job_id, status="completed", phase="completed",
+                    current_step=_job_total_steps(request.payload),
+                    total_steps=_job_total_steps(request.payload),
+                    progress=1.0, result=result, error=None,
+                    finished_at=time.time(), memory_after=after,
+                    memory_peak=dict(peak),
+                )
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output:
             output.unlink(missing_ok=True)
-        _update(job_id, status="cancelled", result=None, error=None, finished_at=time.time(), memory_after=_memory_snapshot())
+        lifecycle_interruption = video_long.needed(request.payload.model_dump()) and gate.blocked() and job.get("cancel_reason") != "user"
+        _update(job_id, status="failed" if lifecycle_interruption else "cancelled", result=None,
+                error="Durch Systemstopp unterbrochen; sichere Checkpoints können fortgesetzt werden" if lifecycle_interruption else None,
+                finished_at=time.time(), memory_after=_memory_snapshot())
     except Exception as exc:
+        if job.get("status") == "completed":
+            # Model work and publication already succeeded. A subsequent
+            # chat-restore/telemetry error must not delete a valid video.
+            _update(job_id, restore_error=f"Nachbearbeitung fehlgeschlagen: {type(exc).__name__}")
+            return
         if output:
             output.unlink(missing_ok=True)
         if cancel.is_set():
@@ -651,16 +697,21 @@ def preflight(request: JobCreate):
         old_payload.pop("resume_from", None)
         if (not previous or previous.get("status") not in {"failed", "cancelled"}
                 or previous.get("chat_id") != request.chat_id or payload != old_payload):
-            raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Szenenjob mit unveränderten Einstellungen und Bildern")
+            raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")
+        if video_long.needed(request.payload.model_dump()) and (previous.get("status") == "cancelled" or previous.get("cancel_requested") and previous.get("cancel_reason") != "lifecycle"):
+            raise HTTPException(422, "Explizit abgebrochene Langvideos werden nicht fortgesetzt")
         if ((previous.get("source_versions") is not None
              and previous["source_versions"] != _multi_source_versions(request.payload))
                 or (previous.get("resolved_model") is not None
                     and previous["resolved_model"] != registry.get_model(request.payload.model)["id"])):
             raise HTTPException(422, "Quellbilder oder Modell wurden seit dem Szenenjob verändert")
+    if video_long.needed(request.payload.model_dump()):
+        video_long.runtime_version()
     return {"available": True, "profile": request.payload.profile}
 
 
 @app.post("/jobs", status_code=202)
+@gate.admitted
 def create_job(request: JobCreate):
     preflight(request)
     source_versions = _multi_source_versions(request.payload)
@@ -668,6 +719,8 @@ def create_job(request: JobCreate):
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Ein Video-Job läuft bereits")
     job_id = secrets.token_hex(12)
+    planner = video_long.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
+    is_long = len(planner["stages"]) > 1
     job = {
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,
         "multi_image_mode": request.payload.multi_image_mode,
@@ -677,7 +730,10 @@ def create_job(request: JobCreate):
         "status": "queued", "phase": "queued", "model": request.payload.model,
         "current_step": None,
         "total_steps": _job_total_steps(request.payload),
-        "progress": 0.0,
+        "progress": None if is_long else 0.0,
+        **({"automatic_continuation": True, "long_plan": planner, "target_duration": request.payload.duration,
+            "stage_count": len(planner["stages"]), "stage_number": 1, "confirmed_duration": 0,
+            "phase_progress": None, "resumable": False} if is_long else {}),
         "result": None, "error": None,
         "payload": request.payload.model_dump(), "created_at": time.time(),
         "started_at": None, "finished_at": None, "_cancel_event": threading.Event(),
@@ -705,14 +761,17 @@ def get_job(job_id: str):
 
 
 @app.post("/jobs/{job_id}/cancel")
-def cancel_job(job_id: str):
+def cancel_job(job_id: str, payload: dict | None = None):
     with _jobs_lock:
         job = _jobs.get(job_id)
         if not job:
             raise HTTPException(404, "Video-Job nicht gefunden")
         if job.get("status") not in ACTIVE:
-            raise HTTPException(409, "Video-Job kann nicht mehr abgebrochen werden")
+            return _public(job)
         job["_cancel_event"].set()
+        job["cancel_requested"] = True
+        job["cancel_reason"] = "lifecycle" if (payload or {}).get("reason") == "lifecycle" else "user"
+        _persist(job)
         thread = job.get("_thread")
     if thread is not None:
         thread.join(timeout=20)

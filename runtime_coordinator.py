@@ -819,6 +819,34 @@ def wait_for_idle(service_url, service_name, cancel_event=None, *, requester=req
         time.sleep(POLL_INTERVAL)
 
 
+def video_service_proven_stopped():
+    """An offline HTTP endpoint alone is not proof that GPU work stopped."""
+    try:
+        launchd = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/de.nobby.mlx-video"],
+                                 capture_output=True, timeout=5)
+        if launchd.returncode not in {3, 113}:
+            return False
+        port = urllib.parse.urlparse(VIDEO_URL).port
+        if port != 8060:
+            return False  # No inference about arbitrary service endpoints.
+        listener = subprocess.run(["lsof", "-tiTCP:8060", "-sTCP:LISTEN"], capture_output=True, timeout=5)
+        if listener.returncode != 1 or listener.stdout.strip():
+            return False
+        import managed_process
+        import process_identity
+        table = process_identity.table()
+        for path in (ai_lifecycle_gate.ROOT / "processes").glob("*.json"):
+            if not path.stem.isdigit():
+                continue
+            record = json.loads(path.read_text())
+            video = str(record.get("owner") or "").startswith("video:") or "ltx" in str(record.get("identity", "")).lower()
+            if video and managed_process.remaining(record, table):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return False
+
+
 def video_image_runtime_may_stay_loaded(snapshot):
     """Require complete, healthy *fresh* headroom before keeping image weights.
 
@@ -1187,7 +1215,11 @@ def image_runtime(
         lock_path=lock_path,
         workload="image",
     ):
-        wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
+        try:
+            wait_for_idle(VIDEO_URL, "Video", cancel_event, requester=requester)
+        except ServiceUnavailable:
+            if not video_service_proven_stopped():
+                raise
         _check_cancelled(cancel_event)
         before = memory_snapshot()
         image_reserve_gb = model_load_reserve_gb("image")

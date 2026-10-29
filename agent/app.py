@@ -8827,6 +8827,11 @@ def _video_payload(request, operation):
     if len(prompt) < 3:
         raise HTTPException(400, "Bitte beschreibe das gewünschte Video")
     payload = {"prompt": prompt, "model": "auto"}
+    text_duration = re.search(r"\b(5|6|8|10|20|30)\s*(?:sekunden?|seconds?|secs?|s)\b", request.prompt, re.I)
+    if text_duration:
+        payload["duration"] = int(text_duration[1])
+    if request.quality is None and re.search(r"1080p|maximal(?:e[rn]?)?\s+(?:video)?qualit[aä]t|maximum\s+(?:video\s+)?quality", request.prompt, re.I):
+        payload["quality"] = "quality"
     if request.quality is not None:
         payload["quality"] = request.quality
     options = dict(request.video_options or {})

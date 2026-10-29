@@ -424,7 +424,7 @@
         if (!document.getElementById('jobsPanel')) return;
         try {
             await loadScript(
-                '/assets/chat/job-queue.js?v=20260927-unified-queue-v1',
+                '/assets/chat/job-queue.js?v=20261029-long-video-sdxl',
                 'mlx-unified-job-queue'
             );
         } catch (error) {

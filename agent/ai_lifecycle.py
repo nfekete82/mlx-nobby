@@ -117,7 +117,7 @@ def quiesce(agent):
                     if j["status"] not in media_queue.TERMINAL]
         for kind, job_id in jobs:
             try:
-                media_queue.cancel(kind, job_id)
+                media_queue.cancel(kind, job_id, reason="lifecycle")
             except HTTPException as exc:
                 if exc.status_code != 409:
                     raise

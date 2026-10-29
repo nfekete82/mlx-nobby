@@ -328,17 +328,9 @@ class VideoServiceTests(unittest.TestCase):
         self.assertEqual(fast_20.payload.duration, 20)
         self.assertEqual(fast_20.payload.frames, 481)
 
-        with self.assertRaises(ValueError):
-            video_service.JobCreate(
-                operation="t2v",
-                chat_id="chat",
-                chat_revision=0,
-                payload={
-                    "prompt": "A red ball rolls",
-                    "quality": "standard",
-                    "duration": 20,
-                },
-            )
+        long_720 = video_service.JobCreate(operation="t2v", chat_id="chat", chat_revision=0,
+            payload={"prompt": "A red ball rolls", "quality": "standard", "duration": 20})
+        self.assertEqual(long_720.payload.frames, 481)
 
         with self.assertRaises(ValueError):
             video_service.JobCreate(

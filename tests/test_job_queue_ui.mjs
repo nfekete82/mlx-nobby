@@ -7,7 +7,7 @@ const proxy = fs.readFileSync('agent/service_proxy.py', 'utf8');
 const imageApi = fs.readFileSync('agent/image_api.py', 'utf8');
 const videoApi = fs.readFileSync('agent/video_api.py', 'utf8');
 
-assert.match(common, /\/assets\/chat\/job-queue\.js\?v=20260927-unified-queue-v1/);
+assert.match(common, /\/assets\/chat\/job-queue\.js\?v=20261029-long-video-sdxl/);
 assert.match(common, /mlx-unified-job-queue/);
 
 assert.match(queue, /sidebarJobsButton/);

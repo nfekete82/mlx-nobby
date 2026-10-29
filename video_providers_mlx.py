@@ -167,7 +167,7 @@ def _start_runtime(model, cancel_event):
         "LTX_MLX_PARENT_PID": str(os.getpid()),
     })
     process = managed_process.spawn(
-        [str(LTX_MLX_PYTHON), str(LTX_MLX_WORKER)],
+        [str(LTX_MLX_PYTHON), str(LTX_MLX_WORKER)], owner="video:ltx-worker",
         cwd=LTX_MLX_RUNTIME_ROOT,
         env=environment,
         stdout=log,
@@ -337,7 +337,7 @@ def _run_process(command, *, cancel_event, response_callback=None,
     if phase_callback:
         phase_callback("loading")
     process = managed_process.spawn(
-        command, cwd=LTX_MLX_RUNTIME_ROOT,
+        command, owner="video:ltx-cli", cwd=LTX_MLX_RUNTIME_ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     runtime = MlxCliRuntime(process)

@@ -114,7 +114,7 @@ def _ensure_loaded_locked():
         job["id"] = str(job_id)
         if job.get("status") == "dispatching" and not job.get("native_job_id"):
             job.update(status="queued", phase="recovered")
-        if job.get("status") not in TERMINAL and job.get("cancel_requested"):
+        if job.get("status") not in TERMINAL and job.get("cancel_requested") and not job.get("native_job_id"):
             job.update(
                 status="cancelled",
                 phase="cancelled",
@@ -160,6 +160,9 @@ def _public(job):
         value["status"] = "queued"
         value["phase"] = "queued"
 
+    value["retry_count"] = max(0, int(value.get("dispatch_attempts") or 0) - 1)
+    value["next_retry_at"] = job.get("_retry_after")
+    value["waiting_seconds"] = max(0, time.time() - value["waiting_since"]) if value.get("waiting_since") else 0
     value["cancellable"] = value.get("status") not in TERMINAL
     return value
 
@@ -259,6 +262,17 @@ def enqueue(kind, request_payload):
     if kind == 'image' and isinstance(payload, dict) and payload.get('semantic_operation') == 'reference_generate':
         job.update(semantic_operation='reference_generate', reference_mode=payload.get('reference_mode'), reference_relation=payload.get('reference_mode'), reference_used=True)
 
+    if kind == "video" and isinstance(payload, dict):
+        import video_long
+        resolution = payload.get("resolution") or {"fast":"540p", "standard":"720p", "quality":"1080p", "preview":"preview"}.get(payload.get("quality") or "standard", "720p")
+        try:
+            planner = video_long.plan(payload.get("duration", 5), resolution, payload.get("fps", 24))
+            if len(planner["stages"]) > 1:
+                job.update(automatic_continuation=True, long_plan=planner, target_duration=planner["duration"],
+                           stage_count=len(planner["stages"]), stage_number=1, confirmed_duration=0, progress=None)
+        except ValueError:
+            pass  # Existing native validation returns the precise payload error.
+
     with _jobs_lock:
         _ensure_loaded_locked()
         _prune_locked()
@@ -300,11 +314,17 @@ def _mirror_native(job_id, native):
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
         "runtime_handoff", "performance_timings", "provider_timing",
         "scene_number", "scene_count", "segments", "multi_image_mode",
+        "automatic_continuation", "long_plan", "stage_number", "stage_count", "target_duration",
+        "confirmed_duration", "cancel_reason", "phase_progress", "progress_scope", "progress_message", "updated_at",
+        "last_activity_at", "resumable", "checkpoint_count", "continuity_warning",
+        "identical_boundary_pixels",
     ):
         if key in native:
             copied[key] = native.get(key)
     if native.get("status") in TERMINAL and copied.get("finished_at") is None:
         copied["finished_at"] = time.time()
+    if native.get("cancel_requested"):
+        copied["cancel_requested"] = True
     return _update(job_id, **copied)
 
 
@@ -327,13 +347,23 @@ def retry_video_scenes(job_id):
         previous = _jobs.get(_validated_id(job_id))
         request = deepcopy((previous or {}).get("request") or {})
         payload = request.get("payload") or {}
+        long_video = bool((previous or {}).get("automatic_continuation"))
+        if long_video and (previous.get("status") != "failed" or (previous.get("cancel_requested") and previous.get("cancel_reason") != "lifecycle") or not previous.get("resumable")):
+            raise HTTPException(422, "Langvideo benötigt einen sicheren Checkpoint und darf nicht explizit abgebrochen sein")
         if (not previous or previous.get("kind") != "video"
                 or previous.get("status") not in {"failed", "cancelled"}
-                or payload.get("multi_image_mode") != "scenes" or not previous.get("native_job_id")):
+                or (payload.get("multi_image_mode") != "scenes" and not long_video) or not previous.get("native_job_id")):
             raise HTTPException(422, "Nur fehlgeschlagene oder abgebrochene Szenenjobs können fortgesetzt werden")
         payload["resume_from"] = previous["native_job_id"]
         request["payload"] = payload
     return enqueue("video", request)
+
+
+def safe_service_error(kind, exc):
+    detail = str(exc.detail)
+    detail = re.sub(r"(?:/[^\s:]+)+", "[path]", detail)
+    detail = re.sub(r"(?i)(token|password|authorization|prompt)\s*[:=].*", r"\1=[redacted]", detail)
+    return f"{kind} HTTP {exc.status_code}: {detail[:300]}"
 
 
 def _service_retry_delay(attempts):
@@ -392,6 +422,8 @@ def _dispatch_and_poll(job_id):
                         status="queued",
                         phase="waiting_for_service",
                         error=None,
+                        last_service_error=safe_service_error(kind, exc),
+                        waiting_since=job.get("waiting_since") or time.time(),
                         _retry_after=time.time() + _service_retry_delay(
                             job.get("dispatch_attempts", 0) + 1
                         ),
@@ -424,6 +456,8 @@ def _dispatch_and_poll(job_id):
                 phase=str(native.get("phase") or "queued"),
                 started_at=native.get("started_at") or time.time(),
                 error=None,
+                last_service_error=None,
+                waiting_since=None,
                 _retry_after=None,
             )
             _mirror_native(job_id, native)
@@ -435,7 +469,7 @@ def _dispatch_and_poll(job_id):
                     kind,
                     "POST",
                     f"/jobs/{native_id}/cancel",
-                    {},
+                    {"reason": job.get("cancel_reason", "user")},
                     timeout=30,
                 )
                 _mirror_native(job_id, native)
@@ -461,6 +495,7 @@ def _dispatch_and_poll(job_id):
             )
         except ServiceError as exc:
             if exc.status_code == 503:
+                _update(job_id, last_service_error=safe_service_error(kind, exc), waiting_since=job.get("waiting_since") or time.time())
                 _wait()
                 continue
             _update(
@@ -566,7 +601,7 @@ def ensure_worker():
         return thread
 
 
-def cancel(kind, job_id):
+def cancel(kind, job_id, *, reason="user"):
     kind = _validated_kind(kind)
     job_id = _validated_id(job_id)
     with _jobs_lock:
@@ -577,6 +612,7 @@ def cancel(kind, job_id):
         if job.get("status") in TERMINAL:
             raise HTTPException(409, "Job kann nicht mehr abgebrochen werden")
         job["cancel_requested"] = True
+        job["cancel_reason"] = reason
         if not job.get("native_job_id"):
             job.update(
                 status="cancelled",

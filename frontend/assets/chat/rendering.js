@@ -262,6 +262,20 @@
 
     function appendMediaProgress(card, job, presentation) {
         if (!presentation.active) return;
+        if (job.automatic_continuation) {
+            const progress = document.createElement('progress');
+            progress.max = 1;
+            progress.style.width = '100%';
+            progress.setAttribute?.('aria-label', rt('long_video_phase_progress', 'Current phase progress'));
+            if (typeof job.phase_progress === 'number' && Number.isFinite(job.phase_progress) && job.phase_progress >= 0 && job.phase_progress <= 1) progress.value = job.phase_progress;
+            const text = document.createElement('div');
+            text.className = 'batch-progress-text';
+            text.textContent = job.current_step != null && job.total_steps > 0
+                ? `${job.current_step}/${job.total_steps} · ` + rt('long_video_phase_progress', 'Current phase progress')
+                : rt('long_video_indeterminate', 'Working · no confirmed step count');
+            card.appendChild(progress); card.appendChild(text);
+            return;
+        }
         const progressWrap = document.createElement('div');
         progressWrap.className = 'batch-progress-wrap';
         const progressBar = document.createElement('div');
@@ -2234,22 +2248,32 @@ function renderVideoJobCard(message) {
     details.className = 'batch-chat-details';
     const detailLines = [
         'Phase: ' + presentation.phase,
+        job.last_service_error ? String(job.last_service_error) : '',
+        job.waiting_since ? rt('service_retry_wait', 'Service waiting') + ` · ${Math.floor(job.waiting_seconds || 0)} s · retry ${job.retry_count || 0}` : '',
         job.scene_count ? (String(window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || 'en').startsWith('de') ? 'Szene ' : 'Scene ') + job.scene_number + ' / ' + job.scene_count : '',
         presentation.elapsed != null
             ? 'Verstrichen: ' + formatImageJobDuration(presentation.elapsed)
             : '',
         job.status === 'failed' && job.error ? String(job.error) : ''
     ].filter(Boolean);
-    if (job.status === 'generating' && !presentation.hasStepProgress) {
+    if (job.status === 'generating' && !presentation.hasStepProgress && !job.automatic_continuation) {
         detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
     }
+    if (job.automatic_continuation) {
+        detailLines.push(rt('long_video_active', 'Automatic continuation active') + ` · ${job.target_duration} s · ${job.long_plan?.resolution || ""} · ${job.stage_number || 1}/${job.stage_count}`);
+        detailLines.push(rt('long_video_confirmed', 'Validated duration') + `: ${job.confirmed_duration || 0} s`);
+        if (job.last_activity_at) detailLines.push(rt('long_video_activity', 'Last confirmed activity') + ': ' + new Date(job.last_activity_at * 1000).toLocaleTimeString());
+        if (job.identical_boundary_pixels) detailLines.push(rt('long_video_duplicate', 'Identical boundary frames detected; check whether the still frame is intentional.'));
+        detailLines.push(rt('long_video_continuity', 'LTX re-encodes the source; visual and audio continuity require review.'));
+    }
+    if (job.next_retry_at) detailLines.push(rt('service_next_retry', 'Next retry') + ': ' + new Date(job.next_retry_at * 1000).toLocaleTimeString());
     details.textContent = detailLines.join('\n');
     card.appendChild(details);
     appendMediaProgress(card, job, presentation);
-    if (job.multi_image_mode === 'scenes' && ['failed', 'cancelled'].includes(job.status) && job.native_job_id) {
+    if ((job.multi_image_mode === 'scenes' && ['failed', 'cancelled'].includes(job.status) || job.automatic_continuation && job.resumable && job.status === 'failed' && (!job.cancel_requested || job.cancel_reason === 'lifecycle')) && job.native_job_id) {
         const retry = document.createElement('button');
         retry.type = 'button'; retry.className = 'message-action-btn';
-        retry.textContent = rt('multi_video_retry', 'Reuse completed scenes · Retry');
+        retry.textContent = job.automatic_continuation ? rt('long_video_retry', 'Resume from validated checkpoint') : rt('multi_video_retry', 'Reuse completed scenes · Retry');
         retry.addEventListener('click', async () => {
             retry.disabled = true;
             try { await window.MLXChatGeneration.retryVideoJob(message); }
@@ -2261,7 +2285,8 @@ function renderVideoJobCard(message) {
         const controls = document.createElement('div');
         controls.className = 'batch-chat-controls';
         const cancel = document.createElement('button');
-        cancel.type = 'button'; cancel.className = 'message-action-btn'; cancel.textContent = rt('cancel', 'Cancel');
+        cancel.type = 'button'; cancel.className = 'message-action-btn'; cancel.textContent = job.cancel_requested ? rt('long_video_stopping', 'Stopping …') : rt('cancel', 'Cancel');
+        cancel.disabled = Boolean(job.cancel_requested);
         cancel.addEventListener('click', async () => {
             cancel.disabled = true;
             try {

@@ -82,9 +82,9 @@ function normalizeMediaPreviewQuality(quality, previewAvailable) {
 
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
-    fast: Object.freeze([5, 6, 8, 10, 20]),
-    standard: Object.freeze([5, 6, 8, 10]),
-    quality: Object.freeze([5])
+    fast: Object.freeze([5, 6, 8, 10, 20, 30]),
+    standard: Object.freeze([5, 6, 8, 10, 20, 30]),
+    quality: Object.freeze([5, 10, 20, 30])
 });
 
 const VIDEO_DURATIONS = new Set(
@@ -246,6 +246,13 @@ function videoAspectRatioForFormat(format) {
     return format === 'portrait'
         ? '9:16'
         : '16:9';
+}
+
+function promptVideoPreferences(prompt) {
+    const text = String(prompt || '');
+    const match = text.match(/\b(5|6|8|10|20|30)\s*(?:sekunden?|seconds?|secs?|s)\b/i);
+    return {duration: match ? Number(match[1]) : null,
+        quality: /1080p|maximal(?:e[rn]?)?\s+(?:video)?qualit[aä]t|maximum\s+(?:video\s+)?quality/i.test(text) ? 'quality' : null};
 }
 
 function videoDurationsForQuality(quality = 'standard') {
@@ -3275,8 +3282,9 @@ const imageFiles =
             const savedImageCreation = resolvedTarget === 'image'
                 ? storedImageCreationPreferences()
                 : null;
+            const explicitVideo = mediaQualityKind === 'video' ? promptVideoPreferences(prompt) : {};
             let selectedMediaQuality =
-                savedImageCreation?.quality ||
+                explicitVideo.quality || savedImageCreation?.quality ||
                 MLXChatRuntime.getSessionMediaQuality?.() ||
                 'standard';
             const previewAvailable = mediaPreviewAvailable(
@@ -3299,7 +3307,7 @@ const imageFiles =
                 Number(options?.video?.duration)
             )
                 ? Number(options.video.duration)
-                : 5;
+                : (explicitVideo.duration || 5);
             let selectedNegativePrompt = String(
                 options?.image?.negative_prompt ??
                 savedImageCreation?.negative_prompt ??
@@ -3580,7 +3588,7 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s';
+                                    duration + ' s' + ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : '');
 
                                 return option;
                             });
@@ -5533,6 +5541,7 @@ resetSessionRuntime: resetSessionRuntime,
             videoOptionsForRequest: videoOptionsForRequest,
             updateVideoProfileAvailability: updateVideoProfileAvailability,
             videoDurationsForQuality: videoDurationsForQuality,
+            promptVideoPreferences: promptVideoPreferences,
             normalizeVideoDuration: normalizeVideoDuration,
             watchImageJob: watchImageJob,
             toolFailureSummary: toolFailureSummary,
