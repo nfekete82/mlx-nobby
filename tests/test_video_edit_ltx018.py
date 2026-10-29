@@ -161,8 +161,8 @@ def test_video_edit_ui_has_two_real_actions_and_generated_video_link():
     editor = Path("frontend/assets/chat/video-edit.js").read_text()
     web = Path("backend/app.py").read_text()
     agent = Path("agent/app.py").read_text()
-    assert 'window.MLXVideoEdit?.open?.(asset, "extend")' in source
-    assert 'window.MLXVideoEdit?.open?.(asset, "retake")' in source
+    assert 'openVideoEditor(asset, "extend")' in source
+    assert 'openVideoEditor(asset, "retake")' in source
     assert '"extend", t(' in editor and '"retake", t(' in editor
     assert "/api/mlx/video/edit/jobs" in editor
     assert "job.result.video_url" in editor

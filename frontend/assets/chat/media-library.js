@@ -258,6 +258,22 @@
       mediaObserver.observe(target);
     } else { load(); }
   }
+  function openVideoEditor(asset, operation) {
+    const editor = window.MLXVideoEdit;
+    if (!editor || typeof editor.open !== "function") {
+      window.alert(t("Der Video-Editor wurde nicht geladen. Bitte MLX-Nobby neu laden (Cmd + Shift + R).", "The video editor did not load. Please reload MLX-Nobby (Cmd + Shift + R)."));
+      return;
+    }
+    closePreview();
+    setVisible(false);
+    try {
+      Promise.resolve(editor.open(asset, operation)).catch(error =>
+        window.alert(String(error?.message || error))
+      );
+    } catch (error) {
+      window.alert(String(error?.message || error));
+    }
+  }
   function showPreview(asset) {
     closePreview();
     previousFocus = document.activeElement;
@@ -291,17 +307,9 @@
       actions.append(reuse, animate, regionEdit);
     } else if (asset.kind === "video" || asset.kind === "talking_photo") {
       const extend = previewAction(t("Video verlängern", "Extend video"), previewIcons.video);
-      extend.addEventListener("click", () => {
-        closePreview();
-        setVisible(false);
-        void window.MLXVideoEdit?.open?.(asset, "extend");
-      });
+      extend.addEventListener("click", () => openVideoEditor(asset, "extend"));
       const retake = previewAction(t("Bereich neu erstellen", "Retake segment"), previewIcons.edit);
-      retake.addEventListener("click", () => {
-        closePreview();
-        setVisible(false);
-        void window.MLXVideoEdit?.open?.(asset, "retake");
-      });
+      retake.addEventListener("click", () => openVideoEditor(asset, "retake"));
       actions.append(extend, retake);
     }
 
@@ -547,6 +555,12 @@
         );
       });
       menu.append(regionEdit);
+    } else if (asset.kind === "video" || asset.kind === "talking_photo") {
+      const extend = cardAction(t("Video verlängern", "Extend video"), previewIcons.video);
+      extend.addEventListener("click", () => openVideoEditor(asset, "extend"));
+      const retake = cardAction(t("Bereich neu erstellen", "Retake segment"), previewIcons.edit);
+      retake.addEventListener("click", () => openVideoEditor(asset, "retake"));
+      menu.append(extend, retake);
     }
     const remove = cardAction(t("Löschen", "Delete"), previewIcons.trash, "danger");
     remove.type = "button";
