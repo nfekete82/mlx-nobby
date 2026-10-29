@@ -16,7 +16,7 @@ from backend import routing_observatory as observatory
 
 
 MEDIA_ROUTING_SCRIPT = (
-    b'<script src="/assets/chat/media-routing-fallback.js?v=20260929-chat-fallback-v1"></script>'
+    b'<script src="/assets/chat/media-routing-fallback.js?v=20261029-video-routing-guard"></script>'
 )
 ROUTING_OBSERVATORY_ASSETS = (
     b'<link rel="stylesheet" href="/assets/chat/routing-observatory.css?v=20261001-routing-v2">\n'
