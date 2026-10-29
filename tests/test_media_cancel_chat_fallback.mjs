@@ -12,5 +12,7 @@ assert.match(source, /event\.key === 'Escape'/);
 assert.match(source, /userMessage\?\.role !== 'user'/);
 assert.match(source, /session\.messages\.at\(-1\) !== userMessage/);
 assert.match(source, /generation\.generateAssistant\(session\)/);
+assert.match(source, /explicitVideoCommand\(userMessage\.display_content \|\| userMessage\.content\)/);
+assert.match(source, /if \(explicitVideoCommand\([^)]*\)\) return;/);
 
 console.log('Media modal cancellation falls back to normal chat.');
