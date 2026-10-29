@@ -261,10 +261,7 @@
   function openVideoEditor(asset, operation) {
     const editor = window.MLXVideoEdit;
     if (!editor || typeof editor.open !== "function") {
-      window.alert(t(
-        "Der Video-Editor wurde nicht geladen. Bitte MLX-Nobby neu laden (Cmd + Shift + R).",
-        "The video editor did not load. Please reload MLX-Nobby (Cmd + Shift + R)."
-      ));
+      window.alert(t("Der Video-Editor wurde nicht geladen. Bitte MLX-Nobby neu laden (Cmd + Shift + R).", "The video editor did not load. Please reload MLX-Nobby (Cmd + Shift + R)."));
       return;
     }
     closePreview();
