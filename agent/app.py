@@ -10100,10 +10100,11 @@ def run_chat_action(request: ChatActionRequest):
                 data["context_resolution"] = "explicit_weather_followup"
             return chat_tool_result("web_search", "completed", data)
 
-    # The exact user command is authoritative even after a stale/failed
-    # browser preflight set resolved_target=chat. Other media requests retain
-    # the existing guarded chat fallback.
+    # Explicit video generation/animation and the exact German new-image
+    # command remain authoritative even after a stale browser chat preflight.
+    # Other media requests retain the guarded chat fallback.
     if (request.resolved_target == "chat" and media.execution_requested
+            and media.intent not in {"video_generate", "video_animate"}
             and not always_generate_image_requested(request.prompt)):
         routing = decide_media_intent("", has_image=_file_context_is_image(routing_file_context)).chat_routing()
         routing["guard"] = "preflight_chat_fallback"
