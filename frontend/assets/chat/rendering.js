@@ -2349,6 +2349,8 @@ function renderArtifactChoice(message) {
 }
 
 
+const renderedVideoArticleSignatures = new WeakMap();
+
 function completedVideoMessageSignature(session, message) {
     const tool = message?.tool_result;
     if (message?.role !== 'assistant' ||
@@ -2416,14 +2418,14 @@ function renderMessages(options = {}) {
         // Keep the actual media element connected: removing/recreating a
         // <video> on every chat poll resets buffering and breaks playback.
         if (videoSignature &&
-            existingArticle?.dataset?.videoArtifactSignature === videoSignature &&
+            renderedVideoArticleSignatures.get(existingArticle) === videoSignature &&
             existingArticle.querySelector?.('video.video-artifact-player')) {
             continue;
         }
 
         const article =
             document.createElement('article');
-        if (videoSignature) article.dataset.videoArtifactSignature = videoSignature;
+        if (videoSignature) renderedVideoArticleSignatures.set(article, videoSignature);
 
         article.className =
             'message ' + message.role;
