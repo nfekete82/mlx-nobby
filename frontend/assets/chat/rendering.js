@@ -2349,13 +2349,35 @@ function renderArtifactChoice(message) {
 }
 
 
+function completedVideoMessageSignature(session, message) {
+    const tool = message?.tool_result;
+    if (message?.role !== 'assistant' ||
+        !['video_generate', 'video_animate', 'shorts_generate'].includes(tool?.tool) ||
+        !tool?.artifacts?.[0]?.video_id) return null;
+
+    // This message is immutable only while its contents are unchanged. Compare
+    // the complete message, not just the video ID: edits, retries, and metadata
+    // changes must still update the chat.
+    return JSON.stringify([
+        session.id,
+        window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || '',
+        MLXChatRuntime.showGenerationMetrics(),
+        MLXChatRuntime.showRuntimeThinkingInfo(),
+        message,
+    ]);
+}
+
+function putMessageArticle(index, article) {
+    const existing = messagesInner.children[index];
+    if (existing) messagesInner.replaceChild(article, existing);
+    else messagesInner.appendChild(article);
+}
+
 function renderMessages(options = {}) {
     const session = currentSession();
     syncImageJobUiTimer();
     const scrollSnapshot =
         MLXChatRuntime.beforeMessagesRender();
-
-    messagesInner.innerHTML = '';
 
     if (
         !session ||
@@ -2389,8 +2411,19 @@ function renderMessages(options = {}) {
         const message =
             session.messages[index];
 
+        const videoSignature = completedVideoMessageSignature(session, message);
+        const existingArticle = messagesInner.children[index];
+        // Keep the actual media element connected: removing/recreating a
+        // <video> on every chat poll resets buffering and breaks playback.
+        if (videoSignature &&
+            existingArticle?.dataset?.videoArtifactSignature === videoSignature &&
+            existingArticle.querySelector?.('video.video-artifact-player')) {
+            continue;
+        }
+
         const article =
             document.createElement('article');
+        if (videoSignature) article.dataset.videoArtifactSignature = videoSignature;
 
         article.className =
             'message ' + message.role;
@@ -2945,7 +2978,7 @@ function renderMessages(options = {}) {
             article.appendChild(avatar);
             article.appendChild(body);
 
-            messagesInner.appendChild(article);
+            putMessageArticle(index, article);
 
             article.dataset.speechSessionId = String(session.id);
             article.dataset.speechMessageIndex = String(index);
@@ -3108,7 +3141,7 @@ function renderMessages(options = {}) {
             article.appendChild(avatar);
             article.appendChild(body);
 
-            messagesInner.appendChild(article);
+            putMessageArticle(index, article);
 
             continue;
         }
@@ -3119,7 +3152,12 @@ function renderMessages(options = {}) {
         article.appendChild(avatar);
         article.appendChild(body);
 
-        messagesInner.appendChild(article);
+        putMessageArticle(index, article);
+    }
+
+    // Rendering a shorter conversation must not leave stale message nodes.
+    while (messagesInner.children.length > session.messages.length) {
+        messagesInner.lastElementChild.remove();
     }
 
     updateContext();
