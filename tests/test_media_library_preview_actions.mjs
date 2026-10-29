@@ -16,6 +16,7 @@ function createFixture(onFetch, onEdit = () => {}) {
       this.tag = tag;
       this.children = [];
       this.attributes = {};
+      this.dataset = {};
       this.events = {};
       this.className = '';
       this.isConnected = true;
