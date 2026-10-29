@@ -74,6 +74,7 @@ function harness() {
   const window = {MLXI18n: {getLanguage: () => 'de'}};
   const context = {
     window, document, console, setInterval, clearInterval, setTimeout, clearTimeout,
+    marked: {parse: value => value}, DOMPurify: {sanitize: value => value},
     MLXChatRuntime: {
       beforeMessagesRender: () => ({}),
       afterMessagesRender() {},
