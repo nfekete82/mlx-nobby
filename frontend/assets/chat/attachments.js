@@ -208,7 +208,8 @@ function attachmentT(key, fallback = '', variables = {}) {
                     return response.json();
                 })
                 .then(data => (data.models || []).filter(model =>
-                    model.capabilities?.includes('image_edit')
+                    model.capabilities?.includes('image_edit') &&
+                    model.id !== 'cyberrealistic-pony-v18'
                 ))
                 .catch(error => {
                     editModelsPromise = null;
@@ -248,6 +249,13 @@ function attachmentT(key, fallback = '', variables = {}) {
         modeLabel.append(modeText, modeSelect);
         bar.append(modeLabel);
         if (imageMode !== 'edit') return;
+        // Older chats may remember this retired model. Do not resurrect it
+        // as an unknown option or silently send it in the next edit request.
+        if (editOptions.model === 'cyberrealistic-pony-v18') {
+            delete editOptions.model;
+            manualEditModel = false;
+            autoSelectedEditModel = null;
+        }
 
         const panel = document.createElement('section');
         panel.className = 'image-edit-options';
