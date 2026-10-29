@@ -27,3 +27,17 @@ resolution, steps, CFG and scheduler, once per model with a fresh worker.
 It establishes successful integration, not a repeatable speed ranking or broad
 quality acceptance. Registry/profile/migration and SDXL safety regressions also
 passed; CPU-only tests never promote a model to `tested`.
+
+### 2026-10-29: CPU-only lifecycle/provider regression
+
+No image checkpoint was loaded or rendered in this change. The existing SDXL /
+Diffusers-MPS and MFLUX provider tests used mocks and isolated CPU workers;
+checkpoint installation, architecture selection and registry status remain
+unchanged. GPU/load result: not exercised. Render time, resolution, steps, CFG,
+scheduler, seed and observed image quality: not applicable to this CPU-only run.
+No model is promoted to `tested`, retained or rejected based on these tests;
+real GPU cancellation and memory-release behavior still require a deliberate
+retest. Initial test failures involved provider mock boundaries after adding
+process supervision and were corrected; they are not checkpoint failures.
+See [implementation, evidence and limitations](LIFECYCLE_VIDEO_EDIT_RELIABILITY_2026-10-29.md)
+and [automated results](lifecycle-video-edit-validation.json).

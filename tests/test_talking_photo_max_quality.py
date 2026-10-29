@@ -55,7 +55,7 @@ def test_max_quality_really_changes_ltx_renderer_steps(distilled, steps, expecte
         mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
         mock.patch.object(talking_photo_ltx, "_pad_audio", side_effect=padded_wav),
         mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
-        mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+        mock.patch.object(talking_photo_ltx.managed_process, "spawn", side_effect=fake_popen),
     ):
         video, info = talking_photo_ltx.generate(
             "a" * 24, b"portrait", ".png", wav_bytes(), 0.4, Path(directory),

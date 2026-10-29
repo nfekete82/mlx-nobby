@@ -3,6 +3,9 @@
 set -euo pipefail
 
 PROJECT_DIR="${MLX_NOBBY_PROJECT_DIR:-$HOME/mlx-web}"
+if [ "${MLX_LIFECYCLE_LOCKED:-0}" != "1" ]; then
+    exec python3 "$PROJECT_DIR/scripts/ai-lifecycle.py" run "$0" "$@"
+fi
 LOG_FILE="/tmp/mlx-nobby-shutdown-ai.log"
 export PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 MLX_BIN="${MLX_BIN:-$HOME/bin/mlx}"
@@ -31,6 +34,8 @@ with urllib.request.urlopen(request, timeout=2) as response:
 PYREPORT
 }
 
+trap 'status=$?; report_lifecycle "failed" "failed" 0 2 "Shutdown fehlgeschlagen (Exit $status); Jobannahme bleibt gesperrt. Siehe $LOG_FILE"; exit "$status"' ERR
+set -E
 cd "$PROJECT_DIR"
 if [ ! -x "$MLX_BIN" ]; then
     MLX_BIN="$(command -v mlx || true)"

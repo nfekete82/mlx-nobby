@@ -91,3 +91,15 @@ def stable_runtime_memory_snapshot(monkeypatch, request):
         lambda: dict(snapshot),
     )
 
+
+
+@pytest.fixture(autouse=True)
+def isolate_ai_lifecycle(monkeypatch, tmp_path):
+    """Every test has its own durable admission flag; never touch the live Mac."""
+    import ai_lifecycle_gate
+    monkeypatch.setattr(ai_lifecycle_gate, "ROOT", tmp_path / "ai-lifecycle")
+    monkeypatch.setenv("MLX_AI_LIFECYCLE_DIR", str(tmp_path / "ai-lifecycle"))
+    import sys
+    agent = sys.modules.get("agent.app")
+    if agent is not None:
+        agent._set_system_lifecycle_state()

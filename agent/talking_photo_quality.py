@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ai_lifecycle_gate
+
 import hashlib
 import json
 import os
@@ -448,6 +450,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
         shutil.rmtree(work, ignore_errors=True)
 
 
+@ai_lifecycle_gate.admitted
 def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False,
                stage1_steps: int | None = None) -> dict:
     if distilled and not ltx_only:

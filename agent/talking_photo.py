@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ai_lifecycle_gate
+
 import base64
 import hashlib
 import binascii
@@ -390,6 +392,7 @@ def _run_job(job_id: str, image: bytes, request_payload: dict) -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+@ai_lifecycle_gate.admitted
 def create_job(payload: dict) -> dict:
     health = provider_health()
     if not health["ready"]:

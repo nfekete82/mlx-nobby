@@ -1517,6 +1517,10 @@ mlx_service_stop() {
 
     if ! mlx_service_loaded "$service"; then
         echo "$service ist bereits gestoppt."
+        if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            echo "Port $port ist weiterhin belegt; Eigentümer muss geprüft werden."
+            return 1
+        fi
         return 0
     fi
 
@@ -1636,7 +1640,14 @@ services_command() {
 }
 
 
+ai_lifecycle() {
+    local project="${MLX_NOBBY_PROJECT_DIR:-$HOME/mlx-web}"
+    python3 "${MLX_NOBBY_LIFECYCLE_HELPER:-$project/scripts/ai-lifecycle.py}" "$1"
+}
+
+
 restart_all() {
+    MLX_LIFECYCLE_HOLD=1 stop_ai || return 1
     echo
     echo "MLX Nobby – alle Dienste neu starten"
     echo "────────────────────────────────────────────────────────────"
@@ -1682,6 +1693,9 @@ restart_all() {
     echo
     services_status
 
+    if [ "${MLX_LIFECYCLE_HOLD:-0}" != "1" ]; then
+        ai_lifecycle resume || return 1
+    fi
     echo "✓ Alle MLX-Nobby-Dienste wurden neu gestartet."
 }
 
@@ -1691,11 +1705,19 @@ stop_ai() {
     echo "MLX Nobby – KI-System beenden"
     echo "────────────────────────────────────────────────────────────"
 
+    ai_lifecycle quiesce || return 1
+
     # Stop only MLX Nobby model services. The agent and web UI remain online.
+    local stop_failed=0
     for service in video images speech embeddings router mlxserve server; do
-        mlx_service_stop "$service" || return 1
+        mlx_service_stop "$service" || stop_failed=1
     done
 
+    if [ "$stop_failed" -ne 0 ]; then
+        echo "Mindestens ein Dienst meldete einen Fehler beim Stoppen."
+        return 1
+    fi
+    ai_lifecycle verify-stopped || return 1
     echo "✓ Alle MLX-Nobby-KI-Dienste wurden beendet."
 }
 
@@ -1837,6 +1859,14 @@ if [[ "${1:-}" = test-quick || "${1:-}" = test-medium || "${1:-}" = test-e2e || 
 fi
 
 load_config
+
+case "${1:-}" in
+    stop-ai|stop-all|restart-all)
+        if [ "${MLX_LIFECYCLE_LOCKED:-0}" != "1" ]; then
+            exec python3 "${MLX_NOBBY_PROJECT_DIR:-$HOME/mlx-web}/scripts/ai-lifecycle.py" run "$0" "$@"
+        fi
+        ;;
+esac
 
 case "$1" in
     benchmark)

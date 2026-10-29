@@ -37,6 +37,7 @@ from agent import shorts_jobs
 from agent.shorts_planner import plan_short
 from agent import model_cleanup
 import runtime_coordinator
+import ai_lifecycle_gate as ai_gate
 from agent.tool_registry import Tool, ToolRegistry
 from agent import run_state
 from agent.research_cache import reuse_research_observation
@@ -113,6 +114,12 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MLX macOS Agent")
 app.add_middleware(LocalRequestGuard)
+
+@app.exception_handler(ai_gate.AdmissionClosed)
+async def admission_closed_handler(request, exc):
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": str(exc)}, status_code=503)
+
 
 CONFIG = Path.home() / ".config/mlx-server/config"
 MODELS = Path.home() / ".config/mlx-server/models"
@@ -984,17 +991,24 @@ def _set_system_lifecycle_state(
     message="",
     error=None,
 ):
-    _SYSTEM_LIFECYCLE_STATE.update(
-        {
-            "action": action,
-            "state": state,
-            "phase": phase or state,
-            "current": current,
-            "total": total,
-            "message": message,
-            "error": error,
-        }
-    )
+    with _SYSTEM_LIFECYCLE_LOCK:
+        _SYSTEM_LIFECYCLE_STATE.update(
+            {
+                "action": action,
+                "state": state,
+                "phase": phase or state,
+                "current": current,
+                "total": total,
+                "message": message,
+                "error": error,
+                "updated_at": time.time(),
+            }
+        )
+        ai_gate.ROOT.mkdir(parents=True, exist_ok=True)
+        path = ai_gate.ROOT / "lifecycle.json"
+        scratch = path.with_suffix(".tmp")
+        scratch.write_text(json.dumps(_SYSTEM_LIFECYCLE_STATE))
+        os.replace(scratch, path)
 
 
 def _get_system_lifecycle_state():
@@ -1058,6 +1072,11 @@ def system_lifecycle_progress(payload: dict):
     phase = payload.get("phase")
     message = payload.get("message")
     error = payload.get("error")
+    if state == "failed" and not error:
+        previous = _get_system_lifecycle_state()
+        if previous.get("state") == "failed" and previous.get("error"):
+            error = previous["error"]
+            message = f"{message or ''} {error}".strip()
 
     current = payload.get("current", 0)
     total = payload.get("total", 0)
@@ -1101,61 +1120,49 @@ def system_lifecycle_progress(payload: dict):
     return _get_system_lifecycle_state()
 
 
+def _start_lifecycle(action, script):
+    with _SYSTEM_LIFECYCLE_LOCK:
+        current = _get_system_lifecycle_state()
+        if current["state"] in {"accepted", "running"}:
+            # A detached helper can fail before it reports back. Its full
+            # operation lock distinguishes a live run from durable stale state.
+            import fcntl
+            live = time.time() - current.get("updated_at", time.time()) < 5
+            with (ai_gate.ROOT / "operation.lock").open("a+") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    live = True
+            if not live:
+                current = {**current, "state": "failed"}
+            if live and current["action"] == action:
+                return {"status": "accepted", "action": action}
+            if live:
+                raise HTTPException(409, "Eine Lifecycle-Aktion läuft bereits")
+        ai_gate.set_blocked(True, action)
+        _set_system_lifecycle_state(state="accepted", action=action, phase="blocking",
+                                    message="Neue KI-Aufträge werden angehalten")
+        try:
+            _launch_system_lifecycle_helper(script)
+        except Exception as exc:
+            _set_system_lifecycle_state(state="failed", action=action, error=str(exc), message=str(exc))
+            raise
+        return {"status": "accepted", "action": action}
+
+
 @app.post("/api/system/restart-all", status_code=202)
 def system_restart_all():
-    _set_system_lifecycle_state(
-        state="accepted",
-        action="restart-all",
-        phase="accepted",
-        message="Dienste werden neu gestartet.",
-        current=0,
-        total=0,
-    )
-
-    _launch_system_lifecycle_helper("restart-all.sh")
-
-    return {
-        "status": "accepted",
-        "action": "restart-all",
-    }
+    return _start_lifecycle("restart-all", "restart-all.sh")
 
 
 @app.post("/api/system/reboot", status_code=202)
 def system_reboot():
-    _set_system_lifecycle_state(
-        state="accepted",
-        action="reboot",
-        phase="accepted",
-        message="System Reboot wird vorbereitet.",
-        current=0,
-        total=0,
-    )
-
-    _launch_system_lifecycle_helper("rebuild-all.sh")
-
-    return {
-        "status": "accepted",
-        "action": "reboot",
-    }
+    return _start_lifecycle("reboot", "rebuild-all.sh")
 
 
 @app.post("/api/system/shutdown-ai", status_code=202)
 def system_shutdown_ai():
-    _set_system_lifecycle_state(
-        state="accepted",
-        action="shutdown-ai",
-        phase="accepted",
-        message="KI-System wird beendet.",
-        current=0,
-        total=0,
-    )
-
-    _launch_system_lifecycle_helper("shutdown-ai.sh")
-
-    return {
-        "status": "accepted",
-        "action": "shutdown-ai",
-    }
+    return _start_lifecycle("shutdown-ai", "shutdown-ai.sh")
 
 
 @app.get("/api/chats")
@@ -4336,6 +4343,11 @@ def load_batch_jobs():
 
 
 def save_batch_jobs(jobs):
+    # A late analysis/HTTP response must not resurrect a cancelled batch.
+    previous = load_batch_jobs()
+    for job_id, old in previous.items():
+        if old.get("status") == "cancelled" and job_id in jobs and jobs[job_id].get("status") in {"completed", "failed", "running"}:
+            jobs[job_id] = old
     batch_state.save_jobs(
         BATCH_DIRECTORY,
         BATCH_JOBS_FILE,
@@ -10021,6 +10033,7 @@ def preflight_chat_action(request: ChatActionRequest):
 @app.post("/api/chat/actions")
 @observability.observed_turn
 def run_chat_action(request: ChatActionRequest):
+    ai_gate.check()
 
     routing_file_context = _image_source_routing_context(request)
     media = decide_media_intent(
@@ -11292,6 +11305,7 @@ def parse_file_excerpt_selection(instruction):
     return None
 
 
+@ai_gate.admitted
 def create_file_analysis_job(input_path, instruction, file_type, chunk_tokens, operation, attachment_id=None, trace_id=None, *, chat_id=None, run_id=None):
     path = Path(input_path).expanduser()
     if not path.is_file(): raise HTTPException(status_code=404, detail="Eingabedatei nicht gefunden")
@@ -11902,6 +11916,7 @@ def _runtime_chat_role(request):
 
 @app.post("/api/runtime/chat")
 def runtime_chat(request: RuntimeChatRequest):
+    ai_gate.check()
     """
     Central role-aware MLX access for regular chat.
 
@@ -12067,6 +12082,7 @@ def vision_streaming_capabilities():
 
 @app.post("/api/runtime/chat/stream")
 def runtime_chat_stream(request: RuntimeChatStreamRequest):
+    ai_gate.check()
     """
     Role-aware streaming gateway for regular chat.
 
@@ -12135,7 +12151,7 @@ def runtime_chat_stream(request: RuntimeChatStreamRequest):
             )
 
         try:
-            with run_state.active_chat_stream() as mark_progress, runtime_coordinator.chat_runtime(cancel_event, exclusive_models=True), MODEL_RUNTIME_LOCK:
+            with run_state.active_chat_stream(cancel_event) as mark_progress, runtime_coordinator.chat_runtime(cancel_event, exclusive_models=True), MODEL_RUNTIME_LOCK:
                 call_metrics.set_queue_wait(
                     (time.monotonic() - wait_started) * 1000
                 )
@@ -13646,6 +13662,7 @@ def _chat_run_context(request, run_id):
 @app.post("/api/agent/run")
 @observability.observed_turn
 def api_agent_run(request: AgentRunRequest):
+    ai_gate.check()
     run_id = validate_agent_run_id(request.run_id) if request.run_id else None
     context = _chat_run_context(request, run_id)
 
@@ -13752,6 +13769,7 @@ def api_agent_run_progress(run_id: str):
 
 
 def local_file_llm(prompt, max_tokens=800):
+    ai_gate.check()
     config = load_config(); model = config.get("MODEL"); port = int(config.get("PORT", 8000))
     if not model: raise RuntimeError("Kein aktives MLX-Modell gefunden")
     payload = {"model": model, "messages": [{"role": "system", "content": "Answer precisely in the language of the user's instruction. Do not invent facts; use only the supplied file facts."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
@@ -14147,6 +14165,7 @@ def run_file_analysis_job(job_id):
         unregister_batch_worker(job_id)
 
 
+@ai_gate.admitted
 @locked_batch_start
 def start_file_analysis_job(job_id):
     thread = threading.Thread(
@@ -15602,6 +15621,7 @@ Keine Markdown-Codeblöcke.
 
 
 @app.post("/api/batch/{job_id}/start")
+@ai_gate.admitted
 @locked_batch_start
 def start_batch_job(job_id: str):
     with BATCH_LOCK:
@@ -16288,3 +16308,15 @@ def search_uploaded_document_api(request: DocumentSearchRequest):
             status_code=503,
             detail=str(exc),
         ) from exc
+
+
+# Restore the detached helper's status across Agent reloads.
+try:
+    _SYSTEM_LIFECYCLE_STATE.update(json.loads((ai_gate.ROOT / "lifecycle.json").read_text()))
+except FileNotFoundError:
+    pass
+except (OSError, ValueError):
+    ai_gate.set_blocked(True, "Lifecycle-Status beschädigt")
+
+from agent.ai_lifecycle import install_routes as install_ai_lifecycle_routes
+install_ai_lifecycle_routes(app, sys.modules[__name__])

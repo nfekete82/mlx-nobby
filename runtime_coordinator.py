@@ -1,5 +1,6 @@
 """Deterministic serialization and handoff for heavy local runtimes."""
 
+import ai_lifecycle_gate
 import fcntl
 import http.client
 import json
@@ -137,6 +138,8 @@ def _cancelled(cancel_event):
 
 
 def _check_cancelled(cancel_event):
+    if ai_lifecycle_gate.blocked():
+        raise CoordinationCancelled("KI-Shutdown läuft")
     if _cancelled(cancel_event):
         raise CoordinationCancelled("Runtime handoff was cancelled")
 
@@ -400,8 +403,11 @@ def ensure_model_load_allowed(
     *,
     snapshot=None,
     reserve_gb=None,
+    admission_required=True,
 ):
     """Reject a new local ML-model load before it can exhaust unified memory."""
+    if admission_required:
+        ai_lifecycle_gate.check()
     snapshot = snapshot or memory_budget_snapshot()
     if reserve_gb is None:
         reserve_gb = model_load_reserve_gb(workload)
@@ -1131,7 +1137,7 @@ def video_runtime(
             )
             yield preflight
         finally:
-            if restore_chat:
+            if restore_chat and not ai_lifecycle_gate.blocked():
                 after = memory_budget_snapshot()
                 preflight["memory_after"] = after
                 restore_unsafe = (
@@ -1281,7 +1287,7 @@ def image_runtime(
             )
             yield preflight
         finally:
-            if restore_chat:
+            if restore_chat and not ai_lifecycle_gate.blocked():
                 after = memory_snapshot()
                 preflight["memory_after"] = after
                 restore_unsafe = (

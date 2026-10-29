@@ -2738,7 +2738,7 @@ function updateLifecycleProgress(data) {
         );
 
     if (percentText) {
-        percentText.textContent = percent + ' %';
+        percentText.textContent = total > 0 ? current + ' / ' + total : '…';
     }
 
     if (track) {
@@ -2751,7 +2751,7 @@ function updateLifecycleProgress(data) {
     if (progressText) {
         progressText.textContent =
             total > 0
-                ? current + ' / ' + total
+                ? chatT('ui.lifecycle_phases', 'Completed phases')
                 : '';
     }
 

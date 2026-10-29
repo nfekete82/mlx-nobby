@@ -2,6 +2,7 @@
   "use strict";
   const de = () => String(document.documentElement.lang || navigator.language || "de").startsWith("de");
   const t = (g, e) => de() ? g : e;
+  const tr = (key, g, e) => window.MLXI18n?.t("video_edit." + key, t(g, e)) || t(g, e);
   const el = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -10,6 +11,9 @@
   };
   const style = el("style");
   style.textContent = `
+  .nobby-video-edit-resume{position:fixed;bottom:18px;right:18px;z-index:10090;max-width:calc(100vw - 36px);padding:10px 14px;background:#243852;color:#fff;border:1px solid #7187a6;border-radius:10px;cursor:pointer}
+  .nobby-video-edit-resume[hidden]{display:none}
+  .nobby-video-edit progress{width:100%;accent-color:#60a5fa}
   .nobby-video-edit[hidden]{display:none!important}
   .nobby-video-edit{position:fixed;inset:0;z-index:10100;display:grid;place-items:center;padding:16px;background:rgba(3,8,18,.78)}
   .nobby-video-edit-dialog{background:#111d2d;border:1px solid #42526a;border-radius:16px;color:#edf2fc;
@@ -100,11 +104,22 @@
   const status = el("div", "nobby-video-edit-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
+  const progress = el("progress");
+  progress.max = 1;
+  progress.hidden = true;
+  progress.setAttribute("aria-label", tr("phase_progress", "Fortschritt der Teilphase", "Current phase progress"));
+  const timing = el("div", "nobby-video-edit-hint");
+  const backgroundHint = el("div", "nobby-video-edit-hint", tr("background", "Schließen lässt den Auftrag im Hintergrund weiterlaufen. Über den Video-Editor-Button kannst du zurückkehren.", "Closing keeps the job running in the background. Return using the video editor button."));
+  const resumeButton = el("button", "nobby-video-edit-resume", tr("resume", "Video-Editor öffnen", "Open video editor"));
+  resumeButton.type = "button";
+  resumeButton.hidden = true;
+  document.body.appendChild(resumeButton);
+  resumeButton.addEventListener("click", () => { lastFocus = document.activeElement; overlay.hidden = false; close.focus(); });
   const actions = el("div", "nobby-video-edit-actions");
   const create = el("button", "primary", t("Video bearbeiten", "Edit video"));
   create.type = "submit";
   create.disabled = true;
-  const cancel = el("button", "", t("Abbrechen", "Cancel"));
+  const cancel = el("button", "", tr("cancel", "Bearbeitung abbrechen", "Cancel edit"));
   cancel.type = "button";
   cancel.hidden = true;
   const download = el("a", "", t("Ergebnis ansehen", "View result"));
@@ -115,7 +130,7 @@
   form.append(field(t("Aktion", "Action"), operation),
               field(t("Prompt für die Änderung", "Edit prompt"), prompt),
               field(t("Modus", "Mode"), quality), extendField, startField, endField,
-              hint, status, actions);
+              hint, backgroundHint, progress, timing, status, actions);
   dialog.append(header, form, result);
   overlay.append(dialog);
   document.body.appendChild(overlay);
@@ -124,11 +139,44 @@
   let jobId = null;
   let running = false;
   let poll = null;
+  let pollEpoch = 0;
   let sourceInfo = null;
   let version = 0;
   let lastFocus = null;
+  let lastJob = null;
+  let cancelPending = false;
+  let recovering = null;
+  const storageKey = "mlx-video-edit-active-v1";
+  const validId = id => /^[a-f0-9]{24}$/.test(String(id || ""));
+  function savedId() {
+    try {
+      const value = JSON.parse(localStorage.getItem(storageKey) || "null");
+      if (value?.version === 1 && validId(value.id)) return value.id;
+      localStorage.removeItem(storageKey);
+    } catch (_) { try { localStorage.removeItem(storageKey); } catch (_) {} }
+    return null;
+  }
+  function saveActive(id) {
+    try {
+      if (id) localStorage.setItem(storageKey, JSON.stringify({version: 1, id}));
+      else if (savedId() === jobId) localStorage.removeItem(storageKey);
+    } catch (_) { /* Backend discovery also works when storage is disabled. */ }
+  }
+  function renderTiming() {
+    if (!lastJob?.started_at) { timing.textContent = ""; return; }
+    const elapsed = Math.max(0, Math.floor((lastJob.finished_at || Date.now()/1000) - lastJob.started_at));
+    const activity = lastJob.last_activity_at;
+    timing.textContent = tr("elapsed", "Laufzeit", "Elapsed") + `: ${elapsed} s · ` +
+      tr("activity", "Letzte bestätigte Aktivität", "Last confirmed activity") + ": " +
+      (activity ? new Date(activity * 1000).toLocaleTimeString() : tr("waiting", "noch keine LTX-Ausgabe", "waiting for LTX output"));
+  }
+  let clock = setInterval(renderTiming, 1000);
+  window.addEventListener("pagehide", () => { stopPoll(); clearInterval(clock); clock = null; });
+  window.addEventListener("pageshow", () => { if (clock === null) clock = setInterval(renderTiming, 1000); if (jobId && running) { stopPoll(); pollJob(jobId); } });
+  window.addEventListener("storage", event => { if (event.key === storageKey) recover(); });
 
-  const stopPoll = () => {if (poll !== null) clearTimeout(poll); poll = null;};
+
+  const stopPoll = () => {pollEpoch++; if (poll !== null) clearTimeout(poll); poll = null;};
   const setStatus = message => {status.textContent = message;};
   function refreshFields() {
     const isRetake = operation.value === "retake";
@@ -142,26 +190,56 @@
   function dismiss() {
     overlay.hidden = true;
     lastFocus?.focus?.();
+    if (running) resumeButton.hidden = false;
   }
   close.addEventListener("click", dismiss);
   overlay.addEventListener("click", event => {if (event.target === overlay) dismiss();});
   document.addEventListener("keydown", event => {
     if (!overlay.hidden && event.key === "Escape") dismiss();
+    if (!overlay.hidden && event.key === "Tab") {
+      const nodes = [...dialog.querySelectorAll("button, input, select, textarea, a[href], video")]
+        .filter(node => !node.disabled && !node.hidden && node.getClientRects().length);
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
   });
 
   async function json(url, options = {}) {
-    const response = await fetch(url, {
-      cache: "no-store",
-      ...options,
-      headers: {Accept: "application/json", ...(options.body ? {"Content-Type": "application/json"} : {}), ...(options.headers || {})},
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(String(payload.detail || `HTTP ${response.status}`));
-    return payload;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    try {
+      const response = await fetch(url, {
+        cache: "no-store", ...options, signal: controller.signal,
+        headers: {Accept: "application/json", ...(options.body ? {"Content-Type": "application/json"} : {}), ...(options.headers || {})},
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(String(payload.detail || `HTTP ${response.status}`));
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    } finally { clearTimeout(timeout); }
   }
   function updateJob(job) {
     if (job.id !== jobId) return;
+    lastJob = job;
     running = !["completed", "failed", "cancelled"].includes(job.status);
+    cancelPending = running && (Boolean(job.cancel_requested) || job.status === "cancelling");
+    cancel.disabled = cancelPending;
+    resumeButton.hidden = false;
+    if (running) saveActive(jobId); else saveActive(null);
+    progress.hidden = !running;
+    const fraction = job.phase_progress;
+    if (typeof fraction === "number" && Number.isFinite(fraction) && fraction >= 0 && fraction <= 1) {
+      progress.value = fraction;
+      progress.setAttribute("aria-valuetext", tr("phase_progress", "Fortschritt der Teilphase", "Current phase progress") + `: ${Math.round(fraction * 100)} %`);
+    } else {
+      progress.removeAttribute("value");
+      progress.removeAttribute("aria-valuetext");
+    }
+    renderTiming();
     create.disabled = running || !sourceInfo;
     cancel.hidden = !running;
     status.textContent = job.status === "completed"
@@ -170,7 +248,10 @@
         ? t("Bearbeitung fehlgeschlagen: ", "Editing failed: ") + (job.error || "")
         : job.status === "cancelled"
           ? t("Abgebrochen.", "Cancelled.")
-          : t("LTX verarbeitet das Video … Der Vorgang kann mehrere Minuten dauern. ", "LTX is processing the video … This may take several minutes. ") + job.status;
+          : cancelPending
+            ? tr("stopping", "Wird beendet …", "Stopping …")
+            : phaseText(job) + (Number.isInteger(job.current_step) && Number.isInteger(job.total_steps) && job.total_steps > 0
+              ? ` · ${job.current_step}/${job.total_steps} ` + tr("phase_steps", "Schritte (Teilphase)", "steps (current phase)") : "");
     if (job.status === "completed" && job.result?.video_url) {
       result.src = job.result.video_url;
       result.hidden = false;
@@ -179,25 +260,75 @@
       window.dispatchEvent(new Event("mlx-video-edit-completed"));
     }
   }
+  function phaseText(job) {
+    const phases = {
+      queued: ["Warte auf LTX", "Waiting for LTX"], preparing: ["Ressourcen werden vorbereitet", "Preparing resources"],
+      loading: ["LTX lädt Modelle", "Loading LTX models"], encoding: ["LTX kodiert Eingaben", "LTX is encoding inputs"],
+      encoding_prompt: ["LTX kodiert den Prompt", "LTX is encoding the prompt"],
+      generating: ["LTX generiert Videoframes", "LTX is generating video frames"], decoding: ["Video wird dekodiert", "Decoding video"],
+      saving: ["Video wird gespeichert", "Saving video"], stage_1: ["LTX Generierung · Stage 1", "LTX generation · Stage 1"],
+      stage_2: ["LTX Verfeinerung · Stage 2", "LTX refinement · Stage 2"],
+    };
+    const phase = job.phase || job.status;
+    const text = phases[phase] || phases.generating;
+    return tr("phase_" + phase, ...text);
+  }
+  async function recover() {
+    if (recovering) return recovering;
+    recovering = (async () => {
+      const remembered = savedId();
+      try {
+        const data = await json("/api/mlx/video/edit/jobs");
+        let job = (data.jobs || [])[0];
+        if (!job && remembered) {
+          try { job = await json("/api/mlx/video/edit/jobs/" + remembered); }
+          catch (error) { if (error.status === 404) saveActive(null); else throw error; }
+        }
+        if (job && validId(job.id)) {
+          const changed = jobId !== job.id;
+          jobId = job.id;
+          asset = {kind: job.source_kind, id: job.source_id};
+          if (changed) { result.hidden = true; download.hidden = true; cancelPending = false; }
+          stopPoll();
+          updateJob(job);
+          if (running) pollJob(jobId);
+        }
+      } catch (error) {
+        setStatus(tr("recover_error", "Wiederherstellung fehlgeschlagen: ", "Recovery failed: ") + error.message);
+        resumeButton.hidden = false;
+        stopPoll();
+        poll = setTimeout(recover, 3000);
+      }
+    })();
+    try { await recovering; } finally { recovering = null; }
+  }
   async function pollJob(id) {
+    const epoch = pollEpoch;
     try {
       const job = await json("/api/mlx/video/edit/jobs/" + id);
-      if (jobId !== id) return;
+      if (job.id !== id || typeof job.status !== "string") throw new Error(tr("invalid_status", "Ungültige Statusantwort", "Invalid status response"));
+      if (jobId !== id || epoch !== pollEpoch) return;
       updateJob(job);
       if (running) poll = setTimeout(() => pollJob(id), 1700);
     } catch (error) {
-      if (jobId !== id) return;
+      if (jobId !== id || epoch !== pollEpoch) return;
+      if (error.status === 404) {
+        saveActive(null); running = false; cancel.hidden = true; create.disabled = !sourceInfo;
+        progress.hidden = true; setStatus(error.message); return;
+      }
       setStatus(t("Statusabfrage fehlgeschlagen: ", "Status check failed: ") + error.message);
       poll = setTimeout(() => pollJob(id), 3000);
     }
   }
   async function open(source, preferred = "extend") {
+    await recover();
     if (!source || !["video", "talking_photo"].includes(source.kind) ||
         !/^[a-f0-9]{24}$/.test(String(source.id || ""))) {
       throw new Error(t("Ungültige Videoquelle", "Invalid video source"));
     }
     if (running) {
       overlay.hidden = false;
+      close.focus();
       setStatus(t("Ein Edit läuft noch. Du kannst ihn hier verfolgen oder abbrechen.", "An edit is still running. Track or cancel it here."));
       return;
     }
@@ -207,6 +338,7 @@
     operation.value = preferred === "retake" ? "retake" : "extend";
     refreshFields();
     overlay.hidden = false;
+    close.focus();
     result.hidden = true;
     result.removeAttribute("src");
     download.hidden = true;
@@ -232,6 +364,7 @@
   form.addEventListener("submit", async event => {
     event.preventDefault();
     if (!sourceInfo || !asset || running) return;
+    running = true;
     create.disabled = true;
     setStatus(t("Starte LTX-Job …", "Starting LTX job …"));
     try {
@@ -249,6 +382,7 @@
           seed: 42,
         }),
       });
+      if (!validId(job.id)) throw new Error(tr("invalid_status", "Ungültige Statusantwort", "Invalid status response"));
       jobId = job.id;
       running = true;
       cancel.hidden = false;
@@ -256,21 +390,30 @@
       updateJob(job);
       pollJob(jobId);
     } catch (error) {
+      running = false;
       setStatus(error.message);
       create.disabled = false;
+      await recover();
     }
   });
   cancel.addEventListener("click", async () => {
-    if (!jobId || !running) return;
+    if (!jobId || !running || cancelPending) return;
+    cancelPending = true;
+    stopPoll();
     cancel.disabled = true;
+    setStatus(tr("cancel_requested", "Abbruch angefordert …", "Cancellation requested …"));
     try {
-      await json("/api/mlx/video/edit/jobs/" + jobId + "/cancel", {method: "POST", body: "{}"});
-      setStatus(t("Abbruch angefordert …", "Cancellation requested …"));
+      const job = await json("/api/mlx/video/edit/jobs/" + jobId + "/cancel", {method: "POST", body: "{}"});
+      updateJob(job);
+      stopPoll();
+      if (running) pollJob(jobId);
     } catch (error) {
-      setStatus(error.message);
-    } finally {
+      cancelPending = false;
       cancel.disabled = false;
+      poll = setTimeout(() => pollJob(jobId), 1700);
+      setStatus(tr("cancel_error", "Abbruch nicht bestätigt; erneut versuchen: ", "Cancellation unconfirmed; retry: ") + error.message);
     }
   });
+  recover();
   window.MLXVideoEdit = Object.freeze({open});
 })();

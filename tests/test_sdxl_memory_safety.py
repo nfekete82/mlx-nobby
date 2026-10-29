@@ -45,7 +45,7 @@ def test_worker_mps_watermarks_override_unsafe_inherited_environment(tmp_path):
     process = mock.Mock()
     process.poll.return_value = None
     process.pid = 12345
-    with mock.patch.object(providers.subprocess, "Popen", return_value=process) as spawn:
+    with mock.patch.object(providers.managed_process, "spawn", return_value=process) as spawn:
         manager._start_locked({
             "PYTORCH_MPS_HIGH_WATERMARK_RATIO": "0",
             "PYTORCH_MPS_LOW_WATERMARK_RATIO": "0",

@@ -187,8 +187,8 @@ class QualityPlusTests(unittest.TestCase):
                 "realesrgan_command",
                 side_effect=command,
             ), mock.patch.object(
-                image_providers.subprocess,
-                "Popen",
+                image_providers.managed_process,
+                "spawn",
                 side_effect=popen,
             ), mock.patch.dict(
                 os.environ,

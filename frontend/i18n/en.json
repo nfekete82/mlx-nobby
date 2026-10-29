@@ -922,8 +922,8 @@
     "workspace_select": "Select workspace",
     "workspace_close": "Close workspace",
     "system_actions": "System actions",
-    "system_reboot": "↻ System Reboot",
-    "system_reboot_title": "System Reboot",
+    "system_reboot": "↻ Rebuild MLX-Nobby",
+    "system_reboot_title": "MLX-Nobby rebuild and restart",
     "system_reboot_confirm": "Stop all MLX Nobby services, rebuild the web application, and then start everything again?",
     "system_reboot_confirm_label": "Start reboot",
     "system_rebooting": "MLX Nobby is being rebuilt and restarted …",
@@ -937,7 +937,8 @@
     "system_action_timeout": "The system action did not complete before the timeout.",
     "system_reconnecting": "Reconnecting to services …",
     "adaptive_response_length": "Automatic response adaptation",
-    "adaptive_response_length_hint": "On by default for all chats. Detects unusually brief reply patterns and tailors the next response to the conversation. Disable for this chat if desired; no automatic regeneration."
+    "adaptive_response_length_hint": "On by default for all chats. Detects unusually brief reply patterns and tailors the next response to the conversation. Disable for this chat if desired; no automatic regeneration.",
+    "lifecycle_phases": "Completed phases"
   },
   "attachments.rag_ready": " · ✓ RAG ready",
   "attachments.image_read_failed": "Image could not be read: {name}",
@@ -1170,5 +1171,30 @@
     "mode_always": "Prefer asking questions",
     "mode_off": "Off",
     "hint": "MLX-Nobby asks targeted questions when missing details would improve the answer. Your selection is stored locally."
+  },
+  "video_edit": {
+    "cancel": "Cancel edit",
+    "phase_progress": "Current phase progress",
+    "background": "Closing keeps the job running in the background. Return using the video editor button.",
+    "resume": "Open video editor",
+    "elapsed": "Elapsed",
+    "activity": "Last confirmed activity",
+    "waiting": "waiting for LTX output",
+    "stopping": "Stopping …",
+    "phase_steps": "steps (current phase)",
+    "cancel_requested": "Cancellation requested …",
+    "cancel_error": "Cancellation unconfirmed; retry: ",
+    "recover_error": "Recovery failed: ",
+    "phase_queued": "Waiting for LTX",
+    "phase_preparing": "Preparing resources",
+    "phase_loading": "Loading LTX models",
+    "phase_encoding": "LTX is encoding inputs",
+    "phase_generating": "LTX is generating video frames",
+    "phase_decoding": "Decoding video",
+    "phase_saving": "Saving video",
+    "phase_stage_1": "LTX generation · Stage 1",
+    "phase_stage_2": "LTX refinement · Stage 2",
+    "phase_encoding_prompt": "LTX is encoding the prompt",
+    "invalid_status": "Invalid status response"
   }
 }

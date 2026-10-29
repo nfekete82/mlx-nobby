@@ -3,6 +3,9 @@
 set -euo pipefail
 
 PROJECT_DIR="${MLX_NOBBY_PROJECT_DIR:-$HOME/mlx-web}"
+if [ "${MLX_LIFECYCLE_LOCKED:-0}" != "1" ]; then
+    exec python3 "$PROJECT_DIR/scripts/ai-lifecycle.py" run "$0" "$@"
+fi
 LOG_FILE="/tmp/mlx-nobby-restart.log"
 
 export PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/OrbStack.app/Contents/MacOS/xbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
@@ -12,6 +15,7 @@ MLX_BIN="${MLX_BIN:-$HOME/bin/mlx}"
 exec >>"$LOG_FILE" 2>&1
 
 ACTION="restart-all"
+export MLX_LIFECYCLE_HOLD=1
 
 AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
 AGENT_LABEL="de.nobby.mlx-agent"
@@ -226,6 +230,9 @@ echo "MLX NOBBY — RESTART ALL"
 echo "$(date)"
 echo "============================================================"
 
+trap 'status=$?; report_lifecycle "failed" "failed" 0 3 "Neustart fehlgeschlagen (Exit $status); Jobannahme bleibt gesperrt."; exit "$status"' ERR
+set -E
+
 cd "$PROJECT_DIR"
 export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
@@ -240,6 +247,8 @@ fi
 
 echo "mlx: $MLX_BIN"
 echo "revision: $MLX_NOBBY_BUILD_SHA"
+
+"$MLX_BIN" stop-ai
 
 # Let the initiating HTTP response leave the agent before restarting it.
 sleep 1
@@ -313,6 +322,8 @@ if [ "$restart_status" -ne 0 ]; then
         "mlx restart-all exited with status $restart_status"
     exit "$restart_status"
 fi
+
+python3 "${MLX_NOBBY_LIFECYCLE_HELPER:-$PROJECT_DIR/scripts/ai-lifecycle.py}" resume
 
 report_lifecycle \
     "completed" \

@@ -1,5 +1,7 @@
 from pathlib import Path
 from contextlib import contextmanager
+from ai_lifecycle_gate import AIAdmissionGuard
+
 import gc
 import json
 import os
@@ -27,6 +29,7 @@ FFMPEG = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or "/opt/homebr
 MAX_AUDIO_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "250")) * 1024**2
 
 app = FastAPI(title="MLX nobby Speech")
+app.add_middleware(AIAdmissionGuard)
 app.add_middleware(LocalRequestGuard)
 
 _model = None

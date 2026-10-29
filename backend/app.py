@@ -445,6 +445,11 @@ def video_edit_create(request: dict):
     return agent_json_request("POST", "/api/video/edit/jobs", request, timeout=60)
 
 
+@app.get('/api/mlx/video/edit/jobs')
+def list_video_edit_jobs(active_only: bool = True):
+    return agent_json_request("GET", "/api/video/edit/jobs?active_only=" + str(active_only).lower(), timeout=15)
+
+
 @app.get('/api/mlx/video/edit/jobs/{job_id}')
 def video_edit_job(job_id: str):
     return agent_json_request("GET", "/api/video/edit/jobs/" + urllib.parse.quote(job_id, safe=""), timeout=15)

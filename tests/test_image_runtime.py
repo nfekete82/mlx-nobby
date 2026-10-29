@@ -2220,8 +2220,8 @@ class ImageRuntimeTests(unittest.TestCase):
             "model_directory",
             return_value=Path("/models/qwen-edit"),
         ), patch.object(
-            providers.subprocess,
-            "Popen",
+            providers.managed_process,
+            "spawn",
             return_value=process,
         ) as popen, patch.object(
             providers, "ImageProcessMemoryGuard", return_value=Mock()
@@ -2292,8 +2292,8 @@ class ImageRuntimeTests(unittest.TestCase):
             "model_directory",
             return_value=Path("/models/qwen-edit"),
         ), patch.object(
-            providers.subprocess,
-            "Popen",
+            providers.managed_process,
+            "spawn",
             return_value=process,
         ) as popen, patch.object(
             providers.subprocess,
@@ -2377,8 +2377,8 @@ class ImageRuntimeTests(unittest.TestCase):
             "model_directory",
             return_value=Path("/models/qwen-edit"),
         ), patch.object(
-            providers.subprocess,
-            "Popen",
+            providers.managed_process,
+            "spawn",
             return_value=process,
         ):
             with self.assertRaisesRegex(

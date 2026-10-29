@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 PROJECT_DIR="${MLX_NOBBY_PROJECT_DIR:-$HOME/mlx-web}"
+if [ "${MLX_LIFECYCLE_LOCKED:-0}" != "1" ]; then
+    exec python3 "$PROJECT_DIR/scripts/ai-lifecycle.py" run "$0" "$@"
+fi
 LOG_FILE="${MLX_NOBBY_REBOOT_LOG:-/tmp/mlx-nobby-rebuild.log}"
 
 export PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/OrbStack.app/Contents/MacOS/xbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
@@ -13,6 +16,7 @@ DOCKER_BIN="${DOCKER_BIN:-$(command -v docker || true)}"
 exec >>"$LOG_FILE" 2>&1
 
 ACTION="reboot"
+export MLX_LIFECYCLE_HOLD=1
 
 AGENT_URL="${MLX_NOBBY_AGENT_URL:-http://127.0.0.1:8010}"
 PORT_CHECK_BIN="${PORT_CHECK_BIN:-$(command -v lsof || true)}"
@@ -263,19 +267,6 @@ echo "============================================================"
 
 cd "$PROJECT_DIR"
 
-FAILED_PHASE="sync-source"
-FAILURE_DETAIL=""
-CURRENT_STEP=0
-report_lifecycle \
-    "running" \
-    "$FAILED_PHASE" \
-    "$CURRENT_STEP" \
-    "$TOTAL_STEPS" \
-    "Aktueller main-Stand wird, wenn sicher möglich, von GitHub geladen."
-
-sync_source
-
-export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
 
 if [ ! -x "$MLX_BIN" ]; then
     MLX_BIN="$(command -v mlx || true)"
@@ -293,7 +284,7 @@ fi
 
 echo "mlx:      $MLX_BIN"
 echo "docker:   $DOCKER_BIN"
-echo "revision: $MLX_NOBBY_BUILD_SHA"
+echo "revision: wird nach sicherer Git-Synchronisierung ermittelt"
 
 if [ -z "$PORT_CHECK_BIN" ] || [ ! -x "$PORT_CHECK_BIN" ]; then
     echo "ERROR: lsof executable not found"
@@ -328,6 +319,21 @@ report_lifecycle \
 
 "$MLX_BIN" stop-ai
 AI_STOPPED=1
+
+FAILED_PHASE="sync-source"
+FAILURE_DETAIL=""
+CURRENT_STEP=0
+report_lifecycle \
+    "running" \
+    "$FAILED_PHASE" \
+    "$CURRENT_STEP" \
+    "$TOTAL_STEPS" \
+    "Aktueller main-Stand wird, wenn sicher möglich, von GitHub geladen."
+
+sync_source
+
+export MLX_NOBBY_BUILD_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"
+
 
 echo
 echo "===== BUILD WEB + FRONTEND IMAGE ====="
@@ -429,6 +435,7 @@ wait_for_http "$WEB_URL/api/version"
 wait_for_http "$WEB_URL/api/mlx/status"
 verify_web_api
 
+python3 "${MLX_NOBBY_LIFECYCLE_HELPER:-$PROJECT_DIR/scripts/ai-lifecycle.py}" resume
 AI_STOPPED=0
 report_lifecycle \
     "completed" \

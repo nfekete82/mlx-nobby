@@ -1,4 +1,6 @@
 """Persistent local video jobs backed by the official headless LTX 2.5 runtime."""
+from ai_lifecycle_gate import AIAdmissionGuard
+
 import json
 import os
 import re
@@ -325,6 +327,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="MLX Nobby Video", lifespan=lifespan)
+app.add_middleware(AIAdmissionGuard)
 app.add_middleware(LocalRequestGuard)
 
 

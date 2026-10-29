@@ -6,6 +6,8 @@ and gives the UI one durable place to observe media work.
 """
 
 from copy import deepcopy
+import ai_lifecycle_gate
+
 import json
 import os
 from pathlib import Path
@@ -205,6 +207,7 @@ def _update(job_id, **changes):
         return _public(job)
 
 
+@ai_lifecycle_gate.admitted
 def enqueue(kind, request_payload):
     kind = _validated_kind(kind)
     if not isinstance(request_payload, dict):
@@ -371,6 +374,7 @@ def _dispatch_and_poll(job_id):
                 dispatch_attempts=int(job.get("dispatch_attempts") or 0) + 1,
             )
             try:
+                ai_lifecycle_gate.check()
                 native = _service_request(
                     kind,
                     "POST",
@@ -496,6 +500,8 @@ def _next_job_id():
             if job.get("native_job_id"):
                 return job["id"]
 
+        if ai_lifecycle_gate.blocked():
+            return None
         now = time.time()
         seen_kinds = set()
         for job in candidates:

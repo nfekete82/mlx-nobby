@@ -68,7 +68,7 @@ def test_mlxgen_edit_command_uses_source_and_local_model(tmp_path, emits_log):
         return FakeProcess()
     with patch.object(image_providers, "model_directory", return_value=tmp_path), \
          patch.object(image_providers, "MLXGEN_BIN", runner), \
-         patch.object(image_providers.subprocess, "Popen", side_effect=start), \
+         patch.object(image_providers.managed_process, "spawn", side_effect=start), \
          patch.object(image_providers, "terminate_process_tree"), \
          patch.object(image_providers, "_validate_provider_output"), \
          patch.object(image_providers, "_maybe_quality_upscale"):

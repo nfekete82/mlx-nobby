@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import managed_process
+
 import json
 import hashlib
 import math
@@ -210,15 +212,9 @@ def _chat_command(action: str) -> None:
         raise RuntimeError((result.stdout.strip() or f"mlx {action} fehlgeschlagen")[-4000:])
 
 
-def _terminate(process: subprocess.Popen) -> None:
-    if process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=10)
+def _terminate(process):
+    if process is not None:
+        managed_process.terminate(process)
 
 
 def generate(
@@ -357,7 +353,7 @@ def generate(
             ):
                 if cancelled():
                     raise QualityCancelled()
-                process = subprocess.Popen(
+                process = managed_process.spawn(
                     command,
                     cwd=RUNTIME_ROOT,
                     stdout=subprocess.PIPE,

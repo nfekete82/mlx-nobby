@@ -922,8 +922,8 @@
     "workspace_select": "Workspace auswählen",
     "workspace_close": "Workspace schließen",
     "system_actions": "Systemaktionen",
-    "system_reboot": "↻ System Reboot",
-    "system_reboot_title": "System Reboot",
+    "system_reboot": "↻ MLX-Nobby neu aufbauen",
+    "system_reboot_title": "MLX-Nobby neu aufbauen und starten",
     "system_reboot_confirm": "Alle MLX-Nobby-Dienste stoppen, die Web-Anwendung neu bauen und anschließend alles neu starten?",
     "system_reboot_confirm_label": "Reboot starten",
     "system_rebooting": "MLX Nobby wird neu gebaut und gestartet …",
@@ -937,7 +937,8 @@
     "system_action_timeout": "Die Systemaktion wurde nicht innerhalb des Zeitlimits abgeschlossen.",
     "system_reconnecting": "Verbindung zu den Diensten wird wiederhergestellt …",
     "adaptive_response_length": "Automatische Antwortanpassung",
-    "adaptive_response_length_hint": "Für alle Chats standardmäßig aktiv. Erkennt ungewollt kurze Antwortmuster und passt den nächsten Antwortstil an die Unterhaltung an. Für diesen Chat abschaltbar; keine automatische Neugenerierung."
+    "adaptive_response_length_hint": "Für alle Chats standardmäßig aktiv. Erkennt ungewollt kurze Antwortmuster und passt den nächsten Antwortstil an die Unterhaltung an. Für diesen Chat abschaltbar; keine automatische Neugenerierung.",
+    "lifecycle_phases": "Abgeschlossene Phasen"
   },
   "attachments.rag_ready": " · ✓ RAG bereit",
   "attachments.image_read_failed": "Bild konnte nicht gelesen werden: {name}",
@@ -1170,5 +1171,30 @@
     "mode_always": "Bevorzugt nachfragen",
     "mode_off": "Aus",
     "hint": "MLX-Nobby stellt gezielte Fragen, wenn fehlende Angaben die Antwort verbessern. Die Auswahl wird lokal gespeichert."
+  },
+  "video_edit": {
+    "cancel": "Bearbeitung abbrechen",
+    "phase_progress": "Fortschritt der Teilphase",
+    "background": "Schließen lässt den Auftrag im Hintergrund weiterlaufen. Über den Video-Editor-Button kannst du zurückkehren.",
+    "resume": "Video-Editor öffnen",
+    "elapsed": "Laufzeit",
+    "activity": "Letzte bestätigte Aktivität",
+    "waiting": "noch keine LTX-Ausgabe",
+    "stopping": "Wird beendet …",
+    "phase_steps": "Schritte (Teilphase)",
+    "cancel_requested": "Abbruch angefordert …",
+    "cancel_error": "Abbruch nicht bestätigt; erneut versuchen: ",
+    "recover_error": "Wiederherstellung fehlgeschlagen: ",
+    "phase_queued": "Warte auf LTX",
+    "phase_preparing": "Ressourcen werden vorbereitet",
+    "phase_loading": "LTX lädt Modelle",
+    "phase_encoding": "LTX kodiert Eingaben",
+    "phase_generating": "LTX generiert Videoframes",
+    "phase_decoding": "Video wird dekodiert",
+    "phase_saving": "Video wird gespeichert",
+    "phase_stage_1": "LTX Generierung · Stage 1",
+    "phase_stage_2": "LTX Verfeinerung · Stage 2",
+    "phase_encoding_prompt": "LTX kodiert den Prompt",
+    "invalid_status": "Ungültige Statusantwort"
   }
 }

@@ -34,6 +34,8 @@ def main():
             snapshot = runtime_coordinator.ensure_model_load_allowed(
                 args.workload,
                 reserve_gb=args.reserve_gb,
+                # launchd startup is allowed while user job admission is held.
+                admission_required=False,
             )
             if reported:
                 free_percent = snapshot.get("free_percent")

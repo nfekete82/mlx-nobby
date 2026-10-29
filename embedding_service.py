@@ -1,5 +1,7 @@
 """Local embedding API backed by the shared mlx-serve runtime."""
 
+from ai_lifecycle_gate import AIAdmissionGuard
+
 import asyncio
 import json
 import logging
@@ -665,6 +667,7 @@ app = FastAPI(
     ),
     version="2.0",
 )
+app.add_middleware(AIAdmissionGuard)
 
 app.add_middleware(
     LocalRequestGuard

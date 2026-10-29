@@ -1,4 +1,6 @@
 """Fixed provider adapters with isolated native model processes."""
+import managed_process
+
 import importlib.util
 import json
 import math
@@ -821,6 +823,9 @@ def mflux_command(model, params, output):
 
 def terminate_process_tree(process):
     """Stop a provider process group without waiting indefinitely."""
+    if getattr(process, "_nobby_record_path", None) is not None and isinstance(process, managed_process._ManagedPopen):
+        managed_process.terminate(process)
+        return
     if process.poll() is not None:
         return
 
@@ -936,7 +941,7 @@ class SDXLWorkerManager:
         environment["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = str(SDXL_MPS_LOW_RATIO)
         diagnostics = tempfile.TemporaryFile()
         try:
-            process = subprocess.Popen(
+            process = managed_process.spawn(
                 [sys.executable, str(self.worker_path)],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -1281,7 +1286,7 @@ def _maybe_quality_upscale(
     process = None
     lines = []
     try:
-        process = subprocess.Popen(
+        process = managed_process.spawn(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -1477,7 +1482,7 @@ def run_provider(
         measure_subprocess = measure_mlxgen or measure_mflux_qwen_edit
         spawn_started = time.perf_counter() if measure_subprocess else None
         memory_guard = ImageProcessMemoryGuard() if sys.platform == "darwin" else None
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
+        process = managed_process.spawn(command, stdin=subprocess.PIPE, text=True, stdout=diagnostics,
                                    stderr=diagnostics, env=environment, shell=False,
                                    start_new_session=True)
         spawn_finished = time.perf_counter() if measure_subprocess else None

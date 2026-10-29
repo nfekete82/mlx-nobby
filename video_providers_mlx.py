@@ -8,6 +8,8 @@ does not pin the full model while chat is restored.
 """
 from __future__ import annotations
 
+import managed_process
+
 import atexit
 import concurrent.futures
 import json
@@ -120,14 +122,8 @@ def _json_request(method, path, payload=None, timeout=30):
 
 
 def _terminate_process(process):
-    if process is None or process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=10)
+    if process is not None:
+        managed_process.terminate(process)
 
 
 def _configured_idle_timeout():
@@ -170,7 +166,7 @@ def _start_runtime(model, cancel_event):
         "LTX_MLX_LOW_RAM": "1" if DEFAULT_LOW_RAM else "0",
         "LTX_MLX_PARENT_PID": str(os.getpid()),
     })
-    process = subprocess.Popen(
+    process = managed_process.spawn(
         [str(LTX_MLX_PYTHON), str(LTX_MLX_WORKER)],
         cwd=LTX_MLX_RUNTIME_ROOT,
         env=environment,
@@ -340,7 +336,7 @@ def _run_process(command, *, cancel_event, response_callback=None,
                  progress_callback=None, phase_callback=None):
     if phase_callback:
         phase_callback("loading")
-    process = subprocess.Popen(
+    process = managed_process.spawn(
         command, cwd=LTX_MLX_RUNTIME_ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )

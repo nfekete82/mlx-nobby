@@ -82,7 +82,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                  mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)), \
                  mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()), \
                  mock.patch.object(talking_photo_quality.talking_photo, "_musetalk_lipsync", return_value=(final_video, "test")) as lipsync, \
-                 mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=popen):
+                 mock.patch.object(talking_photo_ltx.managed_process, "spawn", side_effect=popen):
                 # A bogus duration must never cause the actual speech to be cut.
                 video, details = talking_photo_quality.generate(
                     "a" * 24, b"portrait", ".png", buffer.getvalue(), 0.01, work,
@@ -144,7 +144,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                 mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
                 mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
                 mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
-                mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+                mock.patch.object(talking_photo_ltx.managed_process, "spawn", side_effect=fake_popen),
             ):
                 video, details = talking_photo_ltx.generate(
                     "a" * 24, b"image", ".png", audio, 999, work,
@@ -178,7 +178,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
             handle.writeframes(tone * 160 + bytes(2 * (320000 - 160)))
         with (
             mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
-            mock.patch.object(talking_photo_ltx.subprocess, "Popen") as popen,
+            mock.patch.object(talking_photo_ltx.managed_process, "spawn") as popen,
         ):
             with tempfile.TemporaryDirectory() as directory:
                 with self.assertRaisesRegex(RuntimeError, "maximal 20 Sekunden"):
@@ -214,7 +214,7 @@ class TalkingPhotoLtxTests(unittest.TestCase):
                 mock.patch.object(talking_photo_ltx, "provider_health", return_value={"ready": True}),
                 mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 640)),
                 mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
-                mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+                mock.patch.object(talking_photo_ltx.managed_process, "spawn", side_effect=fake_popen),
             ):
                 video, details = talking_photo_ltx.generate(
                     "b" * 24, b"portrait", ".png", buffer.getvalue(), 0.4,

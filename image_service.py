@@ -1,4 +1,6 @@
 """Native, local image service. Images stay on disk, never in API payloads."""
+from ai_lifecycle_gate import AIAdmissionGuard
+
 import copy
 import json
 import os
@@ -178,6 +180,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="MLX nobby Images", lifespan=lifespan)
+app.add_middleware(AIAdmissionGuard)
 app.add_middleware(LocalRequestGuard)
 
 

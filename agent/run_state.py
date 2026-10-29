@@ -94,10 +94,21 @@ _CURRENT_RUN = ContextVar("mlx_agent_run", default=None)
 _ACTIVE_AGENT_LOCK = Lock()
 _ACTIVE_AGENT_COUNT = 0
 _CHAT_STREAM_ACTIVITY = {}
+_CHAT_CANCELLATIONS = {}
+_ACTIVE_CONTEXTS = {}
+
+
+def cancel_all():
+    with _ACTIVE_AGENT_LOCK:
+        for context, count in _ACTIVE_CONTEXTS.values():
+            context.cancel()
+        for cancellation in _CHAT_CANCELLATIONS.values():
+            if cancellation is not None:
+                cancellation.set()
 
 
 @contextmanager
-def active_chat_stream():
+def active_chat_stream(cancellation=None):
     """Track real gateway progress separately from a lease's acquisition age."""
     token = object()
 
@@ -106,11 +117,14 @@ def active_chat_stream():
             _CHAT_STREAM_ACTIVITY[token] = time.monotonic()
 
     progress()
+    with _ACTIVE_AGENT_LOCK:
+        _CHAT_CANCELLATIONS[token] = cancellation
     try:
         yield progress
     finally:
         with _ACTIVE_AGENT_LOCK:
             _CHAT_STREAM_ACTIVITY.pop(token, None)
+            _CHAT_CANCELLATIONS.pop(token, None)
 
 
 def chat_stream_progress_is_recent(max_age_seconds):
@@ -144,11 +158,22 @@ def current_run_context():
 
 @contextmanager
 def bind_run_context(context):
+    import ai_lifecycle_gate
+    ai_lifecycle_gate.check()
     token = _CURRENT_RUN.set(context)
+    with _ACTIVE_AGENT_LOCK:
+        previous = _ACTIVE_CONTEXTS.get(id(context), (context, 0))
+        _ACTIVE_CONTEXTS[id(context)] = (context, previous[1] + 1)
     try:
         yield context
     finally:
         _CURRENT_RUN.reset(token)
+        with _ACTIVE_AGENT_LOCK:
+            current = _ACTIVE_CONTEXTS[id(context)]
+            if current[1] > 1:
+                _ACTIVE_CONTEXTS[id(context)] = (context, current[1] - 1)
+            else:
+                _ACTIVE_CONTEXTS.pop(id(context), None)
 
 
 def with_run_context(function):

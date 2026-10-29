@@ -1,6 +1,8 @@
 """Persistent, resumable orchestration of ShortProject video scenes."""
 
 from copy import deepcopy
+import ai_lifecycle_gate
+
 import hashlib
 import json
 import os
@@ -57,6 +59,7 @@ def get_short_job(job_id):
     return deepcopy(job)
 
 
+@ai_lifecycle_gate.admitted
 def create_short_job(project, *, chat_id, run_id=None, chat_revision=0):
     if not isinstance(project, ShortProject):
         project = ShortProject.model_validate(project)
@@ -939,6 +942,7 @@ def _worker(job_id, request_fn, tts_request_fn, compose_fn, poll_interval):
                 _workers.pop(job_id, None)
 
 
+@ai_lifecycle_gate.admitted
 def start_short_job(
     job_id,
     *,

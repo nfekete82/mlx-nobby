@@ -1,4 +1,5 @@
 """Fixed native service routes for Docker. No arbitrary URL/path forwarding."""
+import ai_lifecycle_gate
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,8 @@ def forward(
     call_metrics=None,
     expose_metrics=False,
 ):
+    if data is not None and "/v1/" in url:
+        ai_lifecycle_gate.check()
     request = urllib.request.Request(
         url, data=data, headers={"Content-Type": content_type},
         method="POST" if data is not None else "GET",

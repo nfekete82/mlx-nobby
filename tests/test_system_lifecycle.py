@@ -293,6 +293,8 @@ class RebootOrchestrationIntegrationTests(unittest.TestCase):
             port_check = root / "port-check"
             http_check = root / "http-check"
             installer = root / "install-launchd"
+            lifecycle = root / "lifecycle.py"
+            lifecycle.write_text("print(\"API readiness verified by isolated test adapter\")\n")
             docker_body = '''#!/bin/bash
 
 echo "docker $*" >> "$CALLS_LOG"
@@ -341,6 +343,7 @@ esac
                 "MLX_NOBBY_HTTP_CHECK_BIN": str(http_check),
                 "MLX_NOBBY_INSTALL_LAUNCHD_BIN": str(installer),
                 "MLX_NOBBY_SKIP_SOURCE_SYNC": "1",
+                "MLX_NOBBY_LIFECYCLE_HELPER": str(lifecycle),
                 "HTTP_MODE": http_mode,
                 "CALLS_LOG": str(calls),
                 "MLX_NOBBY_REBOOT_LOG": str(root / "reboot.log"),

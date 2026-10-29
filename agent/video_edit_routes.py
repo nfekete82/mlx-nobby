@@ -22,6 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from agent import media_lifecycle
 import runtime_coordinator
+import ai_lifecycle_gate as gate
+import managed_process
 
 BASE = Path.home() / ".config/mlx-web"
 JOB_DIR = BASE / "video-edits" / "jobs"
@@ -32,10 +34,64 @@ PROJECT = Path(__file__).resolve().parents[1]
 VIDEO_HEALTH = "http://127.0.0.1:8060/health"
 SERVER_LABEL = "de.nobby.mlx-server"
 EXPECTED_HEAD = "b82b97e3d000e01361f8cfcb745244b15b89a521"
-ACTIVE = {"queued", "preparing", "generating", "decoding"}
+ACTIVE = {"queued", "preparing", "generating", "decoding", "cancelling"}
 _jlock = threading.RLock()
 _generation_lock = threading.Lock()
 _jobs = {}
+
+
+class ProgressTail:
+    """Bounded regular-file reads; never wait for stdout or a newline."""
+    def __init__(self, path):
+        self.path = path
+        self.reset()
+
+    def reset(self):
+        self.offset = 0
+        self.pending = ""
+
+    def read(self):
+        with self.path.open("rb") as stream:
+            stream.seek(self.offset)
+            chunk = stream.read(65536)
+            self.offset = stream.tell()
+        if not chunk:
+            return {}
+        text = self.pending + chunk.decode("utf-8", errors="replace")
+        records = re.split(r"[\r\n]", text)
+        self.pending = records.pop()[-8192:]
+        fields = {"last_activity_at": time.time()}
+        for record in records:
+            fields.update(parse_progress(record))
+        fields.update(parse_progress(self.pending))
+        return fields
+
+
+def parse_progress(record):
+    """LTX 0.18 samplers.py tqdm descriptions; fractions are phase-local."""
+    record = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", record)
+    match = re.search(r"(Denoising[^:]*):.*?\|\s*(\d+)\s*/\s*(\d+)", record)
+    if match:
+        current, total = int(match[2]), int(match[3])
+        if total > 0 and 0 <= current <= total:
+            return {"phase": "generating", "current_step": current, "total_steps": total,
+                    "phase_progress": current / total, "progress": None,
+                    "progress_scope": "phase", "progress_message": match[1]}
+    # These messages come from the installed pipeline's verbose logger.
+    lower = record.lower().strip().lstrip("[")
+    for prefix, phase, message in (
+        ("decoding", "decoding", "Video wird dekodiert"),
+        ("loading", "loading", "LTX lädt Modelle"),
+        ("encoding prompt", "encoding_prompt", "LTX kodiert den Prompt"),
+        ("encoding", "encoding", "LTX kodiert Eingaben"),
+        ("stage 1", "stage_1", "LTX Generierung · Stage 1"),
+        ("stage 2", "stage_2", "LTX Verfeinerung · Stage 2"),
+        ("saving", "saving", "Video wird gespeichert"),
+    ):
+        if lower.startswith(prefix):
+            return {"phase": phase, "progress_message": message, "phase_progress": None,
+                    "progress": None, "current_step": None, "total_steps": None}
+    return {}
 
 
 class EditRequest(BaseModel):
@@ -147,7 +203,11 @@ def _write(job):
 def _update(job_id, **fields):
     with _jlock:
         job = _jobs[job_id]
-        job.update(fields)
+        if job["status"] in {"completed", "failed", "cancelled"}:
+            return
+        if job.get("cancel_requested") and fields.get("status") not in {"completed", "failed", "cancelled"}:
+            fields.update(phase="cancelling", progress_message="Wird beendet")
+        job.update(fields, updated_at=time.time())
         _write(job)
 
 
@@ -164,11 +224,28 @@ def _chat_command(action):
         raise RuntimeError((done.stdout or f"mlx {action} failed")[-2000:])
 
 
+def _ensure_terminated(job_id, process):
+    if process is None:
+        return True
+    try:
+        managed_process.terminate(process)
+        return True
+    except Exception as exc:
+        error = f"Prozessbeendigung nicht bestätigt; KI-Jobannahme gesperrt: {exc}"
+        gate.set_blocked(True, error)
+        with _jlock:
+            job = _jobs[job_id]
+            job.update(status="failed", phase="failed", cleanup_failed=True, error=error,
+                       finished_at=time.time(), updated_at=time.time())
+            _write(job)
+        return False
+
+
 def _run(job_id, request, source, info, cmd, output):
     cancel = _jobs[job_id]["_cancel_event"]
     proc = None
     try:
-        _update(job_id, status="preparing", started_at=time.time())
+        _update(job_id, status="preparing", phase="preparing", progress_message="Ressourcen werden vorbereitet", started_at=time.time())
         with runtime_coordinator.video_runtime(
             cancel, chat_loaded=_chat_loaded, chat_command=_chat_command,
             exclusive_models=True,
@@ -179,55 +256,123 @@ def _run(job_id, request, source, info, cmd, output):
             source_path(request.source_kind, request.source_id)
             JOB_DIR.mkdir(parents=True, exist_ok=True)
             log = JOB_DIR / f"{job_id}.log"
-            _update(job_id, status="generating")
-            with log.open("xb") as stream:
-                proc = subprocess.Popen(cmd, cwd=RUNTIME, stdout=stream,
-                                        stderr=subprocess.STDOUT)
-                while proc.poll() is None:
-                    if cancel.wait(0.5):
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=12)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                            proc.wait(timeout=10)
+            _update(job_id, status="generating", phase="generating", progress_message="LTX generiert Videoframes")
+            environment = {**os.environ, "PYTHONUNBUFFERED": "1", "TQDM_MININTERVAL": "0.2"}
+            parser = ProgressTail(log)
+            with log.open("xb", buffering=0) as stream:
+                with gate.barrier():
+                    gate.check()
+                    if cancel.is_set():
                         raise runtime_coordinator.CoordinationCancelled()
+                    proc = managed_process.spawn(cmd, owner="video-edit:" + job_id, cwd=RUNTIME, stdout=stream,
+                                                 stderr=subprocess.STDOUT, env=environment)
+                deadline = time.monotonic() + 7200
+                while proc.poll() is None:
+                    if cancel.wait(0.2) or gate.blocked():
+                        managed_process.terminate(proc)
+                        raise runtime_coordinator.CoordinationCancelled()
+                    if time.monotonic() > deadline:
+                        managed_process.terminate(proc)
+                        raise RuntimeError("LTX-Zeitlimit von zwei Stunden erreicht")
+                    fields = parser.read()
+                    if fields:
+                        _update(job_id, **fields)
+                    if stream.tell() > 4 * 1024 * 1024:
+                        stream.seek(0)
+                        stream.truncate()
+                        parser.reset()
+                fields = parser.read()
+                if fields:
+                    _update(job_id, **fields)
+            managed_process.forget(proc)
+            if cancel.is_set() or gate.blocked():
+                raise runtime_coordinator.CoordinationCancelled()
             if proc.returncode:
-                tail = log.read_text(encoding="utf-8", errors="replace")[-1500:]
+                with log.open("rb") as failed_log:
+                    failed_log.seek(max(0, log.stat().st_size - 1500))
+                    tail = failed_log.read(1500).decode("utf-8", errors="replace")
                 raise RuntimeError(f"LTX {request.operation} fehlgeschlagen: {tail}")
             if not output.is_file() or output.stat().st_size < 32:
                 raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
             with output.open("rb") as generated:
                 if b"ftyp" not in generated.read(32):
                     raise RuntimeError("LTX hat kein gültiges MP4 erzeugt")
-            media_lifecycle.register("video", job_id, output, owner="adhoc", persistent=False)
-            _update(job_id, status="completed", progress=1.0, finished_at=time.time(),
-                    result={"id": job_id, "kind": "video", "video_url": f"/api/mlx/videos/{job_id}",
-                            "source_kind": request.source_kind, "source_id": request.source_id,
-                            "operation": request.operation, "bytes": output.stat().st_size})
+            # Completion and cancellation share a lock: a confirmed cancel
+            # can never be overwritten by a late successful CLI exit.
+            with gate.barrier(), _jlock:
+                if cancel.is_set() or gate.blocked():
+                    raise runtime_coordinator.CoordinationCancelled()
+                final_output = output.with_name(f"{job_id}.mp4")
+                os.replace(output, final_output)
+                media_lifecycle.register("video", job_id, final_output, owner="adhoc", persistent=True)
+                _update(job_id, status="completed", phase="completed", progress=1.0,
+                        finished_at=time.time(), progress_message="Video gespeichert",
+                        result={"id": job_id, "kind": "video", "video_url": f"/api/mlx/videos/{job_id}",
+                                "source_kind": request.source_kind, "source_id": request.source_id,
+                                "operation": request.operation, "bytes": final_output.stat().st_size})
     except runtime_coordinator.CoordinationCancelled:
         output.unlink(missing_ok=True)
-        _update(job_id, status="cancelled", finished_at=time.time())
+        _update(job_id, status="cancelled", phase="cancelled", finished_at=time.time())
     except Exception as exc:
+        if not _ensure_terminated(job_id, proc):
+            return
         output.unlink(missing_ok=True)
         _update(job_id, status="cancelled" if cancel.is_set() else "failed",
                 error=None if cancel.is_set() else str(exc)[-2000:], finished_at=time.time())
     finally:
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=10)
-        _generation_lock.release()
+        try:
+            _ensure_terminated(job_id, proc)
+        finally:
+            _generation_lock.release()
 
 
 def _public(job):
     return {k: v for k, v in job.items() if not k.startswith("_")}
 
 
+def recover_jobs():
+    with _jlock:
+        for path in JOB_DIR.glob("*.json"):
+            if not re.fullmatch(r"[a-f0-9]{24}\.json", path.name):
+                continue
+            if path.stem in _jobs:
+                continue
+            try:
+                job = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(job, dict) or job.get("id") != path.stem:
+                    continue
+                if job.get("status") in ACTIVE:
+                    # Guard pipe EOF handles parent death; reap the persisted
+                    # group before declaring an interrupted render terminal.
+                    managed_process.stop_all(owner="video-edit:" + job["id"])
+                    job.update(status="failed", phase="failed", finished_at=time.time(),
+                               updated_at=time.time(), error="Agent wurde während des Edits neu gestartet")
+                    (OUTPUT / f"{job['id']}.mp4").unlink(missing_ok=True)
+                    (OUTPUT / f".{job['id']}.partial.mp4").unlink(missing_ok=True)
+                    _write(job)
+                _jobs[job["id"]] = job
+            except (OSError, ValueError, TypeError):
+                continue
+
+
+def cancel_all():
+    with _jlock:
+        for job in _jobs.values():
+            if job["status"] in ACTIVE:
+                job["_cancel_event"].set()
+                _update(job["id"], status="cancelling", phase="cancelling", cancel_requested=True,
+                        progress_message="Wird beendet")
+
+
 def install_routes(app: FastAPI):
+    recover_jobs()
+
+    @app.get("/api/video/edit/jobs")
+    def list_edits(active_only: bool = True):
+        with _jlock:
+            return {"jobs": [_public(job) for job in _jobs.values()
+                             if not active_only or job.get("status") in ACTIVE]}
+
     @app.get("/api/video/edit/status")
     def edit_status(source_kind: str = "video", source_id: str = ""):
         _runtime_ready()
@@ -236,6 +381,7 @@ def install_routes(app: FastAPI):
                 "modes": ["extend", "retake"], "runtime": "ltx-mlx-0.18.0"}
 
     @app.post("/api/video/edit/jobs", status_code=202)
+    @gate.admitted
     def create_edit(request: EditRequest):
         _runtime_ready()
         source = source_path(request.source_kind, request.source_id)
@@ -248,10 +394,16 @@ def install_routes(app: FastAPI):
         try:
             job_id = secrets.token_hex(12)
             OUTPUT.mkdir(parents=True, exist_ok=True)
-            dest = OUTPUT / f"{job_id}.mp4"
+            # The library scans canonical filenames. Publish atomically only
+            # after successful CLI exit and a final cancellation check.
+            dest = OUTPUT / f".{job_id}.partial.mp4"
             cmd[cmd.index("--output") + 1] = str(dest)
             job = {"id": job_id, "operation": request.operation, "source_kind": request.source_kind,
-                   "source_id": request.source_id, "status": "queued", "progress": 0.0,
+                   "source_id": request.source_id, "status": "queued", "phase": "queued", "progress": None,
+                   "phase_progress": None, "progress_scope": "phase",
+                   "current_step": None, "total_steps": None,
+                   "progress_message": "Warte auf LTX", "cancel_requested": False,
+                   "updated_at": time.time(), "last_activity_at": None,
                    "error": None, "result": None, "created_at": time.time(),
                    "started_at": None, "finished_at": None,
                    "_cancel_event": threading.Event()}
@@ -262,7 +414,9 @@ def install_routes(app: FastAPI):
                                       daemon=True, name=f"nobby-ltx-edit-{job_id}")
             thread.start()
             return _public(job)
-        except Exception:
+        except Exception as exc:
+            if job_id in _jobs:
+                _update(job_id, status="failed", phase="failed", error=str(exc), finished_at=time.time())
             _generation_lock.release()
             raise
 
@@ -276,7 +430,7 @@ def install_routes(app: FastAPI):
                 try:
                     job = json.loads((JOB_DIR / f"{job_id}.json").read_text(encoding="utf-8"))
                     if job.get("status") in ACTIVE:
-                        job.update(status="failed", error="Agent wurde während des Edits neu gestartet")
+                        raise HTTPException(503, "Job-Wiederherstellung noch nicht abgeschlossen")
                 except (OSError, ValueError):
                     raise HTTPException(404, "Edit-Job nicht gefunden") from None
             return _public(job)
@@ -290,6 +444,8 @@ def install_routes(app: FastAPI):
             if job is None:
                 raise HTTPException(404, "Edit-Job nicht gefunden")
             if job["status"] not in ACTIVE:
-                raise HTTPException(409, "Job ist nicht mehr aktiv")
+                return _public(job)
             job["_cancel_event"].set()
+            _update(job_id, status="cancelling", phase="cancelling", cancel_requested=True,
+                    progress_message="Wird beendet")
             return _public(job)

@@ -89,7 +89,8 @@ class AgentRuntime:
         self._profile_events = []
 
     def _check_cancelled(self):
-        if self.context.cancelled:
+        import ai_lifecycle_gate
+        if self.context.cancelled or ai_lifecycle_gate.blocked():
             raise _RunCancelled()
 
     def complete_model(self, request: ModelRequest):

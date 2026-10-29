@@ -113,7 +113,7 @@ def test_ltx_runner_uses_selected_prompt_and_unchanged_full_image(distilled):
             mock.patch.object(talking_photo_ltx, "_image_size", return_value=(640, 512)),
             mock.patch.object(talking_photo_ltx, "_pad_audio", side_effect=fake_pad_audio),
             mock.patch.object(talking_photo_ltx.runtime_coordinator, "video_runtime", return_value=nullcontext()),
-            mock.patch.object(talking_photo_ltx.subprocess, "Popen", side_effect=fake_popen),
+            mock.patch.object(talking_photo_ltx.managed_process, "spawn", side_effect=fake_popen),
         ):
             mp4, metadata = talking_photo_ltx.generate(
                 "f" * 24, original_image, ".png", wav_bytes(), 0.4, root,
