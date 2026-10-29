@@ -357,6 +357,12 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
                                "User requests text or withholds media execution",
                                "text_request_priority", "chat")
     if action in MEDIA_ACTIONS:
+        # An action hint is not evidence of a source image. In particular a
+        # stale edit selector must never turn a text-only turn into image edit.
+        if action in {"image_edit", "image_reference_generate", "image_upscale"} and not has_image:
+            return RoutingDecision("normal_chat", "chat", False, None, 1.0,
+                                   "Image operation requires a bound source image",
+                                   "image_source_required", "chat")
         return RoutingDecision(action, TARGETS[action], True, media_context, 1.0,
                                "Explicit media UI action", reference_mode=mode if action == "image_reference_generate" else None)
     return RoutingDecision("vision_chat" if has_image else "normal_chat", "chat",
