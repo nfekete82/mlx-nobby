@@ -776,7 +776,8 @@ function imageAttachments(message) {
     ].filter(
         attachment =>
             attachment.kind === 'image' &&
-            attachment.data_url
+            typeof attachment.data_url === 'string' &&
+            /^data:image\/[a-z0-9.+-]+;base64,/i.test(attachment.data_url)
     );
 }
 
