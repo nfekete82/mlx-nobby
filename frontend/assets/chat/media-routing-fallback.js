@@ -11,6 +11,10 @@
 
     let fallbackScheduled = false;
 
+    function explicitVideoCommand(prompt) {
+        return /^\s*(?:(?:bitte|please)\s+)?(?:erstelle|generiere|erzeuge|mach|mache|create|generate|make)\s+(?:mir\s+)?(?:ein(?:e|en)?|an?|the)\s+(?:video|clip)\b/i.test(String(prompt || ''));
+    }
+
     function scheduleChatFallback() {
         if (modal.hidden || fallbackScheduled) return;
 
@@ -28,6 +32,10 @@
             if (window.MLXChatSessions?.currentSession?.() !== session) return;
             if (!session.messages?.includes?.(userMessage)) return;
             if (session.messages.at(-1) !== userMessage) return;
+
+            // Closing a confirmed video request must never turn it into a
+            // plain LLM chat response claiming that video is unavailable.
+            if (explicitVideoCommand(userMessage.display_content || userMessage.content)) return;
 
             const generation = window.MLXChatGeneration;
             if (!generation?.generateAssistant) return;
