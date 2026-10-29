@@ -6,9 +6,9 @@ import test from 'node:test';
 const original = fs.readFileSync('frontend/assets/chat/media-library.js', 'utf8');
 const marker = /\}\)\(\);\s*$/;
 assert.match(original, marker);
-const code = original.replace(marker, 'globalThis.__showPreview = showPreview;\n})();');
+const code = original.replace(marker, 'globalThis.__showPreview = showPreview;\nglobalThis.__card = card;\n})();');
 
-function createFixture(onFetch) {
+function createFixture(onFetch, onEdit = () => {}) {
   const nodes = new Map();
   let activeElement = null;
   class Element {
@@ -19,6 +19,7 @@ function createFixture(onFetch) {
       this.events = {};
       this.className = '';
       this.isConnected = true;
+      this.classList = {add() {}, remove() {}, toggle() {}};
       this.hidden = false;
     }
     setAttribute(name, value) { this.attributes[name] = String(value); }
@@ -28,6 +29,7 @@ function createFixture(onFetch) {
     replaceChildren(...children) { this.children = [...children]; }
     addEventListener(name, fn) { this.events[name] = fn; }
     focus() { activeElement = this; }
+    pause() {}
     querySelector(selector) {
       return this.children.find(child => child.tag === selector) || null;
     }
@@ -46,14 +48,14 @@ function createFixture(onFetch) {
     createElementNS: (_, tag) => new Element(tag),
     addEventListener() {}
   };
-  const scope = {document, window: {}, fetch: onFetch, console, setTimeout, clearTimeout};
+  const scope = {document, window: {MLXVideoEdit: {open: onEdit}}, fetch: onFetch, console, setTimeout, clearTimeout};
   vm.runInNewContext(code, scope, {filename: 'media-library.js'});
   const preview = body.children.find(child => child.className === 'nobby-library-preview');
   const previewBody = preview.children[1].children[2];
   const show = asset => scope.__showPreview(asset);
   const actions = () => previewBody.children.find(x => x.className === 'nobby-library-preview-actions');
   const details = () => previewBody.children.find(x => x.className === 'nobby-library-detail-panel');
-  return {show, actions, details, previewBody, preview};
+  return {show, actions, details, previewBody, preview, card: asset => scope.__card(asset)};
 }
 
 const asset = {kind: 'image', id: 'fixture123', url: '/image.png', created_at: 1792560000};
@@ -130,4 +132,37 @@ test('video preview has two LTX edit actions and one accessible details action',
     'nobby-library-preview-details').length, 1);
   await actions[2].click();
   assert.equal(f.details().hidden, false);
+});
+
+test('video preview Extend and Retake buttons open the real editor for the chosen source', async () => {
+  const opened = [];
+  const f = createFixture(async () => ({ok: true, json: async () => ({...metadata, kind: 'video'})}),
+                          (asset, mode) => {opened.push({asset, mode});});
+  const video = {...asset, id: 'a'.repeat(24), kind: 'video'};
+  f.show(video);
+  await f.actions().children[0].click();
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].mode, 'extend');
+  assert.equal(opened[0].asset.id, video.id);
+  f.show(video);
+  await f.actions().children[1].click();
+  assert.equal(opened.length, 2);
+  assert.equal(opened[1].mode, 'retake');
+});
+
+test('video card Actions menu contains Extend and Retake with working editor links', async () => {
+  const opened = [];
+  const f = createFixture(async () => ({ok: true, json: async () => ({...metadata, kind: 'video'})}),
+                          (asset, mode) => {opened.push({asset, mode});});
+  const video = {...asset, id: 'b'.repeat(24), kind: 'video'};
+  const rendered = f.card(video);
+  const all = node => [node, ...node.children.flatMap(all)];
+  const menu = all(rendered).find(node => node.className?.includes('nobby-library-card-action-menu'));
+  assert.ok(menu, 'video menu exists');
+  assert.equal(menu.children[0].children[1].textContent, 'Video verlängern');
+  assert.equal(menu.children[1].children[1].textContent, 'Bereich neu erstellen');
+  await menu.children[0].click();
+  await menu.children[1].click();
+  assert.deepEqual(opened.map(item => item.mode), ['extend', 'retake']);
+  assert.equal(opened[0].asset.id, video.id);
 });
