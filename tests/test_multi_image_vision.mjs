@@ -98,7 +98,8 @@ assert.deepEqual(imageUrls(oneImage), [image(1).data_url]);
 
 const malformed = build([{kind: 'image', data_url: 'A cinematic video prompt, not a URL'}], 'Create a video.');
 assert.equal(malformed.content, 'Create a video.');
-assert.deepEqual(imageUrls(generatedImage = build([], 'Create a video.')), []);
+const plainVideo = build([], 'Create a video.');
+assert.equal(plainVideo.content, 'Create a video.');
 
 const twoImages = build([image(1), image(2)]);
 assert.deepEqual(
