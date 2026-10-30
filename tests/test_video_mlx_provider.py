@@ -81,8 +81,8 @@ class VideoMlxProviderTests(unittest.TestCase):
     def test_float16_is_default_only_for_native_ltx_environment(self):
         with mock.patch.dict("os.environ", {}, clear=True):
             env = video_providers_mlx._compute_environment()
+            self.assertEqual(video_providers_mlx._compute_dtype(), "float16")
         self.assertEqual(env["LTX2_COMPUTE_DTYPE"], "float16")
-        self.assertEqual(video_providers_mlx._compute_dtype(), "float16")
 
     def test_explicit_float32_override_and_upstream_env_are_honored(self):
         for env_vars in (
@@ -111,10 +111,10 @@ class VideoMlxProviderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             proc = mock.Mock()
             proc.poll.return_value = None
-            with mock.patch.dict("os.environ", {}, clear=True), \\
-                 mock.patch.object(video_providers_mlx, "LTX_MLX_LOG", Path(tmp) / "worker.log"), \\
-                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/ltx-q4")), \\
-                 mock.patch.object(video_providers_mlx, "_json_request", return_value={"ok": True}), \\
+            with mock.patch.dict("os.environ", {}, clear=True), \
+                 mock.patch.object(video_providers_mlx, "LTX_MLX_LOG", Path(tmp) / "worker.log"), \
+                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/ltx-q4")), \
+                 mock.patch.object(video_providers_mlx, "_json_request", return_value={"ok": True}), \
                  mock.patch.object(video_providers_mlx.managed_process, "spawn", return_value=proc) as spawn:
                 runtime = video_providers_mlx._start_runtime(model, threading.Event())
                 try:
@@ -126,7 +126,7 @@ class VideoMlxProviderTests(unittest.TestCase):
     def test_cli_fallback_receives_explicit_float32(self):
         proc = mock.Mock(returncode=0)
         proc.communicate.return_value = ("OK", None)
-        with mock.patch.dict("os.environ", {"LTX_MLX_COMPUTE_DTYPE": "float32"}, clear=True), \\
+        with mock.patch.dict("os.environ", {"LTX_MLX_COMPUTE_DTYPE": "float32"}, clear=True), \
              mock.patch.object(video_providers_mlx.managed_process, "spawn", return_value=proc) as spawn:
             result = video_providers_mlx._run_process(
                 ["ltx-2-mlx", "generate"], cancel_event=threading.Event()
