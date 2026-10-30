@@ -7781,7 +7781,7 @@ body.mlx-empty-chat .composer-disclaimer {
    ============================================================ */
 
 .message.assistant .message-content {
-    line-height: 1.58;
+    line-height: var(--chat-line-height);
 }
 
 .message.assistant .message-content p {
