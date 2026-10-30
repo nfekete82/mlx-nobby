@@ -21,6 +21,7 @@ def test_dance_with_speech_preserves_person_and_voice():
     prompt = _builder()(None, "dance")
     assert "dances naturally" in prompt
     assert "synchronized to the voice" in prompt
+    assert "Never translate, rephrase, or replace" in prompt
     assert "face recognizable" in prompt
     assert "do not invent a different body" in prompt
 
