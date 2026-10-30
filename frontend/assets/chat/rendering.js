@@ -2234,7 +2234,8 @@ function renderVideoJobCard(message) {
     details.className = 'batch-chat-details';
     const detailLines = [
         'Phase: ' + presentation.phase,
-        job.scene_count ? (String(window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || 'en').startsWith('de') ? 'Szene ' : 'Scene ') + job.scene_number + ' / ' + job.scene_count : '',
+        job.scene_count ? (job.long_video ? 'Abschnitt ' :
+            (String(window.MLXI18n?.getLanguage?.() || document.documentElement?.lang || 'en').startsWith('de') ? 'Szene ' : 'Scene ')) + job.scene_number + ' / ' + job.scene_count : '',
         presentation.elapsed != null
             ? 'Verstrichen: ' + formatImageJobDuration(presentation.elapsed)
             : '',
@@ -2246,10 +2247,13 @@ function renderVideoJobCard(message) {
     details.textContent = detailLines.join('\n');
     card.appendChild(details);
     appendMediaProgress(card, job, presentation);
-    if (job.multi_image_mode === 'scenes' && ['failed', 'cancelled'].includes(job.status) && job.native_job_id) {
+    if ((job.multi_image_mode === 'scenes' || job.long_video) &&
+        ['failed', 'cancelled'].includes(job.status) && job.native_job_id) {
         const retry = document.createElement('button');
         retry.type = 'button'; retry.className = 'message-action-btn';
-        retry.textContent = rt('multi_video_retry', 'Reuse completed scenes · Retry');
+        retry.textContent = job.long_video
+            ? 'Ab letztem fertigen Abschnitt fortsetzen'
+            : rt('multi_video_retry', 'Reuse completed scenes · Retry');
         retry.addEventListener('click', async () => {
             retry.disabled = true;
             try { await window.MLXChatGeneration.retryVideoJob(message); }
