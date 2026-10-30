@@ -12,6 +12,9 @@ on:
       - 'agent/talking_photo_routes.py'
       - 'agent/talking_photo_quality.py'
       - 'agent/talking_photo_ltx.py'
+      - 'agent/talking_photo_audio_mux.py'
+      - 'tests/test_voice_audio_mux.py'
+      - 'tests/test_talking_photo_quality_audio.py'
       - 'tests/test_voice_video_chat.mjs'
       - 'tests/test_video_job.mjs'
       - 'tests/test_voice_dance_prompt.py'
@@ -36,5 +39,5 @@ jobs:
       - name: Check dance prompts without loading MLX
         run: |
           python -m pip install pytest
-          python -m py_compile agent/talking_photo_routes.py agent/talking_photo_quality.py agent/talking_photo_ltx.py
-          python -m pytest -q tests/test_voice_dance_prompt.py
+          python -m py_compile agent/talking_photo_routes.py agent/talking_photo_quality.py agent/talking_photo_ltx.py agent/talking_photo_audio_mux.py
+          python -m pytest -q tests/test_voice_dance_prompt.py tests/test_voice_audio_mux.py
