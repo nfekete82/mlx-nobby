@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -643,6 +644,14 @@ def _run(job_id, request):
                     finished_at=time.time(), memory_after=after,
                     memory_peak=dict(peak),
                 )
+            # Final MP4 is published and the completed job is persisted.
+            # Successful renders must not keep all source MP4 segments on disk.
+            # Failed jobs retain their checkpoints for explicit resume.
+            if video_segmented.needed(request.payload.model_dump()):
+                try:
+                    shutil.rmtree(JOBS / "segmented" / job_id)
+                except OSError as cleanup_error:
+                    _update(job_id, checkpoint_cleanup_warning=type(cleanup_error).__name__)
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output:
             output.unlink(missing_ok=True)
