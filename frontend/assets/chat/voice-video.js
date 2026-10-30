@@ -7,6 +7,8 @@
     const NAMED_VOICE = /\b(?:mit\s+der\s+stimme\s+von|in\s+der\s+stimme\s+von|with\s+(?:the\s+)?voice\s+of)\s+([\p{L}\p{N}_ -]{1,80}?)(?=\s+(?:sagt|spricht|says|speaks)\b|[,;:]|$)/iu;
     const SPOKEN_WORDS = /\b(?:sagt|spricht|says|speaks)\b\s*:?\s*([\s\S]+)$/iu;
     const DANCE = /\b(?:tanzt|tanzen|tanzend|dance|dances|dancing)\b/iu;
+    // Only an explicit quality instruction switches away from the fast default.
+    const LTX_MAX = /\b(?:ltx[\s-]*max|maximal(?:e|er|en|em)?\s+(?:video)?qualität|höchst(?:e|er|en|em)?\s+qualität|maximum\s+quality)\b/iu;
     const VOICE_INTENT = /\b(?:mit\s+der\s+stimme\s+von|in\s+der\s+stimme\s+von|with\s+(?:the\s+)?voice\s+of)\b/iu;
     const LANGUAGE_AFTER_VOICE = /\s+(?:auf|in)\s+(?:deutsch|german|englisch|english)$/iu;
     const QUOTE_END = Object.freeze({'„': '“', '“': '”', '«': '»', '"': '"', "'": "'"});
@@ -44,12 +46,14 @@
         // Preserve the exact spoken quote and ignore subsequent directions.
         const speech = spokenText(spoken[1]);
         if (!voiceName || !speech || speech.length > 5000) return null;
+        const instruction = value.slice(0, spoken.index);
         return {
             voiceName,
             speech,
             // Only instructions *before* the spoken sentence decide the language.
-            language: /\b(?:auf|in)\s+(?:englisch|english)\b/iu.test(value.slice(0, spoken.index)) ? 'en' : 'de',
-            scene_motion: DANCE.test(value.slice(0, spoken.index)) ? 'dance' : 'none',
+            language: /\b(?:auf|in)\s+(?:englisch|english)\b/iu.test(instruction) ? 'en' : 'de',
+            scene_motion: DANCE.test(instruction) ? 'dance' : 'none',
+            engine: LTX_MAX.test(instruction) ? 'ltx-max' : 'ltx-distilled',
         };
     }
 
@@ -126,7 +130,7 @@
             body: JSON.stringify({
                 image_data_url: dataUrl, text: parsed.speech, voice,
                 language: parsed.language, scene_motion: parsed.scene_motion,
-                motion: 'natural', engine: 'ltx-distilled', speed: 1.0,
+                motion: 'natural', engine: parsed.engine, speed: 1.0,
                 preserve_speech_audio: true,
             }),
         });
