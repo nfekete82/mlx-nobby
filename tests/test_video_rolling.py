@@ -120,7 +120,8 @@ def test_tail_refuses_short_source_before_ffmpeg(tmp_path):
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
                     reason="FFmpeg required for executable rolling smoke")
-def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, monkeypatch):
+@pytest.mark.parametrize("with_photo", [False, True])
+def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, monkeypatch, with_photo):
     monkeypatch.setattr(video_providers, "FFPROBE", shutil.which("ffprobe"))
     monkeypatch.setattr(video_rolling, "FFMPEG", shutil.which("ffmpeg"))
 
@@ -157,6 +158,8 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     def generate(_model, params, output, **kwargs):
         assert params["duration"] == 6 and params["frames"] == 145
         assert params["_active_memory_guard"] is True
+        assert params["prompt"].startswith(video_rolling.INITIAL_FACE_GUIDANCE) == with_photo
+        assert params["prompt"].endswith("A still portrait gently moving")
         synthetic(output, 145, "red")
         calls.append(("generate", 145))
 
@@ -164,15 +167,21 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
         info = video_rolling._probe_video(source)
         assert info["frames"] == 25, "must not feed full accumulated movie"
         assert amount == 6
+        assert params["prompt"].startswith(video_rolling.EXTEND_FACE_GUIDANCE) == with_photo
+        assert params["prompt"].endswith("A still portrait gently moving")
         synthetic(output, 73, "blue")
         calls.append(("extend", info["frames"], amount))
 
     monkeypatch.setattr(video_rolling.video_long, "extend", extend)
+    photo = tmp_path / "test-portrait.png"
+    if with_photo:
+        photo.write_bytes(b"synthetic reference source, no image decoder used")
     params = {
         "duration": 10, "resolution": "540p", "fps": 24,
         "width": 128, "height": 64, "seed": 7,
         "prompt": "A still portrait gently moving", "profile": "standard",
-        "quality": "fast", "first_frame": None, "continuation_mode": "rolling",
+        "quality": "fast", "first_frame": str(photo) if with_photo else None,
+        "identity_lock": True, "continuation_mode": "rolling",
     }
     model = {"id": "ltx-test", "provider": "ltx-mlx"}
     checkpoints = tmp_path / "checkpoints"
@@ -192,6 +201,8 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     assert result["frames"] == 241
     assert result["strategy"] == video_rolling.STRATEGY
     assert result["rolling_window_frames"] == 25
+    assert result["rolling_identity_prompt_guidance"] is with_photo
+    assert status["rolling_identity_prompt_guidance"] is with_photo
     assert result["audio"] is True
     assert len(result["rolling_stage_memory"]) == 3
     assert [m["stage"] for m in result["rolling_stage_memory"]] == [1, 2, 3]
@@ -204,3 +215,47 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     assert [entry["seconds"] for entry in manifest["stages"]] == [6, 2, 2]
     assert all(not (checkpoints / ("a" * 24) / f"raw-{i}.partial.mp4").exists()
                for i in range(3))
+
+
+def test_rolling_face_guidance_uses_source_only_when_enabled():
+    original = "The person gently turns their head, smiles and blinks."
+    for first_frame, lock in ((None, True), ("/managed/portrait.png", False)):
+        params = {"prompt": original, "first_frame": first_frame,
+                  "identity_lock": lock}
+        assert video_rolling._face_prompt(params, extension=False) == original
+        assert video_rolling._face_prompt(params, extension=True) == original
+    params = {"prompt": original, "first_frame": "/managed/portrait.png",
+              "identity_lock": True}
+    initial = video_rolling._face_prompt(params, extension=False)
+    extended = video_rolling._face_prompt(params, extension=True)
+    assert initial.startswith(video_rolling.INITIAL_FACE_GUIDANCE)
+    assert extended.startswith(video_rolling.EXTEND_FACE_GUIDANCE)
+    assert initial.endswith(original) and extended.endswith(original)
+    assert "eye shape" in initial and "iris placement" in extended
+    assert "natural" in initial and "natural" in extended
+    assert params["prompt"] == original, "must not mutate the user prompt"
+
+
+def test_rolling_trim_preserves_facelike_detail_with_low_crf(tmp_path, monkeypatch):
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"synthetic source")
+    info = {"frames": 145, "fps": 24, "width": 128, "height": 64,
+            "duration": 145 / 24, "audio": True}
+    commands = []
+    monkeypatch.setattr(video_rolling, "_probe_video", lambda _: info)
+    monkeypatch.setattr(video_rolling, "_validate_part",
+                        lambda path, count, params: info)
+    monkeypatch.setattr(video_rolling, "_ffmpeg",
+                        lambda command, *a, **kw: commands.append(command))
+    monkeypatch.setattr(video_rolling.gate, "blocked", lambda: False)
+    video_rolling._clip_frames(source, tmp_path / "context.mp4",
+                               start=120, count=25,
+                               cancel=threading.Event(), owner="test")
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[command.index("-crf") + 1] == str(video_rolling.CLIP_CRF) == "10"
+    assert command[command.index("-pix_fmt") + 1] == "yuv420p"
+    # Only a frame-selection and timestamp transform: do not smooth away
+    # blinks, irises or facial expressions in the transport layer.
+    assert command[command.index("-vf") + 1].startswith("select=")
+    assert "scale=" not in command[command.index("-vf") + 1]
