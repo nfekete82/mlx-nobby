@@ -44,6 +44,8 @@ const payload = JSON.parse(requests[1].options.body);
 assert.equal(payload.text, 'Komm mit mir tanzen');
 assert.equal(payload.voice, 'pervin');
 assert.equal(payload.scene_motion, 'dance');
+assert.equal(payload.language, 'de');
+assert.equal(payload.preserve_speech_audio, true);
 assert.equal(payload.engine, 'ltx-distilled');
 assert.equal(payload.image_data_url, 'data:image/png;base64,cG5n');
 assert.equal(result.status, 'queued');
