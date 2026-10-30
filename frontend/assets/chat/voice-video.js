@@ -106,6 +106,7 @@
                 image_data_url: dataUrl, text: parsed.speech, voice,
                 language: parsed.language, scene_motion: parsed.scene_motion,
                 motion: 'natural', engine: 'ltx-distilled', speed: 1.0,
+                preserve_speech_audio: true,
             }),
         });
         if (!response.ok) {
