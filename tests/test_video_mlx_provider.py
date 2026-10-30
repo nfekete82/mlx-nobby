@@ -150,6 +150,50 @@ class VideoMlxProviderTests(unittest.TestCase):
         self.assertEqual(result["conditioning_height"], 1024)
         self.assertFalse(result["runtime_reused"])
 
+    def test_identity_lock_preserves_first_frame_and_soft_reference_in_mlx_cli(self):
+        model = video_registry.builtin_mlx_model()
+        params = self.params()
+        params.update(first_frame="/managed/last-frame-0.png",
+                      images=[{"path": "/managed/original.png",
+                               "frame_index": 36, "strength": 0.30}])
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "result.mp4"
+            source = Path(tmp) / "source.png"
+            source.write_bytes(b"source")
+            commands = []
+
+            def prepare(_source, width, height, _mode, destination):
+                destination.write_bytes(b"prepared")
+                return {"source_width": width, "source_height": height}
+
+            def run(command, **_kwargs):
+                commands.append(command)
+                output.write_bytes(b"video")
+
+            with mock.patch.object(video_providers_mlx, "PERSISTENT_WORKER", False), \\
+                 mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")), \\
+                 mock.patch("video_multi_image.keyframe_capabilities",
+                            return_value={"native_keyframes": True}), \\
+                 mock.patch.object(video_providers_mlx, "validate_first_frame", return_value=source), \\
+                 mock.patch.object(video_providers_mlx, "_prepare_first_frame", side_effect=prepare), \\
+                 mock.patch.object(video_providers_mlx, "_run_process", side_effect=run), \\
+                 mock.patch.object(video_providers_mlx, "_probe_video", return_value={
+                     "frames": 121, "width": 1280, "height": 704,
+                     "fps": 24, "duration": 5, "audio": True,
+                 }), \\
+                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/q4")):
+                video_providers_mlx.generate(model, params, output,
+                                             cancel_event=threading.Event())
+
+        command = commands[0]
+        anchors = [command[i + 1:i + 4] for i, flag in enumerate(command)
+                   if flag == "--image"]
+        self.assertEqual(len(anchors), 2)
+        self.assertEqual(len(anchors[0]), 3)
+        self.assertTrue(anchors[0][0].endswith("first-frame.png"))
+        self.assertTrue(anchors[1][0].endswith("anchor-0.png"))
+        self.assertEqual(anchors[1][1:], ["36", "0.3"])
+
 
 class VideoProviderDispatchTests(unittest.TestCase):
     def test_dispatches_mlx_and_mps_independently(self):
