@@ -11,6 +11,7 @@
     <key>LTX_MLX_RUNTIME_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/ltx-2-mlx</string>
     <key>LTX_MLX_MODEL_ROOT</key><string>__HOME_DIR__/.local/share/mlx-nobby/models</string>
     <key>LTX_MLX_LOW_RAM</key><string>1</string>
+    <key>LTX_MLX_COMPUTE_DTYPE</key><string>float16</string>
     <key>LTX_MLX_UNCENSORED_LORA</key><string></string>
     <key>LTX_MLX_UNCENSORED_LORA_STRENGTH</key><string>1.0</string>
   </dict>

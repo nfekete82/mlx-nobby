@@ -57,6 +57,30 @@ PERSISTENT_WORKER = os.environ.get("LTX_MLX_PERSISTENT", "1").strip().lower() no
     "0", "false", "no", "off",
 }
 DEFAULT_IDLE_TIMEOUT = 300.0
+
+
+def _compute_dtype():
+    """Choose MLX arithmetic precision independently of all other AI services.
+
+    Nobby's LTX Q4 720p benchmark: float32 144.22s, float16 120.84s.
+    The upstream LTX-MLX runtime reads LTX2_COMPUTE_DTYPE at process startup.
+    An explicit setting always wins, allowing a safe float32 rollback.
+    """
+    dtype = (
+        os.environ.get("LTX_MLX_COMPUTE_DTYPE")
+        or os.environ.get("LTX2_COMPUTE_DTYPE")
+        or "float16"
+    ).strip().lower()
+    if dtype not in {"float16", "float32"}:
+        raise ValueError("LTX_MLX_COMPUTE_DTYPE muss float16 oder float32 sein")
+    return dtype
+
+
+def _compute_environment():
+    environment = os.environ.copy()
+    environment["LTX2_COMPUTE_DTYPE"] = _compute_dtype()
+    return environment
+
 _RUNTIME_LOCK = threading.RLock()
 _GENERATION_LOCK = threading.Lock()
 _WARM_RUNTIME = None
@@ -157,7 +181,7 @@ def _start_runtime(model, cancel_event):
     host, port = _worker_endpoint()
     LTX_MLX_LOG.parent.mkdir(parents=True, exist_ok=True)
     log = LTX_MLX_LOG.open("ab", buffering=0)
-    environment = os.environ.copy()
+    environment = _compute_environment()
     environment.update({
         "LTX_MLX_WORKER_HOST": host,
         "LTX_MLX_WORKER_PORT": str(port),
@@ -299,6 +323,7 @@ def warm_runtime_status():
             "loaded": loaded,
             "idle_timeout_seconds": _configured_idle_timeout(),
             "backend": "mlx-worker" if PERSISTENT_WORKER else "mlx-cli",
+            "compute_dtype": _compute_dtype(),
             "model": runtime.model_path.name if loaded and runtime else None,
             "requests_completed": int(health.get("generation_count") or 0),
             "busy": bool(health.get("busy")),
@@ -338,6 +363,7 @@ def _run_process(command, *, cancel_event, response_callback=None,
         phase_callback("loading")
     process = managed_process.spawn(
         command, owner="video:ltx-cli", cwd=LTX_MLX_RUNTIME_ROOT,
+        env=_compute_environment(),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
     runtime = MlxCliRuntime(process)
