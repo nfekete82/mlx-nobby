@@ -1274,6 +1274,10 @@ function preferredVideoImageSource(session, currentImages = []) {
     if (newestCurrent) return { origin: 'current_upload', source: newestCurrent };
     const active = activeSessionImageArtifact(session);
     if (active) return { origin: 'active_artifact', source: active };
+    // A photo sent in a previous chat turn must remain usable for I2V.
+    // The caller already understands origin='chat_upload' and binds its stored_path.
+    const priorUpload = latestSessionImageUpload(session);
+    if (priorUpload) return { origin: 'chat_upload', source: priorUpload };
     return null;
 }
 
@@ -2570,7 +2574,9 @@ const imageFiles =
             imageFiles.length > 0 ||
                 Boolean(activeImageArtifact)
         );
-    const explicitVideoAnimateRequest = VIDEO_ANIMATE_PATTERN.test(prompt);
+    // Creating a video from a supplied image is also I2V, not Qwen image-edit.
+    // Previously only 'animate this photo' activated the video source binding.
+    const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest(prompt);
     const preferredVideoSource = explicitVideoAnimateRequest
         ? preferredVideoImageSource(session, imageFiles)
         : null;
@@ -3199,7 +3205,10 @@ const imageFiles =
                         },
                         body: JSON.stringify({
                             prompt,
-                            action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
+                            // The explicit video command outranks the image upload's
+                            // editing UI mode; execution is still decided server-side.
+                            action: explicitVideoAnimateRequest ? 'video_generate' :
+                                imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                             file_context: fileContext,
                             active_artifact_id:
                                 activeArtifactIdForEdit,
@@ -3236,7 +3245,8 @@ const imageFiles =
 
                 resolvedTarget = alwaysGenerateImage
                     ? 'image'
-                    : imageAttachmentMode === 'describe' ? 'chat' : serverTarget;
+                    : imageAttachmentMode === 'describe' && !explicitVideoAnimateRequest
+                        ? 'chat' : serverTarget;
                 if (
                     imageAttachmentMode !== 'describe' &&
                     route.intent === 'image_reference_generate' ||
