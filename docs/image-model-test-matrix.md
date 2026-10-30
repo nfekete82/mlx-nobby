@@ -65,3 +65,25 @@ and [automated results](lifecycle-video-edit-validation.json).
   production reliability. No model is newly marked `tested` by these regressions.
   [Implementation, observed live-state limits and manual acceptance commands](AUTOMATIC_LONG_VIDEO_SDXL_2026-10-29.md)
   · [CPU regression evidence](automatic-long-video-validation.json).
+
+### 2026-10-31: LTX-2.5 rolling video A/B (video evidence, no image-status promotion)
+
+- Installed checkpoint: `dgrauet/ltx-2.5-mlx-q4`,
+  `transformer-distilled.safetensors` (11,320,034,990 bytes); LTX-2.5 22B
+  distilled audio/video transformer, int4, native `ltx-mlx` / Apple Metal.
+  Runtime 0.18.0, commit `b82b97e3d000e01361f8cfcb745244b15b89a521`.
+  Existing local model pack retained; no downloads or installation changes.
+- Actual test date: **2026-10-31 CET** (2026-10-30 UTC). Baseline real GPU
+  load/render **passed**: job `cb7197efd8000d69bdcc6071`, video
+  `672e1f3cbada8eff4e6b456b.mp4`, 704×1280, 241 frames, 24 FPS,
+  6+2+2 s rolling with 25-frame context, seed 0, 8+3 distilled steps per
+  stage, native LTX-2.5 ancestral sampler/sigma tables; CFG not applicable
+  on this distilled path. Stage times: 217.55 / 106.57 / 103.11 s.
+- Technical issues: previous intermediate CRF 10 is not pixel-exact; existing
+  MP4 concat shifts video start by ~21 ms relative to audio. Facial quality
+  requires paired visual review; prompt guidance is not an identity lock.
+- Decision: retain the installed model and experimental opt-in; run the one
+  remaining authorized matched candidate, then decide from measured evidence.
+  No image checkpoint is newly classified as `tested` by a video generation.
+- [Benchmark method](LTX_VIDEO_QUALITY_BENCHMARK.md). Final paired results and
+  provenance will be recorded in `LTX_QUALITY_REPORT_2026-10-31.md`.

@@ -14,7 +14,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import tempfile
 import time
 
 import ai_lifecycle_gate as gate
@@ -29,12 +28,15 @@ FPS = 24
 CONTEXT_FRAMES = 25  # 1 second of motion + inclusive end frame
 EXTEND_LATENTS = 6
 NEW_FRAMES = 8 * EXTEND_LATENTS  # 2 seconds per extension
-CLIP_CRF = 10  # Protect tiny facial detail through repeated H.264 conditioning clips.
+CLIP_CRF = 0  # Lossless decoded YUV transport; do not degrade the next VAE input.
+OUTPUT_CRF = 10  # Encode once to browser-compatible H.264 after assembling the timeline.
+CONDITIONING_VERSION = 3
 SEGMENT_SECONDS = (6, 2, 2)
 RESOLUTIONS = frozenset({"540p", "720p"})
 STRATEGY = "rolling-extend-25f-v1"
-# Prompt guidance is not a facial identity lock: native "extend" accepts
-# the previous video window and prompt, but no original portrait anchor.
+# This integration forwards video and prompt only. Native image guides exist
+# in 0.18 but are pose-bearing anchors, not facial embeddings; leave them off
+# until their motion and memory cost have been validated in a separate pilot.
 # Positive, short guidance preserves natural expressions and blinking.
 INITIAL_FACE_GUIDANCE = (
     "Keep the same person as in the source image with consistent facial proportions, "
@@ -132,7 +134,7 @@ def _clip_frames(source, destination, *, start, count, cancel, owner):
             "-af", f"atrim=start={start/FPS:.9f}:duration={duration:.9f},"
                    "asetpts=PTS-STARTPTS,aresample=48000:async=1:first_pts=0,"
                    f"apad,atrim=duration={duration:.9f}",
-            "-c:a", "aac", "-ar", "48000", "-b:a", "192k",
+            "-c:a", "alac", "-ar", "48000",
         ]
     cmd += ["-movflags", "+faststart", str(destination)]
     _ffmpeg(cmd, cancel, owner, timeout=600)
@@ -145,8 +147,15 @@ def _clip_frames(source, destination, *, start, count, cancel, owner):
 
 
 def _concat(parts, output, params, cancel, owner):
-    """Disk-backed, sequential concat. Never load multiple LTX clips into Metal."""
+    """Three bounded CPU decoders, no Metal. Rebuild exact frame/sample clocks.
+
+    AAC priming/padding in an MP4 concat demuxer shifted video by 21 ms and
+    could introduce packet-rounded gaps. Trim decoded audio to each segment's
+    exact sample count and encode AAC only once, with H.264 for browser playback.
+    """
     signature = None
+    filters, streams = [], []
+    command = [FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
     for index, part in enumerate(parts):
         expected = SEGMENT_SECONDS[index] * FPS + (1 if index == 0 else 0)
         info = _validate_part(part, expected, params)
@@ -155,18 +164,25 @@ def _concat(parts, output, params, cancel, owner):
             signature = current
         if current != signature:
             raise RuntimeError("Rolling-Window-Segmente besitzen unterschiedliche Codecs/Streams")
-    with tempfile.TemporaryDirectory(prefix="ltx-rolling-concat-") as root:
-        listing = Path(root) / "parts.ffconcat"
-        lines = ["ffconcat version 1.0"]
-        for part in parts:
-            lines.append("file '" + str(part.resolve()).replace("'", "'\\''") + "'")
-        listing.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        _ffmpeg([
-            FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-            "-f", "concat", "-safe", "0", "-i", str(listing),
-            "-map", "0:v:0", "-map", "0:a?",
-            "-c", "copy", "-movflags", "+faststart", str(output),
-        ], cancel, owner, timeout=600)
+        command += ["-threads", "1", "-i", str(part)]
+        filters.append(f"[{index}:v]setpts=N/({FPS}*TB)[v{index}]")
+        streams.append(f"[v{index}]")
+        if info["audio"]:
+            samples = expected * 48000 // FPS
+            filters.append(f"[{index}:a]aresample=48000,apad=whole_len={samples},"
+                           f"atrim=end_sample={samples},asetpts=N/SR/TB[a{index}]")
+            streams.append(f"[a{index}]")
+    has_audio = bool(signature[3])
+    filters.append("".join(streams) + f"concat=n={len(parts)}:v=1:a={int(has_audio)}"
+                   + ("[v][a]" if has_audio else "[v]"))
+    command += ["-filter_complex_threads", "1", "-filter_complex", ";".join(filters),
+                "-map", "[v]", "-r", str(FPS), "-fps_mode", "cfr",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(OUTPUT_CRF),
+                "-pix_fmt", "yuv420p", "-threads", "2"]
+    if has_audio:
+        command += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
+    command += ["-movflags", "+faststart", str(output)]
+    _ffmpeg(command, cancel, owner, timeout=600)
     result = _probe_video(output)
     if (result["frames"] != 241 or abs(result["fps"] - FPS) > 0.01
             or abs(result["duration"] - 10) > 0.2):
@@ -181,7 +197,9 @@ def _fingerprint(model, params, planner, version):
         raise RuntimeError("LTX-Modellkonfiguration fehlt")
     source = Path(params["first_frame"]) if params.get("first_frame") else None
     payload = {
-        "strategy": STRATEGY, "conditioning_version": 2, "model": model["id"], "runtime": version,
+        "strategy": STRATEGY, "conditioning_version": CONDITIONING_VERSION,
+        "transport": {"clip_crf": CLIP_CRF, "audio": "alac", "output_crf": OUTPUT_CRF},
+        "model": model["id"], "runtime": version,
         "config": video_long.digest(config), "plan": planner,
         "params": {k: v for k, v in params.items() if k != "resume_from"},
         "source": video_long.digest(source) if source else None,

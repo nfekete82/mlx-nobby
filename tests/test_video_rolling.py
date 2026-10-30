@@ -94,6 +94,7 @@ def test_chat_video_options_reach_native_rolling_request():
     request = agent_app.ChatActionRequest(
         prompt=prompt, quality="fast", video_options={
             "duration": 10, "continuation_mode": "rolling",
+            "identity_lock": False, "identity_strength": 0.2,
         },
     )
     with mock.patch.object(agent_app, "compile_video_prompt",
@@ -102,6 +103,8 @@ def test_chat_video_options_reach_native_rolling_request():
     assert payload["continuation_mode"] == "rolling"
     assert payload["duration"] == 10
     assert payload["quality"] == "fast"
+    assert payload["identity_lock"] is False
+    assert payload["identity_strength"] == 0.2
 
 
 def test_tail_refuses_short_source_before_ffmpeg(tmp_path):
@@ -236,7 +239,7 @@ def test_rolling_face_guidance_uses_source_only_when_enabled():
     assert params["prompt"] == original, "must not mutate the user prompt"
 
 
-def test_rolling_trim_preserves_facelike_detail_with_low_crf(tmp_path, monkeypatch):
+def test_rolling_trim_uses_lossless_transport_without_spatial_filters(tmp_path, monkeypatch):
     source = tmp_path / "clip.mp4"
     source.write_bytes(b"synthetic source")
     info = {"frames": 145, "fps": 24, "width": 128, "height": 64,
@@ -253,9 +256,120 @@ def test_rolling_trim_preserves_facelike_detail_with_low_crf(tmp_path, monkeypat
                                cancel=threading.Event(), owner="test")
     assert len(commands) == 1
     command = commands[0]
-    assert command[command.index("-crf") + 1] == str(video_rolling.CLIP_CRF) == "10"
+    assert command[command.index("-crf") + 1] == str(video_rolling.CLIP_CRF) == "0"
     assert command[command.index("-pix_fmt") + 1] == "yuv420p"
     # Only a frame-selection and timestamp transform: do not smooth away
     # blinks, irises or facial expressions in the transport layer.
     assert command[command.index("-vf") + 1].startswith("select=")
     assert "scale=" not in command[command.index("-vf") + 1]
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='FFmpeg required')
+def test_lossless_tail_keeps_decoded_pixels_and_concat_has_exact_av_clocks(tmp_path, monkeypatch):
+    monkeypatch.setattr(video_rolling.gate, 'blocked', lambda: False)
+    monkeypatch.setattr(video_rolling, 'FFMPEG', shutil.which('ffmpeg'))
+    monkeypatch.setattr(video_rolling, '_ffmpeg',
+        lambda cmd, *args, **kw: subprocess.run(cmd, check=True, capture_output=True, timeout=45))
+    source=tmp_path/'source.mp4'
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','testsrc2=s=128x64:r=24',
+        '-f','lavfi','-i','sine=frequency=440:sample_rate=48000',
+        '-t',str(145/24),'-c:v','libx264','-crf','18','-c:a','aac',str(source)],check=True)
+    cancel=threading.Event()
+    tail=tmp_path/'tail.mp4'
+    video_rolling._clip_frames(source,tail,start=120,count=25,cancel=cancel,owner='test')
+    def pixels(path, selection):
+        return subprocess.check_output(['ffmpeg','-v','error','-i',str(path),'-map','0:v:0',
+            '-vf',selection,'-fps_mode','passthrough','-pix_fmt','yuv420p','-f','rawvideo','-'])
+    assert pixels(source,"select='between(n,120,144)'") == pixels(tail,'null')
+    parts=[]
+    for index,count in enumerate((145,48,48)):
+        p=tmp_path/f'part-{index}.mp4'
+        video_rolling._clip_frames(source,p,start=0,count=count,cancel=cancel,owner='test')
+        parts.append(p)
+    output=tmp_path/'result.mp4'
+    video_rolling._concat(parts,output,{'width':128,'height':64},cancel,'test')
+    probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams',
+        '-show_frames','-select_streams','v:0','-of','json',str(output)]))
+    pts=[float(f['best_effort_timestamp_time']) for f in probe['frames']]
+    assert len(pts)==241 and pts[0]==0
+    assert all(abs(t-i/24)<.00001 for i,t in enumerate(pts))
+    streams=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams',
+        '-of','json',str(output)]))['streams']
+    audio=next(s for s in streams if s['codec_type']=='audio')
+    assert float(audio['start_time'])==0
+    assert abs(float(audio['duration'])-241/24)<1/48000
+    assert audio['codec_name']=='aac'
+    assert probe['streams'][0]['pix_fmt']=='yuv420p'
+    assert probe['streams'][0]['profile']!='High 4:4:4 Predictive'
+
+
+@pytest.fixture
+def rolling_checkpoints(tmp_path, monkeypatch):
+    root=tmp_path/'model'
+    root.mkdir()
+    (root/'embedded_config.json').write_text('{}')
+    monkeypatch.setattr(video_rolling.video_registry,'model_path',lambda _:root)
+    monkeypatch.setattr(video_rolling.video_long,'runtime_version',lambda:'pinned-runtime')
+    monkeypatch.setattr(video_rolling,'_validate_canvas',lambda _:None)
+    monkeypatch.setattr(video_rolling,'shutdown_warm_runtime',lambda:None)
+    info={'width':64,'height':128,'fps':24,'frames':145,'duration':145/24,'audio':False}
+    def validate(path,frames,params):
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError('invalid checkpoint')
+        return dict(info,frames=frames,duration=frames/24)
+    monkeypatch.setattr(video_rolling,'_validate_part',validate)
+    def clip(source,dest,**kwargs):
+        dest.write_bytes(source.read_bytes())
+        return validate(dest,kwargs['count'],{})
+    monkeypatch.setattr(video_rolling,'_clip_frames',clip)
+    monkeypatch.setattr(video_rolling,'_concat',lambda *a:dict(info,frames=241,duration=241/24))
+    calls=[]
+    def generate(model,params,output,**kw):
+        calls.append('initial');output.write_bytes(b'initial')
+    def extend(source,output,*args):
+        calls.append('extend');output.write_bytes(b'extension')
+    monkeypatch.setattr(video_rolling.video_long,'extend',extend)
+    cancel=threading.Event()
+    params={'duration':10,'resolution':'720p','fps':24,'width':64,'height':128,
+            'seed':0,'prompt':'Natural movement','first_frame':None}
+    directory=tmp_path/'checkpoints'
+    def run(job='a'*24,resume=None,update=lambda **kw:None):
+        return video_rolling.run({'id':'test','provider':'ltx-mlx'},params,tmp_path/'output.mp4',
+            job_id=job,checkpoints=directory,resume_job=resume,generate=generate,cancel_event=cancel,
+            response_callback=lambda _:None,progress_callback=lambda _:None,
+            phase_callback=lambda _:None,update=update)
+    return run,calls,cancel,directory
+
+
+def test_rolling_cancel_then_explicit_resume_is_rejected(rolling_checkpoints):
+    run,calls,cancel,directory=rolling_checkpoints
+    def stop(**fields):
+        if fields.get('checkpoint_count')==1:cancel.set()
+    with pytest.raises(video_rolling.ProviderCancelled):run(update=stop)
+    assert calls==['initial']
+    assert len(json.loads((directory/('a'*24)/'checkpoint.json').read_text())['stages'])==1
+    cancel.clear()
+    with pytest.raises(ValueError,match='abgebrochene'):
+        run('b'*24,{'id':'a'*24,'status':'cancelled'})
+
+
+def test_rolling_resume_reuses_verified_stages_and_rejects_tampering(rolling_checkpoints):
+    run,calls,cancel,directory=rolling_checkpoints
+    def stop(**fields):
+        if fields.get('checkpoint_count')==1:cancel.set()
+    with pytest.raises(video_rolling.ProviderCancelled):run(update=stop)
+    cancel.clear()
+    result=run('b'*24,{'id':'a'*24,'status':'failed'})
+    assert result['frames']==241 and calls==['initial','extend','extend']
+    (directory/('a'*24)/'part-0.mp4').write_bytes(b'tampered')
+    with pytest.raises(RuntimeError,match='verändert'):
+        run('c'*24,{'id':'a'*24,'status':'failed'})
+    assert calls==['initial','extend','extend']
+
+
+def test_rolling_transport_change_invalidates_old_checkpoint(rolling_checkpoints,monkeypatch):
+    run,calls,cancel,directory=rolling_checkpoints
+    run()
+    monkeypatch.setattr(video_rolling,'CONDITIONING_VERSION',2)
+    with pytest.raises(ValueError,match='anderen Konfiguration'):
+        run('b'*24,{'id':'a'*24,'status':'failed'})
