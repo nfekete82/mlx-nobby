@@ -61,6 +61,6 @@ await assert.rejects(bridge.create({
     prompt, imageSource:{source:{data_url:'data:image/png;base64,cG5n'}},
     fetcher:async () => ({ok:true,json:async()=>({voices:[{id:'other'}]})})
 }), /nicht als lokales Stimmprofil/);
-await assert.rejects(bridge.create({prompt, imageSource:null}), /Foto/);
+await assert.rejects(bridge.create({prompt, imageSource:null, fetcher: fakeFetch}), /Foto/);
 
 console.log('Voice-video prompt parsing, voice selection, A2V creation and chat artifacts passed.');
