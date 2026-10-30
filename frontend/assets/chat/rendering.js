@@ -263,17 +263,66 @@
     function appendMediaProgress(card, job, presentation) {
         if (!presentation.active) return;
         if (job.automatic_continuation) {
+            // Duration is a validated checkpoint, NOT a measure of GPU compute.
+            const target = Number(job.target_duration);
+            const confirmed = Number(job.confirmed_duration);
+            if (Number.isFinite(target) && target > 0) {
+                const safeSeconds = Number.isFinite(confirmed)
+                    ? Math.max(0, Math.min(target, confirmed)) : 0;
+                const fraction = safeSeconds / target;
+                const formatSeconds = seconds => Number(seconds.toFixed(2)).toString();
+                const validatedWrap = document.createElement('div');
+                validatedWrap.className = 'batch-progress-wrap';
+                const validatedLabel = document.createElement('div');
+                validatedLabel.className = 'batch-progress-text';
+                validatedLabel.textContent = rt('long_video_confirmed', 'Validated duration') +
+                    ': ' + formatSeconds(safeSeconds) + ' / ' + formatSeconds(target) +
+                    ' s (' + Math.round(fraction * 100) + '% ' +
+                    rt('long_video_duration_only', 'of video duration, not rendering time') + ')';
+                validatedWrap.appendChild(validatedLabel);
+                const track = document.createElement('div');
+                track.className = 'batch-progress-bar';
+                track.setAttribute('role', 'progressbar');
+                track.setAttribute('aria-label', rt('long_video_confirmed', 'Validated duration'));
+                track.setAttribute('aria-valuemin', '0');
+                track.setAttribute('aria-valuemax', String(target));
+                track.setAttribute('aria-valuenow', String(safeSeconds));
+                const fill = document.createElement('div');
+                fill.className = 'batch-progress-fill';
+                fill.style.width = (fraction * 100).toFixed(2) + '%';
+                track.appendChild(fill);
+                validatedWrap.appendChild(track);
+                card.appendChild(validatedWrap);
+            }
+
+            const stepWrap = document.createElement('div');
+            stepWrap.className = 'batch-progress-wrap';
+            const stepTitle = document.createElement('div');
+            stepTitle.className = 'batch-progress-text';
+            const phaseMessage = typeof job.progress_message === 'string' && job.progress_message.trim()
+                ? job.progress_message.trim() : presentation.phase;
+            stepTitle.textContent = rt('long_video_current_work', 'Current processing step') +
+                ': ' + phaseMessage;
+            stepWrap.appendChild(stepTitle);
             const progress = document.createElement('progress');
             progress.max = 1;
             progress.style.width = '100%';
-            progress.setAttribute?.('aria-label', rt('long_video_phase_progress', 'Current phase progress'));
-            if (typeof job.phase_progress === 'number' && Number.isFinite(job.phase_progress) && job.phase_progress >= 0 && job.phase_progress <= 1) progress.value = job.phase_progress;
+            progress.setAttribute('aria-label', rt('long_video_phase_progress', 'Current phase progress'));
+            const phaseFraction = Number(job.phase_progress);
+            const knownPhase = typeof job.phase_progress === 'number' &&
+                Number.isFinite(phaseFraction) && phaseFraction >= 0 && phaseFraction <= 1;
+            if (knownPhase) progress.value = phaseFraction;
+            stepWrap.appendChild(progress);
             const text = document.createElement('div');
             text.className = 'batch-progress-text';
-            text.textContent = job.current_step != null && job.total_steps > 0
-                ? `${job.current_step}/${job.total_steps} · ` + rt('long_video_phase_progress', 'Current phase progress')
-                : rt('long_video_indeterminate', 'Working · no confirmed step count');
-            card.appendChild(progress); card.appendChild(text);
+            text.textContent = knownPhase
+                ? (job.current_step != null && Number(job.total_steps) > 0
+                    ? String(job.current_step) + '/' + String(job.total_steps) + ' · ' : '') +
+                    Math.round(phaseFraction * 100) + '% · ' +
+                    rt('long_video_phase_only', 'only this processing step')
+                : rt('long_video_indeterminate', 'Processing · no measurable step count');
+            stepWrap.appendChild(text);
+            card.appendChild(stepWrap);
             return;
         }
         const progressWrap = document.createElement('div');
@@ -2261,8 +2310,16 @@ function renderVideoJobCard(message) {
     }
     if (job.automatic_continuation) {
         detailLines.push(rt('long_video_active', 'Automatic continuation active') + ` · ${job.target_duration} s · ${job.long_plan?.resolution || ""} · ${job.stage_number || 1}/${job.stage_count}`);
-        detailLines.push(rt('long_video_confirmed', 'Validated duration') + `: ${job.confirmed_duration || 0} s`);
-        if (job.last_activity_at) detailLines.push(rt('long_video_activity', 'Last confirmed activity') + ': ' + new Date(job.last_activity_at * 1000).toLocaleTimeString());
+        // Validated duration is presented separately with its own labeled bar.
+        if (Number(job.last_activity_at) > 0) {
+            const age = Math.max(0, Math.floor(Date.now() / 1000 - Number(job.last_activity_at)));
+            detailLines.push(rt('long_video_activity', 'Last LTX log activity') + ': ' +
+                new Date(job.last_activity_at * 1000).toLocaleTimeString() +
+                ' (' + formatImageJobDuration(age) + ' ' + rt('long_video_ago', 'ago') + ')');
+            if (age >= 300 && presentation.active) {
+                detailLines.push(rt('long_video_quiet', 'No new LTX log output for 5+ minutes; processing may still be running.'));
+            }
+        }
         if (job.identical_boundary_pixels) detailLines.push(rt('long_video_duplicate', 'Identical boundary frames detected; check whether the still frame is intentional.'));
         detailLines.push(rt('long_video_continuity', 'LTX re-encodes the source; visual and audio continuity require review.'));
     }

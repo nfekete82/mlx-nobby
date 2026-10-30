@@ -243,6 +243,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate, can
         confirmed = (manifest["stages"][-1]["info"]["timeline_seconds"] if manifest["stages"] else 0)
         update(stage_number=index + 1, confirmed_duration=confirmed,
                phase_progress=None, current_step=None, total_steps=None, progress=None,
+               progress_message="LTX bereitet Videoabschnitt vor", progress_scope=None,
                phase="generating", status="generating", last_activity_at=time.time())
         if index < len(manifest["stages"]):
             continue

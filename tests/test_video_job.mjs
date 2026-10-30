@@ -293,11 +293,26 @@ const longJob = {id: 'e'.repeat(24), status: 'generating', phase: 'generating', 
     long_plan: {resolution:'1080p'}, last_activity_at:Date.now()/1000};
 const longCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:longJob});
 assert.match(longCard.children[1].textContent, /20 s.*1080p.*3\/5/);
-assert.match(longCard.children[1].textContent, /Validated duration: 9 s/);
-const longProgress = longCard.children.find(node=>node.tagName==='progress');
+assert.match(longCard.children[2].children[0].textContent,
+    /Validated duration: 9 \/ 20 s \(45% of video duration, not rendering time\)/);
+assert.equal(longCard.children[2].children[1].children[0].style.width, '45.00%');
+assert.equal(longCard.children[3].children[0].textContent, 'Current processing step: Generating');
+const longProgress = longCard.children[3].children[1];
+assert.equal(longProgress.tagName, 'progress');
 assert.equal(longProgress.value, .25);
+assert.match(longCard.children[3].children[2].textContent, /2\/8 · 25% · only this processing step/);
 const unknownCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,phase_progress:null}});
-assert.equal(unknownCard.children.find(node=>node.tagName==='progress').value, undefined);
+assert.equal(unknownCard.children[3].children[1].value, undefined);
+assert.match(unknownCard.children[3].children[2].textContent, /no measurable step count/);
+const decodeJob = {...longJob, phase: 'decoding', progress_message: 'LTX dekodiert Videoframes',
+    phase_progress: null, current_step: null, total_steps: null};
+const decodeCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:decodeJob});
+assert.match(decodeCard.children[3].children[0].textContent, /LTX dekodiert Videoframes/);
+assert.equal(decodeCard.children[3].children[1].value, undefined);
+assert.equal(decodeCard.children[2].children[1].children[0].style.width, '45.00%');
+const inactiveJob = {...longJob, last_activity_at: Date.now()/1000-360};
+const inactiveCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:inactiveJob});
+assert.match(inactiveCard.children[1].textContent, /No new LTX log output/);
 const failedCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,status:'failed',resumable:true,native_job_id:'f'.repeat(24)}});
 assert.ok(failedCard.children.some(node=>node.textContent==='Resume from validated checkpoint'));
 const cancelledCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,status:'cancelled',cancel_requested:true,resumable:true,native_job_id:'f'.repeat(24)}});
