@@ -86,7 +86,7 @@ def validate_first_frame(value):
     checkpoint = (
         source.parent.parent == VIDEO_SEGMENTS_ROOT.resolve()
         and re.fullmatch(r"[a-f0-9]{24}", source.parent.name) is not None
-        and re.fullmatch(r"last-frame-\\d+\\.png", source.name) is not None
+        and re.fullmatch(r"last-frame-\d+\.png", source.name) is not None
     )
     if ((source.parent not in roots and not checkpoint)
             or source.suffix.lower() not in SUPPORTED_SUFFIXES or not source.is_file()):
