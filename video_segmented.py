@@ -114,8 +114,23 @@ def _validate_segment(path, stage, params):
 
 
 def _compose(paths, output, params, cancel, owner):
-    """Demuxer stream-copy, not N simultaneous 1080p video decoders."""
+    """Join 8k+1 LTX segments without repeating the shared boundary frame.
+
+    Each 3-second 24-fps segment has 73 frames: the first frame of a later
+    segment describes the *same instant* as the last frame of the preceding
+    segment. Plain demuxer concatenation introduces one redundant frame per
+    join and a small but visible motion hold. Decode and encode one stream
+    sequentially (not N concurrent 1080p decoders), dropping precisely those
+    duplicated frames and rebuilding a CFR timeline.
+
+    This repairs only the repeated-boundary-frame artifact, not the underlying
+    motion/identity or color-grade mismatch between independent generations.
+    """
+    if not paths:
+        raise ValueError("Keine LTX-Segmente zum Zusammenfügen")
+
     first = None
+    segment_frames = SEGMENT_SECONDS[params["resolution"]] * int(params["fps"]) + 1
     for clip in paths:
         info = _probe_video(clip)
         signature = (info["width"], info["height"], round(info["fps"], 2), bool(info["audio"]))
@@ -123,24 +138,57 @@ def _compose(paths, output, params, cancel, owner):
             first = signature
         if first != signature:
             raise RuntimeError("Segmentformate stimmen beim Zusammenfügen nicht überein")
+        if int(info["frames"]) != segment_frames:
+            raise RuntimeError("Segment besitzt nicht die erwartete Anzahl Randframes")
+
+    fps = int(params["fps"])
+    expected_frames = int(params["duration"]) * fps + 1
+    if len(paths) * (segment_frames - 1) + 1 != expected_frames:
+        raise RuntimeError("Die Video-Teilstücke ergeben keine lückenlose Zeitleiste")
+
+    # FFmpeg filter expressions need quoting for commas between function args.
+    # The initial n=0 frame must survive; n=segment_frames, 2*segment_frames,
+    # ... are shared starts and should be dropped.
+    selection = (
+        f"select='eq(n,0)+not(eq(mod(n,{segment_frames}),0))',"
+        f"setpts=N/({fps}*TB)"
+    )
+
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ltx-segmented-") as root:
         listing = Path(root) / "parts.ffconcat"
         lines = ["ffconcat version 1.0"]
         for clip in paths:
-            # Every clip is a server-created file within an owned checkpoint.
             lines.append("file '" + str(clip.resolve()).replace("'", "'\\''") + "'")
         listing.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        _ffmpeg([FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                 "-f", "concat", "-safe", "0", "-i", str(listing),
-                 "-map", "0:v:0", "-map", "0:a?", "-t", str(params["duration"]),
-                 "-c", "copy", "-movflags", "+faststart", str(output)],
-                cancel, owner, timeout=600)
+
+        command = [
+            FFMPEG, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-f", "concat", "-safe", "0", "-i", str(listing),
+            "-map", "0:v:0", "-vf", selection, "-r", str(fps),
+            "-fps_mode", "cfr", "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "17", "-pix_fmt", "yuv420p",
+        ]
+        if first[3]:
+            # Compress audio by the same cumulative boundary-frame correction.
+            # This keeps A/V drift from increasing on 30/60-second renders.
+            original_frames = len(paths) * segment_frames
+            tempo = original_frames / expected_frames
+            command += [
+                "-map", "0:a:0",
+                "-af", f"atempo={tempo:.9f},aresample=async=1:first_pts=0,"
+                       f"apad,atrim=duration={params['duration']}",
+                "-c:a", "aac", "-b:a", "192k",
+            ]
+        command += ["-movflags", "+faststart", str(output)]
+        _ffmpeg(command, cancel, owner, timeout=900)
+
     info = _probe_video(output)
-    if abs(float(info["duration"]) - params["duration"]) > 0.6:
+    if int(info["frames"]) != expected_frames or abs(float(info["fps"]) - fps) > 0.01:
+        raise RuntimeError("Segment-Assembly hat unerwartete Frameanzahl oder FPS")
+    if abs(float(info["duration"]) - params["duration"]) > 0.2:
         raise RuntimeError("Gesamtdauer der kombinierten Videosegmente ist inkonsistent")
     return info
-
 
 def _fingerprint(model, params):
     model_path = video_registry.model_path(model).resolve()
