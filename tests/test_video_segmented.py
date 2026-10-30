@@ -218,3 +218,90 @@ def test_identity_lock_requires_native_keyframe_support(pipeline, monkeypatch):
         segmented.run(model, params, tmp_path / "unavailable.mp4",
                       job_id="e" * 24, resume_job=None,
                       generate=no_generate, update=lambda **_: None, **kwargs)
+
+
+
+def test_compose_removes_duplicate_boundary_frames_without_concurrent_decoders(
+        tmp_path, monkeypatch):
+    clips = [tmp_path / f"segment-{index}.mp4" for index in range(3)]
+    for clip in clips:
+        clip.write_bytes(b"placeholder")
+    output = tmp_path / "complete.mp4"
+    commands = []
+
+    def probe(path):
+        return dict(
+            width=1920, height=1088, fps=24, audio=True,
+            frames=217 if Path(path) == output else 73,
+            duration=9.04 if Path(path) == output else 3.04,
+        )
+
+    def fake_ffmpeg(command, _cancel, _owner, timeout=600):
+        commands.append(command)
+        output.write_bytes(b"assembled")
+
+    monkeypatch.setattr(segmented, "_probe_video", probe)
+    monkeypatch.setattr(segmented, "_ffmpeg", fake_ffmpeg)
+    info = segmented._compose(
+        clips, output, {"duration": 9, "resolution": "1080p", "fps": 24},
+        threading.Event(), "test:segmented",
+    )
+    assert info["frames"] == 217
+    assert len(commands) == 1
+    command = commands[0]
+    video_filter = command[command.index("-vf") + 1]
+    assert "mod(n,73)" in video_filter
+    assert "setpts=N/(24*TB)" in video_filter
+    assert command[command.index("-fps_mode") + 1] == "cfr"
+    assert command[command.index("-c:v") + 1] == "libx264"
+    assert "copy" not in command
+    assert command[command.index("-map") + 1] == "0:v:0"
+    assert "0:a:0" in command
+    assert "atempo=" in command[command.index("-af") + 1]
+
+
+def test_compose_rejects_framecount_mismatch(tmp_path, monkeypatch):
+    clips = [tmp_path / f"segment-{index}.mp4" for index in range(3)]
+    for clip in clips:
+        clip.write_bytes(b"placeholder")
+    monkeypatch.setattr(segmented, "_probe_video", lambda _: dict(
+        width=1920, height=1088, fps=24, audio=False, frames=72,
+        duration=3.0,
+    ))
+    with pytest.raises(RuntimeError, match="Randframes"):
+        segmented._compose(
+            clips, tmp_path / "complete.mp4",
+            {"duration": 9, "resolution": "1080p", "fps": 24},
+            threading.Event(), "test:segmented",
+        )
+
+
+def test_compose_real_ffmpeg_yields_217_cfr_frames_and_audio(tmp_path, monkeypatch):
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("FFmpeg required for an executable stitching smoke test")
+    clips = []
+    for idx, color in enumerate(("red", "green", "blue")):
+        path = tmp_path / f"segment-{idx}.mp4"
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-v", "error", "-y",
+            "-f", "lavfi", "-i", f"color=c={color}:s=128x96:r=24",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+            "-frames:v", "73", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-t", "3.041667", str(path),
+        ], check=True, capture_output=True, timeout=45)
+        clips.append(path)
+    def direct_ffmpeg(command, _cancel, _owner, timeout=600):
+        subprocess.run(command, check=True, capture_output=True, timeout=timeout)
+    monkeypatch.setattr(segmented, "_ffmpeg", direct_ffmpeg)
+    result = segmented._compose(
+        clips, tmp_path / "complete.mp4",
+        {"duration": 9, "resolution": "1080p", "fps": 24},
+        threading.Event(), "test:segmented",
+    )
+    assert result["frames"] == 217
+    assert result["fps"] == 24
+    assert result["audio"] is True
+    assert abs(result["duration"] - 9) < 0.1
