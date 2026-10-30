@@ -35,6 +35,14 @@ class Image018:
         return cls(path, frame_idx, strength,
                    "replace" if frame_idx == 0 else "guide")
 
+    @classmethod
+    def replace(cls, path, frame_idx, strength, crf=None):
+        return cls(path, frame_idx, strength, "replace")
+
+    @classmethod
+    def guide(cls, path, frame_idx, strength, crf=None):
+        return cls(path, frame_idx, strength, "guide")
+
 
 @pytest.mark.parametrize("factory", [LegacyImage, Image018])
 def test_image_anchor_conversion_matches_legacy_and_018(factory):
@@ -45,6 +53,20 @@ def test_image_anchor_conversion_matches_legacy_and_018(factory):
     assert [r.path for r in result] == ["/tmp/start.png", "/tmp/end.png"]
     if factory is Image018:
         assert [r.binding for r in result] == ["replace", "guide"]
+
+
+def test_explicit_guide_at_frame_zero_does_not_replace_first_frame():
+    anchors = [
+        {"path": "previous.png", "frame_index": 0, "strength": 1.0,
+         "binding": "replace"},
+        {"path": "original.png", "frame_index": 0, "strength": 0.30,
+         "binding": "guide"},
+    ]
+    result = image_conditioning_inputs(anchors, Image018)
+    assert [value.binding for value in result] == ["replace", "guide"]
+    assert [value.frame_idx for value in result] == [0, 0]
+    with pytest.raises(ValueError, match="requires LTX-MLX v0.18"):
+        image_conditioning_inputs(anchors, LegacyImage)
 
 
 def test_image_anchor_factory_propagates_invalid_payload():
