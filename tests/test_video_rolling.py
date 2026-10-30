@@ -26,6 +26,18 @@ def test_opt_in_is_strict_and_existing_segment_mode_is_unchanged():
     assert hd["resolution"] == "720p"
     assert hd["context_frames"] == 25
     assert [stage["frames"] for stage in hd["stages"]] == [145, 48, 48]
+    for resolution, expected in (
+        ("540p", ((1024, 576), (576, 1024))),
+        ("720p", ((1280, 704), (704, 1280))),
+    ):
+        for width, height in expected:
+            video_rolling._validate_canvas({
+                "resolution": resolution, "width": width, "height": height,
+            })
+    with pytest.raises(ValueError, match="Profilauflösung"):
+        video_rolling._validate_canvas({
+            "resolution": "720p", "width": 1024, "height": 576,
+        })
     with pytest.raises(ValueError):
         video_rolling.plan(10, "1080p")
     with pytest.raises(ValueError):
@@ -117,6 +129,9 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     (root / "embedded_config.json").write_text("{}")
     monkeypatch.setattr(video_rolling.video_registry, "model_path", lambda _: root)
     monkeypatch.setattr(video_rolling.video_long, "runtime_version", lambda: "known-runtime")
+    # The FFmpeg integration test uses 128x64 for speed; separate tests above
+    # verify all four real 540p/720p landscape and portrait dimensions.
+    monkeypatch.setattr(video_rolling, "_validate_canvas", lambda _: None)
     monkeypatch.setattr(video_rolling.gate, "blocked", lambda: False)
     monkeypatch.setattr(video_rolling, "shutdown_warm_runtime", lambda: None)
     monkeypatch.setattr(video_rolling.runtime_coordinator, "memory_budget_snapshot",
