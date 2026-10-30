@@ -1,0 +1,18 @@
+{
+  "video_health": {
+    "ok": true,
+    "status": "ready",
+    "active_job_id": null,
+    "active_generation": false,
+    "offline": true
+  },
+  "web_health": {
+    "ok": true
+  },
+  "agent_queue_active_count": 0,
+  "agent_queue_waiting_count": 0,
+  "agent_restarted": true,
+  "video_commit": "feeb9b21",
+  "frontend_changed": false,
+  "docker_rebuild_required": false
+}

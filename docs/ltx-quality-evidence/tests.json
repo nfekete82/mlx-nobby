@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-31",
+  "tests": [
+    {
+      "command": ".test-venv/bin/python -m pytest -q tests/test_video_rolling.py tests/test_video_segmented.py",
+      "passed": 22,
+      "failed": 0
+    },
+    {
+      "description": "Expanded video provider/API/continuation/edit/telemetry suite",
+      "passed": 135,
+      "failed": 0,
+      "skipped": 1,
+      "subtests_passed": 10,
+      "seconds": 23.51,
+      "note": "One benchmark module skipped in the test environment without NumPy/SciPy; exercised separately below."
+    },
+    {
+      "description": "Guardian argv fix plus lifecycle, rolling, segmented and long-video regressions",
+      "passed": 76,
+      "failed": 0,
+      "seconds": 26.66
+    },
+    {
+      "description": "Additional budget and media/system lifecycle suites",
+      "passed": 35,
+      "failed": 0,
+      "seconds": 10.87
+    },
+    {
+      "command": "image-venv/bin/python -m unittest tests/test_video_quality_benchmark.py -v",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "command": ".test-venv/bin/python -m pytest --e2e -q tests/e2e/test_video_rolling_quality.py",
+      "passed": 2,
+      "failed": 0,
+      "seconds": 9.54,
+      "note": "Desktop/mobile, production browser code; isolated fixture supplies missing unrelated edit discovery route."
+    },
+    {
+      "command": "node tests/test_video_job.mjs",
+      "result": "passed"
+    },
+    {
+      "command": "node tests/test_chat_video_playback.mjs",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "command": "node tests/test_video_edit_recovery.mjs",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "description": "Real Chromium playback through production web video API",
+      "videos_passed": 2,
+      "seek_positions_per_video": [
+        0,
+        3,
+        5.9,
+        6.1,
+        7.9,
+        8.1,
+        9.9
+      ],
+      "media_errors": 0,
+      "http_range_status": 206
+    }
+  ],
+  "known_failures": [
+    {
+      "description": "First expanded suite inside macOS sandbox",
+      "failed": 11,
+      "passed": 102,
+      "skipped": 1,
+      "cause": "ps denied by sandbox in existing managed process tests. Unsandboxed rerun passed."
+    },
+    {
+      "description": "Existing general video browser acceptance",
+      "test_bodies_passed": 6,
+      "teardown_errors": 6,
+      "cause": "Shared AgentFixture returns 501 for GET /api/mlx/video/edit/jobs. Same endpoint/status present in older local test artifacts."
+    },
+    {
+      "description": "System python3 baseline request",
+      "cause": "Xcode Python has no pytest; used existing .test-venv."
+    },
+    {
+      "description": "General tests-only collection",
+      "collected": 3738,
+      "collection_errors": 3,
+      "causes": [
+        "KeyError: mlx_agent in test_batch_transform.py",
+        "Untracked local LTX lab tests import missing ltx_lab.telemetry (2 modules)"
+      ]
+    },
+    {
+      "description": "Repository-wide collection",
+      "collection_errors": 10,
+      "cause": "In addition to above, old artifact source snapshots cause duplicate --e2e registration and module import mismatches."
+    }
+  ],
+  "notes": [
+    "Suite counts overlap and must not be added as unique tests.",
+    "CPU tests are not image/video quality evidence."
+  ]
+}

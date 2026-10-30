@@ -96,3 +96,21 @@ and [automated results](lifecycle-video-edit-validation.json).
   704×1280 / 24 FPS / 241 frames / seed 0 / 8+3 steps / distilled ancestral /
   CFG N/A. Quality: unassessed. Decision: retain model; investigate startup on
   CPU before one bounded continuation of the unrendered candidate.
+
+- Candidate continuation `cb0127c78f871c3878512788`, **2026-10-31 CET**:
+  real GPU load/render **passed**, 420.956 s wall time; stages
+  209.97 / 103.81 / 103.34 s. Output `b6731ecfcbbf3114a32b5c01.mp4`,
+  704×1280, 241 frames, 24 FPS, seed 0; same installed LTX-2.5 distilled
+  checkpoint/provider/runtime as above, 8+3 steps, native ancestral schedules,
+  CFG N/A. HF model revision `e9a20add8c5937fcab635fb8e7a52926487a5776`;
+  checkpoint SHA256/provenance is recorded in the linked evidence.
+- Quality: native face crops remain broadly similar, small eye asymmetry and
+  expression drift remain; no substantial visible eye-quality improvement
+  established. Exact intermediate YUV transport and zero A/V stream offset are
+  demonstrated; no duplicate frames or PTS errors. Candidate active memory
+  availability minimum 58%, swap 7.24→7.22 GiB, normal pressure.
+- Decision: **retain experimental opt-in and retest facial acceptance** in a
+  future authorized latent-carry experiment; no default promotion, no further
+  GPU retry and no image-model `tested` status promotion. Exactly two complete
+  new videos were produced. [Full report](LTX_QUALITY_REPORT_2026-10-31.md) ·
+  [matched measurements and memory evidence](ltx-quality-evidence/comparison.json).

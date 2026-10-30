@@ -27,7 +27,9 @@ invalidate the technical measurements. Each output label directory must be new;
 existing reports are not overwritten. Inputs are read-only.
 
 Open `index.html` locally for the comparison table, native frames, contact
-sheets, face crops, exact seam windows, and geometry observations. `report.json`
+sheets, face crops, original source, video players, exact seam windows, and
+geometry observations. Video/source files are copied into this private report
+so it remains usable locally without the original service paths. `report.json`
 contains per-frame measurements, video SHA256, FFmpeg version, effective job
 settings, source/prompt hashes and available memory telemetry. Original prompts
 and upload paths are omitted from this report. Review frames and landmarks are

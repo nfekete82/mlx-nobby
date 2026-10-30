@@ -13,6 +13,7 @@ import html
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 
@@ -239,7 +240,7 @@ def job_telemetry(path):
         return None
     d=json.loads(Path(path).read_text())
     payload=d.get('payload',{})
-    result={k:d.get(k) for k in ('id','status','error','memory_before','memory_peak','memory_after',
+    result={k:d.get(k) for k in ('id','status','error','resolved_model','memory_before','memory_peak','memory_after',
         'memory_admission','memory_before_admission','runtime_handoff','rolling_stage_memory')}
     result['generation_seconds']=(d['finished_at']-d['started_at']
         if d.get('finished_at') and d.get('started_at') else None)
@@ -256,19 +257,37 @@ def benchmark(label,path,out,job=None,helper=None):
     metrics=frame_metrics(path,info)
     frames=samples(path,info,out/label)
     faces=face_geometry(helper,out/label,frames)
+    shutil.copyfile(path,out/label/'video.mp4')
+    source_preview=None
+    if job:
+        source=json.loads(Path(job).read_text()).get('payload',{}).get('first_frame')
+        if source and Path(source).is_file() and Path(source).suffix.lower() in {'.png','.jpg','.jpeg','.webp'}:
+            source_preview='source'+Path(source).suffix.lower()
+            shutil.copyfile(source,out/label/source_preview)
     return {'label':label,'file_name':Path(path).name,'sha256':sha256(path),
         'bytes':Path(path).stat().st_size,'technical':{k:v for k,v in info.items() if k!='pts'},
         'metrics':metrics,'samples':frames,'face_geometry':faces,'job':job_telemetry(job),
+        'source_preview':source_preview,
         'analysis_seconds':round(time.monotonic()-started,2),
         'visual_assessment':{'status':'requires_human_review','identity':'unmeasured'}}
 
 
 def write_report(out,results):
+    comparisons=[]
+    for index,left in enumerate(results):
+        for right in results[index+1:]:
+            a,b=left.get('job') or {},right.get('job') or {}
+            checks={key:(a.get(key)==b.get(key) if a.get(key) is not None and b.get(key) is not None else None)
+                    for key in ('source_sha256','prompt_sha256','settings','resolved_model')}
+            comparisons.append({'left':left['label'],'right':right['label'], 'input_checks':checks,
+                'matched_recorded_inputs':all(value is True for value in checks.values()),
+                'limits':'Runtime, hardware and effective conditioning must also match; inspect provenance and implementation.'})
     report={'schema_version':1,'ffmpeg_version':run(['ffmpeg','-version']).decode().splitlines()[0],
         'methodology':{'ssim':'Gaussian local luma SSIM, sigma=1.5, 11x11; no motion compensation',
             'analysis':'Area downsample max side 512; full-resolution YUV hashes for duplicates; native PNG review frames.',
             'limits':'SSIM rewards stillness; sharpness rewards noise too. Geometry changes can reflect desired motion. A/V offsets measure stream timing, not lip sync. Different resolutions are not controlled A/B.',
-            'boundary_frames':list(BOUNDARY_FRAMES),'requested_sample_times':list(SAMPLE_TIMES)},'videos':results}
+            'boundary_frames':list(BOUNDARY_FRAMES),'requested_sample_times':list(SAMPLE_TIMES)},
+            'comparison_pairs':comparisons, 'videos':results}
     (out/'report.json').write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
     body=['<!doctype html><meta charset="utf-8"><title>LTX quality comparison</title>',
           '<style>body{font:16px system-ui;background:#10131b;color:#eee;margin:32px}table{border-collapse:collapse}td,th{padding:10px;border:1px solid #596070}img{max-width:100%}a{color:#8bd}pre{white-space:pre-wrap}</style>',
@@ -277,10 +296,12 @@ def write_report(out,results):
     for r in results:
         t,m=r['technical'],r['metrics']
         body.append(f"<tr><td>{html.escape(r['label'])}</td><td>{t['width']}×{t['height']} / {t['frames']} / {t['fps']}</td><td>{t['video_duration']} / {t['audio_duration']}</td><td>{m['adjacent_ssim']['median']:.5f}</td><td>{len(m['exact_duplicate_frames'])} / {len(t['pts_anomalies'])}</td><td>{(r.get('job') or {}).get('generation_seconds')}</td></tr>")
-    body.append('</table>')
+    body.extend(['</table>','<h2>Input comparability</h2><pre>'+html.escape(json.dumps(comparisons,indent=2))+'</pre>'])
     for r in results:
         label=html.escape(r['label'])
         body.extend([f'<h2>{label}</h2>',f'<a href="{label}/contact-sheet.jpg"><img src="{label}/contact-sheet.jpg"></a>',
+            f'<p><video controls preload="metadata" style="max-height:70vh;max-width:100%" src="{label}/video.mp4"></video></p>',
+            (f'<details><summary>Original source</summary><img style="max-height:70vh" src="{label}/{html.escape(r["source_preview"])}"></details>' if r.get('source_preview') else ''),
             '<p>Native frames: '+ ' · '.join(f'<a href="{label}/{f["image"]}">{f["time"]:.4f}s</a>' for f in r['samples'])+'</p>',
             (f'<h3>Native face crops</h3><img src="{label}/face-contact-sheet.jpg">' if r['face_geometry'].get('face_crops_available') else ''),
             '<h3>Exact segment joins</h3><pre>'+html.escape(json.dumps(r['metrics']['boundaries'],indent=2))+'</pre>',

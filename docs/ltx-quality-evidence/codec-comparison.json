@@ -1,0 +1,12 @@
+[
+  {
+    "crf": 10,
+    "bytes": 410276,
+    "native_decoded_yuv_ssim": "[Parsed_ssim_3 @ 0xb56de0840] SSIM Y:0.998072 (27.150051) U:0.997963 (26.910007) V:0.997912 (26.803733) All:0.998028 (27.049995)"
+  },
+  {
+    "crf": 0,
+    "bytes": 2057930,
+    "native_decoded_yuv_ssim": "[Parsed_ssim_3 @ 0x95502bcc0] SSIM Y:1.000000 (inf) U:1.000000 (inf) V:1.000000 (inf) All:1.000000 (inf)"
+  }
+]

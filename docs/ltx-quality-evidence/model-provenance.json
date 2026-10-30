@@ -1,0 +1,17 @@
+{
+  "repository": "dgrauet/ltx-2.5-mlx-q4",
+  "checkpoint": "transformer-distilled.safetensors",
+  "checkpoint_bytes": 11320034990,
+  "config_sha256": "880a7c558adab874ea6b2e4f7f463e9343bc241caa05dddc3c0ce12d1af87cd1",
+  "hf_download_metadata": [
+    "e9a20add8c5937fcab635fb8e7a52926487a5776",
+    "413479747a7ecd39c71460c3b0e4c872399c64fdaff85f4ef2a28c435a45f21d",
+    "1790758659.370985"
+  ],
+  "native_runtime": "b82b97e3d000e01361f8cfcb745244b15b89a521",
+  "low_ram": true,
+  "hf_revision": "e9a20add8c5937fcab635fb8e7a52926487a5776",
+  "checkpoint_lfs_sha256": "413479747a7ecd39c71460c3b0e4c872399c64fdaff85f4ef2a28c435a45f21d",
+  "checkpoint_actual_sha256": "413479747a7ecd39c71460c3b0e4c872399c64fdaff85f4ef2a28c435a45f21d",
+  "hash_wall_seconds": 4.05
+}

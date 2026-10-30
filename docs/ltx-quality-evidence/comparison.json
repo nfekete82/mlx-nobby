@@ -1,0 +1,571 @@
+{
+  "date": "2026-10-31",
+  "comparison_pairs": [
+    {
+      "left": "historical",
+      "right": "before",
+      "input_checks": {
+        "source_sha256": true,
+        "prompt_sha256": true,
+        "settings": false,
+        "resolved_model": true
+      },
+      "matched_recorded_inputs": false,
+      "limits": "Runtime, hardware and effective conditioning must also match; inspect provenance and implementation."
+    },
+    {
+      "left": "historical",
+      "right": "after",
+      "input_checks": {
+        "source_sha256": true,
+        "prompt_sha256": true,
+        "settings": false,
+        "resolved_model": true
+      },
+      "matched_recorded_inputs": false,
+      "limits": "Runtime, hardware and effective conditioning must also match; inspect provenance and implementation."
+    },
+    {
+      "left": "before",
+      "right": "after",
+      "input_checks": {
+        "source_sha256": true,
+        "prompt_sha256": true,
+        "settings": true,
+        "resolved_model": true
+      },
+      "matched_recorded_inputs": true,
+      "limits": "Runtime, hardware and effective conditioning must also match; inspect provenance and implementation."
+    }
+  ],
+  "methodology": {
+    "ssim": "Gaussian local luma SSIM, sigma=1.5, 11x11; no motion compensation",
+    "analysis": "Area downsample max side 512; full-resolution YUV hashes for duplicates; native PNG review frames.",
+    "limits": "SSIM rewards stillness; sharpness rewards noise too. Geometry changes can reflect desired motion. A/V offsets measure stream timing, not lip sync. Different resolutions are not controlled A/B.",
+    "boundary_frames": [
+      145,
+      193
+    ],
+    "requested_sample_times": [
+      0,
+      3,
+      5.9,
+      6.1,
+      7.9,
+      8.1,
+      9.9
+    ]
+  },
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "videos": [
+    {
+      "label": "historical",
+      "file_name": "6ffc5ac5bccd363fa81da219.mp4",
+      "sha256": "711e748d556c383569cdb947f0e732b532006b60a18cc182cdd795e1946ff5f1",
+      "bytes": 1168858,
+      "technical": {
+        "width": 1024,
+        "height": 576,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.063,
+        "video_start": 0.021322,
+        "audio_start": 0.0,
+        "audio_duration": 10.063,
+        "av_start_offset_seconds": -0.021322,
+        "av_end_offset_seconds": 1.100000000064938e-05,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "3be75f703c82ec12116bedc0",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 49625088000,
+          "swap_used_bytes": 5949746053
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50463653888,
+          "swap_used_bytes": 5949746053
+        },
+        "memory_after": {
+          "ram_used_bytes": 38416367616,
+          "swap_used_bytes": 5840694149
+        },
+        "memory_admission": {
+          "available_estimate_gb": 38.88,
+          "free_percent": 81.0,
+          "headroom_gb": 32.88,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 7.0,
+          "swap_used_gb": 5.53,
+          "total_gb": 48.0,
+          "used_estimate_gb": 9.12
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 16.8,
+          "free_percent": 35.0,
+          "headroom_gb": 10.8,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 7.0,
+          "swap_used_gb": 5.54,
+          "total_gb": 48.0,
+          "used_estimate_gb": 31.2
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 1371.84,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 238.31,
+            "image_release": 9.35,
+            "lease_wait": 0.42,
+            "musetalk_release": 0.16,
+            "speech_release": 4.99,
+            "total": 1369.94
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": null,
+        "generation_seconds": 258.08459520339966,
+        "settings": {
+          "seed": 0,
+          "resolution": "540p",
+          "aspect_ratio": "16:9",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": true,
+          "resize_mode": "contain"
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "visual_assessment": {
+        "status": "native_crops_reviewed",
+        "identity": "unmeasured",
+        "conclusion": "Broadly similar face and pose; no obvious discontinuity in inspected join pairs. Subtle eye asymmetry remains. No substantial facial-quality improvement established."
+      },
+      "metrics": {
+        "analysis_width": 512,
+        "analysis_height": 288,
+        "adjacent_ssim": {
+          "min": 0.9385280609130859,
+          "median": 0.9763096272945404,
+          "p95": 0.9958843886852264,
+          "max": 0.9981440901756287
+        },
+        "adjacent_mae": {
+          "min": 0.2878553569316864,
+          "median": 1.1897956132888794,
+          "p95": 1.8603912472724915,
+          "max": 2.0746798515319824
+        },
+        "laplacian_variance": {
+          "min": 99.59778594970703,
+          "median": 127.85172271728516,
+          "p95": 163.10818481445312,
+          "max": 191.91917419433594
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.062988,
+            "laplacian_variance": 106.44742584228516,
+            "mean_luma": 34.78162977430556,
+            "adjacent_ssim": 0.961164653301239,
+            "adjacent_mae": 1.7887437343597412,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 1.575586120815338
+          },
+          {
+            "frame": 193,
+            "time": 8.062988,
+            "laplacian_variance": 141.98876953125,
+            "mean_luma": 34.552469889322914,
+            "adjacent_ssim": 0.9675979018211365,
+            "adjacent_mae": 1.6416015625,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 1.4459783076246935
+          }
+        ]
+      }
+    },
+    {
+      "label": "before",
+      "file_name": "672e1f3cbada8eff4e6b456b.mp4",
+      "sha256": "f3c0dc6c536185c5b2b3018b3df3a8b92940b8af0bffbc453fbf16d8eb15d247",
+      "bytes": 7112285,
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.063,
+        "video_start": 0.021322,
+        "audio_start": 0.0,
+        "audio_duration": 10.063,
+        "av_start_offset_seconds": -0.021322,
+        "av_end_offset_seconds": 1.100000000064938e-05,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "cb7197efd8000d69bdcc6071",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 50266898432,
+          "swap_used_bytes": 7953847418
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50449383424,
+          "swap_used_bytes": 7953847418
+        },
+        "memory_after": {
+          "ram_used_bytes": 42392322048,
+          "swap_used_bytes": 7794463866
+        },
+        "memory_admission": {
+          "available_estimate_gb": 40.32,
+          "free_percent": 84.0,
+          "headroom_gb": 34.32,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.41,
+          "total_gb": 48.0,
+          "used_estimate_gb": 7.68
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 18.72,
+          "free_percent": 39.0,
+          "headroom_gb": 12.72,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.41,
+          "total_gb": 48.0,
+          "used_estimate_gb": 29.28
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 1421.78,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 276.03,
+            "image_release": 17.52,
+            "lease_wait": 0.47,
+            "musetalk_release": 0.18,
+            "speech_release": 16.01,
+            "total": 1419.87
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": [
+          {
+            "after_free_percent": 84.0,
+            "after_headroom_gb": 34.32,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.28,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 84.0,
+            "before_headroom_gb": 34.32,
+            "before_swap_gb": 7.41,
+            "elapsed_seconds": 217.55,
+            "resolution": "720p",
+            "stage": 1
+          },
+          {
+            "after_free_percent": 83.0,
+            "after_headroom_gb": 33.84,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.26,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 84.0,
+            "before_headroom_gb": 34.32,
+            "before_swap_gb": 7.28,
+            "elapsed_seconds": 106.57,
+            "resolution": "720p",
+            "stage": 2
+          },
+          {
+            "after_free_percent": 81.0,
+            "after_headroom_gb": 32.88,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.26,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 83.0,
+            "before_headroom_gb": 33.84,
+            "before_swap_gb": 7.26,
+            "elapsed_seconds": 103.11,
+            "resolution": "720p",
+            "stage": 3
+          }
+        ],
+        "generation_seconds": 429.1942126750946,
+        "settings": {
+          "seed": 0,
+          "resolution": "720p",
+          "aspect_ratio": "9:16",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": true,
+          "resize_mode": "contain"
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "visual_assessment": {
+        "status": "native_crops_reviewed",
+        "identity": "unmeasured",
+        "conclusion": "Broadly similar face and pose; no obvious discontinuity in inspected join pairs. Subtle eye asymmetry remains. No substantial facial-quality improvement established."
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.859143853187561,
+          "median": 0.9859243631362915,
+          "p95": 0.9983407020568847,
+          "max": 0.9991861581802368
+        },
+        "adjacent_mae": {
+          "min": 0.13242465257644653,
+          "median": 1.0715938210487366,
+          "p95": 3.549790072441101,
+          "max": 4.346790313720703
+        },
+        "laplacian_variance": {
+          "min": 104.03358459472656,
+          "median": 168.93482971191406,
+          "p95": 196.82852172851562,
+          "max": 205.0850830078125
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.062988,
+            "laplacian_variance": 156.8748779296875,
+            "mean_luma": 59.244639295212764,
+            "adjacent_ssim": 0.9868597984313965,
+            "adjacent_mae": 1.274351716041565,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 0.7238878262160587
+          },
+          {
+            "frame": 193,
+            "time": 8.062988,
+            "laplacian_variance": 171.33985900878906,
+            "mean_luma": 58.799943207003544,
+            "adjacent_ssim": 0.9915800094604492,
+            "adjacent_mae": 0.9752673506736755,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 0.5539947516621345
+          }
+        ]
+      }
+    },
+    {
+      "label": "after",
+      "file_name": "b6731ecfcbbf3114a32b5c01.mp4",
+      "sha256": "d01437f80ff3aa9f28a907f90105a0ba9d66e2c1ed335acc811d8ed18e8acf53",
+      "bytes": 7019153,
+      "technical": {
+        "width": 704,
+        "height": 1280,
+        "fps": 24.0,
+        "frames": 241,
+        "video_duration": 10.041667,
+        "container_duration": 10.041667,
+        "video_start": 0.0,
+        "audio_start": 0.0,
+        "audio_duration": 10.041667,
+        "av_start_offset_seconds": 0.0,
+        "av_end_offset_seconds": 0.0,
+        "audio_sample_rate": "48000",
+        "codec": "h264",
+        "pixel_format": "yuv420p",
+        "pts_anomalies": []
+      },
+      "job": {
+        "id": "cb0127c78f871c3878512788",
+        "status": "completed",
+        "error": null,
+        "resolved_model": "ltx-2.5-mlx-q4",
+        "memory_before": {
+          "ram_used_bytes": 50201657344,
+          "swap_used_bytes": 7769298042
+        },
+        "memory_peak": {
+          "ram_used_bytes": 50460164096,
+          "swap_used_bytes": 7769298042
+        },
+        "memory_after": {
+          "ram_used_bytes": 41829974016,
+          "swap_used_bytes": 7752520826
+        },
+        "memory_admission": {
+          "available_estimate_gb": 38.4,
+          "free_percent": 80.0,
+          "headroom_gb": 32.4,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.24,
+          "total_gb": 48.0,
+          "used_estimate_gb": 9.6
+        },
+        "memory_before_admission": {
+          "available_estimate_gb": 20.64,
+          "free_percent": 43.0,
+          "headroom_gb": 14.64,
+          "pressure": "normal",
+          "reserve_gb": 6.0,
+          "swap_total_gb": 8.0,
+          "swap_used_gb": 7.24,
+          "total_gb": 48.0,
+          "used_estimate_gb": 27.36
+        },
+        "runtime_handoff": {
+          "chat_released": true,
+          "duration_ms": 908.92,
+          "image_preserved": false,
+          "image_released": false,
+          "musetalk_released": false,
+          "speech_released": false,
+          "timings_ms": {
+            "chat_stop": 861.06,
+            "image_release": 13.87,
+            "lease_wait": 0.4,
+            "musetalk_release": 0.14,
+            "speech_release": 7.99,
+            "total": 907.59
+          },
+          "version": 2
+        },
+        "rolling_stage_memory": [
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 80.0,
+            "before_headroom_gb": 32.4,
+            "before_swap_gb": 7.24,
+            "elapsed_seconds": 209.97,
+            "resolution": "720p",
+            "stage": 1
+          },
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 79.0,
+            "before_headroom_gb": 31.92,
+            "before_swap_gb": 7.22,
+            "elapsed_seconds": 103.81,
+            "resolution": "720p",
+            "stage": 2
+          },
+          {
+            "after_free_percent": 79.0,
+            "after_headroom_gb": 31.92,
+            "after_pressure": "normal",
+            "after_swap_gb": 7.22,
+            "aspect_ratio": "9:16",
+            "before_free_percent": 79.0,
+            "before_headroom_gb": 31.92,
+            "before_swap_gb": 7.22,
+            "elapsed_seconds": 103.34,
+            "resolution": "720p",
+            "stage": 3
+          }
+        ],
+        "generation_seconds": 420.9562621116638,
+        "settings": {
+          "seed": 0,
+          "resolution": "720p",
+          "aspect_ratio": "9:16",
+          "fps": 24,
+          "duration": 10,
+          "identity_lock": true,
+          "resize_mode": "contain"
+        },
+        "prompt_sha256": "390aa121ffc4ea2da6f62ca3ea6b1227209936ac08cc2f73de406036e902e4c1",
+        "source_sha256": "4296d2d80c753633525d6dded18d3d7d95fa876585ca894273c6d2b0273e17d6"
+      },
+      "visual_assessment": {
+        "status": "native_crops_reviewed",
+        "identity": "unmeasured",
+        "conclusion": "Broadly similar face and pose; no obvious discontinuity in inspected join pairs. Subtle eye asymmetry remains. No substantial facial-quality improvement established."
+      },
+      "metrics": {
+        "analysis_width": 282,
+        "analysis_height": 512,
+        "adjacent_ssim": {
+          "min": 0.859251856803894,
+          "median": 0.9860284924507141,
+          "p95": 0.9984789371490479,
+          "max": 0.9988231658935547
+        },
+        "adjacent_mae": {
+          "min": 0.2055213898420334,
+          "median": 1.1102545857429504,
+          "p95": 3.5505030870437624,
+          "max": 4.344941139221191
+        },
+        "laplacian_variance": {
+          "min": 104.38227081298828,
+          "median": 169.7356719970703,
+          "p95": 197.74485778808594,
+          "max": 204.97535705566406
+        },
+        "exact_duplicate_frames": [],
+        "boundaries": [
+          {
+            "frame": 145,
+            "time": 6.041667,
+            "laplacian_variance": 159.61048889160156,
+            "mean_luma": 59.2032773714539,
+            "adjacent_ssim": 0.987768828868866,
+            "adjacent_mae": 1.2621204853057861,
+            "previous_frame": 144,
+            "mae_to_nonboundary_median_ratio": 0.6809956330782304
+          },
+          {
+            "frame": 193,
+            "time": 8.041667,
+            "laplacian_variance": 177.04644775390625,
+            "mean_luma": 58.441184618794324,
+            "adjacent_ssim": 0.9919201731681824,
+            "adjacent_mae": 0.9892231822013855,
+            "previous_frame": 192,
+            "mae_to_nonboundary_median_ratio": 0.5337498876390402
+          }
+        ]
+      }
+    }
+  ]
+}
