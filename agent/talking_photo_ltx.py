@@ -63,6 +63,8 @@ def speaker_prompt(person_focus: dict | None, scene_motion: str = "none") -> str
             "One continuous realistic shot of the exact same person from the reference image. "
             "The person dances naturally with gentle rhythmic steps, relaxed shoulder sways "
             "and coordinated arm gestures while saying the supplied speech audio. "
+            "The supplied speech is already recorded: keep its original language, exact words "
+            "and voice. Never translate, rephrase, or replace the provided speech. "
             "Articulate the words with the lips and jaw synchronized to the voice. "
             "Preserve the original face, clothing, body proportions, background and lighting. "
             "Show only body parts visible in the source image; do not invent a different body. "
