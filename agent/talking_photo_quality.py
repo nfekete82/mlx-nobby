@@ -165,6 +165,7 @@ def _generate_longform(
     distilled: bool,
     stage1_steps: int | None = None,
     person_focus: dict | None = None,
+    scene_motion: str = "none",
 ) -> tuple[bytes, dict]:
     """Render <=18-second speech pieces sequentially and mux the uncut source.
 
@@ -218,7 +219,7 @@ def _generate_longform(
             job_id, segment_image, segment_suffix, segment.wav, segment.duration_seconds,
             part_work, debug_dir=part_debug, cancelled=cancelled,
             update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
-            stage1_steps=stage1_steps, person_focus=person_focus,
+            stage1_steps=stage1_steps, person_focus=person_focus, scene_motion=scene_motion,
         )
         if cancelled():
             raise talking_photo_ltx.QualityCancelled()
@@ -370,6 +371,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         distilled=distilled,
                         stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
+                        scene_motion=request_payload.get("scene_motion", "none"),
                     )
                 else:
                     video, details = generate(
@@ -387,6 +389,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         distilled=distilled,
                         stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
+                        scene_motion=request_payload.get("scene_motion", "none"),
                     )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
@@ -415,6 +418,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "stage_1_steps": 8 if distilled else (stage1_steps or 15),
                     "stage_2_steps": 3,
                     "motion": "audio-conditioned",
+                    "scene_motion": request_payload.get("scene_motion", "none"),
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
                     "lead_in_ms": request_payload.get("lead_in_ms", 0),
@@ -481,6 +485,7 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
+        "scene_motion": payload.get("scene_motion", "none"),
         "engine": "ltx-distilled" if distilled else ("ltx-max" if stage1_steps == 30 else "ltx" if ltx_only else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
         "stage_1_steps": 8 if distilled else (stage1_steps or 15),
