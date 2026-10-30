@@ -2323,7 +2323,10 @@ function renderVideoJobCard(message) {
         detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
     }
     if (job.automatic_continuation) {
-        detailLines.push(rt('long_video_active', 'Automatic continuation active') + ` · ${job.target_duration} s · ${job.long_plan?.resolution || ""} · ${job.stage_number || 1}/${job.stage_count}`);
+        detailLines.push((job.long_plan?.strategy === 'segmented-low-ram-v1'
+            ? 'RAM-sichere Segmentgenerierung'
+            : rt('long_video_active', 'Automatic continuation active')) +
+            ` · ${job.target_duration} s · ${job.long_plan?.resolution || ""} · ${job.stage_number || 1}/${job.stage_count}`);
         // Validated duration is presented separately with its own labeled bar.
         if (Number(job.last_activity_at) > 0) {
             const age = Math.max(0, Math.floor(Date.now() / 1000 - Number(job.last_activity_at)));
@@ -2335,7 +2338,9 @@ function renderVideoJobCard(message) {
             }
         }
         if (job.identical_boundary_pixels) detailLines.push(rt('long_video_duplicate', 'Identical boundary frames detected; check whether the still frame is intentional.'));
-        detailLines.push(rt('long_video_continuity', 'LTX re-encodes the source; visual and audio continuity require review.'));
+        detailLines.push(job.long_plan?.strategy === 'segmented-low-ram-v1'
+            ? 'Referenzbild verbindet die Segmente; Bewegung und Audio können an Übergängen leicht springen.'
+            : rt('long_video_continuity', 'LTX re-encodes the source; visual and audio continuity require review.'));
     }
     if (job.next_retry_at) detailLines.push(rt('service_next_retry', 'Next retry') + ': ' + new Date(job.next_retry_at * 1000).toLocaleTimeString());
     details.textContent = detailLines.join('\n');
