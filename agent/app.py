@@ -8828,6 +8828,10 @@ def _video_payload(request, operation):
     if options.get("profile", "standard") not in ("standard", "uncensored"):
         raise HTTPException(422, "Video profile muss standard oder uncensored sein")
     payload.update(options)
+    if payload.get("duration") in (30, 60):
+        if operation == "multi_i2v":
+            raise HTTPException(422, "Long-Video unterstützt keine Multi-Image-Szenen")
+        payload["long_video"] = True
     if operation == "multi_i2v":
         payload.update(images=multi_sources, multi_image_mode=request.multi_image_mode)
     if operation == "i2v":
