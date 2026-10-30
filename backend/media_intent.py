@@ -281,7 +281,10 @@ def decide_media_intent(prompt, *, has_image=False, image_count=0, action=None, 
                 execution = 'image_reference_generate'
                 continue
             leading = next((word for word in words if word not in {"bitte", "please", "jetzt", "nun", "noch", "now", "then", "mehr", "etwas", "ein", "bisschen", "more", "a", "bit"}), "")
-            if has_image and leading in MODIFIERS | {"weiter"}:
+            # A trailing descriptor (e.g. "and clothing ...") must not
+            # replace an already authorized video/image creation command.
+            # Standalone follow-ups ("und jetzt etwas wärmer") still edit.
+            if has_image and execution is None and leading in MODIFIERS | {"weiter"}:
                 execution = "image_edit"
             continue
         # Subordinate intent belongs to the description, not to a new command.
