@@ -15,6 +15,22 @@ assert.equal(parsed.voiceName, 'Pervin');
 assert.equal(parsed.speech, 'Komm mit mir tanzen');
 assert.equal(parsed.scene_motion, 'dance');
 assert.equal(parsed.language, 'de');
+assert.equal(parsed.engine, 'ltx-distilled');
+const maximalQualityPrompt = 'Erstelle ein Video mit LTX-Max, in dem die Frau tanzt und ' +
+    'mit der Stimme von Pervin auf Deutsch sagt: „Komm mit mir tanzen!“';
+const max = bridge.parseRequest(maximalQualityPrompt);
+assert.equal(max?.voiceName, 'Pervin');
+assert.equal(max?.speech, 'Komm mit mir tanzen!');
+assert.equal(max?.language, 'de');
+assert.equal(max?.scene_motion, 'dance');
+assert.equal(max?.engine, 'ltx-max');
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video in maximaler Qualität, die Frau tanzt und mit der Stimme von Pervin sagt: „Hallo!“'
+)?.engine, 'ltx-max');
+// Spoken dialogue is NEVER interpreted as a quality setting or language instruction.
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video mit der Stimme von Pervin sagt: „LTX-Max ist toll!“'
+)?.engine, 'ltx-distilled');
 
 // Exact wording from the reported regression, including the instruction
 // AFTER the quoted sentence. Never translate the requested German dialogue.
@@ -78,6 +94,18 @@ assert.equal(payload.image_data_url, 'data:image/png;base64,cG5n');
 assert.equal(result.status, 'queued');
 assert.equal(result.data.job.voice_video, true);
 assert.equal(result.artifacts.length, 0);
+const maxResult = await bridge.create({
+    prompt: maximalQualityPrompt,
+    imageSource: {source: {data_url: 'data:image/png;base64,cG5n'}},
+    fetcher: fakeFetch
+});
+assert.equal(maxResult.status, 'queued');
+const maxPayload = JSON.parse(requests.at(-1).options.body);
+assert.equal(maxPayload.engine, 'ltx-max');
+assert.equal(maxPayload.text, 'Komm mit mir tanzen!');
+assert.equal(maxPayload.voice, 'pervin');
+assert.equal(maxPayload.language, 'de');
+assert.equal(maxPayload.preserve_speech_audio, true);
 
 // The reported request must reach native TTS with the exact German quote.
 const reportedResult = await bridge.create({
