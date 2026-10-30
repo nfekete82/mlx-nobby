@@ -2252,6 +2252,22 @@ function renderVideoArtifactCard(message) {
         ].filter(Boolean).join(' · ');
         info.appendChild(resize);
     }
+    const rollingMemory = message.video_job?.result?.rolling_stage_memory;
+    if (Array.isArray(rollingMemory) && rollingMemory.length) {
+        const memory = document.createElement('div');
+        memory.className = 'batch-chat-details';
+        memory.textContent = 'Rolling Window · RAM/Swap je Abschnitt:\n' +
+            rollingMemory.map(stage =>
+                String(stage.stage) + ': ' +
+                (stage.after_free_percent == null ? 'RAM unbekannt' :
+                    stage.after_free_percent + '% frei') + ', ' +
+                (stage.after_swap_gb == null ? 'Swap unbekannt' :
+                    stage.after_swap_gb + ' GB Swap') + ', ' +
+                (stage.elapsed_seconds == null ? 'Dauer unbekannt' :
+                    stage.elapsed_seconds + ' s')
+            ).join('\n');
+        info.appendChild(memory);
+    }
     const label = document.createElement('strong');
     label.textContent = 'Finaler Prompt';
     info.appendChild(label);
@@ -2333,6 +2349,20 @@ function renderVideoJobCard(message) {
         detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
     }
     if (job.automatic_continuation) {
+        if (job.long_plan?.strategy === 'rolling-extend-25f-v1') {
+            detailLines.push('Rolling Window: 25 Frames Bewegungs- und Audiokontext');
+            const memory = Array.isArray(job.rolling_stage_memory)
+                ? job.rolling_stage_memory.at(-1) : null;
+            if (memory) {
+                detailLines.push(
+                    'Abschnitt ' + memory.stage + ': RAM ' +
+                    (memory.after_free_percent == null ? 'unbekannt' :
+                        memory.after_free_percent + '% frei') + ' · Swap ' +
+                    (memory.after_swap_gb == null ? 'unbekannt' :
+                        memory.after_swap_gb + ' GB')
+                );
+            }
+        }
         detailLines.push((job.long_plan?.strategy === 'segmented-low-ram-v1'
             ? 'RAM-sichere Segmentgenerierung'
             : rt('long_video_active', 'Automatic continuation active')) +
