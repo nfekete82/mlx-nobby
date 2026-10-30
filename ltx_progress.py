@@ -41,6 +41,12 @@ def parse_progress(record):
                     "progress_scope": "phase", "progress_message": match[1]}
     # These messages come from the installed pipeline's verbose logger.
     lower = record.lower().strip().lstrip("[")
+    # LTX's VAE decode log has no percentage. Clear the previous denoising
+    # counter instead of leaving a misleading 67% / 88% on screen.
+    if lower.startswith(("vae-decode", "vae decode", "vae_decode", "decoding")):
+        return {"phase": "decoding", "progress_message": "LTX dekodiert Videoframes",
+                "phase_progress": None, "progress": None,
+                "current_step": None, "total_steps": None}
     for prefix, phase, message in (
         ("decoding", "decoding", "Video wird dekodiert"),
         ("loading", "loading", "LTX lädt Modelle"),
