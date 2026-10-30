@@ -78,6 +78,62 @@ class VideoMlxProviderTests(unittest.TestCase):
             "first_frame": None,
         }
 
+    def test_float16_is_default_only_for_native_ltx_environment(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            env = video_providers_mlx._compute_environment()
+        self.assertEqual(env["LTX2_COMPUTE_DTYPE"], "float16")
+        self.assertEqual(video_providers_mlx._compute_dtype(), "float16")
+
+    def test_explicit_float32_override_and_upstream_env_are_honored(self):
+        for env_vars in (
+            {"LTX_MLX_COMPUTE_DTYPE": "float32"},
+            {"LTX2_COMPUTE_DTYPE": "float32"},
+            {"LTX_MLX_COMPUTE_DTYPE": "FLOAT32",
+             "LTX2_COMPUTE_DTYPE": "float16"},
+        ):
+            with self.subTest(env_vars=env_vars), mock.patch.dict(
+                "os.environ", env_vars, clear=True
+            ):
+                self.assertEqual(
+                    video_providers_mlx._compute_environment()["LTX2_COMPUTE_DTYPE"],
+                    "float32",
+                )
+
+    def test_invalid_dtype_is_rejected_before_starting_gpu_worker(self):
+        with mock.patch.dict(
+            "os.environ", {"LTX_MLX_COMPUTE_DTYPE": "float64"}, clear=True
+        ):
+            with self.assertRaisesRegex(ValueError, "float16 oder float32"):
+                video_providers_mlx._compute_environment()
+
+    def test_persistent_worker_receives_default_float16_without_touching_parent(self):
+        model = video_registry.builtin_mlx_model()
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = mock.Mock()
+            proc.poll.return_value = None
+            with mock.patch.dict("os.environ", {}, clear=True), \\
+                 mock.patch.object(video_providers_mlx, "LTX_MLX_LOG", Path(tmp) / "worker.log"), \\
+                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/ltx-q4")), \\
+                 mock.patch.object(video_providers_mlx, "_json_request", return_value={"ok": True}), \\
+                 mock.patch.object(video_providers_mlx.managed_process, "spawn", return_value=proc) as spawn:
+                runtime = video_providers_mlx._start_runtime(model, threading.Event())
+                try:
+                    self.assertEqual(spawn.call_args.kwargs["env"]["LTX2_COMPUTE_DTYPE"], "float16")
+                    self.assertNotIn("LTX2_COMPUTE_DTYPE", __import__("os").environ)
+                finally:
+                    runtime.log.close()
+
+    def test_cli_fallback_receives_explicit_float32(self):
+        proc = mock.Mock(returncode=0)
+        proc.communicate.return_value = ("OK", None)
+        with mock.patch.dict("os.environ", {"LTX_MLX_COMPUTE_DTYPE": "float32"}, clear=True), \\
+             mock.patch.object(video_providers_mlx.managed_process, "spawn", return_value=proc) as spawn:
+            result = video_providers_mlx._run_process(
+                ["ltx-2-mlx", "generate"], cancel_event=threading.Event()
+            )
+        self.assertEqual(result, "OK")
+        self.assertEqual(spawn.call_args.kwargs["env"]["LTX2_COMPUTE_DTYPE"], "float32")
+
     def test_distilled_q4_command_matches_nobby_8_plus_3_profile(self):
         model = video_registry.builtin_mlx_model()
         with mock.patch.object(video_providers_mlx, "LTX_MLX_CLI", Path("/runtime/ltx-2-mlx")), \
@@ -166,6 +222,7 @@ class VideoProviderDispatchTests(unittest.TestCase):
         template = Path("launchd/templates/de.nobby.mlx-video.plist.template").read_text()
         self.assertIn("video_service_dispatch:app", template)
         self.assertIn("LTX_MLX_LOW_RAM", template)
+        self.assertIn("LTX_MLX_COMPUTE_DTYPE", template)
         self.assertNotIn("LTX_MLX_GEMMA_DIR", template)
 
     def test_setup_uses_pack_local_gemma4_and_pinned_upstream(self):
