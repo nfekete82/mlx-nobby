@@ -26,13 +26,13 @@ FPS = 24
 TEMPORAL_STRIDE = 8
 MAX_EXTEND_LATENTS = 12
 DIRECT = {"preview": (2,), "540p": (5, 6, 8, 10, 20), "720p": (5, 6, 8, 10), "1080p": (5,)}
-SUPPORTED = {key: tuple(sorted(set(values) | ({10, 20, 30} if key != "preview" else set())))
+SUPPORTED = {key: tuple(sorted(set(values) | ({10, 20, 30, 60} if key != "preview" else set())))
              for key, values in DIRECT.items()}
 
 
 def plan(duration, resolution, fps=FPS):
     if resolution not in DIRECT or duration not in SUPPORTED[resolution]:
-        raise ValueError("Nicht unterstützte Videolänge; automatische Fortsetzung unterstützt bis zu 30 Sekunden")
+        raise ValueError("Nicht unterstützte Videolänge; automatische Fortsetzung unterstützt bis zu 60 Sekunden")
     initial = max(value for value in DIRECT[resolution] if value <= duration)
     if duration == initial:
         return {"duration": duration, "resolution": resolution, "fps": fps, "frames": duration * fps + 1,
