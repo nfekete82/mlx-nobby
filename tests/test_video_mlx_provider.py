@@ -170,18 +170,18 @@ class VideoMlxProviderTests(unittest.TestCase):
                 commands.append(command)
                 output.write_bytes(b"video")
 
-            with mock.patch.object(video_providers_mlx, "PERSISTENT_WORKER", False), \\
-                 mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")), \\
+            with (mock.patch.object(video_providers_mlx, "PERSISTENT_WORKER", False), 
+                 mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")), 
                  mock.patch("video_multi_image.keyframe_capabilities",
-                            return_value={"native_keyframes": True}), \\
-                 mock.patch.object(video_providers_mlx, "validate_first_frame", return_value=source), \\
-                 mock.patch.object(video_providers_mlx, "_prepare_first_frame", side_effect=prepare), \\
-                 mock.patch.object(video_providers_mlx, "_run_process", side_effect=run), \\
+                            return_value={"native_keyframes": True}), 
+                 mock.patch.object(video_providers_mlx, "validate_first_frame", return_value=source), 
+                 mock.patch.object(video_providers_mlx, "_prepare_first_frame", side_effect=prepare), 
+                 mock.patch.object(video_providers_mlx, "_run_process", side_effect=run), 
                  mock.patch.object(video_providers_mlx, "_probe_video", return_value={
                      "frames": 121, "width": 1280, "height": 704,
                      "fps": 24, "duration": 5, "audio": True,
-                 }), \\
-                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/q4")):
+                 }), 
+                 mock.patch.object(video_registry, "model_path", return_value=Path("/models/q4"))):
                 video_providers_mlx.generate(model, params, output,
                                              cancel_event=threading.Event())
 
