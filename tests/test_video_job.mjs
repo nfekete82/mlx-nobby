@@ -46,6 +46,9 @@ for (const [fileContext, artifactId] of [
 }
 assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
+assert.equal(api.__test.isVideoRequest("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes."), true);
+assert.match(source, /const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest\(prompt\)/);
+assert.match(source, /action: explicitVideoAnimateRequest \? 'video_generate'/);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
 assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ball'), true);
@@ -60,10 +63,11 @@ assert.deepEqual(
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('quality')),
-    [5, 10, 20, 30, 60]
+    [5, 9, 10, 20, 30, 60]
 );
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video', 60, 'quality').duration, 60);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video', 9, 'quality').duration, 9);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').profile, 'standard');
 const uncensoredOptions = api.__test.videoOptionsForRequest(
     {}, 'video', 5, 'standard', 'landscape', 'uncensored'
@@ -143,10 +147,9 @@ const uploadOnlySession = {
     workspace: {},
     messages: [{ role: 'user', attachments: [oldUpload, newUpload] }],
 };
-assert.equal(
-    api.__test.preferredVideoImageSource(uploadOnlySession, []),
-    null,
-);
+assert.equal(api.__test.preferredVideoImageSource(uploadOnlySession, []).origin, 'chat_upload');
+assert.equal(api.__test.preferredVideoImageSource(uploadOnlySession, []).source.stored_path,
+    '/managed/new.png');
 const id = 'd'.repeat(24);
 const message = {
     role: 'assistant', content: '',
@@ -304,6 +307,7 @@ assert.equal(profileOption.disabled, true);
 assert.equal(api.__test.promptVideoPreferences('Kameraflug, 20 Sekunden, maximale Qualität').duration, 20);
 assert.equal(api.__test.promptVideoPreferences('Kameraflug, 20 Sekunden, maximale Qualität').quality, 'quality');
 assert.equal(api.__test.promptVideoPreferences('A camera flight, 30 seconds, maximum quality').duration, 30);
+assert.equal(api.__test.promptVideoPreferences('Animate my portrait for 9 seconds').duration, 9);
 assert.equal(api.__test.promptVideoPreferences('A camera flight').duration, null);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video', 20, 'quality').duration, 20);
 const longJob = {id: 'e'.repeat(24), status: 'generating', phase: 'generating', automatic_continuation: true,

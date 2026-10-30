@@ -92,6 +92,9 @@ class VideoPayload(BaseModel):
     fps: Literal[8, 24] = 24
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
     first_frame: str | None = None
+    # Applies only to segmented image-to-video jobs with an original still.
+    identity_lock: bool = True
+    identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
     images: list[VideoImage] = Field(default_factory=list, max_length=5)
     multi_image_mode: Literal["keyframes", "scenes"] | None = None
     resume_from: str | None = Field(default=None, pattern=r"^[a-f0-9]{24}$")

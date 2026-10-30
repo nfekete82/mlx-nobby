@@ -1,4 +1,4 @@
-"""Memory-bounded 30/60 second LTX videos on Apple unified memory.
+"""Memory-bounded 9/30/60 second LTX videos on Apple unified memory.
 
 Unlike native LTX Extend, no stage ever loads the entire accumulated clip.
 Each short, independent I2V segment is rendered inside the same video-runtime
@@ -26,11 +26,18 @@ from video_providers import FFMPEG, ProviderCancelled, _probe_video
 from video_providers_mlx import shutdown_warm_runtime
 
 
-DURATIONS = frozenset({30, 60})
+DURATIONS = frozenset({9, 30, 60})
 SEGMENT_SECONDS = {"1080p": 3, "720p": 5, "540p": 6}
 CONTINUITY_WARNING = (
-    "Unabhängige LTX-Segmente teilen das letzte Referenzbild. "
-    "Bewegung und Audio können an Segmentgrenzen leicht springen."
+    "RAM-sichere LTX-Segmente verwenden das vorherige Schlussbild. "
+    "Identity Lock nutzt das vorige Schlussbild als festen Start und das "
+    "Originalfoto als weiche Identitätsreferenz am Anfang. "
+    "Bewegung und Audio sind an Segmentgrenzen nicht garantiert."
+)
+IDENTITY_PROMPT = (
+    " Preserve the identity of the person in the original reference image: "
+    "the same facial features, facial proportions, hairstyle, age, and clothing. "
+    "Continue natural movement without a new person or costume."
 )
 
 
@@ -39,8 +46,9 @@ def needed(params):
 
 
 def plan(duration, resolution, fps=24):
-    if int(duration) not in DURATIONS or resolution not in SEGMENT_SECONDS or fps != 24:
-        raise ValueError("RAM-sichere Langvideos benötigen 30/60 s, 24 fps und 540p/720p/1080p")
+    if (int(duration) not in DURATIONS or resolution not in SEGMENT_SECONDS or fps != 24
+            or (int(duration) == 9 and resolution != "1080p")):
+        raise ValueError("RAM-sichere Videos benötigen 9s/1080p oder 30/60s, 24 fps und 540p/720p/1080p")
     seconds = SEGMENT_SECONDS[resolution]
     if int(duration) % seconds:
         raise ValueError("Segmentlänge muss die gewünschte Dauer exakt teilen")
@@ -141,8 +149,8 @@ def _fingerprint(model, params):
         raise RuntimeError("LTX-MLX-Modellkonfiguration fehlt")
     original = Path(params["first_frame"]) if params.get("first_frame") else None
     signature = {
-        "model": model["id"], "params": {k: v for k, v in params.items()
-                                           if k != "resume_from"},
+        "model": model["id"], "conditioning_version": 2,
+        "params": {k: v for k, v in params.items() if k != "resume_from"},
         "model_config_sha256": video_long.digest(config),
         "weights": [
             (str(p.relative_to(model_path)), p.stat().st_size, p.stat().st_mtime_ns)
@@ -160,6 +168,13 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
     if model.get("provider") != "ltx-mlx" or params.get("profile", "standard") != "standard":
         raise ValueError("Segmentierte Langvideos benötigen natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
+    identity_lock = bool(params.get("first_frame")) and bool(params.get("identity_lock", True))
+    identity_strength = float(params.get("identity_strength", 0.30))
+    if identity_lock:
+        from video_multi_image import keyframe_capabilities
+        from video_providers_mlx import LTX_MLX_RUNTIME_ROOT
+        if not keyframe_capabilities(LTX_MLX_RUNTIME_ROOT)["native_keyframes"]:
+            raise ValueError("Identity Lock benötigt native LTX-MLX-Keyframes (v0.18)")
     fingerprint = _fingerprint(model, params)
     directory = checkpoints / job_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -191,6 +206,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
     completed = len(manifest["stages"])
     update(automatic_continuation=True, long_plan=planner,
            stage_count=len(planner["stages"]), target_duration=params["duration"],
+           identity_lock=identity_lock, identity_strength=(identity_strength if identity_lock else None),
            continuity_warning=CONTINUITY_WARNING,
            checkpoint_count=completed, resumable=bool(completed),
            confirmed_duration=completed * planner["segment_seconds"])
@@ -209,9 +225,20 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
         if index:
             _last_frame(directory / f"segment-{index-1}.mp4",
                         previous_frame, cancel_event, owner)
+        # The first frame must be a hard continuity anchor even when images are
+        # present. The provider prepends it explicitly before these soft guides.
+        # Identity guidance at the clip midpoint made the person snap backward
+        # toward the original pose. Guide at frame 0 instead, with no later reset.
+        anchors = ([{"path": str(params["first_frame"]),
+                     "frame_index": 0, "binding": "guide",
+                     "strength": identity_strength}]
+                   if identity_lock and index else [])
         segment = dict(params, duration=stage["seconds"], frames=stage["frames"],
-                       seed=(int(params["seed"]) + index) % (2 ** 31),
-                       images=[], multi_image_mode=None, resume_from=None,
+                       seed=(int(params["seed"]) if identity_lock else
+                             (int(params["seed"]) + index) % (2 ** 31)),
+                       prompt=(params["prompt"] + IDENTITY_PROMPT if identity_lock and index
+                               else params["prompt"]),
+                       images=anchors, multi_image_mode=None, resume_from=None,
                        _active_memory_guard=True,
                        first_frame=(str(previous_frame) if index else params.get("first_frame")))
         if index:
@@ -254,4 +281,6 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
         "automatic_continuation": True, "strategy": planner["strategy"],
         "stage_count": len(planner["stages"]),
         "continuity_warning": CONTINUITY_WARNING,
+        "identity_lock": identity_lock,
+        "identity_strength": identity_strength if identity_lock else None,
     }

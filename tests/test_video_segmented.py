@@ -1,4 +1,4 @@
-"""CPU-only tests for bounded 30/60-second MLX segments and checkpoint retries."""
+"""CPU-only tests for bounded 9/30/60-second MLX segments and identity lock."""
 import json
 import threading
 from pathlib import Path
@@ -15,7 +15,7 @@ from video_providers import ProviderCancelled
 
 def test_plans_and_native_request_contract():
     for duration, resolution, count in [
-        (30, "1080p", 10), (60, "1080p", 20),
+        (9, "1080p", 3), (30, "1080p", 10), (60, "1080p", 20),
         (30, "720p", 6), (60, "540p", 10),
     ]:
         plan = segmented.plan(duration, resolution)
@@ -23,6 +23,7 @@ def test_plans_and_native_request_contract():
         assert sum(s["seconds"] for s in plan["stages"]) == duration
         assert all(stage["frames"] == stage["seconds"] * 24 + 1 for stage in plan["stages"])
         assert plan["strategy"] == "segmented-low-ram-v1"
+    assert segmented.needed({"duration": 9})
     assert segmented.needed({"duration": 30})
     assert not segmented.needed({"duration": 20})
     job = video_service.JobCreate(operation="t2v", chat_id="chat", chat_revision=0,
@@ -31,6 +32,14 @@ def test_plans_and_native_request_contract():
     assert (job.payload.width, job.payload.height, job.payload.frames) == (1920, 1088, 1441)
     with pytest.raises(ValueError):
         segmented.plan(30, "1080p", 8)
+    with pytest.raises(ValueError):
+        segmented.plan(9, "720p")
+    nine = video_service.JobCreate(operation="t2v", chat_id="chat", chat_revision=0,
+        payload={"prompt": "A steady shot", "model": video_registry.LTX_MLX_Q4_ID,
+                 "duration": 9, "quality": "quality"})
+    assert (nine.payload.width, nine.payload.height, nine.payload.frames) == (1920, 1088, 217)
+    with pytest.raises(ValueError):
+        video_service.VideoPayload(prompt="A person smiles", identity_strength=0.9)
 
 
 def test_checkpoint_stills_never_accept_arbitrary_nested_paths(tmp_path, monkeypatch):
@@ -68,10 +77,11 @@ def pipeline(tmp_path, monkeypatch):
         path.write_bytes(b"still")
     monkeypatch.setattr(segmented, "_last_frame", frame)
     def compose(paths, output, params, cancel, owner):
-        assert len(paths) == 10
+        assert len(paths) == len(segmented.plan(params["duration"], params["resolution"])["stages"])
         assert all(path.is_file() for path in paths)
         output.write_bytes(b"result")
-        return dict(width=1920, height=1088, fps=24, frames=720, duration=30, audio=True)
+        return dict(width=1920, height=1088, fps=24,
+                    frames=params["duration"] * 24, duration=params["duration"], audio=True)
     monkeypatch.setattr(segmented, "_compose", compose)
     params = dict(prompt="Slow moving camera", model="auto", duration=30, resolution="1080p",
                   width=1920, height=1088, frames=721, fps=24, quality="quality",
@@ -137,3 +147,74 @@ def test_modified_checkpoint_is_rejected(pipeline, monkeypatch):
     manifest = kwargs["checkpoints"] / ("a" * 24) / "checkpoint.json"
     # No completed checkpoint should be advertised when cancelled before validation.
     assert json.loads(manifest.read_text())["stages"] == []
+
+
+
+def test_identity_lock_anchors_original_without_replacing_motion(pipeline, monkeypatch):
+    tmp_path, model, params, kwargs = pipeline
+    still = tmp_path / "original.png"
+    still.write_bytes(b"original identity reference")
+    params.update(first_frame=str(still), duration=9, frames=217,
+                  identity_lock=True, identity_strength=0.30)
+    # No heavyweight native keyframe probing is needed in CPU-only tests.
+    monkeypatch.setattr("video_multi_image.keyframe_capabilities",
+                        lambda _: {"native_keyframes": True})
+    calls = []
+    def generate(_model, segment, output, **_callbacks):
+        calls.append(segment)
+        output.write_bytes(b"video-segment")
+    with mock.patch.object(segmented, "shutdown_warm_runtime"):
+        result = segmented.run(model, params, tmp_path / "identity.mp4",
+                               job_id="c" * 24, resume_job=None,
+                               generate=generate, update=lambda **_: None, **kwargs)
+    assert len(calls) == 3
+    assert calls[0]["first_frame"] == str(still)
+    assert calls[0]["images"] == []
+    for index in (1, 2):
+        call = calls[index]
+        assert call["seed"] == 100, "identity-mode seed should stay fixed"
+        assert call["first_frame"].endswith(f"last-frame-{index - 1}.png")
+        assert call["images"] == [{
+            "path": str(still), "frame_index": 0, "strength": 0.30,
+            "binding": "guide",
+        }]
+        assert "same facial features" in call["prompt"]
+        assert call["_active_memory_guard"] is True
+    assert result["identity_lock"] is True
+    assert result["identity_strength"] == 0.30
+    assert result["stage_count"] == 3
+
+
+def test_identity_lock_can_be_disabled_without_changing_old_seed_strategy(pipeline):
+    tmp_path, model, params, kwargs = pipeline
+    still = tmp_path / "original.png"
+    still.write_bytes(b"same original")
+    params.update(first_frame=str(still), duration=9, frames=217,
+                  identity_lock=False)
+    calls = []
+    def generate(_model, segment, output, **_callbacks):
+        calls.append(segment)
+        output.write_bytes(b"video-segment")
+    with mock.patch.object(segmented, "shutdown_warm_runtime"):
+        result = segmented.run(model, params, tmp_path / "no-lock.mp4",
+                               job_id="d" * 24, resume_job=None,
+                               generate=generate, update=lambda **_: None, **kwargs)
+    assert [call["seed"] for call in calls] == [100, 101, 102]
+    assert all(not call["images"] for call in calls)
+    assert result["identity_lock"] is False
+
+
+def test_identity_lock_requires_native_keyframe_support(pipeline, monkeypatch):
+    tmp_path, model, params, kwargs = pipeline
+    still = tmp_path / "original.png"
+    still.write_bytes(b"identity reference")
+    params.update(first_frame=str(still), duration=9, frames=217,
+                  identity_lock=True)
+    monkeypatch.setattr("video_multi_image.keyframe_capabilities",
+                        lambda _: {"native_keyframes": False})
+    def no_generate(*_args, **_kwargs):
+        raise AssertionError("must fail before starting a GPU worker")
+    with pytest.raises(ValueError, match="native LTX-MLX-Keyframes"):
+        segmented.run(model, params, tmp_path / "unavailable.mp4",
+                      job_id="e" * 24, resume_job=None,
+                      generate=no_generate, update=lambda **_: None, **kwargs)

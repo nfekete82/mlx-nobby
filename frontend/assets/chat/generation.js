@@ -84,7 +84,7 @@ const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
     standard: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
-    quality: Object.freeze([5, 10, 20, 30, 60])
+    quality: Object.freeze([5, 9, 10, 20, 30, 60])
 });
 
 const VIDEO_DURATIONS = new Set(
@@ -250,7 +250,7 @@ function videoAspectRatioForFormat(format) {
 
 function promptVideoPreferences(prompt) {
     const text = String(prompt || '');
-    const match = text.match(/\b(5|6|8|10|20|30)\s*(?:sekunden?|seconds?|secs?|s)\b/i);
+    const match = text.match(/\b(5|6|8|9|10|20|30|60)\s*(?:sekunden?|seconds?|secs?|s)\b/i);
     return {duration: match ? Number(match[1]) : null,
         quality: /1080p|maximal(?:e[rn]?)?\s+(?:video)?qualit[aä]t|maximum\s+(?:video\s+)?quality/i.test(text) ? 'quality' : null};
 }
@@ -1274,6 +1274,10 @@ function preferredVideoImageSource(session, currentImages = []) {
     if (newestCurrent) return { origin: 'current_upload', source: newestCurrent };
     const active = activeSessionImageArtifact(session);
     if (active) return { origin: 'active_artifact', source: active };
+    // A photo sent in a previous chat turn must remain usable for I2V.
+    // The caller already understands origin='chat_upload' and binds its stored_path.
+    const priorUpload = latestSessionImageUpload(session);
+    if (priorUpload) return { origin: 'chat_upload', source: priorUpload };
     return null;
 }
 
@@ -2570,7 +2574,9 @@ const imageFiles =
             imageFiles.length > 0 ||
                 Boolean(activeImageArtifact)
         );
-    const explicitVideoAnimateRequest = VIDEO_ANIMATE_PATTERN.test(prompt);
+    // Creating a video from a supplied image is also I2V, not Qwen image-edit.
+    // Previously only 'animate this photo' activated the video source binding.
+    const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest(prompt);
     const preferredVideoSource = explicitVideoAnimateRequest
         ? preferredVideoImageSource(session, imageFiles)
         : null;
@@ -3199,7 +3205,10 @@ const imageFiles =
                         },
                         body: JSON.stringify({
                             prompt,
-                            action: imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
+                            // The explicit video command outranks the image upload's
+                            // editing UI mode; execution is still decided server-side.
+                            action: explicitVideoAnimateRequest ? 'video_generate' :
+                                imageAttachmentMode === 'edit' ? 'image_edit' : undefined,
                             file_context: fileContext,
                             active_artifact_id:
                                 activeArtifactIdForEdit,
@@ -3236,7 +3245,8 @@ const imageFiles =
 
                 resolvedTarget = alwaysGenerateImage
                     ? 'image'
-                    : imageAttachmentMode === 'describe' ? 'chat' : serverTarget;
+                    : imageAttachmentMode === 'describe' && !explicitVideoAnimateRequest
+                        ? 'chat' : serverTarget;
                 if (
                     imageAttachmentMode !== 'describe' &&
                     route.intent === 'image_reference_generate' ||
@@ -3622,7 +3632,8 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s' + (duration >= 30 ? ' · RAM-sicher' :
+                                    duration + ' s' + (duration === 9 ? ' · 1080p-Kurztest' :
+                                        duration >= 30 ? ' · RAM-sicher' :
                                         ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : ''));
 
                                 return option;

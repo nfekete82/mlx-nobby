@@ -152,7 +152,7 @@ def test_checkpoint_tampering_and_changed_options_reject_resume(pipeline):
 
 
 def test_native_request_accepts_1080_long_but_keeps_direct_defaults():
-    for duration in (5,10,20,30,60):
+    for duration in (5,9,10,20,30,60):
         request=service.JobCreate(operation="t2v",chat_id="test",chat_revision=0,
             payload={"prompt":"A city camera flight","quality":"quality","duration":duration})
         assert request.payload.width==1920 and request.payload.height==1088
