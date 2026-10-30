@@ -300,6 +300,16 @@
                 card.appendChild(validatedWrap);
             }
 
+            if (job.identity_lock === true) {
+                const identity = document.createElement('div');
+                identity.className = 'batch-progress-text';
+                identity.textContent = rt(
+                    'long_video_identity_lock',
+                    'Identity Lock (experimental): original portrait softly referenced'
+                );
+                card.appendChild(identity);
+            }
+
             const stepWrap = document.createElement('div');
             stepWrap.className = 'batch-progress-wrap';
             const stepTitle = document.createElement('div');
