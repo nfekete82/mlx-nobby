@@ -51,6 +51,25 @@ def test_service_strict_mode_requires_540p_ten_seconds_and_single_video(monkeypa
                      "duration": 20, "continuation_mode": "rolling"})
 
 
+def test_chat_video_options_reach_native_rolling_request():
+    from agent import app as agent_app
+    from backend.media_intent import decide_media_intent
+    prompt = ("Erstelle ein 10-Sekunden-Video mit Rolling-Window-Test: "
+              "The person slowly turns their head and smiles naturally.")
+    assert decide_media_intent(prompt, has_image=True).target == "video"
+    request = agent_app.ChatActionRequest(
+        prompt=prompt, quality="fast", video_options={
+            "duration": 10, "continuation_mode": "rolling",
+        },
+    )
+    with mock.patch.object(agent_app, "compile_video_prompt",
+                           return_value="The person slowly turns their head and smiles naturally."):
+        payload = agent_app._video_payload(request, "t2v")
+    assert payload["continuation_mode"] == "rolling"
+    assert payload["duration"] == 10
+    assert payload["quality"] == "fast"
+
+
 def test_tail_refuses_short_source_before_ffmpeg(tmp_path):
     clip = tmp_path / "short.mp4"
     clip.write_bytes(b"small")
