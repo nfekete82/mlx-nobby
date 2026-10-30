@@ -139,6 +139,7 @@ def _generate(payload):
             f" adapter={Path(path).name} strength={strength}"
             for path, strength in loras
         )
+        print(f"[compute] dtype={os.environ.get('LTX2_COMPUTE_DTYPE', 'unset')}", flush=True)
         print(f"[profile] selected={profile} loras={len(loras)}{adapters}", flush=True)
         _install_progress_hook(pipe, stage1_steps, stage2_steps)
         conditioning = {}
