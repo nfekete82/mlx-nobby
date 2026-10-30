@@ -15,6 +15,33 @@ assert.equal(parsed.voiceName, 'Pervin');
 assert.equal(parsed.speech, 'Komm mit mir tanzen');
 assert.equal(parsed.scene_motion, 'dance');
 assert.equal(parsed.language, 'de');
+
+// Exact wording from the reported regression, including the instruction
+// AFTER the quoted sentence. Never translate the requested German dialogue.
+const reportedPrompt =
+    'Erstelle ein Video, in dem die Frau natürlich tanzt und dabei mit der Stimme von ' +
+    'Pervin auf Deutsch sagt: „Komm mit mir tanzen!“. Die Sprache muss Deutsch bleiben.';
+const reported = bridge.parseRequest(reportedPrompt);
+assert.equal(reported?.voiceName, 'Pervin');
+assert.equal(reported?.speech, 'Komm mit mir tanzen!');
+assert.equal(reported?.language, 'de');
+assert.equal(reported?.scene_motion, 'dance');
+assert.equal(bridge.hasVoiceIntent(reportedPrompt), true);
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video mit der Stimme von Pervin auf Deutsch sagt: „Guten Morgen!“'
+)?.speech, 'Guten Morgen!');
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video mit der Stimme von Pervin auf Englisch sagt: „Come dance with me!“'
+)?.language, 'en');
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video mit der Stimme von Pervin sagt „Hallo“. Bitte auf Englisch NICHT übersetzen.'
+)?.language, 'de');
+assert.equal(bridge.parseRequest(
+    'Erstelle ein Video mit der Stimme von Pervin sagt: „Nicht geschlossene Worte'
+), null);
+assert.equal(bridge.hasVoiceIntent(
+    'Erstelle ein Video mit der Stimme von Pervin sagt: „Nicht geschlossen'
+), true);
 assert.equal(bridge.parseRequest('Kannst du ein Video mit Pervins Stimme machen?'), null);
 assert.equal(bridge.parseRequest('Erstelle ein Video, die Frau tanzt'), null);
 assert.equal(bridge.parseRequest('Erstelle ein Video: Die Frau sagt Hallo.'), null);
@@ -51,6 +78,20 @@ assert.equal(payload.image_data_url, 'data:image/png;base64,cG5n');
 assert.equal(result.status, 'queued');
 assert.equal(result.data.job.voice_video, true);
 assert.equal(result.artifacts.length, 0);
+
+// The reported request must reach native TTS with the exact German quote.
+const reportedResult = await bridge.create({
+    prompt: reportedPrompt,
+    imageSource: {source: {data_url: 'data:image/png;base64,cG5n'}},
+    fetcher: fakeFetch
+});
+assert.equal(reportedResult.status, 'queued');
+const reportedPayload = JSON.parse(requests.at(-1).options.body);
+assert.equal(reportedPayload.text, 'Komm mit mir tanzen!');
+assert.equal(reportedPayload.voice, 'pervin');
+assert.equal(reportedPayload.language, 'de');
+assert.equal(reportedPayload.scene_motion, 'dance');
+assert.equal(reportedPayload.preserve_speech_audio, true);
 const done = bridge.toToolResult({
     id:'a'.repeat(24),status:'completed', voice:'pervin',scene_motion:'dance',
     result:{video_url:'/api/talking-photo/videos/'+'a'.repeat(24)}
