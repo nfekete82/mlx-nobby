@@ -13,6 +13,8 @@ on:
       - 'frontend/assets/chat/rendering.js'
       - 'agent/app.py'
       - 'tests/test_video_segmented.py'
+      - 'tests/test_ltx_018_rollout.py'
+      - 'video_mlx_compat.py'
       - 'tests/test_video_long.py'
       - 'tests/test_video_job.mjs'
       - 'tests/test_media_intent.py'
@@ -48,6 +50,7 @@ jobs:
             tests/test_video_long.py::test_native_request_accepts_1080_long_but_keeps_direct_defaults \
             tests/test_video_mlx_provider.py \
             tests/test_video_mlx_warm_runtime.py \
+            tests/test_ltx_018_rollout.py \
             tests/test_media_intent.py::test_video_instruction_overrides_image_edit_ui_hint_and_uses_ltx \
             tests/test_media_intent.py::test_matrix_across_real_endpoints
       - name: Frontend video contract
