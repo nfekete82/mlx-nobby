@@ -328,6 +328,11 @@ def _command(model, params, output, *, image=None):
         command.extend(["--image", str(image)])
     for anchor in params.get("images") or []:
         command.extend(["--image", anchor["path"], str(anchor["frame_index"]), str(anchor["strength"])])
+        binding = anchor.get("binding", "auto")
+        if binding not in {"auto", "replace", "guide"}:
+            raise ValueError("Ungültiger LTX-Bildanker-Bindingmodus")
+        if binding != "auto":
+            command.append(binding)
     for path, strength in request_loras(params.get("profile", "standard")):
         command.extend(["--lora", path, str(strength)])
     return command
@@ -503,6 +508,17 @@ def generate(model, params, output, *, cancel_event, response_callback=None,
                 "target_width": target_width, "target_height": target_height,
                 "conditioning_width": target_width, "conditioning_height": target_height,
             })
+
+        if prepared is not None and prepared_anchors:
+            # In pinned LTX-MLX 0.18, image= is ONLY a fallback when images=[]:
+            # it is silently ignored whenever images contains any anchors.
+            # Preserve the hard start frame explicitly, before soft guides.
+            params["images"] = [
+                {"path": str(prepared), "frame_index": 0,
+                 "strength": 1.0, "binding": "replace"},
+                *prepared_anchors,
+            ]
+            prepared = None
 
         if PERSISTENT_WORKER:
             runtime_reused, worker_result = _run_warm_worker(
