@@ -297,6 +297,7 @@ def _mirror_native(job_id, native):
         "provider", "model_family", "error_code", "error_provider", "error_model", "error_detail_safe",
         "runtime_handoff", "performance_timings", "provider_timing",
         "scene_number", "scene_count", "segments", "multi_image_mode",
+        "segment_number", "segment_count", "long_video",
     ):
         if key in native:
             copied[key] = native.get(key)
@@ -318,7 +319,7 @@ def _wait(seconds=POLL_INTERVAL):
 
 
 def retry_video_scenes(job_id):
-    """Queue a fresh native job while retaining completed scene checkpoints."""
+    """Queue a fresh native job while retaining completed video checkpoints."""
     with _jobs_lock:
         _ensure_loaded_locked()
         previous = _jobs.get(_validated_id(job_id))
@@ -326,8 +327,10 @@ def retry_video_scenes(job_id):
         payload = request.get("payload") or {}
         if (not previous or previous.get("kind") != "video"
                 or previous.get("status") not in {"failed", "cancelled"}
-                or payload.get("multi_image_mode") != "scenes" or not previous.get("native_job_id")):
-            raise HTTPException(422, "Nur fehlgeschlagene oder abgebrochene Szenenjobs können fortgesetzt werden")
+                or not (payload.get("multi_image_mode") == "scenes"
+                        or payload.get("long_video") is True)
+                or not previous.get("native_job_id")):
+            raise HTTPException(422, "Nur fehlgeschlagene Szenen- oder Long-Video-Jobs können fortgesetzt werden")
         payload["resume_from"] = previous["native_job_id"]
         request["payload"] = payload
     return enqueue("video", request)
