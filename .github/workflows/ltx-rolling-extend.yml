@@ -1,0 +1,39 @@
+name: LTX rolling Extend pilot checks
+
+on:
+  pull_request:
+    paths:
+      - 'video_rolling.py'
+      - 'video_service.py'
+      - 'frontend/assets/chat/generation.js'
+      - 'agent/app.py'
+      - 'tests/test_video_rolling.py'
+      - 'tests/test_video_job.mjs'
+      - '.github/workflows/ltx-rolling-extend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rolling-cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install FFmpeg and Python test requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install -r requirements/test.txt
+      - name: Compile rolling window and service
+        run: python -m py_compile video_rolling.py video_service.py agent/app.py
+      - name: Validate pilot and existing RAM-safe segment tests
+        run: python -m pytest -q tests/test_video_rolling.py tests/test_video_segmented.py
+      - name: Verify video prompt UI
+        run: node tests/test_video_job.mjs
