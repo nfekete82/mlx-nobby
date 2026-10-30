@@ -1,4 +1,4 @@
-"""Experimental 540p / 10-second LTX rolling-window continuation.
+"""Experimental 540p/720p, 10-second LTX rolling-window continuation.
 
 The native distilled extend CLI carries the last 25 decoded video frames and
 audio into a short denoising window. Do not feed it the accumulated movie:
@@ -30,6 +30,7 @@ CONTEXT_FRAMES = 25  # 1 second of motion + inclusive end frame
 EXTEND_LATENTS = 6
 NEW_FRAMES = 8 * EXTEND_LATENTS  # 2 seconds per extension
 SEGMENT_SECONDS = (6, 2, 2)
+RESOLUTIONS = frozenset({"540p", "720p"})
 STRATEGY = "rolling-extend-25f-v1"
 WARNING = (
     "Experimentelles Rolling-Window-Extend: 25 Frames Bewegungs- und Audiokontext "
@@ -42,8 +43,8 @@ def needed(params):
 
 
 def plan(duration, resolution, fps=FPS):
-    if (duration, resolution, fps) != (10, "540p", FPS):
-        raise ValueError("Rolling-Window-Pilot unterstützt ausschließlich 10 s bei 540p/24 FPS")
+    if duration != 10 or resolution not in RESOLUTIONS or fps != FPS:
+        raise ValueError("Rolling-Window-Pilot unterstützt 10 s bei 540p/720p und 24 FPS")
     total = 0
     stages = []
     for index, seconds in enumerate(SEGMENT_SECONDS):
@@ -54,7 +55,7 @@ def plan(duration, resolution, fps=FPS):
             "confirmed_duration": total,
             "extend_latents": 0 if index == 0 else EXTEND_LATENTS,
         })
-    return {"strategy": STRATEGY, "duration": 10, "resolution": "540p",
+    return {"strategy": STRATEGY, "duration": 10, "resolution": resolution,
             "fps": FPS, "context_frames": CONTEXT_FRAMES, "stages": stages,
             "frames": duration * FPS + 1}
 
@@ -163,8 +164,13 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
     if model.get("provider") != "ltx-mlx" or params.get("profile", "standard") != "standard":
         raise ValueError("Rolling-Window benötigt natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
-    if (params["width"] % 64 or params["height"] % 64):
+    if params["width"] % 64 or params["height"] % 64:
         raise ValueError("LTX-Extend benötigt ein 64-Pixel-Raster")
+    if (params["width"], params["height"]) not in {
+        (1024, 576), (576, 1024), (1280, 704), (704, 1280),
+    } or (params["width"] * params["height"] !=
+          (1024 * 576 if params["resolution"] == "540p" else 1280 * 704)):
+        raise ValueError("Rolling-Window benötigt die volle 540p/720p-Profilauflösung")
     version = video_long.runtime_version()
     fingerprint = _fingerprint(model, params, planner, version)
     directory = checkpoints / job_id
@@ -193,13 +199,17 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             manifest["stages"].append(entry)
     video_long.atomic_json(manifest_file, manifest)
     completed = len(manifest["stages"])
+    # Keep only diagnostic numbers. Do not persist original images/prompts in
+    # telemetry. Previously verified checkpoints retain their measurements.
+    stage_memory = [dict(entry.get("memory") or {}) for entry in manifest["stages"]]
     update(automatic_continuation=True, long_plan=planner,
            stage_count=len(planner["stages"]), target_duration=10,
            confirmed_duration=(planner["stages"][completed-1]["confirmed_duration"]
                                if completed else 0),
            checkpoint_count=completed, resumable=completed > 0,
            continuity_warning=WARNING,
-           rolling_window_frames=CONTEXT_FRAMES)
+           rolling_window_frames=CONTEXT_FRAMES,
+           rolling_stage_memory=stage_memory)
 
     for index, stage in enumerate(planner["stages"]):
         _check(cancel_event)
@@ -212,9 +222,10 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
         prepared = directory / f"part-{index}.partial.mp4"
         raw = directory / f"raw-{index}.partial.mp4"
         context = directory / f"context-{index}.partial.mp4"
+        stage_started = time.monotonic()
+        before = runtime_coordinator.memory_budget_snapshot()
         try:
-            runtime_coordinator.ensure_active_memory_safe(
-                runtime_coordinator.memory_budget_snapshot())
+            runtime_coordinator.ensure_active_memory_safe(before)
             if index == 0:
                 initial = dict(params, duration=6, frames=145,
                                _active_memory_guard=True, resume_from=None)
@@ -241,15 +252,35 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             info = _validate_part(prepared, stage["frames"], params)
             if index and bool(info["audio"]) != bool(manifest["stages"][0]["info"]["audio"]):
                 raise RuntimeError("Audioformat beim Rolling-Extend verändert")
+            after = runtime_coordinator.memory_budget_snapshot()
+            memory = {
+                "stage": index + 1,
+                "resolution": params["resolution"],
+                "aspect_ratio": params.get("aspect_ratio"),
+                "elapsed_seconds": round(time.monotonic() - stage_started, 2),
+                "before_free_percent": before.get("free_percent"),
+                "after_free_percent": after.get("free_percent"),
+                "before_headroom_gb": before.get("headroom_gb"),
+                "after_headroom_gb": after.get("headroom_gb"),
+                "before_swap_gb": before.get("swap_used_gb"),
+                "after_swap_gb": after.get("swap_used_gb"),
+                "after_pressure": after.get("pressure"),
+            }
+            # A stage which exhausted available memory must never be declared
+            # successful merely because FFmpeg managed to write an output.
+            runtime_coordinator.ensure_active_memory_safe(after)
             entry = {"index": index, "info": info, "sha256": video_long.digest(prepared),
-                     "seconds": stage["seconds"], "validated_at": time.time()}
+                     "seconds": stage["seconds"], "memory": memory,
+                     "validated_at": time.time()}
             with gate.barrier():
                 _check(cancel_event)
                 os.replace(prepared, part)
                 manifest["stages"].append(entry)
                 video_long.atomic_json(manifest_file, manifest)
+            stage_memory.append(memory)
             update(checkpoint_count=len(manifest["stages"]), resumable=True,
                    confirmed_duration=stage["confirmed_duration"],
+                   rolling_stage_memory=list(stage_memory),
                    last_activity_at=time.time())
         finally:
             shutdown_warm_runtime()
@@ -267,4 +298,5 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
     return {**output_info, "duration": 10, "actual_duration": output_info["duration"],
             "automatic_continuation": True, "strategy": STRATEGY,
             "stage_count": len(SEGMENT_SECONDS), "rolling_window_frames": CONTEXT_FRAMES,
+            "rolling_stage_memory": stage_memory,
             "continuity_warning": WARNING}
