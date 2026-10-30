@@ -98,11 +98,12 @@ def tts_language(language: str) -> str:
     or shared Speech-Service behavior. Clone generation ignores this field.
     """
     names = {
-        "de": "german", "en": "english", "fr": "french", "es": "spanish",
-        "it": "italian", "pt": "portuguese", "ja": "japanese", "ko": "korean",
-        "ru": "russian", "zh": "chinese",
+        "de": "German", "en": "English", "fr": "French", "es": "Spanish",
+        "it": "Italian", "pt": "Portuguese", "ja": "Japanese", "ko": "Korean",
+        "ru": "Russian", "zh": "Chinese",
     }
-    return names.get(str(language).lower().split("-", 1)[0], language)
+    value = str(language).strip()
+    return names.get(value.lower().split("-", 1)[0], value)
 
 
 def _persist_audio_diagnostics(
