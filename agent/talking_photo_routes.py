@@ -32,6 +32,7 @@ class TalkingPhotoRequest(BaseModel):
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "natural"
     scene_motion: Literal["none", "dance"] = "none"  # Opt-in, audio-conditioned body movement
+    preserve_speech_audio: bool = False  # Chat voice videos: mux exact Qwen3-TTS track
     engine: Literal["ltx", "ltx-distilled", "ltx-max"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
     person_focus: PersonFocus | None = None  # Prompt-guided LTX speaker selection
