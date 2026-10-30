@@ -4,10 +4,12 @@ Scope: opt-in 10s / 24fps at 540p or 720p, on top of the portrait-aware rolling 
 
 ## Changes
 
-- Lower intermediate H.264 CRF from 17 to 10 for *every* trimmed rolling
-  segment, including the 25-frame re-encoded video/audio context. The
-  FFmpeg filter still performs only frame selection and timestamps; there is
-  no face smoothing, reshaping, sharpening or artificial retouching.
+- Preserve decoded pixels with H.264 **CRF 0** and decoded audio with **ALAC**
+  in every intermediate segment and 25-frame context. The initial pilot lowered
+  CRF 17 to 10; the follow-up isolated codec test demonstrated remaining loss
+  at CRF 10 and exact decoded-YUV preservation at CRF 0. The final MP4 receives
+  one H.264 CRF 10 / AAC encode with explicit frame/sample clocks. There is no
+  face smoothing, reshaping, sharpening or artificial retouching.
 - For image-to-video only, when `identity_lock=true` (the existing default),
   prepend short, positive continuity guidance to the **initial** I2V prompt
   and a context-specific guidance prompt to each native Extend step.
@@ -15,7 +17,8 @@ Scope: opt-in 10s / 24fps at 540p or 720p, on top of the portrait-aware rolling 
 - The native Extend CLI does **not** receive the original photo as a new image
   anchor: this is **soft prompt guidance**, not a guaranteed Identity Lock.
   The guidance preserves the request and does not suppress natural blinking.
-- Bump rolling checkpoint fingerprint conditioning version to 2. Old
+- Bump rolling checkpoint fingerprint conditioning version to 3 and include
+  transport codec settings. Old
   checkpoint combinations must fail closed rather than mixing encoding /
   conditioning strategies after a restart.
 - Persist `rolling_identity_prompt_guidance` as a boolean in job state and
@@ -43,9 +46,11 @@ Scope: opt-in 10s / 24fps at 540p or 720p, on top of the portrait-aware rolling 
 
 - The prompt can reduce drift but cannot enforce facial identity, fix a
   fundamental model limitation or guarantee detailed eyes at 720p.
-- Lower CRF improves preservation of already generated pixels; it cannot
+- Lossless intermediates preserve already decoded YUV pixels; they cannot
   reconstruct detail absent in the model's source frames.
-- No facial tracking, biometric recognition, extra model loads or external
-  inference service is introduced. No 1080p Rolling Extend enabled.
-- A true visual quality and Metal-RAM acceptance test is still required
-  before deploying as default.
+- No biometric recognition, extra generation model loads or external
+  inference service is introduced. The separate offline benchmark can use
+  Apple Vision CPU landmarks at sparse samples. No 1080p Rolling Extend enabled.
+- See the [reproducible benchmark](LTX_VIDEO_QUALITY_BENCHMARK.md) and
+  [measured A/B report](LTX_QUALITY_REPORT_2026-10-31.md) for actual GPU results
+  and remaining visual acceptance limits. Rolling remains opt-in.

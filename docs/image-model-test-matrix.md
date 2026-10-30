@@ -87,3 +87,12 @@ and [automated results](lifecycle-video-edit-validation.json).
   No image checkpoint is newly classified as `tested` by a video generation.
 - [Benchmark method](LTX_VIDEO_QUALITY_BENCHMARK.md). Final paired results and
   provenance will be recorded in `LTX_QUALITY_REPORT_2026-10-31.md`.
+
+- Candidate attempt `173be32d6f2f2c5c4ce82d98` on the same actual date:
+  **failed before inference**, 10.57 s job wall time, zero checkpoints, no
+  output video. Process supervision rejected the guardian's startup identity;
+  this is not a checkpoint-quality or OOM result. Admission was normal at 82%
+  available estimate, swap 7.24 GiB without growth. Requested settings remain
+  704×1280 / 24 FPS / 241 frames / seed 0 / 8+3 steps / distilled ancestral /
+  CFG N/A. Quality: unassessed. Decision: retain model; investigate startup on
+  CPU before one bounded continuation of the unrendered candidate.
