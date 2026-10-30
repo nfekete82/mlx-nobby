@@ -31,6 +31,7 @@ class TalkingPhotoRequest(BaseModel):
     language: str = Field(default="de", min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     motion: Literal["none", "natural"] = "natural"
+    scene_motion: Literal["none", "dance"] = "none"  # Opt-in, audio-conditioned body movement
     engine: Literal["ltx", "ltx-distilled", "ltx-max"] = "ltx-distilled"
     lead_in_ms: Literal[0, 500] = 0  # Opt-in LTX-only A/B experiment
     person_focus: PersonFocus | None = None  # Prompt-guided LTX speaker selection
