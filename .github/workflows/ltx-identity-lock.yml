@@ -15,6 +15,7 @@ on:
       - 'tests/test_video_segmented.py'
       - 'tests/test_video_long.py'
       - 'tests/test_video_job.mjs'
+      - 'tests/test_media_intent.py'
       - '.github/workflows/ltx-identity-lock.yml'
   workflow_dispatch:
 
@@ -46,6 +47,8 @@ jobs:
             tests/test_video_long.py::test_60_second_plan_is_defined_but_routed_to_segmented_pipeline \
             tests/test_video_long.py::test_native_request_accepts_1080_long_but_keeps_direct_defaults \
             tests/test_video_mlx_provider.py \
-            tests/test_video_mlx_warm_runtime.py
+            tests/test_video_mlx_warm_runtime.py \
+            tests/test_media_intent.py::test_video_instruction_overrides_image_edit_ui_hint_and_uses_ltx \
+            tests/test_media_intent.py::test_matrix_across_real_endpoints
       - name: Frontend video contract
         run: node tests/test_video_job.mjs
