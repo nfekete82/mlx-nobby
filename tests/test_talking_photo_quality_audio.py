@@ -129,7 +129,7 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
                      mock.patch.object(talking_photo_quality, 'generate', side_effect=generate):
                     talking_photo_quality._run_quality_job('a' * 24, b'image', '.png',
                         {'text': 'Hallo!', 'language': 'de', 'voice': voice, 'speed': 1.0})
-                expected = {'input': 'Hallo!', 'language': 'german'}
+                expected = {'input': 'Hallo!', 'language': 'German'}
                 if voice:
                     expected['voice'] = voice
                 self.assertEqual(requests, [expected])
