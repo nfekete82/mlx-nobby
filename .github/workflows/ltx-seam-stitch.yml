@@ -1,0 +1,28 @@
+name: LTX seam stitching checks
+
+on:
+  pull_request:
+    paths:
+      - 'video_segmented.py'
+      - 'tests/test_video_segmented.py'
+      - '.github/workflows/ltx-seam-stitch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stitch-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install FFmpeg and CPU-only test requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install -r requirements/test.txt
+      - name: Validate actual stitched MP4 frame count and A/V streams
+        run: python -m pytest -q tests/test_video_segmented.py
