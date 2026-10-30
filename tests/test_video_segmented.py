@@ -175,7 +175,8 @@ def test_identity_lock_anchors_original_without_replacing_motion(pipeline, monke
         assert call["seed"] == 100, "identity-mode seed should stay fixed"
         assert call["first_frame"].endswith(f"last-frame-{index - 1}.png")
         assert call["images"] == [{
-            "path": str(still), "frame_index": 36, "strength": 0.30,
+            "path": str(still), "frame_index": 0, "strength": 0.30,
+            "binding": "guide",
         }]
         assert "same facial features" in call["prompt"]
         assert call["_active_memory_guard"] is True
