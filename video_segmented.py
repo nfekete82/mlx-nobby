@@ -212,6 +212,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
         segment = dict(params, duration=stage["seconds"], frames=stage["frames"],
                        seed=(int(params["seed"]) + index) % (2 ** 31),
                        images=[], multi_image_mode=None, resume_from=None,
+                       _active_memory_guard=True,
                        first_frame=(str(previous_frame) if index else params.get("first_frame")))
         if index:
             segment["resize_mode"] = "contain"
