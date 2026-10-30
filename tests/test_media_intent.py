@@ -117,6 +117,29 @@ def test_matrix_across_real_endpoints(prompt, has_image, target):
             assert result.json()["tool"] == "normal_chat"
 
 
+
+def test_video_instruction_overrides_image_edit_ui_hint_and_uses_ltx():
+    prompt = ("erstelle ein video: The person slowly turns their head, smiles "
+              "naturally and looks directly into the camera. Smooth continuous "
+              "movement, fixed camera, consistent facial features, hairstyle "
+              "and clothing, realistic facial expressions, no scene changes.")
+    request = {"prompt": prompt, "action": "image_edit",
+               "resolved_target": "image_edit", "file_context": IMAGE}
+    client = TestClient(app.app, base_url="http://localhost")
+    with patch.object(app, "_start_chat_image_job") as qwen, \
+         patch.object(app, "_start_chat_video_job", return_value={
+             "id": "b" * 24, "status": "queued",
+         }) as ltx:
+        route = client.post("/api/chat/actions/route", json=request)
+        assert route.status_code == 200
+        assert route.json()["target"] == "video"
+        result = client.post("/api/chat/actions", json=request)
+        assert result.status_code == 200
+        assert result.json()["tool"] in {"video_generate", "video_animate"}
+        ltx.assert_called_once()
+        qwen.assert_not_called()
+
+
 @pytest.mark.parametrize("action", MEDIA_ACTIONS)
 @pytest.mark.parametrize("binding", [{"file_context": IMAGE}, {"active_artifact_id": "image-test"}])
 def test_stale_targets_and_explicit_actions_cannot_override_prompt_request(action, binding):
