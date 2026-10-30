@@ -124,7 +124,8 @@
         'saving'
     ]);
     const ACTIVE_VIDEO_JOB_STATUSES = new Set([
-        'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
+        'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing',
+        'tts', 'motion', 'lipsync'
     ]);
     const IMAGE_JOB_STALE_SECONDS = 25;
     const IMAGE_JOB_UI_TICK_MS = 1000;
@@ -212,6 +213,10 @@
             generating: rt('media_phase_generating', 'Generating'),
             inference: rt('media_phase_generating', 'Generating'),
             denoising: rt('media_phase_generating', 'Generating'),
+            tts: rt('voice_video_tts', 'Synthesizing speech'),
+            motion: rt('voice_video_motion', 'Rendering speech and movement'),
+            quality: rt('voice_video_motion', 'Rendering speech and movement'),
+            lipsync: rt('voice_video_lipsync', 'Synchronizing lips'),
             upscaling: rt('media_phase_upscaling', 'Upscaling'),
             upscale: rt('media_phase_upscaling', 'Upscaling'),
             refining: rt('media_phase_upscaling', 'Upscaling'),
@@ -2205,7 +2210,9 @@ function renderVideoArtifactCard(message) {
         artifact.seed != null ? 'Seed ' + artifact.seed : '',
         artifact.audio
             ? 'Audio'
-            : rt('video_no_audio', 'No audio')
+            : rt('video_no_audio', 'No audio'),
+        artifact.voice ? rt('voice_video_voice', 'Voice') + ': ' + artifact.voice : '',
+        artifact.scene_motion === 'dance' ? rt('voice_video_dance', 'Dance + speech') : ''
     ].filter(Boolean).join(' · ');
     card.appendChild(details);
     const controls = document.createElement('div');
@@ -2269,6 +2276,9 @@ function renderVideoJobCard(message) {
             'video_job_status_generating',
             'Generating video …'
         ),
+        tts: rt('voice_video_tts', 'Synthesizing speech …'),
+        motion: rt('voice_video_motion', 'Rendering speech and movement …'),
+        lipsync: rt('voice_video_lipsync', 'Synchronizing lips …'),
         upscaling: rt(
             'video_job_status_upscaling',
             'Upscaling video …'
@@ -2305,7 +2315,11 @@ function renderVideoJobCard(message) {
             : '',
         job.status === 'failed' && job.error ? String(job.error) : ''
     ].filter(Boolean);
-    if (job.status === 'generating' && !presentation.hasStepProgress && !job.automatic_continuation) {
+    if (job.voice_video) {
+        detailLines.push(rt('voice_video_voice', 'Voice') + ': ' + (job.voice || '—'));
+        if (job.scene_motion === 'dance') detailLines.push(rt('voice_video_dance', 'Dance + speech'));
+    }
+    if (job.status === 'generating' && !presentation.hasStepProgress && !job.automatic_continuation && !job.voice_video) {
         detailLines.push('LTX Fast: 8 Denoising-Schritte, anschließend Upscaling/Decode');
     }
     if (job.automatic_continuation) {
@@ -2347,9 +2361,12 @@ function renderVideoJobCard(message) {
         cancel.addEventListener('click', async () => {
             cancel.disabled = true;
             try {
-                const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(job.id) + '/cancel', { method: 'POST' });
+                const voiceVideo = Boolean(job.voice_video);
+                const response = await fetch((voiceVideo ? '/api/talking-photo/jobs/' : '/api/mlx/video-jobs/') +
+                    encodeURIComponent(job.id) + '/cancel', { method: 'POST' });
                 if (!response.ok) throw new Error(await response.text());
-                const result = await response.json();
+                const payload = await response.json();
+                const result = voiceVideo ? window.MLXVoiceVideo.toToolResult(payload) : payload;
                 window.MLXChatGeneration.updateVideoJobMessage(MLXChatSessions.currentSession(), message, result);
                 MLXChatSessions.saveSessions();
                 renderMessages({ contentUpdated: true });

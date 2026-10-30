@@ -3007,6 +3007,40 @@ const imageFiles =
         contentUpdated: true
     });
 
+    // Explicit voice-video commands use the existing Qwen3-TTS -> LTX A2V
+    // Talking Photo service instead of the ordinary silent video generator.
+    const voiceVideoRequest = window.MLXVoiceVideo?.parseRequest?.(prompt);
+    // Never silently fall back to the regular video generator for explicit
+    // local-voice commands, even if their wording was not parsed completely.
+    // Otherwise the generic video model can translate the German quote.
+    if ((voiceVideoRequest || window.MLXVoiceVideo?.hasVoiceIntent?.(prompt)) &&
+        !alwaysGenerateImage && !textFiles.length) {
+        const message = { role: 'assistant', content: '' };
+        session.messages.push(message);
+        MLXChatSessions.saveSessions();
+        MLXChatRendering.renderAll({ contentUpdated: true });
+        try {
+            const source = preferredVideoImageSource(session, imageFiles);
+            if (imageFiles.length > 1) {
+                throw new Error('Bitte für ein Video mit Sprache genau ein Foto auswählen.');
+            }
+            const result = await window.MLXVoiceVideo.create({
+                prompt, imageSource: source, artifactToDataUrl: imageArtifactDataUrl
+            });
+            updateVideoJobMessage(session, message, result);
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({ contentUpdated: true });
+            if (ACTIVE_VIDEO_JOB_STATUSES.has(result.status)) {
+                watchVideoJob(session, message);
+            }
+        } catch (error) {
+            message.content = 'Video mit Sprache: ' + String(error?.message || 'Erstellung fehlgeschlagen.');
+            MLXChatSessions.saveSessions();
+            MLXChatRendering.renderAll({ contentUpdated: true });
+        }
+        return;
+    }
+
     if (ambiguousArtifactReference && !alwaysGenerateImage) {
         session.messages.push({
             role: 'assistant',
@@ -4743,7 +4777,8 @@ const IMAGE_JOB_TOOLS = new Set([
 ]);
 const imageJobWatchers = new Map();
 const ACTIVE_VIDEO_JOB_STATUSES = new Set([
-    'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing'
+    'queued', 'loading', 'encoding', 'generating', 'upscaling', 'decoding', 'muxing',
+    'tts', 'motion', 'lipsync'
 ]);
 const videoJobWatchers = new Map();
 const ACTIVE_SHORTS_JOB_STATUSES = new Set([
@@ -5259,7 +5294,7 @@ function updateVideoJobMessage(session, message, toolResult, nowSeconds = Date.n
     message.tool_result = toolResult;
     if (toolResult.status === 'completed') {
         message.content = '';
-        void linkVideoSource(message);
+        if (!next.voice_video) void linkVideoSource(message);
     } else if (toolResult.status === 'cancelled') {
         message.content = gt('video_job_cancelled', 'Video job cancelled.');
     } else if (toolResult.status === 'failed') {
@@ -5292,9 +5327,13 @@ function watchVideoJob(session, message) {
             return;
         }
         try {
-            const response = await fetch('/api/mlx/video-jobs/' + encodeURIComponent(jobId));
+            const voiceVideo = Boolean(message.video_job?.voice_video);
+            const url = (voiceVideo ? '/api/talking-photo/jobs/' : '/api/mlx/video-jobs/') +
+                encodeURIComponent(jobId);
+            const response = await fetch(url);
             if (!response.ok) throw new Error(await response.text());
-            const result = await response.json();
+            const payload = await response.json();
+            const result = voiceVideo ? window.MLXVoiceVideo.toToolResult(payload) : payload;
             const terminal = updateVideoJobMessage(session, message, result);
             MLXChatSessions.saveSessions();
             MLXChatRendering.renderMessages({ contentUpdated: true });
@@ -5317,7 +5356,7 @@ function resumeVideoJobsForSession(session) {
     let started = 0;
     for (const message of session.messages) {
         if (ACTIVE_VIDEO_JOB_STATUSES.has(message?.video_job?.status) && watchVideoJob(session, message)) started += 1;
-        if (message?.video_job?.status === 'completed' && message.library_source && !message.library_source_linked)
+        if (message?.video_job?.status === 'completed' && !message.video_job?.voice_video && message.library_source && !message.library_source_linked)
             void linkVideoSource(message);
     }
     return started;

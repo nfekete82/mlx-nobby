@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform, talking_photo_continuity, talking_photo_person_focus
 from agent.talking_photo_audio import _analyze_wav
+from agent import talking_photo_audio_mux
 
 
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
@@ -98,11 +99,12 @@ def tts_language(language: str) -> str:
     or shared Speech-Service behavior. Clone generation ignores this field.
     """
     names = {
-        "de": "german", "en": "english", "fr": "french", "es": "spanish",
-        "it": "italian", "pt": "portuguese", "ja": "japanese", "ko": "korean",
-        "ru": "russian", "zh": "chinese",
+        "de": "German", "en": "English", "fr": "French", "es": "Spanish",
+        "it": "Italian", "pt": "Portuguese", "ja": "Japanese", "ko": "Korean",
+        "ru": "Russian", "zh": "Chinese",
     }
-    return names.get(str(language).lower().split("-", 1)[0], language)
+    value = str(language).strip()
+    return names.get(value.lower().split("-", 1)[0], value)
 
 
 def _persist_audio_diagnostics(
@@ -165,6 +167,7 @@ def _generate_longform(
     distilled: bool,
     stage1_steps: int | None = None,
     person_focus: dict | None = None,
+    scene_motion: str = "none",
 ) -> tuple[bytes, dict]:
     """Render <=18-second speech pieces sequentially and mux the uncut source.
 
@@ -218,7 +221,7 @@ def _generate_longform(
             job_id, segment_image, segment_suffix, segment.wav, segment.duration_seconds,
             part_work, debug_dir=part_debug, cancelled=cancelled,
             update=part_update, apply_lipsync=apply_lipsync, distilled=distilled,
-            stage1_steps=stage1_steps, person_focus=person_focus,
+            stage1_steps=stage1_steps, person_focus=person_focus, scene_motion=scene_motion,
         )
         if cancelled():
             raise talking_photo_ltx.QualityCancelled()
@@ -370,6 +373,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         distilled=distilled,
                         stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
+                        scene_motion=request_payload.get("scene_motion", "none"),
                     )
                 else:
                     video, details = generate(
@@ -387,12 +391,21 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                         distilled=distilled,
                         stage1_steps=stage1_steps,
                         person_focus=request_payload.get("person_focus"),
+                        scene_motion=request_payload.get("scene_motion", "none"),
                     )
             except talking_photo_ltx.QualityCancelled as exc:
                 raise talking_photo.TalkingPhotoCancelled() from exc
 
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
+            if request_payload.get("preserve_speech_audio", False):
+                # The joint LTX A2V model must not be allowed to replace
+                # German words with newly generated English speech.
+                # Keep original TTS samples as the published audio source.
+                talking_photo._update_job(job_id, status="motion", phase="muxing", progress=0.94)
+                video = talking_photo_audio_mux.preserve_speech(video, wav, work)
+                if talking_photo._cancelled(job_id):
+                    raise talking_photo.TalkingPhotoCancelled()
             talking_photo.OUTPUT.mkdir(parents=True, exist_ok=True)
             temporary = output.with_suffix(".mp4.tmp")
             temporary.write_bytes(video)
@@ -415,6 +428,8 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "stage_1_steps": 8 if distilled else (stage1_steps or 15),
                     "stage_2_steps": 3,
                     "motion": "audio-conditioned",
+                    "scene_motion": request_payload.get("scene_motion", "none"),
+                    "original_tts_audio_preserved": bool(request_payload.get("preserve_speech_audio", False)),
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
                     "lead_in_ms": request_payload.get("lead_in_ms", 0),
@@ -481,6 +496,8 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
         "language": payload["language"],
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
+        "scene_motion": payload.get("scene_motion", "none"),
+        "original_tts_audio_preserved": bool(payload.get("preserve_speech_audio", False)),
         "engine": "ltx-distilled" if distilled else ("ltx-max" if stage1_steps == 30 else "ltx" if ltx_only else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
         "stage_1_steps": 8 if distilled else (stage1_steps or 15),
