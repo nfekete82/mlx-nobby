@@ -84,7 +84,10 @@
   "appearance": {
     "title": "Appearance",
     "description": "Readability and appearance of your chat messages.",
-    "preview_message": "This is what your message looks like."
+    "preview_message": "This is what your message looks like.",
+    "line_spacing": "Line spacing",
+    "line_spacing_hint": "Adjusts line spacing in chat messages. Changes apply immediately.",
+    "preview_second_line": "Here is a second line for preview."
   },
   "generation": {
     "image_request_busy": "An image job is already running. Please wait for it to finish.",
