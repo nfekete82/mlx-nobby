@@ -2,11 +2,13 @@
 from ai_lifecycle_gate import AIAdmissionGuard
 
 import video_long
+import video_segmented
 import ai_lifecycle_gate as gate
 import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -254,6 +256,10 @@ def _multi_source_versions(payload):
     for image in payload.images:
         stat = Path(image.path).stat()
         versions.append({"path": image.path, "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+    if video_segmented.needed(payload.model_dump()) and payload.first_frame:
+        stat = Path(payload.first_frame).stat()
+        versions.append({"path": payload.first_frame, "bytes": stat.st_size,
+                         "mtime_ns": stat.st_mtime_ns})
     return versions
 
 
@@ -295,17 +301,24 @@ def _load_jobs():
         for path in JOBS.glob("*.json"):
             try:
                 job = json.loads(path.read_text(encoding="utf-8"))
-                checkpoint = JOBS / "long" / str(job.get("id", "")) / "checkpoint.json"
+                segmented = JOBS / "segmented" / str(job.get("id", "")) / "checkpoint.json"
+                checkpoint = (segmented if segmented.is_file()
+                              else JOBS / "long" / str(job.get("id", "")) / "checkpoint.json")
                 if job.get("status") in ACTIVE and checkpoint.is_file():
                     import managed_process
-                    managed_process.stop_all(owner="video:long:" + job["id"])
+                    owner = ("video:segmented:" if checkpoint == segmented else "video:long:") + job["id"]
+                    managed_process.stop_all(owner=owner)
                     for partial in checkpoint.parent.glob("*.partial.mp4"):
                         partial.unlink(missing_ok=True)
                 if checkpoint.is_file() and (not job.get("cancel_requested") or job.get("cancel_reason") == "lifecycle"):
                     saved = json.loads(checkpoint.read_text())
                     stages = saved.get("stages") or []
+                    strategy = (saved.get("plan") or {}).get("strategy")
+                    confirmed = (sum(stage.get("seconds", 0) for stage in (saved.get("plan") or {}).get("stages", [])[:len(stages)])
+                                 if strategy == "segmented-low-ram-v1"
+                                 else stages[-1]["info"]["timeline_seconds"] if stages else 0)
                     job.update(automatic_continuation=True, resumable=bool(stages), checkpoint_count=len(stages),
-                               confirmed_duration=stages[-1]["info"]["timeline_seconds"] if stages else 0)
+                               confirmed_duration=confirmed)
                 if job.get("status") in ACTIVE:
                     job.update(status="failed", error="Video-Service wurde während des Jobs neu gestartet", finished_at=time.time())
                     _persist(job)
@@ -565,7 +578,14 @@ def _run(job_id, request):
 
             callbacks = dict(cancel_event=cancel, response_callback=runtime_changed,
                              progress_callback=progress_changed, phase_callback=phase_changed)
-            if is_long:
+            if is_long and video_segmented.needed(request.payload.model_dump()):
+                media = video_segmented.run(
+                    model, request.payload.model_dump(), output, job_id=job_id,
+                    checkpoints=JOBS / "segmented", resume_job=_jobs.get(request.payload.resume_from),
+                    generate=generate,
+                    update=lambda **changes: _update(job_id, **changes), **callbacks,
+                )
+            elif is_long:
                 media = video_long.run(
                     model, request.payload.model_dump(), output, job_id=job_id,
                     checkpoints=JOBS / "long", resume_job=_jobs.get(request.payload.resume_from), generate=generate,
@@ -624,6 +644,14 @@ def _run(job_id, request):
                     finished_at=time.time(), memory_after=after,
                     memory_peak=dict(peak),
                 )
+            # Final MP4 is published and the completed job is persisted.
+            # Successful renders must not keep all source MP4 segments on disk.
+            # Failed jobs retain their checkpoints for explicit resume.
+            if video_segmented.needed(request.payload.model_dump()):
+                try:
+                    shutil.rmtree(JOBS / "segmented" / job_id)
+                except OSError as cleanup_error:
+                    _update(job_id, checkpoint_cleanup_warning=type(cleanup_error).__name__)
     except (ProviderCancelled, runtime_coordinator.CoordinationCancelled):
         if output:
             output.unlink(missing_ok=True)
@@ -700,12 +728,14 @@ def preflight(request: JobCreate):
             raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")
         if video_long.needed(request.payload.model_dump()) and (previous.get("status") == "cancelled" or previous.get("cancel_requested") and previous.get("cancel_reason") != "lifecycle"):
             raise HTTPException(422, "Explizit abgebrochene Langvideos werden nicht fortgesetzt")
+        if video_segmented.needed(request.payload.model_dump()) and (previous.get("long_plan") or {}).get("strategy") != "segmented-low-ram-v1":
+            raise HTTPException(422, "Ältere Extend-Checkpoints sind nicht kompatibel; bitte einen neuen RAM-sicheren Videojob starten")
         if ((previous.get("source_versions") is not None
              and previous["source_versions"] != _multi_source_versions(request.payload))
                 or (previous.get("resolved_model") is not None
                     and previous["resolved_model"] != registry.get_model(request.payload.model)["id"])):
             raise HTTPException(422, "Quellbilder oder Modell wurden seit dem Szenenjob verändert")
-    if video_long.needed(request.payload.model_dump()):
+    if video_long.needed(request.payload.model_dump()) and not video_segmented.needed(request.payload.model_dump()):
         video_long.runtime_version()
     return {"available": True, "profile": request.payload.profile}
 
@@ -719,7 +749,9 @@ def create_job(request: JobCreate):
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Ein Video-Job läuft bereits")
     job_id = secrets.token_hex(12)
-    planner = video_long.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
+    planner = (video_segmented.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
+               if video_segmented.needed(request.payload.model_dump())
+               else video_long.plan(request.payload.duration, request.payload.resolution, request.payload.fps))
     is_long = len(planner["stages"]) > 1
     job = {
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,

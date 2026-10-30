@@ -52,17 +52,18 @@ assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ba
 assert.equal(api.__test.isImageGenerationRequest('Wie wird das Wetter?'), false);
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('fast')),
-    [5, 6, 8, 10, 20, 30]
+    [5, 6, 8, 10, 20, 30, 60]
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('standard')),
-    [5, 6, 8, 10, 20, 30]
+    [5, 6, 8, 10, 20, 30, 60]
 );
 assert.deepEqual(
     Array.from(api.__test.videoDurationsForQuality('quality')),
-    [5, 10, 20, 30]
+    [5, 10, 20, 30, 60]
 );
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').duration, 5);
+assert.equal(api.__test.videoOptionsForRequest({}, 'video', 60, 'quality').duration, 60);
 assert.equal(api.__test.videoOptionsForRequest({}, 'video').profile, 'standard');
 const uncensoredOptions = api.__test.videoOptionsForRequest(
     {}, 'video', 5, 'standard', 'landscape', 'uncensored'

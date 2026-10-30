@@ -9,6 +9,7 @@ does not pin the full model while chat is restored.
 from __future__ import annotations
 
 import managed_process
+import runtime_coordinator
 
 import atexit
 import concurrent.futures
@@ -396,12 +397,29 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
                 "images": params.get("images") or [],
                 "profile": params.get("profile", "standard"),
             }
+            # RAM-safe long videos actively sample full-system unified memory
+            # (including Metal), unlike short legacy jobs which retain their
+            # existing admission behavior. Never weaken the safety thresholds.
+            guard_enabled = bool(params.get("_active_memory_guard"))
+            baseline_swap = (runtime_coordinator.memory_budget_snapshot().get("swap_used_gb")
+                             if guard_enabled else None)
+            last_memory_check = time.monotonic()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(_json_request, "POST", "/generate", payload, 7200)
                 while not future.done():
                     if cancel_event.is_set():
                         discard_runtime(runtime)
                         raise ProviderCancelled("Video job was cancelled")
+                    if guard_enabled and time.monotonic() - last_memory_check >= 2:
+                        try:
+                            runtime_coordinator.ensure_active_memory_safe(
+                                runtime_coordinator.memory_budget_snapshot(),
+                                baseline_swap_gb=baseline_swap,
+                            )
+                        except Exception:
+                            discard_runtime(runtime)
+                            raise
+                        last_memory_check = time.monotonic()
                     try:
                         health = _json_request("GET", "/health", timeout=2)
                         phase = str(health.get("phase") or "generating")

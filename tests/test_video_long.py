@@ -31,9 +31,11 @@ def test_existing_direct_limits_and_automatic_extension(resolution,duration,coun
     assert len(long.plan(duration,resolution)["stages"]) == count
 
 
-def test_60_seconds_and_incompatible_fps_are_not_silently_accepted():
-    with pytest.raises(ValueError): long.plan(60,"1080p")
-    with pytest.raises(ValueError): long.plan(20,"1080p",8)
+def test_60_second_plan_is_defined_but_routed_to_segmented_pipeline():
+    planned = long.plan(60, "1080p")
+    assert planned["frames"] == 1441
+    assert planned["stages"][-1]["frames"] == 1441
+    with pytest.raises(ValueError): long.plan(20, "1080p", 8)
 
 
 @pytest.fixture
@@ -150,7 +152,7 @@ def test_checkpoint_tampering_and_changed_options_reject_resume(pipeline):
 
 
 def test_native_request_accepts_1080_long_but_keeps_direct_defaults():
-    for duration in (5,10,20,30):
+    for duration in (5,10,20,30,60):
         request=service.JobCreate(operation="t2v",chat_id="test",chat_revision=0,
             payload={"prompt":"A city camera flight","quality":"quality","duration":duration})
         assert request.payload.width==1920 and request.payload.height==1088
