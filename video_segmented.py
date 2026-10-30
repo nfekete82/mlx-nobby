@@ -30,8 +30,9 @@ DURATIONS = frozenset({9, 30, 60})
 SEGMENT_SECONDS = {"1080p": 3, "720p": 5, "540p": 6}
 CONTINUITY_WARNING = (
     "RAM-sichere LTX-Segmente verwenden das vorherige Schlussbild. "
-    "Bei Image-to-Video kann Identity Lock das Originalbild zusätzlich weich "
-    "referenzieren; Gesichtsidentität, Bewegung und Audio sind nicht garantiert."
+    "Identity Lock nutzt das vorige Schlussbild als festen Start und das "
+    "Originalfoto als weiche Identitätsreferenz am Anfang. "
+    "Bewegung und Audio sind an Segmentgrenzen nicht garantiert."
 )
 IDENTITY_PROMPT = (
     " Preserve the identity of the person in the original reference image: "
@@ -224,11 +225,12 @@ def run(model, params, output, *, job_id, checkpoints, resume_job,
         if index:
             _last_frame(directory / f"segment-{index-1}.mp4",
                         previous_frame, cancel_event, owner)
-        # Always preserve the previous segment as the hard first-frame condition.
-        # The original reference is a *soft* guide halfway through later segments.
-        # Never hard-replace a later frame with the original: that forces pose resets.
+        # The first frame must be a hard continuity anchor even when images are
+        # present. The provider prepends it explicitly before these soft guides.
+        # Identity guidance at the clip midpoint made the person snap backward
+        # toward the original pose. Guide at frame 0 instead, with no later reset.
         anchors = ([{"path": str(params["first_frame"]),
-                     "frame_index": (stage["frames"] - 1) // 2,
+                     "frame_index": 0, "binding": "guide",
                      "strength": identity_strength}]
                    if identity_lock and index else [])
         segment = dict(params, duration=stage["seconds"], frames=stage["frames"],
