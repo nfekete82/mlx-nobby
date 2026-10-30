@@ -17,6 +17,8 @@ MATRIX = [
     ("Kein Bild erzeugen.", False, "chat"),
     ("Erstelle ein Bild von einem Auto. Keine Logos.", False, "image"),
     ("Erstelle ein Video über Berlin 2040. Kein Text im Bild.", False, "video"),
+    ("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes.", False, "video"),
+    ("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes.", True, "video"),
     ("beschreibe sie", True, "chat"),
     ("welcher Prompt ist gut für LTX?", True, "chat"),
     ("erstelle mir einen Prompt für LTX 2.5", True, "chat"),
