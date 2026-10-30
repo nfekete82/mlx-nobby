@@ -54,8 +54,33 @@ TALKING_PROMPT = (
 
     
 
-def speaker_prompt(person_focus: dict | None) -> str:
-    """Steer (not guarantee) the selected speaker while keeping full-frame LTX motion."""
+def speaker_prompt(person_focus: dict | None, scene_motion: str = "none") -> str:
+    """Steer the visible speaker and optionally request gentle whole-body dance."""
+    if scene_motion not in {"none", "dance"}:
+        raise ValueError("Unbekannte Talking-Photo-Bewegung")
+    if scene_motion == "dance":
+        dance = (
+            "One continuous realistic shot of the exact same person from the reference image. "
+            "The person dances naturally with gentle rhythmic steps, relaxed shoulder sways "
+            "and coordinated arm gestures while saying the supplied speech audio. "
+            "Articulate the words with the lips and jaw synchronized to the voice. "
+            "Preserve the original face, clothing, body proportions, background and lighting. "
+            "Show only body parts visible in the source image; do not invent a different body. "
+            "Keep the person's face recognizable, visible and mostly toward the camera "
+            "while moving. No jump cuts, no new people, no camera zoom, no face swaps. "
+            "The dance is modest and does not obscure the mouth."
+        )
+        if person_focus is None:
+            return dance
+        x, _y = validate_focus(person_focus)
+        side = "left" if x < 0.5 else "right"
+        other = "right" if side == "left" else "left"
+        return (
+            f"The person on the {side} side is the ONLY speaker and dancer. " +
+            dance +
+            f" The person on the {other} side remains a silent listener with closed lips. "
+            "Both people retain their original positions and identity."
+        )
     if person_focus is None:
         return TALKING_PROMPT
     x, _y = validate_focus(person_focus)
@@ -232,6 +257,7 @@ def generate(
     distilled: bool = False,
     stage1_steps: int | None = None,
     person_focus: dict | None = None,
+    scene_motion: str = "none",
 ) -> tuple[bytes, dict]:
     """Generate a short audio-conditioned talking portrait without MuseTalk."""
     if stage1_steps not in (None, 15, 30) or (distilled and stage1_steps is not None):
@@ -285,7 +311,7 @@ def generate(
         padded_audio = (debug_dir / padded_audio.name).resolve()
     runner_diagnostics = (debug_dir or work) / "runner.json"
 
-    render_prompt = speaker_prompt(person_focus)
+    render_prompt = speaker_prompt(person_focus, scene_motion)
     command = [
         str(RUNTIME_PYTHON), str(RUNNER),
         "--model", str(MODEL_DIR),
