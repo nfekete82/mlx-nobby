@@ -1,12 +1,13 @@
 'use strict';
 
 (() => {
-    const SCRIPT_VERSION = '20261007-image-model-picker';
+    const SCRIPT_VERSION = '20261030-persistent-image-count';
     const REQUEST_TTL_MS = 30 * 60 * 1000;
     const CHECK_DELAY_MS = 900;
     const PREWARM_TTL_MS = 60 * 1000;
     const MIN_IMAGE_COUNT = 1;
     const MAX_IMAGE_COUNT = 6;
+    const IMAGE_COUNT_STORAGE_KEY = 'mlx-nobby-image-generation-count-v1';
     const IMAGE_QUALITIES = new Set([
         'fast',
         'standard',
@@ -50,6 +51,31 @@
             MIN_IMAGE_COUNT,
             Math.min(MAX_IMAGE_COUNT, number)
         );
+    }
+
+    function loadSavedImageCount() {
+        try {
+            const stored = window.localStorage?.getItem?.(IMAGE_COUNT_STORAGE_KEY);
+            if (stored == null || stored === '') return MIN_IMAGE_COUNT;
+            const number = Number(stored);
+            return Number.isInteger(number) && number >= MIN_IMAGE_COUNT &&
+                number <= MAX_IMAGE_COUNT ? number : MIN_IMAGE_COUNT;
+        } catch (_error) {
+            return MIN_IMAGE_COUNT;
+        }
+    }
+
+    // Keep the current choice in memory too, even if browser storage is disabled.
+    let preferredImageCount = loadSavedImageCount();
+
+    function rememberImageCount(value) {
+        preferredImageCount = normalizeImageCount(value);
+        try {
+            window.localStorage?.setItem?.(
+                IMAGE_COUNT_STORAGE_KEY, String(preferredImageCount)
+            );
+        } catch (_error) {}
+        return preferredImageCount;
     }
 
     function resolveLanguage(languageHint = '') {
@@ -223,7 +249,7 @@
         const justOpened = modalOpen && !picker.wasModalOpen;
 
         if (justOpened) {
-            picker.select.value = '1';
+            picker.select.value = String(preferredImageCount);
             if (imageMode) requestImagePrewarm();
         }
         picker.wasModalOpen = modalOpen;
@@ -303,7 +329,7 @@
         if (!picker || picker.field.hidden) return;
 
         const session = currentSession();
-        const count = normalizeImageCount(picker.select.value);
+        const count = rememberImageCount(picker.select.value);
         if (!session) return;
 
         const key = requestKey(session);
@@ -467,7 +493,7 @@
         ) {
             const option = document.createElement('option');
             option.value = String(count);
-            option.selected = count === 1;
+            option.selected = count === preferredImageCount;
             options.set(count, option);
             select.appendChild(option);
         }
@@ -500,8 +526,14 @@
         };
 
         updatePickerLabels();
+        select.value = String(preferredImageCount);
         syncPickerVisibility();
 
+        // Save immediately when the user changes the count, not only after
+        // the image generation succeeds or the dialog is confirmed.
+        select.addEventListener('change', () => {
+            rememberImageCount(select.value);
+        });
         confirm.addEventListener('click', captureSelection, true);
 
         if (typeof MutationObserver !== 'undefined') {
@@ -541,6 +573,9 @@
             latestImagePrompt,
             mergeInitialImageWithGeneratedVariants,
             normalizeImageCount,
+            loadSavedImageCount,
+            rememberImageCount,
+            syncPickerVisibility,
             regeneratedMessageForArtifact,
             resolveLanguage,
             selectedImageBatchSettings,
