@@ -283,6 +283,36 @@ function normalizeVideoDuration(duration, quality = 'standard') {
     return allowed[0] || 5;
 }
 
+
+function portraitHintFromDimensions(source) {
+    const width = Number(source?.naturalWidth || source?.width || source?.source_width);
+    const height = Number(source?.naturalHeight || source?.height || source?.source_height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) ||
+        width <= 0 || height <= 0) return null;
+    // Intentionally keep square images user-selectable; never auto-crop them.
+    return height > width ? 'portrait' : 'landscape';
+}
+
+async function videoSourceOrientation(source) {
+    const direct = portraitHintFromDimensions(source);
+    if (direct) return direct;
+    const dataUrl = source?.data_url;
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/') ||
+        typeof Image === 'undefined') return null;
+    // An already-uploaded still is loaded locally in the browser: no new
+    // network request or prompt transmission. This only chooses the default.
+    return new Promise(resolve => {
+        const image = new Image();
+        image.onload = () => resolve(
+            portraitHintFromDimensions({
+                width: image.naturalWidth, height: image.naturalHeight
+            })
+        );
+        image.onerror = () => resolve(null);
+        image.src = dataUrl;
+    });
+}
+
 function videoOptionsForRequest(
     options,
     mediaKind,
@@ -3379,12 +3409,20 @@ const imageFiles =
             // sampling values across models or across generation requests.
             let selectedSampling = null;
 
+            const rollingWindowRequested =
+                mediaQualityKind === 'video' &&
+                /\brolling[\s-]?window(?:[\s-]?test)?\b/i.test(prompt);
+            const rollingSourceOrientation = rollingWindowRequested
+                ? await videoSourceOrientation(preferredVideoSource?.source)
+                : null;
             let selectedMediaFormat =
                 mediaQualityKind === 'video'
                     ? (
                         options?.video?.aspect_ratio === '9:16'
                             ? 'portrait'
-                            : 'landscape'
+                            : options?.video?.aspect_ratio === '16:9'
+                                ? 'landscape'
+                                : rollingSourceOrientation || 'landscape'
                     )
                     : (savedImageCreation?.format || 'square');
 
@@ -4121,9 +4159,7 @@ const imageFiles =
                     ),
                     // Deliberate opt-in; never switch all long videos to this
                     // experimental native Extend path without user consent.
-                    ...(resolvedTarget === 'video' &&
-                        /\brolling[\s-]?window(?:[\s-]?test)?\b/i.test(prompt)
-                        ? { continuation_mode: 'rolling' } : {})
+                    ...(rollingWindowRequested ? { continuation_mode: 'rolling' } : {})
                 },
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,
@@ -5597,6 +5633,8 @@ resetSessionRuntime: resetSessionRuntime,
             mediaPreviewAvailable: mediaPreviewAvailable,
             normalizeMediaPreviewQuality: normalizeMediaPreviewQuality,
             videoOptionsForRequest: videoOptionsForRequest,
+            portraitHintFromDimensions: portraitHintFromDimensions,
+            videoSourceOrientation: videoSourceOrientation,
             updateVideoProfileAvailability: updateVideoProfileAvailability,
             videoDurationsForQuality: videoDurationsForQuality,
             promptVideoPreferences: promptVideoPreferences,
