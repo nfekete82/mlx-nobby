@@ -3622,7 +3622,7 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s' + (duration === 9 ? ' · Identity-Lock-Test' :
+                                    duration + ' s' + (duration === 9 ? ' · 1080p-Kurztest' :
                                         duration >= 30 ? ' · RAM-sicher' :
                                         ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : ''));
 
