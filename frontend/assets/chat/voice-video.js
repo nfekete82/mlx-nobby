@@ -7,27 +7,48 @@
     const NAMED_VOICE = /\b(?:mit\s+der\s+stimme\s+von|in\s+der\s+stimme\s+von|with\s+(?:the\s+)?voice\s+of)\s+([\p{L}\p{N}_ -]{1,80}?)(?=\s+(?:sagt|spricht|says|speaks)\b|[,;:]|$)/iu;
     const SPOKEN_WORDS = /\b(?:sagt|spricht|says|speaks)\b\s*:?\s*([\s\S]+)$/iu;
     const DANCE = /\b(?:tanzt|tanzen|tanzend|dance|dances|dancing)\b/iu;
+    const VOICE_INTENT = /\b(?:mit\s+der\s+stimme\s+von|in\s+der\s+stimme\s+von|with\s+(?:the\s+)?voice\s+of)\b/iu;
+    const LANGUAGE_AFTER_VOICE = /\s+(?:auf|in)\s+(?:deutsch|german|englisch|english)$/iu;
+    const QUOTE_END = Object.freeze({'„': '“', '“': '”', '«': '»', '"': '"', "'": "'"});
     const VALID_ID = /^[a-f0-9]{24}$/;
+
+    function hasVoiceIntent(prompt) {
+        const value = String(prompt || '').trim();
+        return VIDEO_REQUEST.test(value) && VOICE_INTENT.test(value) &&
+            !/^\s*(?:wie|kann|würde|what|how|can|could)\b/iu.test(value);
+    }
+
+    function spokenText(raw) {
+        const text = String(raw || '').trim();
+        if (Object.prototype.hasOwnProperty.call(QUOTE_END, text[0])) {
+            const end = text.indexOf(QUOTE_END[text[0]], 1);
+            // A quotation must be closed; never send an ambiguous sentence to TTS.
+            return end > 1 ? text.slice(1, end).trim() : null;
+        }
+        // Without quotes, keep compatibility with the original simple commands.
+        // Don't speak a separate follow-up language instruction as dialogue.
+        return text.replace(/\s*[.!?]\s*(?:die\s+sprache\s+muss\s+deutsch\s+bleiben|bitte\s+auf\s+deutsch\s+(?:sprechen|bleiben))\s*\.?$/iu, '').trim();
+    }
 
     function parseRequest(prompt) {
         const value = String(prompt || '').trim();
         // Only explicit *creation* commands. Never intercept questions or examples.
-        if (!VIDEO_REQUEST.test(value) || /^\s*(?:wie|kann|würde|what|how|can|could)\b/iu.test(value)) {
+        if (!hasVoiceIntent(value)) {
             return null;
         }
         const named = NAMED_VOICE.exec(value);
         const spoken = SPOKEN_WORDS.exec(value);
         if (!named || !spoken || named.index >= spoken.index) return null;
-        const voiceName = named[1].trim();
-        const speech = spoken[1].trim()
-            .replace(/^[„“"'«]\s*/u, '')
-            .replace(/\s*[“”"'»]\s*[.!?]?\s*$/u, '')
-            .trim();
+        // "Stimme von Pervin auf Deutsch sagt" still refers to the Pervin profile.
+        const voiceName = named[1].trim().replace(LANGUAGE_AFTER_VOICE, '').trim();
+        // Preserve the exact spoken quote and ignore subsequent directions.
+        const speech = spokenText(spoken[1]);
         if (!voiceName || !speech || speech.length > 5000) return null;
         return {
             voiceName,
             speech,
-            language: /\b(?:english|englisch)\b/iu.test(value) ? 'en' : 'de',
+            // Only instructions *before* the spoken sentence decide the language.
+            language: /\b(?:auf|in)\s+(?:englisch|english)\b/iu.test(value.slice(0, spoken.index)) ? 'en' : 'de',
             scene_motion: DANCE.test(value.slice(0, spoken.index)) ? 'dance' : 'none',
         };
     }
@@ -121,6 +142,6 @@
     }
 
     window.MLXVoiceVideo = Object.freeze({
-        parseRequest, resolveVoice, toToolResult, create,
+        hasVoiceIntent, parseRequest, resolveVoice, toToolResult, create,
     });
 })();
