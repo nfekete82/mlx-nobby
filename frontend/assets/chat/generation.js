@@ -82,9 +82,9 @@ function normalizeMediaPreviewQuality(quality, previewAvailable) {
 
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
-    fast: Object.freeze([5, 6, 8, 10, 20, 30]),
-    standard: Object.freeze([5, 6, 8, 10, 20, 30]),
-    quality: Object.freeze([5, 10, 20, 30])
+    fast: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
+    standard: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
+    quality: Object.freeze([5, 10, 20, 30, 60])
 });
 
 const VIDEO_DURATIONS = new Set(
@@ -3622,7 +3622,8 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s' + ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : '');
+                                    duration + ' s' + (duration >= 30 ? ' · RAM-sicher' :
+                                        ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : ''));
 
                                 return option;
                             });
