@@ -6,6 +6,7 @@
 
     const DEFAULTS = {
         font_size: 15,
+        line_height: 1.68,
         user_bubble_color: '#2f6fea'
     };
 
@@ -21,6 +22,18 @@
             20,
             Math.max(13, Math.round(size))
         );
+    }
+
+
+    function normalizeLineHeight(value) {
+        if (value === null || value === undefined || value === '') {
+            return DEFAULTS.line_height;
+        }
+        const height = Number(value);
+        if (!Number.isFinite(height)) {
+            return DEFAULTS.line_height;
+        }
+        return Math.min(2, Math.max(1.2, Math.round(height * 100) / 100));
     }
 
 
@@ -47,6 +60,9 @@
             return {
                 font_size:
                     normalizeFontSize(saved.font_size),
+
+                line_height:
+                    normalizeLineHeight(saved.line_height),
 
                 user_bubble_color:
                     normalizeColor(
@@ -78,6 +94,11 @@
         );
 
         document.documentElement.style.setProperty(
+            '--chat-line-height',
+            String(settings.line_height)
+        );
+
+        document.documentElement.style.setProperty(
             '--user-bubble-color',
             settings.user_bubble_color
         );
@@ -103,6 +124,12 @@
                 'chatFontSizeValue'
             );
 
+        const lineHeight =
+            document.getElementById('chatLineHeight');
+
+        const lineHeightValue =
+            document.getElementById('chatLineHeightValue');
+
         const picker =
             document.getElementById(
                 'userBubbleColor'
@@ -123,6 +150,20 @@
                 settings.font_size + ' px';
         }
 
+        if (lineHeight) {
+            lineHeight.value = String(settings.line_height);
+        }
+
+        if (lineHeightValue) {
+            const language = document.documentElement.lang?.toLowerCase().startsWith('en')
+                ? 'en-US' : 'de-DE';
+            lineHeightValue.textContent =
+                settings.line_height.toLocaleString(language, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }) + '×';
+        }
+
         if (picker) {
             picker.value =
                 settings.user_bubble_color;
@@ -140,6 +181,14 @@
         settings.font_size =
             normalizeFontSize(value);
 
+        saveSettings();
+        applySettings();
+        syncControls();
+    }
+
+
+    function updateLineHeight(value) {
+        settings.line_height = normalizeLineHeight(value);
         saveSettings();
         applySettings();
         syncControls();
@@ -263,6 +312,9 @@
         const font =
             document.getElementById('chatFontSize');
 
+        const lineHeight =
+            document.getElementById('chatLineHeight');
+
         const picker =
             document.getElementById(
                 'userBubbleColor'
@@ -283,6 +335,14 @@
             'input',
             event => {
                 updateFont(event.target.value);
+            }
+        );
+
+
+        lineHeight?.addEventListener(
+            'input',
+            event => {
+                updateLineHeight(event.target.value);
             }
         );
 
