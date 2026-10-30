@@ -1,0 +1,48 @@
+name: LTX Identity Lock focused checks
+
+on:
+  pull_request:
+    paths:
+      - 'video_segmented.py'
+      - 'video_long.py'
+      - 'video_service.py'
+      - 'video_providers_mlx.py'
+      - 'video_mlx_worker.py'
+      - 'video_mlx_compat.py'
+      - 'frontend/assets/chat/generation.js'
+      - 'frontend/assets/chat/rendering.js'
+      - 'agent/app.py'
+      - 'tests/test_video_segmented.py'
+      - 'tests/test_video_long.py'
+      - 'tests/test_video_job.mjs'
+      - '.github/workflows/ltx-identity-lock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  identity-lock-cpu:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install CPU-only test dependencies
+        run: python -m pip install -r requirements/test.txt
+      - name: Python syntax
+        run: |
+          python -m py_compile video_segmented.py video_long.py video_service.py
+      - name: Segmentation and identity-lock regression
+        run: |
+          python -m pytest -q \
+            tests/test_video_segmented.py \
+            tests/test_video_long.py \
+            tests/test_video_mlx_provider.py \
+            tests/test_video_mlx_warm_runtime.py
+      - name: Frontend video contract
+        run: node tests/test_video_job.mjs
