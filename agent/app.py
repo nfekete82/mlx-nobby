@@ -8838,7 +8838,7 @@ def _video_payload(request, operation):
     allowed = {
         "model", "resolution", "duration", "fps", "seed", "resize_mode",
         "width", "height", "aspect_ratio",
-        "profile",
+        "profile", "continuation_mode",
     }
     if set(options) - allowed:
         raise HTTPException(422, "Unbekannte Videoparameter")
