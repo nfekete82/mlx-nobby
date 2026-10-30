@@ -51,8 +51,8 @@ class TalkingPhotoQualityAudioTests(unittest.TestCase):
             lipsync.assert_not_called()
 
     def test_tts_uses_qwen_language_names_without_changing_shared_speech_defaults(self):
-        for supplied, expected in [('de', 'german'), ('de-DE', 'german'), ('en', 'english'),
-                                   ('fr', 'french'), ('German', 'German'), ('auto', 'auto')]:
+        for supplied, expected in [('de', 'German'), ('de-DE', 'German'), ('en', 'English'),
+                                   ('fr', 'French'), ('German', 'German'), ('auto', 'auto')]:
             with self.subTest(language=supplied):
                 self.assertEqual(talking_photo_quality.tts_language(supplied), expected)
 
