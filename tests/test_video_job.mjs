@@ -18,10 +18,12 @@ const context = {
     clearTimeout() {},
     async fetch(url) {
         requestedUrls.push(url);
-        assert.match(url, /^\/api\/mlx\/(?:video-jobs|shorts-jobs)\/[a-f0-9]{24}$/);
+        assert.match(url, /^\/(?:api\/mlx\/(?:video-jobs|shorts-jobs)|api\/talking-photo\/jobs)\/[a-f0-9]{24}$/);
         return { ok: true, async json() { return structuredClone(nextResult); } };
     },
 };
+const voiceBridgeSource = fs.readFileSync(new URL('../frontend/assets/chat/voice-video.js', import.meta.url), 'utf8');
+vm.runInNewContext(voiceBridgeSource, context, { filename: 'voice-video.js' });
 vm.runInNewContext(source, context, { filename: 'generation.js' });
 context.MLXChatSessions = { currentSession: () => activeSession, saveSessions() {} };
 context.MLXChatRendering = { renderMessages() {} };
@@ -161,6 +163,21 @@ assert.equal(api.__test.watchVideoJob(activeSession, message), true);
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(message.video_job.status, 'completed');
 assert.equal(message.tool_result.artifacts[0].mime_type, 'video/mp4');
+const voiceJobId = 'f'.repeat(24);
+const voiceMessage = {
+    role: 'assistant', content: '',
+    video_job: {id:voiceJobId, status:'motion', voice_video:true, source:'talking_photo'},
+    tool_result: {tool:'video_animate',status:'motion',artifacts:[]}
+};
+activeSession = {messages:[voiceMessage]};
+nextResult = {id:voiceJobId,status:'completed',voice:'pervin',scene_motion:'dance',result:{}};
+assert.equal(api.__test.watchVideoJob(activeSession, voiceMessage), true);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(voiceMessage.video_job.status, 'completed');
+assert.equal(voiceMessage.tool_result.artifacts[0].audio, true);
+assert.equal(voiceMessage.tool_result.artifacts[0].url, '/api/talking-photo/videos/'+voiceJobId);
+assert.equal(requestedUrls.at(-1), '/api/talking-photo/jobs/'+voiceJobId);
+
 
 const shortId = 'e'.repeat(24);
 const shortsMessage = {
@@ -258,7 +275,8 @@ assert.match(rendering, /LTX Fast: 8 Denoising-Schritte/);
 assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
-assert.match(chatHtml, /chat\/generation\.js\?v=20261029-long-video-sdxl/);
+assert.match(chatHtml, /chat\/generation\.js\?v=20261030-voice-dance/);
+assert.match(chatHtml, /chat\/voice-video\.js\?v=20261030-voice-dance/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=[a-z0-9-]+/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
