@@ -3253,14 +3253,16 @@ button {
 
 :root {
     --chat-font-size: 15px;
+    --chat-line-height: 1.68;
     --user-bubble-color: #2f6fea;
 }
 
 
-/* Chat font size */
+/* Chat message typography */
 
 .message-content {
     font-size: var(--chat-font-size);
+    line-height: var(--chat-line-height);
 }
 
 
@@ -3286,7 +3288,8 @@ button {
 
 /* Range Slider */
 
-#chatFontSize {
+#chatFontSize,
+#chatLineHeight {
     width: 100%;
     margin-top: 9px;
 
@@ -3366,7 +3369,11 @@ button {
     color: white;
 
     font-size: var(--chat-font-size);
-    line-height: 1.5;
+    line-height: var(--chat-line-height);
+}
+
+.appearance-preview-line {
+    display: block;
 }
 
 
