@@ -34,7 +34,7 @@ def test_plans_and_native_request_contract():
         segmented.plan(30, "1080p", 8)
     with pytest.raises(ValueError):
         segmented.plan(9, "720p")
-    nine = video_service.JobCreate(operation="t2v", chat_id="chat",
+    nine = video_service.JobCreate(operation="t2v", chat_id="chat", chat_revision=0,
         payload={"prompt": "A steady shot", "model": video_registry.LTX_MLX_Q4_ID,
                  "duration": 9, "quality": "quality"})
     assert (nine.payload.width, nine.payload.height, nine.payload.frames) == (1920, 1088, 217)
