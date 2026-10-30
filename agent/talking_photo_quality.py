@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from agent import talking_photo, talking_photo_ltx, talking_photo_motion, talking_photo_longform, talking_photo_continuity, talking_photo_person_focus
 from agent.talking_photo_audio import _analyze_wav
+from agent import talking_photo_audio_mux
 
 
 AUDIO_DEBUG_ROOT = talking_photo.ROOT / "audio-debug"
@@ -397,6 +398,14 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
 
             if talking_photo._cancelled(job_id):
                 raise talking_photo.TalkingPhotoCancelled()
+            if request_payload.get("preserve_speech_audio", False):
+                # The joint LTX A2V model must not be allowed to replace
+                # German words with newly generated English speech.
+                # Keep original TTS samples as the published audio source.
+                talking_photo._update_job(job_id, status="motion", phase="muxing", progress=0.94)
+                video = talking_photo_audio_mux.preserve_speech(video, wav, work)
+                if talking_photo._cancelled(job_id):
+                    raise talking_photo.TalkingPhotoCancelled()
             talking_photo.OUTPUT.mkdir(parents=True, exist_ok=True)
             temporary = output.with_suffix(".mp4.tmp")
             temporary.write_bytes(video)
@@ -420,6 +429,7 @@ def _run_quality_job(job_id: str, image: bytes, image_suffix: str, request_paylo
                     "stage_2_steps": 3,
                     "motion": "audio-conditioned",
                     "scene_motion": request_payload.get("scene_motion", "none"),
+                    "original_tts_audio_preserved": bool(request_payload.get("preserve_speech_audio", False)),
                     "motion_provider": "ltx-2.5-mlx-a2v",
                     "audio_diagnostics": audio_diagnostics,
                     "lead_in_ms": request_payload.get("lead_in_ms", 0),
@@ -487,6 +497,7 @@ def create_job(payload: dict, *, ltx_only: bool = False, distilled: bool = False
         "speed": payload.get("speed", 1.0),
         "motion": "audio-conditioned",
         "scene_motion": payload.get("scene_motion", "none"),
+        "original_tts_audio_preserved": bool(payload.get("preserve_speech_audio", False)),
         "engine": "ltx-distilled" if distilled else ("ltx-max" if stage1_steps == 30 else "ltx" if ltx_only else "quality"),
         "a2v_mode": "distilled" if distilled else "classic",
         "stage_1_steps": 8 if distilled else (stage1_steps or 15),
