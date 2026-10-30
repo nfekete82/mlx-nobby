@@ -282,6 +282,9 @@ def test_compose_real_ffmpeg_yields_217_cfr_frames_and_audio(tmp_path, monkeypat
 
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("FFmpeg required for an executable stitching smoke test")
+    # Production constants point to /opt/homebrew on macOS; CI also uses Linux.
+    monkeypatch.setattr(video_providers, "FFPROBE", shutil.which("ffprobe"))
+    monkeypatch.setattr(segmented, "FFMPEG", shutil.which("ffmpeg"))
     clips = []
     for idx, color in enumerate(("red", "green", "blue")):
         path = tmp_path / f"segment-{idx}.mp4"
