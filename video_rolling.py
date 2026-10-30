@@ -29,17 +29,41 @@ FPS = 24
 CONTEXT_FRAMES = 25  # 1 second of motion + inclusive end frame
 EXTEND_LATENTS = 6
 NEW_FRAMES = 8 * EXTEND_LATENTS  # 2 seconds per extension
+CLIP_CRF = 10  # Protect tiny facial detail through repeated H.264 conditioning clips.
 SEGMENT_SECONDS = (6, 2, 2)
 RESOLUTIONS = frozenset({"540p", "720p"})
 STRATEGY = "rolling-extend-25f-v1"
+# Prompt guidance is not a facial identity lock: native "extend" accepts
+# the previous video window and prompt, but no original portrait anchor.
+# Positive, short guidance preserves natural expressions and blinking.
+INITIAL_FACE_GUIDANCE = (
+    "Keep the same person as in the source image with consistent facial proportions, "
+    "eye shape and spacing, eyelids, iris placement, skin texture and hairstyle. "
+    "Allow gentle natural eye movements, blinking and facial expressions. "
+)
+EXTEND_FACE_GUIDANCE = (
+    "Continue the same person's natural movement from the input video. "
+    "Maintain consistent facial proportions, eye shape and spacing, eyelids, "
+    "iris placement, skin texture and hairstyle with natural blinking. "
+)
 WARNING = (
     "Experimentelles Rolling-Window-Extend: 25 Frames Bewegungs- und Audiokontext "
-    "statt nur eines Standbilds. Farb- und Identitätskonstanz sind nicht garantiert."
+    "statt nur eines Standbilds. I2V-Gesichtshinweise sind kein harter Identity Lock; "
+    "Farb- und Identitätskonstanz sind nicht garantiert."
 )
 
 
 def needed(params):
     return params.get("continuation_mode", "segmented") == "rolling"
+
+
+def _face_prompt(params, *, extension):
+    """Only guide I2V when identity_lock is enabled; never alter T2V or opt-out."""
+    prompt = params["prompt"]
+    if not params.get("first_frame") or not params.get("identity_lock", True):
+        return prompt
+    guidance = EXTEND_FACE_GUIDANCE if extension else INITIAL_FACE_GUIDANCE
+    return guidance + prompt
 
 
 def plan(duration, resolution, fps=FPS):
@@ -99,7 +123,7 @@ def _clip_frames(source, destination, *, start, count, cancel, owner):
         "-i", str(source), "-map", "0:v:0",
         "-vf", f"select='between(n,{start},{start+count-1})',setpts=N/({FPS}*TB)",
         "-frames:v", str(count), "-r", str(FPS), "-fps_mode", "cfr",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "17",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", str(CLIP_CRF),
         "-pix_fmt", "yuv420p",
     ]
     if info["audio"]:
@@ -157,7 +181,7 @@ def _fingerprint(model, params, planner, version):
         raise RuntimeError("LTX-Modellkonfiguration fehlt")
     source = Path(params["first_frame"]) if params.get("first_frame") else None
     payload = {
-        "strategy": STRATEGY, "model": model["id"], "runtime": version,
+        "strategy": STRATEGY, "conditioning_version": 2, "model": model["id"], "runtime": version,
         "config": video_long.digest(config), "plan": planner,
         "params": {k: v for k, v in params.items() if k != "resume_from"},
         "source": video_long.digest(source) if source else None,
@@ -172,13 +196,14 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
     if model.get("provider") != "ltx-mlx" or params.get("profile", "standard") != "standard":
         raise ValueError("Rolling-Window benötigt natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
+    face_guidance = bool(params.get("first_frame")) and bool(params.get("identity_lock", True))
     _validate_canvas(params)
     version = video_long.runtime_version()
     fingerprint = _fingerprint(model, params, planner, version)
     directory = checkpoints / job_id
     directory.mkdir(parents=True, exist_ok=True)
     manifest_file = directory / "checkpoint.json"
-    manifest = {"version": 1, "fingerprint": fingerprint, "plan": planner, "stages": []}
+    manifest = {"version": 2, "fingerprint": fingerprint, "plan": planner, "stages": []}
     owner = "video:rolling:" + job_id
 
     if resume_job:
@@ -211,6 +236,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
            checkpoint_count=completed, resumable=completed > 0,
            continuity_warning=WARNING,
            rolling_window_frames=CONTEXT_FRAMES,
+           rolling_identity_prompt_guidance=face_guidance,
            rolling_stage_memory=stage_memory)
 
     for index, stage in enumerate(planner["stages"]):
@@ -230,6 +256,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             runtime_coordinator.ensure_active_memory_safe(before)
             if index == 0:
                 initial = dict(params, duration=6, frames=145,
+                               prompt=_face_prompt(params, extension=False),
                                _active_memory_guard=True, resume_from=None)
                 generate(model, initial, raw, cancel_event=cancel_event,
                          response_callback=response_callback,
@@ -245,7 +272,8 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
                 _clip_frames(previous, context, start=previous_frames-CONTEXT_FRAMES,
                              count=CONTEXT_FRAMES, cancel=cancel_event, owner=owner)
                 video_long.extend(context, raw, EXTEND_LATENTS,
-                    dict(params, model_path=str(video_registry.model_path(model).resolve())),
+                    dict(params, model_path=str(video_registry.model_path(model).resolve()),
+                         prompt=_face_prompt(params, extension=True)),
                     cancel_event, update, owner)
                 _validate_part(raw, CONTEXT_FRAMES + NEW_FRAMES, params)
                 _clip_frames(raw, prepared, start=CONTEXT_FRAMES, count=NEW_FRAMES,
@@ -301,4 +329,5 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
             "automatic_continuation": True, "strategy": STRATEGY,
             "stage_count": len(SEGMENT_SECONDS), "rolling_window_frames": CONTEXT_FRAMES,
             "rolling_stage_memory": stage_memory,
+            "rolling_identity_prompt_guidance": face_guidance,
             "continuity_warning": WARNING}
