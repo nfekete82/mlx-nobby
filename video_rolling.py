@@ -60,6 +60,14 @@ def plan(duration, resolution, fps=FPS):
             "frames": duration * FPS + 1}
 
 
+def _validate_canvas(params):
+    width, height = int(params["width"]), int(params["height"])
+    expected = ((1024, 576), (576, 1024)) if params["resolution"] == "540p" else (
+        (1280, 704), (704, 1280))
+    if (width, height) not in expected:
+        raise ValueError("Rolling-Window benötigt die volle 540p/720p-Profilauflösung")
+
+
 def _check(cancel):
     if cancel.is_set() or gate.blocked():
         raise ProviderCancelled("Rolling-Window wegen Abbruch oder Lifecycle-Stopp unterbrochen")
@@ -164,13 +172,7 @@ def run(model, params, output, *, job_id, checkpoints, resume_job, generate,
     if model.get("provider") != "ltx-mlx" or params.get("profile", "standard") != "standard":
         raise ValueError("Rolling-Window benötigt natives Standard-LTX-MLX")
     planner = plan(params["duration"], params["resolution"], params["fps"])
-    if params["width"] % 64 or params["height"] % 64:
-        raise ValueError("LTX-Extend benötigt ein 64-Pixel-Raster")
-    if (params["width"], params["height"]) not in {
-        (1024, 576), (576, 1024), (1280, 704), (704, 1280),
-    } or (params["width"] * params["height"] !=
-          (1024 * 576 if params["resolution"] == "540p" else 1280 * 704)):
-        raise ValueError("Rolling-Window benötigt die volle 540p/720p-Profilauflösung")
+    _validate_canvas(params)
     version = video_long.runtime_version()
     fingerprint = _fingerprint(model, params, planner, version)
     directory = checkpoints / job_id
