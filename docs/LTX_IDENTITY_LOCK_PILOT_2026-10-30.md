@@ -12,10 +12,15 @@ jedoch Veränderungen von Gesicht, Haaren, Kleidung und Proportionen.
 * **Keine Änderung der RAM-Architektur:** weiterhin 3 Sekunden bzw. 73 Frames
   pro 1080p-Segment, Worker-Neustart, 20-%-Grenze und Checkpoint/Resume.
 * Bei I2V mit Originalbild: Beginn von Segment N mit dem **letzten Bild von
-  Segment N-1** (harte First-Frame-Konditionierung), zusätzlich das
-  **ursprüngliche Nutzerbild als weicher Guide** an Frame 36 von 73.
+  Segment N-1** (expliziter \`replace\`-Anker auf Frame 0), zusätzlich das
+  **ursprüngliche Nutzerbild als weicher \`guide\`-Anker** an Frame 0.
+  Der ursprüngliche Entwurf setzte den Guide bei Frame 36: Das konnte
+  die Pose mitten im Segment zurückspringen lassen.
 * Weiche Guide-Stärke 0.30 (zulässig 0.10–0.60); **kein Hard Replace**
   innerhalb des Clips, damit die Person nicht zur Anfangspose zurückspringt.
+  **Wichtig:** Bei LTX-MLX v0.18 ignoriert \`image=\` den ersten Frame,
+  sobald \`images\` belegt ist. Der Provider muss deshalb das vorangehende
+  Schlussbild ausdrücklich in die \`images\`-Liste aufnehmen.
 * Mit Identity Lock bleibt der Seed für alle Segmente unverändert;
   der Folgeprompt betont Gesichtszüge, Haare, Kleidung und natürliche Bewegung.
 * Standardmäßig aktiv für segmentiertes **Bild-zu-Video mit Originalbild**.
@@ -44,7 +49,8 @@ git fetch origin
 git switch --track origin/feat/ltx-identity-lock-9s-20261030
 
 python3 -m pytest -q tests/test_video_segmented.py tests/test_video_long.py \
-  tests/test_video_mlx_provider.py tests/test_video_mlx_warm_runtime.py
+  tests/test_video_mlx_provider.py tests/test_video_mlx_warm_runtime.py \\
+  tests/test_ltx_018_rollout.py
 node tests/test_video_job.mjs
 
 # Erst nach Abschluss anderer laufender Videogenerierungen:
