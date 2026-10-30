@@ -84,7 +84,10 @@
   "appearance": {
     "title": "Darstellung",
     "description": "Lesbarkeit und Erscheinungsbild deiner Chat-Nachrichten.",
-    "preview_message": "So sieht deine Nachricht aus."
+    "preview_message": "So sieht deine Nachricht aus.",
+    "line_spacing": "Zeilenabstand",
+    "line_spacing_hint": "Passt den Zeilenabstand der Chat-Nachrichten an. Änderungen werden sofort übernommen.",
+    "preview_second_line": "Hier ist eine zweite Zeile zur Vorschau."
   },
   "generation": {
     "image_request_busy": "Ein Bildauftrag läuft bereits. Bitte dessen Abschluss abwarten.",
