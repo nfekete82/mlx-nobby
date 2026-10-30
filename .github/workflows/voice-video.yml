@@ -1,0 +1,40 @@
+name: Voice video chat checks
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/assets/chat/voice-video.js'
+      - 'frontend/assets/chat/generation.js'
+      - 'frontend/assets/chat/rendering.js'
+      - 'frontend/chat.html'
+      - 'frontend/i18n/de.json'
+      - 'frontend/i18n/en.json'
+      - 'agent/talking_photo_routes.py'
+      - 'agent/talking_photo_quality.py'
+      - 'agent/talking_photo_ltx.py'
+      - 'tests/test_voice_video_chat.mjs'
+      - 'tests/test_video_job.mjs'
+      - 'tests/test_voice_dance_prompt.py'
+      - '.github/workflows/voice-video.yml'
+  workflow_dispatch:
+
+jobs:
+  voice-video:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check chat routing and video polling
+        run: |
+          node tests/test_voice_video_chat.mjs
+          node tests/test_video_job.mjs
+      - name: Check dance prompts without loading MLX
+        run: |
+          python -m pip install pytest
+          python -m py_compile agent/talking_photo_routes.py agent/talking_photo_quality.py agent/talking_photo_ltx.py
+          python -m pytest -q tests/test_voice_dance_prompt.py
