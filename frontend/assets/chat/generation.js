@@ -4110,14 +4110,21 @@ const imageFiles =
                         : 'generate',
                     selectedSampling
                 ),
-                video_options: videoOptionsForRequest(
-                    options,
-                    mediaQualityKind,
-                    selectedVideoDuration,
-                    selectedMediaQuality,
-                    selectedMediaFormat,
-                    selectedVideoProfile
-                ),
+                video_options: {
+                    ...videoOptionsForRequest(
+                        options,
+                        mediaQualityKind,
+                        selectedVideoDuration,
+                        selectedMediaQuality,
+                        selectedMediaFormat,
+                        selectedVideoProfile
+                    ),
+                    // Deliberate opt-in; never switch all long videos to this
+                    // experimental native Extend path without user consent.
+                    ...(resolvedTarget === 'video' &&
+                        /\brolling[\s-]?window(?:[\s-]?test)?\b/i.test(prompt)
+                        ? { continuation_mode: 'rolling' } : {})
+                },
                 quality: selectedMediaQuality,
                 resolved_target: resolvedTarget,
                 conversation_context: conversationContext,

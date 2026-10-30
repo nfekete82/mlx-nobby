@@ -3,6 +3,7 @@ from ai_lifecycle_gate import AIAdmissionGuard
 
 import video_long
 import video_segmented
+import video_rolling
 import ai_lifecycle_gate as gate
 import json
 import os
@@ -95,6 +96,7 @@ class VideoPayload(BaseModel):
     # Applies only to segmented image-to-video jobs with an original still.
     identity_lock: bool = True
     identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
+    continuation_mode: Literal["segmented", "rolling"] = "segmented"
     images: list[VideoImage] = Field(default_factory=list, max_length=5)
     multi_image_mode: Literal["keyframes", "scenes"] | None = None
     resume_from: str | None = Field(default=None, pattern=r"^[a-f0-9]{24}$")
@@ -170,7 +172,12 @@ class JobCreate(BaseModel):
                 validate_first_frame(image.path)
         elif self.payload.images or self.payload.multi_image_mode:
             raise ValueError("Multi-Image-Parameter benötigen multi_i2v")
-        long_video = video_long.needed({"duration": self.payload.duration, "resolution": self.payload.resolution or profile["resolution"], "fps": self.payload.fps})
+        if self.payload.continuation_mode == "rolling":
+            video_rolling.plan(self.payload.duration, self.payload.resolution or profile["resolution"], self.payload.fps)
+            if multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
+                raise ValueError("Rolling-Window benötigt ein einzelnes Standard-LTX-MLX-Video")
+        long_video = (video_rolling.needed(self.payload.model_dump()) or
+                      video_long.needed({"duration": self.payload.duration, "resolution": self.payload.resolution or profile["resolution"], "fps": self.payload.fps}))
         if long_video and (multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx"):
             raise ValueError("Automatische Fortsetzung benötigt natives Standard-LTX-MLX und ein einzelnes Ausgangsvideo")
         if self.payload.resume_from and self.payload.multi_image_mode != "scenes" and not long_video:
@@ -305,11 +312,14 @@ def _load_jobs():
             try:
                 job = json.loads(path.read_text(encoding="utf-8"))
                 segmented = JOBS / "segmented" / str(job.get("id", "")) / "checkpoint.json"
-                checkpoint = (segmented if segmented.is_file()
+                rolling = JOBS / "rolling" / str(job.get("id", "")) / "checkpoint.json"
+                checkpoint = (rolling if rolling.is_file() else
+                              segmented if segmented.is_file()
                               else JOBS / "long" / str(job.get("id", "")) / "checkpoint.json")
                 if job.get("status") in ACTIVE and checkpoint.is_file():
                     import managed_process
-                    owner = ("video:segmented:" if checkpoint == segmented else "video:long:") + job["id"]
+                    owner = ("video:rolling:" if checkpoint == rolling else
+                             "video:segmented:" if checkpoint == segmented else "video:long:") + job["id"]
                     managed_process.stop_all(owner=owner)
                     for partial in checkpoint.parent.glob("*.partial.mp4"):
                         partial.unlink(missing_ok=True)
@@ -319,6 +329,8 @@ def _load_jobs():
                     strategy = (saved.get("plan") or {}).get("strategy")
                     confirmed = (sum(stage.get("seconds", 0) for stage in (saved.get("plan") or {}).get("stages", [])[:len(stages)])
                                  if strategy == "segmented-low-ram-v1"
+                                 else sum(int(entry.get("seconds", 0)) for entry in stages)
+                                 if strategy == video_rolling.STRATEGY
                                  else stages[-1]["info"]["timeline_seconds"] if stages else 0)
                     job.update(automatic_continuation=True, resumable=bool(stages), checkpoint_count=len(stages),
                                confirmed_duration=confirmed)
@@ -541,7 +553,8 @@ def _run(job_id, request):
                     if current.get(key) is not None:
                         peak[key] = max(peak.get(key) or 0, current[key])
 
-            is_long = video_long.needed(request.payload.model_dump())
+            is_long = (video_rolling.needed(request.payload.model_dump()) or
+                       video_long.needed(request.payload.model_dump()))
 
             def progress_changed(event):
                 nonlocal last_memory_sample_at
@@ -581,7 +594,14 @@ def _run(job_id, request):
 
             callbacks = dict(cancel_event=cancel, response_callback=runtime_changed,
                              progress_callback=progress_changed, phase_callback=phase_changed)
-            if is_long and video_segmented.needed(request.payload.model_dump()):
+            if is_long and video_rolling.needed(request.payload.model_dump()):
+                media = video_rolling.run(
+                    model, request.payload.model_dump(), output, job_id=job_id,
+                    checkpoints=JOBS / "rolling", resume_job=_jobs.get(request.payload.resume_from),
+                    generate=generate,
+                    update=lambda **changes: _update(job_id, **changes), **callbacks,
+                )
+            elif is_long and video_segmented.needed(request.payload.model_dump()):
                 media = video_segmented.run(
                     model, request.payload.model_dump(), output, job_id=job_id,
                     checkpoints=JOBS / "segmented", resume_job=_jobs.get(request.payload.resume_from),
@@ -650,7 +670,12 @@ def _run(job_id, request):
             # Final MP4 is published and the completed job is persisted.
             # Successful renders must not keep all source MP4 segments on disk.
             # Failed jobs retain their checkpoints for explicit resume.
-            if video_segmented.needed(request.payload.model_dump()):
+            if video_rolling.needed(request.payload.model_dump()):
+                try:
+                    shutil.rmtree(JOBS / "rolling" / job_id)
+                except OSError as cleanup_error:
+                    _update(job_id, checkpoint_cleanup_warning=type(cleanup_error).__name__)
+            if video_segmented.needed(request.payload.model_dump()) and not video_rolling.needed(request.payload.model_dump()):
                 try:
                     shutil.rmtree(JOBS / "segmented" / job_id)
                 except OSError as cleanup_error:
@@ -731,14 +756,18 @@ def preflight(request: JobCreate):
             raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")
         if video_long.needed(request.payload.model_dump()) and (previous.get("status") == "cancelled" or previous.get("cancel_requested") and previous.get("cancel_reason") != "lifecycle"):
             raise HTTPException(422, "Explizit abgebrochene Langvideos werden nicht fortgesetzt")
-        if video_segmented.needed(request.payload.model_dump()) and (previous.get("long_plan") or {}).get("strategy") != "segmented-low-ram-v1":
+        if video_rolling.needed(request.payload.model_dump()) and (previous.get("long_plan") or {}).get("strategy") != video_rolling.STRATEGY:
+            raise HTTPException(422, "Nur Rolling-Window-Checkpoints können einen Rolling-Job fortsetzen")
+        if (video_segmented.needed(request.payload.model_dump()) and
+                not video_rolling.needed(request.payload.model_dump()) and
+                (previous.get("long_plan") or {}).get("strategy") != "segmented-low-ram-v1"):
             raise HTTPException(422, "Ältere Extend-Checkpoints sind nicht kompatibel; bitte einen neuen RAM-sicheren Videojob starten")
         if ((previous.get("source_versions") is not None
              and previous["source_versions"] != _multi_source_versions(request.payload))
                 or (previous.get("resolved_model") is not None
                     and previous["resolved_model"] != registry.get_model(request.payload.model)["id"])):
             raise HTTPException(422, "Quellbilder oder Modell wurden seit dem Szenenjob verändert")
-    if video_long.needed(request.payload.model_dump()) and not video_segmented.needed(request.payload.model_dump()):
+    if video_rolling.needed(request.payload.model_dump()) or (video_long.needed(request.payload.model_dump()) and not video_segmented.needed(request.payload.model_dump())):
         video_long.runtime_version()
     return {"available": True, "profile": request.payload.profile}
 
@@ -752,7 +781,9 @@ def create_job(request: JobCreate):
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Ein Video-Job läuft bereits")
     job_id = secrets.token_hex(12)
-    planner = (video_segmented.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
+    planner = (video_rolling.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
+               if video_rolling.needed(request.payload.model_dump())
+               else video_segmented.plan(request.payload.duration, request.payload.resolution, request.payload.fps)
                if video_segmented.needed(request.payload.model_dump())
                else video_long.plan(request.payload.duration, request.payload.resolution, request.payload.fps))
     is_long = len(planner["stages"]) > 1
