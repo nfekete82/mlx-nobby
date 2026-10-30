@@ -155,7 +155,8 @@ class VideoMlxProviderTests(unittest.TestCase):
         params = self.params()
         params.update(first_frame="/managed/last-frame-0.png",
                       images=[{"path": "/managed/original.png",
-                               "frame_index": 36, "strength": 0.30}])
+                               "frame_index": 0, "strength": 0.30,
+                               "binding": "guide"}])
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "result.mp4"
             source = Path(tmp) / "source.png"
@@ -186,13 +187,15 @@ class VideoMlxProviderTests(unittest.TestCase):
                                              cancel_event=threading.Event())
 
         command = commands[0]
-        anchors = [command[i + 1:i + 4] for i, flag in enumerate(command)
+        anchors = [command[i + 1:i + 5] for i, flag in enumerate(command)
                    if flag == "--image"]
         self.assertEqual(len(anchors), 2)
-        self.assertEqual(len(anchors[0]), 3)
+        self.assertEqual(anchors[0][1:], ["0", "1.0", "replace"])
         self.assertTrue(anchors[0][0].endswith("first-frame.png"))
         self.assertTrue(anchors[1][0].endswith("anchor-0.png"))
-        self.assertEqual(anchors[1][1:], ["36", "0.3"])
+        self.assertEqual(anchors[1][1:], ["0", "0.3", "guide"])
+        # Both paths are explicit anchors; no legacy single-image shorthand.
+        self.assertEqual(command.count("--image"), 2)
 
 
 class VideoProviderDispatchTests(unittest.TestCase):
