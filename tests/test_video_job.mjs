@@ -46,6 +46,9 @@ for (const [fileContext, artifactId] of [
 }
 assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
+assert.equal(api.__test.isVideoRequest("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes."), true);
+assert.match(source, /const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest\(prompt\)/);
+assert.match(source, /action: explicitVideoAnimateRequest \? 'video_generate'/);
 assert.equal(api.__test.isVideoRequest('Animiere dieses Bild'), true);
 assert.equal(api.__test.isVideoRequest('Wie wird das Wetter?'), false);
 assert.equal(api.__test.isImageGenerationRequest('Erstelle ein Bild von einem Ball'), true);
@@ -144,10 +147,9 @@ const uploadOnlySession = {
     workspace: {},
     messages: [{ role: 'user', attachments: [oldUpload, newUpload] }],
 };
-assert.equal(
-    api.__test.preferredVideoImageSource(uploadOnlySession, []),
-    null,
-);
+assert.equal(api.__test.preferredVideoImageSource(uploadOnlySession, []).origin, 'chat_upload');
+assert.equal(api.__test.preferredVideoImageSource(uploadOnlySession, []).source.stored_path,
+    '/managed/new.png');
 const id = 'd'.repeat(24);
 const message = {
     role: 'assistant', content: '',
