@@ -276,7 +276,7 @@ assert.match(rendering, /Creating short/);
 assert.match(rendering, /artifact\.url/);
 assert.equal(rendering.includes('shorts_generatequeued'), false);
 assert.match(chatHtml, /chat\/generation\.js\?v=20261030-german-quote-parser/);
-assert.match(chatHtml, /chat\/voice-video\.js\?v=20261030-german-quote-parser/);
+assert.match(chatHtml, /chat\/voice-video\.js\?v=20261030-ltx-max-opt-in/);
 assert.match(chatHtml, /chat\/rendering\.js\?v=[a-z0-9-]+/);
 assert.match(chatHtml, /chat\.js\?v=[a-z0-9-]+/);
 console.log('Video routing, polling, completion artifact, player, and download UI passed.');
