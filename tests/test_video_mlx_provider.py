@@ -198,6 +198,52 @@ class VideoMlxProviderTests(unittest.TestCase):
         self.assertEqual(command.count("--image"), 2)
 
 
+    def test_identity_lock_warm_worker_receives_explicit_start_and_guide(self):
+        model = video_registry.builtin_mlx_model()
+        params = self.params()
+        params.update(first_frame="/managed/previous.png",
+                      images=[{"path": "/managed/original.png",
+                               "frame_index": 0, "strength": 0.30,
+                               "binding": "guide"}])
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "warm.mp4"
+            source = Path(tmp) / "source.png"
+            source.write_bytes(b"original")
+            received = []
+
+            def prepare(_source, width, height, _mode, destination):
+                destination.write_bytes(b"prepared")
+                return {"source_width": width, "source_height": height}
+
+            def warm(_model, options, target, *, image, **_kwargs):
+                received.append((options, image))
+                target.write_bytes(b"video")
+                return False, {}
+
+            with (mock.patch.object(video_providers_mlx, "PERSISTENT_WORKER", True),
+                  mock.patch.object(video_providers_mlx, "availability", return_value=(True, "ok")),
+                  mock.patch("video_multi_image.keyframe_capabilities",
+                             return_value={"native_keyframes": True}),
+                  mock.patch.object(video_providers_mlx, "validate_first_frame", return_value=source),
+                  mock.patch.object(video_providers_mlx, "_prepare_first_frame", side_effect=prepare),
+                  mock.patch.object(video_providers_mlx, "_run_warm_worker", side_effect=warm),
+                  mock.patch.object(video_providers_mlx, "_probe_video", return_value={
+                      "frames": 121, "width": 1280, "height": 704,
+                      "fps": 24, "duration": 5, "audio": True,
+                  })):
+                video_providers_mlx.generate(
+                    model, params, output, cancel_event=threading.Event())
+
+        self.assertEqual(len(received), 1)
+        options, legacy_image = received[0]
+        self.assertIsNone(legacy_image)
+        self.assertEqual([(item["frame_index"], item["binding"], item["strength"])
+                          for item in options["images"]],
+                         [(0, "replace", 1.0), (0, "guide", 0.30)])
+        self.assertTrue(options["images"][0]["path"].endswith("first-frame.png"))
+        self.assertTrue(options["images"][1]["path"].endswith("anchor-0.png"))
+
+
 class VideoProviderDispatchTests(unittest.TestCase):
     def test_dispatches_mlx_and_mps_independently(self):
         mlx_model = video_registry.builtin_mlx_model()
