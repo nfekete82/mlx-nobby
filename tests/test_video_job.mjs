@@ -46,6 +46,12 @@ for (const [fileContext, artifactId] of [
 }
 assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
+assert.equal(api.__test.isVideoRequest(
+    'Erstelle ein 10-Sekunden-Video mit Rolling-Window-Test: The woman smiles.'
+), true);
+assert.match(source, /continuation_mode: 'rolling'/);
+assert.match(source, /rolling\[\\s-\]\?window/);
+
 assert.equal(api.__test.isVideoRequest("erstelle ein video: The person slowly turns their head, smiles naturally and looks directly into the camera. Smooth continuous movement, fixed camera, consistent facial features, hairstyle and clothing, realistic facial expressions, no scene changes."), true);
 assert.match(source, /const explicitVideoAnimateRequest = !alwaysGenerateImage && isVideoRequest\(prompt\)/);
 assert.match(source, /action: explicitVideoAnimateRequest \? 'video_generate'/);
