@@ -69,6 +69,23 @@ assert.equal(helpers.normalizeImageCount('6'), 6);
 assert.equal(helpers.normalizeImageCount(0), 1);
 assert.equal(helpers.normalizeImageCount(7), 6);
 assert.equal(helpers.normalizeImageCount('invalid'), 1);
+
+const preferenceStorage = new Map();
+window.localStorage = {
+    getItem(key) { return key === 'mlx-nobby-language' ? 'de' : preferenceStorage.get(key) ?? null; },
+    setItem(key, value) { preferenceStorage.set(key, value); },
+};
+assert.equal(helpers.loadSavedImageCount(), 1, 'First visit defaults to one image');
+assert.equal(helpers.rememberImageCount('4'), 4);
+assert.equal(helpers.loadSavedImageCount(), 4);
+assert.equal(preferenceStorage.get('mlx-nobby-image-generation-count-v1'), '4');
+assert.equal(helpers.rememberImageCount('1'), 1);
+assert.equal(helpers.loadSavedImageCount(), 1);
+preferenceStorage.set('mlx-nobby-image-generation-count-v1', 'invalid');
+assert.equal(helpers.loadSavedImageCount(), 1);
+preferenceStorage.set('mlx-nobby-image-generation-count-v1', '9');
+assert.equal(helpers.loadSavedImageCount(), 1);
+preferenceStorage.delete('mlx-nobby-image-generation-count-v1');
 assert.equal(helpers.resolveLanguage(), 'de');
 assert.equal(helpers.resolveLanguage('en-US'), 'en');
 assert.equal(helpers.resolveLanguage('de-DE'), 'de');
@@ -260,7 +277,7 @@ const versionMatch = source.match(
     /const SCRIPT_VERSION = '([^']+)'/,
 );
 assert.ok(versionMatch, 'image count picker must expose a script version');
-assert.equal(versionMatch[1], '20261007-image-model-picker');
+assert.equal(versionMatch[1], '20261030-persistent-image-count');
 assert.ok(
     commonSource.includes(
         'image-count-picker.js?v=' + versionMatch[1],
