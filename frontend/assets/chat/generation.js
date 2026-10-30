@@ -82,9 +82,9 @@ function normalizeMediaPreviewQuality(quality, previewAvailable) {
 
 const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
-    fast: Object.freeze([5, 6, 8, 10, 20]),
-    standard: Object.freeze([5, 6, 8, 10]),
-    quality: Object.freeze([5])
+    fast: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
+    standard: Object.freeze([5, 6, 8, 10, 30, 60]),
+    quality: Object.freeze([5, 30, 60])
 });
 
 const VIDEO_DURATIONS = new Set(
@@ -3580,7 +3580,7 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s';
+                                    duration + ' s' + (duration >= 30 ? ' · Long-Video (RAM-sicher)' : '');
 
                                 return option;
                             });
