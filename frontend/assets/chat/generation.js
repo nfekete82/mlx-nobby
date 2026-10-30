@@ -84,7 +84,7 @@ const VIDEO_DURATIONS_BY_QUALITY = Object.freeze({
     preview: Object.freeze([2]),
     fast: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
     standard: Object.freeze([5, 6, 8, 10, 20, 30, 60]),
-    quality: Object.freeze([5, 10, 20, 30, 60])
+    quality: Object.freeze([5, 9, 10, 20, 30, 60])
 });
 
 const VIDEO_DURATIONS = new Set(
@@ -250,7 +250,7 @@ function videoAspectRatioForFormat(format) {
 
 function promptVideoPreferences(prompt) {
     const text = String(prompt || '');
-    const match = text.match(/\b(5|6|8|10|20|30)\s*(?:sekunden?|seconds?|secs?|s)\b/i);
+    const match = text.match(/\b(5|6|8|9|10|20|30|60)\s*(?:sekunden?|seconds?|secs?|s)\b/i);
     return {duration: match ? Number(match[1]) : null,
         quality: /1080p|maximal(?:e[rn]?)?\s+(?:video)?qualit[aä]t|maximum\s+(?:video\s+)?quality/i.test(text) ? 'quality' : null};
 }
@@ -3622,7 +3622,8 @@ const imageFiles =
                                     String(duration);
 
                                 option.textContent =
-                                    duration + ' s' + (duration >= 30 ? ' · RAM-sicher' :
+                                    duration + ' s' + (duration === 9 ? ' · Identity-Lock-Test' :
+                                        duration >= 30 ? ' · RAM-sicher' :
                                         ((choice === 'quality' && duration > 5) ? ' · ' + gt('long_video_auto', 'Automatic continuation') : ''));
 
                                 return option;
