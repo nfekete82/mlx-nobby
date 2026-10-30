@@ -46,6 +46,25 @@ for (const [fileContext, artifactId] of [
 }
 assert.equal(normalizeMediaPreviewQuality('preview', true), 'preview');
 assert.equal(api.__test.isVideoRequest('Erstelle ein Video von einem Ball'), true);
+assert.equal(api.__test.portraitHintFromDimensions({width:640,height:960}), 'portrait');
+assert.equal(api.__test.portraitHintFromDimensions({width:960,height:640}), 'landscape');
+assert.equal(api.__test.portraitHintFromDimensions({width:800,height:800}), 'landscape');
+assert.equal(api.__test.portraitHintFromDimensions({width:0,height:900}), null);
+assert.equal(await api.__test.videoSourceOrientation({width:500,height:1000}), 'portrait');
+assert.equal(await api.__test.videoSourceOrientation({width:1000,height:500}), 'landscape');
+const ImageBeforeTest = context.Image;
+context.Image = class {
+    naturalWidth = 450;
+    naturalHeight = 900;
+    set src(_value) { this.onload(); }
+};
+assert.equal(await api.__test.videoSourceOrientation({
+    data_url: 'data:image/png;base64,iVBORw0KGgo='
+}), 'portrait');
+context.Image = ImageBeforeTest;
+assert.match(source, /rollingSourceOrientation \|\| 'landscape'/);
+assert.match(rendering, /rolling_stage_memory/);
+
 assert.equal(api.__test.isVideoRequest(
     'Erstelle ein 10-Sekunden-Video mit Rolling-Window-Test: The woman smiles.'
 ), true);

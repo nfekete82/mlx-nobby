@@ -22,6 +22,22 @@ def test_opt_in_is_strict_and_existing_segment_mode_is_unchanged():
     assert [stage["confirmed_duration"] for stage in planner["stages"]] == [6, 8, 10]
     assert planner["context_frames"] == 25
     assert planner["frames"] == 241
+    hd = video_rolling.plan(10, "720p")
+    assert hd["resolution"] == "720p"
+    assert hd["context_frames"] == 25
+    assert [stage["frames"] for stage in hd["stages"]] == [145, 48, 48]
+    for resolution, expected in (
+        ("540p", ((1024, 576), (576, 1024))),
+        ("720p", ((1280, 704), (704, 1280))),
+    ):
+        for width, height in expected:
+            video_rolling._validate_canvas({
+                "resolution": resolution, "width": width, "height": height,
+            })
+    with pytest.raises(ValueError, match="Profilauflösung"):
+        video_rolling._validate_canvas({
+            "resolution": "720p", "width": 1024, "height": 576,
+        })
     with pytest.raises(ValueError):
         video_rolling.plan(10, "1080p")
     with pytest.raises(ValueError):
@@ -39,6 +55,24 @@ def test_service_strict_mode_requires_540p_ten_seconds_and_single_video(monkeypa
     assert request.payload.width == 1024 and request.payload.height == 576
     assert request.payload.frames == 241
     assert request.payload.continuation_mode == "rolling"
+    hd_request = video_service.JobCreate(
+        operation="t2v", chat_id="test", chat_revision=0,
+        payload={"prompt": "The woman smiles", "quality": "standard",
+                 "duration": 10, "continuation_mode": "rolling",
+                 "aspect_ratio": "9:16"})
+    assert hd_request.payload.resolution == "720p"
+    assert (hd_request.payload.width, hd_request.payload.height) == (704, 1280)
+    with mock.patch.object(video_service, "validate_first_frame",
+                           return_value=Path("/managed/portrait.png")), \
+         mock.patch.object(video_service, "i2v_source_size",
+                           return_value=(720, 1200)):
+        portrait = video_service.JobCreate(
+            operation="i2v", chat_id="test", chat_revision=0,
+            payload={"prompt": "A portrait animation", "quality": "standard",
+                     "duration": 10, "first_frame": "/managed/portrait.png",
+                     "continuation_mode": "rolling", "aspect_ratio": "9:16"})
+    assert (portrait.payload.width, portrait.payload.height) == (704, 1280)
+    assert portrait.payload.resize_mode == "contain"
     with pytest.raises(ValueError):
         video_service.JobCreate(
             operation="t2v", chat_id="test", chat_revision=0,
@@ -95,6 +129,9 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     (root / "embedded_config.json").write_text("{}")
     monkeypatch.setattr(video_rolling.video_registry, "model_path", lambda _: root)
     monkeypatch.setattr(video_rolling.video_long, "runtime_version", lambda: "known-runtime")
+    # The FFmpeg integration test uses 128x64 for speed; separate tests above
+    # verify all four real 540p/720p landscape and portrait dimensions.
+    monkeypatch.setattr(video_rolling, "_validate_canvas", lambda _: None)
     monkeypatch.setattr(video_rolling.gate, "blocked", lambda: False)
     monkeypatch.setattr(video_rolling, "shutdown_warm_runtime", lambda: None)
     monkeypatch.setattr(video_rolling.runtime_coordinator, "memory_budget_snapshot",
@@ -156,6 +193,11 @@ def test_rolling_extend_uses_only_25_context_frames_and_outputs_241(tmp_path, mo
     assert result["strategy"] == video_rolling.STRATEGY
     assert result["rolling_window_frames"] == 25
     assert result["audio"] is True
+    assert len(result["rolling_stage_memory"]) == 3
+    assert [m["stage"] for m in result["rolling_stage_memory"]] == [1, 2, 3]
+    assert all(m["after_free_percent"] == 75 and m["after_swap_gb"] == 0
+               for m in result["rolling_stage_memory"])
+    assert status["rolling_stage_memory"] == result["rolling_stage_memory"]
     assert status["checkpoint_count"] == 3
     assert status["confirmed_duration"] == 10
     manifest = json.loads((checkpoints / ("a" * 24) / "checkpoint.json").read_text())

@@ -6,6 +6,7 @@ on:
       - 'video_rolling.py'
       - 'video_service.py'
       - 'frontend/assets/chat/generation.js'
+      - 'frontend/assets/chat/rendering.js'
       - 'agent/app.py'
       - 'tests/test_video_rolling.py'
       - 'tests/test_video_job.mjs'
