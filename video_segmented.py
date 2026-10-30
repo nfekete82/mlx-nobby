@@ -32,7 +32,8 @@ CONTINUITY_WARNING = (
     "RAM-sichere LTX-Segmente verwenden das vorherige Schlussbild. "
     "Identity Lock nutzt das vorige Schlussbild als festen Start und das "
     "Originalfoto als weiche Identitätsreferenz am Anfang. "
-    "Bewegung und Audio sind an Segmentgrenzen nicht garantiert."
+    "Doppelte Randframes werden beim Stitching entfernt; unabhängige "
+    "Bewegungen, Audio und Farbabweichungen bleiben möglich."
 )
 IDENTITY_PROMPT = (
     " Preserve the identity of the person in the original reference image: "
