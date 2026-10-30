@@ -19,6 +19,7 @@ from video_profiles import preflight_profile, profile_capabilities
 from quality_profiles import resolve_video_profile
 import runtime_coordinator
 import video_multi_image
+import video_long
 from local_security import LocalRequestGuard
 from video_providers import (
     ProviderCancelled, availability, generate, i2v_aspect_ratio, i2v_source_size,
@@ -87,6 +88,7 @@ class VideoPayload(BaseModel):
     profile: Literal["standard", "uncensored"] = "standard"
     resolution: Literal["preview", "540p", "720p", "1080p"] | None = None
     duration: int = Field(default=5)
+    long_video: bool = False
     fps: Literal[8, 24] = 24
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
     first_frame: str | None = None
@@ -118,14 +120,17 @@ class VideoPayload(BaseModel):
             effective_resolution
         ]
 
-        if self.duration not in allowed_durations:
-            allowed = ", ".join(
-                str(value)
-                for value in sorted(allowed_durations)
-            )
+        if self.long_video:
+            if (self.duration not in video_long.LONG_DURATIONS
+                    or effective_resolution not in video_long.SEGMENT_SECONDS
+                    or self.quality == "preview"):
+                raise ValueError("Long-Video benötigt 30/60 Sekunden und 540p, 720p oder 1080p")
+            if registry.get_model(self.model).get("provider") != "ltx-mlx":
+                raise ValueError("Long-Video benötigt das native LTX-MLX-Modell")
+        elif self.duration not in allowed_durations:
+            allowed = ", ".join(str(value) for value in sorted(allowed_durations))
             raise ValueError(
-                f"LTX-Dauer für {effective_resolution} "
-                f"muss {allowed} Sekunden sein"
+                f"LTX-Dauer für {effective_resolution} muss {allowed} Sekunden sein"
             )
 
         if self.width is not None and (self.width <= 0 or self.width % 32):
@@ -152,6 +157,8 @@ class JobCreate(BaseModel):
         )
 
         multi = self.operation == "multi_i2v"
+        if multi and self.payload.long_video:
+            raise ValueError("Long-Video ist nicht mit Multi-Image kombinierbar")
         if multi:
             if not 2 <= len(self.payload.images) <= 5 or not self.payload.multi_image_mode:
                 raise ValueError("Multi-Image-to-Video benötigt 2–5 Bilder und einen Modus")
@@ -163,7 +170,8 @@ class JobCreate(BaseModel):
                 raise ValueError("Die installierte LTX-MLX-Version unterstützt keine nativen Keyframes; Szenen verbinden verwenden")
             for image in self.payload.images:
                 validate_first_frame(image.path)
-        elif self.payload.images or self.payload.multi_image_mode or self.payload.resume_from:
+        elif (self.payload.images or self.payload.multi_image_mode
+              or (self.payload.resume_from and not self.payload.long_video)):
             raise ValueError("Multi-Image-Parameter benötigen multi_i2v")
         if self.payload.resume_from and self.payload.multi_image_mode != "scenes":
             raise ValueError("Nur Szenenjobs können fortgesetzt werden")
@@ -249,6 +257,10 @@ def _multi_source_versions(payload):
     for image in payload.images:
         stat = Path(image.path).stat()
         versions.append({"path": image.path, "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+    if payload.long_video and payload.first_frame:
+        stat = Path(payload.first_frame).stat()
+        versions.append({"path": payload.first_frame, "bytes": stat.st_size,
+                         "mtime_ns": stat.st_mtime_ns})
     return versions
 
 
@@ -540,7 +552,15 @@ def _run(job_id, request):
 
             callbacks = dict(cancel_event=cancel, response_callback=runtime_changed,
                              progress_callback=progress_changed, phase_callback=phase_changed)
-            if request.payload.multi_image_mode == "scenes":
+            if request.payload.long_video:
+                media = video_long.generate_long_video(
+                    model, request.payload.model_dump(), output, job_id=job_id,
+                    checkpoints=JOBS / "segments",
+                    resume_job=_jobs.get(request.payload.resume_from),
+                    generate=generate,
+                    update=lambda **changes: _update(job_id, **changes), **callbacks,
+                )
+            elif request.payload.multi_image_mode == "scenes":
                 media = video_multi_image.generate_scenes(
                     model, request.payload.model_dump(), output, job_id=job_id,
                     checkpoints=JOBS / "segments",
@@ -635,7 +655,10 @@ def models():
         described.append(model | {"available": ready, "availability_note": reason, "local_path": str(registry.model_path(model))})
     default = next((m for m in described if m["id"] == data["default_model"]), {})
     return data | {"models": described, "offline": True, "multi_image": _multi_capabilities(),
-                   "profiles": profile_capabilities(default)}
+                   "profiles": profile_capabilities(default),
+                   "long_video": {"durations": [30, 60],
+                                  "segment_seconds": dict(video_long.SEGMENT_SECONDS),
+                                  "provider": "ltx-mlx"}}
 
 
 @app.post("/preflight")
@@ -648,7 +671,7 @@ def preflight(request: JobCreate):
         old_payload.pop("resume_from", None)
         if (not previous or previous.get("status") not in {"failed", "cancelled"}
                 or previous.get("chat_id") != request.chat_id or payload != old_payload):
-            raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Szenenjob mit unveränderten Einstellungen und Bildern")
+            raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Szenen- oder Long-Video-Job mit unveränderten Einstellungen")
         if ((previous.get("source_versions") is not None
              and previous["source_versions"] != _multi_source_versions(request.payload))
                 or (previous.get("resolved_model") is not None
@@ -668,6 +691,7 @@ def create_job(request: JobCreate):
     job = {
         "id": job_id, "operation": request.operation, "chat_id": request.chat_id,
         "multi_image_mode": request.payload.multi_image_mode,
+        "long_video": request.payload.long_video,
         "resolved_model": resolved_model,
         "source_versions": source_versions,
         "run_id": request.run_id or job_id, "chat_revision": request.chat_revision,
