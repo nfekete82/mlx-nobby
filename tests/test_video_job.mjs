@@ -300,7 +300,7 @@ assert.equal(longCard.children[3].children[0].textContent, 'Current processing s
 const longProgress = longCard.children[3].children[1];
 assert.equal(longProgress.tagName, 'progress');
 assert.equal(longProgress.value, .25);
-assert.match(longCard.children[3].children[2].textContent, /2\/8 · 25% · this processing step only/);
+assert.match(longCard.children[3].children[2].textContent, /2\/8 · 25% · only this processing step/);
 const unknownCard = renderingWindow.MLXChatRendering.__test.renderVideoJobCard({video_job:{...longJob,phase_progress:null}});
 assert.equal(unknownCard.children[3].children[1].value, undefined);
 assert.match(unknownCard.children[3].children[2].textContent, /no measurable percentage/);
