@@ -3010,7 +3010,11 @@ const imageFiles =
     // Explicit voice-video commands use the existing Qwen3-TTS -> LTX A2V
     // Talking Photo service instead of the ordinary silent video generator.
     const voiceVideoRequest = window.MLXVoiceVideo?.parseRequest?.(prompt);
-    if (voiceVideoRequest && !alwaysGenerateImage && !textFiles.length) {
+    // Never silently fall back to the regular video generator for explicit
+    // local-voice commands, even if their wording was not parsed completely.
+    // Otherwise the generic video model can translate the German quote.
+    if ((voiceVideoRequest || window.MLXVoiceVideo?.hasVoiceIntent?.(prompt)) &&
+        !alwaysGenerateImage && !textFiles.length) {
         const message = { role: 'assistant', content: '' };
         session.messages.push(message);
         MLXChatSessions.saveSessions();
