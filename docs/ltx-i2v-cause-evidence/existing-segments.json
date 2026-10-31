@@ -1,0 +1,584 @@
+{
+  "videos": [
+    {
+      "label": "before",
+      "video_sha256": "f3c0dc6c536185c5b2b3018b3df3a8b92940b8af0bffbc453fbf16d8eb15d247",
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06080590229035825,
+            "median": 0.1758311119352488,
+            "p95": 0.3695421550267181,
+            "max": 0.37710480081763065
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 2.0172844954952085e-05,
+            "median": 0.004066438837361637,
+            "p95": 0.02533162794752651,
+            "max": 0.0924056457302393
+          },
+          "right_eye_open_ratio": {
+            "min": 0.03907725969940218,
+            "median": 0.18806095209033286,
+            "p95": 0.32067766032408285,
+            "max": 0.32607530228309684
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00010104651284759125,
+            "median": 0.004162583949473293,
+            "p95": 0.033348992570992074,
+            "max": 0.08584283042518834
+          },
+          "interocular_over_box_width": {
+            "min": 0.36768070226043703,
+            "median": 0.3821717441842984,
+            "p95": 0.405855379591976,
+            "max": 0.41039906802330417
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 9.478004648122429e-06,
+            "median": 0.001834002013489433,
+            "p95": 0.006177463317416691,
+            "max": 0.016199011752191572
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5209588072308435,
+            "median": 0.5997479871404272,
+            "p95": 0.6995373590424138,
+            "max": 0.7020634779239495
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 6.416320236046769e-05,
+            "median": 0.0030538006174520294,
+            "p95": 0.01135865998373097,
+            "max": 0.03217793223408849
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8687136404640231,
+            "median": 0.9068054398715485,
+            "p95": 1.1189578657947594,
+            "max": 1.1274406880119459
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 9.620440952018416e-05,
+            "median": 0.004318439750615521,
+            "p95": 0.015287394964821038,
+            "max": 0.03872265083747395
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 24,
+              "last_frame": 64,
+              "frames": 41,
+              "duration_seconds": 1.7083333333333333
+            },
+            {
+              "first_frame": 102,
+              "last_frame": 122,
+              "frames": 21,
+              "duration_seconds": 0.875
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.36324926168067584,
+            "right": 0.3179655582244289
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.859143853187561,
+            "median": 0.9403374791145325,
+            "p95": 0.9976495921611785,
+            "max": 0.9987685084342957
+          },
+          "within_segment_laplacian_variance": {
+            "min": 104.03358459472656,
+            "median": 162.1561279296875,
+            "p95": 198.0560760498047,
+            "max": 205.0850830078125
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.23211857572732217,
+            "median": 0.28453907494897057,
+            "p95": 0.2924109496742286,
+            "max": 0.2943579180974237
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 6.137284096868756e-05,
+            "median": 0.002935706990824072,
+            "p95": 0.0096419796833393,
+            "max": 0.015258089971628197
+          },
+          "right_eye_open_ratio": {
+            "min": 0.22609334691409963,
+            "median": 0.2589732923955935,
+            "p95": 0.2653460373890177,
+            "max": 0.26796129671980373
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00018473131816215682,
+            "median": 0.0029991541791548892,
+            "p95": 0.008747197750101552,
+            "max": 0.011221714370224178
+          },
+          "interocular_over_box_width": {
+            "min": 0.37614481533967586,
+            "median": 0.3822929980659475,
+            "p95": 0.3838357550511804,
+            "max": 0.3844536653678018
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 1.1290572846656133e-05,
+            "median": 0.0009589898629885907,
+            "p95": 0.0032283408279128504,
+            "max": 0.004064560271388407
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.6074585807009043,
+            "median": 0.627917307383064,
+            "p95": 0.6306076128090534,
+            "max": 0.6324130603362919
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 1.8343851224678076e-06,
+            "median": 0.0013108536694378392,
+            "p95": 0.003929736993945093,
+            "max": 0.006046636654751358
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0746514875383688,
+            "median": 1.0912898320113036,
+            "p95": 1.1042599267615383,
+            "max": 1.1120320170730036
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.00012369680303470076,
+            "median": 0.0034226753353794326,
+            "p95": 0.011400016870013747,
+            "max": 0.020997183902477623
+          },
+          "bilateral_low_aperture_candidates": [],
+          "aperture_reference_p90": {
+            "left": 0.29126924195675913,
+            "right": 0.2644794861500118
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9918639063835144,
+            "median": 0.9975293874740601,
+            "p95": 0.9987272977828979,
+            "max": 0.9991861581802368
+          },
+          "within_segment_laplacian_variance": {
+            "min": 151.7070770263672,
+            "median": 176.03916931152344,
+            "p95": 187.0988510131836,
+            "max": 188.13287353515625
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.04503458575909865,
+            "median": 0.18225916746266052,
+            "p95": 0.2916910376223142,
+            "max": 0.2927058742571719
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 7.5159093893995e-05,
+            "median": 0.004951659384588081,
+            "p95": 0.03206282402473883,
+            "max": 0.0491636428215296
+          },
+          "right_eye_open_ratio": {
+            "min": 0.05866457265603576,
+            "median": 0.1970329418701986,
+            "p95": 0.2634206856343957,
+            "max": 0.26504834391958787
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00012532163776480393,
+            "median": 0.004176487214957003,
+            "p95": 0.02619130617830413,
+            "max": 0.03468682316725155
+          },
+          "interocular_over_box_width": {
+            "min": 0.38008827566667247,
+            "median": 0.3972722632547747,
+            "p95": 0.4115325050408424,
+            "max": 0.4126230916511299
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 5.9195788643828795e-05,
+            "median": 0.0015576334082788024,
+            "p95": 0.0061547149046332645,
+            "max": 0.008643885140859398
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5390618118772065,
+            "median": 0.5945090799880617,
+            "p95": 0.6309534168318947,
+            "max": 0.6330256493926452
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 4.158166775014571e-05,
+            "median": 0.00348078428330012,
+            "p95": 0.01137264469556057,
+            "max": 0.015831058240155182
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.041771363074537,
+            "median": 1.0674360493578656,
+            "p95": 1.090596367283019,
+            "max": 1.0912378428924905
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 4.969254495068576e-05,
+            "median": 0.003943291756582035,
+            "p95": 0.012407261588189106,
+            "max": 0.022023151199264124
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 213,
+              "last_frame": 229,
+              "frames": 17,
+              "duration_seconds": 0.7083333333333334
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2896272103288016,
+            "right": 0.2619713033112858
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9042311310768127,
+            "median": 0.9967601895332336,
+            "p95": 0.9983922719955445,
+            "max": 0.9986734986305237
+          },
+          "within_segment_laplacian_variance": {
+            "min": 134.08978271484375,
+            "median": 172.215576171875,
+            "p95": 187.20952758789062,
+            "max": 188.44583129882812
+          }
+        }
+      ],
+      "geometry_limits": "Rotation-normalized eye aperture and pupil estimates are noisy detector observations, not identity/blink diagnoses. Source pose, squinting and expression confound ratios.",
+      "landmark_backend": "Apple Vision CPU VNDetectFaceLandmarksRequest"
+    },
+    {
+      "label": "after",
+      "video_sha256": "d01437f80ff3aa9f28a907f90105a0ba9d66e2c1ed335acc811d8ed18e8acf53",
+      "segments": [
+        {
+          "first_frame": 0,
+          "last_frame": 144,
+          "frames": 145,
+          "face_count_histogram": {
+            "1": 145
+          },
+          "left_eye_open_ratio": {
+            "min": 0.06121437607095314,
+            "median": 0.1743986304409132,
+            "p95": 0.3703751057857799,
+            "max": 0.3793205425187432
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 5.2745982861812646e-05,
+            "median": 0.003678988950861342,
+            "p95": 0.027973229691117308,
+            "max": 0.08270501828276217
+          },
+          "right_eye_open_ratio": {
+            "min": 0.0377198620631821,
+            "median": 0.18815965989644887,
+            "p95": 0.3210412724795356,
+            "max": 0.32773017775940433
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00021389341104988135,
+            "median": 0.004699977907509742,
+            "p95": 0.03690308743870103,
+            "max": 0.08416285581388475
+          },
+          "interocular_over_box_width": {
+            "min": 0.3687362069693868,
+            "median": 0.3826767311392561,
+            "p95": 0.40592524978668193,
+            "max": 0.409623423778151
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 3.479291172392429e-06,
+            "median": 0.0018065233960444238,
+            "p95": 0.006668935480298441,
+            "max": 0.014123381497718912
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.520411044194571,
+            "median": 0.5980357552263141,
+            "p95": 0.6991049250236447,
+            "max": 0.7011947420059917
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.415956493446064e-05,
+            "median": 0.0034678664390327407,
+            "p95": 0.012135554118132032,
+            "max": 0.02733562729971528
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.8670407450392407,
+            "median": 0.9076624066706526,
+            "p95": 1.1105277121753632,
+            "max": 1.1232239472235004
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 2.453560596693549e-06,
+            "median": 0.0047115487266111145,
+            "p95": 0.01564276064043715,
+            "max": 0.034434627691043884
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 24,
+              "last_frame": 64,
+              "frames": 41,
+              "duration_seconds": 1.7083333333333333
+            },
+            {
+              "first_frame": 102,
+              "last_frame": 122,
+              "frames": 21,
+              "duration_seconds": 0.875
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.36331450552784156,
+            "right": 0.3182232251208643
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.859251856803894,
+            "median": 0.9403639435768127,
+            "p95": 0.9976371437311172,
+            "max": 0.9987696409225464
+          },
+          "within_segment_laplacian_variance": {
+            "min": 104.38227081298828,
+            "median": 162.1970672607422,
+            "p95": 197.92320556640624,
+            "max": 204.97535705566406
+          }
+        },
+        {
+          "first_frame": 145,
+          "last_frame": 192,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.08250673929530158,
+            "median": 0.2578406215468835,
+            "p95": 0.27805614251507904,
+            "max": 0.28437769869472934
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00019025890932916623,
+            "median": 0.004642448815350947,
+            "p95": 0.039790933367073913,
+            "max": 0.07562487283520955
+          },
+          "right_eye_open_ratio": {
+            "min": 0.09714014143976636,
+            "median": 0.23931800879637788,
+            "p95": 0.25847901508245086,
+            "max": 0.26016897271721656
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013232798330742312,
+            "median": 0.0035893644068885344,
+            "p95": 0.03458580045263817,
+            "max": 0.06139890474975593
+          },
+          "interocular_over_box_width": {
+            "min": 0.37792148702533107,
+            "median": 0.3810883369476244,
+            "p95": 0.3955876604426382,
+            "max": 0.3993578111985861
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 2.803162703529649e-05,
+            "median": 0.001431600719071724,
+            "p95": 0.004343814743235391,
+            "max": 0.007809846942862297
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5749680253771589,
+            "median": 0.6155960227479957,
+            "p95": 0.6275093682319722,
+            "max": 0.6292657388372492
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 3.089638344977441e-05,
+            "median": 0.0017519906385354833,
+            "p95": 0.012752864889239213,
+            "max": 0.01874345777601205
+          },
+          "mouth_width_over_interocular": {
+            "min": 1.0274704386952869,
+            "median": 1.0632926863105299,
+            "p95": 1.0985911157571613,
+            "max": 1.1084212781220308
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 1.5049056536264871e-05,
+            "median": 0.0038000921444654168,
+            "p95": 0.014499976257643897,
+            "max": 0.026611062040938327
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 169,
+              "last_frame": 171,
+              "frames": 3,
+              "duration_seconds": 0.125
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.27554418338975556,
+            "right": 0.2567354611285872
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9922909736633301,
+            "median": 0.9967226386070251,
+            "p95": 0.9985599279403686,
+            "max": 0.9987150430679321
+          },
+          "within_segment_laplacian_variance": {
+            "min": 154.49969482421875,
+            "median": 177.9155502319336,
+            "p95": 184.34334182739258,
+            "max": 185.10513305664062
+          }
+        },
+        {
+          "first_frame": 193,
+          "last_frame": 240,
+          "frames": 48,
+          "face_count_histogram": {
+            "1": 48
+          },
+          "left_eye_open_ratio": {
+            "min": 0.055819007716361314,
+            "median": 0.2443992965524653,
+            "p95": 0.27324805518336626,
+            "max": 0.2809544314766215
+          },
+          "left_eye_open_ratio_adjacent_absolute_change": {
+            "min": 0.00013534691160960177,
+            "median": 0.008613184446342424,
+            "p95": 0.05843334970967395,
+            "max": 0.09906272020234545
+          },
+          "right_eye_open_ratio": {
+            "min": 0.06443501613739411,
+            "median": 0.23504173223800368,
+            "p95": 0.2592158918101311,
+            "max": 0.260340384066225
+          },
+          "right_eye_open_ratio_adjacent_absolute_change": {
+            "min": 4.680124692685306e-05,
+            "median": 0.007526550226076456,
+            "p95": 0.05046497881947776,
+            "max": 0.08880022999122579
+          },
+          "interocular_over_box_width": {
+            "min": 0.3803048027412456,
+            "median": 0.3884513059818211,
+            "p95": 0.41006007022975566,
+            "max": 0.41183322042751286
+          },
+          "interocular_over_box_width_adjacent_absolute_change": {
+            "min": 1.085571877224023e-06,
+            "median": 0.001407042153112159,
+            "p95": 0.007729581664206087,
+            "max": 0.013054521252094164
+          },
+          "nose_to_eye_mid_over_interocular": {
+            "min": 0.5564601854226157,
+            "median": 0.6124596456357572,
+            "p95": 0.6267642674088194,
+            "max": 0.6280492207037133
+          },
+          "nose_to_eye_mid_over_interocular_adjacent_absolute_change": {
+            "min": 8.439496712020489e-05,
+            "median": 0.003167275795174951,
+            "p95": 0.017486620872467492,
+            "max": 0.032675162472321606
+          },
+          "mouth_width_over_interocular": {
+            "min": 0.9685531707005551,
+            "median": 1.0304297296107663,
+            "p95": 1.0466505314262804,
+            "max": 1.0504041053710012
+          },
+          "mouth_width_over_interocular_adjacent_absolute_change": {
+            "min": 0.000403631000463367,
+            "median": 0.005425720899183473,
+            "p95": 0.01481836900672586,
+            "max": 0.023379361581679414
+          },
+          "bilateral_low_aperture_candidates": [
+            {
+              "first_frame": 197,
+              "last_frame": 197,
+              "frames": 1,
+              "duration_seconds": 0.041666666666666664
+            },
+            {
+              "first_frame": 223,
+              "last_frame": 229,
+              "frames": 7,
+              "duration_seconds": 0.2916666666666667
+            }
+          ],
+          "aperture_reference_p90": {
+            "left": 0.2725594445383543,
+            "right": 0.2574008087696168
+          },
+          "within_segment_adjacent_ssim": {
+            "min": 0.9143561124801636,
+            "median": 0.9960983395576477,
+            "p95": 0.9987241685390472,
+            "max": 0.9988231658935547
+          },
+          "within_segment_laplacian_variance": {
+            "min": 129.03517150878906,
+            "median": 175.98361206054688,
+            "p95": 197.7689292907715,
+            "max": 198.28826904296875
+          }
+        }
+      ],
+      "geometry_limits": "Rotation-normalized eye aperture and pupil estimates are noisy detector observations, not identity/blink diagnoses. Source pose, squinting and expression confound ratios.",
+      "landmark_backend": "Apple Vision CPU VNDetectFaceLandmarksRequest"
+    }
+  ],
+  "phase": "Existing media only; no GPU inference or runtime modification."
+}

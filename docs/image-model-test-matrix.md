@@ -114,3 +114,18 @@ and [automated results](lifecycle-video-edit-validation.json).
   GPU retry and no image-model `tested` status promotion. Exactly two complete
   new videos were produced. [Full report](LTX_QUALITY_REPORT_2026-10-31.md) ·
   [matched measurements and memory evidence](ltx-quality-evidence/comparison.json).
+
+### 2026-10-31: LTX I2V cause isolation, CPU phase
+
+Existing installed `dgrauet/ltx-2.5-mlx-q4` / LTX-2.5 22B distilled int4,
+native MLX 0.18.0 at `b82b97e3d000e01361f8cfcb745244b15b89a521`, retained.
+Actual test date 2026-10-31 CET. CPU analysis decoded the two existing 704×1280,
+241-frame / 24 FPS / seed-0 videos and ran CPU Vision landmarks; **no new GPU
+load or generation** in this phase. Native still-preprocessing definitions were
+executed on CPU at CRF 18 versus 0, at 352×640 and 704×1280. The pure CPU native
+factory contract was checked without importing MLX. Render time, denoising
+steps/CFG/scheduler for these CPU probes: N/A; existing videos used 8+3 distilled
+ancestral steps, CFG N/A. Pixel preservation improves, generated quality is
+unassessed. Decision: retain default preprocessing; configure an API-only
+CRF-0 experiment, not a tested quality improvement. No image-model status
+promotion. [Cause analysis and evidence](LTX_I2V_CAUSE_ISOLATION_2026-10-31.md).

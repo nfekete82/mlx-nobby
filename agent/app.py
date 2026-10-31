@@ -8840,6 +8840,7 @@ def _video_payload(request, operation):
         "width", "height", "aspect_ratio",
         "profile", "continuation_mode",
         "identity_lock", "identity_strength",
+        "i2v_image_crf",
     }
     if set(options) - allowed:
         raise HTTPException(422, "Unbekannte Videoparameter")

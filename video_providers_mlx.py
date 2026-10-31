@@ -311,6 +311,8 @@ atexit.register(shutdown_warm_runtime)
 
 
 def _command(model, params, output, *, image=None):
+    if params.get("i2v_image_crf") is not None:
+        raise ValueError("Experimental I2V image CRF requires the pinned native worker API")
     profile_stage_1 = 1 if params.get("quality") == "preview" else 8
     profile_stage_2 = 1 if params.get("quality") == "preview" else 3
     command = [
@@ -402,6 +404,8 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
                 "images": params.get("images") or [],
                 "profile": params.get("profile", "standard"),
             }
+            if params.get("i2v_image_crf") is not None:
+                payload["i2v_image_crf"] = params["i2v_image_crf"]
             # RAM-safe long videos actively sample full-system unified memory
             # (including Metal), unlike short legacy jobs which retain their
             # existing admission behavior. Never weaken the safety thresholds.
@@ -455,6 +459,16 @@ def _run_warm_worker(model, params, output, *, image, cancel_event,
 
 def generate(model, params, output, *, cancel_event, response_callback=None,
              progress_callback=None, phase_callback=None):
+    if params.get("i2v_image_crf") is not None:
+        if (type(params["i2v_image_crf"]) is not int or params["i2v_image_crf"] != 0
+                or not params.get("first_frame") or params.get("images")
+                or params.get("continuation_mode") != "rolling"
+                or params.get("profile", "standard") != "standard" or not PERSISTENT_WORKER):
+            raise ValueError("Experimental image CRF requires a single rolling I2V native worker")
+        import video_long
+        video_long.runtime_version()
+        if LTX_MLX_RUNTIME_ROOT.resolve() != video_long.RUNTIME.resolve():
+            raise ValueError("Experimental image CRF requires the exact pinned 0.18 runtime")
     loras = request_loras(params.get("profile", "standard"))
     ready, reason = availability(model)
     if not ready:

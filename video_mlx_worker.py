@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ltx_pipelines_mlx.distilled import DistilledPipeline
 from video_profiles import prepare_uncensored_loras, request_loras
-from video_mlx_compat import image_conditioning_inputs
+from video_mlx_compat import initial_image_inputs
 
 HOST = os.environ.get("LTX_MLX_WORKER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LTX_MLX_WORKER_PORT", "18061"))
@@ -142,10 +142,11 @@ def _generate(payload):
         print(f"[profile] selected={profile} loras={len(loras)}{adapters}", flush=True)
         _install_progress_hook(pipe, stage1_steps, stage2_steps)
         conditioning = {}
-        if payload.get("images"):
+        if payload.get("images") or payload.get("i2v_image_crf") is not None:
             from ltx_pipelines_mlx.utils.args import ImageConditioningInput
-            conditioning["images"] = image_conditioning_inputs(
-                payload["images"], ImageConditioningInput,
+            image, conditioning["images"] = initial_image_inputs(
+                image, payload.get("images") or [], payload.get("i2v_image_crf"),
+                ImageConditioningInput,
             )
         pipe.generate_and_save(
             prompt=str(payload["prompt"]),

@@ -96,6 +96,8 @@ class VideoPayload(BaseModel):
     # Applies only to segmented image-to-video jobs with an original still.
     identity_lock: bool = True
     identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
+    # API-only experiment; None preserves checkpoint-native still preprocessing.
+    i2v_image_crf: int | None = Field(default=None, strict=True, ge=0, le=0)
     continuation_mode: Literal["segmented", "rolling"] = "segmented"
     images: list[VideoImage] = Field(default_factory=list, max_length=5)
     multi_image_mode: Literal["keyframes", "scenes"] | None = None
@@ -176,6 +178,9 @@ class JobCreate(BaseModel):
             video_rolling.plan(self.payload.duration, self.payload.resolution or profile["resolution"], self.payload.fps)
             if multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
                 raise ValueError("Rolling-Window benötigt ein einzelnes Standard-LTX-MLX-Video")
+        if self.payload.i2v_image_crf is not None and (
+                self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
+            raise ValueError("Experimentelles Bild-CRF ist nur für Rolling-I2V verfügbar")
         long_video = (video_rolling.needed(self.payload.model_dump()) or
                       video_long.needed({"duration": self.payload.duration, "resolution": self.payload.resolution or profile["resolution"], "fps": self.payload.fps}))
         if long_video and (multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx"):
@@ -751,6 +756,8 @@ def preflight(request: JobCreate):
         payload = request.payload.model_dump(exclude={"resume_from"})
         old_payload = dict((previous or {}).get("payload") or {})
         old_payload.pop("resume_from", None)
+        # Jobs created before this opt-in field keep their default resume contract.
+        old_payload.setdefault("i2v_image_crf", None)
         if (not previous or previous.get("status") not in {"failed", "cancelled"}
                 or previous.get("chat_id") != request.chat_id or payload != old_payload):
             raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")

@@ -201,7 +201,8 @@ def _fingerprint(model, params, planner, version):
         "transport": {"clip_crf": CLIP_CRF, "audio": "alac", "output_crf": OUTPUT_CRF},
         "model": model["id"], "runtime": version,
         "config": video_long.digest(config), "plan": planner,
-        "params": {k: v for k, v in params.items() if k != "resume_from"},
+        "params": {k: v for k, v in params.items() if k != "resume_from"
+                   and not (k == "i2v_image_crf" and v is None)},
         "source": video_long.digest(source) if source else None,
         "weights": [(str(p.relative_to(root)), p.stat().st_size, p.stat().st_mtime_ns)
                     for p in sorted(root.rglob("*.safetensors"))],
