@@ -96,6 +96,8 @@ class VideoPayload(BaseModel):
     # Applies only to segmented image-to-video jobs with an original still.
     identity_lock: bool = True
     identity_strength: float = Field(default=0.30, ge=0.10, le=0.60)
+    # Rolling I2V text-only conditioning; None inherits the legacy identity_lock behavior.
+    face_guidance: Literal["off", "minimal", "full"] | None = None
     # API-only experiment; None preserves checkpoint-native still preprocessing.
     i2v_image_crf: int | None = Field(default=None, strict=True, ge=0, le=0)
     continuation_mode: Literal["segmented", "rolling"] = "segmented"
@@ -178,6 +180,9 @@ class JobCreate(BaseModel):
             video_rolling.plan(self.payload.duration, self.payload.resolution or profile["resolution"], self.payload.fps)
             if multi or self.payload.profile != "standard" or registry.get_model(self.payload.model).get("provider") != "ltx-mlx":
                 raise ValueError("Rolling-Window benötigt ein einzelnes Standard-LTX-MLX-Video")
+        if self.payload.face_guidance is not None and (
+                self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
+            raise ValueError("Gesichtstextführung ist nur für Rolling-I2V verfügbar")
         if self.payload.i2v_image_crf is not None and (
                 self.operation != "i2v" or self.payload.continuation_mode != "rolling"):
             raise ValueError("Experimentelles Bild-CRF ist nur für Rolling-I2V verfügbar")
@@ -758,6 +763,7 @@ def preflight(request: JobCreate):
         old_payload.pop("resume_from", None)
         # Jobs created before this opt-in field keep their default resume contract.
         old_payload.setdefault("i2v_image_crf", None)
+        old_payload.setdefault("face_guidance", None)
         if (not previous or previous.get("status") not in {"failed", "cancelled"}
                 or previous.get("chat_id") != request.chat_id or payload != old_payload):
             raise HTTPException(422, "Fortsetzen benötigt einen fehlgeschlagenen Job mit unveränderten Einstellungen und Quellen")
