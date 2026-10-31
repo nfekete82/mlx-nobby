@@ -30,6 +30,14 @@
       "name": "Real production API video playback and seven seeks per new video",
       "videos_passed": 2,
       "failed": 0
+    },
+    {
+      "name": "After integrating test-only base commits b18c439c and 860a0625",
+      "passed": 63,
+      "failed": 0,
+      "seconds": 3.07,
+      "merge_commit": "3c51ae42",
+      "new_gpu_videos": 0
     }
   ],
   "notes": [

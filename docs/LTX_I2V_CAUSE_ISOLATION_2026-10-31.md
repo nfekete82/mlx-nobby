@@ -321,3 +321,11 @@ Bild-VAE, halb aufgelöster Denoising-Dynamik und einzelnen Promptbestandteilen
 bleiben offen. Dafür wäre ein neues ausdrücklich begrenztes Testbudget nötig;
 jetzt wird kein drittes GPU-Video gestartet. Der neue PR bleibt Draft und
 enthält keine automatische Merge- oder Qualitätsfreigabe.
+
+
+Nach Erstellung von PR #390 wurde dessen inzwischen weiterentwickelte Basis
+integriert: `b18c439c` und `860a0625` ändern ausschließlich die Portabilität
+des vorhandenen FFprobe-/AAC-Tests. Merge `3c51ae42` erhält beide Historien;
+Runtime- und Inferenzcode wurden dadurch nicht geändert. Danach bestanden
+nochmals alle **63** betroffenen Opt-in-/Rolling-/Provider-Tests. Es wurde kein
+weiterer GPU-Lauf gestartet. [Draft-PR #390](https://github.com/nfekete82/mlx-nobby/pull/390).
