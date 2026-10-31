@@ -67,10 +67,16 @@ def test_default_checkpoint_fingerprint_unchanged_but_opt_in_is_distinct(tmp_pat
     base=rolling._fingerprint(model,params,plan,'pinned')
     assert rolling._fingerprint(model,dict(params,i2v_image_crf=None),plan,'pinned')==base
     assert rolling._fingerprint(model,dict(params,i2v_image_crf=0),plan,'pinned')!=base
+    assert rolling._fingerprint(model,dict(params,face_guidance=None),plan,'pinned')==base
+    assert rolling._fingerprint(model,dict(params,face_guidance='off'),plan,'pinned')!=base
+    assert rolling._fingerprint(model,dict(params,face_guidance='minimal'),plan,'pinned')!=base
+    assert rolling._fingerprint(model,dict(params,face_guidance='full'),plan,'pinned')!=base
+    assert len({rolling._fingerprint(model,dict(params,face_guidance=value),plan,'pinned')
+                for value in ('off','minimal','full')})==3
 
 
 def test_old_default_job_payload_remains_eligible_for_resume(photo,monkeypatch):
-    old=request().payload.model_dump(exclude={'resume_from','i2v_image_crf'})
+    old=request().payload.model_dump(exclude={'resume_from','i2v_image_crf','face_guidance'})
     previous={'id':'a'*24,'chat_id':'test','status':'failed','payload':old,'long_plan':{'strategy':rolling.STRATEGY}}
     monkeypatch.setattr(service,'_jobs',{'a'*24:previous})
     monkeypatch.setattr(service,'preflight_profile',lambda *a:None)
@@ -78,6 +84,8 @@ def test_old_default_job_payload_remains_eligible_for_resume(photo,monkeypatch):
     assert service.preflight(request(resume_from='a'*24))['available']
     with pytest.raises(service.HTTPException):
         service.preflight(request(resume_from='a'*24,i2v_image_crf=0))
+    with pytest.raises(service.HTTPException):
+        service.preflight(request(resume_from='a'*24,face_guidance='minimal'))
 
 
 def test_cli_rejects_experiment_instead_of_inventing_a_flag():
